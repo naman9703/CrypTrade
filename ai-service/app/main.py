@@ -53,7 +53,12 @@ if not XGBOOST_AVAILABLE and os.getenv("AI_SILENCE_XGBOOST_HINT", "").lower() no
 
 load_dotenv()
 
-MODEL_DIR = Path(os.getenv("MODEL_DIR", "./data/model")).resolve()
+
+def get_model_dir() -> Path:
+    """Resolve at call time so Docker/Railway `MODEL_DIR` is always current (not import-time cwd/env)."""
+    return Path(os.getenv("MODEL_DIR", "./data/model")).resolve()
+
+
 FEEDBACK_CSV = Path(os.getenv("FEEDBACK_CSV", "./data/feedback/trades.csv")).resolve()
 LABEL_HORIZON_MIN = int(os.getenv("LABEL_HORIZON_MIN", "10"))
 FEEDBACK_HALF_LIFE_DAYS = float(os.getenv("FEEDBACK_HALF_LIFE_DAYS", "14"))
@@ -137,7 +142,7 @@ _external_cache: dict[str, Any] = {
 
 
 def _ensure_dirs() -> None:
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    get_model_dir().mkdir(parents=True, exist_ok=True)
     FEEDBACK_CSV.parent.mkdir(parents=True, exist_ok=True)
 
 
@@ -1027,24 +1032,24 @@ def _train_weights_and_bootstrap(
 # ─── Model persistence ────────────────────────────────────────────────────────
 
 def model_path() -> Path:
-    return MODEL_DIR / "model.pkl"
+    return get_model_dir() / "model.pkl"
 
 def short_model_path() -> Path:
-    return MODEL_DIR / "model_short.pkl"
+    return get_model_dir() / "model_short.pkl"
 
 def short_calibrator_path() -> Path:
-    return MODEL_DIR / "calibrator_short.pkl"
+    return get_model_dir() / "calibrator_short.pkl"
 
 def calibrator_path() -> Path:
-    return MODEL_DIR / "calibrator.pkl"
+    return get_model_dir() / "calibrator.pkl"
 
 
 def calibrator_platt_path() -> Path:
-    return MODEL_DIR / "calibrator_platt.pkl"
+    return get_model_dir() / "calibrator_platt.pkl"
 
 
 def meta_path() -> Path:
-    return MODEL_DIR / "meta.json"
+    return get_model_dir() / "meta.json"
 
 def load_meta() -> dict[str, Any] | None:
     p = meta_path()
@@ -1931,7 +1936,7 @@ def train_from_binance(req: BinanceTrainRequest) -> BinanceTrainResponse:
 
     # Model versioning: archive with version ID
     version_id = f"v_{trained_at.replace(':', '').replace('-', '').replace('.', '_')}"
-    version_dir = MODEL_DIR / "versions" / version_id
+    version_dir = get_model_dir() / "versions" / version_id
     version_dir.mkdir(parents=True, exist_ok=True)
     try:
         import shutil

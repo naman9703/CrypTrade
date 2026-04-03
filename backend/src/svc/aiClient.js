@@ -62,6 +62,17 @@ export function createAiClient({ baseUrl }) {
       const { data } = await http.post("/train/from-binance", body, { timeout: 900_000 });
       return data;
     },
+    /** Synthetic OHLCV — no Binance; finishes in ~1–3 min. Good when cloud IP cannot reach Binance. */
+    async trainBootstrap(opts = {}) {
+      const body = {};
+      if (opts.rows != null) body.rows = opts.rows;
+      if (opts.horizon != null) body.horizon = opts.horizon;
+      if (opts.seed != null) body.seed = opts.seed;
+      const sp = opts.startPrice ?? opts.start_price;
+      if (sp != null) body.start_price = sp;
+      const { data } = await http.post("/train/bootstrap", body, { timeout: 300_000 });
+      return data;
+    },
   };
 }
 

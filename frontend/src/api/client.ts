@@ -120,5 +120,15 @@ export const api = {
       })
     );
   },
+  /** Synthetic data only — works without Binance (e.g. Railway). Usually finishes in under ~2 minutes. */
+  async aiTrainBootstrap(opts?: { rows?: number; horizon?: number; seed?: number; start_price?: number }) {
+    return json<any>(
+      await fetch(`${HTTP}/api/ai/train-bootstrap`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(opts ?? {}),
+      })
+    );
+  },
 };
 

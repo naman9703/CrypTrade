@@ -8,7 +8,7 @@ export function InsightsPanel() {
   const external = useAppStore((s) => s.external);
   const pushLog = useAppStore((s) => s.pushLog);
   const [busy, setBusy] = useState(false);
-  const [training, setTraining] = useState(false);
+  const [training, setTraining] = useState<null | "binance" | "bootstrap">(null);
 
   const prob = bot?.lastAi?.probability;
   const decision = bot?.lastDecision;
@@ -89,10 +89,10 @@ export function InsightsPanel() {
               {busy ? "Retraining…" : "Retrain (from feedback)"}
             </button>
             <button
-              disabled={training}
+              disabled={training !== null}
               className="ml-2 rounded-md border border-emerald-700 bg-emerald-900/40 px-3 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-900 disabled:opacity-50"
               onClick={async () => {
-                setTraining(true);
+                setTraining("binance");
                 try {
                   pushLog({ level: "info", msg: "Training AI on real Binance data…" });
                   const r = await api.aiTrainReal();
@@ -111,11 +111,35 @@ export function InsightsPanel() {
                 } catch (e: any) {
                   pushLog({ level: "error", msg: "Train failed: " + String(e?.message || e) });
                 } finally {
-                  setTraining(false);
+                  setTraining(null);
                 }
               }}
             >
-              {training ? "Training…" : "Train on real data"}
+              {training === "binance" ? "Training…" : "Train on real data"}
+            </button>
+            <button
+              type="button"
+              disabled={training !== null}
+              title="No Binance required — use on Railway if real-data train fails or times out"
+              className="ml-2 rounded-md border border-amber-700/80 bg-amber-950/40 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-950/70 disabled:opacity-50"
+              onClick={async () => {
+                setTraining("bootstrap");
+                try {
+                  pushLog({ level: "info", msg: "Training AI on synthetic data (quick, no Binance)…" });
+                  const r = await api.aiTrainBootstrap({ rows: 4000, horizon: 10 });
+                  const d = r?.data;
+                  pushLog({
+                    level: "info",
+                    msg: `Synthetic model ready — rows ${d?.trained_rows ?? "?"}, horizon ${d?.horizon ?? "?"}, +rate ${d?.positive_rate != null ? (Number(d.positive_rate) * 100).toFixed(1) : "?"}%`,
+                  });
+                } catch (e: any) {
+                  pushLog({ level: "error", msg: "Synthetic train failed: " + String(e?.message || e) });
+                } finally {
+                  setTraining(null);
+                }
+              }}
+            >
+              {training === "bootstrap" ? "Training…" : "Train synthetic (quick)"}
             </button>
             <button
               type="button"

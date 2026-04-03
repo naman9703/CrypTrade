@@ -34,6 +34,8 @@ Training uses the same path as local: **UI “Train on real data”** → `POST 
 
 **Optional:** Train locally, then copy `ai-service/data/model/*` into the mounted volume (advanced) if you want to avoid long runs on Railway.
 
+**If `AI (no model)` never clears:** confirm **`POST /api/ai/train-real`** actually returns `ok: true` (Railway **logs** / browser network tab). Binance may be unreachable from some cloud IPs, or the **proxy may cut off** a long train. Use the UI **Train synthetic (quick)** (→ `POST /api/ai/train-bootstrap`) to create a real `model.pkl` without Binance; the header should show a loaded model within a few seconds after it finishes. **`GET /api/ai/health`** includes `model_loaded` and `model_path` for debugging.
+
 ---
 
 ## 1. Prerequisites
@@ -127,6 +129,8 @@ Without a volume, **redeploys wipe** `/app` except what you bake into the image.
 ```text
 MODEL_DIR=/app/ai-service/data/model
 ```
+
+**This path is not on your laptop or in GitHub.** It exists **only inside the running container** on Railway (Linux). `scripts/docker-entrypoint.sh` runs `mkdir -p "$MODEL_DIR"` on every start, so the directory is there even before training; it is **empty** until `model.pkl` is written. In the Railway UI you do **not** browse to `/app/…`—you type **`/app/ai-service/data/model`** as the volume **mount path**.
 
 **On Railway:**
 

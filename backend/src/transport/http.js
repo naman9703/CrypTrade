@@ -127,6 +127,28 @@ export function createRouter({ appState }) {
     }
   });
 
+  r.post("/ai/train-bootstrap", async (req, res) => {
+    const schema = z.object({
+      rows: z.number().int().min(500).max(200_000).optional(),
+      horizon: z.number().int().min(1).max(240).optional(),
+      seed: z.number().int().min(0).max(1_000_000).optional(),
+      start_price: z.number().min(1).optional(),
+    });
+    const parsed = schema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const out = await appState.ai.trainBootstrap({
+        rows: parsed.data.rows,
+        horizon: parsed.data.horizon,
+        seed: parsed.data.seed,
+        start_price: parsed.data.start_price,
+      });
+      res.json({ ok: true, data: out });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
   r.post("/ai/retrain", async (req, res) => {
     const schema = z.object({ minRows: z.number().int().min(10).max(1_000_000).optional() });
     const parsed = schema.safeParse(req.body || {});
