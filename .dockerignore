@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+ai-service/.venv
+**/__pycache__
+*.pyc
+.git
+.env
+**/.env
+*.log
+.DS_Store
+frontend/dist
+.cursor
+mcps
+agent-transcripts
+**/*.md
+!README.md

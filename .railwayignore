@@ -1,0 +1,18 @@
+# Keep CLI uploads small (especially without a git repo)
+node_modules
+**/node_modules
+ai-service/.venv
+**/.venv
+__pycache__
+**/__pycache__
+*.pyc
+.git
+.env
+**/.env
+frontend/dist
+.cursor
+mcps
+*.log
+.DS_Store
+data
+logs

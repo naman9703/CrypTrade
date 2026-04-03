@@ -1,0 +1,19 @@
+# Minimal workflow so Railway can use "Wait for CI" (optional).
+# See: https://docs.railway.com/guides/github-autodeploys
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sanity check
+        run: test -f Dockerfile && test -f railway.toml
