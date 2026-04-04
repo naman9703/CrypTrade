@@ -4,7 +4,9 @@ This app ships as **one Docker service**: the Node backend (port **8000**) serve
 
 Railway **monolith** build is defined in **`deploy/railway-monolith.toml`** (Dockerfile `Dockerfile.monolith`). In the service **Settings → Config as code**, point at that file. Root `railway.toml` only carries shared deploy defaults so split services are not forced onto the monolith image. Large paths are excluded from CLI uploads via `.railwayignore`.
 
-**Three separate Railway services** (frontend + backend + AI, each with its own URL) are supported via `frontend/Dockerfile`, `backend/Dockerfile`, and `ai-service/Dockerfile`; see **`docs/RAILWAY_DEPLOY_SPLIT.md`**.
+**Two Railway services** (recommended for **`git-hustle`**): **`Dockerfile.app`** (Node: UI + API + WebSocket) + **`ai-service/Dockerfile`** (FastAPI). See **`docs/RAILWAY_DEPLOY_PLAN_GIT_HUSTLE.md`**.
+
+**Three separate services** (frontend + backend + AI on different URLs) are also supported; see **`docs/RAILWAY_DEPLOY_SPLIT.md`**.
 
 ---
 

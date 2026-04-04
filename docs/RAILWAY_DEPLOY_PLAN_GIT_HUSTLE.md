@@ -1,169 +1,75 @@
-# Deployment plan: three Railway services — project **git-hustle**
+# Railway **git-hustle**: two services (recommended)
 
-This plan splits the stack into **AI (FastAPI)**, **Backend (Node + WebSocket)**, and **Frontend (static SPA)** as **separate Railway services** under a single project named **`git-hustle`**. It matches the repo layout: `ai-service/Dockerfile`, `backend/Dockerfile`, `frontend/Dockerfile`, and optional config-as-code under `deploy/railway-*.toml`.
+Deploy with **two** Railway services in project **`git-hustle`**:
 
----
+| Service | Image | What it runs |
+|---------|--------|----------------|
+| **`git-hustle-app`** (or `git-hustle-api`) | **`Dockerfile.app`** | **Node**: REST API, **`/ws`**, and **built Vite UI** (same URL). |
+| **`git-hustle-ai`** | **`ai-service/Dockerfile`** | **FastAPI**: `/health`, `/predict`, training. |
 
-## Goals
+Set on the **app** service:
 
-| Service        | Role                         | Public URL usage                                      |
-|----------------|------------------------------|-------------------------------------------------------|
-| **AI**         | `/health`, `/predict`, train | Backend calls this over HTTPS (`AI_BASE_URL`)         |
-| **Backend**    | REST `/api/*`, `GET /health`, `wss://…/ws` | Browser + frontend fetch this (`VITE_BACKEND_HTTP`) |
-| **Frontend**   | Static UI (`serve`)          | End users open this in the browser                    |
+| Variable | Value |
+|----------|--------|
+| `AI_BASE_URL` | `https://<your-ai-service>.up.railway.app` — **no** trailing slash. |
+| `LISTEN_HOST` | `0.0.0.0` |
+| `FRONTEND_ORIGIN` | `https://<your-app-service>.up.railway.app` (same as the public URL users open). |
 
----
+`SERVE_FRONTEND=1` is already the default in **`Dockerfile.app`** (do not set `0` unless you remove the static UI from this service).
 
-## Prerequisites
+**Config as code (each service):**
 
-1. **GitHub**: Application code is pushed to the branch you will deploy (e.g. `main`).
-2. **Railway account** with permission to create a project and connect the repo (ideally **two** GitHub connections if you use Railway’s GitHub app).
-3. **Optional**: Remove or stop the old **monolith** service (single root `Dockerfile`) once the three services are healthy, to avoid duplicate spend and confusion.
+- **App**: `deploy/railway-app.toml` → builds **`Dockerfile.app`**
+- **AI**: `deploy/railway-ai.toml` → builds **`ai-service/Dockerfile`**
 
----
+**Root directory:** repo root (empty). Do not use `backend/` or `frontend/` as the service root.
 
-## Phase A — Create project and three empty services
+### Order
 
-1. In [Railway](https://railway.app) → **New project** → name it **`git-hustle`** (exact name as you prefer).
-2. Add **three** services; recommended names:
-   - `git-hustle-ai`
-   - `git-hustle-api`
-   - `git-hustle-web`
-3. For **each** service:
-   - **Source**: connect the **same GitHub repository** as the monolith.
-   - **Branch**: e.g. `main`.
-   - **Root directory**: leave **empty** (repository root). All Dockerfiles use **root** context (`COPY backend/...`, `COPY ai-service/...`, etc.).
-   - **Settings → Config as code** (recommended):
-     - AI → `deploy/railway-ai.toml`
-     - API → `deploy/railway-backend.toml`
-     - Web → `deploy/railway-frontend.toml`  
-   - Or set **Dockerfile path** manually: `ai-service/Dockerfile`, `backend/Dockerfile`, `frontend/Dockerfile` respectively.
+1. Deploy **AI** → generate domain → `GET https://<ai>/health`
+2. Deploy **app** → set `AI_BASE_URL` → generate domain → open **`https://<app>/`** in the browser  
+3. Verify `GET https://<app>/health` and `GET https://<app>/api/ai/health`
 
-Do **not** set the service root to `backend/`, `frontend/`, or `ai-service/` only — builds will fail.
+### Files in repo
 
----
+| Path | Role |
+|------|------|
+| `Dockerfile.app` | Multi-stage Node: `npm run build` for frontend, then `node backend/src/index.js` with `frontend/dist` served. |
+| `deploy/railway-app.toml` | Railway build/deploy for the app service. |
+| `deploy/railway-ai.toml` | Railway build/deploy for the AI service. |
+| `Dockerfile.monolith` + `deploy/railway-monolith.toml` | **Optional** all-in-one (Node + Python in one container); see `docs/RAILWAY_DEPLOY.md`. |
 
-## Phase B — Deploy **AI** first (`git-hustle-ai`)
+### Free tier / service limits
 
-1. **Networking** → **Generate domain** → note `https://<ai-host>` (no trailing slash).
-2. **Variables** (optional overrides):
+If you cannot add a third service, this **two-service** layout matches the limit. If you already have **`git-hustle-api`** (API-only), either:
 
-   | Variable    | Example / note                                        |
-   |------------|--------------------------------------------------------|
-   | `PORT`     | Default `8001`; Railway may inject `PORT` — image uses it in `CMD`. |
-   | `MODEL_DIR`| Default `/app/data/model` in `ai-service/Dockerfile`. |
+- **Replace** its Dockerfile config with **`deploy/railway-app.toml`** (or `Dockerfile.app`) and remove a separate frontend service, **or**
+- Create **`git-hustle-app`** and remove the old API + web pair after cutover.
 
-3. **Volume (strongly recommended)**  
-   - Mount path: `/app/data/model`  
-   - Keeps `model.pkl` across deploys. Align `MODEL_DIR` if you use a different mount path.
+### Migrating from a three-service split
 
-4. **Deploy** → verify:
+If you used **`backend/Dockerfile`** + **`frontend/Dockerfile`**:
 
-   ```text
-   GET https://<ai-host>/health
-   ```
-
-   Expect JSON with `"ok": true` (and model meta if a model exists).
+1. Delete or pause **`git-hustle-web`** (if present).
+2. Point the API service at **`deploy/railway-app.toml`** (or set `RAILWAY_DOCKERFILE_PATH=Dockerfile.app`).
+3. Set **`SERVE_FRONTEND=1`** only if your image is **`Dockerfile.app`** (already default there); remove **`VITE_BACKEND_HTTP`** build args — same-origin is baked into **`Dockerfile.app`**.
+4. Set **`FRONTEND_ORIGIN`** to your **app** service URL (the one users open).
 
 ---
 
-## Phase C — Deploy **Backend** (`git-hustle-api`)
+## Optional: three separate services
 
-1. **Networking** → generate domain → note `https://<api-host>`.
-2. **Variables** (minimal split setup):
-
-   | Variable          | Value |
-   |-------------------|--------|
-   | `AI_BASE_URL`     | `https://<ai-host>` — **no** trailing slash. |
-   | `LISTEN_HOST`     | `0.0.0.0` |
-   | `SERVE_FRONTEND`  | `0` |
-   | `FRONTEND_ORIGIN` | Set to `https://<web-host>` **after** frontend domain exists (step D); update backend and **redeploy** if CORS fails on first try. |
-   | `NODE_ENV`        | `production` |
-   | Plus              | `TRADING_MODE`, `MARKET_FEED`, Binance keys, `DEFAULT_SYMBOL`, etc. — same semantics as `docs/RAILWAY_DEPLOY.md`. |
-
-3. **Important (split vs monolith)**  
-   - There is **no** `scripts/docker-entrypoint.sh` in the backend-only image — **no** automatic Binance ping → `SYNTH` switching. Set `MARKET_FEED` explicitly (e.g. `BINANCE_FUTURES` or `SYNTH` per your region).
-
-4. **Deploy** → verify:
-
-   ```text
-   GET https://<api-host>/health
-   GET https://<api-host>/api/ai/health
-   ```
+For **AI** + **backend-only** + **frontend-only** (`serve` on a third URL), see **`docs/RAILWAY_DEPLOY_SPLIT.md`** (`deploy/railway-backend.toml`, `deploy/railway-frontend.toml`). Requires an extra Railway service and **`VITE_BACKEND_HTTP`** at **frontend build time**.
 
 ---
 
-## Phase D — Deploy **Frontend** (`git-hustle-web`)
+## Local smoke test (optional)
 
-1. **Build-time variables** (required for split host):
+From repo root:
 
-   | Variable             | Scope on Railway | Value |
-   |----------------------|------------------|--------|
-   | `VITE_BACKEND_HTTP`  | **Available at build time** (and runtime if UI needs it) | `https://<api-host>` — no trailing slash. |
-
-   The `frontend/Dockerfile` passes this as a build `ARG` / `ENV` so `vite build` embeds the API origin. If this is missing, the UI will call the wrong host.
-
-2. Optional: `VITE_BACKEND_WS` — usually **omit**; `frontend/src/ws/store.ts` derives **`wss://<api-host>/ws`** from `VITE_BACKEND_HTTP`.
-
-3. **Networking** → generate domain → `https://<web-host>`.
-
-4. **Deploy** → open `https://<web-host>` in the browser; confirm API calls target `https://<api-host>` (Network tab).
-
-5. **Finish CORS**: On **backend**, set `FRONTEND_ORIGIN` to `https://<web-host>` (comma-separate if multiple) and **redeploy** the API if the first load was blocked.
-
----
-
-## Phase E — Verification checklist
-
-| Step | Check |
-|------|--------|
-| AI | `GET …/health` OK |
-| API | `GET …/health` OK; `GET …/api/ai/health` proxies to AI |
-| Web | UI loads; login/state or health reflects API |
-| WS | Browser connects to `wss://<api-host>/ws` (same origin as API, not frontend host) |
-| Train/predict | Depends on Binance/network; if `451`, use synthetic train or eligible IP (see `docs/RAILWAY_DEPLOY_SPLIT.md` §5) |
-
----
-
-## Phase F — CLI (optional)
-
-If you use [Railway CLI](https://docs.railway.app/develop/cli):
-
-1. `railway login` (or `railway login --browserless`).
-2. `railway link` → select project **`git-hustle`** and each service when setting variables.
-3. `railway variables set KEY=value --service <service-name>`
-4. `railway up` only applies to **linked** service; repeat per service or rely on GitHub auto-deploy.
-
----
-
-## Phase G — Retire the monolith
-
-When `git-hustle-ai` / `git-hustle-api` / `git-hustle-web` are stable:
-
-1. Pause or delete the old **single-container** service (root `Dockerfile` + `railway.toml`) in **`btc-ai-pro`** or wherever it lived.
-2. Point DNS/bookmarks to **`https://<web-host>`** only; API and AI stay on Railway-generated URLs unless you add custom domains.
-
----
-
-## Quick reference — file map
-
-| Asset | Path |
-|--------|------|
-| AI image | `ai-service/Dockerfile` |
-| API image | `backend/Dockerfile` |
-| Web image | `frontend/Dockerfile` |
-| Railway config (optional) | `deploy/railway-ai.toml`, `deploy/railway-backend.toml`, `deploy/railway-frontend.toml` |
-| Split doc (detail) | `docs/RAILWAY_DEPLOY_SPLIT.md` |
-| Single-service doc | `docs/RAILWAY_DEPLOY.md` |
-
----
-
-## Dependency order (summary)
-
-```mermaid
-flowchart LR
-  Web["git-hustle-web\n(VITE_BACKEND_HTTP)"] --> API["git-hustle-api"]
-  API --> AI["git-hustle-ai\n(AI_BASE_URL)"]
+```bash
+docker build -f ai-service/Dockerfile -t cryptrade-ai .
+docker build -f Dockerfile.app -t cryptrade-app .
 ```
 
-Deploy **AI → API → Web**, then set **`FRONTEND_ORIGIN`** on API after **Web** has a URL.
+Run AI on `:8001`, app on `:8000` with `AI_BASE_URL=http://host.docker.internal:8001`.

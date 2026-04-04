@@ -16,4 +16,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Sanity check
-        run: test -f Dockerfile.monolith && test -f deploy/railway-monolith.toml && test -f railway.toml
+        run: test -f Dockerfile.app && test -f Dockerfile.monolith && test -f deploy/railway-app.toml && test -f deploy/railway-monolith.toml && test -f railway.toml

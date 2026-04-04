@@ -2,14 +2,15 @@
 
 Use this layout when you want **separate** Railway services instead of the **single** Docker stack in the repo root (`Dockerfile` + `railway.toml`). Your existing **trading-stack** (monolith) can stay until the three services are verified; then you can stop or remove it.
 
-**Step-by-step redeploy** for a new Railway project named **`git-hustle`**: see [`docs/RAILWAY_DEPLOY_PLAN_GIT_HUSTLE.md`](./RAILWAY_DEPLOY_PLAN_GIT_HUSTLE.md).
+**Project `git-hustle` (two services — UI+API + AI)** and optional three-way split: [`docs/RAILWAY_DEPLOY_PLAN_GIT_HUSTLE.md`](./RAILWAY_DEPLOY_PLAN_GIT_HUSTLE.md).
 
 | Service | Config-as-code (optional) | Dockerfile |
 |---------|---------------------------|------------|
+| **App** (UI + API + WS, Node only) | **`deploy/railway-app.toml`** | **`Dockerfile.app`** |
 | **AI** (FastAPI) | `deploy/railway-ai.toml` | `ai-service/Dockerfile` |
-| **Backend** (Node + WS) | `deploy/railway-backend.toml` | `backend/Dockerfile` |
-| **Frontend** (static) | `deploy/railway-frontend.toml` | `frontend/Dockerfile` |
-| **Monolith** (single container) | **`deploy/railway-monolith.toml`** | **`Dockerfile.monolith`** |
+| **Backend** (API + WS only) | `deploy/railway-backend.toml` | `backend/Dockerfile` |
+| **Frontend** (static only) | `deploy/railway-frontend.toml` | `frontend/Dockerfile` |
+| **Monolith** (single container, Node + Python) | **`deploy/railway-monolith.toml`** | **`Dockerfile.monolith`** |
 
 Root **`railway.toml`** no longer sets a global `dockerfilePath`, so these per-service configs are not overridden by accident.
 
