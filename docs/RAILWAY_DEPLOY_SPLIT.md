@@ -9,6 +9,9 @@ Use this layout when you want **separate** Railway services instead of the **sin
 | **AI** (FastAPI) | `deploy/railway-ai.toml` | `ai-service/Dockerfile` |
 | **Backend** (Node + WS) | `deploy/railway-backend.toml` | `backend/Dockerfile` |
 | **Frontend** (static) | `deploy/railway-frontend.toml` | `frontend/Dockerfile` |
+| **Monolith** (single container) | **`deploy/railway-monolith.toml`** | **`Dockerfile.monolith`** |
+
+Root **`railway.toml`** no longer sets a global `dockerfilePath`, so these per-service configs are not overridden by accident.
 
 **Build context:** all three Dockerfiles expect the **repository root**. In Railway, set **Root Directory** to **empty** (repo root). Either set **Dockerfile Path** as below **or** point **Config as code** at the matching `deploy/railway-*.toml` file.
 
