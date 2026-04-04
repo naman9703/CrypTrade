@@ -2,6 +2,8 @@
 
 Use this layout when you want **separate** Railway services instead of the **single** Docker stack in the repo root (`Dockerfile` + `railway.toml`). Your existing **trading-stack** (monolith) can stay until the three services are verified; then you can stop or remove it.
 
+**Step-by-step redeploy** for a new Railway project named **`git-hustle`**: see [`docs/RAILWAY_DEPLOY_PLAN_GIT_HUSTLE.md`](./RAILWAY_DEPLOY_PLAN_GIT_HUSTLE.md).
+
 | Service | Config-as-code (optional) | Dockerfile |
 |---------|---------------------------|------------|
 | **AI** (FastAPI) | `deploy/railway-ai.toml` | `ai-service/Dockerfile` |
