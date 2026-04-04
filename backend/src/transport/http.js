@@ -2,6 +2,7 @@ import express from "express";
 import { z } from "zod";
 import { runBacktest } from "../backtest/backtest.js";
 import { getTradingEvaluationChecklist } from "../evaluation/tradingChecklist.js";
+import { formatAiServiceError } from "../svc/aiHttpError.js";
 
 export function createRouter({ appState }) {
   const r = express.Router();
@@ -123,7 +124,12 @@ export function createRouter({ appState }) {
       });
       res.json({ ok: true, data: out });
     } catch (e) {
-      res.status(400).json({ ok: false, error: String(e?.message || e) });
+      const detail = formatAiServiceError(e);
+      const hint =
+        /fetch usable data|binance|451|not reachable|ECONNREFUSED/i.test(detail)
+          ? "Binance often blocks cloud IPs (HTTP 451). Use Train synthetic (quick), set MARKET_FEED=SYNTH, or deploy where Binance REST works."
+          : null;
+      res.status(400).json({ ok: false, error: hint ? `${detail} — ${hint}` : detail });
     }
   });
 
@@ -145,7 +151,7 @@ export function createRouter({ appState }) {
       });
       res.json({ ok: true, data: out });
     } catch (e) {
-      res.status(400).json({ ok: false, error: String(e?.message || e) });
+      res.status(400).json({ ok: false, error: formatAiServiceError(e) });
     }
   });
 
