@@ -23,7 +23,7 @@ The bot runs on a **~1 second timer** with a **re-entrancy guard** so two ticks 
 ### Phase 1 — Market data and safety
 
 1. **Candle buffer**  
-   The market feed (Binance WebSocket when `MARKET_FEED=BINANCE`, or synthetic) maintains OHLCV for the active **symbol** and **timeframe**.
+   The market feed (Binance spot WS when `MARKET_FEED=BINANCE`, USDT-M `fstream` when `MARKET_FEED=BINANCE_FUTURES`, or synthetic) maintains OHLCV for the active **symbol** and **timeframe**.
 
 2. **Feed health**  
    - If the bot is **running** and the feed is unhealthy or **stale &gt; 60s**, the bot **auto-stops**.  

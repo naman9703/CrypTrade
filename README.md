@@ -65,7 +65,7 @@ The AI service will **temporarily fall back** to a scikit-learn gradient boostin
 
 ## Coin selection (scan → filter → score → pick)
 
-With **`MARKET_FEED=BINANCE`**, you can enable **AUTO coin selection** in the Trading panel (**Coin select → AUTO**) or via `POST /api/bot/config` with `{ "symbolMode": "AUTO" }`.
+With **`MARKET_FEED=BINANCE`** or **`MARKET_FEED=BINANCE_FUTURES`**, you can enable **AUTO coin selection** in the Trading panel (**Coin select → AUTO**) or via `POST /api/bot/config` with `{ "symbolMode": "AUTO" }`.
 
 The backend periodically:
 

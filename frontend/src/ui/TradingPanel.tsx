@@ -255,7 +255,7 @@ export function TradingPanel() {
                       {rankedCoins.length === 0 ? (
                         <tr>
                           <td className="px-3 py-3 text-slate-500" colSpan={5}>
-                            No scan results yet (enable BINANCE market feed)
+                            No scan results yet (set MARKET_FEED=BINANCE or BINANCE_FUTURES and symbol mode AUTO)
                           </td>
                         </tr>
                       ) : (

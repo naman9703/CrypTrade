@@ -25,6 +25,21 @@ if [ "${MARKET_FEED:-SYNTH}" = "BINANCE" ]; then
   esac
 fi
 
+# USDT-M public futures (often reachable when spot/demo return 451 on cloud IPs).
+if [ "${MARKET_FEED:-SYNTH}" = "BINANCE_FUTURES" ]; then
+  case "${BINANCE_SYNTH_FALLBACK:-1}" in
+    0|false|FALSE|no|NO) ;;
+    *)
+      fapi_ping="${BINANCE_FUTURES_REST_BASE:-https://fapi.binance.com}/fapi/v1/ping"
+      code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 12 "$fapi_ping" 2>/dev/null || printf "000")
+      if [ "$code" != "200" ]; then
+        echo "[entrypoint] Binance futures $fapi_ping → HTTP $code. Using MARKET_FEED=SYNTH. Try another region or set BINANCE_SYNTH_FALLBACK=0 to keep BINANCE_FUTURES."
+        export MARKET_FEED=SYNTH
+      fi
+      ;;
+  esac
+fi
+
 echo "Starting AI service on 127.0.0.1:8001…"
 cd /app/ai-service
 ./.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 &

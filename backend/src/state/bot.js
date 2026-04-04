@@ -15,6 +15,22 @@ import {
 } from "../svc/executionGuards.js";
 import { createCoinGeckoClient } from "../svc/external/coingecko.js";
 
+function marketFeedKind() {
+  return String(process.env.MARKET_FEED || "SYNTH").toUpperCase();
+}
+
+/** Spot or USDT-M public feed: enables depth WS + universe scan (AUTO symbol). */
+function marketFeedUsesLiveBinance() {
+  const k = marketFeedKind();
+  return k === "BINANCE" || k === "BINANCE_FUTURES";
+}
+
+function binanceDepthWsBase() {
+  return marketFeedKind() === "BINANCE_FUTURES"
+    ? process.env.BINANCE_FUTURES_WS_BASE || "wss://fstream.binance.com/ws"
+    : process.env.BINANCE_WS_BASE;
+}
+
 /** Blend calibrated vs raw AI probability (reduces isotonic collapse). */
 function aiGateProbability(calProb, rawProb) {
   const useRaw =
@@ -118,10 +134,9 @@ export function createBot({ log, ai, exchange, defaults }) {
   }
 
   const feed = createMarketFeed({ log, symbol: state.symbol, timeframe: state.timeframe });
-  const depth =
-    String(process.env.MARKET_FEED || "SYNTH").toUpperCase() === "BINANCE"
-      ? createBinanceOrderBook({ log, symbol: state.symbol, wsBase: process.env.BINANCE_WS_BASE })
-      : null;
+  const depth = marketFeedUsesLiveBinance()
+    ? createBinanceOrderBook({ log, symbol: state.symbol, wsBase: binanceDepthWsBase() })
+    : null;
   const universe = createBinanceUniverse({ log });
   const cg = createCoinGeckoClient({ log });
   let lastSeenTradeId = null;
@@ -263,7 +278,7 @@ export function createBot({ log, ai, exchange, defaults }) {
   let scanInFlight = false;
   setInterval(() => {
     if (scanInFlight) return;
-    if (String(process.env.MARKET_FEED || "SYNTH").toUpperCase() !== "BINANCE") return;
+    if (!marketFeedUsesLiveBinance()) return;
     if (state.symbolMode !== "AUTO") return;
     scanInFlight = true;
     (async () => {
@@ -1272,7 +1287,7 @@ export function createBot({ log, ai, exchange, defaults }) {
     async getUniverseScan() {
       if (state.universe) return state.universe;
       // best-effort one-shot scan
-      if (String(process.env.MARKET_FEED || "SYNTH").toUpperCase() !== "BINANCE") return null;
+      if (!marketFeedUsesLiveBinance()) return null;
       const snap = await universe.scanAndRank({
         timeframe: state.timeframe,
         universeSize: Number(process.env.UNIVERSE_SIZE || 30),

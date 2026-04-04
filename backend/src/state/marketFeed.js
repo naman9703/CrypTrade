@@ -1,7 +1,7 @@
 import { createCandleBuffer } from "./marketBuffer.js";
 import { createBinanceMarketFeed } from "./marketFeedBinance.js";
 
-// Feed factory. Default: SYNTH. Optional: BINANCE (public market data).
+// Feed factory. Default: SYNTH. Optional: BINANCE (spot) or BINANCE_FUTURES (USDT-M public fapi + fstream).
 export function createMarketFeed({ log, symbol, timeframe }) {
   const kind = String(process.env.MARKET_FEED || "SYNTH").toUpperCase();
   if (kind === "BINANCE") {
@@ -9,8 +9,19 @@ export function createMarketFeed({ log, symbol, timeframe }) {
       log,
       symbol,
       timeframe,
+      variant: "spot",
       restBase: process.env.BINANCE_REST_BASE || "https://api.binance.com",
       wsBase: process.env.BINANCE_WS_BASE || "wss://stream.binance.com:9443/ws",
+    });
+  }
+  if (kind === "BINANCE_FUTURES") {
+    return createBinanceMarketFeed({
+      log,
+      symbol,
+      timeframe,
+      variant: "futures",
+      restBase: process.env.BINANCE_FUTURES_REST_BASE || "https://fapi.binance.com",
+      wsBase: process.env.BINANCE_FUTURES_WS_BASE || "wss://fstream.binance.com/ws",
     });
   }
 

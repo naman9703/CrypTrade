@@ -68,7 +68,7 @@ The backend allows origins from `FRONTEND_ORIGIN` (and expands `localhost`/`127.
 
 ## 5. Binance / region blocks
 
-Split deploy does **not** fix Binance **451** from cloud IPs. If training or `MARKET_FEED=BINANCE` fails, use `MARKET_FEED=SYNTH`, synthetic train, or the single-container entrypoint probe in `scripts/docker-entrypoint.sh` (backend-only image does **not** run that probe—set `MARKET_FEED` explicitly in Variables if needed).
+Split deploy does **not** fix Binance **451** from cloud IPs. If training or `MARKET_FEED=BINANCE` fails, try **`MARKET_FEED=BINANCE_FUTURES`** (public USDT-M), or `MARKET_FEED=SYNTH` and synthetic train. The monolith entrypoint probes spot/futures pings in `scripts/docker-entrypoint.sh`; backend-only images do **not** run that probe—set `MARKET_FEED` explicitly in Variables if needed.
 
 ---
 

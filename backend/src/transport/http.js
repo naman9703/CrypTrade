@@ -127,7 +127,7 @@ export function createRouter({ appState }) {
       const detail = formatAiServiceError(e);
       const hint =
         /fetch usable data|binance|451|not reachable|ECONNREFUSED/i.test(detail)
-          ? "Binance often blocks cloud IPs (HTTP 451). Use Train synthetic (quick), set MARKET_FEED=SYNTH, or deploy where Binance REST works."
+          ? "Binance often blocks cloud IPs (HTTP 451). Try MARKET_FEED=BINANCE_FUTURES (public USDT-M), Train synthetic (quick), MARKET_FEED=SYNTH, or deploy where Binance REST works."
           : null;
       res.status(400).json({ ok: false, error: hint ? `${detail} — ${hint}` : detail });
     }

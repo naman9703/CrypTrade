@@ -19,11 +19,16 @@ function klineStream(symbol, interval) {
   return `${symbol.toLowerCase()}@kline_${interval}`;
 }
 
-export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBase }) {
+/** @param {{ variant?: "spot" | "futures" }} opts — futures = USDT-M `fapi` + `fstream` (often works when spot/demo returns 451). */
+export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBase, variant = "spot" }) {
+  const isFutures = variant === "futures";
+  const klinesPath = isFutures ? "/fapi/v1/klines" : "/api/v3/klines";
+  const sourceTag = isFutures ? "BINANCE_FUTURES" : "BINANCE";
+
   const buf = createCandleBuffer({ max: 1500 });
   let ws = null;
   let delta = null;
-  let status = { ok: false, source: "BINANCE", lastMsgAt: null, stream: null, error: null };
+  let status = { ok: false, source: sourceTag, lastMsgAt: null, stream: null, error: null };
 
   const http = axios.create({
     baseURL: restBase || BINANCE_REST,
@@ -52,7 +57,7 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
       const limit = Math.min(pageLimit, target - fetched);
       const params = { symbol: sym, interval, limit };
       if (endTime != null) params.endTime = endTime;
-      const { data } = await http.get("/api/v3/klines", { params });
+      const { data } = await http.get(klinesPath, { params });
       if (!Array.isArray(data) || data.length === 0) break;
 
       // prepend order: ensure older first
@@ -79,7 +84,7 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
     const sym = normalizeSymbol(symbol);
     const interval = normalizeInterval(timeframe);
     const stream = klineStream(sym, interval);
-    status = { ok: false, source: "BINANCE", lastMsgAt: status.lastMsgAt, stream, error: null };
+    status = { ok: false, source: sourceTag, lastMsgAt: status.lastMsgAt, stream, error: null };
 
     const url = `${wsBase || DEFAULT_WS_BASE}/${stream}`;
     ws = new WebSocket(url);
@@ -178,7 +183,7 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
     } catch {
       // ignore
     }
-    status = { ok: false, source: "BINANCE", lastMsgAt: null, stream: null, error: null };
+    status = { ok: false, source: sourceTag, lastMsgAt: null, stream: null, error: null };
     buf.clear();
   }
 

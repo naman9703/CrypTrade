@@ -109,8 +109,13 @@ async function mapLimit(items, limit, fn) {
 }
 
 export function createBinanceUniverse({ log, restBase }) {
+  const mf = String(process.env.MARKET_FEED || "SYNTH").toUpperCase();
+  const useFuturesUniverse = mf === "BINANCE_FUTURES";
+  const spotBase = restBase || process.env.BINANCE_REST_BASE || "https://api.binance.com";
+  const fapiBase = process.env.BINANCE_FUTURES_REST_BASE || "https://fapi.binance.com";
+
   const http = axios.create({
-    baseURL: restBase || process.env.BINANCE_REST_BASE || "https://api.binance.com",
+    baseURL: useFuturesUniverse ? fapiBase : spotBase,
     timeout: 12_000,
   });
 
@@ -121,42 +126,52 @@ export function createBinanceUniverse({ log, restBase }) {
   async function loadFuturesSymbols() {
     const now = Date.now();
     if (futuresSymbolsCache && now - futuresSymbolsCacheTs < FUTURES_CACHE_TTL) return futuresSymbolsCache;
-    const futBase = process.env.BINANCE_DEMO_FUTURES_REST_BASE || "https://demo-fapi.binance.com";
-    try {
-      const { data } = await axios.get(`${futBase}/fapi/v1/exchangeInfo`, { timeout: 10_000 });
-      const syms = new Set(
-        (data?.symbols || [])
-          .filter((s) => s?.status === "TRADING" || s?.contractStatus === "TRADING")
-          .map((s) => normalizeSymbol(s?.symbol))
-          .filter(Boolean)
-      );
-      futuresSymbolsCache = syms;
-      futuresSymbolsCacheTs = now;
-      log?.info?.("universe_futures_symbols_loaded", { count: syms.size });
-      return syms;
-    } catch (e) {
-      log?.warn?.("universe_futures_symbols_failed", { error: String(e?.message || e) });
-      return futuresSymbolsCache || null;
+    const bases = [
+      process.env.BINANCE_DEMO_FUTURES_REST_BASE || "https://demo-fapi.binance.com",
+      process.env.BINANCE_FUTURES_REST_BASE || "https://fapi.binance.com",
+    ];
+    for (const futBase of bases) {
+      try {
+        const { data } = await axios.get(`${futBase}/fapi/v1/exchangeInfo`, { timeout: 10_000 });
+        const syms = new Set(
+          (data?.symbols || [])
+            .filter((s) => s?.status === "TRADING" || s?.contractStatus === "TRADING")
+            .map((s) => normalizeSymbol(s?.symbol))
+            .filter(Boolean)
+        );
+        futuresSymbolsCache = syms;
+        futuresSymbolsCacheTs = now;
+        log?.info?.("universe_futures_symbols_loaded", { count: syms.size, base: futBase });
+        return syms;
+      } catch (e) {
+        log?.warn?.("universe_futures_symbols_try_failed", { base: futBase, error: String(e?.message || e) });
+      }
     }
+    log?.warn?.("universe_futures_symbols_failed", { tried: bases });
+    return futuresSymbolsCache || null;
   }
 
   async function exchangeInfo() {
-    const { data } = await http.get("/api/v3/exchangeInfo");
+    const path = useFuturesUniverse ? "/fapi/v1/exchangeInfo" : "/api/v3/exchangeInfo";
+    const { data } = await http.get(path);
     return data;
   }
 
   async function ticker24hr() {
-    const { data } = await http.get("/api/v3/ticker/24hr");
+    const path = useFuturesUniverse ? "/fapi/v1/ticker/24hr" : "/api/v3/ticker/24hr";
+    const { data } = await http.get(path);
     return data;
   }
 
   async function bookTicker() {
-    const { data } = await http.get("/api/v3/ticker/bookTicker");
+    const path = useFuturesUniverse ? "/fapi/v1/ticker/bookTicker" : "/api/v3/ticker/bookTicker";
+    const { data } = await http.get(path);
     return data;
   }
 
   async function klines({ symbol, interval, limit }) {
-    const { data } = await http.get("/api/v3/klines", {
+    const path = useFuturesUniverse ? "/fapi/v1/klines" : "/api/v3/klines";
+    const { data } = await http.get(path, {
       params: { symbol: normalizeSymbol(symbol), interval: String(interval || "1m"), limit: Number(limit || 260) },
     });
     if (!Array.isArray(data)) return [];
@@ -186,16 +201,28 @@ export function createBinanceUniverse({ log, restBase }) {
       const extraExclude = parseExtraExcludeSymbols();
       // Step 1: universe
       const [exInfo, t24, book, futSyms] = await Promise.all([
-        exchangeInfo(), ticker24hr(), bookTicker(), loadFuturesSymbols(),
+        exchangeInfo(),
+        ticker24hr(),
+        bookTicker(),
+        useFuturesUniverse ? Promise.resolve(null) : loadFuturesSymbols(),
       ]);
       const symbols = (exInfo?.symbols || [])
-        .filter((s) => s?.status === "TRADING" && s?.quoteAsset === "USDT")
+        .filter((s) => {
+          if (useFuturesUniverse) {
+            return (
+              s?.contractType === "PERPETUAL" &&
+              (s?.status === "TRADING" || s?.contractStatus === "TRADING") &&
+              String(s?.quoteAsset || "").toUpperCase() === "USDT"
+            );
+          }
+          return s?.status === "TRADING" && s?.quoteAsset === "USDT";
+        })
         .map((s) => normalizeSymbol(s?.symbol))
         .filter(Boolean)
         .filter((s) => (excludeLeveragedTokens ? !isLeveragedTokenSymbol(s) : true))
         .filter((s) => (excludeStablePairs ? !isStableOrFiatUsdtPair(s) : true))
         .filter((s) => !extraExclude.has(s))
-        .filter((s) => (futSyms ? futSyms.has(s) : true));
+        .filter((s) => (useFuturesUniverse ? true : futSyms ? futSyms.has(s) : true));
 
       const by24 = new Map();
       for (const t of Array.isArray(t24) ? t24 : []) by24.set(normalizeSymbol(t?.symbol), t);

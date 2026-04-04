@@ -114,8 +114,9 @@ Set these in Railway **Variables** (service → **Variables**).
 | `AI_BASE_URL` | `http://127.0.0.1:8001` — in-container AI (default in entrypoint). |
 | `FRONTEND_ORIGIN` | Optional. If empty, backend uses `https://${RAILWAY_PUBLIC_DOMAIN}` when set. Add extra origins comma-separated if needed. |
 | `TRADING_MODE` | e.g. `PAPER` for safest smoke test; or `BINANCE_DEMO_API` etc. |
-| `MARKET_FEED` | `BINANCE` for live market data, or `SYNTH` if Binance blocks your region (see **HTTP 451** below). |
-| `BINANCE_SYNTH_FALLBACK` | Default **on** in Docker: if `MARKET_FEED=BINANCE` and `GET https://api.binance.com/api/v3/ping` is not **200** (e.g. **451** geo-block from US / many clouds), the container switches to **`SYNTH`** at boot so the feed is not stuck **inactive**. Set **`0`** only if you must keep `BINANCE` and are on a Binance-eligible network. |
+| `MARKET_FEED` | `BINANCE` (spot public), **`BINANCE_FUTURES`** (USDT-M public `fapi` + `fstream` — often works when spot or demo APIs return **451** on cloud IPs), or `SYNTH` if you want synthetic candles only. |
+| `BINANCE_FUTURES_REST_BASE` / `BINANCE_FUTURES_WS_BASE` | Optional overrides (defaults: `https://fapi.binance.com`, `wss://fstream.binance.com/ws`). |
+| `BINANCE_SYNTH_FALLBACK` | Default **on** in Docker: probes Binance before start — spot ping when `MARKET_FEED=BINANCE`, futures ping when `MARKET_FEED=BINANCE_FUTURES`. If not **200** (e.g. **451**), switches to **`SYNTH`**. Set **`0`** to force the chosen feed on a Binance-eligible network. |
 | `AI_PREDICT_TIMEOUT_MS` | e.g. `120000` if `/predict` times out on cold start. |
 | `AI_HTTP_TIMEOUT_MS` | e.g. `30000` for health checks. |
 
