@@ -5,6 +5,7 @@ import json
 import ssl
 import urllib.request
 import urllib.parse
+import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -675,14 +676,19 @@ def enrich_with_external_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def fetch_binance_klines(
-    symbol: str, interval: str = "1m", total: int = 5000
-) -> pd.DataFrame:
-    base_url = os.getenv("BINANCE_KLINES_BASE", "https://api.binance.com")
+def _fetch_binance_klines_loop(
+    base_url: str,
+    path: str,
+    symbol: str,
+    interval: str,
+    total: int,
+) -> list[list]:
+    """path: 'api/v3/klines' (spot) or 'fapi/v1/klines' (USDT-M)."""
     all_candles: list[list] = []
     end_time: int | None = None
     batch_size = 1000
     ctx = _ssl_ctx()
+    root = base_url.rstrip("/")
 
     while len(all_candles) < total:
         params: dict[str, Any] = {
@@ -692,7 +698,7 @@ def fetch_binance_klines(
         }
         if end_time is not None:
             params["endTime"] = end_time
-        url = f"{base_url}/api/v3/klines?{urllib.parse.urlencode(params)}"
+        url = f"{root}/{path}?{urllib.parse.urlencode(params)}"
         req = urllib.request.Request(url, headers={"User-Agent": "CryptoBot/1.0"})
         with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
             batch = json.loads(resp.read().decode())
@@ -702,18 +708,59 @@ def fetch_binance_klines(
         end_time = int(batch[0][0]) - 1
         if len(batch) < batch_size:
             break
+    return all_candles
 
-    rows = []
-    for k in all_candles:
-        rows.append({
-            "ts": int(k[0]),
-            "open": float(k[1]),
-            "high": float(k[2]),
-            "low": float(k[3]),
-            "close": float(k[4]),
-            "volume": float(k[5]),
-        })
-    return pd.DataFrame(rows)
+
+def fetch_binance_klines(
+    symbol: str, interval: str = "1m", total: int = 5000
+) -> pd.DataFrame:
+    """
+    Training klines. Default: try spot, then USDT-M futures (same symbol), when BINANCE_KLINES_SOURCE=auto.
+    Spot-only cloud blocks (451) often still allow public fapi klines.
+    """
+    spot_base = os.getenv("BINANCE_KLINES_BASE", "https://api.binance.com")
+    fut_base = os.getenv("BINANCE_FUTURES_BASE", "https://fapi.binance.com")
+    mode = os.getenv("BINANCE_KLINES_SOURCE", "auto").strip().lower()
+
+    def to_df(all_candles: list[list]) -> pd.DataFrame:
+        rows = []
+        for k in all_candles:
+            rows.append({
+                "ts": int(k[0]),
+                "open": float(k[1]),
+                "high": float(k[2]),
+                "low": float(k[3]),
+                "close": float(k[4]),
+                "volume": float(k[5]),
+            })
+        return pd.DataFrame(rows)
+
+    all_candles: list[list] = []
+
+    if mode == "futures":
+        all_candles = _fetch_binance_klines_loop(fut_base, "fapi/v1/klines", symbol, interval, total)
+        return to_df(all_candles)
+    if mode == "spot":
+        all_candles = _fetch_binance_klines_loop(spot_base, "api/v3/klines", symbol, interval, total)
+        return to_df(all_candles)
+
+    # auto: prefer spot; on 451 or failure use futures
+    try:
+        all_candles = _fetch_binance_klines_loop(spot_base, "api/v3/klines", symbol, interval, total)
+    except urllib.error.HTTPError as e:
+        if e.code != 451:
+            raise
+        all_candles = []
+    except Exception:
+        all_candles = []
+
+    if len(all_candles) < 200:
+        try:
+            all_candles = _fetch_binance_klines_loop(fut_base, "fapi/v1/klines", symbol, interval, total)
+        except Exception:
+            pass
+
+    return to_df(all_candles)
 
 
 # ─── Regime + stops (mirror backend `regime.js` + `risk.js` for training labels) ─

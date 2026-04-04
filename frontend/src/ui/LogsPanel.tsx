@@ -18,7 +18,13 @@ export function LogsPanel() {
         ) : (
           <div className="space-y-1 font-mono text-[11px]">
             {logs.map((l, idx) => {
-              const extra = (l as { detail?: string; error?: string }).detail || (l as { error?: string }).error;
+              const raw = (l as { detail?: unknown; error?: unknown }).detail ?? (l as { error?: unknown }).error;
+              const extra =
+                raw != null && typeof raw === "object"
+                  ? JSON.stringify(raw)
+                  : raw != null
+                    ? String(raw)
+                    : null;
               return (
                 <div key={idx} className="flex gap-2">
                   <span className="shrink-0 text-slate-600">{l.ts.slice(11, 19)}</span>
@@ -32,7 +38,7 @@ export function LogsPanel() {
                   <div className="min-w-0 flex-1">
                     <div className="text-slate-200 break-words">{l.msg}</div>
                     {extra && extra !== l.msg ? (
-                      <div className="mt-0.5 break-all text-slate-500">{String(extra)}</div>
+                      <div className="mt-0.5 break-all text-slate-500">{extra}</div>
                     ) : null}
                   </div>
                 </div>

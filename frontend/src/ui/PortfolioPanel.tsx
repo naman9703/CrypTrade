@@ -182,7 +182,17 @@ export function PortfolioPanel() {
           <div className="mt-1 text-lg font-semibold text-slate-100">
             {equityDisplay != null && Number.isFinite(Number(equityDisplay)) ? `$${Number(equityDisplay).toFixed(2)}` : "—"}
           </div>
-          {account?.accountError ? <div className="mt-1 text-[11px] text-rose-300">Account error: {String(account.accountError)}</div> : null}
+          {account?.accountError ? (
+            <div className="mt-1 space-y-1 text-[11px] text-rose-300">
+              <div>Account error: {String(account.accountError)}</div>
+              {/451|restricted location/i.test(String(account.accountError)) ? (
+                <div className="text-amber-200/90">
+                  Binance is blocking this host (HTTP 451). Demo API keys will not load balance here — use{" "}
+                  <span className="font-semibold">TRADING_MODE=PAPER</span> for local equity, or deploy where Binance allows your IP.
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-1 text-slate-500">
             Daily PnL (worst leg):{" "}
             <span className={Number(account?.dailyPnlPct || 0) >= 0 ? "text-emerald-400" : "text-rose-400"}>

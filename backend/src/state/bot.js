@@ -14,6 +14,7 @@ import {
   spreadBpsFromBook,
 } from "../svc/executionGuards.js";
 import { createCoinGeckoClient } from "../svc/external/coingecko.js";
+import { formatAiServiceError } from "../svc/aiHttpError.js";
 
 function marketFeedKind() {
   return String(process.env.MARKET_FEED || "SYNTH").toUpperCase();
@@ -754,28 +755,51 @@ export function createBot({ log, ai, exchange, defaults }) {
     let aiResp = null;
     let prob = 0;
 
+    const aiMinCandles = Math.max(30, Number(process.env.AI_PREDICT_MIN_CANDLES || 30));
+    let didPredict = false;
     if (tickNow - aiLastCalledAt >= AI_PREDICT_INTERVAL_MS) {
-      try {
-        const tPred = Date.now();
-        aiResp = await ai.predict({ symbol: state.symbol, timeframe: state.timeframe, candles });
-        state.metrics.lastPredictLatencyMs = Date.now() - tPred;
-        state.lastAi = {
-          probability: aiResp.probability,
-          rawProbability: aiResp.raw_probability ?? aiResp.rawProbability,
-          shortProbability: aiResp.short_probability ?? aiResp.shortProbability ?? null,
-          shortRawProbability: aiResp.short_raw_probability ?? aiResp.shortRawProbability ?? null,
-          calibrated: aiResp.calibrated,
-          features: aiResp.features,
-          model_kind: aiResp.model_kind || aiResp.modelKind,
-        };
+      if (candles.length < aiMinCandles) {
+        // FastAPI /predict requires min 30 candles; WS-only feed may be sparse if REST backfill failed.
         state._aiLastCalledAt = tickNow;
-      } catch (e) {
-        const errMsg = String(e?.response?.data?.detail || e?.message || e);
-        wsHub?.broadcast("log", { level: "error", msg: "AI predict failed; skipping trade", error: errMsg });
-        log.warn("ai_predict_failed", { symbol: state.symbol, error: errMsg });
-        noteTradeBlock({ reason: "ai_predict_failed", detail: errMsg, symbol: state.symbol });
-        return;
+        if (!state._predictWarmupLogged && candles.length >= 5) {
+          state._predictWarmupLogged = true;
+          wsHub?.broadcast("log", {
+            level: "info",
+            msg: `AI predict warming up (${candles.length}/${aiMinCandles} candles — need history for /predict)`,
+          });
+        }
+      } else {
+        try {
+          state._predictWarmupLogged = false;
+          const tPred = Date.now();
+          aiResp = await ai.predict({ symbol: state.symbol, timeframe: state.timeframe, candles });
+          state.metrics.lastPredictLatencyMs = Date.now() - tPred;
+          state.lastAi = {
+            probability: aiResp.probability,
+            rawProbability: aiResp.raw_probability ?? aiResp.rawProbability,
+            shortProbability: aiResp.short_probability ?? aiResp.shortProbability ?? null,
+            shortRawProbability: aiResp.short_raw_probability ?? aiResp.shortRawProbability ?? null,
+            calibrated: aiResp.calibrated,
+            features: aiResp.features,
+            model_kind: aiResp.model_kind || aiResp.modelKind,
+          };
+          state._aiLastCalledAt = tickNow;
+          didPredict = true;
+        } catch (e) {
+          const errMsg = formatAiServiceError(e);
+          wsHub?.broadcast("log", {
+            level: "error",
+            msg: "AI predict failed; skipping trade",
+            error: errMsg,
+          });
+          log.warn("ai_predict_failed", { symbol: state.symbol, error: errMsg });
+          noteTradeBlock({ reason: "ai_predict_failed", detail: errMsg, symbol: state.symbol });
+          return;
+        }
       }
+    }
+
+    if (didPredict && aiResp) {
       const calProb = Number(aiResp?.probability ?? 0);
       const rawProb = Number(aiResp?.raw_probability ?? aiResp?.rawProbability ?? NaN);
       prob = aiGateProbability(calProb, rawProb);
