@@ -25,6 +25,14 @@ export function createMarketFeed({ log, symbol, timeframe }) {
     });
   }
 
+  if (kind !== "SYNTH") {
+    log.warn("market_feed_unrecognized_using_synthetic", {
+      envValue: process.env.MARKET_FEED,
+      kind,
+      hint: "Use MARKET_FEED=SYNTH, BINANCE, or BINANCE_FUTURES. If BINANCE_FUTURES is set but you still see SYNTH, redeploy so the backend includes futures feed support.",
+    });
+  }
+
   const buf = createCandleBuffer({ max: 500 });
   let lastClose = 60_000;
 
