@@ -1,0 +1,9 @@
+# Single-container stack (Node + AI + static UI). Use for e.g. trading-stack monolith.
+# In Railway: Settings → Config as code → this file.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.monolith"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

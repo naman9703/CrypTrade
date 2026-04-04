@@ -2,7 +2,7 @@
 
 This app ships as **one Docker service**: the Node backend (port **8000**) serves the **built React UI** and **WebSocket** (`/ws`), while **uvicorn** runs the Python AI service on **127.0.0.1:8001** inside the same container (`scripts/docker-entrypoint.sh`).
 
-Railway config lives in `railway.toml` (Dockerfile builder). Large or sensitive paths are excluded from CLI uploads via `.railwayignore`.
+Railway **monolith** build is defined in **`deploy/railway-monolith.toml`** (Dockerfile `Dockerfile.monolith`). In the service **Settings → Config as code**, point at that file. Root `railway.toml` only carries shared deploy defaults so split services are not forced onto the monolith image. Large paths are excluded from CLI uploads via `.railwayignore`.
 
 **Three separate Railway services** (frontend + backend + AI, each with its own URL) are supported via `frontend/Dockerfile`, `backend/Dockerfile`, and `ai-service/Dockerfile`; see **`docs/RAILWAY_DEPLOY_SPLIT.md`**.
 
@@ -50,7 +50,7 @@ Training uses the same path as local: **UI “Train on real data”** → `POST 
 
 ## 2. Deploy from GitHub (recommended)
 
-Railway will **build from the commit** on your connected branch (same `Dockerfile` + `railway.toml` as local). You do **not** need `railway up` for day-to-day deploys once this is set up.
+Railway will **build from the commit** on your connected branch once **Config as code** is set to **`deploy/railway-monolith.toml`**. You do **not** need `railway up` for day-to-day deploys once this is set up.
 
 ### 2.1 Put the code on GitHub
 
@@ -78,8 +78,8 @@ Do **not** commit `backend/.env` or real API keys — they stay in `.gitignore` 
 
 ### 2.3 Service settings
 
-- **Root directory:** repo root (where **`Dockerfile`** and **`railway.toml`** live). Do not set a subdirectory unless you moved those files.
-- **Build:** Railway should pick **`DOCKERFILE`** from `railway.toml`.
+- **Root directory:** repo root (where **`Dockerfile.monolith`** and **`deploy/railway-monolith.toml`** live). Do not set a subdirectory unless you moved those files.
+- **Config as code:** **`deploy/railway-monolith.toml`** so the image is **`Dockerfile.monolith`** (not split-service Dockerfiles).
 - **Trigger branch:** in **Service → Settings**, set the branch that should auto-deploy (often **`main`**).
 
 Each **push** to that branch starts a new deployment. To deploy without a new commit, use the command palette: **CMD+K** → **Deploy Latest Commit** ([autodeploys guide](https://docs.railway.com/guides/github-autodeploys)).
