@@ -420,9 +420,12 @@ def fetch_fear_greed_series(limit: int = 2500) -> pd.DataFrame:
                 continue
     except Exception:
         rows = []
-    df = pd.DataFrame(rows).sort_values("ts_ms").drop_duplicates("ts_ms")
-    if df.empty:
+    if not rows:
         df = pd.DataFrame([{"ts_ms": 0, "fear_greed": 0.5}])
+    else:
+        df = pd.DataFrame(rows).sort_values("ts_ms").drop_duplicates("ts_ms")
+        if df.empty:
+            df = pd.DataFrame([{"ts_ms": 0, "fear_greed": 0.5}])
     _external_cache["fear_greed_series"] = {"ts": _now_ts(), "df": df}
     return df
 
@@ -481,9 +484,12 @@ def fetch_btc_funding_series(start_ms: int, end_ms: int) -> pd.DataFrame:
                 break
     except Exception:
         rows = rows
-    df = pd.DataFrame(rows).sort_values("ts_ms").drop_duplicates("ts_ms")
-    if df.empty:
+    if not rows:
         df = pd.DataFrame([{"ts_ms": 0, "btc_funding_rate": 0.0}])
+    else:
+        df = pd.DataFrame(rows).sort_values("ts_ms").drop_duplicates("ts_ms")
+        if df.empty:
+            df = pd.DataFrame([{"ts_ms": 0, "btc_funding_rate": 0.0}])
     _external_cache["btc_funding_series"] = {"ts": _now_ts(), "df": df, "key": cache_key}
     return df
 
