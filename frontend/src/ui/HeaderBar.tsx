@@ -67,6 +67,21 @@ export function HeaderBar() {
     return d ? String(d) : "—";
   }, [bot]);
 
+  /** Red was misleading: non-PAPER demo/testnet modes looked "broken". Green = sandbox-style mode (not ambiguous mainnet live). */
+  const sandboxTradingMode =
+    !mode ||
+    mode === "PAPER" ||
+    /DEMO|TESTNET/i.test(String(mode));
+
+  const feedTitle =
+    feedOk && !bot?.feed?.error
+      ? `Market data: ${feedSource}`
+      : [feedSource, bot?.feed?.error].filter(Boolean).join(" — ") || "Market feed";
+
+  const botStaleHint = botRunning
+    ? undefined
+    : "Start bot — Regime / AI / Model / Signal update on each tick while running.";
+
   return (
     <div className="border-b border-slate-800 bg-slate-950/70 backdrop-blur">
       <div className="mx-auto flex max-w-[1600px] items-center justify-between px-4 py-3">
@@ -76,25 +91,38 @@ export function HeaderBar() {
         </div>
 
         <div className="flex items-center gap-4 text-xs">
-          <div className="flex items-center gap-2">
-            <Dot ok={mode === "PAPER"} />
+          <div
+            className="flex items-center gap-2"
+            title={`Trading mode: ${mode ?? "—"} · venue: ${exchangeName}`}
+          >
+            <Dot ok={sandboxTradingMode} />
             <span className="text-slate-300">{exchangeName}</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" title="WebSocket to your backend">
             <Dot ok={connected} />
             <span className="text-slate-300">WS</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex max-w-[140px] items-center gap-2 sm:max-w-none" title={feedTitle}>
             <Dot ok={feedOk} />
-            <span className="text-slate-300">{feedSource}</span>
+            <span className="truncate text-slate-300">{feedSource}</span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Dot ok={aiOk} />
+          <div
+            className="flex items-center gap-2"
+            title={
+              aiOk && aiMeta.modelLoaded === false
+                ? "AI service is up but no model.pkl — run Train synthetic or Train on real data"
+                : aiOk && aiMeta.modelLoaded
+                  ? "Model loaded and predict available"
+                  : "AI service unreachable or status pending"
+            }
+          >
+            <Dot ok={Boolean(aiOk && aiMeta.modelLoaded)} />
             <span className="text-slate-300">
-              AI{aiMeta.modelLoaded === false ? " (no model)" : ""}{aiMeta.xgboostAvailable ? "" : " (fallback)"}
+              AI{aiMeta.modelLoaded === false ? " (no model)" : ""}
+              {aiMeta.modelLoaded && !aiMeta.xgboostAvailable ? " (fallback)" : ""}
             </span>
           </div>
 
@@ -105,22 +133,22 @@ export function HeaderBar() {
             </div>
           )}
 
-          <div className="hidden md:block text-slate-400">
+          <div className="hidden md:block text-slate-400" title={botStaleHint || undefined}>
             Regime: <span className="text-slate-200">{bot?.lastRegime?.type ?? "—"}</span>
           </div>
 
-          <div className="hidden md:block text-slate-400">
+          <div className="hidden md:block text-slate-400" title={botStaleHint || undefined}>
             AI:{" "}
             <span className="text-slate-200">
               {aiProb != null && Number.isFinite(Number(aiProb)) ? Number(aiProb).toFixed(3) : "—"}
             </span>
           </div>
 
-          <div className="hidden md:block text-slate-400">
+          <div className="hidden md:block text-slate-400" title={botStaleHint || undefined}>
             Model: <span className="text-slate-200">{modelKind ?? "—"}</span>
           </div>
 
-          <div className="hidden md:block text-slate-400">
+          <div className="hidden md:block text-slate-400" title={botStaleHint || undefined}>
             Signal: <span className="text-slate-200">{pnlHint}</span>
           </div>
 

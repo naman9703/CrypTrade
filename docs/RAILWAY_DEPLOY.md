@@ -112,7 +112,8 @@ Set these in Railway **Variables** (service → **Variables**).
 | `AI_BASE_URL` | `http://127.0.0.1:8001` — in-container AI (default in entrypoint). |
 | `FRONTEND_ORIGIN` | Optional. If empty, backend uses `https://${RAILWAY_PUBLIC_DOMAIN}` when set. Add extra origins comma-separated if needed. |
 | `TRADING_MODE` | e.g. `PAPER` for safest smoke test; or `BINANCE_DEMO_API` etc. |
-| `MARKET_FEED` | `BINANCE` for live market data (typical in production). |
+| `MARKET_FEED` | `BINANCE` for live market data, or `SYNTH` if Binance blocks your region (see **HTTP 451** below). |
+| `BINANCE_SYNTH_FALLBACK` | Default **on** in Docker: if `MARKET_FEED=BINANCE` and `GET https://api.binance.com/api/v3/ping` is not **200** (e.g. **451** geo-block from US / many clouds), the container switches to **`SYNTH`** at boot so the feed is not stuck **inactive**. Set **`0`** only if you must keep `BINANCE` and are on a Binance-eligible network. |
 | `AI_PREDICT_TIMEOUT_MS` | e.g. `120000` if `/predict` times out on cold start. |
 | `AI_HTTP_TIMEOUT_MS` | e.g. `30000` for health checks. |
 
