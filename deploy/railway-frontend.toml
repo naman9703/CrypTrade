@@ -1,0 +1,10 @@
+# Static UI (serve). Config-as-code path: deploy/railway-frontend.toml
+# Set variable VITE_BACKEND_HTTP on this service (value = backend public https URL)
+# and enable "Available at Build Time" so the Vite build embeds the API host.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "frontend/Dockerfile"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

@@ -1,60 +1,62 @@
 # Railway: three services (frontend + backend + AI)
 
-Use this layout when you want **separate** Railway services instead of the **single** Docker stack in the repo root (`Dockerfile` + `railway.toml`).
+Use this layout when you want **separate** Railway services instead of the **single** Docker stack in the repo root (`Dockerfile` + `railway.toml`). Your existing **trading-stack** (monolith) can stay until the three services are verified; then you can stop or remove it.
 
-| Service | Dockerfile | Public URL use |
-|---------|------------|----------------|
-| **AI** (FastAPI) | `ai-service/Dockerfile` | Backend calls this via `AI_BASE_URL` |
-| **Backend** (Node + WS) | `backend/Dockerfile` | Frontend HTTP + WebSocket |
-| **Frontend** (static) | `frontend/Dockerfile` | Browser |
+| Service | Config-as-code (optional) | Dockerfile |
+|---------|---------------------------|------------|
+| **AI** (FastAPI) | `deploy/railway-ai.toml` | `ai-service/Dockerfile` |
+| **Backend** (Node + WS) | `deploy/railway-backend.toml` | `backend/Dockerfile` |
+| **Frontend** (static) | `deploy/railway-frontend.toml` | `frontend/Dockerfile` |
 
-**Build context:** all three Dockerfiles expect the **repository root** (so `COPY backend/...`, `COPY ai-service/...` work). In each Railway service, set **Root Directory** to **`.`** (empty / repo root) and set **Dockerfile Path** to `ai-service/Dockerfile`, `backend/Dockerfile`, or `frontend/Dockerfile`.
+**Build context:** all three Dockerfiles expect the **repository root**. In Railway, set **Root Directory** to **empty** (repo root). Either set **Dockerfile Path** as below **or** point **Config as code** at the matching `deploy/railway-*.toml` file.
+
+---
+
+## 0. Create three services in the same project
+
+1. Railway → your project (**btc-ai-pro** or similar) → **New** → **GitHub Repo** → pick **CrypTrade** (repeat until you have **three** services), or add **Empty service** and connect the repo on each.
+2. Rename services for clarity: e.g. `cryptrade-ai`, `cryptrade-api`, `cryptrade-web`.
+3. On **each** service → **Settings**:
+   - **Branch**: `main` (or your deploy branch).
+   - **Root directory**: leave **blank** (not `frontend/` or `backend/`).
+   - **Config as code** → enable and set file to **`deploy/railway-ai.toml`**, **`deploy/railway-backend.toml`**, or **`deploy/railway-frontend.toml`** respectively  
+     *(or skip config-as-code and only set **Dockerfile path** to `ai-service/Dockerfile`, `backend/Dockerfile`, `frontend/Dockerfile`)*.
 
 ---
 
 ## 1. Deploy AI service first
 
-1. New Railway service → **GitHub repo** → same repo.
-2. **Settings → Build → Dockerfile Path:** `ai-service/Dockerfile`
-3. **Settings → Networking:** generate a domain (e.g. `https://your-ai.up.railway.app`).
-4. **Variables:** optional `MODEL_DIR` (default `/app/data/model`). Mount a **volume** on that path to persist `model.pkl`.
-5. Deploy and confirm `GET https://<ai-domain>/health` returns JSON with `ok: true`.
+1. **Networking** → **Generate domain** → copy `https://…` (no trailing slash).
+2. **Variables:** optional `MODEL_DIR` (default in image: `/app/data/model`). Add a **Volume** mounted at `/app/data/model` to persist `model.pkl`.
+3. Deploy → `GET https://<ai-domain>/health` → JSON with `"ok": true`.
 
 ---
 
 ## 2. Deploy backend
 
-1. New service → same repo.
-2. **Dockerfile Path:** `backend/Dockerfile`
-3. **Networking:** generate a domain (e.g. `https://your-api.up.railway.app`).
-4. **Variables** (minimal):
+1. **Networking** → generate API domain.
+2. **Variables** (minimal):
 
 | Variable | Example |
 |----------|---------|
-| `AI_BASE_URL` | `https://your-ai.up.railway.app` (no trailing slash) |
+| `AI_BASE_URL` | `https://<ai-domain>` (HTTPS URL from step 1, no trailing slash) |
 | `LISTEN_HOST` | `0.0.0.0` |
 | `SERVE_FRONTEND` | `0` |
-| `FRONTEND_ORIGIN` | `https://your-frontend.up.railway.app` (your static UI URL; add both `www` and apex if needed, comma-separated) |
+| `FRONTEND_ORIGIN` | `https://<frontend-domain>` (set after step 3, or update after first frontend deploy; comma-separate multiple origins) |
 | `TRADING_MODE`, `MARKET_FEED`, Binance keys, etc. | Same as `docs/RAILWAY_DEPLOY.md` |
 
-5. Confirm `GET https://<api-domain>/health` and `GET https://<api-domain>/api/ai/health` (AI proxy works).
+3. Deploy → `GET https://<api-domain>/health` and `GET https://<api-domain>/api/ai/health`.
 
 ---
 
 ## 3. Deploy frontend
 
-1. New service → same repo.
-2. **Dockerfile Path:** `frontend/Dockerfile`
-3. **Build → Docker Build Args** (Railway UI):
-
-| Build argument | Value |
-|----------------|-------|
-| `VITE_BACKEND_HTTP` | `https://your-api.up.railway.app` |
-
-Do **not** set `VITE_BACKEND_WS` unless you use a non-standard path; the app **derives** `wss://…/ws` from `VITE_BACKEND_HTTP` (see `frontend/src/ws/store.ts`).
-
-4. **Networking:** generate the **frontend** domain users will open.
-5. Deploy and open the frontend URL; check browser devtools: API calls go to the backend host, WebSocket to `wss://<backend-host>/ws`.
+1. **Variables** → add **`VITE_BACKEND_HTTP`** = `https://<api-domain>` (backend URL).  
+   **Important:** in Railway, turn on **“Available at build time”** / **Build** scope for this variable so Docker receives it during `vite build` (same name as the Dockerfile `ARG`).
+2. Alternative: **Settings → Build → Docker Build Args** and add `VITE_BACKEND_HTTP` = your backend URL (if your Railway UI exposes build args).
+3. **Networking** → generate the URL users will open in the browser.
+4. Deploy → open the **frontend** URL; in devtools, API calls should hit the **backend** host and WebSocket **`wss://<backend-host>/ws`** (derived from `VITE_BACKEND_HTTP`; see `frontend/src/ws/store.ts`).
+5. Go back to **backend** → set **`FRONTEND_ORIGIN`** to the **frontend** `https://…` and redeploy if CORS blocked the first load.
 
 ---
 
