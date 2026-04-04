@@ -73,8 +73,28 @@ function productionSameOriginWsUrl() {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${window.location.host}/ws`;
 }
+
+/** Split deploy: derive wss:// from VITE_BACKEND_HTTP when VITE_BACKEND_WS omitted. */
+function wsUrlFromBackendHttp(): string | null {
+  const raw = import.meta.env.VITE_BACKEND_HTTP;
+  if (!raw || typeof raw !== "string") return null;
+  const base = raw.trim().replace(/\/$/, "");
+  if (!base) return null;
+  try {
+    const u = new URL(base);
+    u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
+    u.pathname = "/ws";
+    u.search = "";
+    u.hash = "";
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
 const WS_URL =
   import.meta.env.VITE_BACKEND_WS ??
+  wsUrlFromBackendHttp() ??
   (import.meta.env.DEV ? defaultDevWsUrl() : productionSameOriginWsUrl());
 const WS_RECONNECT_BASE_MS = 1000;
 const WS_RECONNECT_MAX_MS = 30000;

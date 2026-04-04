@@ -4,6 +4,8 @@ This app ships as **one Docker service**: the Node backend (port **8000**) serve
 
 Railway config lives in `railway.toml` (Dockerfile builder). Large or sensitive paths are excluded from CLI uploads via `.railwayignore`.
 
+**Three separate Railway services** (frontend + backend + AI, each with its own URL) are supported via `frontend/Dockerfile`, `backend/Dockerfile`, and `ai-service/Dockerfile`; see **`docs/RAILWAY_DEPLOY_SPLIT.md`**.
+
 ---
 
 ## Local dev vs Railway (what “works the same”)
