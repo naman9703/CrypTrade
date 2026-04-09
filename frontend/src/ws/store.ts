@@ -196,11 +196,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const ws = new WebSocket(WS_URL);
     (window as any).__app_ws = ws;
 
+    const isCurrent = () => (window as any).__app_ws === ws;
+
     ws.onopen = () => {
+      if (!isCurrent()) return;
       wsReconnectDelay = WS_RECONNECT_BASE_MS;
       set((s) => ({ ws: { ...s.ws, connected: true, lastError: undefined } }));
     };
     const scheduleReconnect = () => {
+      if (!isCurrent()) return;
       set((s) => ({ ws: { ...s.ws, connected: false } }));
       if (wsIntentionalClose) {
         wsIntentionalClose = false;
@@ -209,15 +213,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (wsReconnectTimer) return;
       wsReconnectTimer = setTimeout(() => {
         wsReconnectTimer = null;
-        (window as any).__app_ws = undefined;
+        if ((window as any).__app_ws === ws) {
+          (window as any).__app_ws = undefined;
+        }
         get().connect();
         wsReconnectDelay = Math.min(wsReconnectDelay * 2, WS_RECONNECT_MAX_MS);
       }, wsReconnectDelay);
     };
     ws.onclose = scheduleReconnect;
-    ws.onerror = () => set((s) => ({ ws: { ...s.ws, lastError: "ws_error" } }));
+    ws.onerror = () => {
+      if (!isCurrent()) return;
+      set((s) => ({ ws: { ...s.ws, lastError: "ws_error" } }));
+    };
 
     ws.onmessage = (ev) => {
+      if (!isCurrent()) return;
       try {
         const msg = JSON.parse(ev.data);
         const { type, payload } = msg;

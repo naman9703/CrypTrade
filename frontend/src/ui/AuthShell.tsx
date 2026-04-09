@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../api/client";
 import { AuthActionsContext } from "../authContext";
-import { forceDisconnectWebSocket } from "../ws/store";
+import { forceDisconnectWebSocket, useAppStore } from "../ws/store";
 import { AiTradeMotionVisual } from "./AiTradeMotionVisual";
 import { LoginTypingIntro } from "./LoginTypingIntro";
 import { App } from "./App";
@@ -52,7 +52,15 @@ export function AuthShell() {
   }
 
   if (phase === "login") {
-    return <LoginScreen onSuccess={() => void refresh()} />;
+    return (
+      <LoginScreen
+        onSuccess={() => {
+          void refresh().then(() => {
+            queueMicrotask(() => useAppStore.getState().connect());
+          });
+        }}
+      />
+    );
   }
 
   return (
