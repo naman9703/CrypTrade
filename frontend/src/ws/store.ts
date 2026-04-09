@@ -121,8 +121,10 @@ function wsUrlFromBackendHttp(): string | null {
   }
 }
 
+/** Docker sets `ENV VITE_BACKEND_WS=` (empty); `??` does not treat "" as missing, so we normalize. */
+const viteWsOverride = String(import.meta.env.VITE_BACKEND_WS ?? "").trim();
 const WS_URL =
-  import.meta.env.VITE_BACKEND_WS ??
+  (viteWsOverride || undefined) ??
   wsUrlFromBackendHttp() ??
   (import.meta.env.DEV ? defaultDevWsUrl() : productionSameOriginWsUrl());
 const WS_RECONNECT_BASE_MS = 1000;

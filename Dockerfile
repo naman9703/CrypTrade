@@ -11,9 +11,9 @@ COPY backend/package.json ./backend/package.json
 RUN npm ci
 COPY frontend ./frontend
 COPY public ./public
-# Same host as UI: empty = relative /api (see frontend/src/api/client.ts)
+# Same host as UI: empty `VITE_BACKEND_HTTP` = same-origin /api (see frontend/src/api/client.ts).
+# Do not set `VITE_BACKEND_WS` to empty — Docker `ENV VAR=` makes `""`, which breaks WS URL unless the frontend normalizes it (store.ts does). Omitting it is safest.
 ENV VITE_BACKEND_HTTP=
-ENV VITE_BACKEND_WS=
 RUN npm run build --workspace frontend
 
 FROM node:22-bookworm-slim AS runner
