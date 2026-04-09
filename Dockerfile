@@ -22,8 +22,9 @@ ENV NODE_ENV=production
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
-COPY backend/package.json backend/package-lock.json ./
-RUN npm ci --omit=dev
+# Backend has no workspace-local lockfile; install from package.json only.
+COPY backend/package.json ./
+RUN npm install --omit=dev
 COPY backend ./
 COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 ENV SERVE_FRONTEND=1
