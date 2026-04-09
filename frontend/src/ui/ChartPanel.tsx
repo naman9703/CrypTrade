@@ -525,17 +525,29 @@ export function ChartPanel() {
         series.setData(sanitized);
         chartOhlcAppliedRef.current = sanitized.slice();
       } else {
+        const sanitizedNow = ohlc.filter((bar, i) =>
+          isOhlcBarRenderable(bar, i > 0 ? ohlc[i - 1]! : null, sym),
+        );
         const pLastInner = prev![prev!.length - 1]!;
         if (last.time === pLastInner.time || Number(last.time) > Number(pLastInner.time)) {
           if (!isOhlcBarRenderable(last, pLastInner, sym)) {
-            const sanitized = ohlc.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? ohlc[i - 1]! : null, sym));
-            if (sanitized.length) {
-              series.setData(sanitized);
-              chartOhlcAppliedRef.current = sanitized.slice();
+            if (sanitizedNow.length) {
+              series.setData(sanitizedNow);
+              chartOhlcAppliedRef.current = sanitizedNow.slice();
             }
           } else {
-            series.update(last);
-            chartOhlcAppliedRef.current = ohlc.slice();
+            const pLen = prev!.length;
+            const sLen = sanitizedNow.length;
+            /** Chart + ref must both track filtered bars only; raw `ohlc.length` can exceed series length. */
+            if (sLen !== pLen && sLen !== pLen + 1) {
+              if (sanitizedNow.length) {
+                series.setData(sanitizedNow);
+                chartOhlcAppliedRef.current = sanitizedNow.slice();
+              }
+            } else {
+              series.update(last);
+              chartOhlcAppliedRef.current = sanitizedNow.slice();
+            }
           }
         } else {
           const sanitized = ohlc.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? ohlc[i - 1]! : null, sym));
