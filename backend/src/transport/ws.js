@@ -19,6 +19,35 @@ export function setTelegramTradeHook(fn) {
 export function attachWs({ wss, appState }) {
   const clients = new Set();
 
+  /** Long-lived WS through nginx/CDN/NAT: RFC ping/pong so the TCP session stays “active” (tiny frames, no app JSON). */
+  const rawPingMs = String(process.env.WS_PING_INTERVAL_MS ?? "").trim();
+  const pingMs = Number(rawPingMs || 30_000);
+  const pingIntervalMs =
+    Number.isFinite(pingMs) && pingMs > 0 ? Math.min(120_000, Math.max(10_000, pingMs)) : 0;
+  let pingTimer = null;
+  if (pingIntervalMs > 0) {
+    pingTimer = setInterval(() => {
+      for (const ws of clients) {
+        if (ws.readyState !== ws.OPEN) continue;
+        if (ws._tradingPongOk === false) {
+          try {
+            ws.terminate();
+          } catch {
+            /* ignore */
+          }
+          continue;
+        }
+        ws._tradingPongOk = false;
+        try {
+          ws.ping();
+        } catch {
+          /* ignore */
+        }
+      }
+    }, pingIntervalMs);
+    pingTimer.unref?.();
+  }
+
   const hub = {
     broadcast(type, payload) {
       if (type === "trade" && payload && typeof payload === "object") {
@@ -50,6 +79,10 @@ export function attachWs({ wss, appState }) {
 
   wss.on("connection", (ws) => {
     clients.add(ws);
+    ws._tradingPongOk = true;
+    ws.on("pong", () => {
+      ws._tradingPongOk = true;
+    });
 
     // Send hello + initial trade history so UI isn't empty on connect
     (async () => {

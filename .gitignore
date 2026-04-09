@@ -8,6 +8,8 @@ dist
 deploy/railway.production.env.json
 deploy/.env
 deploy/*.env
+# Copy-paste VPS env; often contains real secrets (explicit in addition to deploy/*.env above)
+deploy/backend.env.VPS-template.env
 !deploy/*.example
 .venv
 __pycache__

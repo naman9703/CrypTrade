@@ -79,8 +79,15 @@ setTelegramActivityHook((p) => telegramSidecar.notifyActivity(p));
 setTelegramTradeHook((p) => telegramSidecar.notifyTrade(p));
 
 const app = express();
-if (truthyProxy(process.env.TRUST_PROXY) || process.env.NODE_ENV === "production") {
-  app.set("trust proxy", 1);
+{
+  const tpRaw = String(process.env.TRUST_PROXY ?? "").trim().toLowerCase();
+  const trustProxyOff = tpRaw === "0" || tpRaw === "false" || tpRaw === "no";
+  if (
+    !trustProxyOff &&
+    (truthyProxy(process.env.TRUST_PROXY) || process.env.NODE_ENV === "production")
+  ) {
+    app.set("trust proxy", 1);
+  }
 }
 
 /** Baseline security headers. CSP disabled so Vite/React SPA (if SERVE_FRONTEND) and JSON API stay compatible. */

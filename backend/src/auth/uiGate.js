@@ -122,10 +122,15 @@ export function createSessionMiddleware({ log }) {
   }
   // If COOKIE_SECURE is set, it wins (e.g. COOKIE_SECURE=0 for http://localhost over SSH tunnel while NODE_ENV=production).
   const rawCookieSecure = String(process.env.COOKIE_SECURE ?? "").trim();
+  const firstFrontendOrigin = String(process.env.FRONTEND_ORIGIN || "")
+    .split(",")[0]
+    .trim();
   const secure =
     rawCookieSecure !== ""
       ? truthyEnv(process.env.COOKIE_SECURE)
-      : process.env.NODE_ENV === "production";
+      : process.env.NODE_ENV === "production"
+        ? !firstFrontendOrigin.toLowerCase().startsWith("http://")
+        : false;
   return session({
     name: SESSION_NAME,
     secret,

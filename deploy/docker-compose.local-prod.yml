@@ -1,0 +1,14 @@
+# Local production-style run (same images as VPS).
+# Usage from repo root:
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.local-prod.yml up --build
+#
+# Open http://127.0.0.1:8000 — these env vars override backend/.env for cookie/session + CORS.
+services:
+  app:
+    ports:
+      - "8000:8000"
+    environment:
+      NODE_ENV: production
+      FRONTEND_ORIGIN: http://127.0.0.1:8000
+      COOKIE_SECURE: "0"
+      TRUST_PROXY: "0"

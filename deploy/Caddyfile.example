@@ -8,5 +8,8 @@
 
 your.duckdns.org {
 	encode zstd gzip
-	reverse_proxy 127.0.0.1:8000
+	# flush_interval -1: avoid buffering edge cases on long-lived / streaming responses (WS upgrade is handled automatically).
+	reverse_proxy 127.0.0.1:8000 {
+		flush_interval -1
+	}
 }
