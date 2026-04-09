@@ -118,7 +118,7 @@ sudo ufw enable
 
 3. **SSH as `albustrading`** (see §2.2 — copy `authorized_keys` if you have not already).
 
-4. From your laptop: **`ssh albustrading@…`**, **`cd /opt/trading`**, run **`docker compose`** as before. You should **not** need **`sudo docker`**.
+4. From your laptop: **`ssh albustrading@…`**, **`cd`** to the **directory that contains `docker-compose.yml`** (e.g. **`/opt/trading`** if you cloned with **`git clone … .`**, or **`/opt/trading/CrypTrade`** if the repo lives in a subfolder), then run **`docker compose`** as before. You should **not** need **`sudo docker`**.
 
 **If the app lived somewhere else** (e.g. `/home/ubuntu/trading`), point `chown` at that directory instead, or move that tree into `/opt/trading` first so paths stay consistent with this guide.
 
@@ -126,10 +126,26 @@ sudo ufw enable
 
 As **`albustrading`**:
 
+**Option A — repo root is `/opt/trading`:**
+
 ```bash
+sudo mkdir -p /opt/trading
+sudo chown albustrading:albustrading /opt/trading
 cd /opt/trading
 git clone https://github.com/YOU/REPO.git .
 ```
+
+**Option B — repo in a subfolder (e.g. `CrypTrade`):**
+
+```bash
+sudo mkdir -p /opt/trading
+sudo chown albustrading:albustrading /opt/trading
+cd /opt/trading
+git clone https://github.com/YOU/REPO.git CrypTrade
+cd CrypTrade
+```
+
+Always run **`git pull`** and **`docker compose`** from the directory that contains **`docker-compose.yml`**.
 
 (Private repo: use SSH deploy key or HTTPS + PAT. For a **deploy key**, attach it to `albustrading`’s `~/.ssh/config` or use HTTPS with a PAT stored only in `albustrading`’s environment, never in git.)
 
@@ -238,10 +254,27 @@ List volume names: `docker volume ls`.
 
 ## 10. Updates from GitHub
 
+From the **same directory as `docker-compose.yml`** (adjust the path if your clone is under a subfolder):
+
 ```bash
-cd /opt/trading
+cd /opt/trading/CrypTrade   # or: cd /opt/trading  if you cloned with “.”
 git pull
 docker compose up -d --build
+sleep 3
+curl -sS http://127.0.0.1:8000/health
+docker compose ps
+```
+
+Or run the helper script (from the repo root on the VPS):
+
+```bash
+./deploy/vps-update.sh
+```
+
+If **`git`** prints **“detected dubious ownership”** (common when the repo is owned by another user but you run **`git`** as **`root`**), either run **`git`** as that user or allow the directory once:
+
+```bash
+git config --global --add safe.directory /opt/trading/CrypTrade
 ```
 
 ## 11. Alternative: no Docker (Node + systemd)
@@ -264,7 +297,9 @@ docker compose up -d --build
 | **`docker compose` fails** missing `env_file` | `cp backend/.env.example backend/.env` and `cp ai-service/.env.example ai-service/.env`, then edit. |
 | **502 Bad Gateway** (Caddy/nginx) | `curl -sS http://127.0.0.1:8000/health`; `docker compose ps`; `docker compose logs app`. |
 | **Login / session issues** | `FRONTEND_ORIGIN` must **exactly** match the browser URL; `TRUST_PROXY=1`; HTTPS + `COOKIE_SECURE=1`. |
-| **UI stuck / no live prices** | WebSocket blocked: check nginx **Upgrade** headers; Caddy usually fine. Browser devtools → Network → WS. |
+| **UI stuck / no live prices** | WebSocket blocked: **nginx** must set **`Upgrade`** / **`Connection`** (see `deploy/nginx-site.example`). **Caddy** `reverse_proxy` upgrades WebSockets by default. Verify from the VPS: `curl -sI -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' https://YOUR_HOST/ws` → **`101 Switching Protocols`**. Browser devtools → Network → WS. |
+| **`fatal: not a git repository`** in `/opt/trading` | The clone may be in a **subfolder** (e.g. **`CrypTrade`**). **`cd`** to the folder that contains **`.git`** and **`docker-compose.yml`**. |
+| **`dubious ownership`** (git) | `git config --global --add safe.directory /full/path/to/repo` or fix ownership: `chown -R albustrading:albustrading /opt/trading/CrypTrade`. |
 | **CORS errors** | Wrong `FRONTEND_ORIGIN`; must be the SPA origin, not a different subdomain without listing it. |
 | **Build: backend lockfile** | Image uses `npm install` in backend stage if no `backend/package-lock.json` (see root `Dockerfile`). |
 

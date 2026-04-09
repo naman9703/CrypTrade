@@ -2,6 +2,9 @@
 # Assumes the stack listens on 127.0.0.1:8000 (see docker-compose ports).
 #
 # Your public URL must match backend FRONTEND_ORIGIN and cookie SameSite expectations.
+#
+# WebSockets (/ws): Caddy's reverse_proxy passes Upgrade correctly by default — no extra
+# headers needed (contrast nginx: deploy/nginx-site.example).
 
 your.duckdns.org {
 	encode zstd gzip
