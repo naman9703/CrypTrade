@@ -17,6 +17,7 @@ export function App() {
   const auth = useAuthActions();
   const connect = useAppStore((s) => s.connect);
   const connected = useAppStore((s) => s.ws.connected);
+  const wsLastError = useAppStore((s) => s.ws.lastError);
 
   useEffect(() => {
     connect();
@@ -73,6 +74,11 @@ export function App() {
           <span className={connected ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
             {connected ? "WS connected" : "WS disconnected"}
           </span>
+          {!connected && wsLastError ? (
+            <span className="ml-2 font-mono text-[0.65rem] text-slate-500 dark:text-slate-400" title="WebSocket debug hint">
+              ({wsLastError})
+            </span>
+          ) : null}
         </div>
 
         <div className="mt-6 flex items-center justify-between gap-4">

@@ -121,12 +121,24 @@ function wsUrlFromBackendHttp(): string | null {
   }
 }
 
-/** Docker sets `ENV VITE_BACKEND_WS=` (empty); `??` does not treat "" as missing, so we normalize. */
-const viteWsOverride = String(import.meta.env.VITE_BACKEND_WS ?? "").trim();
-const WS_URL =
-  (viteWsOverride || undefined) ??
-  wsUrlFromBackendHttp() ??
-  (import.meta.env.DEV ? defaultDevWsUrl() : productionSameOriginWsUrl());
+/**
+ * Resolve WSS URL at connect time (not only at module load) so `window.location` is final.
+ *
+ * Production checklist (monolith + UI auth):
+ * 1. Browser page is same host as API (e.g. https://host/ from Caddy → Node :8000).
+ * 2. `new WebSocket(wss://host/ws)` — session cookie `trading.sid` must be sent (login on same host; Secure + HTTPS).
+ * 3. Edge proxy must upgrade Upgrade: websocket → Node returns 101 (Caddy/nginx config).
+ * 4. Empty `VITE_BACKEND_WS` / `ENV VITE_BACKEND_WS=` must not become `new WebSocket("")` — normalize below.
+ */
+export function resolveWebSocketConnectUrl(): string {
+  const viteWsOverride = String(import.meta.env.VITE_BACKEND_WS ?? "").trim();
+  if (viteWsOverride) return viteWsOverride;
+  const fromHttp = wsUrlFromBackendHttp();
+  if (fromHttp) return fromHttp;
+  if (import.meta.env.DEV) return defaultDevWsUrl();
+  return productionSameOriginWsUrl();
+}
+
 const WS_RECONNECT_BASE_MS = 1000;
 const WS_RECONNECT_MAX_MS = 30000;
 let wsReconnectDelay = WS_RECONNECT_BASE_MS;
@@ -195,7 +207,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
 
     wsIntentionalClose = false;
-    const ws = new WebSocket(WS_URL);
+    let url = resolveWebSocketConnectUrl();
+    if (!url || !/^wss?:\/\//i.test(url)) {
+      url = productionSameOriginWsUrl();
+    }
+    if (!url || !/^wss?:\/\//i.test(url)) {
+      set((s) => ({ ws: { ...s.ws, lastError: "ws_url_invalid", connected: false } }));
+      return;
+    }
+
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(url);
+    } catch (e) {
+      set((s) => ({
+        ws: { ...s.ws, connected: false, lastError: "ws_construct_failed" },
+      }));
+      return;
+    }
     (window as any).__app_ws = ws;
 
     const isCurrent = () => (window as any).__app_ws === ws;
@@ -205,9 +234,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       wsReconnectDelay = WS_RECONNECT_BASE_MS;
       set((s) => ({ ws: { ...s.ws, connected: true, lastError: undefined } }));
     };
-    const scheduleReconnect = () => {
+    const scheduleReconnect = (ev?: CloseEvent) => {
       if (!isCurrent()) return;
-      set((s) => ({ ws: { ...s.ws, connected: false } }));
+      const lastErr =
+        ev == null ? undefined : ev.wasClean ? undefined : `ws_close_${ev.code}`;
+      set((s) => ({
+        ws: {
+          ...s.ws,
+          connected: false,
+          lastError: lastErr,
+        },
+      }));
       if (wsIntentionalClose) {
         wsIntentionalClose = false;
         return;
@@ -222,7 +259,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         wsReconnectDelay = Math.min(wsReconnectDelay * 2, WS_RECONNECT_MAX_MS);
       }, wsReconnectDelay);
     };
-    ws.onclose = scheduleReconnect;
+    ws.onclose = (ev) => scheduleReconnect(ev);
     ws.onerror = () => {
       if (!isCurrent()) return;
       set((s) => ({ ws: { ...s.ws, lastError: "ws_error" } }));
