@@ -4305,6 +4305,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         detail: { feedSource: feedSrc, marketFeed: process.env.MARKET_FEED || "SYNTH" },
       });
     }
+    try {
+      wsHub?.broadcast?.("state", {
+        mode: runtimeTradingMode(),
+        ...getPublicState(),
+      });
+    } catch {
+      /* ignore */
+    }
   }
 
   function stop({ wsHub, reason = "user_request", source = "api", detail } = {}) {
@@ -4336,6 +4344,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       source: String(source),
       detail: det,
     });
+    try {
+      wsHub?.broadcast?.("state", {
+        mode: runtimeTradingMode(),
+        ...getPublicState(),
+      });
+    } catch {
+      /* ignore */
+    }
   }
 
   /**
@@ -4353,14 +4369,6 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       detail: { symbol: state.symbol },
     });
     start({ wsHub, reason: "daily_loss_reset_resume", source });
-    try {
-      wsHub?.broadcast?.("state", {
-        mode: runtimeTradingMode(),
-        ...getPublicState(),
-      });
-    } catch {
-      /* ignore */
-    }
   }
 
   function updateConfig(patch) {

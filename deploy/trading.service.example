@@ -12,7 +12,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=trading
+User=albustrading
 WorkingDirectory=/opt/trading/backend
 Environment=NODE_ENV=production
 Environment=SERVE_FRONTEND=1

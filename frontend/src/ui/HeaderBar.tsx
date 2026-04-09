@@ -3,6 +3,17 @@ import { api } from "../api/client";
 import { playEngineStartSound } from "../lib/uiSounds";
 import { useAppStore } from "../ws/store";
 
+function mergeBotFromApi(bot: Record<string, unknown> | null | undefined) {
+  if (!bot || typeof bot !== "object") return;
+  useAppStore.setState((s) => {
+    const cur = s.bot;
+    if (cur != null && typeof cur === "object" && !Array.isArray(cur)) {
+      return { bot: { ...cur, ...bot } };
+    }
+    return { bot: { ...bot } };
+  });
+}
+
 export function HeaderBar() {
   const bot = useAppStore((s) => s.bot);
   const mode = useAppStore((s) => s.mode);
@@ -135,9 +146,12 @@ export function HeaderBar() {
             className="bmw-bot-trigger inline-flex shrink-0 -translate-x-2 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 sm:-translate-x-2.5"
             onClick={async () => {
               try {
-                if (botRunning) await api.botStop({ reason: "ui_header_bar" });
-                else {
-                  await api.botStart({ reason: "ui_header_bar" });
+                if (botRunning) {
+                  const out = await api.botStop({ reason: "ui_header_bar" });
+                  mergeBotFromApi(out?.bot);
+                } else {
+                  const out = await api.botStart({ reason: "ui_header_bar" });
+                  mergeBotFromApi(out?.bot);
                   playEngineStartSound();
                 }
               } catch {

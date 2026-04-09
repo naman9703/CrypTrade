@@ -1,6 +1,8 @@
 # Production stack: trading app (API + static UI) + AI service.
 #
 # Prereqs: create backend/.env and ai-service/.env from *.example (never commit secrets).
+# `app` loads secrets from bind-mounted backend/.env (normal `$2b$12$...` bcrypt).
+# Do NOT copy those lines into the project root `./.env` — Compose always reads it and treats `$…` as interpolation.
 # In backend/.env set at minimum:
 #   NODE_ENV=production
 #   AI_BASE_URL=http://ai:8001
@@ -40,14 +42,13 @@ services:
       - ai
     ports:
       - "127.0.0.1:8000:8000"
-    env_file:
-      - ./backend/.env
     environment:
       PORT: "8000"
       SERVE_FRONTEND: "1"
       AI_BASE_URL: http://ai:8001
     volumes:
       - trading-data:/app/backend/data
+      - ./backend/.env:/app/backend/.env:ro
 
 volumes:
   ai-model-data:

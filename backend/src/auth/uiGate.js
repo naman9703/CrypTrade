@@ -120,7 +120,12 @@ export function createSessionMiddleware({ log }) {
     log.error("session_secret_missing");
     process.exit(1);
   }
-  const secure = truthyEnv(process.env.COOKIE_SECURE) || process.env.NODE_ENV === "production";
+  // If COOKIE_SECURE is set, it wins (e.g. COOKIE_SECURE=0 for http://localhost over SSH tunnel while NODE_ENV=production).
+  const rawCookieSecure = String(process.env.COOKIE_SECURE ?? "").trim();
+  const secure =
+    rawCookieSecure !== ""
+      ? truthyEnv(process.env.COOKIE_SECURE)
+      : process.env.NODE_ENV === "production";
   return session({
     name: SESSION_NAME,
     secret,
