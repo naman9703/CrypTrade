@@ -113,13 +113,19 @@ export const api = {
     );
   },
   async botConfig(patch: any) {
-    return json<any>(
+    const data = await json<any>(
       await apiFetch(`${HTTP}/api/bot/config`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(patch),
       }),
     );
+    if (data?.ok && data.bot && typeof data.bot === "object") {
+      const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
+      const { useAppStore } = await import("../ws/store");
+      tradingUiPersistBotSnapshot(useAppStore.getState().mode, data.bot as Record<string, unknown>);
+    }
+    return data;
   },
   async manualTrade(payload: { side: "BUY" | "SELL"; amountUsd: number; stopLossPct: number; takeProfitPct: number }) {
     return json<any>(
@@ -155,13 +161,18 @@ export const api = {
     return json<any>(await apiFetch(`${HTTP}/api/trading/evaluation`));
   },
   async setMode(mode: "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE") {
-    return json<any>(
+    const data = await json<any>(
       await apiFetch(`${HTTP}/api/mode/set`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ mode, confirm: true }),
       }),
     );
+    if (data?.ok) {
+      const { tradingUiPersistMode } = await import("../lib/tradingUiPersistence");
+      tradingUiPersistMode(mode);
+    }
+    return data;
   },
   async aiTrainReal(opts?: {
     symbols?: string[];

@@ -1,5 +1,10 @@
 import { create } from "zustand";
 import { api } from "../api/client";
+import {
+  botMatchesPersistedPatch,
+  loadTradingUiPrefs,
+  mergePersistedBotPatch,
+} from "../lib/tradingUiPersistence";
 import { isPlausibleCandleClose } from "../lib/symbolPriceSanity";
 import { isIncomeLedgerClose, playProfitCloseSound } from "../lib/uiSounds";
 
@@ -150,14 +155,75 @@ let wsIntentionalClose = false;
 let pendingMarketPayload: MarketPayload | null = null;
 let pendingMarketRaf = 0;
 
+/** One-shot: push saved mode + /api/bot/config after load (hello or first HTTP hydrate). */
+let tradingUiSessionRestoreStarted = false;
+
+function scheduleTradingUiSessionRestore(serverMode: string) {
+  if (typeof window === "undefined" || tradingUiSessionRestoreStarted) return;
+  const prefs = loadTradingUiPrefs();
+  if (!prefs) return;
+  const want = String(prefs.lastMode || "").toUpperCase();
+  const have = String(serverMode || "").toUpperCase();
+  const modeMismatch = Boolean(want && want !== have);
+  const patchForHave = prefs.byMode[have];
+  const needBotRestore =
+    patchForHave &&
+    typeof patchForHave === "object" &&
+    Object.keys(patchForHave as Record<string, unknown>).length > 0;
+  if (!modeMismatch && !needBotRestore) return;
+  tradingUiSessionRestoreStarted = true;
+
+  void (async () => {
+    try {
+      if (modeMismatch) {
+        if (want === "BINANCE_LIVE") {
+          const ok = window.confirm(
+            "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Bot will stop. Restore your saved LIVE mode?",
+          );
+          if (!ok) return;
+        }
+        await api.setMode(want as "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE");
+      }
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      const modeNow = String(useAppStore.getState().mode || serverMode || "").toUpperCase();
+      const patch = prefs.byMode[modeNow];
+      if (!patch || typeof patch !== "object" || !Object.keys(patch).length) return;
+      const botNow = useAppStore.getState().bot as Record<string, unknown> | undefined;
+      if (botNow && botMatchesPersistedPatch(botNow, patch as Record<string, unknown>)) return;
+      await api.botConfig(patch);
+    } catch {
+      /* ignore */
+    }
+  })();
+}
+
+function normWsSym(x: string | undefined) {
+  return String(x ?? "").trim().toUpperCase();
+}
+
 function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial<AppState> {
   const c = p.candle;
   const o = Number(c?.open);
   const h = Number(c?.high);
   const l = Number(c?.low);
   const cl = Number(c?.close);
-  const prevSymbol = s.market?.symbol;
-  const symbolChanged = prevSymbol && prevSymbol !== p.symbol;
+  const payloadSym = normWsSym(p.symbol);
+  const botSym = normWsSym(s.bot?.symbol);
+  /** Stale or misrouted ticks (WS backlog) must not append into another pair’s candle buffer. */
+  if (botSym && payloadSym && botSym !== payloadSym) {
+    return s;
+  }
+  /**
+   * Must detect pair changes even when `market` was briefly undefined; the old logic used
+   * `prevSymbol && prevSymbol !== p.symbol`, which kept `symbolChanged` false and merged
+   * BTC (etc.) history with BNB ticks — HUD/chart then flickered plausible-but-wrong prices.
+   */
+  const prevMarketSym = normWsSym(s.market?.symbol);
+  const symbolChanged = prevMarketSym !== payloadSym;
   const prev = symbolChanged ? [] : s.candles;
   const lastPrev = prev.length ? prev[prev.length - 1] : null;
   const prevClose =
@@ -290,9 +356,16 @@ export const useAppStore = create<AppState>((set, get) => ({
             const strictAcc =
               p.mode === "BINANCE_LIVE" || p.mode === "BINANCE_TESTNET";
             const accMissing = strictAcc && (p as any).account === null;
+            const prefs = loadTradingUiPrefs();
+            const modeKeyHello = String(p.mode || "").toUpperCase();
+            const patchHello = prefs?.byMode?.[modeKeyHello];
+            const mergedHelloBot =
+              patchHello && Object.keys(patchHello).length
+                ? mergePersistedBotPatch(p.state as Record<string, unknown>, patchHello as Record<string, unknown>)
+                : p.state;
             const base: Partial<AppState> = {
               mode: p.mode,
-              bot: p.state,
+              bot: mergedHelloBot,
               account:
                 (p as any).account !== undefined ? (p as any).account : s.account,
               positions:
@@ -329,6 +402,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             }
             return base as AppState;
           });
+          queueMicrotask(() => scheduleTradingUiSessionRestore(String(p.mode || "")));
           return;
         }
         if (type === "trades_snapshot") {
@@ -459,10 +533,23 @@ export async function hydrateStateViaHttp(): Promise<void> {
   try {
     const res = await api.state();
     if (!res?.ok || !res.bot) return;
-    const payload = { mode: res.mode, ...res.bot, account: res.account, positions: res.positions };
+    const wsOff = !useAppStore.getState().ws.connected;
+    let botShape = { ...res.bot } as Record<string, unknown>;
+    if (wsOff) {
+      const prefs = loadTradingUiPrefs();
+      const m = String(res.mode || "").toUpperCase();
+      const patch = prefs?.byMode?.[m];
+      if (patch && Object.keys(patch).length) {
+        botShape = mergePersistedBotPatch(botShape, patch as Record<string, unknown>);
+      }
+    }
+    const payload = { mode: res.mode, ...botShape, account: res.account, positions: res.positions };
     applyWsStateSnapshot(payload);
     if (Array.isArray(res.trades)) {
       useAppStore.setState({ trades: res.trades.slice(0, TRADE_HISTORY_UI_MAX) });
+    }
+    if (wsOff) {
+      queueMicrotask(() => scheduleTradingUiSessionRestore(String(res.mode || "")));
     }
   } catch {
     /* ignore: auth/network */

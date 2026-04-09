@@ -810,7 +810,7 @@ export function ChartPanel() {
 
   return (
     <div className="p-4">
-      <div className="mb-3 space-y-2 border-b border-slate-200/90 dark:border-slate-800/80 pb-3">
+      <div className="mb-3 border-b border-slate-200/90 dark:border-slate-800/80 pb-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-500">Crypto chart</h2>
@@ -826,17 +826,13 @@ export function ChartPanel() {
             type="button"
             onClick={() => void handleRefreshChart()}
             disabled={chartRefreshBusy || !normalizeSymTf(bot?.symbol) || !normalizeSymTf(bot?.timeframe)}
-            className="shrink-0 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 focus:ring-offset-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-slate-950"
-            title="Fetch latest ~24h OHLC from the server and rebuild the chart canvas (fixes stuck/glitchy rendering without restarting the app)"
-            aria-label="Full chart reload from server"
+            className="shrink-0 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            title="Fetch latest ~24h OHLC and rebuild the chart canvas (fixes stuck rendering)"
+            aria-label="Reload chart from server"
           >
-            {chartRefreshBusy ? "Reloading chart…" : "Reload chart"}
+            {chartRefreshBusy ? "Reloading…" : "Reload chart"}
           </button>
         </div>
-        <p className="text-[10px] text-slate-500 dark:text-slate-500">
-          If candles look wrong but data is fine, use <span className="font-medium text-slate-700 dark:text-slate-300">Reload chart</span>
-          — same as a fresh page load for the graph (new TradingView canvas + server snapshot).
-        </p>
       </div>
 
       <div className="mb-3 flex items-start justify-between gap-3">
