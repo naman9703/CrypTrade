@@ -11,7 +11,7 @@ import { LogsPanel } from "./LogsPanel";
 import { ThemeToggle } from "./ThemeToggle";
 import { TradingModeBadge } from "./TradingModeBadge";
 import { useAuthActions } from "../authContext";
-import { useAppStore } from "../ws/store";
+import { hydrateStateViaHttp, useAppStore } from "../ws/store";
 
 export function App() {
   const auth = useAuthActions();
@@ -21,6 +21,14 @@ export function App() {
   useEffect(() => {
     connect();
   }, [connect]);
+
+  /** When WS is down (proxy/buffering), keep UI fresh via polled `/api/state`. */
+  useEffect(() => {
+    if (connected) return;
+    void hydrateStateViaHttp();
+    const t = window.setInterval(() => void hydrateStateViaHttp(), 4000);
+    return () => window.clearInterval(t);
+  }, [connected]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">

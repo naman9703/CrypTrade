@@ -1,3 +1,4 @@
+import { deferTask } from "../lib/deferTask";
 import { useAppStore } from "../ws/store";
 import { api } from "../api/client";
 import { buildOhlc, ohlcBarsToMsCandles } from "../lib/chartOhlc";
@@ -137,16 +138,20 @@ export function InsightsPanel() {
             <button
               disabled={busy}
               className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-200/65 dark:bg-slate-100 dark:bg-slate-900/50 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 disabled:opacity-50"
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  const r = await api.aiRetrain();
-                  pushLog({ level: "info", msg: "AI retrain requested", ...(r?.data || {}) });
-                } catch {
-                  pushLog({ level: "warn", msg: "AI retrain failed (need enough feedback rows)" });
-                } finally {
-                  setBusy(false);
-                }
+              onClick={() => {
+                deferTask(() => {
+                  void (async () => {
+                    setBusy(true);
+                    try {
+                      const r = await api.aiRetrain();
+                      pushLog({ level: "info", msg: "AI retrain requested", ...(r?.data || {}) });
+                    } catch {
+                      pushLog({ level: "warn", msg: "AI retrain failed (need enough feedback rows)" });
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                });
               }}
             >
               {busy ? "Retraining…" : "Retrain (from feedback)"}
@@ -154,28 +159,32 @@ export function InsightsPanel() {
             <button
               disabled={training !== null}
               className="ml-2 rounded-md border border-emerald-700 bg-emerald-900/40 px-3 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-900 disabled:opacity-50"
-              onClick={async () => {
-                setTraining("binance");
-                try {
-                  pushLog({ level: "info", msg: "Training AI on real Binance data…" });
-                  const r = await api.aiTrainReal();
-                  const d = r?.data;
-                  const parts = [
-                    `acc ${d?.val_accuracy ?? "?"}`,
-                    `prec ${d?.val_precision ?? "?"}`,
-                    d?.val_top_decile_wr != null ? `top10%WR ${(d.val_top_decile_wr * 100).toFixed(1)}%` : null,
-                    d?.val_lift != null ? `lift ${(d.val_lift * 100).toFixed(1)}%` : null,
-                    d?.label_profile ? `labels:${d.label_profile}` : null,
-                  ].filter(Boolean).join(", ");
-                  pushLog({
-                    level: "info",
-                    msg: `Model trained — ${parts}`,
-                  });
-                } catch (e: any) {
-                  pushLog({ level: "error", msg: "Train failed: " + String(e?.message || e) });
-                } finally {
-                  setTraining(null);
-                }
+              onClick={() => {
+                deferTask(() => {
+                  void (async () => {
+                    setTraining("binance");
+                    try {
+                      pushLog({ level: "info", msg: "Training AI on real Binance data…" });
+                      const r = await api.aiTrainReal();
+                      const d = r?.data;
+                      const parts = [
+                        `acc ${d?.val_accuracy ?? "?"}`,
+                        `prec ${d?.val_precision ?? "?"}`,
+                        d?.val_top_decile_wr != null ? `top10%WR ${(d.val_top_decile_wr * 100).toFixed(1)}%` : null,
+                        d?.val_lift != null ? `lift ${(d.val_lift * 100).toFixed(1)}%` : null,
+                        d?.label_profile ? `labels:${d.label_profile}` : null,
+                      ].filter(Boolean).join(", ");
+                      pushLog({
+                        level: "info",
+                        msg: `Model trained — ${parts}`,
+                      });
+                    } catch (e: any) {
+                      pushLog({ level: "error", msg: "Train failed: " + String(e?.message || e) });
+                    } finally {
+                      setTraining(null);
+                    }
+                  })();
+                });
               }}
             >
               {training === "binance" ? "Training…" : "Train on real data"}
@@ -185,21 +194,25 @@ export function InsightsPanel() {
               disabled={training !== null}
               title="No Binance required — use on Railway if real-data train fails or times out"
               className="ml-2 rounded-md border border-amber-700/80 bg-amber-950/40 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-950/70 disabled:opacity-50"
-              onClick={async () => {
-                setTraining("bootstrap");
-                try {
-                  pushLog({ level: "info", msg: "Training AI on synthetic data (quick, no Binance)…" });
-                  const r = await api.aiTrainBootstrap({ rows: 4000, horizon: 10 });
-                  const d = r?.data;
-                  pushLog({
-                    level: "info",
-                    msg: `Synthetic model ready — rows ${d?.trained_rows ?? "?"}, horizon ${d?.horizon ?? "?"}, +rate ${d?.positive_rate != null ? (Number(d.positive_rate) * 100).toFixed(1) : "?"}%`,
-                  });
-                } catch (e: any) {
-                  pushLog({ level: "error", msg: "Synthetic train failed: " + String(e?.message || e) });
-                } finally {
-                  setTraining(null);
-                }
+              onClick={() => {
+                deferTask(() => {
+                  void (async () => {
+                    setTraining("bootstrap");
+                    try {
+                      pushLog({ level: "info", msg: "Training AI on synthetic data (quick, no Binance)…" });
+                      const r = await api.aiTrainBootstrap({ rows: 4000, horizon: 10 });
+                      const d = r?.data;
+                      pushLog({
+                        level: "info",
+                        msg: `Synthetic model ready — rows ${d?.trained_rows ?? "?"}, horizon ${d?.horizon ?? "?"}, +rate ${d?.positive_rate != null ? (Number(d.positive_rate) * 100).toFixed(1) : "?"}%`,
+                      });
+                    } catch (e: any) {
+                      pushLog({ level: "error", msg: "Synthetic train failed: " + String(e?.message || e) });
+                    } finally {
+                      setTraining(null);
+                    }
+                  })();
+                });
               }}
             >
               {training === "bootstrap" ? "Training…" : "Train synthetic (quick)"}
@@ -207,19 +220,23 @@ export function InsightsPanel() {
             <button
               type="button"
               className="ml-2 rounded-md border border-slate-600 bg-slate-200/50 dark:bg-slate-100 dark:bg-slate-900/30 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-900"
-              onClick={async () => {
-                try {
-                  const r = await api.tradingEvaluation();
-                  const steps = Array.isArray(r?.suggestedWorkflow) ? r.suggestedWorkflow : [];
-                  const titles = steps.map((s: any) => s?.title).filter(Boolean).join("; ");
-                  pushLog({
-                    level: "info",
-                    msg: r?.disclaimer || "Evaluation checklist",
-                    steps: titles || JSON.stringify(steps).slice(0, 500),
-                  });
-                } catch {
-                  pushLog({ level: "warn", msg: "Could not load evaluation checklist" });
-                }
+              onClick={() => {
+                deferTask(() => {
+                  void (async () => {
+                    try {
+                      const r = await api.tradingEvaluation();
+                      const steps = Array.isArray(r?.suggestedWorkflow) ? r.suggestedWorkflow : [];
+                      const titles = steps.map((s: any) => s?.title).filter(Boolean).join("; ");
+                      pushLog({
+                        level: "info",
+                        msg: r?.disclaimer || "Evaluation checklist",
+                        steps: titles || JSON.stringify(steps).slice(0, 500),
+                      });
+                    } catch {
+                      pushLog({ level: "warn", msg: "Could not load evaluation checklist" });
+                    }
+                  })();
+                });
               }}
             >
               Evaluation checklist
@@ -227,18 +244,22 @@ export function InsightsPanel() {
             <button
               type="button"
               className="ml-2 rounded-md border border-slate-600 bg-slate-200/50 dark:bg-slate-100 dark:bg-slate-900/30 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-900"
-              onClick={async () => {
-                try {
-                  const r = await api.aiValidationSummary();
-                  const d = r?.data || {};
-                  pushLog({
-                    level: "info",
-                    msg: `AI validation: lift ${d?.val_lift ?? "—"}, brier ${d?.val_brier ?? "—"}, stability ${d?.stabilityHint ?? "—"}`,
-                    detail: d,
-                  });
-                } catch {
-                  pushLog({ level: "warn", msg: "Could not load AI validation summary" });
-                }
+              onClick={() => {
+                deferTask(() => {
+                  void (async () => {
+                    try {
+                      const r = await api.aiValidationSummary();
+                      const d = r?.data || {};
+                      pushLog({
+                        level: "info",
+                        msg: `AI validation: lift ${d?.val_lift ?? "—"}, brier ${d?.val_brier ?? "—"}, stability ${d?.stabilityHint ?? "—"}`,
+                        detail: d,
+                      });
+                    } catch {
+                      pushLog({ level: "warn", msg: "Could not load AI validation summary" });
+                    }
+                  })();
+                });
               }}
             >
               AI validation

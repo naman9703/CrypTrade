@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { api } from "../api/client";
 import { isPlausibleCandleClose } from "../lib/symbolPriceSanity";
 import { isIncomeLedgerClose, playProfitCloseSound } from "../lib/uiSounds";
 
@@ -301,35 +302,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           return;
         }
         if (type === "state") {
-          const prev = get();
-          const prevSym = prev.bot?.symbol != null ? String(prev.bot.symbol) : "";
-          const nextSym = payload?.symbol != null ? String(payload.symbol) : "";
-          const prevTf = prev.bot?.timeframe != null ? String(prev.bot.timeframe) : "";
-          const nextTf = payload?.timeframe != null ? String(payload.timeframe) : "";
-          /** Avoid chart header showing bot.symbol (new pair) with market/candles still on the old pair (stale WS `market`). */
-          const chartRekey =
-            (prevSym && nextSym && prevSym !== nextSym) || (prevTf && nextTf && prevTf !== nextTf);
-          const nextMode = payload?.mode != null ? String(payload.mode) : prev.mode;
-          const modeChanged =
-            payload?.mode != null &&
-            String(prev.mode ?? "") !== String(payload.mode);
-          const nextAccount =
-            payload?.account !== undefined ? (payload as any).account : prev.account;
-          const rawPos = payload?.positions;
-          const nextPositions =
-            rawPos !== undefined
-              ? Array.isArray(rawPos)
-                ? rawPos
-                : []
-              : prev.positions;
-          set({
-            mode: nextMode,
-            bot: payload,
-            account: nextAccount,
-            positions: nextPositions,
-            ...(chartRekey ? { candles: [], market: undefined } : {}),
-            ...(modeChanged ? { trades: [] } : {}),
-          });
+          applyWsStateSnapshot(payload);
           return;
         }
         if (type === "market") {
@@ -399,6 +372,52 @@ function scheduleMarketFlush() {
     if (!p) return;
     useAppStore.setState((s) => mergeMarketIntoState(s, p) as AppState);
   });
+}
+
+/** Same shape as server WS `state` / `hello.state` (mode + getPublicState + account + positions). */
+export function applyWsStateSnapshot(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
+  const p = payload as Record<string, unknown>;
+  useAppStore.setState((prev) => {
+    const prevSym = prev.bot?.symbol != null ? String(prev.bot.symbol) : "";
+    const nextSym = p.symbol != null ? String(p.symbol) : "";
+    const prevTf = prev.bot?.timeframe != null ? String(prev.bot.timeframe) : "";
+    const nextTf = p.timeframe != null ? String(p.timeframe) : "";
+    const chartRekey =
+      (prevSym && nextSym && prevSym !== nextSym) || (prevTf && nextTf && prevTf !== nextTf);
+    const nextMode = p.mode != null ? String(p.mode) : prev.mode;
+    const modeChanged = p.mode != null && String(prev.mode ?? "") !== String(p.mode);
+    const nextAccount = p.account !== undefined ? p.account : prev.account;
+    const rawPos = p.positions;
+    const nextPositions =
+      rawPos !== undefined ? (Array.isArray(rawPos) ? rawPos : []) : prev.positions;
+    return {
+      mode: nextMode,
+      bot: p,
+      account: nextAccount,
+      positions: nextPositions,
+      ...(chartRekey ? { candles: [], market: undefined } : {}),
+      ...(modeChanged ? { trades: [] } : {}),
+    };
+  });
+}
+
+/**
+ * Pull `/api/state` and merge into the store (credentials included). Use when WebSocket is down
+ * (e.g. reverse proxy missing Upgrade) so the UI still updates.
+ */
+export async function hydrateStateViaHttp(): Promise<void> {
+  try {
+    const res = await api.state();
+    if (!res?.ok || !res.bot) return;
+    const payload = { mode: res.mode, ...res.bot, account: res.account, positions: res.positions };
+    applyWsStateSnapshot(payload);
+    if (Array.isArray(res.trades)) {
+      useAppStore.setState({ trades: res.trades.slice(0, TRADE_HISTORY_UI_MAX) });
+    }
+  } catch {
+    /* ignore: auth/network */
+  }
 }
 
 /** Close the app WebSocket and suppress auto-reconnect (e.g. UI auth logout). */

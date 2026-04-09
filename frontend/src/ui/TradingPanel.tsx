@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
+import { deferTask } from "../lib/deferTask";
 import { useAppStore } from "../ws/store";
 
 const numericInputClass =
@@ -58,12 +59,16 @@ function NumericTextInput({
       setDraft(null);
       return;
     }
-    try {
-      await onCommit(n2);
-    } finally {
-      setFocused(false);
-      setDraft(null);
-    }
+    deferTask(() => {
+      void (async () => {
+        try {
+          await onCommit(n2);
+        } finally {
+          setFocused(false);
+          setDraft(null);
+        }
+      })();
+    });
   };
 
   return (
@@ -319,7 +324,8 @@ function ThresholdSliderWithLock({
     if (disabled) return;
     if (unlocked) {
       clearDebounce();
-      onDebouncedCommit(clampNum(draft, 0, 100));
+      const toSave = clampNum(draft, 0, 100);
+      deferTask(() => onDebouncedCommit(toSave));
       setUnlocked(false);
     } else {
       setDraft(clampNum(Math.round(serverSliderUnits), 0, 100));
@@ -734,12 +740,17 @@ export function TradingPanel() {
               <select
                 className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
                 value={cfg.strategyMode}
-                onChange={async (e) => {
-                  try {
-                    await api.botConfig({ strategyMode: e.target.value });
-                  } catch {
-                    pushLog({ level: "error", msg: "Failed to set strategy mode" });
-                  }
+                onChange={(e) => {
+                  const v = e.target.value;
+                  deferTask(() => {
+                    void (async () => {
+                      try {
+                        await api.botConfig({ strategyMode: v });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set strategy mode" });
+                      }
+                    })();
+                  });
                 }}
               >
                 <option value="AUTO">AUTO (regime-based)</option>
@@ -752,15 +763,19 @@ export function TradingPanel() {
               <select
                 className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
                 value={cfg.symbolMode}
-                onChange={async (e) => {
+                onChange={(e) => {
                   const v = e.target.value;
-                  try {
-                    await api.botConfig({ symbolMode: v });
-                    if (v === "AUTO") pushLog({ level: "info", msg: "Coin selection enabled (auto)" });
-                    else pushLog({ level: "info", msg: "Coin selection disabled (single coin)" });
-                  } catch {
-                    pushLog({ level: "error", msg: "Failed to set coin selection mode" });
-                  }
+                  deferTask(() => {
+                    void (async () => {
+                      try {
+                        await api.botConfig({ symbolMode: v });
+                        if (v === "AUTO") pushLog({ level: "info", msg: "Coin selection enabled (auto)" });
+                        else pushLog({ level: "info", msg: "Coin selection disabled (single coin)" });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set coin selection mode" });
+                      }
+                    })();
+                  });
                 }}
               >
                 <option value="SINGLE">SINGLE (trade selected symbol)</option>
@@ -773,14 +788,18 @@ export function TradingPanel() {
               <select
                 className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
                 value={cfg.marketMode}
-                onChange={async (e) => {
+                onChange={(e) => {
                   const mode = e.target.value;
-                  try {
-                    await api.botConfig({ marketMode: mode });
-                    pushLog({ level: "info", msg: "Market mode set", marketMode: mode });
-                  } catch {
-                    pushLog({ level: "error", msg: "Failed to set market mode" });
-                  }
+                  deferTask(() => {
+                    void (async () => {
+                      try {
+                        await api.botConfig({ marketMode: mode });
+                        pushLog({ level: "info", msg: "Market mode set", marketMode: mode });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set market mode" });
+                      }
+                    })();
+                  });
                 }}
               >
                 <option value="AUTO">AUTO (model chooses spot vs futures)</option>
@@ -800,17 +819,21 @@ export function TradingPanel() {
                         ? "bg-amber-600/85 text-slate-950 dark:text-slate-50 hover:bg-amber-600"
                         : "border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-900"
                     }`}
-                    onClick={async () => {
+                    onClick={() => {
                       if (!cfg.supertrendFuturesTwoWay) return;
-                      try {
-                        await api.botConfig({ supertrendFuturesTwoWay: false });
-                        pushLog({
-                          level: "info",
-                          msg: "Futures Supertrend: 1-way (buy) — SELL signal only closes long; BUY opens long.",
-                        });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to set 1-way mode" });
-                      }
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ supertrendFuturesTwoWay: false });
+                            pushLog({
+                              level: "info",
+                              msg: "Futures Supertrend: 1-way (buy) — SELL signal only closes long; BUY opens long.",
+                            });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set 1-way mode" });
+                          }
+                        })();
+                      });
                     }}
                   >
                     1-way (Buy)
@@ -822,17 +845,21 @@ export function TradingPanel() {
                         ? "bg-amber-600/85 text-slate-950 dark:text-slate-50 hover:bg-amber-600"
                         : "border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-900"
                     }`}
-                    onClick={async () => {
+                    onClick={() => {
                       if (cfg.supertrendFuturesTwoWay) return;
-                      try {
-                        await api.botConfig({ supertrendFuturesTwoWay: true });
-                        pushLog({
-                          level: "info",
-                          msg: "Futures Supertrend: 2-way — BUY closes short then long; SELL closes long then short.",
-                        });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to set 2-way mode" });
-                      }
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ supertrendFuturesTwoWay: true });
+                            pushLog({
+                              level: "info",
+                              msg: "Futures Supertrend: 2-way — BUY closes short then long; SELL closes long then short.",
+                            });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set 2-way mode" });
+                          }
+                        })();
+                      });
                     }}
                   >
                     2-way (Buy &amp; Sell)
@@ -859,36 +886,41 @@ export function TradingPanel() {
                     checked={
                       cfg.marketMode === "SPOT" ? cfg.supertrendSpotAuto : cfg.supertrendFuturesAuto
                     }
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       const autoOn = e.currentTarget.checked;
-                      try {
-                        if (cfg.marketMode === "SPOT") {
-                          await api.botConfig({ supertrendSpotAuto: autoOn });
-                          pushLog({
-                            level: "info",
-                            msg: autoOn
-                              ? "Supertrend spot autotrading ON — BUY uses ~all available spot quote; SELL closes full base on signal (bar close). Start the bot. AI path is paused."
-                              : "Supertrend spot autotrading OFF",
-                          });
-                        } else {
-                          await api.botConfig(
-                            autoOn
-                              ? { supertrendFuturesAuto: true }
-                              : {
-                                  supertrendFuturesAuto: false,
-                                  supertrendFuturesAiConfidenceFilter: true,
-                                },
-                          );
-                          pushLog({
-                            level: "info",
-                            msg: autoOn
-                              ? "Supertrend futures autotrading ON — BUY sizes to ~available margin × leverage (see Lev. mode below); SELL closes the long on signal (bar close). Start the bot. AI path is paused."
-                              : "Supertrend futures autotrading OFF",
-                          });
-                        }
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to update Supertrend" });
-                      }
+                      const mm = cfg.marketMode;
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            if (mm === "SPOT") {
+                              await api.botConfig({ supertrendSpotAuto: autoOn });
+                              pushLog({
+                                level: "info",
+                                msg: autoOn
+                                  ? "Supertrend spot autotrading ON — BUY uses ~all available spot quote; SELL closes full base on signal (bar close). Start the bot. AI path is paused."
+                                  : "Supertrend spot autotrading OFF",
+                              });
+                            } else {
+                              await api.botConfig(
+                                autoOn
+                                  ? { supertrendFuturesAuto: true }
+                                  : {
+                                      supertrendFuturesAuto: false,
+                                      supertrendFuturesAiConfidenceFilter: true,
+                                    },
+                              );
+                              pushLog({
+                                level: "info",
+                                msg: autoOn
+                                  ? "Supertrend futures autotrading ON — BUY sizes to ~available margin × leverage (see Lev. mode below); SELL closes the long on signal (bar close). Start the bot. AI path is paused."
+                                  : "Supertrend futures autotrading OFF",
+                              });
+                            }
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to update Supertrend" });
+                          }
+                        })();
+                      });
                     }}
                   />
                   <span>
@@ -967,12 +999,17 @@ export function TradingPanel() {
                     disabled={
                       cfg.marketMode === "SPOT" ? !cfg.supertrendSpotAuto : !cfg.supertrendFuturesAuto
                     }
-                    onChange={async (e) => {
-                      try {
-                        await api.botConfig({ supertrendWilderAtr: e.target.checked });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to set ATR mode" });
-                      }
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ supertrendWilderAtr: checked });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set ATR mode" });
+                          }
+                        })();
+                      });
                     }}
                   />
                   Wilder ATR (Pine default). Off = SMA(TR)
@@ -987,20 +1024,24 @@ export function TradingPanel() {
                   <select
                     className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
                     value={cfg.futuresLeverageMode}
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       const v = e.target.value as "AUTO" | "MANUAL";
-                      try {
-                        await api.botConfig({ futuresLeverageMode: v });
-                        pushLog({
-                          level: "info",
-                          msg:
-                            v === "AUTO"
-                              ? "Futures leverage: model will choose per trade"
-                              : "Futures leverage: using manual multiplier",
-                        });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to set leverage mode" });
-                      }
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ futuresLeverageMode: v });
+                            pushLog({
+                              level: "info",
+                              msg:
+                                v === "AUTO"
+                                  ? "Futures leverage: model will choose per trade"
+                                  : "Futures leverage: using manual multiplier",
+                            });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set leverage mode" });
+                          }
+                        })();
+                      });
                     }}
                   >
                     <option value="AUTO">AUTO (AI + volatility)</option>
@@ -1098,16 +1139,20 @@ export function TradingPanel() {
                   <button
                     disabled={coinBusy}
                     className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-200/65 dark:bg-slate-100 dark:bg-slate-900/50 px-2 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 disabled:opacity-50"
-                    onClick={async () => {
-                      setCoinBusy(true);
-                      try {
-                        await api.universeScan();
-                        pushLog({ level: "info", msg: "Universe scan requested" });
-                      } catch {
-                        pushLog({ level: "warn", msg: "Universe scan failed" });
-                      } finally {
-                        setCoinBusy(false);
-                      }
+                    onClick={() => {
+                      deferTask(() => {
+                        void (async () => {
+                          setCoinBusy(true);
+                          try {
+                            await api.universeScan();
+                            pushLog({ level: "info", msg: "Universe scan requested" });
+                          } catch {
+                            pushLog({ level: "warn", msg: "Universe scan failed" });
+                          } finally {
+                            setCoinBusy(false);
+                          }
+                        })();
+                      });
                     }}
                   >
                     {coinBusy ? "Scanning…" : "Scan now"}
@@ -1171,13 +1216,17 @@ export function TradingPanel() {
                                   <button
                                     type="button"
                                     className="rounded-md border border-amber-700/80 bg-amber-950/50 px-2 py-1 text-[11px] font-semibold text-amber-100 hover:bg-amber-900/60"
-                                    onClick={async () => {
-                                      try {
-                                        await api.botConfig({ universePinnedSymbol: null });
-                                        pushLog({ level: "info", msg: "Unpinned symbol — auto coin selection resumed" });
-                                      } catch {
-                                        pushLog({ level: "error", msg: "Failed to unpin" });
-                                      }
+                                    onClick={() => {
+                                      deferTask(() => {
+                                        void (async () => {
+                                          try {
+                                            await api.botConfig({ universePinnedSymbol: null });
+                                            pushLog({ level: "info", msg: "Unpinned symbol — auto coin selection resumed" });
+                                          } catch {
+                                            pushLog({ level: "error", msg: "Failed to unpin" });
+                                          }
+                                        })();
+                                      });
                                     }}
                                   >
                                     Unpin
@@ -1187,13 +1236,18 @@ export function TradingPanel() {
                                     type="button"
                                     disabled={rowLockedOut}
                                     className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-200/50 dark:bg-slate-100 dark:bg-slate-900/30 px-2 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
-                                    onClick={async () => {
-                                      try {
-                                        await api.botConfig({ universePinnedSymbol: symU });
-                                        pushLog({ level: "info", msg: "Pinned symbol", symbol: symU });
-                                      } catch {
-                                        pushLog({ level: "error", msg: "Failed to pin symbol" });
-                                      }
+                                    onClick={() => {
+                                      const sym = symU;
+                                      deferTask(() => {
+                                        void (async () => {
+                                          try {
+                                            await api.botConfig({ universePinnedSymbol: sym });
+                                            pushLog({ level: "info", msg: "Pinned symbol", symbol: sym });
+                                          } catch {
+                                            pushLog({ level: "error", msg: "Failed to pin symbol" });
+                                          }
+                                        })();
+                                      });
                                     }}
                                   >
                                     Pin
@@ -1224,12 +1278,17 @@ export function TradingPanel() {
                 <select
                   className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
                   value={cfg.manualStrategy}
-                  onChange={async (e) => {
-                    try {
-                      await api.botConfig({ manualStrategy: e.target.value });
-                    } catch {
-                      pushLog({ level: "error", msg: "Failed to set manual strategy" });
-                    }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    deferTask(() => {
+                      void (async () => {
+                        try {
+                          await api.botConfig({ manualStrategy: v });
+                        } catch {
+                          pushLog({ level: "error", msg: "Failed to set manual strategy" });
+                        }
+                      })();
+                    });
                   }}
                 >
                   {STRATS.map((s) => (
@@ -1271,12 +1330,17 @@ export function TradingPanel() {
                             <td className="px-3 py-2">
                               <button
                                 className="font-semibold text-slate-800 dark:text-slate-200 hover:text-emerald-300"
-                                onClick={async () => {
-                                  try {
-                                    await api.botConfig({ manualStrategy: r.key });
-                                  } catch {
-                                    pushLog({ level: "error", msg: "Failed to set manual strategy" });
-                                  }
+                                onClick={() => {
+                                  const key = r.key;
+                                  deferTask(() => {
+                                    void (async () => {
+                                      try {
+                                        await api.botConfig({ manualStrategy: key });
+                                      } catch {
+                                        pushLog({ level: "error", msg: "Failed to set manual strategy" });
+                                      }
+                                    })();
+                                  });
                                 }}
                               >
                                 {r.key}
@@ -1321,19 +1385,24 @@ export function TradingPanel() {
                     type="checkbox"
                     className="mt-0.5"
                     checked={cfg.supertrendFuturesAiConfidenceFilter}
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       const filterOn = e.currentTarget.checked;
-                      try {
-                        await api.botConfig({ supertrendFuturesAiConfidenceFilter: filterOn });
-                        pushLog({
-                          level: "info",
-                          msg: filterOn
-                            ? `Supertrend futures: AI confidence filter ON — opens need AI ≥ ${(cfg.supertrendFuturesMinAiProb * 100).toFixed(0)}% (slider) + AI sizing tiers`
-                            : "Supertrend futures: AI confidence filter OFF — signal strength drives sizing tiers; min AI prob skipped",
-                        });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to update Supertrend AI filter" });
-                      }
+                      const minProbPct = (cfg.supertrendFuturesMinAiProb * 100).toFixed(0);
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ supertrendFuturesAiConfidenceFilter: filterOn });
+                            pushLog({
+                              level: "info",
+                              msg: filterOn
+                                ? `Supertrend futures: AI confidence filter ON — opens need AI ≥ ${minProbPct}% (slider) + AI sizing tiers`
+                                : "Supertrend futures: AI confidence filter OFF — signal strength drives sizing tiers; min AI prob skipped",
+                            });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to update Supertrend AI filter" });
+                          }
+                        })();
+                      });
                     }}
                   />
                   <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
@@ -1368,19 +1437,24 @@ export function TradingPanel() {
                     type="checkbox"
                     className="mt-0.5"
                     checked={cfg.signalStrengthGatesTrades}
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       const gatesOn = e.currentTarget.checked;
-                      try {
-                        await api.botConfig({ signalStrengthGatesTrades: gatesOn });
-                        pushLog({
-                          level: "info",
-                          msg: gatesOn
-                            ? `Signal strength gates opens ON — opens need strength ≥ ${cfg.signalStrengthOpenMin} and matching direction`
-                            : "Signal strength gates opens OFF — composite strength is logged/UI only; Supertrend flips are not blocked by the engine",
-                        });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to update signal strength gate" });
-                      }
+                      const openMin = cfg.signalStrengthOpenMin;
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ signalStrengthGatesTrades: gatesOn });
+                            pushLog({
+                              level: "info",
+                              msg: gatesOn
+                                ? `Signal strength gates opens ON — opens need strength ≥ ${openMin} and matching direction`
+                                : "Signal strength gates opens OFF — composite strength is logged/UI only; Supertrend flips are not blocked by the engine",
+                            });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to update signal strength gate" });
+                          }
+                        })();
+                      });
                     }}
                   />
                   <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
@@ -1430,12 +1504,16 @@ export function TradingPanel() {
               <span className="text-slate-600 dark:text-slate-400">Risk / trade</span>
               <RiskUnitToggle
                 value={cfg.riskPerTradeUnit}
-                onChange={async (u) => {
-                  try {
-                    await api.botConfig({ riskPerTradeUnit: u });
-                  } catch {
-                    pushLog({ level: "error", msg: "Failed to set risk unit" });
-                  }
+                onChange={(u) => {
+                  deferTask(() => {
+                    void (async () => {
+                      try {
+                        await api.botConfig({ riskPerTradeUnit: u });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set risk unit" });
+                      }
+                    })();
+                  });
                 }}
               />
               <NumericTextInput
@@ -1494,12 +1572,16 @@ export function TradingPanel() {
               <span className="text-slate-600 dark:text-slate-400">Max daily loss</span>
               <RiskUnitToggle
                 value={cfg.maxDailyLossUnit}
-                onChange={async (u) => {
-                  try {
-                    await api.botConfig({ maxDailyLossUnit: u });
-                  } catch {
-                    pushLog({ level: "error", msg: "Failed to set max daily loss unit" });
-                  }
+                onChange={(u) => {
+                  deferTask(() => {
+                    void (async () => {
+                      try {
+                        await api.botConfig({ maxDailyLossUnit: u });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set max daily loss unit" });
+                      }
+                    })();
+                  });
                 }}
               />
               <NumericTextInput
@@ -1591,7 +1673,7 @@ export function TradingPanel() {
               <button
                 disabled={manualOrderBusy}
                 className="flex-1 rounded-md bg-emerald-600/80 px-3 py-2 font-semibold hover:bg-emerald-600 disabled:opacity-50"
-                onClick={async () => {
+                onClick={() => {
                   if (manualOrderBusy) return;
                   const amountUsd = parseFloat(amountUsdStr.replace(/,/g, "."));
                   const slPct = parseFloat(slPctStr.replace(/,/g, "."));
@@ -1604,20 +1686,24 @@ export function TradingPanel() {
                     pushLog({ level: "warn", msg: "Enter valid stop-loss and take-profit" });
                     return;
                   }
-                  setManualOrderBusy(true);
-                  try {
-                    const out = await api.manualTrade({
-                      side: "BUY",
-                      amountUsd,
-                      stopLossPct: slPct,
-                      takeProfitPct: tpPct,
-                    });
-                    pushLog({ level: "info", msg: "Manual BUY accepted", ...(out && typeof out === "object" ? out : {}) });
-                  } catch (e: any) {
-                    pushLog({ level: "error", msg: "Manual BUY failed", error: String(e?.message || e) });
-                  } finally {
-                    setManualOrderBusy(false);
-                  }
+                  deferTask(() => {
+                    void (async () => {
+                      setManualOrderBusy(true);
+                      try {
+                        const out = await api.manualTrade({
+                          side: "BUY",
+                          amountUsd,
+                          stopLossPct: slPct,
+                          takeProfitPct: tpPct,
+                        });
+                        pushLog({ level: "info", msg: "Manual BUY accepted", ...(out && typeof out === "object" ? out : {}) });
+                      } catch (e: any) {
+                        pushLog({ level: "error", msg: "Manual BUY failed", error: String(e?.message || e) });
+                      } finally {
+                        setManualOrderBusy(false);
+                      }
+                    })();
+                  });
                 }}
               >
                 Buy
@@ -1625,7 +1711,7 @@ export function TradingPanel() {
               <button
                 disabled={manualOrderBusy}
                 className="flex-1 rounded-md bg-rose-600/80 px-3 py-2 font-semibold hover:bg-rose-600 disabled:opacity-50"
-                onClick={async () => {
+                onClick={() => {
                   if (manualOrderBusy) return;
                   const amountUsd = parseFloat(amountUsdStr.replace(/,/g, "."));
                   const slPct = parseFloat(slPctStr.replace(/,/g, "."));
@@ -1638,20 +1724,24 @@ export function TradingPanel() {
                     pushLog({ level: "warn", msg: "Enter valid stop-loss and take-profit" });
                     return;
                   }
-                  setManualOrderBusy(true);
-                  try {
-                    const out = await api.manualTrade({
-                      side: "SELL",
-                      amountUsd,
-                      stopLossPct: slPct,
-                      takeProfitPct: tpPct,
-                    });
-                    pushLog({ level: "info", msg: "Manual SELL accepted", ...(out && typeof out === "object" ? out : {}) });
-                  } catch (e: any) {
-                    pushLog({ level: "error", msg: "Manual SELL failed", error: String(e?.message || e) });
-                  } finally {
-                    setManualOrderBusy(false);
-                  }
+                  deferTask(() => {
+                    void (async () => {
+                      setManualOrderBusy(true);
+                      try {
+                        const out = await api.manualTrade({
+                          side: "SELL",
+                          amountUsd,
+                          stopLossPct: slPct,
+                          takeProfitPct: tpPct,
+                        });
+                        pushLog({ level: "info", msg: "Manual SELL accepted", ...(out && typeof out === "object" ? out : {}) });
+                      } catch (e: any) {
+                        pushLog({ level: "error", msg: "Manual SELL failed", error: String(e?.message || e) });
+                      } finally {
+                        setManualOrderBusy(false);
+                      }
+                    })();
+                  });
                 }}
               >
                 Sell

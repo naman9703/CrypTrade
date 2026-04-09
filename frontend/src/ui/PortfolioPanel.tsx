@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { deferTask } from "../lib/deferTask";
 import { useAppStore } from "../ws/store";
 import { api } from "../api/client";
 import { isIncomeLedgerClose } from "../lib/tradeClassification";
@@ -598,15 +599,19 @@ export function PortfolioPanel() {
             <div className="mt-2">
               <button
                 className="w-full rounded-md border border-rose-700/40 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-950/70"
-                onClick={async () => {
-                  const ok = window.confirm("Reset simulated account? This deletes snapshot + trades.csv.");
-                  if (!ok) return;
-                  try {
-                    await api.paperReset();
-                    pushLog({ level: "warn", msg: "Paper account reset" });
-                  } catch {
-                    pushLog({ level: "error", msg: "Paper reset failed" });
-                  }
+                onClick={() => {
+                  deferTask(() => {
+                    void (async () => {
+                      const ok = window.confirm("Reset simulated account? This deletes snapshot + trades.csv.");
+                      if (!ok) return;
+                      try {
+                        await api.paperReset();
+                        pushLog({ level: "warn", msg: "Paper account reset" });
+                      } catch {
+                        pushLog({ level: "error", msg: "Paper reset failed" });
+                      }
+                    })();
+                  });
                 }}
               >
                 Reset simulated account
@@ -705,17 +710,22 @@ export function PortfolioPanel() {
                                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-rose-800/55 bg-rose-950/35 text-lg font-light leading-none text-rose-100 hover:bg-rose-950/55"
                                   title="Close position (paper: last candle; futures: market reduce-only)"
                                   aria-label="Close position"
-                                  onClick={async () => {
-                                    try {
-                                      await api.closeTrade(p.id);
-                                      pushLog({ level: "info", msg: "Position closed", id: p.id });
-                                    } catch (e: unknown) {
-                                      pushLog({
-                                        level: "error",
-                                        msg: `Close failed: ${e instanceof Error ? e.message : String(e)}`,
-                                        id: p.id,
-                                      });
-                                    }
+                                  onClick={() => {
+                                    const id = p.id;
+                                    deferTask(() => {
+                                      void (async () => {
+                                        try {
+                                          await api.closeTrade(id);
+                                          pushLog({ level: "info", msg: "Position closed", id });
+                                        } catch (e: unknown) {
+                                          pushLog({
+                                            level: "error",
+                                            msg: `Close failed: ${e instanceof Error ? e.message : String(e)}`,
+                                            id,
+                                          });
+                                        }
+                                      })();
+                                    });
                                   }}
                                 >
                                   ×

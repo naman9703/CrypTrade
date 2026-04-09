@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { api } from "../api/client";
+import { deferTask } from "../lib/deferTask";
 import { playEngineStartSound } from "../lib/uiSounds";
 import { useAppStore } from "../ws/store";
 
@@ -61,21 +62,25 @@ export function HeaderBar() {
             <select
               className="max-w-[9.5rem] truncate rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-200/55 dark:bg-slate-100 dark:bg-slate-900/40 px-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 sm:max-w-none"
               value={mode || "PAPER"}
-              onChange={async (e) => {
+              onChange={(e) => {
                 const next = e.target.value;
-                const ok =
-                  next === "BINANCE_LIVE"
-                    ? window.confirm(
-                        "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Bot will stop. Continue?",
-                      )
-                    : window.confirm(`Switch trading mode to ${next}? Bot will stop.`);
-                if (!ok) return;
-                try {
-                  await api.setMode(next as any);
-                  pushLog({ level: "warn", msg: "Mode switch requested", mode: next });
-                } catch {
-                  pushLog({ level: "error", msg: "Mode switch failed" });
-                }
+                deferTask(() => {
+                  void (async () => {
+                    const ok =
+                      next === "BINANCE_LIVE"
+                        ? window.confirm(
+                            "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Bot will stop. Continue?",
+                          )
+                        : window.confirm(`Switch trading mode to ${next}? Bot will stop.`);
+                    if (!ok) return;
+                    try {
+                      await api.setMode(next as any);
+                      pushLog({ level: "warn", msg: "Mode switch requested", mode: next });
+                    } catch {
+                      pushLog({ level: "error", msg: "Mode switch failed" });
+                    }
+                  })();
+                });
               }}
             >
               <option value="PAPER">PAPER (simulated)</option>
@@ -144,19 +149,23 @@ export function HeaderBar() {
             type="button"
             title={botStaleHint}
             className="bmw-bot-trigger inline-flex shrink-0 -translate-x-2 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 sm:-translate-x-2.5"
-            onClick={async () => {
-              try {
-                if (botRunning) {
-                  const out = await api.botStop({ reason: "ui_header_bar" });
-                  mergeBotFromApi(out?.bot);
-                } else {
-                  const out = await api.botStart({ reason: "ui_header_bar" });
-                  mergeBotFromApi(out?.bot);
-                  playEngineStartSound();
-                }
-              } catch {
-                pushLog({ level: "error", msg: "Failed to toggle bot" });
-              }
+            onClick={() => {
+              deferTask(() => {
+                void (async () => {
+                  try {
+                    if (botRunning) {
+                      const out = await api.botStop({ reason: "ui_header_bar" });
+                      mergeBotFromApi(out?.bot);
+                    } else {
+                      const out = await api.botStart({ reason: "ui_header_bar" });
+                      mergeBotFromApi(out?.bot);
+                      playEngineStartSound();
+                    }
+                  } catch {
+                    pushLog({ level: "error", msg: "Failed to toggle bot" });
+                  }
+                })();
+              });
             }}
           >
             {!botRunning ? (

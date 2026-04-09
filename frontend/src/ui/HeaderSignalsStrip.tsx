@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
+import { deferTask } from "../lib/deferTask";
 import { useAppStore } from "../ws/store";
 
 function StripDot({ ok }: { ok: boolean }) {
@@ -161,18 +162,22 @@ export function HeaderSignalsStrip() {
           <button
             type="button"
             className="shrink-0 rounded-lg border border-amber-600/60 bg-amber-600/25 px-3 py-1.5 text-[11px] font-semibold text-amber-50 shadow-sm hover:bg-amber-600/40 sm:text-xs"
-            onClick={async () => {
-              const ok = window.confirm(
-                "Reset daily loss baselines to current wallet equity and start the bot?\n\n" +
-                  "This does not move funds on Binance — it only restarts risk tracking from this moment.",
-              );
-              if (!ok) return;
-              try {
-                await api.botResetDailyLoss();
-                pushLog({ level: "warn", msg: "Daily loss baseline reset · bot started" });
-              } catch {
-                pushLog({ level: "error", msg: "Reset daily loss failed" });
-              }
+            onClick={() => {
+              deferTask(() => {
+                void (async () => {
+                  const ok = window.confirm(
+                    "Reset daily loss baselines to current wallet equity and start the bot?\n\n" +
+                      "This does not move funds on Binance — it only restarts risk tracking from this moment.",
+                  );
+                  if (!ok) return;
+                  try {
+                    await api.botResetDailyLoss();
+                    pushLog({ level: "warn", msg: "Daily loss baseline reset · bot started" });
+                  } catch {
+                    pushLog({ level: "error", msg: "Reset daily loss failed" });
+                  }
+                })();
+              });
             }}
           >
             Reset daily limit &amp; start bot
