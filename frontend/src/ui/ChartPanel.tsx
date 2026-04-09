@@ -24,6 +24,9 @@ const CHART_MARKER_DISPLAY_CAP = 40;
 /** Max rows in the “signals” list under the chart (newest first). */
 const SUPERTREND_SIGNAL_LIST_MAX = 50;
 
+/** Background REST sync for candles (does not remount chart; restores visible range). */
+const CHART_BACKGROUND_SYNC_MS = 60_000;
+
 function normalizeSymTf(s: string | undefined) {
   return String(s ?? "").trim();
 }
@@ -377,10 +380,14 @@ export function ChartPanel() {
   ohlcRef.current = ohlc;
   /** Last OHLC set applied to lightweight-charts (for incremental update vs full setData). */
   const chartOhlcAppliedRef = useRef<OhlcBar[] | null>(null);
+  /** After `applyMarketCandlesResult(..., { preserveView: true })`, restore time-scale range after next series update. */
+  const syncPreserveViewRef = useRef(false);
   const stLineFlushRafRef = useRef(0);
+  /** Bump to destroy + recreate the chart canvas (same effect as a full page load / server restart for rendering). */
+  const [chartInstanceKey, setChartInstanceKey] = useState(0);
 
   useEffect(() => {
-    if (!containerRef.current || chartRef.current) return;
+    if (!containerRef.current) return;
 
     const chart = createChart(containerRef.current, {
       autoSize: true,
@@ -465,7 +472,7 @@ export function ChartPanel() {
       seriesRef.current = null;
       supertrendLineRef.current = null;
     };
-  }, []);
+  }, [chartInstanceKey]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -488,16 +495,34 @@ export function ChartPanel() {
     } catch {
       /* ignore */
     }
-  }, [chartTheme]);
+  }, [chartTheme, chartInstanceKey]);
 
   useEffect(() => {
     if (!ohlc.length) {
       chartOhlcAppliedRef.current = null;
+      syncPreserveViewRef.current = false;
       return;
     }
-    if (!chartOkRef.current || !seriesRef.current || !chartRef.current) return;
+    if (!chartOkRef.current || !seriesRef.current || !chartRef.current) {
+      syncPreserveViewRef.current = false;
+      return;
+    }
     const series = seriesRef.current;
     const chart = chartRef.current;
+
+    let logicalRangeRestore: { from: number; to: number } | null = null;
+    if (syncPreserveViewRef.current) {
+      syncPreserveViewRef.current = false;
+      try {
+        const lr = chart.timeScale().getVisibleLogicalRange();
+        if (lr && Number.isFinite(lr.from) && Number.isFinite(lr.to)) {
+          logicalRangeRestore = { from: lr.from, to: lr.to };
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
     const prev = chartOhlcAppliedRef.current;
     const last = ohlc[ohlc.length - 1]!;
     const first = ohlc[0]!;
@@ -564,6 +589,19 @@ export function ChartPanel() {
         fitAfterRestSnapshotRef,
         skipFitUntilBulkRef,
       );
+      if (logicalRangeRestore) {
+        const r = logicalRangeRestore;
+        requestAnimationFrame(() => {
+          try {
+            chartRef.current?.timeScale().setVisibleLogicalRange({
+              from: r.from,
+              to: r.to,
+            });
+          } catch {
+            /* ignore */
+          }
+        });
+      }
     } catch {
       try {
         const sanitized = ohlc.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? ohlc[i - 1]! : null, sym));
@@ -611,18 +649,23 @@ export function ChartPanel() {
     }, 2800);
   }, [bot?.symbol, bot?.timeframe]);
 
-  const applyMarketCandlesResult = useCallback((r: any, sym: string, tf: string): boolean => {
+  const applyMarketCandlesResult = useCallback((r: any, sym: string, tf: string, opts?: { preserveView?: boolean }): boolean => {
     if (!r?.ok || !Array.isArray(r.candles) || !r.candles.length) return false;
     const live = useAppStore.getState();
     if (normalizeSymTf(live.bot?.symbol) !== sym || normalizeSymTf(live.bot?.timeframe) !== tf) return false;
     if (normalizeSymTf(r.symbol) !== sym || normalizeSymTf(r.timeframe) !== tf) return false;
-    if (bulkFitFallbackTimerRef.current) {
-      clearTimeout(bulkFitFallbackTimerRef.current);
-      bulkFitFallbackTimerRef.current = null;
+    const preserveView = Boolean(opts?.preserveView);
+    if (preserveView) {
+      syncPreserveViewRef.current = true;
+    } else {
+      if (bulkFitFallbackTimerRef.current) {
+        clearTimeout(bulkFitFallbackTimerRef.current);
+        bulkFitFallbackTimerRef.current = null;
+      }
+      skipFitUntilBulkRef.current = false;
+      fitAfterRestSnapshotRef.current = true;
+      pendingAutoFitRef.current = true;
     }
-    skipFitUntilBulkRef.current = false;
-    fitAfterRestSnapshotRef.current = true;
-    pendingAutoFitRef.current = true;
     useAppStore.setState((s) => {
       const cc = r.candles.slice(-CHART_CANDLE_MAX);
       const last = cc[cc.length - 1];
@@ -666,8 +709,14 @@ export function ChartPanel() {
       const r = await api.marketCandles(24);
       const ok = applyMarketCandlesResult(r, sym, tf);
       const pushLog = useAppStore.getState().pushLog;
-      if (ok) pushLog({ level: "info", msg: "Chart refreshed from server" });
-      else pushLog({ level: "warn", msg: "Chart refresh: no data or pair changed — try again." });
+      if (ok) {
+        chartOhlcAppliedRef.current = null;
+        setChartInstanceKey((k) => k + 1);
+        pushLog({
+          level: "info",
+          msg: "Chart fully reloaded from server (new canvas + OHLC snapshot, same path as after reconnect)",
+        });
+      } else pushLog({ level: "warn", msg: "Chart refresh: no data or pair changed — try again." });
     } catch {
       useAppStore.getState().pushLog({ level: "error", msg: "Chart refresh failed (network or server error)" });
     } finally {
@@ -694,6 +743,25 @@ export function ChartPanel() {
       cancelled = true;
       clearTimeout(t);
     };
+  }, [bot?.symbol, bot?.timeframe, applyMarketCandlesResult]);
+
+  useEffect(() => {
+    const sym = normalizeSymTf(bot?.symbol);
+    const tf = normalizeSymTf(bot?.timeframe);
+    if (!sym || !tf) return;
+    const id = window.setInterval(() => {
+      const live = useAppStore.getState();
+      const liveSym = normalizeSymTf(live.bot?.symbol);
+      const liveTf = normalizeSymTf(live.bot?.timeframe);
+      if (liveSym !== sym || liveTf !== tf) return;
+      api
+        .marketCandles(24)
+        .then((r) => {
+          applyMarketCandlesResult(r, sym, tf, { preserveView: true });
+        })
+        .catch(() => {});
+    }, CHART_BACKGROUND_SYNC_MS);
+    return () => clearInterval(id);
   }, [bot?.symbol, bot?.timeframe, applyMarketCandlesResult]);
 
   useEffect(() => {
@@ -742,27 +810,33 @@ export function ChartPanel() {
 
   return (
     <div className="p-4">
-      <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-200/90 dark:border-slate-800/80 pb-2">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-500">Crypto chart</h2>
-          <p className="mt-0.5 max-w-xl text-[10px] leading-snug text-slate-600 dark:text-slate-500">
-            Supertrend: <span className="text-slate-600 dark:text-slate-400">saved signals</span> for this symbol/timeframe (mixed BUY/SELL, by time):{" "}
-            <span className="text-slate-600 dark:text-slate-400">AI</span> = AI confidence gate at close,{" "}
-            <span className="text-slate-600 dark:text-slate-400">SS</span> = composite signal strength (0–100),{" "}
-            <span className="text-slate-600 dark:text-slate-400">T/W/K</span> = TRADE / WAIT / SKIP (when “gates opens” is on, only{" "}
-            <span className="text-slate-600 dark:text-slate-400">T</span> can open).
-          </p>
+      <div className="mb-3 space-y-2 border-b border-slate-200/90 dark:border-slate-800/80 pb-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-500">Crypto chart</h2>
+            <p className="mt-0.5 max-w-xl text-[10px] leading-snug text-slate-600 dark:text-slate-500">
+              Supertrend: <span className="text-slate-600 dark:text-slate-400">saved signals</span> for this symbol/timeframe (mixed BUY/SELL, by time):{" "}
+              <span className="text-slate-600 dark:text-slate-400">AI</span> = AI confidence gate at close,{" "}
+              <span className="text-slate-600 dark:text-slate-400">SS</span> = composite signal strength (0–100),{" "}
+              <span className="text-slate-600 dark:text-slate-400">T/W/K</span> = TRADE / WAIT / SKIP (when “gates opens” is on, only{" "}
+              <span className="text-slate-600 dark:text-slate-400">T</span> can open).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleRefreshChart()}
+            disabled={chartRefreshBusy || !normalizeSymTf(bot?.symbol) || !normalizeSymTf(bot?.timeframe)}
+            className="shrink-0 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 focus:ring-offset-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-slate-950"
+            title="Fetch latest ~24h OHLC from the server and rebuild the chart canvas (fixes stuck/glitchy rendering without restarting the app)"
+            aria-label="Full chart reload from server"
+          >
+            {chartRefreshBusy ? "Reloading chart…" : "Reload chart"}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => void handleRefreshChart()}
-          disabled={chartRefreshBusy || !normalizeSymTf(bot?.symbol) || !normalizeSymTf(bot?.timeframe)}
-          className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-200/88 dark:bg-slate-100 dark:bg-slate-900/80 px-2.5 py-1 text-[11px] font-medium text-slate-800 dark:text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-          title="Reload OHLC and Supertrend from the server (~24h)"
-          aria-label="Refresh crypto chart from server"
-        >
-          {chartRefreshBusy ? "Refreshing…" : "Refresh"}
-        </button>
+        <p className="text-[10px] text-slate-500 dark:text-slate-500">
+          If candles look wrong but data is fine, use <span className="font-medium text-slate-700 dark:text-slate-300">Reload chart</span>
+          — same as a fresh page load for the graph (new TradingView canvas + server snapshot).
+        </p>
       </div>
 
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -825,6 +899,7 @@ export function ChartPanel() {
 
       <div className="flex flex-col gap-4">
         <div
+          key={chartInstanceKey}
           ref={containerRef}
           className="w-full min-h-[320px] shrink-0"
           style={{ height: "min(520px, 60vh)" }}

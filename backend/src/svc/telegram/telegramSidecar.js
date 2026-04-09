@@ -78,11 +78,21 @@ export function createTelegramSidecar({ log, appState }) {
     return String(id) === chatId || String(Number(id)) === chatId;
   }
 
+  /** Skip Telegram for noisy non-action signal lines (still in Activity / WS). */
+  function shouldSuppressSignalOnTelegram(payload) {
+    if (payload?.category !== "signal") return false;
+    const r = payload.reason != null ? String(payload.reason) : "";
+    const d = payload.detail;
+    const dr = d && typeof d === "object" && d.reason != null ? String(d.reason) : "";
+    return r === "bar_close_not_ready_buffer_mismatch" || dr === "bar_close_not_ready_buffer_mismatch";
+  }
+
   /** Categories forwarded from Activity (indicator signals, engine on/off). */
   function notifyActivity(payload) {
     if (!enabled) return;
     const cat = payload?.category;
     if (cat === "bot_lifecycle" || cat === "signal" || cat === "manual_trade") {
+      if (shouldSuppressSignalOnTelegram(payload)) return;
       const ts = payload.ts ? String(payload.ts) : "";
       const line = ts ? `[${ts}] ${payload.msg}` : String(payload.msg);
       enqueue(line);
