@@ -3,12 +3,19 @@ import { z } from "zod";
 import { runBacktest } from "../backtest/backtest.js";
 import { getTradingEvaluationChecklist } from "../evaluation/tradingChecklist.js";
 import { formatAiServiceError } from "../svc/aiHttpError.js";
+import { broadcastActivity } from "../lib/activityLog.js";
+import { isStrictBinanceAccountMode } from "../lib/tradingModePersistence.js";
 
 export function createRouter({ appState }) {
   const r = express.Router();
 
   const symbolRe = /^[A-Z0-9]{5,20}$/;
   const allowedTimeframes = new Set(["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"]);
+
+  const botLifecycleBody = z.object({
+    reason: z.string().max(400).optional(),
+    detail: z.record(z.unknown()).optional(),
+  });
 
   async function withTimeout(promise, ms) {
     return await Promise.race([
@@ -36,6 +43,10 @@ export function createRouter({ appState }) {
     } catch {
       trades = [];
     }
+    if (isStrictBinanceAccountMode(appState.mode) && account == null) {
+      positions = [];
+      trades = [];
+    }
     res.json({
       ok: true,
       mode: appState.mode,
@@ -46,12 +57,57 @@ export function createRouter({ appState }) {
     });
   });
 
+  /**
+   * Binance min order notional from exchangeInfo filters (NOTIONAL / MIN_NOTIONAL).
+   * Query: symbol (defaults to bot symbol), venue = SPOT | FUTURES | BOTH (defaults from bot marketMode; AUTO → BOTH).
+   */
+  r.get("/symbol/constraints", async (req, res) => {
+    const botState = appState.bot.getPublicState();
+    const symbol = String(req.query.symbol || botState.symbol || "").toUpperCase();
+    let venue = String(req.query.venue || "").toUpperCase();
+    if (!symbol) return res.status(400).json({ ok: false, error: "symbol_required" });
+    const mm = String(botState.marketMode || "AUTO").toUpperCase();
+    if (!venue) {
+      venue = mm === "AUTO" ? "BOTH" : mm === "SPOT" ? "SPOT" : "FUTURES";
+    }
+    try {
+      const ex = appState.exchange;
+      if (!ex?.getSymbolOrderConstraints) {
+        return res.json({
+          ok: true,
+          symbol,
+          venue,
+          minNotional: 5,
+          quoteAsset: "USDT",
+          synthetic: true,
+          rule: "Fallback — exchange has no constraints hook",
+        });
+      }
+      const out = await ex.getSymbolOrderConstraints({ symbol, venue });
+      res.json(out && typeof out === "object" ? out : { ok: false, error: "constraints_failed" });
+    } catch (e) {
+      res.status(502).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  /** Last N bars for chart (~24h for current bot symbol/timeframe); Binance REST backfill + live buffer when MARKET_FEED is Binance. */
+  r.get("/market/candles", (_req, res) => {
+    try {
+      const hours = Math.max(0.25, Math.min(168, Number(_req.query.hours ?? 24)));
+      const snap = appState.bot.getChartSnapshot({ hours });
+      if (!snap?.candles?.length) return res.status(503).json({ ok: false, error: "no_candles" });
+      res.json({ ok: true, ...snap });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
   r.get("/ai/health", async (_req, res) => {
     try {
       const data = await appState.ai.health();
       res.json({ ok: true, data });
     } catch (e) {
-      res.status(503).json({ ok: false, error: "ai_unreachable" });
+      res.status(503).json({ ok: false, error: formatAiServiceError(e) });
     }
   });
 
@@ -86,7 +142,7 @@ export function createRouter({ appState }) {
         },
       });
     } catch (e) {
-      res.status(503).json({ ok: false, error: "ai_unreachable" });
+      res.status(503).json({ ok: false, error: formatAiServiceError(e) });
     }
   });
 
@@ -167,14 +223,38 @@ export function createRouter({ appState }) {
     }
   });
 
-  r.post("/bot/start", (_req, res) => {
-    appState.bot.start({ wsHub: appState.wsHub });
+  r.post("/bot/start", (req, res) => {
+    const parsed = botLifecycleBody.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    const body = parsed.success ? parsed.data : {};
+    appState.bot.start({
+      wsHub: appState.wsHub,
+      reason: body.reason ?? "user_request",
+      source: "http",
+      detail: body.detail,
+    });
     res.json({ ok: true, bot: appState.bot.getPublicState() });
   });
 
-  r.post("/bot/stop", (_req, res) => {
-    appState.bot.stop({ wsHub: appState.wsHub });
+  r.post("/bot/stop", (req, res) => {
+    const parsed = botLifecycleBody.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    const body = parsed.success ? parsed.data : {};
+    appState.bot.stop({
+      wsHub: appState.wsHub,
+      reason: body.reason ?? "user_request",
+      source: "http",
+      detail: body.detail,
+    });
     res.json({ ok: true, bot: appState.bot.getPublicState() });
+  });
+
+  /** Re-anchor hybrid daily loss baselines to current wallet equity and start the bot (after max-daily-loss stop). */
+  r.post("/bot/reset-daily-loss", (_req, res) => {
+    try {
+      appState.bot.resetDailyLossBaselineAndStart({ wsHub: appState.wsHub, source: "http" });
+      res.json({ ok: true, bot: appState.bot.getPublicState() });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
   });
 
   r.post("/bot/config", (req, res) => {
@@ -183,18 +263,58 @@ export function createRouter({ appState }) {
       symbolMode: z.enum(["SINGLE", "AUTO"]).optional(),
       timeframe: z.string().refine((v) => allowedTimeframes.has(v), "Unsupported timeframe").optional(),
       aiThreshold: z.number().min(0).max(1).optional(),
-      riskPerTrade: z.number().min(0.001).max(0.05).optional(),
-      maxDailyLoss: z.number().min(0.01).max(0.2).optional(),
+      /** Interpretation set by `riskPerTradeUnit`: PCT = fraction of balance at stop; USDT = target per-trade notional / investing capital in USDT (≥1). */
+      riskPerTrade: z.number().min(0.000001).max(10_000_000).optional(),
+      /** Interpretation set by `maxDailyLossUnit`: PCT = max daily drawdown fraction; USDT = max daily loss USD per venue. */
+      maxDailyLoss: z.number().min(0.000001).max(10_000_000).optional(),
+      riskPerTradeUnit: z.enum(["PCT", "USDT"]).optional(),
+      maxDailyLossUnit: z.enum(["PCT", "USDT"]).optional(),
       strategyMode: z.enum(["AUTO", "MANUAL"]).optional(),
       manualStrategy: z.string().optional(),
       marketMode: z.enum(["SPOT", "FUTURES", "AUTO"]).optional(),
       futuresLeverageMode: z.enum(["AUTO", "MANUAL"]).optional(),
-      futuresLeverage: z.number().int().min(1).max(50).optional(),
+      futuresLeverage: z.number().int().min(1).max(100).optional(),
+      supertrendSpotAuto: z.boolean().optional(),
+      supertrendFuturesAuto: z.boolean().optional(),
+      /** When true, Supertrend futures BUY enforces `supertrendFuturesMinAiProb`. When false, that gate is skipped (signal-based sizing). */
+      supertrendFuturesAiConfidenceFilter: z.boolean().optional(),
+      /** When true, Supertrend opening legs require composite strength ≥ `signalStrengthOpenMin` and matching BUY/SELL. Default off: strength is metrics-only. */
+      signalStrengthGatesTrades: z.boolean().optional(),
+      /** Min composite signal strength (0–100) for opens when `signalStrengthGatesTrades` is on. */
+      signalStrengthOpenMin: z.number().int().min(0).max(100).optional(),
+      /** Min AI probability (0–1) for Supertrend futures opens when `supertrendFuturesAiConfidenceFilter` is on. */
+      supertrendFuturesMinAiProb: z.number().min(0).max(1).optional(),
+      /** Fixed stop fraction of price (Supertrend futures, AI filter off). */
+      supertrendFuturesFixedSlPct: z.number().min(0.00005).max(0.2).optional(),
+      /** Fixed take-profit fraction of price (Supertrend futures, AI filter off). */
+      supertrendFuturesFixedTpPct: z.number().min(0.00005).max(0.5).optional(),
+      /** When true, Supertrend futures SELL opens short after closing long; BUY closes short then opens long. */
+      supertrendFuturesTwoWay: z.boolean().optional(),
+      supertrendPeriod: z.number().int().min(2).max(100).optional(),
+      supertrendMultiplier: z.number().min(0.5).max(20).optional(),
+      supertrendWilderAtr: z.boolean().optional(),
+      /** Lock AUTO universe to one symbol (table stays open in UI); null clears. */
+      universePinnedSymbol: z.union([z.string().regex(symbolRe), z.null()]).optional(),
+      /** Manual order form (persisted with bot settings). */
+      tradingFormDefaults: z
+        .object({
+          amountUsdStr: z.string().max(32).optional(),
+          slPctStr: z.string().max(32).optional(),
+          tpPctStr: z.string().max(32).optional(),
+        })
+        .optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
 
     const bot = appState.bot.updateConfig(parsed.data);
+    broadcastActivity(appState.wsHub, {
+      level: "info",
+      msg: "Bot configuration updated",
+      category: "config",
+      reason: "api_patch",
+      detail: parsed.data,
+    });
     // Match WS `state` shape so the UI doesn't drop account/positions until the next heartbeat.
     Promise.all([appState.exchange.getAccount().catch(() => null), appState.exchange.getPositions().catch(() => [])])
       .then(([account, positions]) => {
@@ -259,15 +379,24 @@ export function createRouter({ appState }) {
 
   r.post("/mode/set", async (req, res) => {
     const schema = z.object({
-      mode: z.enum(["PAPER", "BINANCE_DEMO", "BINANCE_DEMO_FUTURES", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_FUTURES_TESTNET"]),
+      mode: z.enum(["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"]),
       confirm: z.literal(true),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
     // Stop bot before switching
-    appState.bot.stop({ wsHub: appState.wsHub });
-    const out = await appState.setMode(parsed.data.mode);
-    return res.json(out);
+    appState.bot.stop({
+      wsHub: appState.wsHub,
+      reason: "trading_mode_switch",
+      source: "http_mode_set",
+      detail: { nextMode: parsed.data.mode },
+    });
+    try {
+      const out = await appState.setMode(parsed.data.mode);
+      return res.json(out);
+    } catch (e) {
+      return res.status(400).json({ ok: false, error: String(e?.message || e) });
+    }
   });
 
   r.get("/strategies", (_req, res) => {

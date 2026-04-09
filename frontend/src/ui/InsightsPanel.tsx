@@ -1,10 +1,51 @@
 import { useAppStore } from "../ws/store";
 import { api } from "../api/client";
+import { buildOhlc, ohlcBarsToMsCandles } from "../lib/chartOhlc";
+import { buildChartSupertrend } from "../lib/supertrend";
 import { useEffect, useMemo, useState } from "react";
+
+/** Server k.x bar-close row + AI + composite signal strength for Supertrend UI. */
+type SignalStrengthDecision = {
+  action?: string;
+  signal?: string;
+  strength?: number;
+  componentScores?: Record<string, number>;
+  reason?: string;
+} | null;
+
+type SupertrendLastBarCloseScores = {
+  ts?: number;
+  buySignal?: boolean;
+  sellSignal?: boolean;
+  trend?: number | null;
+  /** Chart blend input (0–1) for futures sizing — not the composite 0–100 score. */
+  supertrendStrength01?: number | null;
+  signalStrengthDecision?: SignalStrengthDecision;
+  /** @deprecated prefer supertrendStrength01 / signalStrengthDecision */
+  signalStrength?: number | null;
+  chartStrict?: boolean;
+  aiGateBuy?: number | null;
+  aiGateSell?: number | null;
+  decisionLong?: number | null;
+  decisionShort?: number | null;
+  decisionMaxLong?: number | null;
+  decisionMaxShort?: number | null;
+};
+
+function fmtAiGate(x: number | null | undefined) {
+  return x != null && Number.isFinite(Number(x)) ? Number(x).toFixed(3) : "—";
+}
+
+function fmtRuleTotal(t: number | null | undefined, m: number | null | undefined) {
+  if (t == null || !Number.isFinite(Number(t))) return "—";
+  const mx = m != null && Number.isFinite(Number(m)) ? Number(m) : 100;
+  return `${Math.round(Number(t))}/${mx}`;
+}
 
 export function InsightsPanel() {
   const bot = useAppStore((s) => s.bot);
   const market = useAppStore((s) => s.market);
+  const candles = useAppStore((s) => s.candles);
   const external = useAppStore((s) => s.external);
   const pushLog = useAppStore((s) => s.pushLog);
   const [busy, setBusy] = useState(false);
@@ -18,6 +59,28 @@ export function InsightsPanel() {
   const newsCount = aiFeatures?.news_count_24h;
   const fearGreed = aiFeatures?.fear_greed;
   const funding = aiFeatures?.btc_funding_rate;
+
+  const stUiCoherent = useMemo(() => {
+    const b = String(bot?.symbol ?? "").trim();
+    const m = String(market?.symbol ?? "").trim();
+    return Boolean(b && m && b === m);
+  }, [bot?.symbol, market?.symbol]);
+
+  const insightSt = useMemo(() => {
+    const period = Math.max(2, Math.floor(Number(bot?.supertrendPeriod ?? 10)));
+    const multiplier = Number(bot?.supertrendMultiplier ?? 3);
+    const wilderAtr = bot?.supertrendWilderAtr !== false;
+    const ohlc = buildOhlc(candles as Parameters<typeof buildOhlc>[0], {
+      symbol: bot?.symbol != null ? String(bot.symbol) : undefined,
+    });
+    const ms = ohlcBarsToMsCandles(ohlc);
+    return buildChartSupertrend(ms, {
+      period,
+      multiplier,
+      wilderAtr,
+      timeframe: bot?.timeframe != null ? String(bot.timeframe) : "1m",
+    });
+  }, [candles, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr, bot?.timeframe]);
 
   const [aiTrainMeta, setAiTrainMeta] = useState<{ symbolsCount?: number; source?: string }>({});
   useEffect(() => {
@@ -55,25 +118,25 @@ export function InsightsPanel() {
     <div className="p-4">
       <div className="mb-2">
         <div className="text-sm font-semibold">AI Insights</div>
-        <div className="text-xs text-slate-400">Confidence + regime + suggested action</div>
+        <div className="text-xs text-slate-600 dark:text-slate-400">Confidence + regime + suggested action</div>
       </div>
 
       <div className="grid gap-3 text-xs">
-        <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-          <div className="text-slate-400">AI confidence</div>
-          <div className="mt-1 text-lg font-semibold text-slate-100">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3">
+          <div className="text-slate-600 dark:text-slate-400">AI confidence</div>
+          <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
             {prob != null && Number.isFinite(Number(prob)) ? Number(prob).toFixed(3) : "—"}
           </div>
-          <div className="mt-1 text-slate-500">
-            Threshold: <span className="text-slate-200">{Number(bot?.aiThreshold ?? 0.65).toFixed(2)}</span>
+          <div className="mt-1 text-slate-600 dark:text-slate-500">
+            Threshold: <span className="text-slate-800 dark:text-slate-200">{Number(bot?.aiThreshold ?? 0.65).toFixed(2)}</span>
           </div>
-          <div className="mt-1 text-slate-500">
-            Trained on: <span className="text-slate-200">{datasetsText}</span>
+          <div className="mt-1 text-slate-600 dark:text-slate-500">
+            Trained on: <span className="text-slate-800 dark:text-slate-200">{datasetsText}</span>
           </div>
           <div className="mt-2">
             <button
               disabled={busy}
-              className="rounded-md border border-slate-700 bg-slate-900/50 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-900 disabled:opacity-50"
+              className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-200/65 dark:bg-slate-100 dark:bg-slate-900/50 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 disabled:opacity-50"
               onClick={async () => {
                 setBusy(true);
                 try {
@@ -143,7 +206,7 @@ export function InsightsPanel() {
             </button>
             <button
               type="button"
-              className="ml-2 rounded-md border border-slate-600 bg-slate-900/30 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-900"
+              className="ml-2 rounded-md border border-slate-600 bg-slate-200/50 dark:bg-slate-100 dark:bg-slate-900/30 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-900"
               onClick={async () => {
                 try {
                   const r = await api.tradingEvaluation();
@@ -163,7 +226,7 @@ export function InsightsPanel() {
             </button>
             <button
               type="button"
-              className="ml-2 rounded-md border border-slate-600 bg-slate-900/30 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-900"
+              className="ml-2 rounded-md border border-slate-600 bg-slate-200/50 dark:bg-slate-100 dark:bg-slate-900/30 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-900"
               onClick={async () => {
                 try {
                   const r = await api.aiValidationSummary();
@@ -184,9 +247,9 @@ export function InsightsPanel() {
         </div>
 
         {bot?.metrics && (
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-[11px] text-slate-400">
-            <div className="text-slate-500">Runtime metrics</div>
-            <div className="mt-1 grid grid-cols-2 gap-2 text-slate-300">
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3 text-[11px] text-slate-600 dark:text-slate-400">
+            <div className="text-slate-600 dark:text-slate-500">Runtime metrics</div>
+            <div className="mt-1 grid grid-cols-2 gap-2 text-slate-700 dark:text-slate-300">
               <div>ticks: {bot.metrics.tickCount ?? "—"}</div>
               <div>uptime: {bot.metrics.uptimeSec ?? "—"}s</div>
               <div>predict ms: {bot.metrics.lastPredictLatencyMs ?? "—"}</div>
@@ -198,22 +261,223 @@ export function InsightsPanel() {
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="text-slate-400">Market regime</div>
-            <div className="mt-1 font-semibold text-slate-100">{market?.regime?.type ?? "—"}</div>
-            <div className="mt-1 text-slate-500">ADX: {market?.regime?.adx?.toFixed?.(1) ?? "—"}</div>
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3">
+            <div className="text-slate-600 dark:text-slate-400">Market regime</div>
+            <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{market?.regime?.type ?? "—"}</div>
+            <div className="mt-1 text-slate-600 dark:text-slate-500">ADX: {market?.regime?.adx?.toFixed?.(1) ?? "—"}</div>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="text-slate-400">Suggested action</div>
-            <div className="mt-1 font-semibold text-slate-100">{decision?.signal?.action ?? "—"}</div>
-            <div className="mt-1 text-slate-500">{decision?.strategyKey ?? "—"}</div>
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3">
+            <div className="text-slate-600 dark:text-slate-400">Suggested action</div>
+            <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{decision?.signal?.action ?? "—"}</div>
+            <div className="mt-1 text-slate-600 dark:text-slate-500">{decision?.strategyKey ?? "—"}</div>
             <div className="mt-1 text-slate-600">Last trained: {trainedAt ?? "—"}</div>
+            {decision?.strategyKey === "SUPERTREND" ? (
+              <div className="mt-2 border-t border-slate-200 dark:border-slate-800 pt-2 text-[11px] text-slate-600 dark:text-slate-500">
+                Supertrend autotrade uses <span className="text-slate-600 dark:text-slate-400">closed-candle</span> flips (see chart markers),
+                not this AI action panel.
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-xs">
-          <div className="text-slate-400">External (CoinGecko)</div>
-          <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-slate-300">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3">
+          <div className="text-slate-600 dark:text-slate-400">Supertrend (chart)</div>
+          {!stUiCoherent ? (
+            <div className="mt-1 text-[11px] text-slate-600 dark:text-slate-500">
+              Syncing market data for <span className="text-slate-700 dark:text-slate-300">{String(bot?.symbol ?? "—")}</span>… (holding off
+              until chart and WS market symbol match)
+            </div>
+          ) : (
+            <>
+              <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">
+                {insightSt.lastTrend != null && Number.isFinite(insightSt.lastTrend) ? (
+                  insightSt.lastTrend === 1 ? (
+                    <span className="text-emerald-300">Long bias (line under price)</span>
+                  ) : (
+                    <span className="text-rose-300">Short bias (line over price)</span>
+                  )
+                ) : (
+                  "—"
+                )}
+              </div>
+              <div className="mt-1 text-[11px] text-slate-600 dark:text-slate-500">
+                Latest candle close (server):{" "}
+                {(() => {
+                  const s = bot?.supertrendLastBarClose as SupertrendLastBarCloseScores | null | undefined;
+                  if (s == null) {
+                    return <span className="text-slate-600 dark:text-slate-500">— (no k.x processed yet)</span>;
+                  }
+                  const t = s.ts != null ? Number(s.ts) : NaN;
+                  const when =
+                    Number.isFinite(t)
+                      ? new Date(t).toLocaleString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "—";
+                  if (!s.buySignal && !s.sellSignal) {
+                    const tr = s.trend != null && Number.isFinite(Number(s.trend)) ? Number(s.trend) : null;
+                    return (
+                      <span className="text-slate-600 dark:text-slate-400">
+                        No flip on bar {when}. Trend after that close:{" "}
+                        {tr === 1 ? (
+                          <span className="text-emerald-300/90">LONG</span>
+                        ) : tr === -1 ? (
+                          <span className="text-rose-300/90">SHORT</span>
+                        ) : (
+                          "—"
+                        )}
+                        .{" "}
+                        <span className="text-slate-600 dark:text-slate-500">
+                          Later bars can have no flip while an earlier bar already triggered Activity — see{" "}
+                          <span className="text-slate-600 dark:text-slate-400">last autotrade flip</span> below.
+                        </span>
+                      </span>
+                    );
+                  }
+                  const label = s.buySignal ? "BUY" : "SELL";
+                  const dec = s.signalStrengthDecision;
+                  const str =
+                    dec?.strength != null && Number.isFinite(Number(dec.strength))
+                      ? Number(dec.strength).toFixed(2)
+                      : s.signalStrength != null && Number.isFinite(Number(s.signalStrength))
+                        ? Number(s.signalStrength).toFixed(2)
+                        : null;
+                  const sigAi = s.buySignal ? fmtAiGate(s.aiGateBuy) : fmtAiGate(s.aiGateSell);
+                  const sigComp = s.buySignal
+                    ? fmtRuleTotal(s.decisionLong, s.decisionMaxLong)
+                    : fmtRuleTotal(s.decisionShort, s.decisionMaxShort);
+                  const act = dec?.action ? ` · ${dec.action}` : "";
+                  return (
+                    <span className={s.buySignal ? "text-emerald-300" : "text-rose-300"}>
+                      {label} ({when}
+                      {str != null ? ` · composite ${str}` : ""}
+                      {act}
+                      {` · AI gate ${sigAi} · engine ${sigComp}`}
+                      {s.chartStrict === false ? " · legacy flip (strict off)" : ""})
+                    </span>
+                  );
+                })()}
+              </div>
+              <div className="mt-1 text-[11px] text-slate-600 dark:text-slate-500">
+                Last autotrade flip (chart-aligned, matches Activity):{" "}
+                {(() => {
+                  const flip = bot?.supertrendLastFlipBarClose as SupertrendLastBarCloseScores | null | undefined;
+                  if (flip == null || (!flip.buySignal && !flip.sellSignal)) {
+                    return <span className="text-slate-600">— (none since symbol/timeframe loaded)</span>;
+                  }
+                  const t = flip.ts != null ? Number(flip.ts) : NaN;
+                  const when =
+                    Number.isFinite(t)
+                      ? new Date(t).toLocaleString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "—";
+                  const label = flip.buySignal ? "BUY" : "SELL";
+                  const dec = flip.signalStrengthDecision;
+                  const str =
+                    dec?.strength != null && Number.isFinite(Number(dec.strength))
+                      ? Number(dec.strength).toFixed(2)
+                      : flip.signalStrength != null && Number.isFinite(Number(flip.signalStrength))
+                        ? Number(flip.signalStrength).toFixed(2)
+                        : null;
+                  const sigAi = flip.buySignal ? fmtAiGate(flip.aiGateBuy) : fmtAiGate(flip.aiGateSell);
+                  const sigComp = flip.buySignal
+                    ? fmtRuleTotal(flip.decisionLong, flip.decisionMaxLong)
+                    : fmtRuleTotal(flip.decisionShort, flip.decisionMaxShort);
+                  const act = dec?.action ? ` · ${dec.action}` : "";
+                  return (
+                    <span className={flip.buySignal ? "text-emerald-300" : "text-rose-300"}>
+                      {label} ({when}
+                      {str != null ? ` · composite ${str}` : ""}
+                      {act}
+                      {` · AI gate ${sigAi} · engine ${sigComp}`})
+                    </span>
+                  );
+                })()}
+              </div>
+              <div className="mt-1 text-[11px] leading-snug text-slate-600 dark:text-slate-500">
+                {(() => {
+                  const latest = bot?.supertrendLastBarClose as SupertrendLastBarCloseScores | null | undefined;
+                  const flip = bot?.supertrendLastFlipBarClose as SupertrendLastBarCloseScores | null | undefined;
+                  const s =
+                    latest && (latest.buySignal || latest.sellSignal)
+                      ? latest
+                      : flip && (flip.buySignal || flip.sellSignal)
+                        ? flip
+                        : null;
+                  if (s == null) return null;
+                  const atBar =
+                    latest && (latest.buySignal || latest.sellSignal)
+                      ? "latest close"
+                      : "last autotrade flip bar";
+                  return (
+                    <>
+                      <span className="text-slate-600 dark:text-slate-400">Both paths ({atBar})</span> —{" "}
+                      <span className="text-emerald-200/90">BUY</span>: AI (long) {fmtAiGate(s.aiGateBuy)} · composite
+                      slot (long) {fmtRuleTotal(s.decisionLong, s.decisionMaxLong)}
+                      {" · "}
+                      <span className="text-rose-200/90">SELL</span>: AI (short) {fmtAiGate(s.aiGateSell)} · composite
+                      slot (short) {fmtRuleTotal(s.decisionShort, s.decisionMaxShort)}
+                      {s.aiGateSell == null || !Number.isFinite(Number(s.aiGateSell)) ? (
+                        <span className="mt-0.5 block text-slate-600">
+                          Short-side AI shows — until <code className="text-slate-600 dark:text-slate-500">model_short.pkl</code> exists.
+                          Composite strength uses one active direction (BUY vs SELL from price vs Supertrend band); the
+                          inactive legacy slot is 0.
+                        </span>
+                      ) : null}
+                    </>
+                  );
+                })()}
+              </div>
+              <div className="mt-1 text-[11px] text-slate-600 dark:text-slate-500">
+                Chart markers (local OHLC — last in list, can be an{" "}
+                <span className="text-slate-600 dark:text-slate-400">older</span> flip, not the latest k.x):{" "}
+                {(() => {
+                  const sigs = insightSt.markers;
+                  if (!sigs?.length) return "—";
+                  const x = sigs[sigs.length - 1];
+                  const label = x?.side === "buy" ? "BUY" : x?.side === "sell" ? "SELL" : "—";
+                  const t = x?.time;
+                  const when =
+                    t != null && Number.isFinite(t)
+                      ? new Date(Number(t) * 1000).toLocaleString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "—";
+                  return (
+                    <span className="text-slate-700 dark:text-slate-300">
+                      {label}
+                      {x?.preview ? <span className="text-amber-300/90"> (preview)</span> : null} ({when})
+                    </span>
+                  );
+                })()}
+              </div>
+            </>
+          )}
+          <div className="mt-1 text-[11px] text-slate-600">
+            <span className="text-slate-600 dark:text-slate-400">Authoritative flip</span> for trades is{" "}
+            <span className="text-slate-700 dark:text-slate-300">Last bar close (server)</span> — same row as autotrade. Chart markers can lag
+            behind k.x until candles sync. Autotrade runs when a live Binance kline closes (k.x) and the bot is started.
+            Market must be SPOT or FUTURES
+            (or AUTO with Supertrend autotrade on — AUTO routes to futures if that toggle is on, else spot). Futures buys
+            use AI when available, else a fallback score (see{" "}
+            <code className="text-slate-600 dark:text-slate-400">SUPERTREND_FUTURES_AI_FALLBACK_PROB</code>). Check Activity for every skip
+            reason.
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3 text-xs">
+          <div className="text-slate-600 dark:text-slate-400">External (CoinGecko)</div>
+          <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-slate-700 dark:text-slate-300">
             <div>24h change: {external?.market?.change24hPct != null ? `${Number(external.market.change24hPct).toFixed(2)}%` : "—"}</div>
             <div>24h vol: {external?.market?.volume24hUsd != null ? `$${Number(external.market.volume24hUsd).toFixed(0)}` : "—"}</div>
             <div>Mkt cap: {external?.market?.marketCapUsd != null ? `$${Number(external.market.marketCapUsd).toFixed(0)}` : "—"}</div>
@@ -222,9 +486,9 @@ export function InsightsPanel() {
           <div className="mt-1 text-[11px] text-slate-600">As of: {external?.asOf ?? "—"}</div>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-xs">
-          <div className="text-slate-400">External (AI features)</div>
-          <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-slate-300">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3 text-xs">
+          <div className="text-slate-600 dark:text-slate-400">External (AI features)</div>
+          <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-slate-700 dark:text-slate-300">
             <div>
               News sentiment:{" "}
               {newsSent != null && Number.isFinite(Number(newsSent)) ? Number(newsSent).toFixed(3) : "—"}

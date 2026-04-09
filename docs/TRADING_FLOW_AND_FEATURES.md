@@ -212,7 +212,7 @@ flowchart TD
 |----------|---------|
 | `GET /health`, `GET /api/state` | Health and full snapshot (bot + account + positions + trades). |
 | `POST /api/bot/start`, `/stop`, `/config` | Control bot and parameters. |
-| `POST /api/mode/set` | Switch **PAPER**, **BINANCE_DEMO**, **BINANCE_DEMO_API**, **BINANCE_DEMO_FUTURES**, testnet, etc. |
+| `POST /api/mode/set` | Switch **PAPER**, **BINANCE_DEMO_API**, **BINANCE_TESTNET** (spot + futures testnet), **BINANCE_LIVE** (mainnet, guarded), etc. |
 | `POST /api/trade/manual`, `/api/trade/close` | Human overrides with SL/TP semantics. |
 | `GET /api/universe/scan` | On-demand universe snapshot. |
 | `POST /api/ai/train-real`, `/api/ai/retrain` | Remote training and feedback retrain triggers. |
@@ -248,7 +248,9 @@ flowchart TD
 Important knobs (non-exhaustive):
 
 - **Trading**: `TRADING_MODE`, `MARKET_FEED`, `AI_BASE_URL`, `AI_THRESHOLD`, `AI_REGIME_ADAPTIVE`, `AI_GATE_USE_RAW`, `RISK_PER_TRADE`, `MAX_DAILY_LOSS`, `MAX_DRAWDOWN_PCT`, `MAX_POSITION_AGE_MS`, `PORTFOLIO_MAX_CORRELATION`
-- **Binance demo**: `BINANCE_DEMO_*`, `BINANCE_DEMO_FUTURES_*`, `BINANCE_DEMO_ALLOW_AUTO`
+- **Per-mode files** (default `data/modes/<paper|demo_api|testnet|live>/`): Activity log JSONL, trade WS audit JSONL, `bot-trading-config.json` (UI + last 10 Supertrend signals). Override with `ACTIVITY_LOG_PATH`, `TRADE_WS_LOG_PATH`, or `BOT_TRADING_CONFIG_PATH` to use one global file (not recommended for live vs demo).
+- **Binance demo** (`BINANCE_DEMO_API`): `BINANCE_DEMO_*` (spot), `BINANCE_DEMO_FUTURES_*` (demo-fapi), `BINANCE_DEMO_ALLOW_AUTO`
+- **Binance live** (`BINANCE_LIVE`): `BINANCE_LIVE_TRADING_ENABLED` (must be `1`), `BINANCE_LIVE_*` (spot), `BINANCE_LIVE_FUTURES_*` (mainnet fapi), `BINANCE_LIVE_ALLOW_AUTO`
 - **Retrain**: `RETRAIN_EVERY_CLOSED_TRADES`, `RETRAIN_MIN_ROWS`
 
 See `backend/.env.example` for the full list with comments.

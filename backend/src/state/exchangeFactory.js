@@ -3,22 +3,40 @@ import { createPaperFuturesExchange } from "../svc/exchange/paperFutures.js";
 import { createBinanceTestnetSpotExchange } from "../svc/exchange/binanceTestnetSpot.js";
 import { createBinanceDemoSpotExchange } from "../svc/exchange/binanceDemoSpot.js";
 import { createBinanceDemoFuturesUsdMExchange } from "../svc/exchange/binanceDemoFuturesUsdM.js";
+import { createBinanceLiveSpotExchange } from "../svc/exchange/binanceLiveSpot.js";
+import { createBinanceLiveFuturesUsdMExchange } from "../svc/exchange/binanceLiveFuturesUsdM.js";
 import { createBinanceFuturesTestnetUsdMExchange } from "../svc/exchange/binanceFuturesTestnetUsdM.js";
 import { createHybridExchange } from "../svc/exchange/hybrid.js";
+import { resolveDefaultDemoFuturesSimDir } from "../lib/tradingModePersistence.js";
 
 export function createExchange({ mode, log }) {
-  if (mode === "BINANCE_TESTNET") {
-    // Create both spot + futures if keys exist; bot can route between them.
-    const spot = createBinanceTestnetSpotExchange({ log });
+  let m = String(mode || "PAPER").toUpperCase();
+  // Removed TRADING_MODE; still accepted e.g. from scripts — appState logs a warning on startup.
+  if (m === "BINANCE_DEMO_FUTURES") m = "BINANCE_DEMO_API";
+  if (m === "BINANCE_FUTURES_TESTNET") m = "BINANCE_TESTNET";
+  if (m === "BINANCE_TESTNET") {
+    // Single testnet mode: hybrid spot testnet + USD-M futures testnet when each leg initializes (keys/REST may still fail per-call).
+    let spot = null;
     let futures = null;
     try {
+      spot = createBinanceTestnetSpotExchange({ log });
+    } catch (e) {
+      log?.warn?.("binance_testnet_spot_init_failed", { error: String(e?.message || e) });
+    }
+    try {
       futures = createBinanceFuturesTestnetUsdMExchange({ log });
-    } catch {
-      futures = null;
+    } catch (e) {
+      log?.warn?.("binance_testnet_futures_init_failed", { error: String(e?.message || e) });
+    }
+    if (!spot && !futures) {
+      log?.warn?.("binance_testnet_no_legs_using_paper", {
+        detail: "Could not init spot or futures testnet connectors — using PAPER.",
+      });
+      return createPaperExchange({ log });
     }
     return createHybridExchange({ spot, futures, log });
   }
-  if (mode === "BINANCE_DEMO_API") {
+  if (m === "BINANCE_DEMO_API") {
     // Demo Spot API is real demo orders; Binance docs only cover SPOT demo API.
     // If demo futures API is available, pair the *real* demo futures wallet; otherwise fall back to simulated futures.
     const spot = createBinanceDemoSpotExchange({ log });
@@ -32,50 +50,30 @@ export function createExchange({ mode, log }) {
       futures = createPaperFuturesExchange({
         log,
         name: "binance_demo_futures_sim",
-        baseDir: process.env.BINANCE_DEMO_FUTURES_STORE_DIR || "./data/binance-demo-futures",
+        baseDir: resolveDefaultDemoFuturesSimDir(),
       });
       futures.supportsAutoTrading = true;
     }
     return createHybridExchange({ spot, futures, log });
   }
-  if (mode === "BINANCE_DEMO") {
-    // Demo = paper execution with real Binance market feed (chart looks like live)
-    const ex = createPaperExchange({
-      log,
-      name: "binance_demo",
-      baseDir: process.env.BINANCE_DEMO_STORE_DIR || "./data/binance-demo",
-    });
-    // Allow the bot to place trades in this mode (it is still an execution-capable demo).
-    ex.supportsAutoTrading = true;
-    return ex;
-  }
-  if (mode === "BINANCE_DEMO_FUTURES") {
-    // Prefer real Binance USD-M *demo* futures (demo-fapi) when keys are set so positions match the exchange.
-    // Without keys, keep local paper futures (persisted under BINANCE_DEMO_FUTURES_STORE_DIR).
-    const futKey = process.env.BINANCE_DEMO_FUTURES_API_KEY || process.env.BINANCE_DEMO_API_KEY || "";
-    const futSecret =
-      process.env.BINANCE_DEMO_FUTURES_API_SECRET || process.env.BINANCE_DEMO_API_SECRET || "";
-    if (futKey && futSecret) {
-      const ex = createBinanceDemoFuturesUsdMExchange({ log });
-      ex.supportsAutoTrading = true;
-      return ex;
+  if (m === "BINANCE_LIVE") {
+    if (String(process.env.BINANCE_LIVE_TRADING_ENABLED || "0") !== "1") {
+      throw new Error(
+        "binance_live_not_enabled: set BINANCE_LIVE_TRADING_ENABLED=1 in backend/.env after reviewing real-funds and API-key risk."
+      );
     }
-    const ex = createPaperFuturesExchange({
-      log,
-      name: "binance_demo_futures",
-      baseDir: process.env.BINANCE_DEMO_FUTURES_STORE_DIR || "./data/binance-demo-futures",
-    });
-    ex.supportsAutoTrading = true;
-    return ex;
-  }
-  if (mode === "BINANCE_FUTURES_TESTNET") {
-    const futures = createBinanceFuturesTestnetUsdMExchange({ log });
-    // If spot keys exist too, expose it for AUTO routing.
-    let spot = null;
+    const spot = createBinanceLiveSpotExchange({ log });
+    let futures = null;
     try {
-      spot = createBinanceTestnetSpotExchange({ log });
-    } catch {
-      spot = null;
+      futures = createBinanceLiveFuturesUsdMExchange({ log });
+    } catch (e) {
+      log?.warn?.("binance_live_futures_init_failed", { error: String(e?.message || e) });
+      futures = null;
+    }
+    if (!futures) {
+      log?.warn?.("binance_live_futures_unavailable_spot_only_hybrid", {
+        detail: "Futures leg failed to initialize — hybrid spot-only until BINANCE_LIVE_FUTURES_* / keys are fixed.",
+      });
     }
     return createHybridExchange({ spot, futures, log });
   }

@@ -16,7 +16,10 @@ Hybrid full-stack architecture:
 
 ### 2) Install deps
 
+From the **repository root** (the folder that contains this `package.json`):
+
 ```bash
+cd /path/to/trading
 npm install
 python3 -m venv ai-service/.venv
 source ai-service/.venv/bin/activate
@@ -62,6 +65,17 @@ The AI service will **temporarily fall back** to a scikit-learn gradient boostin
 
 - Default mode is **PAPER** (no real orders).
 - Switching to Binance requires explicit env settings in `backend/.env`.
+
+## Production / VPS / Docker
+
+- **Full walkthrough**: [deploy/DEPLOY.md](deploy/DEPLOY.md) (GitHub → VPS, secrets, HTTPS, Compose).
+- **Single image**: `Dockerfile` builds the SPA and serves it via the backend (`SERVE_FRONTEND=1` in the image).
+- **Stack**: `docker-compose.yml` → `app` + `ai` services; bind `app` to `127.0.0.1:8000` and terminate TLS with **Caddy** (see `deploy/Caddyfile.example`).
+- **CI**: GitHub Actions builds Node workspaces + Docker image — `.github/workflows/ci.yml`.
+
+## Same-origin production UI
+
+Production builds default to **same-origin** API URLs (empty `VITE_BACKEND_HTTP`) when you serve the SPA from the Express app or the same reverse-proxy host. Split hosts still work if you set `VITE_BACKEND_HTTP` / `VITE_BACKEND_WS` at **frontend build time**.
 
 ## Coin selection (scan → filter → score → pick)
 

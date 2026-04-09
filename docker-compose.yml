@@ -1,0 +1,54 @@
+# Production stack: trading app (API + static UI) + AI service.
+#
+# Prereqs: create backend/.env and ai-service/.env from *.example (never commit secrets).
+# In backend/.env set at minimum:
+#   NODE_ENV=production
+#   AI_BASE_URL=http://ai:8001
+#   FRONTEND_ORIGIN=https://YOUR_PUBLIC_HOST   (exact browser URL)
+#   APP_UI_AUTH_ENABLED=1, SESSION_SECRET, user hashes, REQUIRE_APP_UI_AUTH_IN_PRODUCTION=1
+#   TRUST_PROXY=1 when behind Caddy/nginx
+#
+# Build & run:
+#   docker compose up -d --build
+#
+# App listens on : — publish only behind TLS (Caddy) or bind to localhost + reverse proxy.
+
+services:
+  ai:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./ai-service/.env
+    environment:
+      AI_SERVICE_HOST: 0.0.0.0
+      AI_SERVICE_PORT: 8001
+      MODEL_DIR: /app/data/model
+      FEEDBACK_CSV: /app/data/feedback/trades.csv
+    volumes:
+      - ai-model-data:/app/data
+    expose:
+      - "8001"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - ai
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      PORT: "8000"
+      SERVE_FRONTEND: "1"
+      AI_BASE_URL: http://ai:8001
+    volumes:
+      - trading-data:/app/backend/data
+
+volumes:
+  ai-model-data:
+  trading-data:

@@ -1351,6 +1351,18 @@ class BinanceTrainResponse(BaseModel):
 app = FastAPI(title="AI Service", version="2.0.0")
 
 
+@app.get("/")
+def root() -> dict[str, Any]:
+    """Public URL sanity check (browser opens `/` by default)."""
+    return {
+        "service": "ai-service",
+        "version": "2.0.0",
+        "health": "/health",
+        "docs": "/docs",
+        "openapi": "/openapi.json",
+    }
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     m = load_model()
@@ -1408,6 +1420,7 @@ def predict(req: PredictRequest) -> PredictResponse:
     candles_df = pd.DataFrame([c.model_dump() for c in req.candles])
     candles_df = enrich_with_external_features(candles_df)
     feats = build_features(candles_df)
+    # Single row, but columns are rolling / MTF — multi-bar context is encoded in the vector.
     x = feats.iloc[-1:][FEATURE_COLUMNS].to_numpy()
 
     # Ensemble prediction: model can be a list of models or a single model
@@ -1434,7 +1447,8 @@ def predict(req: PredictRequest) -> PredictResponse:
             proba_iso = raw_proba
     iso_w = max(0.0, min(1.0, float(os.getenv("AI_CAL_BLEND_ISOTONIC", "0.72"))))
     proba = proba_iso
-    if cal_platt is not None:
+    platt_disable = os.getenv("AI_CAL_PLATT_DISABLE", "").strip().lower() in ("1", "true", "yes")
+    if cal_platt is not None and not platt_disable:
         try:
             proba_p = float(
                 cal_platt.predict_proba(np.array([[raw_proba]], dtype=np.float64))[0, 1]

@@ -1,13 +1,14 @@
 import { roundTo } from "../../lib/math.js";
+import { resolveDefaultPaperFuturesStoreDir } from "../../lib/tradingModePersistence.js";
 import { createPaperStore } from "./paperStore.js";
 
 export function createPaperFuturesExchange({ log, name = "paper_futures", baseDir } = {}) {
-  const store = createPaperStore({ baseDir: baseDir ?? process.env.PAPER_FUTURES_STORE_DIR ?? "./data/paper-futures" });
+  const store = createPaperStore({ baseDir: baseDir ?? resolveDefaultPaperFuturesStoreDir() });
   const feeBps = Number(process.env.PAPER_FUTURES_FEE_BPS ?? 4); // 0.04% typical taker-ish
   const slippageBps = Number(process.env.PAPER_FUTURES_SLIPPAGE_BPS ?? 8);
   const feeRate = Math.max(0, feeBps) / 10_000;
   const slipRate = Math.max(0, slippageBps) / 10_000;
-  const defaultLeverage = Math.max(1, Math.min(50, Number(process.env.FUTURES_DEFAULT_LEVERAGE || 5)));
+  const defaultLeverage = Math.max(1, Math.min(100, Number(process.env.FUTURES_DEFAULT_LEVERAGE || 5)));
 
   const state = {
     equity: 10_000,
@@ -94,10 +95,13 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     const p = state.positions[idx];
     const exitSide = p.side === "BUY" ? "SELL" : "BUY";
     const filled = fillPrice({ side: exitSide, px: markPx });
-    const pnl = calcUnrealizedPnl(p, filled);
+    const gross = calcUnrealizedPnl(p, filled);
     const notional = Number(filled) * Number(p.qty);
-    const fee = feeForNotional(notional);
-    state.equity = roundTo(state.equity + pnl - fee, 2);
+    const exitFee = feeForNotional(notional);
+    const openFee = Number(p?.meta?.openFee ?? p?.meta?.fee ?? 0);
+    const totalFee = openFee + exitFee;
+    const netPnl = roundTo(gross - totalFee, 4);
+    state.equity = roundTo(state.equity + gross - exitFee, 2);
     state.positions.splice(idx, 1);
     const t = {
       id: posId,
@@ -106,11 +110,17 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
       symbol: p.symbol,
       side: p.side,
       qty: p.qty,
+      price: Number(filled),
       entryPrice: p.entryPrice,
       exitPrice: filled,
-      pnl: roundTo(pnl - fee, 4),
+      stopLoss: p.stopLoss ?? null,
+      takeProfit: p.takeProfit ?? null,
+      leverage: p.leverage ?? p?.meta?.leverage ?? null,
+      pnl: netPnl,
+      fee: roundTo(totalFee, 6),
+      grossPnl: roundTo(gross, 4),
       strategy: p.strategy,
-      meta: { ...(p.meta || {}), closeReason: reason, fee },
+      meta: { ...(p.meta || {}), closeReason: reason, openFee, exitFee, totalFee: roundTo(totalFee, 6) },
     };
     state.trades.push(t);
     persistSoon();
@@ -192,7 +202,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     },
     async placeOrder({ symbol, side, qty, price, stopLoss, takeProfit, strategy, meta }) {
       rolloverIfNeeded();
-      const leverage = Math.max(1, Math.min(50, Number(meta?.futuresLeverage || meta?.leverage || defaultLeverage)));
+      const leverage = Math.max(1, Math.min(100, Number(meta?.futuresLeverage || meta?.leverage || defaultLeverage)));
       const id = `pfut_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
       const markPx = Number(price);
       const filledPrice = fillPrice({ side, px: markPx });
@@ -214,7 +224,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         leverage,
         openedAt: new Date().toISOString(),
         strategy,
-        meta: { ...(meta || {}), leverage },
+        meta: { ...(meta || {}), leverage, openFee: fee, fee },
       };
       state.positions.push(pos);
       state.trades.push({
@@ -228,7 +238,8 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         stopLoss: Number(stopLoss),
         takeProfit: Number(takeProfit),
         strategy,
-        meta: { ...(meta || {}), leverage, fee },
+        fee: roundTo(fee, 6),
+        meta: { ...(meta || {}), leverage, openFee: fee, fee },
       });
 
       // Attach synthetic bracket orders
@@ -245,13 +256,33 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     },
     async closePosition({ id, price, reason = "MANUAL_CLOSE" }) {
       rolloverIfNeeded();
-      const px = Number(price);
+      const posRow = state.positions.find((p) => p.id === id);
+      let px = Number(price);
+      if (!Number.isFinite(px) || px <= 0) {
+        const ep = Number(posRow?.entryPrice);
+        if (Number.isFinite(ep) && ep > 0) px = ep;
+      }
       if (!Number.isFinite(px) || px <= 0) return { ok: false, error: "bad_price" };
       const t = closePositionInternal(id, px, reason);
       if (!t) return { ok: false, error: "not_found" };
       state.openOrders = state.openOrders.filter((o) => o.posId !== id);
       persistSoon();
       return { ok: true, pnl: t.pnl };
+    },
+    async getSymbolOrderConstraints(arg) {
+      const sym =
+        typeof arg === "string"
+          ? String(arg || "").toUpperCase()
+          : String(arg?.symbol || "").toUpperCase();
+      return {
+        ok: true,
+        symbol: sym || "—",
+        venue: "FUTURES",
+        minNotional: 5,
+        quoteAsset: "USDT",
+        synthetic: true,
+        rule: "Paper futures sim — no live Binance exchangeInfo",
+      };
     },
     async close() {
       // no-op

@@ -132,6 +132,12 @@ function computeConfluenceScore({ candles, indicators, regime }) {
 }
 
 export const strategies = {
+  SUPERTREND: {
+    name: "Supertrend (spot — trades on candle close via WebSocket)",
+    signal() {
+      return { action: "HOLD", reason: "supertrend_event_driven" };
+    },
+  },
   CONFLUENCE: {
     name: "Multi-Indicator Confluence (scored 0-100)",
     signal: computeConfluenceScore,

@@ -1,0 +1,10 @@
+{
+  "AI_BASE_URL": "https://git-hustle-ai-production.up.railway.app",
+  "FRONTEND_ORIGIN": "https://git-hustle-api-production.up.railway.app",
+  "LISTEN_HOST": "0.0.0.0",
+  "MARKET_FEED": "BINANCE_FUTURES",
+  "NODE_ENV": "production",
+  "RAILWAY_DOCKERFILE_PATH": "Dockerfile.app",
+  "SERVE_FRONTEND": "1",
+  "TRADING_MODE": "PAPER"
+}

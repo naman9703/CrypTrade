@@ -1,19 +1,39 @@
-# Minimal workflow so Railway can use "Wait for CI" (optional).
-# See: https://docs.railway.com/guides/github-autodeploys
 name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main, master]
   pull_request:
-    branches:
-      - main
+    branches: [main, master]
 
 jobs:
-  gate:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Sanity check
-        run: test -f Dockerfile.app && test -f Dockerfile.monolith && test -f deploy/railway-app.toml && test -f deploy/railway-monolith.toml && test -f railway.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install & build (workspaces)
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ai-service/requirements.txt
+
+      - name: AI service deps + syntax check
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ai-service/requirements.txt
+          python -m compileall -q ai-service/app
+
+      - name: Docker build (app image)
+        run: docker build -t trading-app:ci .

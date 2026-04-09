@@ -1,183 +1,63 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { api } from "../api/client";
 import { playEngineStartSound } from "../lib/uiSounds";
 import { useAppStore } from "../ws/store";
 
-function Dot({ ok }: { ok: boolean }) {
-  return <span className={`inline-block h-2 w-2 rounded-full ${ok ? "bg-emerald-400" : "bg-rose-400"}`} />;
-}
-
 export function HeaderBar() {
   const bot = useAppStore((s) => s.bot);
   const mode = useAppStore((s) => s.mode);
-  const connected = useAppStore((s) => s.ws.connected);
   const pushLog = useAppStore((s) => s.pushLog);
 
-  const [aiOk, setAiOk] = useState<boolean>(false);
-  const [aiMeta, setAiMeta] = useState<{ modelLoaded?: boolean; modelKind?: string; xgboostAvailable?: boolean }>({});
-
-  useEffect(() => {
-    let alive = true;
-    const run = async () => {
-      try {
-        const r = await api.aiHealth();
-        if (!alive) return;
-        setAiOk(Boolean(r?.ok));
-        setAiMeta({
-          modelLoaded: Boolean(r?.data?.model_loaded),
-          xgboostAvailable: Boolean(r?.data?.xgboost_available),
-        });
-      } catch {
-        if (!alive) return;
-        setAiOk(false);
-        setAiMeta({});
-      }
-    };
-    run();
-    const id = setInterval(run, 4000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
-
   const botRunning = Boolean(bot?.running);
-  const aiProb = bot?.lastAi?.probability;
-  const modelKind = bot?.lastAi?.model_kind || bot?.lastAi?.modelKind;
-  const feedOk = Boolean(bot?.feed?.ok);
-  const feedSource = bot?.feed?.source || "—";
   const exchangeName = bot?.exchange?.name || mode || "—";
-  const udf = bot?.exchangeStatus?.udf as
-    | { ok?: boolean; syncMode?: string; error?: string | null }
-    | undefined;
-  const showExecSync =
-    exchangeName === "binance_testnet_spot" ||
-    mode === "BINANCE_TESTNET" ||
-    mode === "BINANCE_DEMO_API" ||
-    exchangeName === "binance_demo_spot_api";
-  const execWsOk = Boolean(udf?.ok && udf?.syncMode === "websocket");
-  const execRestOnlyOk = Boolean(udf?.syncMode === "polling" && (udf as { restOnly?: boolean })?.restOnly);
-  const execDemoPollingOk =
-    (mode === "BINANCE_DEMO_API" || exchangeName === "binance_demo_spot_api") &&
-    udf?.syncMode === "polling" &&
-    !execWsOk;
-  const execSyncOk = execWsOk || execRestOnlyOk || execDemoPollingOk;
-  const pnlHint = useMemo(() => {
-    const d = bot?.lastDecision?.signal?.action;
-    return d ? String(d) : "—";
-  }, [bot]);
 
-  /** Red was misleading: non-PAPER demo/testnet modes looked "broken". Green = sandbox-style mode (not ambiguous mainnet live). */
-  const sandboxTradingMode =
-    !mode ||
-    mode === "PAPER" ||
-    /DEMO|TESTNET/i.test(String(mode));
-
-  const feedTitle =
-    feedOk && !bot?.feed?.error
-      ? `Market data: ${feedSource}`
-      : [feedSource, bot?.feed?.error].filter(Boolean).join(" — ") || "Market feed";
-
+  const pendingSt = bot?.pendingSupertrendAction as { side?: string; venue?: string } | undefined;
   const botStaleHint = botRunning
     ? undefined
-    : "Start bot — Regime / AI / Model / Signal update on each tick while running.";
+    : pendingSt?.side
+      ? `Pending Supertrend ${String(pendingSt.side)} (${String(pendingSt.venue ?? "—")}) — Start bot to execute (skipped if position already flat)`
+      : "Start bot — status row above updates while running.";
+
+  const modeSelectTitle = useMemo(
+    () => `Trading mode: ${mode ?? "—"} · venue: ${exchangeName}`,
+    [mode, exchangeName],
+  );
 
   return (
-    <div className="border-b border-slate-800 bg-slate-950/70 backdrop-blur">
-      <div className="mx-auto flex max-w-[1600px] items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-3">
-          <div className="text-sm font-semibold tracking-wide">AI Trading</div>
-          <div className="text-xs text-slate-400">Personal platform</div>
+    <div className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 backdrop-blur">
+      <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-3.5 sm:px-5 sm:py-4">
+        <div className="ml-6 flex shrink-0 items-center gap-3 sm:ml-10">
+          <img
+            src="/logo-light.webp"
+            alt="AI Trading"
+            width={240}
+            height={48}
+            className="h-11 w-auto max-h-11 object-contain object-left dark:hidden sm:h-12 sm:max-h-12"
+            decoding="async"
+          />
+          <img
+            src="/logo-dark.webp"
+            alt="AI Trading"
+            width={240}
+            height={48}
+            className="hidden h-11 w-auto max-h-11 object-contain object-left dark:block sm:h-12 sm:max-h-12"
+            decoding="async"
+          />
         </div>
 
-        <div className="flex items-center gap-4 text-xs">
-          <div
-            className="flex items-center gap-2"
-            title={`Trading mode: ${mode ?? "—"} · venue: ${exchangeName}`}
-          >
-            <Dot ok={sandboxTradingMode} />
-            <span className="text-slate-300">{exchangeName}</span>
-          </div>
-
-          <div className="flex items-center gap-2" title="WebSocket to your backend">
-            <Dot ok={connected} />
-            <span className="text-slate-300">WS</span>
-          </div>
-
-          <div className="flex max-w-[140px] items-center gap-2 sm:max-w-none" title={feedTitle}>
-            <Dot ok={feedOk} />
-            <span className="truncate text-slate-300">{feedSource}</span>
-          </div>
-
-          <div
-            className="flex items-center gap-2"
-            title={
-              aiOk && aiMeta.modelLoaded === false
-                ? "AI service is up but no model.pkl — run Train synthetic or Train on real data"
-                : aiOk && aiMeta.modelLoaded
-                  ? "Model loaded and predict available"
-                  : "AI service unreachable or status pending"
-            }
-          >
-            <Dot ok={Boolean(aiOk && aiMeta.modelLoaded)} />
-            <span className="text-slate-300">
-              AI{aiMeta.modelLoaded === false ? " (no model)" : ""}
-              {aiMeta.modelLoaded && !aiMeta.xgboostAvailable ? " (fallback)" : ""}
-            </span>
-          </div>
-
-          {showExecSync && (
-            <div className="flex items-center gap-2" title={udf?.error || "Order lifecycle sync"}>
-              <Dot ok={execSyncOk} />
-              <span className="text-slate-300">{execWsOk ? "Exec WS" : "Exec REST"}</span>
-            </div>
-          )}
-
-          <div className="hidden md:block text-slate-400" title={botStaleHint || undefined}>
-            Regime: <span className="text-slate-200">{bot?.lastRegime?.type ?? "—"}</span>
-          </div>
-
-          <div className="hidden md:block text-slate-400" title={botStaleHint || undefined}>
-            AI:{" "}
-            <span className="text-slate-200">
-              {aiProb != null && Number.isFinite(Number(aiProb)) ? Number(aiProb).toFixed(3) : "—"}
-            </span>
-          </div>
-
-          <div className="hidden md:block text-slate-400" title={botStaleHint || undefined}>
-            Model: <span className="text-slate-200">{modelKind ?? "—"}</span>
-          </div>
-
-          <div className="hidden md:block text-slate-400" title={botStaleHint || undefined}>
-            Signal: <span className="text-slate-200">{pnlHint}</span>
-          </div>
-
-          <button
-            className={`rounded-lg px-3 py-1.5 font-medium ${
-              botRunning ? "bg-rose-600/80 hover:bg-rose-600" : "bg-emerald-600/80 hover:bg-emerald-600"
-            }`}
-            onClick={async () => {
-              try {
-                if (botRunning) await api.botStop();
-                else {
-                  await api.botStart();
-                  playEngineStartSound();
-                }
-              } catch {
-                pushLog({ level: "error", msg: "Failed to toggle bot" });
-              }
-            }}
-          >
-            {botRunning ? "Stop Bot" : "Start Bot"}
-          </button>
-
-          <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-1.5" title={modeSelectTitle}>
             <select
-              className="rounded-lg border border-slate-700 bg-slate-900/40 px-2 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-900"
+              className="max-w-[9.5rem] truncate rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-200/55 dark:bg-slate-100 dark:bg-slate-900/40 px-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 sm:max-w-none"
               value={mode || "PAPER"}
               onChange={async (e) => {
                 const next = e.target.value;
-                const ok = window.confirm(`Switch trading mode to ${next}? Bot will stop.`);
+                const ok =
+                  next === "BINANCE_LIVE"
+                    ? window.confirm(
+                        "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Bot will stop. Continue?",
+                      )
+                    : window.confirm(`Switch trading mode to ${next}? Bot will stop.`);
                 if (!ok) return;
                 try {
                   await api.setMode(next as any);
@@ -188,18 +68,15 @@ export function HeaderBar() {
               }}
             >
               <option value="PAPER">PAPER (simulated)</option>
-              <option value="BINANCE_DEMO">BINANCE DEMO SPOT (sim + live feed)</option>
-              <option value="BINANCE_DEMO_FUTURES">
-                BINANCE DEMO FUTURES (local sim, or demo-fapi if API keys set)
-              </option>
-              <option value="BINANCE_DEMO_API">BINANCE DEMO SPOT API (real demo orders)</option>
-              <option value="BINANCE_TESTNET">BINANCE TESTNET (real testnet orders)</option>
-              <option value="BINANCE_FUTURES_TESTNET">BINANCE FUTURES TESTNET (real futures testnet)</option>
+              <option value="BINANCE_DEMO_API">BINANCE DEMO API (spot + futures demo)</option>
+              <option value="BINANCE_TESTNET">BINANCE TESTNET (spot + futures testnet)</option>
+              <option value="BINANCE_LIVE">BINANCE LIVE (mainnet · real money)</option>
             </select>
 
             {(mode === "BINANCE_DEMO_API" || exchangeName === "binance_demo_spot") && (
               <button
-                className="rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-900"
+                type="button"
+                className="rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-200/55 dark:bg-slate-100 dark:bg-slate-900/40 px-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900"
                 onClick={() => window.open("https://www.binance.com/en/demo-trading", "_blank")}
                 title="Open Binance Demo Trading UI"
               >
@@ -209,17 +86,104 @@ export function HeaderBar() {
 
             {(mode === "BINANCE_TESTNET" || exchangeName === "binance_testnet_spot") && (
               <button
-                className="rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-900"
+                type="button"
+                className="rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-200/55 dark:bg-slate-100 dark:bg-slate-900/40 px-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900"
                 onClick={() => window.open("https://testnet.binance.vision/", "_blank")}
                 title="Open Binance Spot Testnet dashboard"
               >
-                Open testnet
+                Spot testnet
+              </button>
+            )}
+
+            {(mode === "BINANCE_TESTNET" || exchangeName === "binance_futures_testnet_usdm") && (
+              <button
+                type="button"
+                className="rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-200/55 dark:bg-slate-100 dark:bg-slate-900/40 px-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900"
+                onClick={() => window.open("https://testnet.binancefuture.com/", "_blank")}
+                title="Open Binance USD-M Futures Testnet"
+              >
+                Fut testnet
+              </button>
+            )}
+
+            {(mode === "BINANCE_LIVE" || exchangeName === "binance_live_spot") && (
+              <button
+                type="button"
+                className="rounded-lg border border-amber-800/50 bg-amber-950/35 px-2 py-1 text-xs font-medium text-amber-100 hover:bg-amber-950/55"
+                onClick={() => window.open("https://www.binance.com/en/my/wallet/account/main", "_blank")}
+                title="Binance spot wallet (mainnet)"
+              >
+                Live spot
+              </button>
+            )}
+
+            {mode === "BINANCE_LIVE" && (
+              <button
+                type="button"
+                className="rounded-lg border border-amber-800/50 bg-amber-950/35 px-2 py-1 text-xs font-medium text-amber-100 hover:bg-amber-950/55"
+                onClick={() => window.open("https://www.binance.com/en/futures/BTCUSDT", "_blank")}
+                title="Binance USD-M futures (mainnet)"
+              >
+                Live futures
               </button>
             )}
           </div>
+
+          <button
+            type="button"
+            title={botStaleHint}
+            className="bmw-bot-trigger inline-flex shrink-0 -translate-x-2 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 sm:-translate-x-2.5"
+            onClick={async () => {
+              try {
+                if (botRunning) await api.botStop({ reason: "ui_header_bar" });
+                else {
+                  await api.botStart({ reason: "ui_header_bar" });
+                  playEngineStartSound();
+                }
+              } catch {
+                pushLog({ level: "error", msg: "Failed to toggle bot" });
+              }
+            }}
+          >
+            {!botRunning ? (
+              <>
+                <span className="text-xs font-medium text-slate-900 dark:text-slate-100" aria-hidden>
+                  Start
+                </span>
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full border border-slate-200 dark:border-slate-900/50 bg-rose-500 shadow-sm shadow-rose-500/40"
+                  aria-hidden
+                />
+              </>
+            ) : (
+              <>
+                <span className="text-xs font-medium text-slate-900 dark:text-slate-100" aria-hidden>
+                  Stop
+                </span>
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full border border-slate-200 dark:border-slate-900/50 bg-emerald-400 shadow-sm shadow-emerald-400/45"
+                  aria-hidden
+                />
+              </>
+            )}
+            <div className="bmw-bot-btn bmw-header-roundel" aria-hidden>
+              <div className="bmw-emblem">
+                <div className="bmw-circle bmw-c1">
+                  <div className="bmw-circle bmw-c2">
+                    <div className="bmw-circle bmw-c3">
+                      <div className="bmw-shape bmw-s1" />
+                      <div className="bmw-shape bmw-s2" />
+                      <div className="bmw-shape bmw-s3" />
+                      <div className="bmw-shape bmw-s4" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <span className="sr-only">{botRunning ? "Stop bot" : "Start bot"}</span>
+          </button>
         </div>
       </div>
     </div>
   );
 }
-

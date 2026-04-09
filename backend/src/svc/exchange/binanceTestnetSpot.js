@@ -2,6 +2,16 @@ import crypto from "crypto";
 import axios from "axios";
 import { createBinanceTestnetStore } from "./binanceTestnetStore.js";
 import WebSocket from "ws";
+import { resolveDefaultTestnetSpotStoreDir } from "../../lib/tradingModePersistence.js";
+import { roundTo } from "../../lib/math.js";
+import {
+  sumCommissionsByAssetFromFills,
+  commissionsByAssetToUsdApprox,
+  mergeByAsset,
+  createUsdtTicker,
+  spotRoundTripPnlWithFees,
+} from "../../lib/binanceSpotCommissions.js";
+import { extractMinNotionalFromFilters } from "../../lib/binanceMinNotional.js";
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
@@ -21,6 +31,8 @@ export function createBinanceTestnetSpotExchange({ log }) {
     timeout: 10_000,
     headers: { "X-MBX-APIKEY": apiKey },
   });
+
+  const usdtPriceForAsset = createUsdtTicker({ http, path: "/api/v3/ticker/price", log });
 
   const wsBase = process.env.BINANCE_TESTNET_WS_BASE || "wss://testnet.binance.vision/ws";
   const udf = {
@@ -64,7 +76,7 @@ export function createBinanceTestnetSpotExchange({ log }) {
     }
   }
 
-  const store = createBinanceTestnetStore({ baseDir: process.env.BINANCE_TESTNET_STORE_DIR });
+  const store = createBinanceTestnetStore({ baseDir: resolveDefaultTestnetSpotStoreDir() });
   // We model positions as: entry order + attached OCO list.
   const mem = { trades: [], openOrders: 0, positions: new Map(), lastSyncAt: null };
   const maxNotional = Number(process.env.MAX_ORDER_NOTIONAL_USDT || 50);
@@ -209,7 +221,14 @@ export function createBinanceTestnetSpotExchange({ log }) {
     if (!stepSize || !minQty) throw new Error("exchangeinfo_missing_lot_size");
 
     const tickSize = pf?.tickSize || "0.01";
-    const meta = { stepSize: String(stepSize), minQty: Number(minQty), tickSize: String(tickSize) };
+    const mn = extractMinNotionalFromFilters(filters);
+    const meta = {
+      stepSize: String(stepSize),
+      minQty: Number(minQty),
+      tickSize: String(tickSize),
+      minNotional: mn != null && Number.isFinite(mn) && mn > 0 ? mn : 5,
+      quoteAsset: String(s?.quoteAsset || "USDT"),
+    };
     symbolMeta.set(key, meta);
     return meta;
   }
@@ -293,25 +312,52 @@ export function createBinanceTestnetSpotExchange({ log }) {
               for (const [pid, p] of mem.positions.entries()) {
                 if (p.symbol !== symbol) continue;
                 if (Math.abs(Number(p.qty) - filledQty) > 1e-9) continue;
-                const exitPrice = avgPrice || Number(msg?.p || 0) || Number(p.takeProfit) || Number(p.stopLoss);
-                const pnl = (Number(exitPrice) - Number(p.entryPrice)) * Number(p.qty);
-                mem.trades.push({
-                  id: pid,
-                  ts: new Date().toISOString(),
-                  symbol,
-                  side: "SELL",
-                  qty: Number(p.qty),
-                  price: Number(exitPrice),
-                  type: "CLOSE",
-                  reason: "EXECUTION_REPORT",
-                  pnl,
-                  strategy: p.strategy,
-                  meta: p.meta || {},
-                  exitOrderId: orderId,
-                });
-                mem.positions.delete(pid);
-                log.info("binance_testnet_position_closed_ws", { id: pid, symbol, pnl });
-                persist();
+                const pSnapshot = { ...p };
+                const oid = String(msg?.i || orderId || "");
+                (async () => {
+                  let exitByAsset = {};
+                  let exitFeeUsd = null;
+                  if (oid) {
+                    try {
+                      const od = await signed("GET", "/api/v3/order", { symbol, orderId: oid });
+                      exitByAsset = sumCommissionsByAssetFromFills(od.fills);
+                      exitFeeUsd = await commissionsByAssetToUsdApprox(exitByAsset, usdtPriceForAsset, log);
+                    } catch (fe) {
+                      log.warn("binance_testnet_ws_exit_order_fetch", { symbol, orderId: oid, error: String(fe) });
+                    }
+                  }
+                  const exitPrice =
+                    avgPrice || Number(msg?.p || 0) || Number(pSnapshot.takeProfit) || Number(pSnapshot.stopLoss);
+                  const { grossPnl, pnl, fee } = spotRoundTripPnlWithFees(
+                    pSnapshot,
+                    exitPrice,
+                    pSnapshot.qty,
+                    exitFeeUsd,
+                  );
+                  mem.trades.push({
+                    id: pid,
+                    ts: new Date().toISOString(),
+                    symbol,
+                    side: "SELL",
+                    qty: Number(pSnapshot.qty),
+                    price: Number(exitPrice),
+                    type: "CLOSE",
+                    reason: "EXECUTION_REPORT",
+                    pnl,
+                    grossPnl,
+                    fee: fee ?? undefined,
+                    strategy: pSnapshot.strategy,
+                    meta: {
+                      ...(pSnapshot.meta || {}),
+                      spotCommissionsByAsset: mergeByAsset(pSnapshot.spotEntryCommissionByAsset || {}, exitByAsset),
+                      spotExitFeeUsd: exitFeeUsd,
+                    },
+                    exitOrderId: oid,
+                  });
+                  mem.positions.delete(pid);
+                  log.info("binance_testnet_position_closed_ws", { id: pid, symbol, pnl });
+                  persist();
+                })();
                 break;
               }
             }
@@ -400,7 +446,12 @@ export function createBinanceTestnetSpotExchange({ log }) {
       if (!apiKey || !apiSecret) throw new Error("binance_testnet_missing_keys");
       const a = await signed("GET", "/api/v3/account");
       const balances = (a.balances || [])
-        .map((b) => ({ asset: b.asset, total: Number(b.free) + Number(b.locked) }))
+        .map((b) => ({
+          asset: b.asset,
+          free: Number(b.free),
+          locked: Number(b.locked),
+          total: Number(b.free) + Number(b.locked),
+        }))
         .filter((b) => b.total > 0);
 
       let equity = 0;
@@ -440,8 +491,16 @@ export function createBinanceTestnetSpotExchange({ log }) {
       }
 
       const usdtBal = balances.find((b) => b.asset === "USDT");
-      const freeUsdt = usdtBal ? usdtBal.total : 0;
-      return { equity, freeBalance: freeUsdt, dailyStartEquity: null, dailyPnlPct: 0, balances };
+      const freeUsdt = usdtBal ? usdtBal.free : 0;
+      const lockedUsdt = usdtBal ? usdtBal.locked : 0;
+      return {
+        equity,
+        freeBalance: freeUsdt,
+        spotUsdt: { free: freeUsdt, locked: lockedUsdt, total: freeUsdt + lockedUsdt },
+        dailyStartEquity: null,
+        dailyPnlPct: 0,
+        balances,
+      };
     },
     async getPositions() {
       return Array.from(mem.positions.values()).map((p) => ({ ...p }));
@@ -523,6 +582,8 @@ export function createBinanceTestnetSpotExchange({ log }) {
       }
 
       const filledPrice = avgFillPrice(out) ?? Number(price || 0);
+      const entryByAsset = sumCommissionsByAssetFromFills(out.fills);
+      const entryFeeUsd = await commissionsByAssetToUsdApprox(entryByAsset, usdtPriceForAsset, log);
       const posId = `bn_${String(out.orderId)}`;
       mem.positions.set(posId, {
         id: posId,
@@ -537,6 +598,8 @@ export function createBinanceTestnetSpotExchange({ log }) {
         meta: meta || {},
         entryOrderId: String(out.orderId),
         ocoOrderListId: oco?.orderListId ?? null,
+        spotEntryCommissionByAsset: entryByAsset,
+        spotEntryFeeUsd: entryFeeUsd,
       });
 
       mem.trades.push({
@@ -549,7 +612,12 @@ export function createBinanceTestnetSpotExchange({ log }) {
         price: filledPrice,
         type: "OPEN",
         strategy,
-        meta: meta || {},
+        fee: entryFeeUsd != null ? roundTo(entryFeeUsd, 6) : undefined,
+        meta: {
+          ...(meta || {}),
+          spotCommissionsByAsset: entryByAsset,
+          spotEntryFeeUsd: entryFeeUsd,
+        },
         ocoOrderListId: oco?.orderListId ?? null,
       });
 
@@ -578,6 +646,8 @@ export function createBinanceTestnetSpotExchange({ log }) {
           // When one leg fills, the other is canceled and listOrderStatus becomes ALL_DONE.
           if (orderStatus === "ALL_DONE" || status === "ALL_DONE" || filled) {
             const exitOrderId = filled ? String(filled.orderId) : null;
+            let exitByAsset = {};
+            let exitFeeUsd = null;
             // Best-effort exit price: query order if we have an id; otherwise use stop/tp levels.
             let exitPrice = null;
             if (exitOrderId) {
@@ -586,10 +656,12 @@ export function createBinanceTestnetSpotExchange({ log }) {
               if (!exitPrice && Array.isArray(od?.fills) && od.fills.length) {
                 exitPrice = avgFillPrice(od);
               }
+              exitByAsset = sumCommissionsByAssetFromFills(od.fills);
+              exitFeeUsd = await commissionsByAssetToUsdApprox(exitByAsset, usdtPriceForAsset, log);
             }
             if (!exitPrice) exitPrice = Number(p.takeProfit) || Number(p.stopLoss) || Number(p.entryPrice);
 
-            const pnl = (Number(exitPrice) - Number(p.entryPrice)) * Number(p.qty);
+            const { grossPnl, pnl, fee } = spotRoundTripPnlWithFees(p, exitPrice, p.qty, exitFeeUsd);
             mem.trades.push({
               id,
               ts: new Date().toISOString(),
@@ -600,8 +672,14 @@ export function createBinanceTestnetSpotExchange({ log }) {
               type: "CLOSE",
               reason: "OCO_FILLED",
               pnl,
+              grossPnl,
+              fee: fee ?? undefined,
               strategy: p.strategy,
-              meta: p.meta || {},
+              meta: {
+                ...(p.meta || {}),
+                spotCommissionsByAsset: mergeByAsset(p.spotEntryCommissionByAsset || {}, exitByAsset),
+                spotExitFeeUsd: exitFeeUsd,
+              },
             });
             mem.positions.delete(id);
             log.info("binance_testnet_position_closed", { id, symbol: p.symbol, pnl });
@@ -617,6 +695,18 @@ export function createBinanceTestnetSpotExchange({ log }) {
     },
     async reset() {
       return { ok: false, error: "not_supported" };
+    },
+    async getSymbolOrderConstraints(symbol) {
+      const sym = String(symbol || "").toUpperCase();
+      const m = await getOrLoadSymbolMeta(sym);
+      return {
+        ok: true,
+        symbol: sym,
+        venue: "SPOT",
+        minNotional: m.minNotional ?? null,
+        quoteAsset: m.quoteAsset || "USDT",
+        rule: "Binance spot exchangeInfo: NOTIONAL / MIN_NOTIONAL minNotional (quote)",
+      };
     },
     async close() {
       closeUdf();

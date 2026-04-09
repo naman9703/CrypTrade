@@ -1,8 +1,9 @@
 import { roundTo } from "../../lib/math.js";
+import { resolveDefaultPaperStoreDir } from "../../lib/tradingModePersistence.js";
 import { createPaperStore } from "./paperStore.js";
 
 export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
-  const store = createPaperStore({ baseDir: baseDir ?? process.env.PAPER_STORE_DIR });
+  const store = createPaperStore({ baseDir: baseDir ?? resolveDefaultPaperStoreDir() });
   const feeBps = Number(process.env.PAPER_FEE_BPS ?? 10); // 0.10%
   const slippageBps = Number(process.env.PAPER_SLIPPAGE_BPS ?? 8); // 0.08%
   const feeRate = Math.max(0, feeBps) / 10_000;
@@ -143,6 +144,7 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
         strategy,
         stopLoss: stopLoss ?? null,
         takeProfit: takeProfit ?? null,
+        fee: roundTo(entryFee, 6),
         meta: { ...(meta || {}), feeBps, slippageBps, entryFee },
       };
       state.trades.push(tradeRow);
@@ -201,6 +203,7 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
         const entryFee = Number(p?.meta?.entryFee || 0);
         const pnl = gross - entryFee - exitFee;
         state.equity = roundTo(state.equity + gross - exitFee, 2);
+        const totalFee = roundTo(entryFee + exitFee, 6);
         const tradeRow = {
           id: p.id,
           ts: new Date().toISOString(),
@@ -208,11 +211,15 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
           side: exitSide,
           qty: p.qty,
           price: exitFill,
+          stopLoss: p.stopLoss ?? null,
+          takeProfit: p.takeProfit ?? null,
           type: "CLOSE",
           reason: exitReason,
           pnl,
+          fee: totalFee,
+          grossPnl: roundTo(gross, 4),
           strategy: p.strategy,
-          meta: { ...(p.meta || {}), exitFee, markPx: px },
+          meta: { ...(p.meta || {}), exitFee, totalFee, markPx: px },
         };
         state.trades.push(tradeRow);
         store.appendTradeCsv(tradeRow);
@@ -239,6 +246,7 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
       const entryFee = Number(p?.meta?.entryFee || 0);
       const pnl = gross - entryFee - exitFee;
       state.equity = roundTo(state.equity + gross - exitFee, 2);
+      const totalFee = roundTo(entryFee + exitFee, 6);
       const tradeRow = {
         id: p.id,
         ts: new Date().toISOString(),
@@ -246,11 +254,15 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
         side: exitSide,
         qty: p.qty,
         price: exitFill,
+        stopLoss: p.stopLoss ?? null,
+        takeProfit: p.takeProfit ?? null,
         type: "CLOSE",
         reason,
         pnl,
+        fee: totalFee,
+        grossPnl: roundTo(gross, 4),
         strategy: p.strategy,
-        meta: { ...(p.meta || {}), exitFee, markPx: px },
+        meta: { ...(p.meta || {}), exitFee, totalFee, markPx: px },
       };
       state.trades.push(tradeRow);
       store.appendTradeCsv(tradeRow);
@@ -260,6 +272,21 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
     },
     async getClosedTradesSince(n) {
       return state.trades.slice(n).filter((t) => t.type === "CLOSE");
+    },
+    async getSymbolOrderConstraints(arg) {
+      const sym =
+        typeof arg === "string"
+          ? String(arg || "").toUpperCase()
+          : String(arg?.symbol || "").toUpperCase();
+      return {
+        ok: true,
+        symbol: sym || "—",
+        venue: "SPOT",
+        minNotional: 5,
+        quoteAsset: "USDT",
+        synthetic: true,
+        rule: "Paper sim — no live Binance exchangeInfo",
+      };
     },
     async reset({ confirm }) {
       if (confirm !== true) return { ok: false, error: "confirm_required" };

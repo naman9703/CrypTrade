@@ -1,3 +1,5 @@
+import { buildHybridAccountSnapshot } from "../../lib/hybridAccountEquity.js";
+
 export function createHybridExchange({ spot, futures, log }) {
   return {
     name: "hybrid",
@@ -18,16 +20,20 @@ export function createHybridExchange({ spot, futures, log }) {
         log?.warn?.("hybrid_futures_account_failed", { error: String(e?.message || e) });
       }
 
-      // Primary account fields remain for backward compatibility with UI.
-      // Prefer spot as "primary" if present.
-      const primary = spotAcc || futAcc || { equity: 0, freeBalance: 0, dailyStartEquity: null, dailyPnlPct: 0 };
-      return {
-        ...primary,
-        venues: {
-          spot: spotAcc,
-          futures: futAcc,
-        },
-      };
+      const needSpot = typeof spot?.getAccount === "function";
+      const needFut = typeof futures?.getAccount === "function";
+      const spotOk = spotAcc != null;
+      const futOk = futAcc != null;
+      const primaryFieldsFrom =
+        spotOk && futOk ? spotAcc : spotOk ? spotAcc : futOk ? futAcc : null;
+
+      return buildHybridAccountSnapshot({
+        spotAcc,
+        futAcc,
+        needSpot,
+        needFut,
+        primaryFieldsFrom: primaryFieldsFrom || {},
+      });
     },
     async getPositions() {
       const out = [];
@@ -58,6 +64,50 @@ export function createHybridExchange({ spot, futures, log }) {
       // Must not cap to a fixed small window — ingestClosedTrades uses trades.length vs lastTradeCount.
       return out.slice(-2000);
     },
+    async getSymbolOrderConstraints({ symbol, venue }) {
+      const sym = String(symbol || "").toUpperCase();
+      const v = String(venue || "").toUpperCase();
+      if (!sym) return { ok: false, error: "symbol_required" };
+      if (v === "BOTH") {
+        const legs = {};
+        if (spot?.getSymbolOrderConstraints) {
+          try {
+            legs.spot = await spot.getSymbolOrderConstraints(sym);
+          } catch (e) {
+            legs.spot = { ok: false, error: String(e?.message || e) };
+          }
+        } else {
+          legs.spot = { ok: false, error: "spot_leg_unavailable" };
+        }
+        if (futures?.getSymbolOrderConstraints) {
+          try {
+            legs.futures = await futures.getSymbolOrderConstraints(sym);
+          } catch (e) {
+            legs.futures = { ok: false, error: String(e?.message || e) };
+          }
+        } else {
+          legs.futures = { ok: false, error: "futures_leg_unavailable" };
+        }
+        return { ok: true, symbol: sym, venue: "BOTH", legs };
+      }
+      if (v === "SPOT") {
+        if (!spot?.getSymbolOrderConstraints) return { ok: false, symbol: sym, venue: "SPOT", error: "spot_unavailable" };
+        try {
+          return await spot.getSymbolOrderConstraints(sym);
+        } catch (e) {
+          return { ok: false, symbol: sym, venue: "SPOT", error: String(e?.message || e) };
+        }
+      }
+      if (v === "FUTURES") {
+        if (!futures?.getSymbolOrderConstraints) return { ok: false, symbol: sym, venue: "FUTURES", error: "futures_unavailable" };
+        try {
+          return await futures.getSymbolOrderConstraints(sym);
+        } catch (e) {
+          return { ok: false, symbol: sym, venue: "FUTURES", error: String(e?.message || e) };
+        }
+      }
+      return { ok: false, error: "bad_venue", detail: "use SPOT, FUTURES, or BOTH" };
+    },
     async placeOrder() {
       throw new Error("hybrid_place_order_not_supported_directly");
     },
@@ -66,8 +116,11 @@ export function createHybridExchange({ spot, futures, log }) {
         try {
           const r = await spot.closePosition(args);
           if (r?.ok) return r;
+          // Demo spot resolves by id; if missing here, try futures (different venue/id scheme).
+          if (r?.error && r.error !== "not_found") return r;
         } catch (e) {
           log?.warn?.("hybrid_spot_close_failed", { error: String(e?.message || e) });
+          return { ok: false, error: String(e?.message || e) };
         }
       }
       if (futures?.closePosition) {

@@ -1,0 +1,9 @@
+# Copy to /etc/caddy/Caddyfile (or include snippet) and replace the host name.
+# Assumes the stack listens on 127.0.0.1:8000 (see docker-compose ports).
+#
+# Your public URL must match backend FRONTEND_ORIGIN and cookie SameSite expectations.
+
+your.duckdns.org {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8000
+}

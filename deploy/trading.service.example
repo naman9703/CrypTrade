@@ -1,0 +1,25 @@
+# systemd user/unit example: Node on VPS without Docker (after `npm ci` in repo).
+# Adjust paths and User=.
+#
+# sudo cp deploy/trading.service.example /etc/systemd/system/trading.service
+# sudo systemctl daemon-reload && sudo systemctl enable --now trading
+#
+# Prefer EnvironmentFile=/etc/trading/app.env with chmod 640 (see deploy/DEPLOY.md).
+
+[Unit]
+Description=Trading backend + AI (use separate units or Docker for production)
+After=network.target
+
+[Service]
+Type=simple
+User=trading
+WorkingDirectory=/opt/trading/backend
+Environment=NODE_ENV=production
+Environment=SERVE_FRONTEND=1
+EnvironmentFile=-/etc/trading/app.env
+ExecStart=/usr/bin/node /opt/trading/backend/src/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

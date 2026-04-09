@@ -1,5 +1,7 @@
 import WebSocket from "ws";
 import axios from "axios";
+import { maxBarsForHistory } from "../lib/chartWindow.js";
+import { sanitizeKlineCandle } from "../lib/symbolPriceSanity.js";
 import { createCandleBuffer } from "./marketBuffer.js";
 import { createBinanceDeltaAggregator } from "./marketFeedBinanceDelta.js";
 
@@ -19,13 +21,13 @@ function klineStream(symbol, interval) {
   return `${symbol.toLowerCase()}@kline_${interval}`;
 }
 
-/** @param {{ variant?: "spot" | "futures" }} opts — futures = USDT-M `fapi` + `fstream` (often works when spot/demo returns 451). */
-export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBase, variant = "spot" }) {
+/** @param {{ variant?: "spot" | "futures", onCandleClose?: (c: { ts: number, open: number, high: number, low: number, close: number, volume: number }) => void }} opts — futures = USDT-M `fapi` + `fstream` (often works when spot/demo returns 451). */
+export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBase, variant = "spot", onCandleClose = null }) {
   const isFutures = variant === "futures";
   const klinesPath = isFutures ? "/fapi/v1/klines" : "/api/v3/klines";
   const sourceTag = isFutures ? "BINANCE_FUTURES" : "BINANCE";
 
-  const buf = createCandleBuffer({ max: 1500 });
+  const buf = createCandleBuffer({ max: 3000 });
   let ws = null;
   let delta = null;
   let status = { ok: false, source: sourceTag, lastMsgAt: null, stream: null, error: null };
@@ -48,10 +50,13 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
   async function backfill() {
     const sym = normalizeSymbol(symbol);
     const interval = normalizeInterval(timeframe);
-    const target = Number(process.env.BINANCE_BACKFILL_LIMIT || 2000);
+    const minFor24h = maxBarsForHistory(interval, 24);
+    const target = Math.max(Number(process.env.BINANCE_BACKFILL_LIMIT || 2000), minFor24h);
     const pageLimit = 1000;
     let endTime = undefined;
     let fetched = 0;
+    /** Each REST page is ascending time; older pages are unshifted so final flatten is oldest → newest. */
+    const batches = [];
 
     while (fetched < target) {
       const limit = Math.min(pageLimit, target - fetched);
@@ -60,23 +65,29 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
       const { data } = await http.get(klinesPath, { params });
       if (!Array.isArray(data) || data.length === 0) break;
 
-      // prepend order: ensure older first
-      for (const k of data) {
-        buf.push({
-          ts: Number(k[0]),
-          open: Number(k[1]),
-          high: Number(k[2]),
-          low: Number(k[3]),
-          close: Number(k[4]),
-          volume: Number(k[5]),
-          buy_volume: null,
-          sell_volume: null,
-        });
-      }
+      const mapped = data.map((k) => ({
+        ts: Number(k[0]),
+        open: Number(k[1]),
+        high: Number(k[2]),
+        low: Number(k[3]),
+        close: Number(k[4]),
+        volume: Number(k[5]),
+        buy_volume: null,
+        sell_volume: null,
+      }));
+      batches.unshift(mapped);
       fetched += data.length;
-      // next page: endTime is just before first openTime returned
       endTime = Number(data[0][0]) - 1;
       if (data.length < limit) break;
+    }
+
+    for (const batch of batches) {
+      for (const c of batch) {
+        const arr = buf.toArray();
+        const prev = arr.length ? arr[arr.length - 1] : null;
+        const safe = sanitizeKlineCandle(sym, c, prev, log);
+        if (safe) buf.push(safe);
+      }
     }
   }
 
@@ -101,7 +112,8 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
         const k = msg?.k;
         if (!k) return;
         // kline payload
-        buf.push({
+        const closed = Boolean(k.x);
+        const candleRaw = {
           ts: Number(k.t),
           open: Number(k.o),
           high: Number(k.h),
@@ -110,7 +122,20 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
           volume: Number(k.v),
           buy_volume: null,
           sell_volume: null,
-        });
+        };
+        const msgSym = normalizeSymbol(msg.s || sym);
+        const arr = buf.toArray();
+        const prev = arr.length ? arr[arr.length - 1] : null;
+        const candle = sanitizeKlineCandle(msgSym, candleRaw, prev, log);
+        if (candle == null) return;
+        buf.push(candle);
+        if (closed && typeof onCandleClose === "function") {
+          try {
+            onCandleClose({ ...candle, symbol: msgSym });
+          } catch (e) {
+            log?.warn?.("onCandleClose_failed", { error: String(e?.message || e) });
+          }
+        }
       } catch {
         // ignore
       }

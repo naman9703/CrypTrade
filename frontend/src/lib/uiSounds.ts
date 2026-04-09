@@ -17,3 +17,11 @@ export function playEngineStartSound() {
 export function playProfitCloseSound() {
   playSrc("/media/money-sound.mp3");
 }
+
+export function playSupertrendBuySound() {
+  playSrc("/media/Buy-ring.mp3");
+}
+
+export function playSupertrendSellSound() {
+  playSrc("/media/sell-ring.mp3");
+}

@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import axios from "axios";
+import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
@@ -9,7 +10,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
   const apiKey = process.env.BINANCE_FUTURES_API_KEY || "";
   const apiSecret = process.env.BINANCE_FUTURES_API_SECRET || "";
   const baseURL = process.env.BINANCE_FUTURES_TESTNET_REST_BASE || "https://testnet.binancefuture.com";
-  const defaultLeverage = Math.max(1, Math.min(50, Number(process.env.FUTURES_DEFAULT_LEVERAGE || 5)));
+  const defaultLeverage = Math.max(1, Math.min(100, Number(process.env.FUTURES_DEFAULT_LEVERAGE || 5)));
 
   const http = axios.create({
     baseURL,
@@ -143,13 +144,76 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
   }
 
   async function ensureLeverage(symbol, lev) {
-    const leverage = Math.max(1, Math.min(50, Number(lev || defaultLeverage)));
+    const leverage = Math.max(1, Math.min(100, Number(lev || defaultLeverage)));
     try {
       await signed("POST", "/fapi/v1/leverage", { symbol, leverage: String(leverage) });
     } catch (e) {
       log?.warn?.("binance_futures_set_leverage_failed", { symbol, leverage, error: String(e?.message || e) });
     }
     return leverage;
+  }
+
+  let accountModeCache = { at: 0, dual: false };
+  async function hedgePositionSideExtras(isLong) {
+    try {
+      const now = Date.now();
+      if (now - accountModeCache.at < 10_000) {
+        if (!accountModeCache.dual) return {};
+        return { positionSide: isLong ? "LONG" : "SHORT" };
+      }
+      const a = await signed("GET", "/fapi/v2/account");
+      const dual = String(a?.dualSidePosition ?? "").toLowerCase() === "true";
+      accountModeCache = { at: now, dual };
+      if (!dual) return {};
+      return { positionSide: isLong ? "LONG" : "SHORT" };
+    } catch {
+      return {};
+    }
+  }
+
+  function reanchorSlTpToFill({ isLong, anchorPx, filledPx, stopPx, tpPx }) {
+    const a = Number(anchorPx);
+    const f = Number(filledPx);
+    let s = Number(stopPx);
+    let t = Number(tpPx);
+    if (!Number.isFinite(a) || !Number.isFinite(f) || a <= 0 || f <= 0 || !Number.isFinite(s) || !Number.isFinite(t)) {
+      return { stopPx: s, tpPx: t };
+    }
+    if (isLong) {
+      const slDist = a - s;
+      const tpDist = t - a;
+      return { stopPx: f - slDist, tpPx: f + tpDist };
+    }
+    const slDist = s - a;
+    const tpDist = a - t;
+    return { stopPx: f + slDist, tpPx: f - tpDist };
+  }
+
+  let slTpOpenOrdersCache = { at: 0, map: new Map() };
+  async function stopTakeFromExchangeOpenOrders(symbol) {
+    const sym = String(symbol || "").toUpperCase();
+    const now = Date.now();
+    if (now - slTpOpenOrdersCache.at < 2000 && slTpOpenOrdersCache.map.has(sym)) {
+      return slTpOpenOrdersCache.map.get(sym);
+    }
+    const map = new Map();
+    try {
+      const all = await signed("GET", "/fapi/v1/openOrders");
+      for (const o of Array.isArray(all) ? all : []) {
+        const s = String(o.symbol || "").toUpperCase();
+        if (!map.has(s)) map.set(s, { sl: null, tp: null });
+        const typ = String(o.type || "");
+        const st = Number(o.stopPrice);
+        if (!Number.isFinite(st) || st <= 0) continue;
+        const row = map.get(s);
+        if (typ.includes("TAKE_PROFIT")) row.tp = st;
+        else if (typ.includes("STOP") && !typ.includes("TAKE")) row.sl = st;
+      }
+    } catch (e) {
+      log?.warn?.("binance_futures_testnet_open_orders_failed", { error: String(e?.message || e) });
+    }
+    slTpOpenOrdersCache = { at: now, map };
+    return map.get(sym) || { sl: null, tp: null };
   }
 
   const localBrackets = {};
@@ -170,26 +234,32 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       try {
         const a = await signed("GET", "/fapi/v2/account");
         const ps = Array.isArray(a?.positions) ? a.positions : [];
-        return ps
+        const rows = ps
           .filter((p) => Math.abs(Number(p?.positionAmt || 0)) > 1e-8)
           .map((p) => {
             const sym = p.symbol;
             const lb = localBrackets[sym];
             const lev = Number(p.leverage || defaultLeverage);
-            return {
-              id: `${sym}`,
-              symbol: sym,
-              side: Number(p.positionAmt) > 0 ? "BUY" : "SELL",
-              qty: Math.abs(Number(p.positionAmt)),
-              entryPrice: Number(p.entryPrice || 0),
-              unrealizedPnl: Number(p.unrealizedProfit || 0),
-              stopLoss: lb?.stopLoss ?? null,
-              takeProfit: lb?.takeProfit ?? null,
-              leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
-              venue: "FUTURES",
-              syncSource: "fapi_v2_account",
-            };
+            return { sym, lb, lev, p };
           });
+        const out = [];
+        for (const { sym, lb, lev, p } of rows) {
+          const oo = await stopTakeFromExchangeOpenOrders(sym);
+          out.push({
+            id: `${sym}`,
+            symbol: sym,
+            side: Number(p.positionAmt) > 0 ? "BUY" : "SELL",
+            qty: Math.abs(Number(p.positionAmt)),
+            entryPrice: Number(p.entryPrice || 0),
+            unrealizedPnl: Number(p.unrealizedProfit || 0),
+            stopLoss: oo.sl ?? lb?.stopLoss ?? null,
+            takeProfit: oo.tp ?? lb?.takeProfit ?? null,
+            leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
+            venue: "FUTURES",
+            syncSource: "fapi_v2_account",
+          });
+        }
+        return out;
       } catch (e) {
         log?.warn?.("binance_futures_positions_failed", { error: String(e?.message || e) });
         return [];
@@ -246,6 +316,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       if (!stopPx || !tpPx) throw new Error("stoploss_takeprofit_required");
 
       const leverage = await ensureLeverage(symbol, meta?.leverage || meta?.futuresLeverage || defaultLeverage);
+      const hedgeExtras = await hedgePositionSideExtras(isLong);
 
       // 1) MARKET entry
       const out = await signed("POST", "/fapi/v1/order", {
@@ -254,76 +325,67 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
         type: "MARKET",
         quantity: qtyStr,
         newClientOrderId: `ai_${Date.now()}`,
+        ...hedgeExtras,
       });
 
       const orderId = String(out?.orderId || Date.now());
-      const filledPrice = Number(out?.avgPrice || price || 0) || Number(price || 0);
+      const filledPrice = Number(out?.avgPrice || out?.price || price || 0) || Number(price || 0);
       const posId = `fut_${orderId}`;
 
       const executedQty = formatToStep(Number(out?.executedQty || out?.origQty || qty), m) || qtyStr;
 
+      const anchorPx = Number.isFinite(markPx) && markPx > 0 ? markPx : filledPrice;
+      let adjStop = Number(stopLoss);
+      let adjTp = Number(takeProfit);
+      const r2 = reanchorSlTpToFill({ isLong, anchorPx, filledPx: filledPrice, stopPx: adjStop, tpPx: adjTp });
+      adjStop = r2.stopPx;
+      adjTp = r2.tpPx;
+
       const closeSide = isLong ? "SELL" : "BUY";
-      const stopStr = formatToTick(stopPx, m);
-      const tpStr = formatToTick(tpPx, m);
+      const stopStr = formatToTick(adjStop, m);
+      const tpStr = formatToTick(adjTp, m);
       if (!stopStr || !tpStr) throw new Error("bad_bracket_prices");
 
       const slippageMult = closeSide === "SELL" ? 0.995 : 1.005;
-      const slLimitStr = formatToTick(stopPx * slippageMult, m) || stopStr;
-      const tpLimitStr = formatToTick(tpPx * slippageMult, m) || tpStr;
-
-      async function placeBracketOrder(type, triggerPrice, limitPrice, tag) {
-        const marketType = `${type}_MARKET`;
-        const params = {
-          symbol,
-          side: closeSide,
-          reduceOnly: "true",
-          quantity: executedQty,
-          stopPrice: triggerPrice,
-          workingType: "MARK_PRICE",
-          newClientOrderId: `${tag}_${Date.now()}`,
-        };
-        try {
-          await signed("POST", "/fapi/v1/order", { ...params, type: marketType });
-        } catch (e1) {
-          const errCode = e1?.cause?.response?.data?.code;
-          const is4120 = errCode === -4120 || String(e1?.message || "").includes("-4120");
-          if (is4120) {
-            log?.info?.("binance_futures_bracket_fallback_limit", { symbol, type, marketType });
-            await signed("POST", "/fapi/v1/order", {
-              ...params,
-              type,
-              price: limitPrice,
-              timeInForce: "GTC",
-            });
-          } else {
-            throw e1;
-          }
-        }
-      }
+      const slLimitStr = formatToTick(adjStop * slippageMult, m) || stopStr;
+      const tpLimitStr = formatToTick(adjTp * slippageMult, m) || tpStr;
 
       let bracketsPlaced = false;
       try {
-        await placeBracketOrder("STOP", stopStr, slLimitStr, "sl");
-        await placeBracketOrder("TAKE_PROFIT", tpStr, tpLimitStr, "tp");
+        await placeUsdMSlTpAfterMarketEntry({
+          signed,
+          symbol,
+          closeSide,
+          stopStr,
+          tpStr,
+          slLimitStr,
+          tpLimitStr,
+          executedQty,
+          hedgeExtras,
+          log,
+          logPrefix: "binance_futures_testnet",
+        });
         bracketsPlaced = true;
       } catch (e) {
-        const is4120 = String(e?.message || "").includes("-4120");
+        const is4120 = futuresOrderIs4120(e);
         if (is4120) {
           log?.warn?.("binance_futures_brackets_unsupported_using_local", {
             symbol,
-            stopLoss: stopPx,
-            takeProfit: tpPx,
+            stopLoss: adjStop,
+            takeProfit: adjTp,
           });
           localBrackets[symbol] = {
             posId,
             isLong,
             entryPrice: filledPrice,
-            stopLoss: stopPx,
-            takeProfit: tpPx,
+            stopLoss: adjStop,
+            takeProfit: adjTp,
             qty: executedQty,
             closeSide,
             strategy: strategy || "AUTO",
             openedAt: Date.now(),
+            leverage,
+            positionSide: hedgeExtras.positionSide,
           };
         } else {
           log?.warn?.("binance_futures_bracket_failed_flatten", { symbol, error: String(e?.message || e) });
@@ -334,6 +396,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
             quantity: executedQty,
             reduceOnly: "true",
             newClientOrderId: `flatten_${Date.now()}`,
+            ...hedgeExtras,
           });
           throw e;
         }
@@ -365,6 +428,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
               quantity: b.qty,
               reduceOnly: "true",
               newClientOrderId: `local_${hit.toLowerCase()}_${Date.now()}`,
+              ...(b.positionSide ? { positionSide: b.positionSide } : {}),
             });
             log?.info?.("binance_futures_local_bracket_hit", { symbol, hit, markPx, sl: b.stopLoss, tp: b.takeProfit });
             delete localBrackets[symbol];
@@ -413,6 +477,18 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       }
       delete localBrackets[p.symbol];
       return { ok: true };
+    },
+    async getSymbolOrderConstraints(symbol) {
+      const sym = String(symbol || "").toUpperCase();
+      const m = await getOrLoadSymbolMeta(sym);
+      return {
+        ok: true,
+        symbol: sym,
+        venue: "FUTURES",
+        minNotional: m.minNotional ?? null,
+        quoteAsset: "USDT",
+        rule: "Binance USD-M futures exchangeInfo: MIN_NOTIONAL notional (USDT)",
+      };
     },
     async close() {
       // no-op

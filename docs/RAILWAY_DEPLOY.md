@@ -205,7 +205,7 @@ Ensure variables are set in the linked Railway project. `.railwayignore` avoids 
 1. **Copy variables** from `backend/.env` into Railway **Variables** (same keys: `TRADING_MODE`, `MARKET_FEED`, `DEFAULT_SYMBOL`, Binance keys, `AI_THRESHOLD`, guards, etc.). Do **not** set `PORT` unless you know you need to.
 2. **AI / training tuning** (optional): set `TRAIN_RECENCY_HALF_LIFE_DAYS`, `TRAIN_ENSEMBLE_BAG_FRACTION`, `AI_CAL_BLEND_ISOTONIC`, etc. in Railway **Variables**. The entrypoint starts uvicorn as a child process; it **inherits** the container environment, so Python `os.getenv(...)` picks these up the same as a local `ai-service/.env`.
 3. **Volume:** mount **`/app/ai-service/data/model`** for trained models (and redeploy survival).
-4. **Optional second volume** (parity with local `data/`): e.g. mount **`/app/backend/data`** and set `PAPER_STORE_DIR`, `BINANCE_DEMO_*_STORE_DIR`, etc. to paths under that mount if you want paper/demo state to survive.
+4. **Optional second volume** (parity with local `data/`): e.g. mount **`/app/backend/data`** and set `PAPER_STORE_DIR`, `BINANCE_DEMO_FUTURES_STORE_DIR`, etc. to paths under that mount if you want paper/demo state to survive.
 5. **Deploy** → open your Railway URL → confirm **`/health`**, **`/api/ai/health`**, WebSocket **connected**, then test **PAPER** before live/demo keys.
 
 **Note:** Local `ai-service/.env` is **not** copied into the Docker image by default. Training defaults come from the Python app and from **train request body**. To mirror `TRAIN_RECENCY_HALF_LIFE_DAYS` etc. on Railway, either bake `ENV` into the Dockerfile or extend `docker-entrypoint.sh` to `export` them from Railway Variables (they are passed to child processes if set in Railway’s environment for the service).

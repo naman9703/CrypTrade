@@ -21,11 +21,14 @@ function toLevels(arr) {
 export function createBinanceOrderBook({ log, symbol, wsBase }) {
   symbol = normalizeSymbol(symbol);
   let ws = null;
+  /** Bumps on each new socket so messages from a terminated connection cannot corrupt the book. */
+  let depthConnSerial = 0;
   let status = { ok: false, source: "BINANCE_DEPTH", lastMsgAt: null, stream: null, error: null };
   let book = { symbol, bids: [], asks: [] };
 
   function connect() {
     const stream = depthStream(symbol);
+    const serial = ++depthConnSerial;
     status = { ok: false, source: "BINANCE_DEPTH", lastMsgAt: status.lastMsgAt, stream, error: null };
     const url = `${wsBase || DEFAULT_WS_BASE}/${stream}`;
     ws = new WebSocket(url);
@@ -36,6 +39,7 @@ export function createBinanceOrderBook({ log, symbol, wsBase }) {
     });
 
     ws.on("message", (raw) => {
+      if (serial !== depthConnSerial) return;
       status.lastMsgAt = Date.now();
       try {
         const msg = JSON.parse(String(raw));
@@ -45,7 +49,8 @@ export function createBinanceOrderBook({ log, symbol, wsBase }) {
           // Binance sends bids/asks sorted, but we'll still enforce.
           bids.sort((a, b) => b[0] - a[0]);
           asks.sort((a, b) => a[0] - b[0]);
-          book = { symbol, bids, asks };
+          const sym = normalizeSymbol(symbol);
+          book = { symbol: sym, bids, asks };
         }
       } catch {
         // ignore
@@ -53,14 +58,17 @@ export function createBinanceOrderBook({ log, symbol, wsBase }) {
     });
 
     ws.on("error", (err) => {
+      if (serial !== depthConnSerial) return;
       status = { ...status, ok: false, error: String(err?.message || err) };
       log.warn("binance_depth_ws_error", { stream, error: status.error });
     });
 
     ws.on("close", () => {
+      if (serial !== depthConnSerial) return;
       status = { ...status, ok: false };
       log.warn("binance_depth_ws_close", { stream });
       setTimeout(() => {
+        if (serial !== depthConnSerial) return;
         try {
           connect();
         } catch (e) {
