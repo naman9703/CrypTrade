@@ -80,8 +80,9 @@ export function InsightsPanel() {
       multiplier,
       wilderAtr,
       timeframe: bot?.timeframe != null ? String(bot.timeframe) : "1m",
+      symbol: bot?.symbol != null ? String(bot.symbol) : undefined,
     });
-  }, [candles, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr, bot?.timeframe]);
+  }, [candles, bot?.symbol, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr, bot?.timeframe]);
 
   const [aiTrainMeta, setAiTrainMeta] = useState<{ symbolsCount?: number; source?: string }>({});
   useEffect(() => {

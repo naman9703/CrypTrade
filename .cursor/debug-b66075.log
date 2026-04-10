@@ -1,0 +1,1 @@
+{"sessionId":"b66075","hypothesisId":"H1","location":"store.ts:mergeMarketIntoState","message":"candles_after_merge","data":{"payloadSym":"BNBUSDT","botSym":"","prevMarketSym":"","symbolChanged":true,"prevLen":0,"nextLen":1,"incomingClose":602.79,"prevClose":null,"adjRatio":null,"cliffAdj":false},"timestamp":1775779165521}

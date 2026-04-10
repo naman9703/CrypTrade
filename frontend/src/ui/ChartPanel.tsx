@@ -179,8 +179,9 @@ export function ChartPanel() {
       multiplier,
       wilderAtr,
       timeframe: bot?.timeframe != null ? String(bot.timeframe) : "1m",
+      symbol: bot?.symbol != null ? String(bot.symbol) : undefined,
     });
-  }, [ohlcAsMsCandles, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr, bot?.timeframe]);
+  }, [ohlcAsMsCandles, bot?.symbol, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr, bot?.timeframe]);
 
   /** Latest k.x may be a no-flip bar; keep showing the last chart-aligned flip that autotrade could use (matches Activity). */
   const supertrendHud = useMemo(() => {
@@ -666,8 +667,9 @@ export function ChartPanel() {
       fitAfterRestSnapshotRef.current = true;
       pendingAutoFitRef.current = true;
     }
+    const cc0 = r.candles.slice(-CHART_CANDLE_MAX);
     useAppStore.setState((s) => {
-      const cc = r.candles.slice(-CHART_CANDLE_MAX);
+      const cc = cc0;
       const last = cc[cc.length - 1];
       const stLine = Array.isArray(r.supertrendLine) ? r.supertrendLine : [];
       const stSigs = Array.isArray(r.supertrendSignals) ? r.supertrendSignals : [];

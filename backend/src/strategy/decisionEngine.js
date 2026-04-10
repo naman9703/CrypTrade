@@ -137,14 +137,21 @@ function legacyLongShortSlots(signalStrength) {
  * @param {Record<string, number>} p.indicatorsLatest
  * @param {{ trend?: number, buySignal?: boolean, sellSignal?: boolean, up?: number, dn?: number } | null} [p.supertrendLastRow]
  * @param {{ period?: number, multiplier?: number, wilderAtr?: boolean } | null} [p.supertrendOpts]
+ * @param {string} [p.symbol] Trading pair for sequential OHLC plausibility in `sanitizeCandlesForSt`.
  */
-export function computeDecisionSnapshot({ candles, indicatorsLatest, supertrendLastRow: _unused, supertrendOpts }) {
+export function computeDecisionSnapshot({
+  candles,
+  indicatorsLatest,
+  supertrendLastRow: _unused,
+  supertrendOpts,
+  symbol,
+}) {
   const features = extractDecisionFeatures(candles, indicatorsLatest);
   const period = Math.max(2, Math.floor(Number(supertrendOpts?.period ?? process.env.SUPERTREND_PERIOD ?? 10)));
   const mult = clamp(Number(supertrendOpts?.multiplier ?? process.env.SUPERTREND_MULTIPLIER ?? 3), 0.5, 20);
   const wilderAtr = supertrendOpts?.wilderAtr !== false;
 
-  const clean = sanitizeCandlesForSt(candles);
+  const clean = sanitizeCandlesForSt(candles, symbol);
   const series =
     clean.length >= period ? computeSupertrendSeries(clean, { period, multiplier: mult, wilderAtr }) : [];
 

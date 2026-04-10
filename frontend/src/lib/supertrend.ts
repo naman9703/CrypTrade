@@ -2,6 +2,8 @@
  * Pine v4 Supertrend (TradingView built-in) — same semantics as `backend/src/strategy/supertrend.js`.
  * Used in the chart so the line matches the candle series actually rendered.
  */
+import { isPlausibleCandleClose } from "./symbolPriceSanity";
+
 export type StCandle = { ts: number; open: number; high: number; low: number; close: number };
 
 export type StRow = {
@@ -108,7 +110,8 @@ export function computeSupertrendSeries(candles: StCandle[], opts: { period?: nu
 }
 
 /** Oldest-first, deduped bar open times, Pine-ready OHLC. */
-export function sanitizeCandlesForSt(candles: StCandle[]): StCandle[] {
+export function sanitizeCandlesForSt(candles: StCandle[], symbol?: string): StCandle[] {
+  const sym = symbol != null && String(symbol).trim() ? String(symbol).trim().toUpperCase() : "";
   const rows: StCandle[] = [];
   for (const c of candles || []) {
     const ts = Number(c.ts);
@@ -148,6 +151,14 @@ export function sanitizeCandlesForSt(candles: StCandle[]): StCandle[] {
     const med = median(recentRanges);
     if (med != null && med > 0 && r > med * mult) {
       continue;
+    }
+    if (sym) {
+      const prevClose = out.length ? Number(out[out.length - 1].close) : null;
+      if (prevClose != null && prevClose > 0) {
+        const cl = Number(bar.close);
+        const lo = Number(bar.low);
+        if (!isPlausibleCandleClose(sym, cl, lo, prevClose)) continue;
+      }
     }
     out.push(bar);
   }
@@ -220,9 +231,9 @@ export type ChartSupertrend = {
 /** Line + confirmed-bar markers from the same candles the chart will paint. */
 export function buildChartSupertrend(
   candles: StCandle[],
-  opts: { period: number; multiplier: number; wilderAtr: boolean; timeframe?: string },
+  opts: { period: number; multiplier: number; wilderAtr: boolean; timeframe?: string; symbol?: string },
 ): ChartSupertrend {
-  const clean = sanitizeCandlesForSt(candles);
+  const clean = sanitizeCandlesForSt(candles, opts.symbol);
   const period = Math.max(1, opts.period);
   if (clean.length < Math.max(2, period)) {
     return { linePoints: [], markers: [], lastTrend: null };

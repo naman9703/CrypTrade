@@ -569,6 +569,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         candles: c,
         indicatorsLatest: ind.latest,
         supertrendLastRow,
+        symbol: state.symbol,
         supertrendOpts: {
           period: state.supertrendPeriod,
           multiplier: state.supertrendMultiplier,
@@ -1912,7 +1913,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     if (!Number.isFinite(cTs)) return null;
 
     const strictChartAlign = String(process.env.SUPERTREND_STRICT_CHART_ALIGN ?? "true").toLowerCase() !== "false";
-    const clean = sanitizeCandlesForSt(raw);
+    const clean = sanitizeCandlesForSt(raw, state.symbol);
     const idxC = clean.findIndex((c) => Number(c.ts) === cTs);
     const opts = {
       period: state.supertrendPeriod,
@@ -1954,6 +1955,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       candles: raw,
       indicatorsLatest: indicatorsBarClose.latest,
       supertrendLastRow: row,
+      symbol: state.symbol,
       supertrendOpts: {
         period: state.supertrendPeriod,
         multiplier: state.supertrendMultiplier,
@@ -2286,7 +2288,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
     const strictChartAlign = String(process.env.SUPERTREND_STRICT_CHART_ALIGN ?? "true").toLowerCase() !== "false";
 
-    const clean = sanitizeCandlesForSt(rawCandles);
+    const clean = sanitizeCandlesForSt(rawCandles, state.symbol);
     const idxC = clean.findIndex((c) => Number(c.ts) === cTs);
     const opts = {
       period: state.supertrendPeriod,
@@ -2368,6 +2370,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       candles: rawCandles,
       indicatorsLatest: indicatorsBarClose.latest,
       supertrendLastRow: row,
+      symbol: state.symbol,
       supertrendOpts: {
         period: state.supertrendPeriod,
         multiplier: state.supertrendMultiplier,
@@ -2487,6 +2490,38 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
     const hub = wsHubRef;
     if (!hub) return;
+
+    const symTrade = String(state.symbol || "").trim().toUpperCase();
+    if (idxC > 0 && symTrade) {
+      const prevB = clean[idxC - 1];
+      const curB = clean[idxC];
+      const prevC = Number(prevB?.close);
+      const cl = Number(curB?.close);
+      const lo = Number(curB?.low);
+      if (
+        Number.isFinite(prevC) &&
+        prevC > 0 &&
+        Number.isFinite(cl) &&
+        !isPlausibleCandleClose(symTrade, cl, lo, prevC)
+      ) {
+        log.warn("supertrend_autotrade_blocked_implausible_bar_step", {
+          symbol: symTrade,
+          prevClose: prevC,
+          close: cl,
+          barTs: cTs,
+        });
+        state.supertrendStHandledCloseKey = barCloseKey;
+        emitSignalActionActivity(hub, {
+          kind: "supertrend",
+          strategyKey: "SUPERTREND",
+          venue: stSpot ? "SPOT" : stFut ? "FUTURES" : "—",
+          side: allowBuy ? "BUY" : allowSell ? "SELL" : "—",
+          action: "skipped",
+          reason: "implausible_close_step_vs_prior_sanitized_bar",
+        });
+        return;
+      }
+    }
 
     state.supertrendStHandledCloseKey = barCloseKey;
 
@@ -2918,13 +2953,15 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
   function computeSupertrendChartModel(chartCandles, opts = {}) {
     const withChartArrays = opts.withChartArrays !== false;
     const empty = { line: null, signals: [], lastRow: null };
-    if (!chartCandles?.length || chartCandles.length < Math.max(2, state.supertrendPeriod)) return empty;
+    if (!chartCandles?.length) return empty;
+    const clean = sanitizeCandlesForSt(chartCandles, state.symbol);
+    if (clean.length < Math.max(2, state.supertrendPeriod)) return empty;
     const stOpts = {
       period: state.supertrendPeriod,
       multiplier: state.supertrendMultiplier,
       wilderAtr: state.supertrendWilderAtr,
     };
-    const stSer = computeSupertrendSeries(chartCandles, stOpts);
+    const stSer = computeSupertrendSeries(clean, stOpts);
     if (!withChartArrays) {
       const lastRowFast = stSer[stSer.length - 1];
       const lastReady = lastRowFast?.ready ? lastRowFast : null;
@@ -2969,7 +3006,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
   function getChartSnapshot(opts = {}) {
     const hours = Math.max(0.25, Number(opts.hours ?? 24));
-    const candles = getChartCandles({ hours });
+    const raw = getChartCandles({ hours });
+    const candles = sanitizeCandlesForSt(raw, state.symbol);
     const st = computeSupertrendChartModel(candles);
     return {
       symbol: state.symbol,
@@ -3668,6 +3706,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         candles,
         indicatorsLatest: indicators.latest,
         supertrendLastRow: stModel.lastRow,
+        symbol: state.symbol,
         supertrendOpts: {
           period: state.supertrendPeriod,
           multiplier: state.supertrendMultiplier,

@@ -44,10 +44,14 @@ export function isPlausibleCandleClose(symbol, close, low, prevClose) {
     if (s.includes("ETH") && !s.includes("BETH") && close < 10) return false;
   }
 
+  /** Listed majors: reject >~45% jump vs previous close (mixed stream / bad buffer splices). */
+  const MAJOR_MAX_STEP_RATIO = 1.45;
+  const MAJOR_MIN_STEP_RATIO = 1 / MAJOR_MAX_STEP_RATIO;
+
   if (prevClose != null && Number.isFinite(prevClose) && prevClose > 0) {
     const r = close / prevClose;
     if (range) {
-      if (r < 0.5 || r > 2.0) return false;
+      if (r < MAJOR_MIN_STEP_RATIO || r > MAJOR_MAX_STEP_RATIO) return false;
     } else if (prevClose > 50 && (r < 0.2 || r > 5.0)) return false;
   }
 

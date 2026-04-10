@@ -3,6 +3,8 @@
  * rules as `frontend/src/lib/supertrend.ts` `buildChartSupertrend`.
  */
 
+import { isPlausibleCandleClose } from "./symbolPriceSanity.js";
+
 function median(values) {
   if (!values?.length) return null;
   const s = values.slice().sort((a, b) => a - b);
@@ -14,8 +16,13 @@ function roughlyLTE(a, b, tolAbs) {
   return a <= b + tolAbs;
 }
 
-/** Oldest-first, deduped bar open times (matches frontend `sanitizeCandlesForSt`). */
-export function sanitizeCandlesForSt(candles) {
+/**
+ * Oldest-first, deduped bar open times (matches frontend `sanitizeCandlesForSt`).
+ * @param {string} [symbol] When set, drops bars whose close jumps vs the previous kept bar (same rules as kline ingest).
+ */
+export function sanitizeCandlesForSt(candles, symbol) {
+  const sym =
+    symbol != null && String(symbol).trim() ? String(symbol).trim().toUpperCase() : "";
   const rows = [];
   for (const c of candles || []) {
     const ts = Number(c.ts);
@@ -59,6 +66,14 @@ export function sanitizeCandlesForSt(candles) {
       .filter((x) => Number.isFinite(x) && x > 0);
     const med = median(recentRanges);
     if (med != null && med > 0 && r > med * mult) continue;
+    if (sym) {
+      const prevClose = out.length ? Number(out[out.length - 1].close) : null;
+      if (prevClose != null && prevClose > 0) {
+        const cl = Number(bar.close);
+        const lo = Number(bar.low);
+        if (!isPlausibleCandleClose(sym, cl, lo, prevClose)) continue;
+      }
+    }
     out.push(bar);
   }
   return out;
