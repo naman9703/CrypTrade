@@ -1,6 +1,5 @@
 import { broadcastActivity } from "../lib/activityLog.js";
-import { mergeTradesById, readTradeWsEvents, TRADE_HISTORY_SNAPSHOT_MAX } from "../lib/activityPersistence.js";
-import { filterStrictPortfolioTradesAfterMerge } from "../lib/tradeLedgerClassification.js";
+import { mergePersistedTradesWithExchange } from "../lib/activityPersistence.js";
 import { setTradingModePersistenceSlug } from "../lib/tradingModePersistence.js";
 import { createBot } from "./bot.js";
 import { createAiClient } from "../svc/aiClient.js";
@@ -110,11 +109,8 @@ export function createAppState({ log }) {
         this.wsHub?.broadcast("state", { mode, ...this.bot.getPublicState(), account: acct, positions: pos });
         try {
           const tr = await exchange.getTrades().catch(() => []);
-          const merged = filterStrictPortfolioTradesAfterMerge(
-            mode,
-            mergeTradesById(readTradeWsEvents(TRADE_HISTORY_SNAPSHOT_MAX), tr || [])
-          );
-          this.wsHub?.broadcast("trades_snapshot", { replace: true, trades: merged.slice(-TRADE_HISTORY_SNAPSHOT_MAX) });
+          const merged = mergePersistedTradesWithExchange(mode, tr || []);
+          this.wsHub?.broadcast("trades_snapshot", { replace: true, trades: merged });
         } catch {
           /* ignore */
         }

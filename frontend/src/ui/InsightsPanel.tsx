@@ -2,6 +2,11 @@ import { deferTask } from "../lib/deferTask";
 import { useAppStore } from "../ws/store";
 import { api } from "../api/client";
 import { buildOhlc, ohlcBarsToMsCandles } from "../lib/chartOhlc";
+import {
+  computeSupertrendSignalVerdicts,
+  formatSupertrendSignalVerdict,
+  verdictForHistorySnap,
+} from "../lib/supertrendSignalVerdict";
 import { buildChartSupertrend } from "../lib/supertrend";
 import { useEffect, useMemo, useState } from "react";
 
@@ -67,14 +72,19 @@ export function InsightsPanel() {
     return Boolean(b && m && b === m);
   }, [bot?.symbol, market?.symbol]);
 
+  const insightChartOhlc = useMemo(
+    () =>
+      buildOhlc(candles as Parameters<typeof buildOhlc>[0], {
+        symbol: bot?.symbol != null ? String(bot.symbol) : undefined,
+      }),
+    [candles, bot?.symbol],
+  );
+
   const insightSt = useMemo(() => {
     const period = Math.max(2, Math.floor(Number(bot?.supertrendPeriod ?? 10)));
     const multiplier = Number(bot?.supertrendMultiplier ?? 3);
     const wilderAtr = bot?.supertrendWilderAtr !== false;
-    const ohlc = buildOhlc(candles as Parameters<typeof buildOhlc>[0], {
-      symbol: bot?.symbol != null ? String(bot.symbol) : undefined,
-    });
-    const ms = ohlcBarsToMsCandles(ohlc);
+    const ms = ohlcBarsToMsCandles(insightChartOhlc);
     return buildChartSupertrend(ms, {
       period,
       multiplier,
@@ -82,7 +92,27 @@ export function InsightsPanel() {
       timeframe: bot?.timeframe != null ? String(bot.timeframe) : "1m",
       symbol: bot?.symbol != null ? String(bot.symbol) : undefined,
     });
-  }, [candles, bot?.symbol, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr, bot?.timeframe]);
+  }, [
+    insightChartOhlc,
+    bot?.symbol,
+    bot?.supertrendPeriod,
+    bot?.supertrendMultiplier,
+    bot?.supertrendWilderAtr,
+    bot?.timeframe,
+  ]);
+
+  const insightSignalVerdictRows = useMemo(() => {
+    const hist = Array.isArray(bot?.supertrendSignalHistory) ? bot.supertrendSignalHistory : [];
+    return hist
+      .filter((e: any) => e?.side === "BUY" || e?.side === "SELL")
+      .map((e: any) => ({ ts: Number(e.ts), side: e.side as "BUY" | "SELL" }))
+      .filter((e: { ts: number }) => Number.isFinite(e.ts));
+  }, [bot?.supertrendSignalHistory]);
+
+  const insightSignalVerdicts = useMemo(
+    () => computeSupertrendSignalVerdicts(insightSignalVerdictRows, insightChartOhlc),
+    [insightSignalVerdictRows, insightChartOhlc],
+  );
 
   const [aiTrainMeta, setAiTrainMeta] = useState<{ symbolsCount?: number; source?: string }>({});
   useEffect(() => {
@@ -372,6 +402,16 @@ export function InsightsPanel() {
                     ? fmtRuleTotal(s.decisionLong, s.decisionMaxLong)
                     : fmtRuleTotal(s.decisionShort, s.decisionMaxShort);
                   const act = dec?.action ? ` · ${dec.action}` : "";
+                  const vLatest = verdictForHistorySnap(s, insightSignalVerdictRows, insightSignalVerdicts);
+                  const vLatestLabel = vLatest != null ? formatSupertrendSignalVerdict(vLatest) : null;
+                  const vLatestCls =
+                    vLatest === true
+                      ? "text-emerald-400"
+                      : vLatest === false
+                        ? "text-rose-400"
+                        : vLatest === "open"
+                          ? "text-amber-300/90"
+                          : "text-slate-500";
                   return (
                     <span className={s.buySignal ? "text-emerald-300" : "text-rose-300"}>
                       {label} ({when}
@@ -379,6 +419,9 @@ export function InsightsPanel() {
                       {act}
                       {` · AI gate ${sigAi} · engine ${sigComp}`}
                       {s.chartStrict === false ? " · legacy flip (strict off)" : ""})
+                      {vLatestLabel != null ? (
+                        <span className={`font-medium ${vLatestCls}`}> · verdict {vLatestLabel}</span>
+                      ) : null}
                     </span>
                   );
                 })()}
@@ -413,12 +456,25 @@ export function InsightsPanel() {
                     ? fmtRuleTotal(flip.decisionLong, flip.decisionMaxLong)
                     : fmtRuleTotal(flip.decisionShort, flip.decisionMaxShort);
                   const act = dec?.action ? ` · ${dec.action}` : "";
+                  const vFlip = verdictForHistorySnap(flip, insightSignalVerdictRows, insightSignalVerdicts);
+                  const vFlipLabel = vFlip != null ? formatSupertrendSignalVerdict(vFlip) : null;
+                  const vFlipCls =
+                    vFlip === true
+                      ? "text-emerald-400"
+                      : vFlip === false
+                        ? "text-rose-400"
+                        : vFlip === "open"
+                          ? "text-amber-300/90"
+                          : "text-slate-500";
                   return (
                     <span className={flip.buySignal ? "text-emerald-300" : "text-rose-300"}>
                       {label} ({when}
                       {str != null ? ` · composite ${str}` : ""}
                       {act}
                       {` · AI gate ${sigAi} · engine ${sigComp}`})
+                      {vFlipLabel != null ? (
+                        <span className={`font-medium ${vFlipCls}`}> · verdict {vFlipLabel}</span>
+                      ) : null}
                     </span>
                   );
                 })()}

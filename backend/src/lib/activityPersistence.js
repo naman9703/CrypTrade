@@ -9,6 +9,7 @@ import {
   maybeMigrateLegacyModeFiles,
   resolveModeScopedDir,
 } from "./tradingModePersistence.js";
+import { filterStrictPortfolioTradesAfterMerge } from "./tradeLedgerClassification.js";
 
 const MAX_ACTIVITY_LINES = Number(process.env.ACTIVITY_LOG_MAX_LINES || 8000);
 const MAX_TRADE_WS_LINES = Number(process.env.TRADE_WS_LOG_MAX_LINES || 4000);
@@ -118,6 +119,14 @@ export function readTradeWsEvents(limit = 400) {
   return out;
 }
 
+function tradeTsSortMs(t) {
+  const raw = t?.ts ?? t?.exitTs;
+  if (raw == null) return 0;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  const ms = Date.parse(String(raw));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 export function mergeTradesById(tradeWsEvents, exchangeTrades) {
   const m = new Map();
   for (const t of tradeWsEvents || []) {
@@ -127,9 +136,23 @@ export function mergeTradesById(tradeWsEvents, exchangeTrades) {
     if (t?.id != null && String(t.id) !== "") m.set(String(t.id), t);
   }
   return Array.from(m.values()).sort((a, b) => {
-    const ta = Number(a.ts ?? a.exitTs ?? 0);
-    const tb = Number(b.ts ?? b.exitTs ?? 0);
+    const ta = tradeTsSortMs(a);
+    const tb = tradeTsSortMs(b);
     if (ta !== tb) return ta - tb;
     return String(a.id).localeCompare(String(b.id));
   });
+}
+
+/**
+ * Per-mode persisted `trade-ws-events.jsonl` + in-memory/exchange `getTrades()` (same merge as WS hello).
+ * @param {string} mode TRADING_MODE
+ * @param {unknown[]} exchangeTrades
+ */
+export function mergePersistedTradesWithExchange(mode, exchangeTrades) {
+  const fromAudit = readTradeWsEvents(TRADE_HISTORY_SNAPSHOT_MAX);
+  const merged = filterStrictPortfolioTradesAfterMerge(
+    mode,
+    mergeTradesById(fromAudit, exchangeTrades || []),
+  );
+  return merged.slice(-TRADE_HISTORY_SNAPSHOT_MAX);
 }

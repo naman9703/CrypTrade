@@ -4,6 +4,7 @@ import path from "path";
 import axios from "axios";
 import { resolveDefaultLiveFuturesIncomeSyncPath } from "../../lib/tradingModePersistence.js";
 import { tradeCloseFeeUsdtFromNotional } from "../../lib/tradeCloseFee.js";
+import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
 
 function hmacSha256(secret, payload) {
@@ -638,14 +639,35 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       tpPx = r2.tpPx;
 
       const closeSide = isLong ? "SELL" : "BUY";
-      const stopStr = formatToTick(stopPx, m);
-      const tpStr = formatToTick(tpPx, m);
-      if (!stopStr || !tpStr) throw new Error("bad_bracket_prices");
-
-      // Limit price for STOP/TAKE_PROFIT: add slippage buffer so the limit fills after trigger
-      const slippageMult = closeSide === "SELL" ? 0.995 : 1.005;
-      const slLimitStr = formatToTick(stopPx * slippageMult, m) || stopStr;
-      const tpLimitStr = formatToTick(tpPx * slippageMult, m) || tpStr;
+      let markRef = filledPrice;
+      try {
+        const pi = await publicGet("/fapi/v1/premiumIndex", { symbol });
+        const mp = Number(pi?.markPrice);
+        if (Number.isFinite(mp) && mp > 0) markRef = mp;
+      } catch {
+        // use filledPrice
+      }
+      const refined = refineUsdMTriggersVsMark({ isLong, stopPx, tpPx, markPrice: markRef, meta: m });
+      if (refined.adjusted) {
+        log?.info?.("binance_live_futures_sltp_refined_vs_mark", {
+          symbol,
+          markPrice: markRef,
+          beforeStop: stopPx,
+          beforeTp: tpPx,
+          afterStop: refined.stopPx,
+          afterTp: refined.tpPx,
+        });
+      }
+      stopPx = refined.stopPx;
+      tpPx = refined.tpPx;
+      const { stopStr, tpStr, slLimitStr, tpLimitStr } = usdmBracketPriceStrings({
+        isLong,
+        stopPx,
+        tpPx,
+        meta: m,
+        closeSide,
+      });
+      if (!stopStr || !tpStr || !slLimitStr || !tpLimitStr) throw new Error("bad_bracket_prices");
 
       let bracketsPlaced = false;
       try {

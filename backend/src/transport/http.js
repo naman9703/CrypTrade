@@ -4,6 +4,7 @@ import { runBacktest } from "../backtest/backtest.js";
 import { getTradingEvaluationChecklist } from "../evaluation/tradingChecklist.js";
 import { formatAiServiceError } from "../svc/aiHttpError.js";
 import { broadcastActivity } from "../lib/activityLog.js";
+import { mergePersistedTradesWithExchange } from "../lib/activityPersistence.js";
 import { isStrictBinanceAccountMode } from "../lib/tradingModePersistence.js";
 
 export function createRouter({ appState }) {
@@ -46,6 +47,8 @@ export function createRouter({ appState }) {
     if (isStrictBinanceAccountMode(appState.mode) && account == null) {
       positions = [];
       trades = [];
+    } else {
+      trades = mergePersistedTradesWithExchange(appState.mode, trades);
     }
     res.json({
       ok: true,

@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import axios from "axios";
+import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
 
 function hmacSha256(secret, payload) {
@@ -342,13 +343,41 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       adjTp = r2.tpPx;
 
       const closeSide = isLong ? "SELL" : "BUY";
-      const stopStr = formatToTick(adjStop, m);
-      const tpStr = formatToTick(adjTp, m);
-      if (!stopStr || !tpStr) throw new Error("bad_bracket_prices");
-
-      const slippageMult = closeSide === "SELL" ? 0.995 : 1.005;
-      const slLimitStr = formatToTick(adjStop * slippageMult, m) || stopStr;
-      const tpLimitStr = formatToTick(adjTp * slippageMult, m) || tpStr;
+      let markRef = filledPrice;
+      try {
+        const pi = await publicGet("/fapi/v1/premiumIndex", { symbol });
+        const mp = Number(pi?.markPrice);
+        if (Number.isFinite(mp) && mp > 0) markRef = mp;
+      } catch {
+        // use filledPrice
+      }
+      const refined = refineUsdMTriggersVsMark({
+        isLong,
+        stopPx: adjStop,
+        tpPx: adjTp,
+        markPrice: markRef,
+        meta: m,
+      });
+      if (refined.adjusted) {
+        log?.info?.("binance_futures_testnet_sltp_refined_vs_mark", {
+          symbol,
+          markPrice: markRef,
+          beforeStop: adjStop,
+          beforeTp: adjTp,
+          afterStop: refined.stopPx,
+          afterTp: refined.tpPx,
+        });
+      }
+      adjStop = refined.stopPx;
+      adjTp = refined.tpPx;
+      const { stopStr, tpStr, slLimitStr, tpLimitStr } = usdmBracketPriceStrings({
+        isLong,
+        stopPx: adjStop,
+        tpPx: adjTp,
+        meta: m,
+        closeSide,
+      });
+      if (!stopStr || !tpStr || !slLimitStr || !tpLimitStr) throw new Error("bad_bracket_prices");
 
       let bracketsPlaced = false;
       try {

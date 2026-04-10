@@ -11,6 +11,10 @@ import { buildOhlc, isOhlcBarRenderable, ohlcBarsToMsCandles, type OhlcBar } fro
 import { isPlausibleCandleClose } from "../lib/symbolPriceSanity";
 import { playSupertrendBuySound, playSupertrendSellSound } from "../lib/uiSounds";
 import { buildChartSupertrend } from "../lib/supertrend";
+import {
+  computeSupertrendSignalVerdicts,
+  formatSupertrendSignalVerdict,
+} from "../lib/supertrendSignalVerdict";
 import { useThemeStore } from "../themeStore";
 import { CHART_CANDLE_MAX, useAppStore } from "../ws/store";
 import { OrderBookPanel } from "./OrderBookPanel";
@@ -261,6 +265,21 @@ export function ChartPanel() {
     () => supertrendSignalHistoryNewestFirst.slice(0, SUPERTREND_SIGNAL_LIST_MAX),
     [supertrendSignalHistoryNewestFirst],
   );
+
+  const supertrendSignalVerdictsChrono = useMemo(
+    () => computeSupertrendSignalVerdicts(supertrendSignalHistoryRecent, ohlc),
+    [supertrendSignalHistoryRecent, ohlc],
+  );
+
+  const signalListCloseBySec = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const b of ohlc) {
+      const t = Number(b.time);
+      const c = Number(b.close);
+      if (Number.isFinite(t) && Number.isFinite(c) && c > 0) m.set(t, c);
+    }
+    return m;
+  }, [ohlc]);
 
   const candlestickSeriesMarkers = useMemo(() => {
     const hist = supertrendSignalHistoryRecent;
@@ -821,7 +840,9 @@ export function ChartPanel() {
               <span className="text-slate-600 dark:text-slate-400">AI</span> = AI confidence gate at close,{" "}
               <span className="text-slate-600 dark:text-slate-400">SS</span> = composite signal strength (0–100),{" "}
               <span className="text-slate-600 dark:text-slate-400">T/W/K</span> = TRADE / WAIT / SKIP (when “gates opens” is on, only{" "}
-              <span className="text-slate-600 dark:text-slate-400">T</span> can open).
+              <span className="text-slate-600 dark:text-slate-400">T</span> can open).{" "}
+              <span className="text-slate-600 dark:text-slate-400">Verdict</span> = indicator check vs next opposite: BUY → Open until next SELL,
+              then True if buy price &lt; that sell price; SELL → Open until next BUY, then True if sell price &gt; that buy price. Latest signal stays Open.
             </p>
           </div>
           <button
@@ -917,6 +938,22 @@ export function ChartPanel() {
                 const ss =
                   h.strength != null && Number.isFinite(Number(h.strength)) ? String(Math.round(Number(h.strength))) : "—";
                 const act = h.stAction != null ? String(h.stAction) : "—";
+                const nAll = supertrendSignalHistoryNewestFirst.length;
+                const chronoIdx = nAll - 1 - i;
+                const verdict = supertrendSignalVerdictsChrono[chronoIdx];
+                const sec = Math.floor(Number(h.ts) / 1000);
+                const entryPx = Number.isFinite(sec) ? signalListCloseBySec.get(sec) : undefined;
+                const entryStr =
+                  entryPx != null && Number.isFinite(entryPx) && entryPx > 0 ? entryPx.toFixed(2) : "—";
+                const vLabel = formatSupertrendSignalVerdict(verdict);
+                const vCls =
+                  verdict === true
+                    ? "text-emerald-400"
+                    : verdict === false
+                      ? "text-rose-400"
+                      : verdict === "open"
+                        ? "text-amber-300/90"
+                        : "text-slate-500";
                 return (
                   <li
                     key={`${h.ts}-${h.side}-${i}`}
@@ -928,9 +965,11 @@ export function ChartPanel() {
                   >
                     <span className="text-slate-600 dark:text-slate-500">{formatHistTimeIst(h.ts)}</span>{" "}
                     <span className="font-semibold">{h.side}</span>
+                    <span className="text-slate-600 dark:text-slate-400"> · @ {entryStr}</span>
                     <span className="text-slate-600 dark:text-slate-400"> · AI {ai}</span>
                     <span className="text-slate-600 dark:text-slate-400"> · SS {ss}</span>
                     <span className="text-slate-600 dark:text-slate-500"> · {act}</span>
+                    <span className={`font-medium ${vCls}`}> · {vLabel}</span>
                   </li>
                 );
               })}

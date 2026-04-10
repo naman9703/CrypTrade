@@ -1,12 +1,10 @@
 import {
   appendTradeWsEvent,
-  mergeTradesById,
+  mergePersistedTradesWithExchange,
   readActivityLogRecent,
-  readTradeWsEvents,
   TRADE_HISTORY_SNAPSHOT_MAX,
 } from "../lib/activityPersistence.js";
 import { isStrictBinanceAccountMode } from "../lib/tradingModePersistence.js";
-import { filterStrictPortfolioTradesAfterMerge } from "../lib/tradeLedgerClassification.js";
 
 /** @type {((payload: unknown) => void) | null} */
 let telegramTradeHook = null;
@@ -116,17 +114,16 @@ export function attachWs({ wss, appState }) {
             },
           })
         );
-        const fromAudit = strictAcc && account == null ? [] : readTradeWsEvents(TRADE_HISTORY_SNAPSHOT_MAX);
-        const merged = filterStrictPortfolioTradesAfterMerge(
-          appState.mode,
-          mergeTradesById(fromAudit, trades || [])
+        const recent =
+          strictAcc && account == null
+            ? []
+            : mergePersistedTradesWithExchange(appState.mode, trades || []);
+        ws.send(
+          JSON.stringify({
+            type: "trades_snapshot",
+            payload: { replace: true, trades: recent },
+          }),
         );
-        const recent = merged.slice(-TRADE_HISTORY_SNAPSHOT_MAX);
-        if (strictAcc && account == null) {
-          ws.send(JSON.stringify({ type: "trades_snapshot", payload: { replace: true, trades: [] } }));
-        } else if (recent.length > 0) {
-          ws.send(JSON.stringify({ type: "trades_snapshot", payload: { replace: true, trades: recent } }));
-        }
       } catch {
         let chart = null;
         try {
@@ -150,19 +147,9 @@ export function attachWs({ wss, appState }) {
           })
         );
         try {
-          if (strictFallback) {
-            ws.send(JSON.stringify({ type: "trades_snapshot", payload: { replace: true, trades: [] } }));
-          } else {
-            const fromAudit = readTradeWsEvents(TRADE_HISTORY_SNAPSHOT_MAX);
-            if (fromAudit.length) {
-              ws.send(
-                JSON.stringify({
-                  type: "trades_snapshot",
-                  payload: { replace: true, trades: fromAudit.slice(-TRADE_HISTORY_SNAPSHOT_MAX) },
-                })
-              );
-            }
-          }
+          const snap =
+            strictFallback ? [] : mergePersistedTradesWithExchange(appState.mode, []);
+          ws.send(JSON.stringify({ type: "trades_snapshot", payload: { replace: true, trades: snap } }));
         } catch {
           /* ignore */
         }

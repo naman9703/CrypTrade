@@ -61,8 +61,10 @@ function tradeFeeUsdForCloseRow(t: any, displayQty: number | undefined, displayP
 
 function tradeGrossPnlClose(t: any, displayQty?: number, displayPrice?: number): number | null {
   if (t?.type !== "CLOSE") return null;
+  const m = t?.meta || {};
   if (t?.grossPnl != null && Number.isFinite(Number(t.grossPnl))) return Number(t.grossPnl);
-  const net = Number(t?.pnl);
+  if (m.grossPnl != null && Number.isFinite(Number(m.grossPnl))) return Number(m.grossPnl);
+  const net = Number(t?.pnl ?? m.pnl ?? m.realizedPnl ?? m.realized_pnl);
   if (!Number.isFinite(net)) return null;
   const fee = tradeFeeUsdForCloseRow(t, displayQty, displayPrice);
   if (fee != null && fee > 0) return net + fee;
@@ -71,8 +73,21 @@ function tradeGrossPnlClose(t: any, displayQty?: number, displayPrice?: number):
 
 function tradeNetPnlClose(t: any): number | null {
   if (t?.type !== "CLOSE") return null;
-  const net = Number(t?.pnl);
+  const m = t?.meta || {};
+  const net = Number(t?.pnl ?? m.pnl ?? m.realizedPnl ?? m.realized_pnl);
   return Number.isFinite(net) ? net : null;
+}
+
+/** Net for a close = gross − fees (fees 0 when unknown); falls back to stored net PnL. */
+function closeTradeNetUsd(t: any, openRef: any | undefined): number {
+  const { price, qty } = tradeHistoryDisplayFields(t, openRef);
+  const g = tradeGrossPnlClose(t, qty, price);
+  const f = tradeFeeUsdForCloseRow(t, qty, price);
+  if (g != null && Number.isFinite(g)) {
+    const feePart = f != null && Number.isFinite(f) ? f : 0;
+    return g - feePart;
+  }
+  return tradeNetPnlClose(t) ?? 0;
 }
 
 function fmtUsd(x: number | null, digits = 2): string {
@@ -197,10 +212,42 @@ export function PortfolioPanel() {
     return m;
   }, [portfolioTrades]);
 
-  const wins = closeTradesApp.reduce((a: number, t: any) => a + ((tradeNetPnlClose(t) ?? 0) > 0 ? 1 : 0), 0);
-  const losses = closeTradesApp.reduce((a: number, t: any) => a + ((tradeNetPnlClose(t) ?? 0) < 0 ? 1 : 0), 0);
-  const netRealizedPnlStrategy = closeTradesApp.reduce((a: number, t: any) => a + (tradeNetPnlClose(t) ?? 0), 0);
-  const netRealizedPnlLedger = closeTradesLedger.reduce((a: number, t: any) => a + (tradeNetPnlClose(t) ?? 0), 0);
+  /** Net realised PnL = Σ gross − Σ fees per bucket (same as per-row gross − fee when fees are modeled). */
+  const { wins, losses, netRealizedPnlStrategy, netRealizedPnlLedger } = useMemo(() => {
+    let w = 0;
+    let l = 0;
+    let stratGross = 0;
+    let stratFees = 0;
+    const rows = portfolioTrades || [];
+    for (const t of closeTradesApp) {
+      const openRef = resolveOpenRefForClose(t, rows, openTradeById);
+      const { price, qty } = tradeHistoryDisplayFields(t, openRef);
+      const g = tradeGrossPnlClose(t, qty, price);
+      const fee = tradeFeeUsdForCloseRow(t, qty, price);
+      if (g != null && Number.isFinite(g)) stratGross += g;
+      if (fee != null && Number.isFinite(fee) && fee > 0) stratFees += fee;
+      const netRow = closeTradeNetUsd(t, openRef);
+      if (netRow > 0) w += 1;
+      else if (netRow < 0) l += 1;
+    }
+    let ledGross = 0;
+    let ledFees = 0;
+    for (const t of closeTradesLedger) {
+      const openRef = resolveOpenRefForClose(t, rows, openTradeById);
+      const { price, qty } = tradeHistoryDisplayFields(t, openRef);
+      const g = tradeGrossPnlClose(t, qty, price);
+      const fee = tradeFeeUsdForCloseRow(t, qty, price);
+      if (g != null && Number.isFinite(g)) ledGross += g;
+      if (fee != null && Number.isFinite(fee) && fee > 0) ledFees += fee;
+    }
+    return {
+      wins: w,
+      losses: l,
+      netRealizedPnlStrategy: stratGross - stratFees,
+      netRealizedPnlLedger: ledGross - ledFees,
+    };
+  }, [closeTradesApp, closeTradesLedger, portfolioTrades, openTradeById]);
+
   const netRealizedPnlAll = netRealizedPnlStrategy + netRealizedPnlLedger;
   /** Live/testnet: headline matches “app session” (demo-style); optional ledger stays in breakdown or enable BINANCE_LIVE_INCOME_INCLUDE_UNMATCHED=1 on server. */
   const netRealizedHeadline =
@@ -232,10 +279,12 @@ export function PortfolioPanel() {
     let appPnl = 0;
     let ledN = 0;
     let ledPnl = 0;
-    for (const t of portfolioTrades || []) {
+    const rows = portfolioTrades || [];
+    for (const t of rows) {
       if (t?.type !== "CLOSE") continue;
       if (tradeTsMs(t) < cutoff) continue;
-      const p = tradeNetPnlClose(t) ?? 0;
+      const openRef = resolveOpenRefForClose(t, rows, openTradeById);
+      const p = closeTradeNetUsd(t, openRef);
       if (isLedgerClose(t)) {
         ledN += 1;
         ledPnl += p;
@@ -245,7 +294,7 @@ export function PortfolioPanel() {
       }
     }
     return { appN, appPnl, ledN, ledPnl };
-  }, [portfolioTrades]);
+  }, [portfolioTrades, openTradeById]);
 
   const openPositionIdTokens = useMemo(() => {
     const set = new Set<string>();
