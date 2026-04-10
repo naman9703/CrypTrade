@@ -110,7 +110,7 @@ export function maybeMigrateLegacySupertrendSignalHistory() {
 
 /**
  * @param {{ symbol: string; timeframe: string; limit?: number }} opts
- * @returns {Array<{ ts: number; side: 'BUY'|'SELL'; aiGate: number|null; strength: number|null; stAction: string|null }>}
+ * @returns {Array<{ ts: number; side: 'BUY'|'SELL'; symbol: string; timeframe: string; aiGate: number|null; strength: number|null; stAction: string|null }>}
  */
 export function readSupertrendSignalHistory({ symbol, timeframe, limit = 2000 }) {
   const p = resolveSupertrendSignalHistoryPath();
@@ -137,6 +137,8 @@ export function readSupertrendSignalHistory({ symbol, timeframe, limit = 2000 })
       out.push({
         ts: Number(o.ts),
         side: o.side,
+        symbol: String(o.symbol || sym).toUpperCase(),
+        timeframe: String(o.timeframe || tf),
         aiGate: o.aiGate != null && Number.isFinite(Number(o.aiGate)) ? Number(o.aiGate) : null,
         strength: o.strength != null && Number.isFinite(Number(o.strength)) ? Number(o.strength) : null,
         stAction: o.stAction != null ? String(o.stAction) : null,

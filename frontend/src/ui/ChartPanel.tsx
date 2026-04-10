@@ -89,6 +89,8 @@ function formatIstCrosshairTime(time: Time): string {
 type SupertrendSignalHistRow = {
   ts: number;
   side: "BUY" | "SELL";
+  symbol?: string;
+  timeframe?: string;
   aiGate: number | null;
   strength: number | null;
   stAction: string | null;
@@ -104,6 +106,7 @@ function formatSupertrendSignalMarkerText(
     h &&
     ((h.side === "BUY" && m.side === "buy") || (h.side === "SELL" && m.side === "sell"));
   if (sideOk && h) {
+    const pair = h.symbol?.trim() ? `${h.symbol.trim()} ` : "";
     const ai = h.aiGate != null && Number.isFinite(Number(h.aiGate)) ? Number(h.aiGate).toFixed(2) : "—";
     const ss = h.strength != null && Number.isFinite(Number(h.strength)) ? String(Math.round(Number(h.strength))) : "—";
     let act = "·";
@@ -111,7 +114,7 @@ function formatSupertrendSignalMarkerText(
     else if (h.stAction === "WAIT") act = "W";
     else if (h.stAction === "SKIP") act = "K";
     const tag = m.side === "buy" ? "BUY" : "SELL";
-    return `${m.side === "buy" ? "▲" : "▼"}${tag} AI${ai} SS${ss} ${act}`;
+    return `${m.side === "buy" ? "▲" : "▼"}${pair}${tag} AI${ai} SS${ss} ${act}`;
   }
   return m.side === "buy" ? "ST buy" : "ST sell";
 }
@@ -966,9 +969,13 @@ export function ChartPanel() {
                       : verdict === "open"
                         ? "text-amber-300/90"
                         : "text-slate-500";
+                const pair =
+                  (h.symbol != null && String(h.symbol).trim()) ||
+                  normalizeSymTf(bot?.symbol) ||
+                  "—";
                 return (
                   <li
-                    key={`${h.ts}-${h.side}-${i}`}
+                    key={`${pair}-${h.ts}-${h.side}-${i}`}
                     className={
                       h.side === "BUY"
                         ? "border-l-2 border-emerald-500/60 pl-2 text-emerald-100/95"
@@ -976,6 +983,7 @@ export function ChartPanel() {
                     }
                   >
                     <span className="text-slate-600 dark:text-slate-500">{formatHistTimeIst(h.ts)}</span>{" "}
+                    <span className="font-mono text-[10px] font-semibold text-slate-700 dark:text-slate-300">{pair}</span>{" "}
                     <span className="font-semibold">{h.side}</span>
                     <span className="text-slate-600 dark:text-slate-400"> · @ {entryStr}</span>
                     <span className="text-slate-600 dark:text-slate-400"> · AI {ai}</span>

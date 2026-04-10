@@ -1400,8 +1400,23 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           return { venue: "FUTURES", side, action: "skipped", reason: "short_blocks_one_way" };
         }
         const cr = await closeFuturesLegsForSupertrend(shortHere, "SUPERTREND_FLIP");
-        if (!cr.ok) return { venue: "FUTURES", side, action: "error", reason: String(cr.error || "close_failed") };
         ({ here, longHere, shortHere } = await refreshFuturesLegs());
+        if (!cr.ok) {
+          if (shortHere.length > 0) {
+            return { venue: "FUTURES", side, action: "error", reason: String(cr.error || "close_failed") };
+          }
+          if (longHere.length > 0) {
+            return { venue: "FUTURES", side, action: "skipped", reason: "already_in_futures_position" };
+          }
+          broadcastActivity(wsHub, {
+            level: "warn",
+            msg: `Supertrend flip: close short failed (${String(cr.error || "unknown")}) but exchange has no short — opening long`,
+            category: "signal",
+            reason: "flip_close_error_but_flat",
+            symbol: orderSymbol,
+            detail: { priorError: String(cr.error || "") },
+          });
+        }
       }
       if (here.length > 0) {
         wsHub?.broadcast?.("log", {
@@ -1831,10 +1846,19 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     const tfE = String(entry.timeframe || "");
     if (symE === String(state.symbol).toUpperCase() && tfE === String(state.timeframe)) {
       const prev = Array.isArray(state.supertrendSignalHistory) ? state.supertrendSignalHistory : [];
-      const filt = prev.filter((e) => !(Number(e?.ts) === entry.ts && e?.side === entry.side));
+      const filt = prev.filter(
+        (e) =>
+          !(
+            Number(e?.ts) === entry.ts &&
+            e?.side === entry.side &&
+            String(e?.symbol || symE).toUpperCase() === symE
+          ),
+      );
       filt.push({
         ts: entry.ts,
         side: entry.side,
+        symbol: symE,
+        timeframe: tfE,
         aiGate: entry.aiGate,
         strength: entry.strength,
         stAction: entry.stAction,
@@ -2433,10 +2457,20 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       };
       appendSupertrendSignalHistoryEntry(entry);
       const prev = Array.isArray(state.supertrendSignalHistory) ? state.supertrendSignalHistory : [];
-      const filt = prev.filter((e) => !(Number(e?.ts) === entry.ts && e?.side === entry.side));
+      const symH = String(entry.symbol).toUpperCase();
+      const filt = prev.filter(
+        (e) =>
+          !(
+            Number(e?.ts) === entry.ts &&
+            e?.side === entry.side &&
+            String(e?.symbol || symH).toUpperCase() === symH
+          ),
+      );
       filt.push({
         ts: entry.ts,
         side: entry.side,
+        symbol: symH,
+        timeframe: String(entry.timeframe),
         aiGate: entry.aiGate,
         strength: entry.strength,
         stAction: entry.stAction,

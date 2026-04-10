@@ -775,6 +775,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
       const qtyStr = formatToStep(p.qty, m);
       if (!qtyStr) return { ok: false, error: "invalid_qty" };
       const closeSide = p.side === "BUY" ? "SELL" : "BUY";
+      const hedgeCloseExtras = await hedgePositionSideExtras(p.side === "BUY");
       try {
         await signed("POST", "/fapi/v1/order", {
           symbol: p.symbol,
@@ -783,6 +784,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
           quantity: qtyStr,
           reduceOnly: "true",
           newClientOrderId: `mclose_${Date.now()}`,
+          ...hedgeCloseExtras,
         });
       } catch (e) {
         return { ok: false, error: String(e?.message || e) };

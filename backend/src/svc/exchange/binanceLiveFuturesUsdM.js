@@ -825,6 +825,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       const qtyStr = formatToStep(p.qty, m);
       if (!qtyStr) return { ok: false, error: "invalid_qty" };
       const closeSide = p.side === "BUY" ? "SELL" : "BUY";
+      /** Same as `placeOrder`: dual-side accounts require `positionSide` on reduce-only closes (-2022 if omitted). */
+      const hedgeCloseExtras = await hedgePositionSideExtras(p.side === "BUY");
       try {
         await signed("POST", "/fapi/v1/order", {
           symbol: p.symbol,
@@ -833,6 +835,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           quantity: qtyStr,
           reduceOnly: "true",
           newClientOrderId: `mclose_${Date.now()}`,
+          ...hedgeCloseExtras,
         });
       } catch (e) {
         return { ok: false, error: String(e?.message || e) };
