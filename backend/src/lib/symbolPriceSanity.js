@@ -59,8 +59,9 @@ export function isPlausibleCandleClose(symbol, close, low, prevClose) {
 }
 
 /**
- * If the tick fails sanity, snap OHLC to previous bar's close (keeps one stream, discards corrupt print).
- * Returns null → caller should skip this WS message entirely.
+ * If the kline update fails sanity vs the buffer, drop it (return null). Never rewrite OHLC to
+ * "match" the prior close — artificial flat bars desync Supertrend, skip real flips, and invite
+ * bogus follow-on signals once the stream recovers.
  */
 export function sanitizeKlineCandle(symbol, candle, prev, log) {
   const sym = normalizeSym(symbol);
@@ -70,24 +71,11 @@ export function sanitizeKlineCandle(symbol, candle, prev, log) {
 
   if (isPlausibleCandleClose(sym, cl, lo, prevC)) return candle;
 
-  if (prevC != null && Number.isFinite(prevC) && prevC > 0) {
-    log?.warn?.("kline_close_sanitized", { symbol: sym, corruptClose: cl, anchor: prevC });
-    // Flat bar at the anchor: mixing corrupt high/low with a repaired close draws huge fake wicks
-    // and collapses the chart scale (TradingView-style vertical "breaks").
-    return {
-      ...candle,
-      open: prevC,
-      high: prevC,
-      low: prevC,
-      close: prevC,
-    };
-  }
-
-  const range = EXACT_CLOSE_RANGE[sym];
-  if (range && (cl < range[0] || cl > range[1])) {
-    log?.warn?.("kline_tick_dropped_no_anchor", { symbol: sym, close: cl });
-    return null;
-  }
-
-  return candle;
+  log?.warn?.("kline_tick_dropped_implausible", {
+    symbol: sym,
+    close: cl,
+    prevClose: prevC,
+    ts: candle?.ts,
+  });
+  return null;
 }

@@ -254,6 +254,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     },
     /** Set when stopped by feed staleness; cleared on start or any other stop reason. Auto-restart when feed is healthy again (see FEED_AUTO_RESTART). */
     pendingAutoRestartAfterFeedStale: false,
+    /**
+     * Live Binance feed unhealthy or stale: keep broadcasting chart/regime/signals but block autotrade
+     * (and risky exits) until the feed recovers. Does not flip `running`.
+     */
+    feedExecutionPause: null,
     /** Last `stop()` reason while bot was running (e.g. max_daily_loss); cleared on `start()`. For UI reset affordances. */
     lastStopReason: null,
     _fundingCache: { symbol: null, rate: null, at: 0 },
@@ -684,6 +689,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
    */
   async function flushPendingSupertrendOnStart(wsHub) {
     if (!state.running) return;
+    if (state.feedExecutionPause) return;
     const pending = state.pendingSupertrendAction;
     if (!pending) return;
     const candles = feed.getCandles();
@@ -819,6 +825,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         msg: "Supertrend: no exchange with placeOrder (use BINANCE_DEMO_API / BINANCE_TESTNET / BINANCE_LIVE / PAPER with autotrading)",
       });
       return { venue: "SPOT", side, action: "skipped", reason: "no_spot_placeOrder" };
+    }
+    if (state.feedExecutionPause) {
+      return { venue: "SPOT", side, action: "skipped", reason: "feed_execution_paused" };
     }
     const orderSymbol = String(tradeSymbol || state.symbol).toUpperCase();
     const candles =
@@ -1214,6 +1223,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         msg: "Supertrend futures: no futures connector with placeOrder (set Market FUTURES + keys for demo, testnet, or BINANCE_LIVE)",
       });
       return { venue: "FUTURES", side, action: "skipped", reason: "no_futures_placeOrder" };
+    }
+    if (state.feedExecutionPause) {
+      return { venue: "FUTURES", side, action: "skipped", reason: "feed_execution_paused" };
     }
 
     const orderSymbol = String(tradeSymbol || state.symbol).toUpperCase();
@@ -2347,7 +2359,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
     const barCloseKey = `${String(state.symbol).toUpperCase()}:${cTs}`;
     if (state.supertrendStHandledCloseKey === barCloseKey) {
-      if (state.running && (allowBuy || allowSell) && wsHubRef) {
+      if ((allowBuy || allowSell) && wsHubRef) {
         const sideLabel = allowBuy ? "BUY" : "SELL";
         emitSignalActionActivity(wsHubRef, {
           kind: "supertrend",
@@ -2456,6 +2468,22 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           side: allowBuy ? "BUY" : "SELL",
           action: "skipped",
           reason: "supertrend_autotrade_off_or_market_mode_mismatch",
+          supertrendStrength01: supertrendStrength01 ?? undefined,
+        });
+      }
+      return;
+    }
+
+    if (state.running && state.feedExecutionPause && (allowBuy || allowSell)) {
+      state.supertrendStHandledCloseKey = barCloseKey;
+      if (wsHubRef) {
+        emitSignalActionActivity(wsHubRef, {
+          kind: "supertrend",
+          strategyKey: "SUPERTREND",
+          venue: stSpot ? "SPOT" : stFut ? "FUTURES" : "—",
+          side: allowBuy ? "BUY" : "SELL",
+          action: "skipped",
+          reason: `feed_paused:${state.feedExecutionPause.reason}`,
           supertrendStrength01: supertrendStrength01 ?? undefined,
         });
       }
@@ -3112,6 +3140,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       decisionEngine: state.decisionEngine,
       pendingSupertrendAction: state.pendingSupertrendAction,
       pendingAutoRestartAfterFeedStale: state.pendingAutoRestartAfterFeedStale,
+      feedExecutionPause: state.feedExecutionPause,
       lastStopReason: state.lastStopReason,
       tradingFormDefaults: { ...state.tradingFormDefaults },
     };
@@ -3379,25 +3408,19 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     if (!last) return;
     state.metrics.tickCount += 1;
 
-    // Safety: skip tick (but stay running) if feed is reconnecting after symbol switch.
-    // Only hard-stop after prolonged staleness (60s without data).
+    // Feed health affects **execution only** (see `feedExecutionPause`). Chart/regime/signals keep updating
+    // from the candle buffer whenever we have a `last` candle.
     const feedStatus = feed.getStatus ? feed.getStatus() : null;
     const inGrace =
       state.coinLastSwitchedAt && Date.now() - Number(state.coinLastSwitchedAt) < Number(state.feedGraceMsAfterSwitch || 0);
 
-    // After AUTO switches symbols, the feed may still be streaming the previous symbol
-    // for a short moment. Avoid broadcasting/marking using stale candles for a new symbol.
+    // After AUTO switches symbols, avoid using ticks from the old stream window (best-effort).
     if (
-      state.running &&
       state.coinLastSwitchedAt &&
       inGrace &&
       feedStatus?.lastMsgAt &&
       Number(feedStatus.lastMsgAt) < Number(state.coinLastSwitchedAt)
     ) {
-      return;
-    }
-    if (state.running && !inGrace && feedStatus?.ok === false) {
-      // Skip tick but don't stop — feed may reconnect
       return;
     }
     const feedStaleMs = Math.max(15_000, Number(process.env.FEED_STALE_MS ?? 60_000));
@@ -3437,39 +3460,64 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       }
     }
 
-    if (
-      state.running &&
+    const feedUseBinance = marketFeedUsesLiveBinance();
+    const wsUnhealthy = !inGrace && feedStatus?.ok === false;
+    const dataStale =
       !inGrace &&
+      feedUseBinance &&
       freshestAt != null &&
-      Date.now() - freshestAt > feedStaleMs
-    ) {
-      state.metrics.feedStaleStops += 1;
-      const staleMs = Date.now() - freshestAt;
-      stop({
-        wsHub,
-        reason: "feed_stale_60s",
-        source: "safety_tick",
-        detail: {
-          /** Kline WebSocket last raw message (can lag if connection is half-open but stream is quiet). */
-          klineLastMsgAt: feedStatus.lastMsgAt,
-          aggTradeLastMsgAt: feedStatus.delta?.lastMsgAt ?? null,
+      Date.now() - freshestAt > feedStaleMs;
+    const shouldPauseExecution = feedUseBinance && (wsUnhealthy || dataStale);
+
+    if (shouldPauseExecution) {
+      const reason = wsUnhealthy ? "feed_ws" : "feed_stale";
+      const prev = state.feedExecutionPause;
+      if (!prev || prev.reason !== reason) {
+        state.feedExecutionPause = { reason, since: Date.now() };
+        if (state.running) {
+          broadcastActivity(wsHub, {
+            level: "warn",
+            msg:
+              reason === "feed_ws"
+                ? "Market WebSocket reconnecting — autotrade paused; chart still updates from candle buffer"
+                : "Market data stale — autotrade paused until live ticks resume",
+            category: "feed",
+            reason,
+            detail: {
+              klineLastMsgAt: feedStatus?.lastMsgAt ?? null,
+              aggTradeLastMsgAt: feedStatus?.delta?.lastMsgAt ?? null,
+              freshestMsgAt: freshestAt,
+              thresholdMs: feedStaleMs,
+            },
+          });
+        }
+        if (reason === "feed_stale" && (!prev || prev.reason !== "feed_stale")) {
+          state.metrics.feedStaleStops += 1;
+        }
+        log.warn("feed_execution_paused", {
+          symbol: state.symbol,
+          pauseReason: reason,
+          wsOk: feedStatus?.ok,
           freshestMsgAt: freshestAt,
-          staleMs,
-          thresholdMs: feedStaleMs,
-          feed: feedStatus,
-        },
-      });
-      log.warn("bot_auto_stopped_feed_stale", {
-        symbol: state.symbol,
-        klineLastMsgAt: feedStatus.lastMsgAt,
-        aggTradeLastMsgAt: feedStatus.delta?.lastMsgAt,
-        freshestMsgAt: freshestAt,
-        staleMs,
-      });
-      return;
+          staleMs: freshestAt != null ? Date.now() - freshestAt : null,
+        });
+      }
+    } else if (state.feedExecutionPause) {
+      const had = state.feedExecutionPause;
+      state.feedExecutionPause = null;
+      if (state.running && had) {
+        broadcastActivity(wsHub, {
+          level: "info",
+          msg: "Market feed healthy — autotrade eligible again",
+          category: "feed",
+          reason: "feed_recovered",
+        });
+      }
     }
 
-    await exch.markToMarket({ symbol: state.symbol, price: last.close });
+    if (!state.feedExecutionPause) {
+      await exch.markToMarket({ symbol: state.symbol, price: last.close });
+    }
     await ingestClosedTrades({ wsHub });
 
     const indicators = computeIndicators(candles);
@@ -3555,7 +3603,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
     // Time-based exits (must run after positions are loaded — not before `let positions`)
     const maxPosAgeMs = Number(process.env.MAX_POSITION_AGE_MS || 0);
-    if (maxPosAgeMs > 0 && Array.isArray(positions) && positions.length > 0) {
+    if (
+      maxPosAgeMs > 0 &&
+      Array.isArray(positions) &&
+      positions.length > 0 &&
+      !state.feedExecutionPause
+    ) {
       for (const p of positions) {
         const openedAt = p.openedAt || p.meta?.openedAt;
         if (!openedAt) continue;
@@ -3726,6 +3779,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       supertrend: state.supertrendLast,
       supertrendLine: stModel.line,
       supertrendSignals: stModel.signals,
+      feedExecutionPause: state.feedExecutionPause,
     });
 
     wsHub?.broadcast("state", {
@@ -3736,6 +3790,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     });
 
     if (!state.running) return;
+
+    if (state.feedExecutionPause) return;
 
     if (supertrendPausesAi) {
       /** Supertrend orders run only in `processSupertrendCandleClose` (kline `x` = bar closed). */
@@ -4357,6 +4413,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
   function stop({ wsHub, reason = "user_request", source = "api", detail } = {}) {
     if (!state.running) return;
     state.running = false;
+    state.feedExecutionPause = null;
     const r = String(reason);
     state.lastStopReason = r;
     const feedAutoRestartOn =
@@ -4413,7 +4470,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
   function updateConfig(patch) {
     if (patch.symbol) {
       state.symbol = patch.symbol;
+      state.coinLastSwitchedAt = Date.now();
       feed.setSymbol(patch.symbol);
+      state.feedExecutionPause = null;
       state.supertrendStHandledCloseKey = null;
       state.supertrendLastBarClose = null;
       state.supertrendLastFlipBarClose = null;
@@ -4443,7 +4502,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         state.universePinnedSymbol = up;
         state.symbolMode = "AUTO";
         state.symbol = up;
+        state.coinLastSwitchedAt = Date.now();
         feed.setSymbol(up);
+        state.feedExecutionPause = null;
         state.supertrendStHandledCloseKey = null;
         state.supertrendLastBarClose = null;
         state.supertrendLastFlipBarClose = null;
@@ -4461,6 +4522,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     if (patch.timeframe) {
       state.timeframe = patch.timeframe;
       feed.setTimeframe(patch.timeframe);
+      state.feedExecutionPause = null;
       state.supertrendStHandledCloseKey = null;
       state.supertrendLastBarClose = null;
       state.supertrendLastFlipBarClose = null;
@@ -4560,6 +4622,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
   }
 
   async function manualTrade({ wsHub, side, amountUsd, stopLossPct, takeProfitPct, strategyKey = "MANUAL" }) {
+    if (state.feedExecutionPause) return { ok: false, reason: "feed_execution_paused" };
     const candles = feed.getCandles();
     const last = candles[candles.length - 1];
     if (!last) return { ok: false, reason: "no_market_data" };

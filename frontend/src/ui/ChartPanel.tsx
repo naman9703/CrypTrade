@@ -393,7 +393,14 @@ export function ChartPanel() {
         : coherent && market?.supertrend != null && Number.isFinite(Number(market.supertrend.trend))
           ? Number(market.supertrend.trend)
           : null;
-    return { symbol, tf, price, regimeType, stTrend };
+    const pr = market?.feedExecutionPause?.reason;
+    const feedPauseLabel =
+      pr === "feed_ws"
+        ? "Feed: WS reconnecting (autotrade paused)"
+        : pr === "feed_stale"
+          ? "Feed: stale (autotrade paused)"
+          : null;
+    return { symbol, tf, price, regimeType, stTrend, feedPauseLabel };
   }, [bot?.symbol, bot?.timeframe, market, ohlc, chartSupertrend.lastTrend]);
 
   const ohlcRef = useRef(ohlc);
@@ -866,6 +873,11 @@ export function ChartPanel() {
             {chartHud.stTrend != null ? (
               <span className="ml-2 text-emerald-400/90">
                 · ST {chartHud.stTrend === 1 ? "long" : "short"}
+              </span>
+            ) : null}
+            {chartHud.feedPauseLabel ? (
+              <span className="ml-2 text-amber-600 dark:text-amber-400/95" title={chartHud.feedPauseLabel}>
+                · {chartHud.feedPauseLabel}
               </span>
             ) : null}
             {supertrendHud ? (

@@ -27,6 +27,8 @@ type MarketPayload = {
   supertrendLine?: Array<{ time: number; value: number }>;
   /** Confirmed trend flips; last bar shown once wall-clock passes its interval (matches server k.x window). */
   supertrendSignals?: Array<{ time: number; side: "buy" | "sell" }>;
+  /** Backend pauses autotrade only; chart still updates from buffer. */
+  feedExecutionPause?: { reason: string; since: number } | null;
 };
 
 export type LogPayload = {
