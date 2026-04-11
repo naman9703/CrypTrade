@@ -49,6 +49,8 @@ function cleanRow(e) {
   if (!e || typeof e !== "object") return null;
   if (e.side !== "BUY" && e.side !== "SELL") return null;
   if (!Number.isFinite(Number(e.ts))) return null;
+  const surf =
+    e.surfPulse != null && Number.isFinite(Number(e.surfPulse)) ? Number(e.surfPulse) : null;
   return {
     ts: Number(e.ts),
     side: e.side,
@@ -57,6 +59,7 @@ function cleanRow(e) {
     aiGate: e.aiGate != null && Number.isFinite(Number(e.aiGate)) ? Number(e.aiGate) : null,
     strength: e.strength != null && Number.isFinite(Number(e.strength)) ? Number(e.strength) : null,
     stAction: e.stAction != null ? String(e.stAction) : null,
+    surfPulse: surf,
   };
 }
 
@@ -109,10 +112,11 @@ export function maybeMigrateLegacySupertrendSignalHistory() {
 }
 
 /**
- * @param {{ symbol: string; timeframe: string; limit?: number }} opts
- * @returns {Array<{ ts: number; side: 'BUY'|'SELL'; symbol: string; timeframe: string; aiGate: number|null; strength: number|null; stAction: string|null }>}
+ * @param {{ symbol: string; timeframe: string; limit?: number; allSymbols?: boolean }} opts
+ * When `allSymbols` is true, every symbol in the jsonl for `timeframe` is included (multi-coin AUTO Supertrend).
+ * @returns {Array<{ ts: number; side: 'BUY'|'SELL'; symbol: string; timeframe: string; aiGate: number|null; strength: number|null; stAction: string|null; surfPulse?: number|null }>}
  */
-export function readSupertrendSignalHistory({ symbol, timeframe, limit = 2000 }) {
+export function readSupertrendSignalHistory({ symbol, timeframe, limit = 2000, allSymbols = false }) {
   const p = resolveSupertrendSignalHistoryPath();
   if (!fs.existsSync(p)) return [];
   const sym = String(symbol || "").toUpperCase();
@@ -130,23 +134,34 @@ export function readSupertrendSignalHistory({ symbol, timeframe, limit = 2000 })
     try {
       const o = JSON.parse(line);
       delete o._loggedAt;
-      if (String(o.symbol || "").toUpperCase() !== sym) continue;
+      const rowSym = String(o.symbol || "").toUpperCase();
+      if (!rowSym) continue;
+      if (!allSymbols && rowSym !== sym) continue;
       if (String(o.timeframe || "") !== tf) continue;
       if (o.side !== "BUY" && o.side !== "SELL") continue;
       if (!Number.isFinite(Number(o.ts))) continue;
       out.push({
         ts: Number(o.ts),
         side: o.side,
-        symbol: String(o.symbol || sym).toUpperCase(),
+        symbol: rowSym,
         timeframe: String(o.timeframe || tf),
         aiGate: o.aiGate != null && Number.isFinite(Number(o.aiGate)) ? Number(o.aiGate) : null,
         strength: o.strength != null && Number.isFinite(Number(o.strength)) ? Number(o.strength) : null,
         stAction: o.stAction != null ? String(o.stAction) : null,
+        surfPulse:
+          o.surfPulse != null && Number.isFinite(Number(o.surfPulse)) ? Number(o.surfPulse) : null,
       });
     } catch {
       /* skip */
     }
   }
   out.sort((a, b) => a.ts - b.ts);
-  return out.slice(-take);
+  /** Same flip can be appended twice (legacy races / sweep+WS); keep one row per (ts, side, symbol, tf). */
+  const dedup = new Map();
+  for (const row of out) {
+    const k = `${row.ts}|${row.side}|${row.symbol}|${row.timeframe}`;
+    dedup.set(k, row);
+  }
+  const merged = [...dedup.values()].sort((a, b) => a.ts - b.ts);
+  return merged.slice(-take);
 }

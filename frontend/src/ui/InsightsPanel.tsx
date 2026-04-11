@@ -103,10 +103,16 @@ export function InsightsPanel() {
 
   const insightSignalVerdictRows = useMemo(() => {
     const hist = Array.isArray(bot?.supertrendSignalHistory) ? bot.supertrendSignalHistory : [];
-    return hist
-      .filter((e: any) => e?.side === "BUY" || e?.side === "SELL")
-      .map((e: any) => ({ ts: Number(e.ts), side: e.side as "BUY" | "SELL" }))
-      .filter((e: { ts: number }) => Number.isFinite(e.ts));
+    const byKey = new Map<string, { ts: number; side: "BUY" | "SELL" }>();
+    for (const e of hist) {
+      if (e?.side !== "BUY" && e?.side !== "SELL") continue;
+      const ts = Number(e.ts);
+      if (!Number.isFinite(ts)) continue;
+      const sym = String(e.symbol ?? "").toUpperCase();
+      const tf = String(e.timeframe ?? "");
+      byKey.set(`${ts}|${e.side}|${sym}|${tf}`, { ts, side: e.side });
+    }
+    return [...byKey.values()].sort((a, b) => a.ts - b.ts);
   }, [bot?.supertrendSignalHistory]);
 
   const insightSignalVerdicts = useMemo(

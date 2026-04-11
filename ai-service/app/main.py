@@ -1202,6 +1202,30 @@ def save_short_model(model: Any) -> None:
     with _model_lock:
         _atomic_write_bytes(short_model_path(), joblib.dump, model)
 
+
+def surfpulse_model_path() -> Path:
+    return get_model_dir() / "surfpulse_xgb.pkl"
+
+
+def load_surfpulse_model() -> Any | None:
+    p = surfpulse_model_path()
+    if not p.exists():
+        return None
+    with _model_lock:
+        try:
+            return joblib.load(p)
+        except Exception:
+            import pickle
+
+            with open(p, "rb") as f:
+                return pickle.load(f)
+
+
+def save_surfpulse_model(model: Any) -> None:
+    with _model_lock:
+        _atomic_write_bytes(surfpulse_model_path(), joblib.dump, model)
+
+
 def load_short_calibrator() -> IsotonicRegression | None:
     p = short_calibrator_path()
     if not p.exists():
@@ -1346,6 +1370,38 @@ class BinanceTrainResponse(BaseModel):
     val_roc_auc: float | None = None
 
 
+SURF_PULSE_FEATURE_COLUMNS = [
+    "ema20",
+    "ema50",
+    "adx",
+    "rsi",
+    "atr",
+    "vol_ratio",
+    "body_size",
+    "ema_diff",
+]
+
+
+class SurfPulseFeaturesIn(BaseModel):
+    ema20: float
+    ema50: float
+    adx: float
+    rsi: float
+    atr: float
+    vol_ratio: float
+    body_size: float
+    ema_diff: float
+
+
+class SurfPulsePredictRequest(BaseModel):
+    features: SurfPulseFeaturesIn
+
+
+class SurfPulsePredictResponse(BaseModel):
+    probability: float
+    model_kind: str
+
+
 # ─── FastAPI app ──────────────────────────────────────────────────────────────
 
 app = FastAPI(title="AI Service", version="2.0.0")
@@ -1374,6 +1430,7 @@ def health() -> dict[str, Any]:
     compatible = n_model == len(FEATURE_COLUMNS) if n_model is not None else (m is not None)
     ensemble_size = len(m) if isinstance(m, list) else (1 if m else 0)
     short_m = load_short_model()
+    surfpulse_m = load_surfpulse_model()
     return {
         "ok": True,
         "model_loaded": m is not None,
@@ -1382,6 +1439,8 @@ def health() -> dict[str, Any]:
         "calibrator_loaded": cal is not None,
         "calibrator_platt_loaded": cal_p is not None,
         "short_model_loaded": short_m is not None,
+        "surfpulse_model_loaded": surfpulse_m is not None,
+        "surfpulse_model_path": str(surfpulse_model_path()),
         "xgboost_available": XGBOOST_AVAILABLE,
         **(
             {"xgboost_import_error": XGBOOST_IMPORT_ERROR}
@@ -1501,6 +1560,27 @@ def predict(req: PredictRequest) -> PredictResponse:
         features=last_features,
         model_kind=model_kind,
     )
+
+
+@app.post("/predict/surfpulse", response_model=SurfPulsePredictResponse)
+def predict_surfpulse(req: SurfPulsePredictRequest) -> SurfPulsePredictResponse:
+    """8-feature win classifier for SurfPulse ML strategy (separate from main FEATURE_COLUMNS model)."""
+    model = load_surfpulse_model()
+    if model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="SurfPulse model missing. Run: cd ai-service && python scripts/train_surfpulse.py",
+        )
+    f = req.features.model_dump()
+    x = np.array([[float(f[k]) for k in SURF_PULSE_FEATURE_COLUMNS]], dtype=np.float64)
+    n_exp = getattr(model, "n_features_in_", None)
+    if n_exp is not None and int(n_exp) != len(SURF_PULSE_FEATURE_COLUMNS):
+        raise HTTPException(
+            status_code=503,
+            detail=f"SurfPulse model expects {n_exp} features; config has {len(SURF_PULSE_FEATURE_COLUMNS)}.",
+        )
+    raw = float(model.predict_proba(x)[0, 1])
+    return SurfPulsePredictResponse(probability=raw, model_kind=type(model).__name__)
 
 
 @app.post("/train", response_model=TrainResponse)

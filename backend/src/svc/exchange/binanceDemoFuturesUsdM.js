@@ -6,6 +6,12 @@ import { resolveDefaultDemoFuturesIncomeSyncPath } from "../../lib/tradingModePe
 import { tradeCloseFeeUsdtFromNotional } from "../../lib/tradeCloseFee.js";
 import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
+import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
+import {
+  mergeSlTpSymbolMaps,
+  slTpFromAlgoOrdersList,
+  slTpFromOpenOrdersList,
+} from "../../lib/binanceFuturesOpenOrdersSlTp.js";
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
@@ -237,17 +243,14 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     }
     const map = new Map();
     try {
-      const all = await signed("GET", "/fapi/v1/openOrders");
-      for (const o of Array.isArray(all) ? all : []) {
-        const s = String(o.symbol || "").toUpperCase();
-        if (!map.has(s)) map.set(s, { sl: null, tp: null });
-        const typ = String(o.type || "");
-        const st = Number(o.stopPrice);
-        if (!Number.isFinite(st) || st <= 0) continue;
-        const row = map.get(s);
-        if (typ.includes("TAKE_PROFIT")) row.tp = st;
-        else if (typ.includes("STOP") && !typ.includes("TAKE")) row.sl = st;
-      }
+      const [all, algoRaw] = await Promise.all([
+        signed("GET", "/fapi/v1/openOrders").catch(() => []),
+        signed("GET", "/fapi/v1/openAlgoOrders").catch(() => []),
+      ]);
+      const parsed = slTpFromOpenOrdersList(Array.isArray(all) ? all : []);
+      const parsedAlgo = slTpFromAlgoOrdersList(algoRaw);
+      const merged = mergeSlTpSymbolMaps(parsed, parsedAlgo);
+      for (const [k, v] of merged) map.set(k, v);
     } catch (e) {
       log?.warn?.("binance_demo_futures_open_orders_failed", { error: String(e?.message || e) });
     }
@@ -269,8 +272,12 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     lastIncomePollAt: 0,
     /** SL/TP targets when exchange-side brackets couldn't be placed (demo API limitation) */
     localBrackets: {},
+    /** Last SL/TP we placed when exchange brackets succeeded (open-order parsing can still miss fields). */
+    placedBracketTargets: {},
     /** Recent local bracket closes — income sync uses these to attribute PnL to strategy, not ledger */
     recentLocalCloses: [],
+    /** Per-symbol trailing SL state when `meta.autoTradeTrailing` on open */
+    trailingBySymbol: {},
   };
 
   const MAX_MEM_TRADES = 800;
@@ -407,7 +414,8 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
           if (!ids.includes(tid)) ids.push(tid);
           mergeInto.meta.tranIds = ids;
           mergeInto.meta.tranId = ids[ids.length - 1];
-          if (lc.posId && String(mergeInto.id).startsWith("finc_")) mergeInto.id = String(lc.posId);
+          // Keep CLOSE id unique (e.g. finc_<tranId>); fut_<sym> matches every OPEN on that symbol and
+          // collapses history in mergeTradesById (Map by id). OPEN↔CLOSE linking uses symbol+time in UI.
           if ((mergeInto.qty == null || !Number.isFinite(Number(mergeInto.qty))) && lc.qty != null) {
             mergeInto.qty = Number(lc.qty);
           }
@@ -433,7 +441,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
             lc.markPx != null && Number.isFinite(Number(lc.markPx)) ? Number(lc.markPx) : NaN;
           mem.trades.push({
             type: "CLOSE",
-            id: lc.posId ? String(lc.posId) : `finc_${tid}`,
+            id: `finc_${tid}`,
             ts: tsIso,
             symbol: sym,
             side: lc.closeSide || "—",
@@ -508,11 +516,12 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
           .map((p) => {
             const sym = p.symbol;
             const lb = mem.localBrackets[sym];
+            const pb = mem.placedBracketTargets[sym];
             const lev = Number(p.leverage || defaultLeverage);
-            return { sym, lb, lev, p };
+            return { sym, lb, pb, lev, p };
           });
         const out = [];
-        for (const { sym, lb, lev, p } of rows) {
+        for (const { sym, lb, pb, lev, p } of rows) {
           const oo = await stopTakeFromExchangeOpenOrders(sym);
           out.push({
             id: `fut_${sym}`,
@@ -521,8 +530,8 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
             qty: Math.abs(Number(p.positionAmt)),
             entryPrice: Number(p.entryPrice || 0),
             unrealizedPnl: Number(p.unrealizedProfit || 0),
-            stopLoss: oo.sl ?? lb?.stopLoss ?? null,
-            takeProfit: oo.tp ?? lb?.takeProfit ?? null,
+            stopLoss: oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? null,
+            takeProfit: oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? null,
             leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
             venue: "FUTURES",
             syncSource: "fapi_v2_account",
@@ -635,6 +644,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
           logPrefix: "binance_demo_futures",
         });
         bracketsPlaced = true;
+        mem.placedBracketTargets[symbol] = { stopLoss: stopPx, takeProfit: tpPx };
       } catch (e) {
         const is4120 = futuresOrderIs4120(e);
         if (is4120) {
@@ -687,13 +697,57 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
       });
       if (mem.trades.length > MAX_MEM_TRADES) mem.trades = mem.trades.slice(-MAX_MEM_TRADES);
 
-      return { id: posId, filledPrice, leverage, venue: "FUTURES", raw: out, strategy, meta: meta || {} };
+      if (meta?.autoTradeTrailing) {
+        mem.trailingBySymbol[symbol] = {
+          entryPrice: filledPrice,
+          isLong,
+          trailStep: 0,
+          extremePx: filledPrice,
+        };
+      }
+
+      return {
+        id: posId,
+        filledPrice,
+        leverage,
+        venue: "FUTURES",
+        stopLoss: stopPx,
+        takeProfit: tpPx,
+        raw: out,
+        strategy,
+        meta: meta || {},
+      };
     },
-    async markToMarket({ symbol, price } = {}) {
+    async markToMarket({ symbol, price, trailingStopLoss, onTrailingSlAdvance } = {}) {
       await syncRealizedIncomeFromExchange();
 
-      // Local SL/TP enforcement for positions where exchange brackets failed (-4120)
+      const symU = String(symbol || "").toUpperCase();
       const markPx = Number(price);
+      if (symU && Number.isFinite(markPx) && markPx > 0 && trailingStopLoss?.enabled && mem.trailingBySymbol[symU]) {
+        try {
+          const m = await getOrLoadSymbolMeta(symU);
+          const tick = Number(m?.tickSize);
+          applyTrailingStopBinanceMemory({
+            symbol: symU,
+            markPx,
+            trailingOpts: {
+              enabled: true,
+              feeRate: trailingStopLoss.feeRate,
+              extraScalpingPcts: trailingStopLoss.extraScalpingPcts ?? [],
+              maxTrailSteps: trailingStopLoss.maxTrailSteps,
+            },
+            trailingBySymbol: mem.trailingBySymbol,
+            localBrackets: mem.localBrackets,
+            placedBracketTargets: mem.placedBracketTargets,
+            tickSize: Number.isFinite(tick) && tick > 0 ? tick : null,
+            onTrailingSlAdvance,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+
+      // Local SL/TP enforcement for positions where exchange brackets failed (-4120)
       if (symbol && Number.isFinite(markPx) && markPx > 0 && mem.localBrackets[symbol]) {
         const b = mem.localBrackets[symbol];
         // Sanity check: reject stale prices from symbol switches.
@@ -742,6 +796,8 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
               markPx: Number(markPx),
             });
             delete mem.localBrackets[symbol];
+            delete mem.placedBracketTargets[symbol];
+            delete mem.trailingBySymbol[String(symbol || "").toUpperCase()];
           } catch (e) {
             log?.warn?.("binance_demo_futures_local_bracket_close_failed", { symbol, hit, error: String(e?.message || e) });
           }
@@ -819,6 +875,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         leverage: lev,
       });
       delete mem.localBrackets[p.symbol];
+      delete mem.placedBracketTargets[p.symbol];
       return { ok: true };
     },
     async getSymbolOrderConstraints(symbol) {

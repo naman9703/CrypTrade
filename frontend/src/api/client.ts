@@ -57,14 +57,23 @@ export const api = {
     const qs = q.toString();
     return json<any>(await apiFetch(`${HTTP}/api/symbol/constraints${qs ? `?${qs}` : ""}`));
   },
-  /** ~24h window of OHLCV (+ supertrend line) from server Binance buffer; refetch after symbol/timeframe change. */
-  async marketCandles(hours = 24) {
-    return json<any>(
-      await apiFetch(`${HTTP}/api/market/candles?hours=${encodeURIComponent(String(hours))}`),
-    );
+  /** OHLCV + supertrend line from server. Omit symbol = bot’s active pair; pass symbol for multi-chart tiles. */
+  async marketCandles(opts?: { hours?: number; symbol?: string } | number) {
+    const hours = typeof opts === "number" ? opts : opts?.hours ?? 24;
+    const symbol = typeof opts === "number" ? undefined : opts?.symbol;
+    const q = new URLSearchParams();
+    q.set("hours", encodeURIComponent(String(hours)));
+    if (symbol) q.set("symbol", String(symbol).toUpperCase());
+    return json<any>(await apiFetch(`${HTTP}/api/market/candles?${q}`));
   },
-  async universeScan() {
-    return json<any>(await apiFetch(`${HTTP}/api/universe/scan`));
+  /** @param refresh When true, bypasses last cached snapshot and runs a fresh Binance scan. */
+  async universeScan(refresh = false) {
+    const q = refresh ? "?refresh=1" : "";
+    return json<any>(await apiFetch(`${HTTP}/api/universe/scan${q}`));
+  },
+  /** Tradable USDT pairs for custom coin-base (spot or futures matches MARKET_FEED). */
+  async universeSymbols() {
+    return json<{ ok?: boolean; symbols?: string[]; error?: string }>(await apiFetch(`${HTTP}/api/universe/symbols`));
   },
   async aiHealth() {
     return json<any>(await apiFetch(`${HTTP}/api/ai/health`));

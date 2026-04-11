@@ -1,5 +1,5 @@
 import { createCandleBuffer } from "./marketBuffer.js";
-import { createBinanceMarketFeed } from "./marketFeedBinance.js";
+import { createBinanceCombinedMarketFeed } from "./marketFeedBinanceCombined.js";
 
 /** Plausible mid prices for synthetic feed when switching symbols (not market data). */
 function syntheticBasePrice(symbol) {
@@ -29,22 +29,24 @@ function syntheticBasePrice(symbol) {
 export function createMarketFeed({ log, symbol, timeframe, onCandleClose = null }) {
   const kind = String(process.env.MARKET_FEED || "SYNTH").toUpperCase();
   if (kind === "BINANCE") {
-    return createBinanceMarketFeed({
+    return createBinanceCombinedMarketFeed({
       log,
       symbol,
       timeframe,
       variant: "spot",
+      watchSymbols: [],
       restBase: process.env.BINANCE_REST_BASE || "https://api.binance.com",
       wsBase: process.env.BINANCE_WS_BASE || "wss://stream.binance.com:9443/ws",
       onCandleClose,
     });
   }
   if (kind === "BINANCE_FUTURES") {
-    return createBinanceMarketFeed({
+    return createBinanceCombinedMarketFeed({
       log,
       symbol,
       timeframe,
       variant: "futures",
+      watchSymbols: [],
       restBase: process.env.BINANCE_FUTURES_REST_BASE || "https://fapi.binance.com",
       wsBase: process.env.BINANCE_FUTURES_WS_BASE || "wss://fstream.binance.com/ws",
       onCandleClose,
@@ -112,9 +114,15 @@ export function createMarketFeed({ log, symbol, timeframe, onCandleClose = null 
       timeframe = next;
       log.info("feed_timeframe_set", { timeframe });
     },
+    setWatchSymbols() {
+      /* synthetic feed: no-op */
+    },
     getCandles() {
       seed();
       return buf.toArray();
+    },
+    getCandlesForSymbol() {
+      return [];
     },
   };
 }

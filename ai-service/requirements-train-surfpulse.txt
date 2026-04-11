@@ -1,0 +1,12 @@
+# Deps to run scripts/train_surfpulse.py (no FastAPI/uvicorn). Uses XGBoost when installed (same as guide).
+# If disk is very tight, use requirements-train-surfpulse-minimal.txt (sklearn fallback only).
+#
+#   pip3 install --no-cache-dir -r requirements-train-surfpulse.txt
+#
+numpy>=1.26,<3
+pandas>=2.0,<3
+# Explicit scipy — sklearn imports scipy.sparse; a partial/broken scipy install causes
+# "No module named 'scipy.sparse'" even when pip reports sklearn satisfied.
+scipy>=1.11,<2
+scikit-learn>=1.4,<2
+xgboost>=2.0,<3

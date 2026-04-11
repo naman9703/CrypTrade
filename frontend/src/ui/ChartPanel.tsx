@@ -18,6 +18,8 @@ import {
 import { useThemeStore } from "../themeStore";
 import { CHART_CANDLE_MAX, useAppStore } from "../ws/store";
 import { OrderBookPanel } from "./OrderBookPanel";
+import { MultiCoinSignalTabs } from "./MultiCoinSignalTabs";
+import { PositionMiniChartsRow } from "./PositionMiniChartsRow";
 
 /** Display axis + crosshair in IST (UTC+5:30); bar timestamps stay UTC unix seconds from the feed. */
 const CHART_TIMEZONE = "Asia/Kolkata";
@@ -94,6 +96,8 @@ type SupertrendSignalHistRow = {
   aiGate: number | null;
   strength: number | null;
   stAction: string | null;
+  /** SurfPulse ML /predict/surfpulse win probability at bar close (0–1). */
+  surfPulse?: number | null;
 };
 
 /** On-chart marker (compact; full text also in list under chart). */
@@ -109,12 +113,14 @@ function formatSupertrendSignalMarkerText(
     const pair = h.symbol?.trim() ? `${h.symbol.trim()} ` : "";
     const ai = h.aiGate != null && Number.isFinite(Number(h.aiGate)) ? Number(h.aiGate).toFixed(2) : "—";
     const ss = h.strength != null && Number.isFinite(Number(h.strength)) ? String(Math.round(Number(h.strength))) : "—";
+    const sp =
+      h.surfPulse != null && Number.isFinite(Number(h.surfPulse)) ? Number(h.surfPulse).toFixed(2) : "—";
     let act = "·";
     if (h.stAction === "TRADE") act = "T";
     else if (h.stAction === "WAIT") act = "W";
     else if (h.stAction === "SKIP") act = "K";
     const tag = m.side === "buy" ? "BUY" : "SELL";
-    return `${m.side === "buy" ? "▲" : "▼"}${pair}${tag} AI${ai} SS${ss} ${act}`;
+    return `${m.side === "buy" ? "▲" : "▼"}${pair}${tag} AI${ai} SS${ss} SP${sp} ${act}`;
   }
   return m.side === "buy" ? "ST buy" : "ST sell";
 }
@@ -168,11 +174,75 @@ export function ChartPanel() {
   const candles = useAppStore((s) => s.candles);
   const market = useAppStore((s) => s.market);
   const bot = useAppStore((s) => s.bot);
+  const chartDisplaySymbol = useAppStore((s) => s.chartDisplaySymbol);
+  const setChartDisplaySymbol = useAppStore((s) => s.setChartDisplaySymbol);
+  const positions = useAppStore((s) => s.positions);
   const chartTheme = useThemeStore((s) => s.theme);
 
+  const [altCandles, setAltCandles] = useState<any[]>([]);
+
+  const effectiveSym = useMemo(() => {
+    const b = normalizeSymTf(bot?.symbol);
+    const d = chartDisplaySymbol ? normalizeSymTf(chartDisplaySymbol) : "";
+    return d || b || "";
+  }, [bot?.symbol, chartDisplaySymbol]);
+
+  const isAltChartView = useMemo(() => {
+    const b = normalizeSymTf(bot?.symbol);
+    return Boolean(effectiveSym && b && effectiveSym !== b);
+  }, [effectiveSym, bot?.symbol]);
+
+  const isMultiCoinMode = String(bot?.universeCoinSelectMode || "").toUpperCase() === "MULTIPLE";
+
+  useEffect(() => {
+    if (!isMultiCoinMode) setChartDisplaySymbol(null);
+  }, [isMultiCoinMode, setChartDisplaySymbol]);
+
+  const parseCandlesFromMarketApi = useCallback((r: any, chartSym: string) => {
+    if (!r?.ok || !Array.isArray(r.candles)) return [] as any[];
+    const out: any[] = [];
+    let prevHello: number | null = null;
+    for (const c of r.candles) {
+      const cl = Number(c?.close);
+      const lo = Number(c?.low);
+      if (!isPlausibleCandleClose(chartSym, cl, lo, prevHello)) continue;
+      out.push(c);
+      prevHello = cl;
+    }
+    return out.slice(-CHART_CANDLE_MAX);
+  }, []);
+
+  useEffect(() => {
+    const es = normalizeSymTf(effectiveSym);
+    const bs = normalizeSymTf(bot?.symbol);
+    if (!es) return;
+    if (es === bs) {
+      setAltCandles([]);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await api.marketCandles({ hours: 24, symbol: es });
+        if (cancelled) return;
+        setAltCandles(parseCandlesFromMarketApi(r, es));
+      } catch {
+        if (!cancelled) setAltCandles([]);
+      }
+    };
+    void load();
+    const id = window.setInterval(() => void load(), CHART_BACKGROUND_SYNC_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [effectiveSym, bot?.symbol, parseCandlesFromMarketApi]);
+
+  const baseCandles = isAltChartView ? altCandles : candles;
+
   const ohlc = useMemo(
-    () => buildOhlc(candles, { symbol: bot?.symbol != null ? String(bot.symbol) : undefined }),
-    [candles, bot?.symbol],
+    () => buildOhlc(baseCandles, { symbol: effectiveSym || undefined }),
+    [baseCandles, effectiveSym],
   );
   /** Same bars as candlesticks (in ms) so Supertrend math cannot diverge from what you see. */
   const ohlcAsMsCandles = useMemo(() => ohlcBarsToMsCandles(ohlc), [ohlc]);
@@ -186,9 +256,16 @@ export function ChartPanel() {
       multiplier,
       wilderAtr,
       timeframe: bot?.timeframe != null ? String(bot.timeframe) : "1m",
-      symbol: bot?.symbol != null ? String(bot.symbol) : undefined,
+      symbol: effectiveSym || undefined,
     });
-  }, [ohlcAsMsCandles, bot?.symbol, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr, bot?.timeframe]);
+  }, [
+    ohlcAsMsCandles,
+    effectiveSym,
+    bot?.supertrendPeriod,
+    bot?.supertrendMultiplier,
+    bot?.supertrendWilderAtr,
+    bot?.timeframe,
+  ]);
 
   /** Latest k.x may be a no-flip bar; keep showing the last chart-aligned flip that autotrade could use (matches Activity). */
   const supertrendHud = useMemo(() => {
@@ -254,10 +331,18 @@ export function ChartPanel() {
   }, [chartSupertrend.markers, candleTimes, bot?.supertrendLastBarClose, bot?.supertrendLastFlipBarClose, ohlc]);
 
   /** Persisted flips for current symbol/timeframe (server); markers + list under chart. T/W/K = TRADE/WAIT/SKIP. */
-  const supertrendSignalHistoryRecent = useMemo(
-    () => (Array.isArray(bot?.supertrendSignalHistory) ? (bot.supertrendSignalHistory as SupertrendSignalHistRow[]) : []),
-    [bot?.supertrendSignalHistory],
-  );
+  const supertrendSignalHistoryRecent = useMemo(() => {
+    const raw = Array.isArray(bot?.supertrendSignalHistory)
+      ? (bot.supertrendSignalHistory as SupertrendSignalHistRow[])
+      : [];
+    const byKey = new Map<string, SupertrendSignalHistRow>();
+    for (const h of raw) {
+      const sym = String(h.symbol ?? "").toUpperCase();
+      const tf = String(h.timeframe ?? "");
+      byKey.set(`${h.ts}|${h.side}|${sym}|${tf}`, h);
+    }
+    return [...byKey.values()].sort((a, b) => Number(a.ts) - Number(b.ts));
+  }, [bot?.supertrendSignalHistory]);
 
   const supertrendSignalHistoryNewestFirst = useMemo(
     () => [...supertrendSignalHistoryRecent].reverse(),
@@ -268,6 +353,26 @@ export function ChartPanel() {
     () => supertrendSignalHistoryNewestFirst.slice(0, SUPERTREND_SIGNAL_LIST_MAX),
     [supertrendSignalHistoryNewestFirst],
   );
+
+  const smartSsSuggestedTitle = useMemo(() => {
+    const m = bot?.smartSignalStrengthThresholdMeta as Record<string, unknown> | null | undefined;
+    const lines = [
+      "Suggested min SS (0–100) from your signal list: resolved flips (True/False vs next opposite) vs composite strength.",
+      "Scans thresholds high→low; keeps the highest SS floor where precision and Wilson lower bound pass (stable on small n).",
+      "Blends with the last saved value after restarts so new jsonl rows refine the estimate.",
+    ];
+    if (m && typeof m === "object") {
+      const n = m.nResolved;
+      const p = m.precisionAtThreshold;
+      const wl = m.wilsonLower;
+      const lr = m.learnedRaw;
+      if (typeof n === "number" && Number.isFinite(n)) lines.push(`Resolved rows used: ${n}`);
+      if (typeof p === "number" && Number.isFinite(p)) lines.push(`Precision at chosen floor: ${(p * 100).toFixed(1)}%`);
+      if (typeof wl === "number" && Number.isFinite(wl)) lines.push(`Wilson LB: ${(wl * 100).toFixed(1)}%`);
+      if (lr != null && Number.isFinite(Number(lr))) lines.push(`Raw scan result (before blend): ${Math.round(Number(lr))}`);
+    }
+    return lines.join("\n");
+  }, [bot?.smartSignalStrengthThresholdMeta]);
 
   const supertrendSignalVerdictsChrono = useMemo(
     () => computeSupertrendSignalVerdicts(supertrendSignalHistoryRecent, ohlc),
@@ -329,8 +434,8 @@ export function ChartPanel() {
 
   const supertrendSoundCtx = useMemo(
     () =>
-      `${normalizeSymTf(bot?.symbol)}|${normalizeSymTf(bot?.timeframe)}|${Number(bot?.supertrendPeriod ?? 10)}|${Number(bot?.supertrendMultiplier ?? 3)}|${bot?.supertrendWilderAtr !== false}`,
-    [bot?.symbol, bot?.timeframe, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr],
+      `${normalizeSymTf(effectiveSym)}|${normalizeSymTf(bot?.timeframe)}|${Number(bot?.supertrendPeriod ?? 10)}|${Number(bot?.supertrendMultiplier ?? 3)}|${bot?.supertrendWilderAtr !== false}`,
+    [effectiveSym, bot?.timeframe, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr],
   );
   const stSigSoundBootRef = useRef(true);
   const stSigSoundPrevKeyRef = useRef<string | null>(null);
@@ -365,7 +470,7 @@ export function ChartPanel() {
 
   /** `bot` is the selected pair; `market` can lag one tick after symbol/timeframe changes — avoid mixing them in the header. */
   const chartHud = useMemo(() => {
-    const bSym = normalizeSymTf(bot?.symbol);
+    const bSym = normalizeSymTf(effectiveSym);
     const mSym = normalizeSymTf(market?.symbol);
     const coherent = Boolean(bSym && mSym && bSym === mSym);
     const symbol = bSym || mSym || "—";
@@ -404,7 +509,7 @@ export function ChartPanel() {
           ? "Feed: stale (autotrade paused)"
           : null;
     return { symbol, tf, price, regimeType, stTrend, feedPauseLabel };
-  }, [bot?.symbol, bot?.timeframe, market, ohlc, chartSupertrend.lastTrend]);
+  }, [effectiveSym, bot?.timeframe, market, ohlc, chartSupertrend.lastTrend]);
 
   const ohlcRef = useRef(ohlc);
   ohlcRef.current = ohlc;
@@ -474,7 +579,8 @@ export function ChartPanel() {
     const cur = ohlcRef.current;
     if (cur.length) {
       try {
-        const sym0 = normalizeSymTf(useAppStore.getState().bot?.symbol);
+        const st = useAppStore.getState();
+        const sym0 = normalizeSymTf(st.chartDisplaySymbol ?? st.bot?.symbol);
         const filtered = cur.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? cur[i - 1]! : null, sym0));
         if (filtered.length) {
           series.setData(filtered);
@@ -556,7 +662,7 @@ export function ChartPanel() {
     const prev = chartOhlcAppliedRef.current;
     const last = ohlc[ohlc.length - 1]!;
     const first = ohlc[0]!;
-    const sym = normalizeSymTf(bot?.symbol);
+    const sym = normalizeSymTf(effectiveSym);
 
     let full =
       !prev ||
@@ -643,10 +749,10 @@ export function ChartPanel() {
         /* ignore */
       }
     }
-  }, [ohlc, bot?.symbol]);
+  }, [ohlc, effectiveSym]);
 
   useEffect(() => {
-    const sym = bot?.symbol as string | undefined;
+    const sym = effectiveSym;
     const tf = bot?.timeframe as string | undefined;
     if (!sym || !tf) return;
     const hadPrev = prevChartSymbolRef.current !== undefined;
@@ -677,7 +783,7 @@ export function ChartPanel() {
         }
       }
     }, 2800);
-  }, [bot?.symbol, bot?.timeframe]);
+  }, [effectiveSym, bot?.timeframe]);
 
   const applyMarketCandlesResult = useCallback((r: any, sym: string, tf: string, opts?: { preserveView?: boolean }): boolean => {
     if (!r?.ok || !Array.isArray(r.candles) || !r.candles.length) return false;
@@ -732,34 +838,46 @@ export function ChartPanel() {
 
   const [chartRefreshBusy, setChartRefreshBusy] = useState(false);
   const handleRefreshChart = useCallback(async () => {
-    const sym = normalizeSymTf(bot?.symbol);
+    const sym = normalizeSymTf(effectiveSym);
     const tf = normalizeSymTf(bot?.timeframe);
     if (!sym || !tf) return;
     setChartRefreshBusy(true);
     try {
-      const r = await api.marketCandles(24);
-      const ok = applyMarketCandlesResult(r, sym, tf);
       const pushLog = useAppStore.getState().pushLog;
-      if (ok) {
-        chartOhlcAppliedRef.current = null;
-        setChartInstanceKey((k) => k + 1);
-        pushLog({
-          level: "info",
-          msg: "Chart fully reloaded from server (new canvas + OHLC snapshot, same path as after reconnect)",
-        });
-      } else pushLog({ level: "warn", msg: "Chart refresh: no data or pair changed — try again." });
+      if (isAltChartView) {
+        const r = await api.marketCandles({ hours: 24, symbol: sym });
+        const cc = parseCandlesFromMarketApi(r, sym);
+        if (cc.length) {
+          setAltCandles(cc);
+          chartOhlcAppliedRef.current = null;
+          setChartInstanceKey((k) => k + 1);
+          pushLog({ level: "info", msg: `Chart reloaded from server (REST) · ${sym}` });
+        } else pushLog({ level: "warn", msg: "Chart refresh: no candles returned." });
+      } else {
+        const r = await api.marketCandles(24);
+        const ok = applyMarketCandlesResult(r, sym, tf);
+        if (ok) {
+          chartOhlcAppliedRef.current = null;
+          setChartInstanceKey((k) => k + 1);
+          pushLog({
+            level: "info",
+            msg: "Chart fully reloaded from server (new canvas + OHLC snapshot, same path as after reconnect)",
+          });
+        } else pushLog({ level: "warn", msg: "Chart refresh: no data or pair changed — try again." });
+      }
     } catch {
       useAppStore.getState().pushLog({ level: "error", msg: "Chart refresh failed (network or server error)" });
     } finally {
       setChartRefreshBusy(false);
     }
-  }, [bot?.symbol, bot?.timeframe, applyMarketCandlesResult]);
+  }, [effectiveSym, bot?.timeframe, isAltChartView, parseCandlesFromMarketApi, applyMarketCandlesResult]);
 
-  /** REST snapshot after symbol/timeframe change so the chart fills ~24h once Binance backfill completes. */
+  /** REST snapshot after symbol/timeframe change so the chart fills ~24h once Binance backfill completes (primary feed only). */
   useEffect(() => {
     const sym = normalizeSymTf(bot?.symbol);
     const tf = normalizeSymTf(bot?.timeframe);
     if (!sym || !tf) return;
+    if (normalizeSymTf(effectiveSym) !== sym) return;
     let cancelled = false;
     const t = window.setTimeout(() => {
       api
@@ -774,12 +892,13 @@ export function ChartPanel() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [bot?.symbol, bot?.timeframe, applyMarketCandlesResult]);
+  }, [effectiveSym, bot?.symbol, bot?.timeframe, applyMarketCandlesResult]);
 
   useEffect(() => {
     const sym = normalizeSymTf(bot?.symbol);
     const tf = normalizeSymTf(bot?.timeframe);
     if (!sym || !tf) return;
+    if (normalizeSymTf(effectiveSym) !== sym) return;
     const id = window.setInterval(() => {
       const live = useAppStore.getState();
       const liveSym = normalizeSymTf(live.bot?.symbol);
@@ -793,7 +912,7 @@ export function ChartPanel() {
         .catch(() => {});
     }, CHART_BACKGROUND_SYNC_MS);
     return () => clearInterval(id);
-  }, [bot?.symbol, bot?.timeframe, applyMarketCandlesResult]);
+  }, [effectiveSym, bot?.symbol, bot?.timeframe, applyMarketCandlesResult]);
 
   useEffect(() => {
     if (stLineFlushRafRef.current) cancelAnimationFrame(stLineFlushRafRef.current);
@@ -858,7 +977,7 @@ export function ChartPanel() {
           <button
             type="button"
             onClick={() => void handleRefreshChart()}
-            disabled={chartRefreshBusy || !normalizeSymTf(bot?.symbol) || !normalizeSymTf(bot?.timeframe)}
+            disabled={chartRefreshBusy || !normalizeSymTf(effectiveSym) || !normalizeSymTf(bot?.timeframe)}
             className="shrink-0 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             title="Fetch latest ~24h OHLC and rebuild the chart canvas (fixes stuck rendering)"
             aria-label="Reload chart from server"
@@ -883,7 +1002,7 @@ export function ChartPanel() {
                 · {chartHud.feedPauseLabel}
               </span>
             ) : null}
-            {supertrendHud ? (
+            {!isAltChartView && supertrendHud ? (
               <span
                 className={`ml-2 ${supertrendHud.snap.buySignal ? "text-emerald-300/95" : "text-rose-300/95"}`}
                 title={
@@ -932,19 +1051,52 @@ export function ChartPanel() {
       </div>
 
       <div className="flex flex-col gap-4">
+        {isAltChartView ? (
+          <p className="text-[10px] leading-snug text-amber-800/95 dark:text-amber-200/90">
+            Main chart: <span className="font-mono">{effectiveSym}</span> (REST + periodic sync). Live WebSocket candle stream follows bot symbol{" "}
+            <span className="font-mono">{normalizeSymTf(bot?.symbol) || "—"}</span> — switch tab to match bot for realtime ticks.
+          </p>
+        ) : null}
         <div
           key={chartInstanceKey}
           ref={containerRef}
-          className="w-full min-h-[320px] shrink-0"
-          style={{ height: "min(520px, 60vh)" }}
+          className="w-full min-h-[240px] shrink-0"
+          style={{ height: "min(390px, 45vh)" }}
         />
+        {isMultiCoinMode && Array.isArray(positions) && positions.length > 0 ? (
+          <PositionMiniChartsRow
+            positions={positions}
+            mainSymbol={effectiveSym}
+            onPickSymbol={(sym) => setChartDisplaySymbol(sym)}
+          />
+        ) : null}
+        <MultiCoinSignalTabs />
         {supertrendSignalHistoryListRows.length > 0 ? (
           <div className="w-full rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-950/50 px-2 py-2">
-            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-500">
-              {supertrendSignalHistoryNewestFirst.length > SUPERTREND_SIGNAL_LIST_MAX
-                ? `Last ${SUPERTREND_SIGNAL_LIST_MAX} of ${supertrendSignalHistoryNewestFirst.length} signals`
-                : `${supertrendSignalHistoryListRows.length} signal${supertrendSignalHistoryListRows.length === 1 ? "" : "s"}`}{" "}
-              (newest first · scores match markers, times {CHART_TIMEZONE})
+            <div className="mb-1.5 flex flex-row items-start justify-between gap-2">
+              <div className="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-500">
+                {supertrendSignalHistoryNewestFirst.length > SUPERTREND_SIGNAL_LIST_MAX
+                  ? `Last ${SUPERTREND_SIGNAL_LIST_MAX} of ${supertrendSignalHistoryNewestFirst.length} signals`
+                  : `${supertrendSignalHistoryListRows.length} signal${supertrendSignalHistoryListRows.length === 1 ? "" : "s"}`}{" "}
+                <span className="normal-case text-slate-500">(newest first · scores match markers, times {CHART_TIMEZONE})</span>
+              </div>
+              <div
+                className="shrink-0 text-right text-[10px] leading-tight text-slate-600 dark:text-slate-400"
+                title={
+                  bot?.smartSignalStrengthThreshold != null && Number.isFinite(Number(bot.smartSignalStrengthThreshold))
+                    ? smartSsSuggestedTitle
+                    : "Computed server-side from resolved list outcomes (True/False) vs SS; persisted across restarts."
+                }
+              >
+                <div className="font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-500">Suggested SS</div>
+                {bot?.smartSignalStrengthThreshold != null && Number.isFinite(Number(bot.smartSignalStrengthThreshold)) ? (
+                  <div className="font-mono text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                    ≥{Math.round(Number(bot.smartSignalStrengthThreshold))}
+                  </div>
+                ) : (
+                  <div className="font-mono text-sm text-slate-500">—</div>
+                )}
+              </div>
             </div>
             <ul className="max-h-[min(360px,50vh)] space-y-1 overflow-y-auto text-[11px] leading-snug">
               {supertrendSignalHistoryListRows.map((h, i) => {
@@ -952,6 +1104,8 @@ export function ChartPanel() {
                   h.aiGate != null && Number.isFinite(Number(h.aiGate)) ? Number(h.aiGate).toFixed(2) : "—";
                 const ss =
                   h.strength != null && Number.isFinite(Number(h.strength)) ? String(Math.round(Number(h.strength))) : "—";
+                const sp =
+                  h.surfPulse != null && Number.isFinite(Number(h.surfPulse)) ? Number(h.surfPulse).toFixed(2) : "—";
                 const act = h.stAction != null ? String(h.stAction) : "—";
                 const nAll = supertrendSignalHistoryNewestFirst.length;
                 const chronoIdx = nAll - 1 - i;
@@ -971,7 +1125,7 @@ export function ChartPanel() {
                         : "text-slate-500";
                 const pair =
                   (h.symbol != null && String(h.symbol).trim()) ||
-                  normalizeSymTf(bot?.symbol) ||
+                  normalizeSymTf(effectiveSym) ||
                   "—";
                 return (
                   <li
@@ -988,6 +1142,7 @@ export function ChartPanel() {
                     <span className="text-slate-600 dark:text-slate-400"> · @ {entryStr}</span>
                     <span className="text-slate-600 dark:text-slate-400"> · AI {ai}</span>
                     <span className="text-slate-600 dark:text-slate-400"> · SS {ss}</span>
+                    <span className="text-slate-600 dark:text-slate-400"> · SP {sp}</span>
                     <span className="text-slate-600 dark:text-slate-500"> · {act}</span>
                     <span className={`font-medium ${vCls}`}> · {vLabel}</span>
                   </li>

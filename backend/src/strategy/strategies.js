@@ -1,3 +1,5 @@
+import { SURF_PULSE_ML } from "./surfPulseMl.js";
+
 const MIN_SIGNAL_SCORE = Number(process.env.MIN_SIGNAL_SCORE || 65);
 
 function scoreTrend({ ema_fast, ema_slow, macd_hist }, prevMacdHist) {
@@ -197,6 +199,7 @@ export const strategies = {
       return { action: "HOLD", reason: "no_momentum_surge" };
     },
   },
+  SURF_PULSE_ML,
   ENSEMBLE: {
     name: "Ensemble (2+ signals must agree)",
     signal({ candles, indicators, regime }) {

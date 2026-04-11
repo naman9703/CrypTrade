@@ -185,7 +185,42 @@ export function createBinanceUniverse({ log, restBase }) {
     }));
   }
 
+  function exSymbolAllowed(s, futSyms, { excludeLeveragedTokens, excludeStablePairs }) {
+      const extraExclude = parseExtraExcludeSymbols();
+      const sym = normalizeSymbol(s?.symbol);
+      if (!sym) return false;
+      if (useFuturesUniverse) {
+        if (
+          !(
+            s?.contractType === "PERPETUAL" &&
+            (s?.status === "TRADING" || s?.contractStatus === "TRADING") &&
+            String(s?.quoteAsset || "").toUpperCase() === "USDT"
+          )
+        )
+          return false;
+      } else {
+        if (!(s?.status === "TRADING" && s?.quoteAsset === "USDT")) return false;
+      }
+      if (excludeLeveragedTokens && isLeveragedTokenSymbol(sym)) return false;
+      if (excludeStablePairs && isStableOrFiatUsdtPair(sym)) return false;
+      if (extraExclude.has(sym)) return false;
+      if (!useFuturesUniverse && futSyms && !futSyms.has(sym)) return false;
+      return true;
+    }
+
   return {
+    async listTradableUsdtSymbols({ excludeLeveragedTokens = true, excludeStablePairs = true } = {}) {
+      const [exInfo, futSyms] = await Promise.all([
+        exchangeInfo(),
+        useFuturesUniverse ? Promise.resolve(null) : loadFuturesSymbols(),
+      ]);
+      const syms = (exInfo?.symbols || [])
+        .filter((s) => exSymbolAllowed(s, futSyms, { excludeLeveragedTokens, excludeStablePairs }))
+        .map((s) => normalizeSymbol(s?.symbol))
+        .filter(Boolean);
+      return [...new Set(syms)].sort();
+    },
+
     async scanAndRank({
       timeframe = "1m",
       universeSize = 30,
@@ -197,8 +232,14 @@ export function createBinanceUniverse({ log, restBase }) {
       excludeStablePairs = true,
       maxCorr = Number(process.env.UNIVERSE_MAX_CORR || 0.85),
       aiClient = null,
+      /** When set, restrict to these symbols only (e.g. user custom watchlist, max ~10). */
+      customSymbols = null,
+      /** If true, sort final table primarily by AI probability (for “ALL” top-AI funnel). */
+      rankByAiPrimary = false,
+      /** After AI sort, keep this many rows in `ranked` (default 10 for ALL). */
+      aiRankedDisplayTop = 10,
     } = {}) {
-      const extraExclude = parseExtraExcludeSymbols();
+      const customMode = Array.isArray(customSymbols) && customSymbols.length > 0;
       // Step 1: universe
       const [exInfo, t24, book, futSyms] = await Promise.all([
         exchangeInfo(),
@@ -206,38 +247,39 @@ export function createBinanceUniverse({ log, restBase }) {
         bookTicker(),
         useFuturesUniverse ? Promise.resolve(null) : loadFuturesSymbols(),
       ]);
-      const symbols = (exInfo?.symbols || [])
-        .filter((s) => {
-          if (useFuturesUniverse) {
-            return (
-              s?.contractType === "PERPETUAL" &&
-              (s?.status === "TRADING" || s?.contractStatus === "TRADING") &&
-              String(s?.quoteAsset || "").toUpperCase() === "USDT"
-            );
-          }
-          return s?.status === "TRADING" && s?.quoteAsset === "USDT";
-        })
-        .map((s) => normalizeSymbol(s?.symbol))
-        .filter(Boolean)
-        .filter((s) => (excludeLeveragedTokens ? !isLeveragedTokenSymbol(s) : true))
-        .filter((s) => (excludeStablePairs ? !isStableOrFiatUsdtPair(s) : true))
-        .filter((s) => !extraExclude.has(s))
-        .filter((s) => (useFuturesUniverse ? true : futSyms ? futSyms.has(s) : true));
 
       const by24 = new Map();
       for (const t of Array.isArray(t24) ? t24 : []) by24.set(normalizeSymbol(t?.symbol), t);
       const byBook = new Map();
       for (const b of Array.isArray(book) ? book : []) byBook.set(normalizeSymbol(b?.symbol), b);
 
-      // Rank by 24h quote volume (liquidity)
-      const rankedByVol = symbols
-        .map((sym) => {
-          const t = by24.get(sym);
-          const qv = Number(t?.quoteVolume || 0);
-          return { symbol: sym, quoteVolumeUSDT: qv };
-        })
-        .sort((a, b) => b.quoteVolumeUSDT - a.quoteVolumeUSDT)
-        .slice(0, Math.max(5, Math.min(200, Number(universeSize || 30))));
+      const allowedRows = (exInfo?.symbols || []).filter((s) =>
+        exSymbolAllowed(s, futSyms, { excludeLeveragedTokens, excludeStablePairs }),
+      );
+      const allowedSet = new Set(allowedRows.map((s) => normalizeSymbol(s?.symbol)).filter(Boolean));
+
+      let rankedByVol;
+      if (customMode) {
+        const want = [...new Set(customSymbols.map((x) => normalizeSymbol(x)).filter(Boolean))].slice(0, 10);
+        rankedByVol = want
+          .filter((sym) => allowedSet.has(sym))
+          .map((sym) => {
+            const t = by24.get(sym);
+            return { symbol: sym, quoteVolumeUSDT: Number(t?.quoteVolume || 0) };
+          });
+      } else {
+        const symbols = allowedRows
+          .map((s) => normalizeSymbol(s?.symbol))
+          .filter(Boolean);
+        rankedByVol = symbols
+          .map((sym) => {
+            const t = by24.get(sym);
+            const qv = Number(t?.quoteVolume || 0);
+            return { symbol: sym, quoteVolumeUSDT: qv };
+          })
+          .sort((a, b) => b.quoteVolumeUSDT - a.quoteVolumeUSDT)
+          .slice(0, Math.max(5, Math.min(200, Number(universeSize || 30))));
+      }
 
       // Step 2: filter by volume + spread
       const tradable = rankedByVol
@@ -249,11 +291,14 @@ export function createBinanceUniverse({ log, restBase }) {
           const spreadPct = mid > 0 ? (ask - bid) / mid : 1;
           return { ...x, bid, ask, spreadPct };
         })
-        .filter((x) => x.quoteVolumeUSDT >= Number(minQuoteVolumeUSDT || 0))
+        .filter((x) => (customMode ? true : x.quoteVolumeUSDT >= Number(minQuoteVolumeUSDT || 0)))
         .filter((x) => x.spreadPct > 0 && x.spreadPct <= Number(maxSpreadPct || 0.01));
 
       // Step 3: opportunity signals for top candidates (klines are the expensive part)
-      const klinesTargets = tradable.slice(0, Math.max(5, Math.min(tradable.length, Number(topKlines || 12))));
+      const klineCap = customMode
+        ? Math.max(1, Math.min(10, tradable.length))
+        : Math.max(5, Math.min(tradable.length, Number(topKlines || 12)));
+      const klinesTargets = tradable.slice(0, klineCap);
       const withSignals = await mapLimit(klinesTargets, 4, async (x) => {
         const candles = await klines({ symbol: x.symbol, interval: timeframe, limit: candlesLimit });
         const last = candles[candles.length - 1];
@@ -285,10 +330,11 @@ export function createBinanceUniverse({ log, restBase }) {
       });
 
       // Step 4: AI scoring (only for those we got candles for)
+      const aiPool = rankByAiPrimary ? 28 : 8;
       const aiTargets = withSignals
         .filter((x) => Array.isArray(x.candles) && x.candles.length >= 80)
         .sort((a, b) => b.opportunity - a.opportunity)
-        .slice(0, Math.min(withSignals.length, 8));
+        .slice(0, Math.min(withSignals.length, customMode ? withSignals.length : aiPool));
 
       const aiScores = new Map();
       if (aiClient) {
@@ -303,7 +349,7 @@ export function createBinanceUniverse({ log, restBase }) {
         });
       }
 
-      const ranked = withSignals
+      let ranked = withSignals
         .map((x) => {
           const aiProb = aiScores.has(x.symbol) ? aiScores.get(x.symbol) : null;
           const score = scoreFormula({ aiProb: aiProb ?? 0, opportunity: x.opportunity, spreadPct: x.spreadPct });
@@ -322,6 +368,17 @@ export function createBinanceUniverse({ log, restBase }) {
           };
         })
         .sort((a, b) => b.score - a.score);
+
+      if (rankByAiPrimary || customMode) {
+        ranked = [...ranked].sort((a, b) => {
+          const ap = a.aiProb != null && Number.isFinite(Number(a.aiProb)) ? Number(a.aiProb) : -1;
+          const bp = b.aiProb != null && Number.isFinite(Number(b.aiProb)) ? Number(b.aiProb) : -1;
+          if (bp !== ap) return bp - ap;
+          return b.score - a.score;
+        });
+      }
+      const topN = Number(aiRankedDisplayTop || 0);
+      if (topN > 0 && ranked.length > topN) ranked = ranked.slice(0, topN);
 
       // Correlation-aware pick of top N
       const selected = [];

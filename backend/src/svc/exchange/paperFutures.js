@@ -1,4 +1,5 @@
 import { roundTo } from "../../lib/math.js";
+import { advanceTrailingStopState, mergeStopWithTrail } from "../../lib/trailingStopLoss.js";
 import { resolveDefaultPaperFuturesStoreDir } from "../../lib/tradingModePersistence.js";
 import { createPaperStore } from "./paperStore.js";
 
@@ -127,7 +128,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     return t;
   }
 
-  function reconcileOrders({ markPxBySymbol }) {
+  function reconcileOrders({ markPxBySymbol, trailingStopLoss, onTrailingSlAdvance } = {}) {
     if (!state.openOrders.length) return;
     const remaining = [];
     for (const o of state.openOrders) {
@@ -137,28 +138,45 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         continue;
       }
 
-      // Trailing stop logic for SL orders
       if (o.type === "SL") {
         const pos = state.positions.find((p) => p.id === o.posId);
-        if (pos) {
+        if (pos?.meta?.autoTradeTrailing && trailingStopLoss?.enabled) {
           const entryPx = Number(pos.entryPrice);
-          const origSlDist = Math.abs(entryPx - o.stopPx);
-          const isLong = o.side === "SELL";
-          const pnlPerUnit = isLong ? px - entryPx : entryPx - px;
-
-          if (origSlDist > 0) {
-            // After 1R: move SL to breakeven + 10% buffer
-            if (pnlPerUnit >= origSlDist) {
-              const beSL = isLong
-                ? entryPx + origSlDist * 0.1
-                : entryPx - origSlDist * 0.1;
-              if (isLong ? beSL > o.stopPx : beSL < o.stopPx) o.stopPx = beSL;
-            }
-            // After 1.5R: trail at 0.5R behind price
-            if (pnlPerUnit >= origSlDist * 1.5) {
-              const trail = origSlDist * 0.5;
-              const trSL = isLong ? px - trail : px + trail;
-              if (isLong ? trSL > o.stopPx : trSL < o.stopPx) o.stopPx = trSL;
+          const isLong = pos.side === "BUY";
+          const prevSl = Number(o.stopPx);
+          const step0 = Number(pos.meta.trailStep ?? 0);
+          const ext0 = Number(pos.meta.extremePx ?? entryPx);
+          const r = advanceTrailingStopState({
+            entryPx,
+            isLong,
+            trailStep: step0,
+            extremePx: ext0,
+            markPx: px,
+            feeRate: trailingStopLoss.feeRate,
+            extraScalpingPctsOfEntry: trailingStopLoss.extraScalpingPcts ?? [],
+          });
+          pos.meta.trailStep = r.trailStep;
+          pos.meta.extremePx = r.extremePx;
+          if (r.proposedSl != null && r.advanced) {
+            const merged = mergeStopWithTrail({
+              isLong,
+              currentStopPx: o.stopPx,
+              trailSlPx: r.proposedSl,
+            });
+            if (merged != null && merged !== prevSl) {
+              o.stopPx = roundTo(merged, 8);
+              pos.stopLoss = o.stopPx;
+              onTrailingSlAdvance?.({
+                symbol: pos.symbol,
+                venue: "FUTURES",
+                side: pos.side,
+                prevStopLoss: prevSl,
+                newStopLoss: o.stopPx,
+                trailStep: pos.meta.trailStep,
+                maxTrailSteps: trailingStopLoss.maxTrailSteps,
+                entryPrice: entryPx,
+                source: "paper_futures",
+              });
             }
           }
         }
@@ -224,7 +242,15 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         leverage,
         openedAt: new Date().toISOString(),
         strategy,
-        meta: { ...(meta || {}), leverage, openFee: fee, fee },
+        meta: {
+          ...(meta || {}),
+          leverage,
+          openFee: fee,
+          fee,
+          ...(meta?.autoTradeTrailing
+            ? { trailStep: 0, extremePx: Number(filledPrice), autoTradeTrailing: true }
+            : {}),
+        },
       };
       state.positions.push(pos);
       state.trades.push({
@@ -247,12 +273,18 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
       state.openOrders.push({ posId: id, symbol, type: "TP", side: side === "BUY" ? "SELL" : "BUY", stopPx: Number(takeProfit) });
 
       persistSoon();
-      return { id, filledPrice: Number(filledPrice), leverage };
+      return {
+        id,
+        filledPrice: Number(filledPrice),
+        leverage,
+        stopLoss: Number(stopLoss),
+        takeProfit: Number(takeProfit),
+      };
     },
-    async markToMarket({ symbol, price, markPxBySymbol } = {}) {
+    async markToMarket({ symbol, price, markPxBySymbol, trailingStopLoss, onTrailingSlAdvance } = {}) {
       const pxMap = { ...(markPxBySymbol || {}) };
       if (symbol && price && Number.isFinite(Number(price))) pxMap[symbol] = Number(price);
-      reconcileOrders({ markPxBySymbol: pxMap });
+      reconcileOrders({ markPxBySymbol: pxMap, trailingStopLoss, onTrailingSlAdvance });
     },
     async closePosition({ id, price, reason = "MANUAL_CLOSE" }) {
       rolloverIfNeeded();

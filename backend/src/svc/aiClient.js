@@ -28,6 +28,15 @@ export function createAiClient({ baseUrl }) {
       );
       return data;
     },
+    /** SurfPulse ML: 8-feature XGBoost win probability (separate from main /predict model). */
+    async predictSurfPulse({ features }) {
+      const { data } = await http.post(
+        "/predict/surfpulse",
+        { features },
+        { timeout: predictTimeout },
+      );
+      return data;
+    },
     async feedback(payload) {
       const { data } = await http.post("/feedback", payload, { timeout: predictTimeout });
       return data;

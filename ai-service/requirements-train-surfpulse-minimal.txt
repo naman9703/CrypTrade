@@ -1,0 +1,6 @@
+# Same as requirements-train-surfpulse.txt but NO xgboost — train script uses HistGradientBoostingClassifier.
+# Use when disk space is too low to install the xgboost wheel.
+numpy>=1.26,<3
+pandas>=2.0,<3
+scipy>=1.11,<2
+scikit-learn>=1.4,<2

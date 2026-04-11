@@ -18,7 +18,6 @@ export function App() {
   const connect = useAppStore((s) => s.connect);
   const connected = useAppStore((s) => s.ws.connected);
   const wsLastError = useAppStore((s) => s.ws.lastError);
-
   useEffect(() => {
     connect();
   }, [connect]);
@@ -49,10 +48,12 @@ export function App() {
             <PortfolioPanel />
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
-            <ChartErrorBoundary>
-              <ChartPanel />
-            </ChartErrorBoundary>
+          <div className="space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
+              <ChartErrorBoundary>
+                <ChartPanel />
+              </ChartErrorBoundary>
+            </div>
           </div>
 
           <div className="grid gap-4">

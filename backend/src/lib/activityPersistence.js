@@ -127,13 +127,30 @@ function tradeTsSortMs(t) {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+/** Stable key for merge map: CLOSE rows keyed by income tranId when present (avoids fut_<sym> collisions). */
+function tradeMergeKey(t) {
+  if (!t) return null;
+  if (String(t.type) === "CLOSE") {
+    const tid =
+      t.meta?.tranId ??
+      (Array.isArray(t.meta?.tranIds) && t.meta.tranIds.length
+        ? t.meta.tranIds[t.meta.tranIds.length - 1]
+        : null);
+    if (tid != null && String(tid) !== "") return `close_tran:${String(tid)}`;
+  }
+  if (t.id != null && String(t.id) !== "") return String(t.id);
+  return null;
+}
+
 export function mergeTradesById(tradeWsEvents, exchangeTrades) {
   const m = new Map();
   for (const t of tradeWsEvents || []) {
-    if (t?.id != null && String(t.id) !== "") m.set(String(t.id), t);
+    const k = tradeMergeKey(t);
+    if (k) m.set(k, t);
   }
   for (const t of exchangeTrades || []) {
-    if (t?.id != null && String(t.id) !== "") m.set(String(t.id), t);
+    const k = tradeMergeKey(t);
+    if (k) m.set(k, t);
   }
   return Array.from(m.values()).sort((a, b) => {
     const ta = tradeTsSortMs(a);

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { deferTask } from "../lib/deferTask";
 import { useAppStore } from "../ws/store";
+import { UniverseCustomCoinsModal } from "./UniverseCustomCoinsModal";
 
 const numericInputClass =
   "w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100 tabular-nums";
@@ -107,6 +108,94 @@ function NumericTextInput({
 
 function clampNum(n: number, lo: number, hi: number) {
   return Math.min(hi, Math.max(lo, n));
+}
+
+function parseTrailingExtraPcts(bot: unknown): number[] {
+  const raw =
+    bot && typeof bot === "object" && "trailingStopExtraScalpingPcts" in bot
+      ? (bot as { trailingStopExtraScalpingPcts?: unknown }).trailingStopExtraScalpingPcts
+      : null;
+  if (!Array.isArray(raw)) return [];
+  const out: number[] = [];
+  for (const x of raw) {
+    const n = Number(x);
+    if (Number.isFinite(n) && n > 0) out.push(clampNum(n, 0.01, 5));
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+/** Optional % of entry for trailing extras; empty clears that slot (commits on blur / Enter). */
+function OptionalTrailingPctInput({
+  value,
+  min,
+  max,
+  onCommit,
+}: {
+  value: number | undefined;
+  min: number;
+  max: number;
+  onCommit: (v: number | undefined) => void | Promise<void>;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!focused) setDraft(null);
+  }, [value, focused]);
+
+  const base =
+    value != null && Number.isFinite(value) ? String(value) : "";
+  const shown = focused && draft !== null ? draft : base;
+
+  const commit = async () => {
+    const raw = (draft ?? base).replace(/,/g, ".").trim();
+    setFocused(false);
+    setDraft(null);
+    if (raw === "" || raw === "-" || raw === ".") {
+      if (value !== undefined) await onCommit(undefined);
+      return;
+    }
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n)) return;
+    const n2 = clampNum(n, min, max);
+    if (value !== undefined && Math.abs(n2 - value) < 1e-12) return;
+    await onCommit(n2);
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      spellCheck={false}
+      className={numericInputClass}
+      placeholder="—"
+      value={shown}
+      onFocus={() => {
+        setFocused(true);
+        setDraft(base);
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => void commit()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+    />
+  );
+}
+
+/**
+ * Legacy manual form stored SL/TP as fractions of price (e.g. 0.002 = 0.2%).
+ * Now the UI uses percent (e.g. 0.2 = 0.2%). Migrate small legacy pairs only.
+ */
+function migrateManualSlTpFractionToPercentStrings(slStr: string, tpStr: string): { sl: string; tp: string } {
+  const sl = parseFloat(slStr.replace(/,/g, "."));
+  const tp = parseFloat(tpStr.replace(/,/g, "."));
+  if (!Number.isFinite(sl) || !Number.isFinite(tp)) return { sl: slStr, tp: tpStr };
+  if (sl > 0 && sl < 0.05 && tp > 0 && tp < 0.05) {
+    return { sl: String(sl * 100), tp: String(tp * 100) };
+  }
+  return { sl: slStr, tp: tpStr };
 }
 
 /** ~1.5¢ cushion: avoids false "below min" when Risk/trade equals Binance min (e.g. ETHUSDT min 20) due to float/UI rounding. */
@@ -368,6 +457,7 @@ function ThresholdSliderWithLock({
 }
 
 const STRATS = [
+  { key: "SURF_PULSE_ML", label: "SurfPulse ML (trend + pullback + XGBoost)" },
   { key: "EMA_CROSS", label: "Trend (EMA crossover)" },
   { key: "RSI_MEAN", label: "Mean Reversion (RSI)" },
   { key: "BREAKOUT_VOL", label: "Breakout (Volume)" },
@@ -380,12 +470,13 @@ export function TradingPanel() {
   const [top, setTop] = useState<any[]>([]);
   const [btLoading, setBtLoading] = useState(false);
   const [coinBusy, setCoinBusy] = useState(false);
+  const [customUniverseOpen, setCustomUniverseOpen] = useState(false);
   // Bot configuration is always visible; this toggle only controls manual orders visibility below it.
   const [showManualOrders, setShowManualOrders] = useState(false);
 
   const [amountUsdStr, setAmountUsdStr] = useState("200");
-  const [slPctStr, setSlPctStr] = useState("0.002");
-  const [tpPctStr, setTpPctStr] = useState("0.015");
+  const [slPctStr, setSlPctStr] = useState("0.2");
+  const [tpPctStr, setTpPctStr] = useState("1.5");
   const [manualOrderBusy, setManualOrderBusy] = useState(false);
   const manualFormHydratedRef = useRef(false);
   const skipManualFormPersistRef = useRef(true);
@@ -394,8 +485,14 @@ export function TradingPanel() {
     const d = bot?.tradingFormDefaults as { amountUsdStr?: string; slPctStr?: string; tpPctStr?: string } | undefined;
     if (!d || manualFormHydratedRef.current) return;
     if (typeof d.amountUsdStr === "string") setAmountUsdStr(d.amountUsdStr);
-    if (typeof d.slPctStr === "string") setSlPctStr(d.slPctStr);
-    if (typeof d.tpPctStr === "string") setTpPctStr(d.tpPctStr);
+    if (typeof d.slPctStr === "string" && typeof d.tpPctStr === "string") {
+      const m = migrateManualSlTpFractionToPercentStrings(d.slPctStr, d.tpPctStr);
+      setSlPctStr(m.sl);
+      setTpPctStr(m.tp);
+    } else {
+      if (typeof d.slPctStr === "string") setSlPctStr(d.slPctStr);
+      if (typeof d.tpPctStr === "string") setTpPctStr(d.tpPctStr);
+    }
     manualFormHydratedRef.current = true;
   }, [bot?.tradingFormDefaults]);
 
@@ -437,9 +534,19 @@ export function TradingPanel() {
       signalStrengthGatesTrades: bot?.signalStrengthGatesTrades === true,
       signalStrengthOpenMin: clampNum(Math.round(Number(bot?.signalStrengthOpenMin ?? 65)), 0, 100),
       supertrendFuturesMinAiProb: clampNum(Number(bot?.supertrendFuturesMinAiProb ?? 0.55), 0, 1),
+      surfPulseMlThreshold: clampNum(Number(bot?.surfPulseMlThreshold ?? 0.6), 0, 1),
+      trailingStopLossAuto: bot?.trailingStopLossAuto === true,
+      trailingStopExtraScalpingPcts: parseTrailingExtraPcts(bot),
       supertrendFuturesFixedSlPct: clampNum(Number(bot?.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2),
       supertrendFuturesFixedTpPct: clampNum(Number(bot?.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5),
       supertrendFuturesTwoWay: bot?.supertrendFuturesTwoWay === true,
+      universeCoinBase: bot?.universeCoinBase === "CUSTOM" ? ("CUSTOM" as const) : ("ALL" as const),
+      universeCoinSelectMode: bot?.universeCoinSelectMode === "MULTIPLE" ? ("MULTIPLE" as const) : ("SINGLE" as const),
+      universePinControl: bot?.universePinControl === "MANUAL" ? ("MANUAL" as const) : ("AUTO" as const),
+      universeAutoCoinPick: bot?.universeAutoCoinPick === "ST_SIGNAL_FIRST" ? ("ST_SIGNAL_FIRST" as const) : ("RANKED_AI_SS" as const),
+      universeCustomSymbols: Array.isArray(bot?.universeCustomSymbols)
+        ? (bot.universeCustomSymbols as unknown[]).map((s) => String(s || "").trim().toUpperCase())
+        : [],
     };
   }, [bot]);
 
@@ -665,9 +772,32 @@ export function TradingPanel() {
     futuresLevDraft,
   ]);
 
+  const coinSelectMultiple = cfg.universeCoinSelectMode === "MULTIPLE";
+  const pinsManual = cfg.universePinControl === "MANUAL";
+  const pinnedMulti = useMemo(() => {
+    const a = bot?.universePinnedSymbols;
+    if (!Array.isArray(a)) return [] as string[];
+    return [...new Set(a.map((x) => String(x || "").trim().toUpperCase()))];
+  }, [bot?.universePinnedSymbols]);
+  const pinnedSymbolNorm = useMemo(() => {
+    if (coinSelectMultiple) return "";
+    if (bot?.universePinnedSymbol) return String(bot.universePinnedSymbol).toUpperCase();
+    const f = Array.isArray(bot?.universePinnedSymbols) ? bot!.universePinnedSymbols[0] : null;
+    return f ? String(f).toUpperCase() : "";
+  }, [coinSelectMultiple, bot?.universePinnedSymbol, bot?.universePinnedSymbols]);
+  const pinnedList = useMemo(() => {
+    if (coinSelectMultiple) return pinnedMulti;
+    return pinnedSymbolNorm ? [pinnedSymbolNorm] : [];
+  }, [coinSelectMultiple, pinnedMulti, pinnedSymbolNorm]);
+  const pinnedSet = useMemo(() => new Set(pinnedList), [pinnedList]);
+  const hasSavedPins = pinnedList.length > 0;
   const rankedCoins = (bot?.universe?.ranked || []).slice(0, 12);
-  const pinnedSymbolNorm = bot?.universePinnedSymbol ? String(bot.universePinnedSymbol).toUpperCase() : "";
-  const showRankedCoins = cfg.symbolMode === "AUTO" || Boolean(pinnedSymbolNorm);
+  const emptyCustom = bot?.universe?.emptyCustom === true;
+  const showRankedCoins =
+    cfg.symbolMode === "AUTO" ||
+    Boolean(pinnedSymbolNorm) ||
+    (coinSelectMultiple && pinnedMulti.length > 0) ||
+    cfg.universeCoinBase === "CUSTOM";
 
   useEffect(() => {
     let alive = true;
@@ -762,24 +892,26 @@ export function TradingPanel() {
               <span className="text-slate-600 dark:text-slate-400">Coin select</span>
               <select
                 className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
-                value={cfg.symbolMode}
+                value={cfg.universeCoinSelectMode}
                 onChange={(e) => {
-                  const v = e.target.value;
+                  const v = e.target.value === "MULTIPLE" ? "MULTIPLE" : "SINGLE";
                   deferTask(() => {
                     void (async () => {
                       try {
-                        await api.botConfig({ symbolMode: v });
-                        if (v === "AUTO") pushLog({ level: "info", msg: "Coin selection enabled (auto)" });
-                        else pushLog({ level: "info", msg: "Coin selection disabled (single coin)" });
+                        await api.botConfig({ universeCoinSelectMode: v, symbolMode: "AUTO" });
+                        pushLog({
+                          level: "info",
+                          msg: v === "MULTIPLE" ? "Coin select: multiple (ranked picks)" : "Coin select: single (ranked picks)",
+                        });
                       } catch {
-                        pushLog({ level: "error", msg: "Failed to set coin selection mode" });
+                        pushLog({ level: "error", msg: "Failed to set coin select" });
                       }
                     })();
                   });
                 }}
               >
-                <option value="SINGLE">SINGLE (trade selected symbol)</option>
-                <option value="AUTO">AUTO (scan + rank + pick)</option>
+                <option value="SINGLE">Single</option>
+                <option value="MULTIPLE">Multiple</option>
               </select>
             </label>
 
@@ -1081,35 +1213,35 @@ export function TradingPanel() {
                   </div>
                 )}
                 <div className="grid grid-cols-[110px_1fr] items-center gap-2">
-                  <span className="text-slate-600 dark:text-slate-400" title="Stop distance as a fraction of price (Supertrend futures, AI filter off)">
-                    ST
+                  <span className="text-slate-600 dark:text-slate-400" title="Stop distance as % of price (e.g. 1 = 1%). Supertrend futures when AI filter is off.">
+                    ST %
                   </span>
                   <NumericTextInput
-                    value={cfg.supertrendFuturesFixedSlPct}
-                    min={0.00005}
-                    max={0.2}
+                    value={Number((cfg.supertrendFuturesFixedSlPct * 100).toFixed(8))}
+                    min={0.005}
+                    max={20}
                     disabled={!cfg.supertrendFuturesAuto}
                     onCommit={async (v) => {
                       try {
-                        await api.botConfig({ supertrendFuturesFixedSlPct: v });
+                        await api.botConfig({ supertrendFuturesFixedSlPct: v / 100 });
                       } catch {
-                        pushLog({ level: "error", msg: "Failed to set ST (stop) %" });
+                        pushLog({ level: "error", msg: "Failed to set ST %" });
                       }
                     }}
                   />
                 </div>
                 <div className="grid grid-cols-[110px_1fr] items-center gap-2">
-                  <span className="text-slate-600 dark:text-slate-400" title="Take-profit distance as a fraction of price (Supertrend futures, AI filter off)">
-                    TP
+                  <span className="text-slate-600 dark:text-slate-400" title="Take-profit distance as % of price (e.g. 1.5 = 1.5%).">
+                    TP %
                   </span>
                   <NumericTextInput
-                    value={cfg.supertrendFuturesFixedTpPct}
-                    min={0.00005}
-                    max={0.5}
+                    value={Number((cfg.supertrendFuturesFixedTpPct * 100).toFixed(8))}
+                    min={0.005}
+                    max={50}
                     disabled={!cfg.supertrendFuturesAuto}
                     onCommit={async (v) => {
                       try {
-                        await api.botConfig({ supertrendFuturesFixedTpPct: v });
+                        await api.botConfig({ supertrendFuturesFixedTpPct: v / 100 });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set TP %" });
                       }
@@ -1119,18 +1251,47 @@ export function TradingPanel() {
                 <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-500">
                   <span className="text-slate-600 dark:text-slate-400">ST</span> / <span className="text-slate-600 dark:text-slate-400">TP</span> apply to{" "}
                   <span className="text-slate-600 dark:text-slate-400">Autotrade with Supertrend</span> on futures when the AI confidence
-                  filter is <span className="text-slate-600 dark:text-slate-400">off</span> (same idea as manual SL/TP:{" "}
-                  <span className="font-mono text-slate-600 dark:text-slate-500">0.002</span> ≈ 0.2% move).
+                  filter is <span className="text-slate-600 dark:text-slate-400">off</span>. Values are{" "}
+                  <span className="font-mono text-slate-600 dark:text-slate-500">percent of price</span> (e.g.{" "}
+                  <span className="font-mono text-slate-600 dark:text-slate-500">1</span> = 1% stop distance).
                 </p>
               </>
             )}
 
             {showRankedCoins && (
               <div className="mt-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40">
-                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-3 py-2">
-                  <div>
+                <div className="flex flex-col gap-2 border-b border-slate-200 dark:border-slate-800 px-3 py-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
                     <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Top coins (ranked)</div>
-                    {pinnedSymbolNorm ? (
+                    {!pinsManual && hasSavedPins ? (
+                      <div className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">
+                        Saved pins are inactive — switch <span className="font-semibold text-slate-700 dark:text-slate-300">Pick control</span> to{" "}
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">Manual</span> to use them.
+                      </div>
+                    ) : null}
+                    {pinsManual && coinSelectMultiple && pinnedMulti.length > 0 ? (
+                      <div className="mt-0.5 text-[11px] font-medium text-emerald-300/90">
+                        Pinned {pinnedMulti.length}/10: {pinnedMulti.join(", ")} — auto-pick only among pinned when set.
+                        <button
+                          type="button"
+                          className="ml-2 rounded border border-amber-800/60 bg-amber-950/40 px-1.5 py-px text-[10px] font-semibold text-amber-100 hover:bg-amber-900/50"
+                          onClick={() => {
+                            deferTask(() => {
+                              void (async () => {
+                                try {
+                                  await api.botConfig({ universePinnedSymbols: [] });
+                                  pushLog({ level: "info", msg: "Cleared all pinned symbols" });
+                                } catch {
+                                  pushLog({ level: "error", msg: "Failed to clear pins" });
+                                }
+                              })();
+                            });
+                          }}
+                        >
+                          Clear pins
+                        </button>
+                      </div>
+                    ) : pinsManual && !coinSelectMultiple && pinnedSymbolNorm ? (
                       <div className="mt-0.5 text-[11px] font-medium text-emerald-300/90">
                         Pinned: {pinnedSymbolNorm} — other rows are locked until you unpin or restart the bot
                       </div>
@@ -1138,14 +1299,14 @@ export function TradingPanel() {
                   </div>
                   <button
                     disabled={coinBusy}
-                    className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-200/65 dark:bg-slate-100 dark:bg-slate-900/50 px-2 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 disabled:opacity-50"
+                    className="shrink-0 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-200/65 dark:bg-slate-100 dark:bg-slate-900/50 px-2 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 disabled:opacity-50"
                     onClick={() => {
                       deferTask(() => {
                         void (async () => {
                           setCoinBusy(true);
                           try {
-                            await api.universeScan();
-                            pushLog({ level: "info", msg: "Universe scan requested" });
+                            await api.universeScan(true);
+                            pushLog({ level: "info", msg: "Universe scan refreshed" });
                           } catch {
                             pushLog({ level: "warn", msg: "Universe scan failed" });
                           } finally {
@@ -1158,109 +1319,316 @@ export function TradingPanel() {
                     {coinBusy ? "Scanning…" : "Scan now"}
                   </button>
                 </div>
-                <div className="max-h-[180px] overflow-auto">
-                  <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
-                      <tr className="text-left text-slate-600 dark:text-slate-400">
-                        <th className="px-3 py-2">Symbol</th>
-                        <th className="px-3 py-2">AI</th>
-                        <th className="px-3 py-2">Opp</th>
-                        <th className="px-3 py-2">Spr%</th>
-                        <th className="px-3 py-2">Pick</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rankedCoins.length === 0 ? (
-                        <tr>
-                          <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={5}>
-                            No scan results yet (set MARKET_FEED=BINANCE or BINANCE_FUTURES and symbol mode AUTO)
-                          </td>
-                        </tr>
-                      ) : (
-                        rankedCoins.map((c: any) => {
-                          const symU = String(c.symbol || "").toUpperCase();
-                          const isPinnedRow = Boolean(pinnedSymbolNorm) && symU === pinnedSymbolNorm;
-                          const rowLockedOut = Boolean(pinnedSymbolNorm) && !isPinnedRow;
-                          return (
-                            <tr
-                              key={c.symbol}
-                              className={`border-t border-slate-200 dark:border-slate-900 transition-opacity ${
-                                isPinnedRow
-                                  ? "bg-emerald-950/35 ring-1 ring-inset ring-emerald-500/40"
-                                  : rowLockedOut
-                                    ? "pointer-events-none opacity-[0.38]"
-                                    : ""
-                              }`}
-                            >
-                              <td className={`px-3 py-2 font-semibold ${isPinnedRow ? "text-emerald-100" : "text-slate-800 dark:text-slate-200"}`}>
-                                {c.symbol}
-                                {isPinnedRow ? (
-                                  <span className="ml-1.5 rounded bg-emerald-600/80 px-1 py-px text-[9px] font-bold uppercase text-white">
-                                    pinned
-                                  </span>
-                                ) : null}
-                              </td>
-                              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
-                                {c.aiProb != null && Number.isFinite(Number(c.aiProb)) ? Number(c.aiProb).toFixed(3) : "—"}
-                              </td>
-                              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
-                                {c.opportunity != null && Number.isFinite(Number(c.opportunity)) ? Number(c.opportunity).toFixed(2) : "—"}
-                              </td>
-                              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
-                                {c.spreadPct != null && Number.isFinite(Number(c.spreadPct))
-                                  ? `${(Number(c.spreadPct) * 100).toFixed(2)}`
-                                  : "—"}
-                              </td>
-                              <td className="px-3 py-2">
-                                {isPinnedRow ? (
-                                  <button
-                                    type="button"
-                                    className="rounded-md border border-amber-700/80 bg-amber-950/50 px-2 py-1 text-[11px] font-semibold text-amber-100 hover:bg-amber-900/60"
-                                    onClick={() => {
-                                      deferTask(() => {
-                                        void (async () => {
-                                          try {
-                                            await api.botConfig({ universePinnedSymbol: null });
-                                            pushLog({ level: "info", msg: "Unpinned symbol — auto coin selection resumed" });
-                                          } catch {
-                                            pushLog({ level: "error", msg: "Failed to unpin" });
-                                          }
-                                        })();
-                                      });
-                                    }}
-                                  >
-                                    Unpin
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    disabled={rowLockedOut}
-                                    className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-200/50 dark:bg-slate-100 dark:bg-slate-900/30 px-2 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
-                                    onClick={() => {
-                                      const sym = symU;
-                                      deferTask(() => {
-                                        void (async () => {
-                                          try {
-                                            await api.botConfig({ universePinnedSymbol: sym });
-                                            pushLog({ level: "info", msg: "Pinned symbol", symbol: sym });
-                                          } catch {
-                                            pushLog({ level: "error", msg: "Failed to pin symbol" });
-                                          }
-                                        })();
-                                      });
-                                    }}
-                                  >
-                                    Pin
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
+
+                <div className="flex flex-col gap-2 border-b border-slate-200 dark:border-slate-800 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center">
+                  <label className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-700 dark:text-slate-300">
+                    <span className="shrink-0 text-slate-600 dark:text-slate-400">Coin base</span>
+                    <select
+                      className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
+                      value={cfg.universeCoinBase}
+                      onChange={(e) => {
+                        const v = e.target.value === "CUSTOM" ? "CUSTOM" : "ALL";
+                        deferTask(() => {
+                          void (async () => {
+                            try {
+                              await api.botConfig({ universeCoinBase: v });
+                              pushLog({ level: "info", msg: v === "CUSTOM" ? "Coin base: custom watchlist" : "Coin base: all Binance universe" });
+                              await api.universeScan(true);
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to set coin base" });
+                            }
+                          })();
+                        });
+                      }}
+                    >
+                      <option value="ALL">ALL (AI-ranked top from Binance universe)</option>
+                      <option value="CUSTOM">Custom (max 10)</option>
+                    </select>
+                  </label>
+                  {cfg.universeCoinBase === "CUSTOM" ? (
+                    <button
+                      type="button"
+                      className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-200/70 dark:bg-slate-900/50 px-2 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900"
+                      onClick={() => setCustomUniverseOpen(true)}
+                    >
+                      Edit coin list…
+                    </button>
+                  ) : null}
+                  <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2 text-[11px] text-slate-700 dark:text-slate-300">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="shrink-0 text-slate-600 dark:text-slate-400">
+                        Pin:{" "}
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                          {coinSelectMultiple ? "Multiple (≤10)" : "Single (1)"}
+                        </span>
+                      </span>
+                      <span className="text-slate-500 dark:text-slate-500">·</span>
+                      <span className="shrink-0 text-slate-600 dark:text-slate-400">Pick control</span>
+                      <div className="inline-flex rounded-md border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/50 p-0.5">
+                        <button
+                          type="button"
+                          className={`rounded px-2 py-1 text-[11px] font-semibold ${
+                            cfg.universePinControl === "AUTO"
+                              ? "bg-emerald-600/85 text-slate-950 dark:text-slate-50"
+                              : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                          }`}
+                          onClick={() => {
+                            deferTask(() => {
+                              void (async () => {
+                                try {
+                                  await api.botConfig({ universePinControl: "AUTO" });
+                                  pushLog({ level: "info", msg: "Pick control: Auto (pins read-only for bot)" });
+                                } catch {
+                                  pushLog({ level: "error", msg: "Failed to set pick control" });
+                                }
+                              })();
+                            });
+                          }}
+                        >
+                          Auto
+                        </button>
+                        <button
+                          type="button"
+                          className={`rounded px-2 py-1 text-[11px] font-semibold ${
+                            cfg.universePinControl === "MANUAL"
+                              ? "bg-emerald-600/85 text-slate-950 dark:text-slate-50"
+                              : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                          }`}
+                          onClick={() => {
+                            deferTask(() => {
+                              void (async () => {
+                                try {
+                                  await api.botConfig({ universePinControl: "MANUAL" });
+                                  pushLog({ level: "info", msg: "Pick control: Manual (table pins apply)" });
+                                } catch {
+                                  pushLog({ level: "error", msg: "Failed to set pick control" });
+                                }
+                              })();
+                            });
+                          }}
+                        >
+                          Manual
+                        </button>
+                      </div>
+                    </div>
+                    {cfg.universePinControl === "AUTO" ? (
+                      <span
+                        className="shrink-0 text-[10px] font-medium text-slate-500 dark:text-slate-400"
+                        title="Auto trades follow Supertrend / AI gates on the rotated symbol; table pins are inactive until Manual."
+                      >
+                        (Signal based)
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-3 py-2 dark:border-slate-800 sm:border-t-0 sm:px-0 sm:py-0">
+                    <label className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-700 dark:text-slate-300">
+                      <span className="shrink-0 text-slate-600 dark:text-slate-400">Auto coin pick</span>
+                      <select
+                        className="max-w-[min(100vw,280px)] rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-[11px] text-slate-900 dark:text-slate-100"
+                        value={cfg.universeAutoCoinPick}
+                        onChange={(e) => {
+                          const v = e.target.value === "ST_SIGNAL_FIRST" ? "ST_SIGNAL_FIRST" : "RANKED_AI_SS";
+                          deferTask(() => {
+                            void (async () => {
+                              try {
+                                await api.botConfig({ universeAutoCoinPick: v });
+                                pushLog({
+                                  level: "info",
+                                  msg:
+                                    v === "ST_SIGNAL_FIRST"
+                                      ? "Auto coin: Supertrend signal order (first signal in list)"
+                                      : "Auto coin: ranked AI + opportunity composite",
+                                });
+                              } catch {
+                                pushLog({ level: "error", msg: "Failed to set auto coin pick" });
+                              }
+                            })();
+                          });
+                        }}
+                      >
+                        <option value="RANKED_AI_SS">Ranked (AI + opportunity / SS gates at trade)</option>
+                        <option value="ST_SIGNAL_FIRST">Supertrend signal first (walk list for bar-close signal)</option>
+                      </select>
+                    </label>
+                  </div>
                 </div>
+
+                {emptyCustom ? (
+                  <div className="px-3 py-4 text-[12px] text-amber-800 dark:text-amber-200/90">
+                    Custom coin base is empty. Use &quot;Edit coin list&quot; to add up to 10 symbols, then scan.
+                  </div>
+                ) : (
+                  <div className="max-h-[180px] overflow-auto">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
+                        <tr className="text-left text-slate-600 dark:text-slate-400">
+                          <th className="px-3 py-2">Symbol</th>
+                          <th className="px-3 py-2">AI</th>
+                          <th className="px-3 py-2">Opp</th>
+                          <th className="px-3 py-2">Spr%</th>
+                          <th className="px-3 py-2">Pick</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rankedCoins.length === 0 ? (
+                          <tr>
+                            <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={5}>
+                              No scan results yet (set MARKET_FEED=BINANCE or BINANCE_FUTURES and use Coin select above)
+                            </td>
+                          </tr>
+                        ) : (
+                          rankedCoins.map((c: any) => {
+                            const symU = String(c.symbol || "").toUpperCase();
+                            const isPinnedRow = pinnedSet.has(symU);
+                            const rowLockedOut =
+                              pinsManual && !coinSelectMultiple && Boolean(pinnedSymbolNorm) && !isPinnedRow;
+                            const multiPinFull = coinSelectMultiple && !isPinnedRow && pinnedMulti.length >= 10;
+                            const pinRowActive = isPinnedRow && pinsManual;
+                            const pinRowSavedOnly = isPinnedRow && !pinsManual;
+                            return (
+                              <tr
+                                key={c.symbol}
+                                className={`border-t border-slate-200 dark:border-slate-900 transition-opacity ${
+                                  pinRowActive
+                                    ? "bg-emerald-950/35 ring-1 ring-inset ring-emerald-500/40"
+                                    : pinRowSavedOnly
+                                      ? "bg-slate-200/40 ring-1 ring-inset ring-slate-400/25 dark:bg-slate-900/40 dark:ring-slate-600/30 opacity-[0.72]"
+                                      : rowLockedOut
+                                        ? "pointer-events-none opacity-[0.38]"
+                                        : ""
+                                }`}
+                              >
+                                <td
+                                  className={`px-3 py-2 font-semibold ${
+                                    pinRowActive
+                                      ? "text-emerald-100"
+                                      : pinRowSavedOnly
+                                        ? "text-slate-600 dark:text-slate-400"
+                                        : "text-slate-800 dark:text-slate-200"
+                                  }`}
+                                >
+                                  {c.symbol}
+                                  {pinRowActive ? (
+                                    <span className="ml-1.5 rounded bg-emerald-600/80 px-1 py-px text-[9px] font-bold uppercase text-white">
+                                      pinned
+                                    </span>
+                                  ) : pinRowSavedOnly ? (
+                                    <span className="ml-1.5 rounded bg-slate-500/50 px-1 py-px text-[9px] font-bold uppercase text-slate-200 dark:text-slate-400">
+                                      saved
+                                    </span>
+                                  ) : null}
+                                </td>
+                                <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                                  {c.aiProb != null && Number.isFinite(Number(c.aiProb)) ? Number(c.aiProb).toFixed(3) : "—"}
+                                </td>
+                                <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                                  {c.opportunity != null && Number.isFinite(Number(c.opportunity)) ? Number(c.opportunity).toFixed(2) : "—"}
+                                </td>
+                                <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                                  {c.spreadPct != null && Number.isFinite(Number(c.spreadPct))
+                                    ? `${(Number(c.spreadPct) * 100).toFixed(2)}`
+                                    : "—"}
+                                </td>
+                                <td
+                                  className={`px-3 py-2 ${pinsManual ? "" : "pointer-events-none select-none opacity-40"}`}
+                                  title={pinsManual ? undefined : "Switch Pick control to Manual to pin or unpin"}
+                                >
+                                  {coinSelectMultiple ? (
+                                    isPinnedRow ? (
+                                      <button
+                                        type="button"
+                                        disabled={!pinsManual}
+                                        className="rounded-md border border-amber-700/80 bg-amber-950/50 px-2 py-1 text-[11px] font-semibold text-amber-100 hover:bg-amber-900/60 disabled:cursor-not-allowed disabled:opacity-50"
+                                        onClick={() => {
+                                          deferTask(() => {
+                                            void (async () => {
+                                              try {
+                                                const next = pinnedMulti.filter((x) => x !== symU);
+                                                await api.botConfig({ universePinnedSymbols: next });
+                                                pushLog({ level: "info", msg: "Unpinned symbol", symbol: symU });
+                                              } catch {
+                                                pushLog({ level: "error", msg: "Failed to unpin" });
+                                              }
+                                            })();
+                                          });
+                                        }}
+                                      >
+                                        Unpin
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        disabled={!pinsManual || multiPinFull}
+                                        className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-200/50 dark:bg-slate-100 dark:bg-slate-900/30 px-2 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+                                        onClick={() => {
+                                          const sym = symU;
+                                          deferTask(() => {
+                                            void (async () => {
+                                              try {
+                                                const next = [...pinnedMulti, sym].slice(0, 10);
+                                                await api.botConfig({ universePinnedSymbols: next });
+                                                pushLog({ level: "info", msg: "Pinned symbol", symbol: sym });
+                                              } catch {
+                                                pushLog({ level: "error", msg: "Failed to pin symbol" });
+                                              }
+                                            })();
+                                          });
+                                        }}
+                                      >
+                                        Pin
+                                      </button>
+                                    )
+                                  ) : isPinnedRow ? (
+                                    <button
+                                      type="button"
+                                      disabled={!pinsManual}
+                                      className="rounded-md border border-amber-700/80 bg-amber-950/50 px-2 py-1 text-[11px] font-semibold text-amber-100 hover:bg-amber-900/60 disabled:cursor-not-allowed disabled:opacity-50"
+                                      onClick={() => {
+                                        deferTask(() => {
+                                          void (async () => {
+                                            try {
+                                              await api.botConfig({ universePinnedSymbol: null });
+                                              pushLog({ level: "info", msg: "Unpinned symbol — auto coin selection resumed" });
+                                            } catch {
+                                              pushLog({ level: "error", msg: "Failed to unpin" });
+                                            }
+                                          })();
+                                        });
+                                      }}
+                                    >
+                                      Unpin
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      disabled={!pinsManual || rowLockedOut}
+                                      className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-200/50 dark:bg-slate-100 dark:bg-slate-900/30 px-2 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+                                      onClick={() => {
+                                        const sym = symU;
+                                        deferTask(() => {
+                                          void (async () => {
+                                            try {
+                                              await api.botConfig({ universePinnedSymbol: sym });
+                                              pushLog({ level: "info", msg: "Pinned symbol", symbol: sym });
+                                            } catch {
+                                              pushLog({ level: "error", msg: "Failed to pin symbol" });
+                                            }
+                                          })();
+                                        });
+                                      }}
+                                    >
+                                      Pin
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
                 <div className="px-3 py-2 text-[11px] text-slate-600 dark:text-slate-500">
                   Selected: <span className="text-slate-700 dark:text-slate-300">{(bot?.universe?.selected || []).join(", ") || "—"}</span>
                 </div>
@@ -1377,6 +1745,101 @@ export function TradingPanel() {
                 }}
               />
             </label>
+
+            {(cfg.strategyMode === "AUTO" || cfg.manualStrategy === "SURF_PULSE_ML") && (
+              <div className="rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-white/85 dark:bg-slate-950/30 px-2 py-2">
+                <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">SurfPulse ML gate</div>
+                <p className="mt-0.5 text-[11px] leading-snug text-slate-600 dark:text-slate-500">
+                  Minimum XGBoost win probability from <span className="text-slate-600 dark:text-slate-400">/predict/surfpulse</span> required to
+                  act on a SurfPulse signal. In <span className="text-slate-600 dark:text-slate-400">AUTO</span> mode this applies whenever the
+                  selector runs SurfPulse ML; in <span className="text-slate-600 dark:text-slate-400">MANUAL</span> when SurfPulse ML is selected.
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min SurfPulse</span>
+                  <ThresholdSliderWithLock
+                    ariaLabel="Minimum SurfPulse ML win probability (percent)"
+                    serverSliderUnits={Math.round(cfg.surfPulseMlThreshold * 100)}
+                    formatDisplay={(u) => `${u}%`}
+                    onDebouncedCommit={(u) => {
+                      const p = clampNum(u / 100, 0, 1);
+                      void api.botConfig({ surfPulseMlThreshold: Number(p.toFixed(3)) }).catch(() => {
+                        pushLog({ level: "error", msg: "Failed to set SurfPulse threshold" });
+                      });
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {cfg.marketMode !== "SPOT" && (
+              <div className="rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-white/85 dark:bg-slate-950/30 px-2 py-2">
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={cfg.trailingStopLossAuto}
+                    onChange={(e) => {
+                      const on = e.currentTarget.checked;
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ trailingStopLossAuto: on });
+                            pushLog({
+                              level: "info",
+                              msg: on
+                                ? "Trailing stop: ON — futures autotrade positions tighten SL (fee lock, then scalping steps)"
+                                : "Trailing stop: OFF",
+                            });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to update trailing stop" });
+                          }
+                        })();
+                      });
+                    }}
+                  />
+                  <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">Trailing stop (futures autotrade)</span>
+                    <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                      When <span className="text-slate-600 dark:text-slate-400">on</span>, each tick moves the stop toward profit: first lock at roughly
+                      round-trip fee break-even, then a second lock at a fee-equivalent distance from entry (fee model), then up to three optional extra
+                      locks at the % of entry you set below. Strongest when exchange uses local bracket fallback (4120); otherwise targets update in the app
+                      for display — exchange STOP orders must be replaced manually on some venues.
+                    </span>
+                  </span>
+                </label>
+                <div className="mt-2 space-y-1 pl-6">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-500">
+                    Extra scalping (% of entry, optional — max 3; leave empty to skip a slot)
+                  </p>
+                  {([0, 1, 2] as const).map((idx) => (
+                    <div key={idx} className="grid grid-cols-[110px_1fr] items-center gap-2">
+                      <span className="text-[11px] text-slate-600 dark:text-slate-500">Extra {idx + 1}</span>
+                      <OptionalTrailingPctInput
+                        value={cfg.trailingStopExtraScalpingPcts[idx]}
+                        min={0.01}
+                        max={5}
+                        onCommit={async (v) => {
+                          const slots: [number | undefined, number | undefined, number | undefined] = [
+                            cfg.trailingStopExtraScalpingPcts[0],
+                            cfg.trailingStopExtraScalpingPcts[1],
+                            cfg.trailingStopExtraScalpingPcts[2],
+                          ];
+                          slots[idx] = v;
+                          const next = [slots[0], slots[1], slots[2]].filter(
+                            (x): x is number => x != null && Number.isFinite(x) && x > 0,
+                          );
+                          try {
+                            await api.botConfig({ trailingStopExtraScalpingPcts: next });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set trailing extra scalping" });
+                          }
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {cfg.marketMode !== "SPOT" && cfg.supertrendFuturesAuto && (
               <div className="rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-white/85 dark:bg-slate-950/30 px-2 py-2">
@@ -1620,8 +2083,9 @@ export function TradingPanel() {
         <div className="mt-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3">
           <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Manual trade</div>
           <div className="mt-1 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
-            Stop-loss and take-profit are fractions of price (e.g. <span className="font-mono text-slate-600 dark:text-slate-400">0.02</span>{" "}
-            = 2%). Backend rejects values outside ~0.1%–20% SL and ~0.1%–50% TP.
+            Stop-loss and take-profit are <span className="font-medium text-slate-600 dark:text-slate-400">percent of price</span> (e.g.{" "}
+            <span className="font-mono text-slate-600 dark:text-slate-400">1</span> = 1%, <span className="font-mono text-slate-600 dark:text-slate-400">2.5</span> = 2.5%).
+            Allowed range: ~0.1%–20% SL and ~0.1%–50% TP.
           </div>
           <div className="mt-2 grid gap-2 text-xs">
             <label className="grid grid-cols-[110px_1fr] items-center gap-2">
@@ -1646,7 +2110,7 @@ export function TradingPanel() {
               </div>
             </label>
             <label className="grid grid-cols-[110px_1fr] items-center gap-2">
-              <span className="text-slate-600 dark:text-slate-400">Stop-loss</span>
+              <span className="text-slate-600 dark:text-slate-400">Stop-loss %</span>
               <input
                 type="text"
                 inputMode="decimal"
@@ -1655,10 +2119,11 @@ export function TradingPanel() {
                 className={numericInputClass}
                 value={slPctStr}
                 onChange={(e) => setSlPctStr(e.target.value)}
+                title="Percent from entry (e.g. 1 = 1%)"
               />
             </label>
             <label className="grid grid-cols-[110px_1fr] items-center gap-2">
-              <span className="text-slate-600 dark:text-slate-400">Take-profit</span>
+              <span className="text-slate-600 dark:text-slate-400">Take-profit %</span>
               <input
                 type="text"
                 inputMode="decimal"
@@ -1667,6 +2132,7 @@ export function TradingPanel() {
                 className={numericInputClass}
                 value={tpPctStr}
                 onChange={(e) => setTpPctStr(e.target.value)}
+                title="Percent from entry (e.g. 1.5 = 1.5%)"
               />
             </label>
             <div className="mt-2 flex gap-2">
@@ -1676,14 +2142,24 @@ export function TradingPanel() {
                 onClick={() => {
                   if (manualOrderBusy) return;
                   const amountUsd = parseFloat(amountUsdStr.replace(/,/g, "."));
-                  const slPct = parseFloat(slPctStr.replace(/,/g, "."));
-                  const tpPct = parseFloat(tpPctStr.replace(/,/g, "."));
+                  const slPctUi = parseFloat(slPctStr.replace(/,/g, "."));
+                  const tpPctUi = parseFloat(tpPctStr.replace(/,/g, "."));
                   if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
                     pushLog({ level: "warn", msg: "Enter a valid amount (USD)" });
                     return;
                   }
-                  if (!Number.isFinite(slPct) || !Number.isFinite(tpPct)) {
-                    pushLog({ level: "warn", msg: "Enter valid stop-loss and take-profit" });
+                  if (!Number.isFinite(slPctUi) || !Number.isFinite(tpPctUi)) {
+                    pushLog({ level: "warn", msg: "Enter valid stop-loss and take-profit %" });
+                    return;
+                  }
+                  const stopLossPct = slPctUi / 100;
+                  const takeProfitPct = tpPctUi / 100;
+                  if (stopLossPct < 0.001 || stopLossPct > 0.2) {
+                    pushLog({ level: "warn", msg: "Stop-loss: use ~0.1%–20% of price (e.g. 0.1–20 in the % fields)" });
+                    return;
+                  }
+                  if (takeProfitPct < 0.001 || takeProfitPct > 0.5) {
+                    pushLog({ level: "warn", msg: "Take-profit: use ~0.1%–50% of price (e.g. 0.1–50 in the % fields)" });
                     return;
                   }
                   deferTask(() => {
@@ -1693,8 +2169,8 @@ export function TradingPanel() {
                         const out = await api.manualTrade({
                           side: "BUY",
                           amountUsd,
-                          stopLossPct: slPct,
-                          takeProfitPct: tpPct,
+                          stopLossPct,
+                          takeProfitPct,
                         });
                         pushLog({ level: "info", msg: "Manual BUY accepted", ...(out && typeof out === "object" ? out : {}) });
                       } catch (e: any) {
@@ -1714,14 +2190,24 @@ export function TradingPanel() {
                 onClick={() => {
                   if (manualOrderBusy) return;
                   const amountUsd = parseFloat(amountUsdStr.replace(/,/g, "."));
-                  const slPct = parseFloat(slPctStr.replace(/,/g, "."));
-                  const tpPct = parseFloat(tpPctStr.replace(/,/g, "."));
+                  const slPctUi = parseFloat(slPctStr.replace(/,/g, "."));
+                  const tpPctUi = parseFloat(tpPctStr.replace(/,/g, "."));
                   if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
                     pushLog({ level: "warn", msg: "Enter a valid amount (USD)" });
                     return;
                   }
-                  if (!Number.isFinite(slPct) || !Number.isFinite(tpPct)) {
-                    pushLog({ level: "warn", msg: "Enter valid stop-loss and take-profit" });
+                  if (!Number.isFinite(slPctUi) || !Number.isFinite(tpPctUi)) {
+                    pushLog({ level: "warn", msg: "Enter valid stop-loss and take-profit %" });
+                    return;
+                  }
+                  const stopLossPct = slPctUi / 100;
+                  const takeProfitPct = tpPctUi / 100;
+                  if (stopLossPct < 0.001 || stopLossPct > 0.2) {
+                    pushLog({ level: "warn", msg: "Stop-loss: use ~0.1%–20% of price (e.g. 0.1–20 in the % fields)" });
+                    return;
+                  }
+                  if (takeProfitPct < 0.001 || takeProfitPct > 0.5) {
+                    pushLog({ level: "warn", msg: "Take-profit: use ~0.1%–50% of price (e.g. 0.1–50 in the % fields)" });
                     return;
                   }
                   deferTask(() => {
@@ -1731,8 +2217,8 @@ export function TradingPanel() {
                         const out = await api.manualTrade({
                           side: "SELL",
                           amountUsd,
-                          stopLossPct: slPct,
-                          takeProfitPct: tpPct,
+                          stopLossPct,
+                          takeProfitPct,
                         });
                         pushLog({ level: "info", msg: "Manual SELL accepted", ...(out && typeof out === "object" ? out : {}) });
                       } catch (e: any) {
@@ -1750,6 +2236,17 @@ export function TradingPanel() {
           </div>
         </div>
       )}
+
+      <UniverseCustomCoinsModal
+        open={customUniverseOpen}
+        initialSymbols={cfg.universeCustomSymbols}
+        onClose={() => setCustomUniverseOpen(false)}
+        onSave={async (symbols) => {
+          await api.botConfig({ universeCustomSymbols: symbols });
+          pushLog({ level: "info", msg: "Custom coin base saved", detail: { count: symbols.length } });
+          await api.universeScan(true);
+        }}
+      />
     </div>
   );
 }

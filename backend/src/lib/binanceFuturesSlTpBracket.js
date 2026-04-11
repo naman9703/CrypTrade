@@ -23,6 +23,12 @@ function futuresOrderErrCode(e) {
  * @param {{ info?: Function }} [opts.log]
  * @param {string} [opts.logPrefix]
  */
+function makeClientAlgoId(prefix) {
+  const raw = `${prefix}_${Date.now()}`;
+  const s = raw.replace(/[^A-Za-z0-9._\-:/]/g, "_");
+  return s.length <= 36 ? s : s.slice(0, 36);
+}
+
 export async function placeUsdMSlTpAfterMarketEntry(opts) {
   const {
     signed,
@@ -38,6 +44,19 @@ export async function placeUsdMSlTpAfterMarketEntry(opts) {
     logPrefix = "binance_usdm",
   } = opts;
 
+  const isHedge = Boolean(hedgeExtras?.positionSide);
+  /** Algo API: reduceOnly cannot be sent in hedge mode (classic /order still uses reduceOnly). */
+  const algoReduceOnly = isHedge ? {} : { reduceOnly: "true" };
+
+  async function tryClassicThen4120Algo(classicFn, algoFn) {
+    try {
+      await classicFn();
+    } catch (e) {
+      if (!futuresOrderIs4120(e)) throw e;
+      await algoFn();
+    }
+  }
+
   async function placeLeg(type, triggerPrice, limitPrice, idTag) {
     const marketType = `${type}_MARKET`;
     const common = {
@@ -49,9 +68,27 @@ export async function placeUsdMSlTpAfterMarketEntry(opts) {
       ...hedgeExtras,
     };
 
+    const algoBase = {
+      algoType: "CONDITIONAL",
+      symbol,
+      side: closeSide,
+      triggerPrice: String(triggerPrice),
+      workingType: "MARK_PRICE",
+      clientAlgoId: makeClientAlgoId(idTag),
+      ...hedgeExtras,
+    };
+
     const postCp = async () => {
       await signed("POST", "/fapi/v1/order", {
         ...common,
+        type: marketType,
+        closePosition: "true",
+      });
+    };
+
+    const postCpAlgo = async () => {
+      await signed("POST", "/fapi/v1/algoOrder", {
+        ...algoBase,
         type: marketType,
         closePosition: "true",
       });
@@ -66,6 +103,15 @@ export async function placeUsdMSlTpAfterMarketEntry(opts) {
       });
     };
 
+    const postRoQtyAlgo = async () => {
+      await signed("POST", "/fapi/v1/algoOrder", {
+        ...algoBase,
+        type: marketType,
+        quantity: String(executedQty),
+        ...algoReduceOnly,
+      });
+    };
+
     const postRoLimit = async () => {
       await signed("POST", "/fapi/v1/order", {
         ...common,
@@ -77,8 +123,20 @@ export async function placeUsdMSlTpAfterMarketEntry(opts) {
       });
     };
 
+    const postRoLimitAlgo = async () => {
+      await signed("POST", "/fapi/v1/algoOrder", {
+        ...algoBase,
+        type,
+        triggerPrice: String(triggerPrice),
+        price: String(limitPrice),
+        timeInForce: "GTC",
+        quantity: String(executedQty),
+        ...algoReduceOnly,
+      });
+    };
+
     try {
-      await postCp();
+      await tryClassicThen4120Algo(postCp, postCpAlgo);
     } catch (e1) {
       const c1 = futuresOrderErrCode(e1);
       log?.info?.(`${logPrefix}_sltp_closeposition_fallback`, {
@@ -88,13 +146,13 @@ export async function placeUsdMSlTpAfterMarketEntry(opts) {
         msg: String(e1?.message || e1),
       });
       try {
-        await postRoQty();
+        await tryClassicThen4120Algo(postRoQty, postRoQtyAlgo);
       } catch (e2) {
         const c2 = futuresOrderErrCode(e2);
         const is4120 = c2 === -4120 || String(e2?.message || "").includes("-4120");
         if (is4120) {
           log?.info?.(`${logPrefix}_sltp_limit_fallback`, { symbol, type });
-          await postRoLimit();
+          await tryClassicThen4120Algo(postRoLimit, postRoLimitAlgo);
         } else {
           throw e2;
         }

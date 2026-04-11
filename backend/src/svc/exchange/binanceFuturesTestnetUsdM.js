@@ -2,6 +2,12 @@ import crypto from "crypto";
 import axios from "axios";
 import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
+import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
+import {
+  mergeSlTpSymbolMaps,
+  slTpFromAlgoOrdersList,
+  slTpFromOpenOrdersList,
+} from "../../lib/binanceFuturesOpenOrdersSlTp.js";
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
@@ -199,17 +205,14 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
     }
     const map = new Map();
     try {
-      const all = await signed("GET", "/fapi/v1/openOrders");
-      for (const o of Array.isArray(all) ? all : []) {
-        const s = String(o.symbol || "").toUpperCase();
-        if (!map.has(s)) map.set(s, { sl: null, tp: null });
-        const typ = String(o.type || "");
-        const st = Number(o.stopPrice);
-        if (!Number.isFinite(st) || st <= 0) continue;
-        const row = map.get(s);
-        if (typ.includes("TAKE_PROFIT")) row.tp = st;
-        else if (typ.includes("STOP") && !typ.includes("TAKE")) row.sl = st;
-      }
+      const [all, algoRaw] = await Promise.all([
+        signed("GET", "/fapi/v1/openOrders").catch(() => []),
+        signed("GET", "/fapi/v1/openAlgoOrders").catch(() => []),
+      ]);
+      const parsed = slTpFromOpenOrdersList(Array.isArray(all) ? all : []);
+      const parsedAlgo = slTpFromAlgoOrdersList(algoRaw);
+      const merged = mergeSlTpSymbolMaps(parsed, parsedAlgo);
+      for (const [k, v] of merged) map.set(k, v);
     } catch (e) {
       log?.warn?.("binance_futures_testnet_open_orders_failed", { error: String(e?.message || e) });
     }
@@ -218,6 +221,9 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
   }
 
   const localBrackets = {};
+  /** Last SL/TP we placed when exchange brackets succeeded (open-order parsing can still miss fields). */
+  const placedBracketTargets = {};
+  const trailingBySymbol = {};
 
   return {
     name: "binance_futures_testnet_usdm",
@@ -240,11 +246,12 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
           .map((p) => {
             const sym = p.symbol;
             const lb = localBrackets[sym];
+            const pb = placedBracketTargets[sym];
             const lev = Number(p.leverage || defaultLeverage);
-            return { sym, lb, lev, p };
+            return { sym, lb, pb, lev, p };
           });
         const out = [];
-        for (const { sym, lb, lev, p } of rows) {
+        for (const { sym, lb, pb, lev, p } of rows) {
           const oo = await stopTakeFromExchangeOpenOrders(sym);
           out.push({
             id: `${sym}`,
@@ -253,8 +260,8 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
             qty: Math.abs(Number(p.positionAmt)),
             entryPrice: Number(p.entryPrice || 0),
             unrealizedPnl: Number(p.unrealizedProfit || 0),
-            stopLoss: oo.sl ?? lb?.stopLoss ?? null,
-            takeProfit: oo.tp ?? lb?.takeProfit ?? null,
+            stopLoss: oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? null,
+            takeProfit: oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? null,
             leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
             venue: "FUTURES",
             syncSource: "fapi_v2_account",
@@ -395,6 +402,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
           logPrefix: "binance_futures_testnet",
         });
         bracketsPlaced = true;
+        placedBracketTargets[symbol] = { stopLoss: adjStop, takeProfit: adjTp };
       } catch (e) {
         const is4120 = futuresOrderIs4120(e);
         if (is4120) {
@@ -431,10 +439,54 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
         }
       }
 
-      return { id: posId, filledPrice, leverage, venue: "FUTURES", raw: out, strategy, meta: meta || {} };
+      if (meta?.autoTradeTrailing) {
+        trailingBySymbol[symbol] = {
+          entryPrice: filledPrice,
+          isLong,
+          trailStep: 0,
+          extremePx: filledPrice,
+        };
+      }
+
+      return {
+        id: posId,
+        filledPrice,
+        leverage,
+        venue: "FUTURES",
+        stopLoss: adjStop,
+        takeProfit: adjTp,
+        raw: out,
+        strategy,
+        meta: meta || {},
+      };
     },
-    async markToMarket({ symbol, price } = {}) {
+    async markToMarket({ symbol, price, trailingStopLoss, onTrailingSlAdvance } = {}) {
+      const symU = String(symbol || "").toUpperCase();
       const markPx = Number(price);
+      if (symU && Number.isFinite(markPx) && markPx > 0 && trailingStopLoss?.enabled && trailingBySymbol[symU]) {
+        try {
+          const m = await getOrLoadSymbolMeta(symU);
+          const tick = Number(m?.tickSize);
+          applyTrailingStopBinanceMemory({
+            symbol: symU,
+            markPx,
+            trailingOpts: {
+              enabled: true,
+              feeRate: trailingStopLoss.feeRate,
+              extraScalpingPcts: trailingStopLoss.extraScalpingPcts ?? [],
+              maxTrailSteps: trailingStopLoss.maxTrailSteps,
+            },
+            trailingBySymbol,
+            localBrackets,
+            placedBracketTargets,
+            tickSize: Number.isFinite(tick) && tick > 0 ? tick : null,
+            onTrailingSlAdvance,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+
       if (symbol && Number.isFinite(markPx) && markPx > 0 && localBrackets[symbol]) {
         const b = localBrackets[symbol];
         const bracketLo = Math.min(b.stopLoss, b.takeProfit) * 0.90;
@@ -461,6 +513,8 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
             });
             log?.info?.("binance_futures_local_bracket_hit", { symbol, hit, markPx, sl: b.stopLoss, tp: b.takeProfit });
             delete localBrackets[symbol];
+            delete placedBracketTargets[symbol];
+            delete trailingBySymbol[String(symbol || "").toUpperCase()];
           } catch (e) {
             log?.warn?.("binance_futures_local_bracket_close_failed", { symbol, hit, error: String(e?.message || e) });
           }
@@ -507,6 +561,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
         return { ok: false, error: String(e?.message || e) };
       }
       delete localBrackets[p.symbol];
+      delete placedBracketTargets[p.symbol];
       return { ok: true };
     },
     async getSymbolOrderConstraints(symbol) {

@@ -89,11 +89,14 @@ type AppState = {
   depth?: DepthPayload;
   external?: ExternalPayload;
   candles: Candle[];
+  /** Multi-coin UI: main chart shows this symbol; null = follow `bot.symbol`. */
+  chartDisplaySymbol: string | null;
   logs: Array<{ ts: string } & LogPayload>;
   trades: TradePayload[];
 
   connect: () => void;
   setBot: (bot: any) => void;
+  setChartDisplaySymbol: (sym: string | null) => void;
   pushLog: (p: LogPayload) => void;
 };
 
@@ -214,9 +217,9 @@ function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial
   const l = Number(c?.low);
   const cl = Number(c?.close);
   const payloadSym = normWsSym(p.symbol);
-  const botSym = normWsSym(s.bot?.symbol);
+  const viewSym = normWsSym(s.chartDisplaySymbol ?? s.bot?.symbol);
   /** Stale or misrouted ticks (WS backlog) must not append into another pair’s candle buffer. */
-  if (botSym && payloadSym && botSym !== payloadSym) {
+  if (viewSym && payloadSym && viewSym !== payloadSym) {
     return s;
   }
   /**
@@ -264,6 +267,7 @@ function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial
 export const useAppStore = create<AppState>((set, get) => ({
   ws: { connected: false },
   candles: [],
+  chartDisplaySymbol: null,
   logs: [],
   trades: [],
   account: undefined,
@@ -472,6 +476,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setBot: (bot) => set({ bot }),
+
+  setChartDisplaySymbol: (sym) => set({ chartDisplaySymbol: sym }),
 
   pushLog: (p) =>
     set((s) => {

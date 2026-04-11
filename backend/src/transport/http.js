@@ -93,10 +93,17 @@ export function createRouter({ appState }) {
     }
   });
 
-  /** Last N bars for chart (~24h for current bot symbol/timeframe); Binance REST backfill + live buffer when MARKET_FEED is Binance. */
-  r.get("/market/candles", (_req, res) => {
+  /** Last N bars for chart (~24h). Default: bot symbol + live buffer. `?symbol=OTHERUSDT` fetches REST OHLC for multi-chart tiles. */
+  r.get("/market/candles", async (req, res) => {
     try {
-      const hours = Math.max(0.25, Math.min(168, Number(_req.query.hours ?? 24)));
+      const hours = Math.max(0.25, Math.min(168, Number(req.query.hours ?? 24)));
+      const symQ = String(req.query.symbol || "").trim().toUpperCase();
+      const botSym = String(appState.bot.getPublicState().symbol || "").toUpperCase();
+      if (symQ && symQ !== botSym && typeof appState.bot.getChartSnapshotForSymbol === "function") {
+        const snap = await appState.bot.getChartSnapshotForSymbol(symQ, { hours });
+        if (!snap?.candles?.length) return res.status(503).json({ ok: false, error: "no_candles" });
+        return res.json({ ok: true, ...snap });
+      }
       const snap = appState.bot.getChartSnapshot({ hours });
       if (!snap?.candles?.length) return res.status(503).json({ ok: false, error: "no_candles" });
       res.json({ ok: true, ...snap });
@@ -287,6 +294,11 @@ export function createRouter({ appState }) {
       signalStrengthOpenMin: z.number().int().min(0).max(100).optional(),
       /** Min AI probability (0–1) for Supertrend futures opens when `supertrendFuturesAiConfidenceFilter` is on. */
       supertrendFuturesMinAiProb: z.number().min(0).max(1).optional(),
+      /** Min SurfPulse XGBoost win probability (0–1) when strategy SURF_PULSE_ML is active. */
+      surfPulseMlThreshold: z.number().min(0).max(1).optional(),
+      trailingStopLossAuto: z.boolean().optional(),
+      /** Up to 3 extra trailing locks after fee breakeven + fee-based first scalping; each % of entry (e.g. 0.5 = 0.5%). */
+      trailingStopExtraScalpingPcts: z.array(z.number().min(0.01).max(5)).max(3).optional(),
       /** Fixed stop fraction of price (Supertrend futures, AI filter off). */
       supertrendFuturesFixedSlPct: z.number().min(0.00005).max(0.2).optional(),
       /** Fixed take-profit fraction of price (Supertrend futures, AI filter off). */
@@ -298,6 +310,16 @@ export function createRouter({ appState }) {
       supertrendWilderAtr: z.boolean().optional(),
       /** Lock AUTO universe to one symbol (table stays open in UI); null clears. */
       universePinnedSymbol: z.union([z.string().regex(symbolRe), z.null()]).optional(),
+      /** Broad Binance universe + AI top-N vs custom watchlist (max 10 symbols). */
+      universeCoinBase: z.enum(["ALL", "CUSTOM"]).optional(),
+      universeCustomSymbols: z.array(z.string().regex(symbolRe)).max(10).optional(),
+      /** SINGLE = one pin; MULTIPLE = up to 10 pins for auto-pick filtering. */
+      universeCoinSelectMode: z.enum(["SINGLE", "MULTIPLE"]).optional(),
+      /** AUTO = ranked pins UI read-only for bot; MANUAL = pins constrain auto-pick. */
+      universePinControl: z.enum(["AUTO", "MANUAL"]).optional(),
+      /** RANKED_AI_SS = universe rank (AI + opp); ST_SIGNAL_FIRST = walk list for first Supertrend bar-close signal. */
+      universeAutoCoinPick: z.enum(["RANKED_AI_SS", "ST_SIGNAL_FIRST"]).optional(),
+      universePinnedSymbols: z.array(z.string().regex(symbolRe)).max(10).optional(),
       /** Manual order form (persisted with bot settings). */
       tradingFormDefaults: z
         .object({
@@ -330,9 +352,22 @@ export function createRouter({ appState }) {
   });
 
   // Scan and rank coins (Binance only). Returns ranked list + selected top symbols.
+  // ?refresh=1 forces a fresh scan (otherwise last cached snapshot may be returned).
   r.get("/universe/scan", async (req, res) => {
     try {
-      const out = await appState.bot.getUniverseScan?.();
+      const force = String(req.query?.refresh || "") === "1";
+      const out = await appState.bot.getUniverseScan?.({ force });
+      if (!out) return res.status(400).json({ ok: false, error: "universe_unavailable" });
+      return res.json(out);
+    } catch (e) {
+      return res.status(400).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  /** Tradable USDT symbols for the active spot/futures universe (custom coin-base picker). */
+  r.get("/universe/symbols", async (_req, res) => {
+    try {
+      const out = await appState.bot.listTradableUniverseSymbols?.();
       if (!out) return res.status(400).json({ ok: false, error: "universe_unavailable" });
       return res.json(out);
     } catch (e) {
