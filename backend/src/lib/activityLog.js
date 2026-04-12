@@ -14,13 +14,15 @@ export function setTelegramActivityHook(fn) {
  *
  * @param {{ broadcast?: (type: string, payload: unknown) => void }} wsHub
  * @param {{ level?: "info"|"warn"|"error", msg: string, [k: string]: unknown }} payload
+ * @param {{ persistenceSlug?: string }} [opts] When set, append activity under data/modes/<slug>/ (parallel mode bots).
  */
-export function broadcastActivity(wsHub, payload) {
+export function broadcastActivity(wsHub, payload, opts) {
   if (!wsHub?.broadcast || payload?.msg == null) return;
   const { msg, level = "info", ...rest } = payload;
   const serverTs = new Date().toISOString();
+  const slug = opts && typeof opts.persistenceSlug === "string" && opts.persistenceSlug.trim() ? opts.persistenceSlug.trim() : undefined;
   try {
-    appendActivityLogEntry({ serverTs, level, msg: String(msg), ...rest });
+    appendActivityLogEntry({ serverTs, level, msg: String(msg), ...rest }, slug);
   } catch {
     /* disk full / permissions — WS still works */
   }

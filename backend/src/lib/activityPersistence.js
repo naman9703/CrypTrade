@@ -7,7 +7,9 @@ import path from "path";
 import {
   getTradingModePersistenceSlug,
   maybeMigrateLegacyModeFiles,
+  resolveModeDataRootDir,
   resolveModeScopedDir,
+  tradingModeToPersistenceSlug,
 } from "./tradingModePersistence.js";
 import { filterStrictPortfolioTradesAfterMerge } from "./tradeLedgerClassification.js";
 
@@ -21,26 +23,32 @@ export const TRADE_HISTORY_SNAPSHOT_MAX = Math.max(
   Math.min(20_000, Number(process.env.TRADE_HISTORY_SNAPSHOT_MAX || MAX_TRADE_WS_LINES)),
 );
 
-export function resolveActivityLogPath() {
+/** @param {string} [persistenceSlug] data/modes/<slug>/; defaults to active UI mode slug */
+export function resolveActivityLogPath(persistenceSlug) {
   const r = process.env.ACTIVITY_LOG_PATH;
   if (r && String(r).trim()) {
     const s = String(r).trim();
     return path.isAbsolute(s) ? s : path.resolve(process.cwd(), s);
   }
-  const slug = getTradingModePersistenceSlug();
+  const slug = persistenceSlug != null && String(persistenceSlug).trim()
+    ? String(persistenceSlug).trim()
+    : getTradingModePersistenceSlug();
   maybeMigrateLegacyModeFiles(slug);
-  return path.join(resolveModeScopedDir(), "activity-log.jsonl");
+  return path.join(resolveModeDataRootDir(), slug, "activity-log.jsonl");
 }
 
-export function resolveTradeWsLogPath() {
+/** @param {string} [persistenceSlug] */
+export function resolveTradeWsLogPath(persistenceSlug) {
   const r = process.env.TRADE_WS_LOG_PATH;
   if (r && String(r).trim()) {
     const s = String(r).trim();
     return path.isAbsolute(s) ? s : path.resolve(process.cwd(), s);
   }
-  const slug = getTradingModePersistenceSlug();
+  const slug = persistenceSlug != null && String(persistenceSlug).trim()
+    ? String(persistenceSlug).trim()
+    : getTradingModePersistenceSlug();
   maybeMigrateLegacyModeFiles(slug);
-  return path.join(resolveModeScopedDir(), "trade-ws-events.jsonl");
+  return path.join(resolveModeDataRootDir(), slug, "trade-ws-events.jsonl");
 }
 
 function ensureDirForFile(p) {
@@ -63,18 +71,18 @@ function trimJsonlTail(p, maxLines) {
   }
 }
 
-/** @param {Record<string, unknown>} entry Must be JSON-serializable. */
-export function appendActivityLogEntry(entry) {
-  const p = resolveActivityLogPath();
+/** @param {Record<string, unknown>} entry Must be JSON-serializable. @param {string} [persistenceSlug] */
+export function appendActivityLogEntry(entry, persistenceSlug) {
+  const p = resolveActivityLogPath(persistenceSlug);
   ensureDirForFile(p);
   const line = `${JSON.stringify(entry)}\n`;
   fs.appendFileSync(p, line, "utf8");
   trimJsonlTail(p, MAX_ACTIVITY_LINES);
 }
 
-/** Newest first (for UI). @param {number} [limit=500] */
-export function readActivityLogRecent(limit = 500) {
-  const p = resolveActivityLogPath();
+/** Newest first (for UI). @param {number} [limit=500] @param {string} [persistenceSlug] */
+export function readActivityLogRecent(limit = 500, persistenceSlug) {
+  const p = resolveActivityLogPath(persistenceSlug);
   if (!fs.existsSync(p)) return [];
   const txt = fs.readFileSync(p, "utf8");
   const lines = txt.split("\n").filter((line) => line.trim().length);
@@ -89,9 +97,19 @@ export function readActivityLogRecent(limit = 500) {
   return out;
 }
 
-/** @param {Record<string, unknown>} payload Trade WS payload (OPEN/CLOSE, …) */
-export function appendTradeWsEvent(payload) {
-  const p = resolveTradeWsLogPath();
+/**
+ * @param {Record<string, unknown>} payload Trade WS payload (OPEN/CLOSE, …)
+ * @param {string} [persistenceSlug] When omitted, uses `payload.originTradingMode` → slug, else active mode slug.
+ */
+export function appendTradeWsEvent(payload, persistenceSlug) {
+  let slug = persistenceSlug;
+  if (slug == null || !String(slug).trim()) {
+    const om = payload && typeof payload === "object" ? payload.originTradingMode : null;
+    slug = om != null && String(om).trim() ? tradingModeToPersistenceSlug(String(om)) : getTradingModePersistenceSlug();
+  } else {
+    slug = String(slug).trim();
+  }
+  const p = resolveTradeWsLogPath(slug);
   ensureDirForFile(p);
   const row = { ...payload, _loggedAt: new Date().toISOString() };
   const line = `${JSON.stringify(row)}\n`;
@@ -99,9 +117,9 @@ export function appendTradeWsEvent(payload) {
   trimJsonlTail(p, MAX_TRADE_WS_LINES);
 }
 
-/** Oldest first for merging with exchange `getTrades`. @param {number} [limit=400] */
-export function readTradeWsEvents(limit = 400) {
-  const p = resolveTradeWsLogPath();
+/** Oldest first for merging with exchange `getTrades`. @param {number} [limit=400] @param {string} [persistenceSlug] */
+export function readTradeWsEvents(limit = 400, persistenceSlug) {
+  const p = resolveTradeWsLogPath(persistenceSlug);
   if (!fs.existsSync(p)) return [];
   const txt = fs.readFileSync(p, "utf8");
   const lines = txt.split("\n").filter((line) => line.trim().length);
@@ -166,7 +184,8 @@ export function mergeTradesById(tradeWsEvents, exchangeTrades) {
  * @param {unknown[]} exchangeTrades
  */
 export function mergePersistedTradesWithExchange(mode, exchangeTrades) {
-  const fromAudit = readTradeWsEvents(TRADE_HISTORY_SNAPSHOT_MAX);
+  const slug = tradingModeToPersistenceSlug(mode);
+  const fromAudit = readTradeWsEvents(TRADE_HISTORY_SNAPSHOT_MAX, slug);
   const merged = filterStrictPortfolioTradesAfterMerge(
     mode,
     mergeTradesById(fromAudit, exchangeTrades || []),

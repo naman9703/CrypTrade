@@ -4,20 +4,35 @@ import { deferTask } from "../lib/deferTask";
 import { playEngineStartSound } from "../lib/uiSounds";
 import { useAppStore } from "../ws/store";
 
-function mergeBotFromApi(bot: Record<string, unknown> | null | undefined) {
+function mergeBotFromApi(
+  bot: Record<string, unknown> | null | undefined,
+  extra?: { runningByMode?: Record<string, boolean> },
+) {
   if (!bot || typeof bot !== "object") return;
   useAppStore.setState((s) => {
     const cur = s.bot;
-    if (cur != null && typeof cur === "object" && !Array.isArray(cur)) {
-      return { bot: { ...cur, ...bot } };
-    }
-    return { bot: { ...bot } };
+    const nextBot =
+      cur != null && typeof cur === "object" && !Array.isArray(cur) ? { ...cur, ...bot } : { ...bot };
+    return {
+      bot: nextBot,
+      ...(extra?.runningByMode != null && typeof extra.runningByMode === "object"
+        ? { runningByMode: extra.runningByMode }
+        : {}),
+    };
   });
 }
+
+const MODE_LABELS: Record<string, string> = {
+  PAPER: "Paper",
+  BINANCE_DEMO_API: "Demo",
+  BINANCE_TESTNET: "Testnet",
+  BINANCE_LIVE: "Live",
+};
 
 export function HeaderBar() {
   const bot = useAppStore((s) => s.bot);
   const mode = useAppStore((s) => s.mode);
+  const runningByMode = useAppStore((s) => s.runningByMode ?? {});
   const pushLog = useAppStore((s) => s.pushLog);
 
   const botRunning = Boolean(bot?.running);
@@ -58,7 +73,33 @@ export function HeaderBar() {
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
-          <div className="flex shrink-0 items-center gap-1.5" title={modeSelectTitle}>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-2.5" title={modeSelectTitle}>
+            <div
+              className="flex max-w-[min(100vw-8rem,22rem)] flex-wrap items-center gap-1.5 sm:max-w-none sm:gap-2"
+              title="Parallel engines: each trading mode has its own bot. Green = running for that mode."
+            >
+              {(Object.keys(MODE_LABELS) as Array<keyof typeof MODE_LABELS>).map((m) => {
+                const on = Boolean(runningByMode[m]);
+                const activeUi = String(mode || "").toUpperCase() === m;
+                return (
+                  <span
+                    key={m}
+                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold leading-none tabular-nums sm:text-xs ${
+                      activeUi
+                        ? "border-sky-500/60 bg-sky-500/15 text-sky-900 dark:text-sky-100"
+                        : "border-slate-300/80 bg-white/60 text-slate-600 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-400"
+                    }`}
+                  >
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${on ? "bg-emerald-500 shadow-sm shadow-emerald-500/40" : "bg-slate-400/70 dark:bg-slate-600"}`}
+                      aria-hidden
+                    />
+                    {MODE_LABELS[m] ?? m}
+                  </span>
+                );
+              })}
+            </div>
+
             <select
               className="max-w-[9.5rem] truncate rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-200/55 dark:bg-slate-100 dark:bg-slate-900/40 px-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 sm:max-w-none"
               value={mode || "PAPER"}
@@ -69,9 +110,11 @@ export function HeaderBar() {
                     const ok =
                       next === "BINANCE_LIVE"
                         ? window.confirm(
-                            "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Bot will stop. Continue?",
+                            "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Other modes’ bots keep running. Continue?",
                           )
-                        : window.confirm(`Switch trading mode to ${next}? Bot will stop.`);
+                        : window.confirm(
+                            `Switch UI to ${next}? Bots for other modes keep running in the background; Start/Stop applies to each mode separately.`,
+                          );
                     if (!ok) return;
                     try {
                       await api.setMode(next as any);
@@ -153,12 +196,17 @@ export function HeaderBar() {
               deferTask(() => {
                 void (async () => {
                   try {
+                    const m = String(mode || "PAPER").toUpperCase() as
+                      | "PAPER"
+                      | "BINANCE_DEMO_API"
+                      | "BINANCE_TESTNET"
+                      | "BINANCE_LIVE";
                     if (botRunning) {
-                      const out = await api.botStop({ reason: "ui_header_bar" });
-                      mergeBotFromApi(out?.bot);
+                      const out = await api.botStop({ reason: "ui_header_bar", mode: m });
+                      mergeBotFromApi(out?.bot, { runningByMode: out?.runningByMode });
                     } else {
-                      const out = await api.botStart({ reason: "ui_header_bar" });
-                      mergeBotFromApi(out?.bot);
+                      const out = await api.botStart({ reason: "ui_header_bar", mode: m });
+                      mergeBotFromApi(out?.bot, { runningByMode: out?.runningByMode });
                       playEngineStartSound();
                     }
                   } catch {

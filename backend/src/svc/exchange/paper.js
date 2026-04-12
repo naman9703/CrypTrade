@@ -167,6 +167,8 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
         const entryPx = Number(p.entryPrice);
         const origSL = Number(p.originalStopLoss ?? p.stopLoss);
         const origSlDist = Math.abs(entryPx - origSL);
+        const slBeforeTrail =
+          p.stopLoss != null && Number.isFinite(Number(p.stopLoss)) ? Number(p.stopLoss) : null;
 
         // --- Trailing stop ---
         if (p.stopLoss != null && origSlDist > 0) {
@@ -184,6 +186,30 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
             const trSL = isLong ? px - trail : px + trail;
             if (isLong ? trSL > p.stopLoss : trSL < p.stopLoss) p.stopLoss = trSL;
           }
+        }
+
+        const slAfterTrail =
+          p.stopLoss != null && Number.isFinite(Number(p.stopLoss)) ? Number(p.stopLoss) : null;
+        if (
+          typeof notifyActivity === "function" &&
+          slBeforeTrail != null &&
+          slAfterTrail != null &&
+          slAfterTrail !== slBeforeTrail
+        ) {
+          notifyActivity({
+            level: "info",
+            msg: `Paper spot trailing SL · ${p.symbol} · ${slBeforeTrail.toFixed(6)} → ${slAfterTrail.toFixed(6)}`,
+            category: "risk",
+            reason: "trailing_sl_advance",
+            symbol: p.symbol,
+            detail: {
+              venue: "SPOT",
+              markPx: px,
+              prevStopLoss: slBeforeTrail,
+              newStopLoss: slAfterTrail,
+              source: "paper_spot",
+            },
+          });
         }
 
         const hitSL = p.stopLoss != null && (isLong ? px <= p.stopLoss : px >= p.stopLoss);

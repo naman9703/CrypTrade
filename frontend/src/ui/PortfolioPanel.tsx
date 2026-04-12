@@ -3,7 +3,7 @@ import { deferTask } from "../lib/deferTask";
 import { useAppStore } from "../ws/store";
 import { api } from "../api/client";
 import { isIncomeLedgerClose } from "../lib/tradeClassification";
-import { estimatedCloseFeeUsdt } from "../lib/tradeCloseFee";
+import { clampTradeCloseFeeRate, estimatedCloseFeeUsdt } from "../lib/tradeCloseFee";
 import { AiTradeMotionVisual } from "./AiTradeMotionVisual";
 import { initialMarginUsd } from "../lib/futuresLiquidation";
 
@@ -32,13 +32,25 @@ function parseDatetimeLocalMs(s: string): number | null {
 type HistoryRangeFilter =
   | { kind: "all" }
   | { kind: "range"; startMs: number; endMs: number }
+  | { kind: "from_present"; startMs: number }
   | { kind: "invalid" };
+
+function historyFilterHasWindow(f: HistoryRangeFilter): f is
+  | { kind: "range"; startMs: number; endMs: number }
+  | { kind: "from_present"; startMs: number } {
+  return f.kind === "range" || f.kind === "from_present";
+}
 
 function buildHistoryRangeFilter(mode: "all" | "custom", startStr: string, endStr: string): HistoryRangeFilter {
   if (mode === "all") return { kind: "all" };
   const startMs = parseDatetimeLocalMs(startStr);
+  if (startMs == null) return { kind: "invalid" };
+  const endTrim = String(endStr ?? "").trim();
+  if (endTrim === "") {
+    return { kind: "from_present", startMs };
+  }
   const endMs = parseDatetimeLocalMs(endStr);
-  if (startMs == null || endMs == null || startMs > endMs) return { kind: "invalid" };
+  if (endMs == null || startMs > endMs) return { kind: "invalid" };
   return { kind: "range", startMs, endMs };
 }
 
@@ -46,6 +58,7 @@ function tradeMatchesHistoryTime(t: any, f: HistoryRangeFilter): boolean {
   if (f.kind === "all" || f.kind === "invalid") return true;
   const ms = tradeTsMs(t);
   if (ms <= 0) return false;
+  if (f.kind === "from_present") return ms >= f.startMs;
   return ms >= f.startMs && ms <= f.endMs;
 }
 
@@ -261,6 +274,77 @@ function numFinite(x: any): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** Long from venue side or signed qty (futures). */
+function positionIsLong(sideRaw: unknown, qtyRaw?: unknown): boolean {
+  const s = String(sideRaw ?? "").toUpperCase();
+  if (s === "BUY" || s === "LONG") return true;
+  if (s === "SELL" || s === "SHORT") return false;
+  const q = Number(qtyRaw);
+  if (Number.isFinite(q) && q !== 0) return q > 0;
+  return true;
+}
+
+/**
+ * True when current SL is at least at one-way fee breakeven vs entry (same floor as server Supertrend trailing).
+ */
+function stopLossAtFeeBreakevenOrBetter(entry: number, stopLoss: number, isLong: boolean): boolean {
+  if (!Number.isFinite(entry) || entry <= 0 || !Number.isFinite(stopLoss) || stopLoss <= 0) return false;
+  const feeR = clampTradeCloseFeeRate();
+  const eps = entry * 1e-10;
+  if (isLong) {
+    const be = entry * (1 + feeR);
+    return stopLoss >= be - eps;
+  }
+  const be = entry * (1 - feeR);
+  return stopLoss <= be + eps;
+}
+
+function positionRowBreakevenStopIndicator(p: any): boolean {
+  const entry = numFinite(p?.entryPrice);
+  const sl = numFinite(p?.stopLoss);
+  if (entry == null || sl == null) return false;
+  const isLong = positionIsLong(p?.side, p?.qty ?? p?.positionAmt);
+  return stopLossAtFeeBreakevenOrBetter(entry, sl, isLong);
+}
+
+function findLivePositionForTradeId(positions: any[], tradeId: unknown): any | null {
+  const tid = String(tradeId ?? "").trim();
+  if (!tid || !Array.isArray(positions)) return null;
+  for (const p of positions) {
+    const pid = String(p?.id ?? "").trim();
+    if (!pid) continue;
+    if (pid === tid) return p;
+    const parts = pid.split("_");
+    if (parts.length >= 2 && parts.slice(1).join("_") === tid) return p;
+    if (tid.includes("_")) {
+      const tParts = tid.split("_");
+      if (tParts.length >= 2 && tParts.slice(1).join("_") === pid) return p;
+    }
+  }
+  return null;
+}
+
+function openTradeRowBreakevenStopIndicator(t: any, positions: any[]): boolean {
+  if (String(t?.type ?? "") !== "OPEN") return false;
+  const live = findLivePositionForTradeId(positions, t?.id);
+  if (live) return positionRowBreakevenStopIndicator(live);
+  const entry = numFinite(t?.price ?? t?.entryPrice ?? t?.meta?.entryPrice);
+  const sl = numFinite(t?.stopLoss ?? t?.meta?.stopLoss);
+  if (entry == null || sl == null) return false;
+  const isLong = positionIsLong(t?.side, t?.qty);
+  return stopLossAtFeeBreakevenOrBetter(entry, sl, isLong);
+}
+
+function BreakevenStopLead() {
+  return (
+    <div
+      className="mx-auto h-8 w-1 shrink-0 rounded-sm bg-emerald-500 shadow-sm dark:bg-emerald-400"
+      title="Stop at or past fee breakeven (trailed)"
+      aria-hidden
+    />
+  );
+}
+
 function positionInitialMarginUsd(p: any): string {
   if (String(p?.venue || "").toUpperCase() !== "FUTURES") return "—";
   const e = numFinite(p.entryPrice);
@@ -456,7 +540,7 @@ export function PortfolioPanel() {
     const end = new Date();
     const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
     setCustomRangeStart(toDatetimeLocalValue(start));
-    setCustomRangeEnd(toDatetimeLocalValue(end));
+    setCustomRangeEnd("");
   }, [pnlHistoryRange, customRangeStart, customRangeEnd]);
 
   const historyRangeFilter = useMemo(
@@ -572,7 +656,7 @@ export function PortfolioPanel() {
 
   /** When a custom range is active, show net/count for closes inside that window (same buckets as headline). */
   const customRangeCloseRollup = useMemo(() => {
-    if (historyRangeFilter.kind !== "range") {
+    if (!historyFilterHasWindow(historyRangeFilter)) {
       return { appN: 0, appPnl: 0, ledN: 0, ledPnl: 0 };
     }
     let appN = 0;
@@ -868,25 +952,40 @@ export function PortfolioPanel() {
                 />
               </label>
               <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400">
-                To (local)
+                To (local, optional)
                 <input
                   type="datetime-local"
                   value={customRangeEnd}
                   onChange={(e) => setCustomRangeEnd(e.target.value)}
                   className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                 />
+                <span className="mt-0.5 block font-normal text-slate-500 dark:text-slate-500">
+                  Leave empty to include everything from “From” through now.
+                </span>
+                <button
+                  type="button"
+                  className="mt-1 text-left text-[10px] font-semibold text-emerald-700/90 hover:underline dark:text-emerald-400/90"
+                  onClick={() => setCustomRangeEnd("")}
+                >
+                  Clear “To” → use present
+                </button>
               </label>
             </div>
           ) : null}
           {historyRangeFilter.kind === "invalid" && pnlHistoryRange === "custom" ? (
             <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
-              Set valid start/end (local time). Showing all-time stats until both are valid and start ≤ end.
+              Set a valid start (local time). If “To” is set, it must be ≥ start; leave “To” empty to use the present.
             </div>
           ) : null}
           {historyRangeFilter.kind === "range" ? (
             <div className="mt-1 text-[10px] text-slate-600 dark:text-slate-500">
               Filter: trade row <span className="font-mono">ts</span> in [{new Date(historyRangeFilter.startMs).toLocaleString()} –{" "}
               {new Date(historyRangeFilter.endMs).toLocaleString()}] (local browser time).
+            </div>
+          ) : historyRangeFilter.kind === "from_present" ? (
+            <div className="mt-1 text-[10px] text-slate-600 dark:text-slate-500">
+              Filter: trade row <span className="font-mono">ts</span> from {new Date(historyRangeFilter.startMs).toLocaleString()} through{" "}
+              <span className="font-semibold text-slate-700 dark:text-slate-300">now</span> (local browser time).
             </div>
           ) : null}
           <div
@@ -954,7 +1053,7 @@ export function PortfolioPanel() {
             </div>
           )}
           <div className="mt-2 text-[11px] leading-snug text-slate-600 dark:text-slate-500">
-            {historyRangeFilter.kind === "range" ? (
+            {historyFilterHasWindow(historyRangeFilter) ? (
               <>
                 <span className="font-medium text-slate-600 dark:text-slate-400">In selected range (net):</span> strategy{" "}
                 <span className="text-slate-700 dark:text-slate-300">{customRangeCloseRollup.appN}</span> closes ·{" "}
@@ -1011,7 +1110,7 @@ export function PortfolioPanel() {
             Wins: <span className="text-slate-700 dark:text-slate-300">{wins}</span> · Losses: <span className="text-slate-700 dark:text-slate-300">{losses}</span>
             <span className="text-slate-600"> (strategy only)</span>
           </div>
-          {pnlHistoryRange === "custom" && historyRangeFilter.kind === "range" ? (
+          {pnlHistoryRange === "custom" && historyFilterHasWindow(historyRangeFilter) ? (
             <div className="mt-1 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
               Same time filter as <span className="font-medium text-slate-600 dark:text-slate-400">Net realised PnL</span> (row{" "}
               <span className="font-mono">ts</span>).
@@ -1087,6 +1186,7 @@ export function PortfolioPanel() {
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
                 <tr className="text-left text-slate-600 dark:text-slate-400">
+                  <th className="w-3 min-w-[12px] max-w-[14px] border-0 p-0" aria-hidden />
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Venue</th>
                   <th className="px-3 py-2">Side</th>
@@ -1103,13 +1203,16 @@ export function PortfolioPanel() {
               <tbody>
                 {positions.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={11}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={12}>
                       No open positions
                     </td>
                   </tr>
                 ) : (
                   positions.map((p: any) => (
                     <tr key={p.id} className="border-t border-slate-200 dark:border-slate-900">
+                      <td className="w-3 min-w-[12px] max-w-[14px] border-0 px-0 py-2 align-middle">
+                        {positionRowBreakevenStopIndicator(p) ? <BreakevenStopLead /> : null}
+                      </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{p.symbol}</td>
                       <td className="px-3 py-2 text-[10px] uppercase text-slate-600 dark:text-slate-500">
                         {p.venue === "FUTURES" ? "Fut" : "Spot"}
@@ -1209,6 +1312,14 @@ export function PortfolioPanel() {
                       {new Date(historyRangeFilter.endMs).toLocaleString()}
                     </span>
                   </div>
+                ) : historyRangeFilter.kind === "from_present" ? (
+                  <div className="mt-0.5 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
+                    Time filter:{" "}
+                    <span className="font-mono text-slate-700 dark:text-slate-300">
+                      {new Date(historyRangeFilter.startMs).toLocaleString()}
+                    </span>{" "}
+                    – <span className="font-semibold text-slate-700 dark:text-slate-300">present</span>
+                  </div>
                 ) : pnlHistoryRange === "custom" && historyRangeFilter.kind === "invalid" ? (
                   <div className="mt-0.5 text-[10px] text-amber-700 dark:text-amber-300">Invalid range — showing all rows.</div>
                 ) : null}
@@ -1293,6 +1404,7 @@ export function PortfolioPanel() {
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
                 <tr className="text-left text-slate-600 dark:text-slate-400">
+                  <th className="w-3 min-w-[12px] max-w-[14px] border-0 p-0" aria-hidden />
                   <th className="px-3 py-2">Type</th>
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Side</th>
@@ -1311,7 +1423,7 @@ export function PortfolioPanel() {
               <tbody>
                 {displayedTrades.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={13}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={14}>
                       No trades yet
                     </td>
                   </tr>
@@ -1333,8 +1445,12 @@ export function PortfolioPanel() {
                     const reasonTitle = [t.reason, t?.meta?.closeReason, t?.meta?.bracketType]
                       .filter((x) => x != null && String(x).trim() !== "")
                       .join(" · ");
+                    const beLead = openTradeRowBreakevenStopIndicator(t, positions);
                     return (
                       <tr key={idx} className="border-t border-slate-200 dark:border-slate-900">
+                        <td className="w-3 min-w-[12px] max-w-[14px] border-0 px-0 py-2 align-middle">
+                          {beLead ? <BreakevenStopLead /> : null}
+                        </td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.type ?? t.reason ?? "—"}</td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.symbol ?? "n/a"}</td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{sideDisp}</td>

@@ -58,7 +58,14 @@ type ChartSnapshotPayload = {
   supertrendSignals?: MarketPayload["supertrendSignals"];
 };
 
-type HelloPayload = { serverTs: string; state: any; mode: string; chart?: ChartSnapshotPayload | null };
+type HelloPayload = {
+  serverTs: string;
+  state: any;
+  mode: string;
+  chart?: ChartSnapshotPayload | null;
+  /** Parallel engines: which TRADING_MODE bots are running. */
+  runningByMode?: Record<string, boolean>;
+};
 
 type DepthPayload = {
   symbol: string;
@@ -82,6 +89,8 @@ type WsState = {
 type AppState = {
   ws: WsState;
   mode?: string;
+  /** Server: bot `running` flag per TRADING_MODE (parallel engines). */
+  runningByMode?: Record<string, boolean>;
   bot?: any;
   account?: any;
   positions?: any[];
@@ -183,7 +192,7 @@ function scheduleTradingUiSessionRestore(serverMode: string) {
       if (modeMismatch) {
         if (want === "BINANCE_LIVE") {
           const ok = window.confirm(
-            "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Bot will stop. Restore your saved LIVE mode?",
+            "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Restore your saved LIVE mode?",
           );
           if (!ok) return;
         }
@@ -270,6 +279,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   chartDisplaySymbol: null,
   logs: [],
   trades: [],
+  runningByMode: {},
   account: undefined,
   positions: [],
 
@@ -371,6 +381,10 @@ export const useAppStore = create<AppState>((set, get) => ({
                 : p.state;
             const base: Partial<AppState> = {
               mode: p.mode,
+              runningByMode:
+                p.runningByMode != null && typeof p.runningByMode === "object"
+                  ? (p.runningByMode as Record<string, boolean>)
+                  : s.runningByMode ?? {},
               bot: mergedHelloBot,
               account:
                 (p as any).account !== undefined ? (p as any).account : s.account,
@@ -525,9 +539,16 @@ export function applyWsStateSnapshot(payload: unknown) {
     const rawPos = p.positions;
     const nextPositions =
       rawPos !== undefined ? (Array.isArray(rawPos) ? rawPos : []) : prev.positions;
+    const nextRb =
+      p.runningByMode != null && typeof p.runningByMode === "object"
+        ? (p.runningByMode as Record<string, boolean>)
+        : prev.runningByMode ?? {};
+    const botPayload = { ...p };
+    delete (botPayload as { runningByMode?: unknown }).runningByMode;
     return {
       mode: nextMode,
-      bot: p,
+      runningByMode: nextRb,
+      bot: botPayload,
       account: nextAccount,
       positions: nextPositions,
       ...(chartRekey ? { candles: [], market: undefined } : {}),
@@ -554,7 +575,15 @@ export async function hydrateStateViaHttp(): Promise<void> {
         botShape = mergePersistedBotPatch(botShape, patch as Record<string, unknown>);
       }
     }
-    const payload = { mode: res.mode, ...botShape, account: res.account, positions: res.positions };
+    const payload = {
+      mode: res.mode,
+      ...botShape,
+      account: res.account,
+      positions: res.positions,
+      ...(res.runningByMode != null && typeof res.runningByMode === "object"
+        ? { runningByMode: res.runningByMode }
+        : {}),
+    };
     applyWsStateSnapshot(payload);
     if (Array.isArray(res.trades)) {
       useAppStore.setState({ trades: res.trades.slice(0, TRADE_HISTORY_UI_MAX) });

@@ -5,7 +5,9 @@ import { getTradingEvaluationChecklist } from "../evaluation/tradingChecklist.js
 import { formatAiServiceError } from "../svc/aiHttpError.js";
 import { broadcastActivity } from "../lib/activityLog.js";
 import { mergePersistedTradesWithExchange } from "../lib/activityPersistence.js";
-import { isStrictBinanceAccountMode } from "../lib/tradingModePersistence.js";
+import { isStrictBinanceAccountMode, tradingModeToPersistenceSlug } from "../lib/tradingModePersistence.js";
+
+const BOT_TARGET_MODES = z.enum(["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"]);
 
 export function createRouter({ appState }) {
   const r = express.Router();
@@ -16,7 +18,17 @@ export function createRouter({ appState }) {
   const botLifecycleBody = z.object({
     reason: z.string().max(400).optional(),
     detail: z.record(z.unknown()).optional(),
+    /** Start/stop this mode’s bot without switching UI mode (parallel engines). */
+    mode: BOT_TARGET_MODES.optional(),
   });
+
+  function getEngineForBotRequest(bodyMode) {
+    const m = bodyMode != null ? String(bodyMode).toUpperCase() : appState.mode;
+    appState.ensureEngine(m);
+    const row = appState.getEngine(m);
+    if (!row?.bot) throw new Error(`engine_missing:${m}`);
+    return row;
+  }
 
   async function withTimeout(promise, ms) {
     return await Promise.race([
@@ -54,6 +66,7 @@ export function createRouter({ appState }) {
       ok: true,
       mode: appState.mode,
       bot: appState.bot.getPublicState(),
+      runningByMode: appState.getRunningByMode?.() ?? {},
       account,
       positions,
       trades,
@@ -234,27 +247,49 @@ export function createRouter({ appState }) {
   });
 
   r.post("/bot/start", (req, res) => {
-    const parsed = botLifecycleBody.safeParse(req.body && typeof req.body === "object" ? req.body : {});
-    const body = parsed.success ? parsed.data : {};
-    appState.bot.start({
-      wsHub: appState.wsHub,
-      reason: body.reason ?? "user_request",
-      source: "http",
-      detail: body.detail,
-    });
-    res.json({ ok: true, bot: appState.bot.getPublicState() });
+    try {
+      const parsed = botLifecycleBody.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+      const body = parsed.success ? parsed.data : {};
+      const row = getEngineForBotRequest(body.mode);
+      row.bot.start({
+        wsHub: appState.wsHub,
+        reason: body.reason ?? "user_request",
+        source: "http",
+        detail: body.detail,
+      });
+      res.json({
+        ok: true,
+        mode: appState.mode,
+        targetMode: body.mode ?? appState.mode,
+        bot: row.bot.getPublicState(),
+        runningByMode: appState.getRunningByMode?.() ?? {},
+      });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: String(e?.message || e) });
+    }
   });
 
   r.post("/bot/stop", (req, res) => {
-    const parsed = botLifecycleBody.safeParse(req.body && typeof req.body === "object" ? req.body : {});
-    const body = parsed.success ? parsed.data : {};
-    appState.bot.stop({
-      wsHub: appState.wsHub,
-      reason: body.reason ?? "user_request",
-      source: "http",
-      detail: body.detail,
-    });
-    res.json({ ok: true, bot: appState.bot.getPublicState() });
+    try {
+      const parsed = botLifecycleBody.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+      const body = parsed.success ? parsed.data : {};
+      const row = getEngineForBotRequest(body.mode);
+      row.bot.stop({
+        wsHub: appState.wsHub,
+        reason: body.reason ?? "user_request",
+        source: "http",
+        detail: body.detail,
+      });
+      res.json({
+        ok: true,
+        mode: appState.mode,
+        targetMode: body.mode ?? appState.mode,
+        bot: row.bot.getPublicState(),
+        runningByMode: appState.getRunningByMode?.() ?? {},
+      });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: String(e?.message || e) });
+    }
   });
 
   /** Re-anchor hybrid daily loss baselines to current wallet equity and start the bot (after max-daily-loss stop). */
@@ -269,6 +304,8 @@ export function createRouter({ appState }) {
 
   r.post("/bot/config", (req, res) => {
     const schema = z.object({
+      /** Apply patch to this mode’s bot (defaults to UI’s active mode). */
+      mode: BOT_TARGET_MODES.optional(),
       symbol: z.string().regex(symbolRe).optional(),
       symbolMode: z.enum(["SINGLE", "AUTO"]).optional(),
       timeframe: z.string().refine((v) => allowedTimeframes.has(v), "Unsupported timeframe").optional(),
@@ -346,23 +383,38 @@ export function createRouter({ appState }) {
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
 
-    const bot = appState.bot.updateConfig(parsed.data);
-    broadcastActivity(appState.wsHub, {
-      level: "info",
-      msg: "Bot configuration updated",
-      category: "config",
-      reason: "api_patch",
-      detail: parsed.data,
-    });
+    const { mode: configTargetMode, ...patch } = parsed.data;
+    let row;
+    try {
+      row = getEngineForBotRequest(configTargetMode);
+    } catch (e) {
+      return res.status(400).json({ ok: false, error: String(e?.message || e) });
+    }
+    const bot = row.bot.updateConfig(patch);
+    broadcastActivity(
+      appState.wsHub,
+      {
+        level: "info",
+        msg: "Bot configuration updated",
+        category: "config",
+        reason: "api_patch",
+        detail: { ...patch, targetMode: configTargetMode ?? appState.mode },
+        tradingMode: configTargetMode ?? appState.mode,
+      },
+      { persistenceSlug: tradingModeToPersistenceSlug(String(configTargetMode ?? appState.mode)) },
+    );
     // Match WS `state` shape so the UI doesn't drop account/positions until the next heartbeat.
-    Promise.all([appState.exchange.getAccount().catch(() => null), appState.exchange.getPositions().catch(() => [])])
+    const ex = row.exchange;
+    Promise.all([ex.getAccount().catch(() => null), ex.getPositions().catch(() => [])])
       .then(([account, positions]) => {
-        appState.wsHub?.broadcast("state", { mode: appState.mode, ...bot, account, positions });
+        const m = String(configTargetMode ?? appState.mode).toUpperCase();
+        appState.wsHub?.broadcast("state", { mode: m, ...bot, account, positions });
       })
       .catch(() => {
-        appState.wsHub?.broadcast("state", { mode: appState.mode, ...bot, account: null, positions: [] });
+        const m = String(configTargetMode ?? appState.mode).toUpperCase();
+        appState.wsHub?.broadcast("state", { mode: m, ...bot, account: null, positions: [] });
       });
-    res.json({ ok: true, bot });
+    res.json({ ok: true, bot, targetMode: configTargetMode ?? appState.mode });
   });
 
   // Scan and rank coins (Binance only). Returns ranked list + selected top symbols.
@@ -420,11 +472,16 @@ export function createRouter({ appState }) {
     if (!last) return res.status(400).json({ ok: false, error: "no_market_data" });
     try {
       const notifyActivity = (partial) =>
-        broadcastActivity(appState.wsHub, {
-          category: partial.category || "risk",
-          level: partial.level || "info",
-          ...partial,
-        });
+        broadcastActivity(
+          appState.wsHub,
+          {
+            category: partial.category || "risk",
+            level: partial.level || "info",
+            ...partial,
+            tradingMode: appState.mode,
+          },
+          { persistenceSlug: tradingModeToPersistenceSlug(appState.mode) },
+        );
       const out = await ex.closePosition({
         id: parsed.data.id,
         price: Number(last.close),
@@ -446,13 +503,6 @@ export function createRouter({ appState }) {
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
-    // Stop bot before switching
-    appState.bot.stop({
-      wsHub: appState.wsHub,
-      reason: "trading_mode_switch",
-      source: "http_mode_set",
-      detail: { nextMode: parsed.data.mode },
-    });
     try {
       const out = await appState.setMode(parsed.data.mode);
       return res.json(out);

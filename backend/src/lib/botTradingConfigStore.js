@@ -3,23 +3,27 @@ import path from "path";
 import {
   getTradingModePersistenceSlug,
   maybeMigrateLegacyModeFiles,
-  resolveModeScopedDir,
+  resolveModeDataRootDir,
 } from "./tradingModePersistence.js";
 
-export function resolveBotTradingConfigPath() {
+/** @param {string} [persistenceSlug] data/modes/<slug>/bot-trading-config.json */
+export function resolveBotTradingConfigPath(persistenceSlug) {
   const raw = process.env.BOT_TRADING_CONFIG_PATH;
   if (raw && String(raw).trim()) {
     const s = String(raw).trim();
     return path.isAbsolute(s) ? s : path.resolve(process.cwd(), s);
   }
-  const slug = getTradingModePersistenceSlug();
+  const slug =
+    persistenceSlug != null && String(persistenceSlug).trim()
+      ? String(persistenceSlug).trim()
+      : getTradingModePersistenceSlug();
   maybeMigrateLegacyModeFiles(slug);
-  return path.join(resolveModeScopedDir(), "bot-trading-config.json");
+  return path.join(resolveModeDataRootDir(), slug, "bot-trading-config.json");
 }
 
-/** @returns {object | null} */
-export function readBotTradingConfig() {
-  const p = resolveBotTradingConfigPath();
+/** @param {string} [persistenceSlug] @returns {object | null} */
+export function readBotTradingConfig(persistenceSlug) {
+  const p = resolveBotTradingConfigPath(persistenceSlug);
   try {
     const txt = fs.readFileSync(p, "utf8");
     const j = JSON.parse(txt);
@@ -30,9 +34,9 @@ export function readBotTradingConfig() {
   }
 }
 
-/** @param {object} payload */
-export function writeBotTradingConfig(payload) {
-  const p = resolveBotTradingConfigPath();
+/** @param {object} payload @param {string} [persistenceSlug] */
+export function writeBotTradingConfig(payload, persistenceSlug) {
+  const p = resolveBotTradingConfigPath(persistenceSlug);
   const dir = path.dirname(p);
   fs.mkdirSync(dir, { recursive: true });
   const tmp = `${p}.${process.pid}.${Date.now()}.tmp`;

@@ -4,7 +4,11 @@ import {
   readActivityLogRecent,
   TRADE_HISTORY_SNAPSHOT_MAX,
 } from "../lib/activityPersistence.js";
-import { isStrictBinanceAccountMode } from "../lib/tradingModePersistence.js";
+import {
+  getTradingModePersistenceSlug,
+  isStrictBinanceAccountMode,
+  tradingModeToPersistenceSlug,
+} from "../lib/tradingModePersistence.js";
 
 /** @type {((payload: unknown) => void) | null} */
 let telegramTradeHook = null;
@@ -48,9 +52,21 @@ export function attachWs({ wss, appState }) {
 
   const hub = {
     broadcast(type, payload) {
+      const active = String(appState.mode || "PAPER").toUpperCase();
+      const originRaw =
+        payload && typeof payload === "object"
+          ? payload.mode ?? payload.tradingMode ?? payload.originTradingMode
+          : null;
+      const origin =
+        originRaw != null && String(originRaw).trim() ? String(originRaw).toUpperCase() : active;
+
       if (type === "trade" && payload && typeof payload === "object") {
         try {
-          appendTradeWsEvent(payload);
+          const slug =
+            payload.originTradingMode != null && String(payload.originTradingMode).trim()
+              ? tradingModeToPersistenceSlug(String(payload.originTradingMode))
+              : getTradingModePersistenceSlug();
+          appendTradeWsEvent(payload, slug);
         } catch {
           /* ignore */
         }
@@ -61,7 +77,20 @@ export function attachWs({ wss, appState }) {
             /* must not break WS */
           }
         }
+        if (origin !== active) return;
       }
+
+      if (
+        (type === "state" || type === "market" || type === "depth" || type === "external") &&
+        origin !== active
+      ) {
+        return;
+      }
+
+      if (type === "log" && payload && payload.tradingMode && String(payload.tradingMode).toUpperCase() !== active) {
+        return;
+      }
+
       const msg = JSON.stringify({ type, payload });
       for (const ws of clients) {
         if (ws.readyState === ws.OPEN) ws.send(msg);
@@ -70,9 +99,13 @@ export function attachWs({ wss, appState }) {
   };
   appState.wsHub = hub;
   try {
-    appState.bot.setWsHub?.(hub);
+    appState.wireAllEnginesToWsHub?.(hub);
   } catch {
-    // ignore
+    try {
+      appState.bot.setWsHub?.(hub);
+    } catch {
+      // ignore
+    }
   }
 
   wss.on("connection", (ws) => {
@@ -99,7 +132,7 @@ export function attachWs({ wss, appState }) {
         } catch {
           chart = null;
         }
-        const activityLog = readActivityLogRecent(500);
+        const activityLog = readActivityLogRecent(500, getTradingModePersistenceSlug());
         ws.send(
           JSON.stringify({
             type: "hello",
@@ -107,6 +140,7 @@ export function attachWs({ wss, appState }) {
               serverTs: new Date().toISOString(),
               state: appState.bot.getPublicState(),
               mode: appState.mode,
+              runningByMode: appState.getRunningByMode?.() ?? {},
               account,
               positions: Array.isArray(positions) ? positions : [],
               chart,
@@ -131,7 +165,7 @@ export function attachWs({ wss, appState }) {
         } catch {
           chart = null;
         }
-        const activityLogFallback = readActivityLogRecent(500);
+        const activityLogFallback = readActivityLogRecent(500, getTradingModePersistenceSlug());
         const strictFallback = isStrictBinanceAccountMode(appState.mode);
         ws.send(
           JSON.stringify({
@@ -140,6 +174,7 @@ export function attachWs({ wss, appState }) {
               serverTs: new Date().toISOString(),
               state: appState.bot.getPublicState(),
               mode: appState.mode,
+              runningByMode: appState.getRunningByMode?.() ?? {},
               ...(strictFallback ? { account: null, positions: [] } : {}),
               chart,
               activityLog: activityLogFallback,
@@ -165,7 +200,11 @@ export function attachWs({ wss, appState }) {
           ws.send(
             JSON.stringify({
               type: "state",
-              payload: { mode: appState.mode, ...appState.bot.getPublicState() },
+              payload: {
+                mode: appState.mode,
+                runningByMode: appState.getRunningByMode?.() ?? {},
+                ...appState.bot.getPublicState(),
+              },
             })
           );
         } catch {

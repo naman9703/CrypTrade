@@ -34,7 +34,7 @@ import {
   maybeMigrateLegacySupertrendSignalHistory,
   readSupertrendSignalHistory,
 } from "../lib/supertrendSignalHistoryPersistence.js";
-import { isStrictBinanceAccountMode } from "../lib/tradingModePersistence.js";
+import { isStrictBinanceAccountMode, tradingModeToPersistenceSlug } from "../lib/tradingModePersistence.js";
 import { fetchBinanceKlinesRows, fetchBinanceKlinesRange } from "../lib/binanceKlinesRest.js";
 import { computeSupertrendSignalVerdictsBackend, closeBySecFromKlines } from "../lib/supertrendSignalVerdict.js";
 import { learnSmartSignalStrengthThreshold } from "../lib/signalStrengthSmartThreshold.js";
@@ -270,7 +270,7 @@ function normalizeCapitalBudgetFields(s, SYM_RE) {
   }
 }
 
-export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
+export function createBot({ log, ai, exchange, defaults, getTradingMode, persistenceSlug }) {
   let exch = exchange;
   function runtimeTradingMode() {
     if (typeof getTradingMode === "function") {
@@ -281,6 +281,23 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       }
     }
     return String(process.env.TRADING_MODE || "PAPER").toUpperCase();
+  }
+  const cfgPersistenceSlug =
+    persistenceSlug != null && String(persistenceSlug).trim()
+      ? String(persistenceSlug).trim()
+      : tradingModeToPersistenceSlug(runtimeTradingMode());
+
+  function emitActivity(hub, payload) {
+    const tm = runtimeTradingMode();
+    broadcastActivity(
+      hub,
+      { ...payload, tradingMode: payload?.tradingMode ?? tm },
+      { persistenceSlug: cfgPersistenceSlug },
+    );
+  }
+
+  function broadcastTrade(hub, payload) {
+    hub?.broadcast?.("trade", { ...payload, originTradingMode: runtimeTradingMode() });
   }
   function requiresStrictBinanceAccount() {
     return isStrictBinanceAccountMode(runtimeTradingMode());
@@ -612,7 +629,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
     const usePct = state.multiTradeUsePctOfUsable === true;
     const p = clamp(Number(state.multiTradePctOfUsable ?? 100), 0, 100);
-    const basePool = usePct ? (usable * p) / 100 : Number(state.riskPerTrade);
+    /** Pool for FULL/EQUAL: remainder of allowed cap (`usable`), not legacy `riskPerTrade`, unless %-of-usable mode scales wallet. */
+    const rawPool = usePct ? (usable * p) / 100 : usable;
+    const basePool =
+      Number.isFinite(rawPool) && rawPool > 0 ? rawPool : Math.max(0, Number(state.riskPerTrade) || 0);
 
     if (mode === "EQUAL") {
       return { riskPerTrade: Math.max(1, basePool), fixedUsdtSplitDivisor: nDiv };
@@ -622,7 +642,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
   function persistTradingConfigToDisk() {
     try {
-      writeBotTradingConfig({
+      writeBotTradingConfig(
+        {
         v: 1,
         bot: {
           symbol: state.symbol,
@@ -688,14 +709,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           supertrendWilderAtr: state.supertrendWilderAtr,
         },
         tradingFormDefaults: { ...state.tradingFormDefaults },
-      });
+      },
+      cfgPersistenceSlug,
+    );
     } catch (e) {
       log?.warn?.("bot_trading_config_persist_failed", { error: String(e?.message || e) });
     }
   }
 
   function hydrateTradingConfigFromDisk() {
-    const raw = readBotTradingConfig();
+    const raw = readBotTradingConfig(cfgPersistenceSlug);
     if (!raw || typeof raw !== "object") return;
     const b = raw.bot;
     if (b && typeof b === "object") {
@@ -884,6 +907,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         symbol: sym,
         timeframe: tf,
         limit: Math.min(8000, SUPERTREND_SIGNAL_STATE_MAX * 2),
+        persistenceSlug: cfgPersistenceSlug,
       });
       if (!rows.length) {
         state.smartSignalStrengthThresholdMeta = {
@@ -943,12 +967,13 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
   function loadSupertrendSignalHistoryFromDisk() {
     try {
-      maybeMigrateLegacySupertrendSignalHistory();
+      maybeMigrateLegacySupertrendSignalHistory(cfgPersistenceSlug);
       state.supertrendSignalHistory = readSupertrendSignalHistory({
         symbol: state.symbol,
         timeframe: state.timeframe,
         limit: SUPERTREND_SIGNAL_STATE_MAX,
         allSymbols: configIndicatesMultiCoinSupertrendSweeps(),
+        persistenceSlug: cfgPersistenceSlug,
       });
       scheduleSmartSsRefresh(4000);
     } catch (e) {
@@ -1094,7 +1119,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     if (p.takeProfit != null && Number.isFinite(Number(p.takeProfit))) msg += ` · TP=${Number(p.takeProfit).toFixed(4)}`;
     const level =
       ac === "ERROR" ? "error" : ac === "SKIPPED" ? "warn" : ac === "PENDING" ? "info" : "info";
-    broadcastActivity(hub, {
+    emitActivity(hub, {
       level,
       msg,
       category: "signal",
@@ -1603,7 +1628,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         strategyKey,
       });
       if (side === "BUY") {
-        wsHub?.broadcast?.("trade", {
+        broadcastTrade(wsHub, {
           type: "OPEN",
           id: order.id,
           ts: new Date().toISOString(),
@@ -1621,7 +1646,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         });
       } else {
         const exitPx = Number(order.filledPrice);
-        wsHub?.broadcast?.("trade", {
+        broadcastTrade(wsHub, {
           type: "CLOSE",
           id: order.id,
           ts: new Date().toISOString(),
@@ -1755,7 +1780,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         const closeRowId = `fut_close_${Date.now()}_${String(orderSymbol).replace(/[^A-Z0-9_]/g, "_")}_${Math.random().toString(36).slice(2, 10)}`;
         try {
           const notifyActivity = (partial) =>
-            broadcastActivity(wsHub, {
+            emitActivity(wsHub, {
               category: partial.category || "risk",
               level: partial.level || "info",
               ...partial,
@@ -1790,7 +1815,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
             symbol: orderSymbol,
             strategyKey,
           });
-          wsHub?.broadcast?.("trade", {
+          broadcastTrade(wsHub, {
             type: "CLOSE",
             id: closeRowId,
             ts: new Date().toISOString(),
@@ -1884,7 +1909,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           if (longHere.length > 0) {
             return { venue: "FUTURES", side, action: "skipped", reason: "already_in_futures_position" };
           }
-          broadcastActivity(wsHub, {
+          emitActivity(wsHub, {
             level: "warn",
             msg: `Supertrend flip: close short failed (${String(cr.error || "unknown")}) but exchange has no short — opening long`,
             category: "signal",
@@ -2159,7 +2184,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         msg: `Supertrend futures ${openingSide} skipped: approx. liquidation vs fee breakeven invalid at lev=${lev}x (raise leverage or widen fee/MM assumptions).`,
         symbol: orderSymbol,
       });
-      broadcastActivity(wsHub, {
+      emitActivity(wsHub, {
         level: "warn",
         msg: `Open skipped · ${orderSymbol} · liquidation/breakeven geometry (trailing model) at ${lev}x`,
         category: "risk",
@@ -2213,7 +2238,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         leverage: lev,
         strategyKey,
       });
-      wsHub?.broadcast?.("trade", {
+      broadcastTrade(wsHub, {
         type: "OPEN",
         id: order.id,
         ts: new Date().toISOString(),
@@ -2239,7 +2264,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       });
       const slN = Number(stopLoss);
       const tpN = Number(takeProfit);
-      broadcastActivity(wsHub, {
+      emitActivity(wsHub, {
         level: "info",
         msg: `SL/TP armed · ${orderSymbol} · SL ${Number.isFinite(slN) ? slN.toFixed(4) : "—"} · TP ${Number.isFinite(tpN) ? tpN.toFixed(4) : "—"} · Supertrend futures`,
         category: "risk",
@@ -2378,7 +2403,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
   /** Persist flip to jsonl; merge into in-memory history + WS for every symbol (multi-coin AUTO). */
   function mergeSupertrendSignalHistoryFromAutoMulti(entry, wsHub) {
-    appendSupertrendSignalHistoryEntry(entry);
+    appendSupertrendSignalHistoryEntry(entry, cfgPersistenceSlug);
     const symE = String(entry.symbol || "").toUpperCase();
     const tfE = String(entry.timeframe || "");
     if (!symE || tfE !== String(state.timeframe)) {
@@ -2460,6 +2485,29 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       return false;
     }
     return supertrendVenueActive(mmUp);
+  }
+
+  /**
+   * MULTIPLE + symbolMode AUTO + live Binance + Supertrend venue: multiplex klines and per-symbol UI snapshots.
+   * Broader than auto-trade sweep (`AUTO_MULTI_UNPINNED_SUPERTREND` / `ST_SIGNAL_FIRST`) so signal tabs stay live.
+   */
+  function multiCoinKlineMuxEnabled(mmUp) {
+    if (String(state.symbolMode || "").toUpperCase() !== "AUTO") return false;
+    if (String(state.universeCoinSelectMode || "SINGLE").toUpperCase() !== "MULTIPLE") return false;
+    if (!marketFeedUsesLiveBinance()) return false;
+    return supertrendVenueActive(mmUp);
+  }
+
+  /**
+   * Combined stream + bar-close gate: multi-coin Supertrend tabs/trades, or legacy AUTO_MULTI_UNPINNED (can be non-MULTIPLE),
+   * or ST_SIGNAL_FIRST sweep. Keeps single-coin unpinned path on multiplex when `MULTIPLE` is off.
+   */
+  function parallelSupertrendWatchGate(mmUp) {
+    return (
+      multiCoinKlineMuxEnabled(mmUp) ||
+      autoMultiUnpinnedActive(mmUp) ||
+      stSignalFirstMultiSweepActive(mmUp)
+    );
   }
 
   /** Config-only (no running/feed check): load/merge signal history for every watched symbol, not only `state.symbol`. */
@@ -2737,17 +2785,22 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
     let acct = ctx.acct;
     let spendQuote = 0;
+    const multiPoolBudgetSizing =
+      isFixedUsdtCapitalMode() &&
+      String(state.universeCoinSelectMode || "").toUpperCase() === "MULTIPLE";
     if (allowBuy && stSpot) {
       try {
         acct = await exch.getAccount();
       } catch {
         /* ignore */
       }
-      const freeNow = Number(acct?.freeBalance ?? acct?.equity ?? 0);
-      spendQuote =
-        Number.isFinite(freeNow) && freeNow > 0
-          ? autoMultiQuoteSpendForSlot(freeNow, openSyms.size)
-          : 0;
+      if (!multiPoolBudgetSizing) {
+        const freeNow = Number(acct?.freeBalance ?? acct?.equity ?? 0);
+        spendQuote =
+          Number.isFinite(freeNow) && freeNow > 0
+            ? autoMultiQuoteSpendForSlot(freeNow, openSyms.size)
+            : 0;
+      }
     }
 
     if (allowBuy && stSpot) {
@@ -2757,7 +2810,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       if (openSyms.size >= maxOpen) {
         return;
       }
-      if (!(Number.isFinite(spendQuote) && spendQuote > 0)) {
+      if (!(multiPoolBudgetSizing || (Number.isFinite(spendQuote) && spendQuote > 0))) {
         return;
       }
       const buyRes = await trySupertrendSpotOrder({
@@ -2769,7 +2822,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         decisionSnapshot: decisionSnapshotBar,
         tradeSymbol: symU,
         candlesOverride: cr,
-        fixedQuoteSpendUsdt: spendQuote,
+        fixedQuoteSpendUsdt: multiPoolBudgetSizing ? null : spendQuote,
         multiUnpinnedOrder: true,
       });
       emitSupertrendSignalFeedback(hubLocal, { ...buyRes, signalStrength: supertrendStrength01 ?? undefined });
@@ -2813,9 +2866,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       }
       const freeFut = Number(acct?.freeBalance ?? acct?.equity ?? 0);
       const maxNotionalUsd =
-        Number.isFinite(freeFut) && freeFut > 0
-          ? autoMultiQuoteSpendForSlot(freeFut, openSyms.size)
-          : null;
+        multiPoolBudgetSizing
+          ? null
+          : Number.isFinite(freeFut) && freeFut > 0
+            ? autoMultiQuoteSpendForSlot(freeFut, openSyms.size)
+            : null;
       const buyRes = await trySupertrendFuturesOrder({
         side: "BUY",
         strategyKey,
@@ -2949,9 +3004,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     if (String(candle.symbol || "").toUpperCase() !== String(state.symbol).toUpperCase()) return;
 
     const mm = String(state.marketMode).toUpperCase();
-    // Multi-coin bar-close path (`maybeAutoMultiBarClose`) already handles primary + watch symbols; do not
+    // Parallel bar-close path (`maybeAutoMultiBarClose`) already handles primary + watch symbols; do not
     // also record signals / autotrade here or the same bar is duplicated in history + jsonl.
-    if (autoMultiUnpinnedActive(mm) || stSignalFirstMultiSweepActive(mm)) {
+    if (parallelSupertrendWatchGate(mm)) {
       return;
     }
     const spotOn = Boolean(state.supertrendSpotAuto);
@@ -3108,7 +3163,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         stAction: ss?.action != null ? String(ss.action) : null,
         surfPulse: surfPulseHist,
       };
-      appendSupertrendSignalHistoryEntry(entry);
+      appendSupertrendSignalHistoryEntry(entry, cfgPersistenceSlug);
       const prev = Array.isArray(state.supertrendSignalHistory) ? state.supertrendSignalHistory : [];
       const symH = String(entry.symbol).toUpperCase();
       const tfH = String(entry.timeframe);
@@ -3307,7 +3362,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     const rankedSyms = Array.isArray(snap?.ranked) ? snap.ranked.map((r) => r?.symbol).filter(Boolean) : [];
     let candidatesRaw = selectedSyms.length ? selectedSyms : rankedSyms;
     if (
-      String(state.universeAutoCoinPick || "").toUpperCase() === "ST_SIGNAL_FIRST" &&
+      String(state.universeCoinSelectMode || "SINGLE").toUpperCase() === "MULTIPLE" &&
       universeManualPinningOn() &&
       Array.isArray(state.universePinnedSymbols) &&
       state.universePinnedSymbols.length
@@ -3326,7 +3381,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
   function computeFeedWatchSymbols() {
     if (!marketFeedUsesLiveBinance()) return [];
     const mm = String(state.marketMode || "AUTO").toUpperCase();
-    if (!autoMultiUnpinnedActive(mm) && !stSignalFirstMultiSweepActive(mm)) return [];
+    if (!parallelSupertrendWatchGate(mm)) return [];
     return computeAutoMultiWatchSymbolList();
   }
 
@@ -3437,7 +3492,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
   function syncFeedWatchSymbols() {
     if (typeof feed?.setWatchSymbols !== "function") return;
     const mm = String(state.marketMode || "AUTO").toUpperCase();
-    if (!autoMultiUnpinnedActive(mm) && !stSignalFirstMultiSweepActive(mm)) {
+    if (!parallelSupertrendWatchGate(mm)) {
       feed.setWatchSymbols([]);
       state.multiSymbolWatchSignals = Object.create(null);
       return;
@@ -3457,9 +3512,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
   maybeAutoMultiBarClose = async function maybeAutoMultiBarCloseInner(candle) {
     if (!marketFeedUsesLiveBinance()) return;
     if (!wsHubRef) return;
-    if (!state.running) return;
-    const mm = String(state.marketMode).toUpperCase();
-    if (!autoMultiUnpinnedActive(mm) && !stSignalFirstMultiSweepActive(mm)) return;
+    const mm = String(state.marketMode || "AUTO").toUpperCase();
+    if (!parallelSupertrendWatchGate(mm)) return;
     const symU = String(candle.symbol || "").toUpperCase();
     const watch = computeFeedWatchSymbols();
     if (!watch.includes(symU)) return;
@@ -3480,6 +3534,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       const ev = evaluateSupertrendLastClosedBar(closedRaw, symU, Number(candle.ts));
       if (!ev) return;
       await persistMultiSymbolSnapshot(symU, ev, "kline_ws");
+      if (!state.running) return;
       const ctx = await buildAutoMultiCtx(mm);
       await processAutoMultiFromEval(symU, wsHubRef, ev, ctx);
       return;
@@ -3487,6 +3542,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     const ev = evaluateSupertrendLastClosedBar(rows, symU, Number(candle.ts));
     if (!ev) return;
     await persistMultiSymbolSnapshot(symU, ev, "kline_ws");
+    if (!state.running) return;
     const ctx = await buildAutoMultiCtx(mm);
     await processAutoMultiFromEval(symU, wsHubRef, ev, ctx);
   };
@@ -3667,7 +3723,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     if (!depth) return;
     const b = depth.getBook();
     if (!b?.symbol) return;
-    wsHubRef.broadcast("depth", b);
+    wsHubRef.broadcast("depth", { ...b, originTradingMode: runtimeTradingMode() });
   }, 500);
 
   // External context loop (CoinGecko market context for current symbol)
@@ -3680,7 +3736,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     (async () => {
       try {
         const ctx = await cg.marketContext({ symbol: state.symbol });
-        if (ctx?.ok) wsHubRef.broadcast("external", ctx);
+        if (ctx?.ok) wsHubRef.broadcast("external", { ...ctx, originTradingMode: runtimeTradingMode() });
       } catch {
         // ignore
       } finally {
@@ -4251,7 +4307,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       if (ingestedCloseBroadcastKeys.size > 12_000) {
         ingestedCloseBroadcastKeys = new Set([...ingestedCloseBroadcastKeys].slice(-6000));
       }
-      wsHub?.broadcast("trade", enrichCloseTradeForHistory({ ...t }));
+      broadcastTrade(wsHub, enrichCloseTradeForHistory({ ...t }));
 
       if (isIncomeLedgerClose(t)) {
         continue;
@@ -4334,7 +4390,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     if (every > 0 && closedSinceRetrain >= every) {
       closedSinceRetrain = 0;
       try {
-        broadcastActivity(wsHub, {
+        emitActivity(wsHub, {
           level: "info",
           msg: "Auto-retraining AI model from feedback…",
           category: "ai",
@@ -4342,7 +4398,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           source: "ingest_closed_trades",
         });
         const r = await ai.retrainFromFeedback({ minRows });
-        broadcastActivity(wsHub, {
+        emitActivity(wsHub, {
           level: "info",
           msg: "AI retrain complete",
           category: "ai",
@@ -4350,7 +4406,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           detail: r && typeof r === "object" ? r : { result: r },
         });
       } catch (e) {
-        broadcastActivity(wsHub, {
+        emitActivity(wsHub, {
           level: "warn",
           msg: "AI retrain failed",
           category: "ai",
@@ -4542,7 +4598,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       if (!prev || prev.reason !== reason) {
         state.feedExecutionPause = { reason, since: Date.now() };
         if (state.running) {
-          broadcastActivity(wsHub, {
+          emitActivity(wsHub, {
             level: "warn",
             msg:
               reason === "feed_ws"
@@ -4573,7 +4629,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       const had = state.feedExecutionPause;
       state.feedExecutionPause = null;
       if (state.running && had) {
-        broadcastActivity(wsHub, {
+        emitActivity(wsHub, {
           level: "info",
           msg: "Market feed healthy — autotrade eligible again",
           category: "feed",
@@ -4629,18 +4685,44 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           evt.breakeven != null && Number.isFinite(Number(evt.breakeven))
             ? Number(evt.breakeven).toFixed(6)
             : "—";
+        const step = Number(evt.trailStep ?? 0);
+        const maxS = Math.max(1, Number(evt.maxTrailSteps ?? 1));
         const label = evt.kind === "fee_ladder_trailing_sl" ? "Fee-ladder trailing SL" : "Supertrend trailing SL";
-        broadcastActivity(wsHub, {
+        const src = evt.source != null ? String(evt.source) : "";
+        const srcBit = src ? ` · ${src}` : "";
+        const detail = {
+          symbol: evt.symbol != null ? String(evt.symbol) : null,
+          venue: evt.venue != null ? String(evt.venue) : "FUTURES",
+          prevStopLoss: Number.isFinite(prev) ? prev : evt.prevStopLoss,
+          newStopLoss: Number.isFinite(next) ? next : evt.newStopLoss,
+          trailStep: step,
+          maxTrailSteps: maxS,
+          supertrendPx:
+            evt.supertrendPx != null && Number.isFinite(Number(evt.supertrendPx)) ? Number(evt.supertrendPx) : null,
+          breakeven: evt.breakeven != null && Number.isFinite(Number(evt.breakeven)) ? Number(evt.breakeven) : null,
+          activationPrice:
+            evt.activationPrice != null && Number.isFinite(Number(evt.activationPrice))
+              ? Number(evt.activationPrice)
+              : null,
+          trailStatus: evt.trailStatus != null ? String(evt.trailStatus) : null,
+          kind: evt.kind != null ? String(evt.kind) : null,
+          trailingMode: evt.trailingMode != null ? String(evt.trailingMode) : null,
+          isLong: evt.isLong === true ? true : evt.isLong === false ? false : null,
+          entryPrice: evt.entryPrice != null && Number.isFinite(Number(evt.entryPrice)) ? Number(evt.entryPrice) : null,
+          leverage: evt.leverage != null && Number.isFinite(Number(evt.leverage)) ? Number(evt.leverage) : null,
+          source: src || null,
+        };
+        emitActivity(wsHub, {
           level: "info",
-          msg: `${label} · ${evt.symbol} · ${ps} → ${ns} · ST ${st} · fee BE ${be} (step ${evt.trailStep}/${evt.maxTrailSteps})`,
+          msg: `${label} · ${evt.symbol} · ${ps} → ${ns} · ST ${st} · fee BE ${be} (step ${step}/${maxS})${srcBit}`,
           category: "risk",
           reason: "trailing_sl_advance",
           symbol: evt.symbol,
-          detail: evt,
+          detail,
         });
       };
       const notifyActivity = (partial) =>
-        broadcastActivity(wsHub, {
+        emitActivity(wsHub, {
           category: "risk",
           level: partial.level || "info",
           ...partial,
@@ -4681,7 +4763,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           _cachedPositions = [];
           if (strictAcc && nowMs - _lastStrictAccountWarnAt > 60_000) {
             _lastStrictAccountWarnAt = nowMs;
-            broadcastActivity(wsHub, {
+            emitActivity(wsHub, {
               level: "warn",
               msg: "Binance account unavailable — check API keys, IP whitelist, and permissions",
               category: "exchange",
@@ -4698,7 +4780,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
               account = null;
               _cachedAccount = null;
               _cachedPositions = [];
-              broadcastActivity(wsHub, {
+              emitActivity(wsHub, {
                 level: "warn",
                 msg: "Exchange positions unavailable",
                 category: "exchange",
@@ -4722,7 +4804,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           _cachedPositions = [];
           account = null;
           positions = [];
-          broadcastActivity(wsHub, {
+          emitActivity(wsHub, {
             level: "warn",
             msg: "Exchange account/positions unavailable",
             category: "exchange",
@@ -4752,7 +4834,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         if (ageMs > maxPosAgeMs) {
           try {
             await exch.closePosition?.({ id: p.id, price: last.close, reason: "TIME_EXIT" });
-            broadcastActivity(wsHub, {
+            emitActivity(wsHub, {
               level: "info",
               msg: `Time-based exit · ${String(p.symbol)}`,
               category: "position",
@@ -4947,6 +5029,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       supertrendLine: stModel.line,
       supertrendSignals: stModel.signals,
       feedExecutionPause: state.feedExecutionPause,
+      originTradingMode: runtimeTradingMode(),
     });
 
     wsHub?.broadcast("state", {
@@ -4987,7 +5070,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         state._aiLastCalledAt = tickNow;
         if (!state._predictWarmupLogged && candles.length >= 5) {
           state._predictWarmupLogged = true;
-          broadcastActivity(wsHub, {
+          emitActivity(wsHub, {
             level: "info",
             msg: `AI predict warming up (${candles.length}/${aiMinCandles} candles — need history for /predict)`,
             category: "ai",
@@ -5014,7 +5097,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           didPredict = true;
         } catch (e) {
           const errMsg = formatAiServiceError(e);
-          broadcastActivity(wsHub, {
+          emitActivity(wsHub, {
             level: "error",
             msg: "AI predict failed; skipping trade",
             category: "ai",
@@ -5463,7 +5546,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         reason: "liquidation_breakeven_reject",
         probability: prob,
       });
-      broadcastActivity(wsHub, {
+      emitActivity(wsHub, {
         level: "warn",
         msg: `Open skipped · ${state.symbol} · liquidation/breakeven geometry (Supertrend trailing) at ${futuresLeverage}x`,
         category: "risk",
@@ -5554,7 +5637,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       strategyKey,
     });
 
-    wsHub?.broadcast("trade", {
+    broadcastTrade(wsHub, {
       type: "OPEN",
       id: order.id,
       symbol: state.symbol,
@@ -5569,7 +5652,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     if (isFuturesVenue && (plan.stopLoss != null || plan.takeProfit != null)) {
       const slN = Number(plan.stopLoss);
       const tpN = Number(plan.takeProfit);
-      broadcastActivity(wsHub, {
+      emitActivity(wsHub, {
         level: "info",
         msg: `SL/TP armed · ${state.symbol} · SL ${Number.isFinite(slN) ? slN.toFixed(4) : "—"} · TP ${Number.isFinite(tpN) ? tpN.toFixed(4) : "—"} · ${strategyKey}`,
         category: "risk",
@@ -5614,14 +5697,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     if (state.universePinnedSymbol || (state.universePinnedSymbols && state.universePinnedSymbols.length)) {
       state.universePinnedSymbol = null;
       state.universePinnedSymbols = [];
-      broadcastActivity(wsHub, {
+      emitActivity(wsHub, {
         level: "info",
         msg: "Universe pin cleared (bot started)",
         category: "universe",
         reason: "pin_cleared_on_start",
       });
     }
-    broadcastActivity(wsHub, {
+    emitActivity(wsHub, {
       level: "info",
       msg: activityStartMsg(reason),
       category: "bot_lifecycle",
@@ -5638,7 +5721,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     }
     const feedSrc = feed.getStatus?.()?.source;
     if ((state.supertrendSpotAuto || state.supertrendFuturesAuto) && feedSrc === "SYNTH") {
-      broadcastActivity(wsHub, {
+      emitActivity(wsHub, {
         level: "warn",
         msg:
           "Supertrend autotrade is ON but MARKET_FEED is SYNTH — no Binance kline close (k.x) events fire; set MARKET_FEED=BINANCE or BINANCE_FUTURES in backend .env and restart.",
@@ -5680,7 +5763,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         : detail != null
           ? { value: detail, symbol: state.symbol }
           : { symbol: state.symbol };
-    broadcastActivity(wsHub, {
+    emitActivity(wsHub, {
       level,
       msg: activityStopMsg(reason),
       category: "bot_lifecycle",
@@ -5704,7 +5787,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
    */
   function resetDailyLossBaselineAndStart({ wsHub, source = "http" } = {}) {
     state.dailyVenueBaseline = {};
-    broadcastActivity(wsHub, {
+    emitActivity(wsHub, {
       level: "warn",
       msg: "Daily loss baseline reset — counter re-anchored to current wallet equity; bot resuming",
       category: "bot_lifecycle",
@@ -6033,7 +6116,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       },
     });
 
-    wsHub?.broadcast("trade", {
+    broadcastTrade(wsHub, {
       type: "OPEN",
       id: order.id,
       symbol: state.symbol,
@@ -6045,7 +6128,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       strategyKey,
       manual: true,
     });
-    broadcastActivity(wsHub, {
+    emitActivity(wsHub, {
       level: "info",
       msg: `Manual trade · ${side} ${state.symbol} · order ${order.id}`,
       category: "manual_trade",

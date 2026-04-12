@@ -8,21 +8,25 @@ import { readBotTradingConfig } from "./botTradingConfigStore.js";
 import {
   getTradingModePersistenceSlug,
   maybeMigrateLegacyModeFiles,
-  resolveModeScopedDir,
+  resolveModeDataRootDir,
 } from "./tradingModePersistence.js";
 
 const MAX_LINES = Number(process.env.SUPERTREND_SIGNAL_HISTORY_MAX_LINES || 8000);
 const TRIM_BYTE_HINT = Number(process.env.SUPERTREND_SIGNAL_HISTORY_TRIM_BYTES || 2_000_000);
 
-export function resolveSupertrendSignalHistoryPath() {
+/** @param {string} [persistenceSlug] */
+export function resolveSupertrendSignalHistoryPath(persistenceSlug) {
   const r = process.env.SUPERTREND_SIGNAL_HISTORY_PATH;
   if (r && String(r).trim()) {
     const s = String(r).trim();
     return path.isAbsolute(s) ? s : path.resolve(process.cwd(), s);
   }
-  const slug = getTradingModePersistenceSlug();
+  const slug =
+    persistenceSlug != null && String(persistenceSlug).trim()
+      ? String(persistenceSlug).trim()
+      : getTradingModePersistenceSlug();
   maybeMigrateLegacyModeFiles(slug);
-  return path.join(resolveModeScopedDir(), "supertrend-signal-history.jsonl");
+  return path.join(resolveModeDataRootDir(), slug, "supertrend-signal-history.jsonl");
 }
 
 function ensureDirForFile(p) {
@@ -63,11 +67,11 @@ function cleanRow(e) {
   };
 }
 
-/** @param {ReturnType<cleanRow>} entry */
-export function appendSupertrendSignalHistoryEntry(entry) {
+/** @param {ReturnType<cleanRow>} entry @param {string} [persistenceSlug] */
+export function appendSupertrendSignalHistoryEntry(entry, persistenceSlug) {
   const cleaned = cleanRow(entry);
   if (!cleaned?.symbol || !cleaned.timeframe) return;
-  const p = resolveSupertrendSignalHistoryPath();
+  const p = resolveSupertrendSignalHistoryPath(persistenceSlug);
   ensureDirForFile(p);
   const row = { ...cleaned, _loggedAt: new Date().toISOString() };
   const line = `${JSON.stringify(row)}\n`;
@@ -78,11 +82,12 @@ export function appendSupertrendSignalHistoryEntry(entry) {
 /**
  * One-time: copy last-10 buffer from legacy bot-trading-config into jsonl when the jsonl is empty.
  */
-export function maybeMigrateLegacySupertrendSignalHistory() {
-  const p = resolveSupertrendSignalHistoryPath();
+/** @param {string} [persistenceSlug] */
+export function maybeMigrateLegacySupertrendSignalHistory(persistenceSlug) {
+  const p = resolveSupertrendSignalHistoryPath(persistenceSlug);
   try {
     if (fs.existsSync(p) && fs.statSync(p).size > 0) return;
-    const raw = readBotTradingConfig();
+    const raw = readBotTradingConfig(persistenceSlug);
     const b = raw?.bot;
     if (!b || typeof b !== "object") return;
     const legacy = b.supertrendSignalHistory;
@@ -112,12 +117,12 @@ export function maybeMigrateLegacySupertrendSignalHistory() {
 }
 
 /**
- * @param {{ symbol: string; timeframe: string; limit?: number; allSymbols?: boolean }} opts
+ * @param {{ symbol: string; timeframe: string; limit?: number; allSymbols?: boolean; persistenceSlug?: string }} opts
  * When `allSymbols` is true, every symbol in the jsonl for `timeframe` is included (multi-coin AUTO Supertrend).
  * @returns {Array<{ ts: number; side: 'BUY'|'SELL'; symbol: string; timeframe: string; aiGate: number|null; strength: number|null; stAction: string|null; surfPulse?: number|null }>}
  */
-export function readSupertrendSignalHistory({ symbol, timeframe, limit = 2000, allSymbols = false }) {
-  const p = resolveSupertrendSignalHistoryPath();
+export function readSupertrendSignalHistory({ symbol, timeframe, limit = 2000, allSymbols = false, persistenceSlug }) {
+  const p = resolveSupertrendSignalHistoryPath(persistenceSlug);
   if (!fs.existsSync(p)) return [];
   const sym = String(symbol || "").toUpperCase();
   const tf = String(timeframe || "");

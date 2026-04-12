@@ -180,6 +180,41 @@ function futuresBracketLevelSane(chartSymForPlausible: string, px: number, lastC
 
 type ChartStTrailPreviewLine = { px: number; title: string; kind: "st_activation" | "st_trail" | "fee_trail" };
 
+/** Main chart SL/TP / trailing preview only when the bot is routed to futures (not pure spot). */
+function inferFuturesBracketLinesActive(bot: unknown): boolean {
+  const b = bot as Record<string, unknown> | undefined;
+  if (!b) return true;
+  const mm = String(b.marketMode ?? "AUTO").toUpperCase();
+  if (mm === "FUTURES") return true;
+  if (mm === "SPOT") return false;
+  const fut = Boolean(b.supertrendFuturesAuto);
+  const spot = Boolean(b.supertrendSpotAuto);
+  if (fut && !spot) return true;
+  if (!fut && spot) return false;
+  return fut;
+}
+
+function positionOpenedAtMs(p: Record<string, unknown>): number {
+  const m = (p.meta as Record<string, unknown> | undefined) || {};
+  const t = p.openedAt ?? p.opened_at ?? m.openedAt ?? m.opened_at;
+  if (t == null) return 0;
+  const ms = new Date(String(t)).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+/** One row per chart: newest open first, then largest notional (hedge / duplicate API rows). */
+function selectPrimaryFuturesPositionForChart(here: Record<string, unknown>[]): Record<string, unknown> | undefined {
+  if (!here.length) return undefined;
+  const scored = here.map((p) => {
+    const q = Math.abs(Number(p.qty ?? p.positionAmt) || 0);
+    const e = Number(p.entryPrice);
+    const notional = Number.isFinite(q) && Number.isFinite(e) && e > 0 ? q * e : 0;
+    return { p, opened: positionOpenedAtMs(p), notional };
+  });
+  scored.sort((a, b) => b.opened - a.opened || b.notional - a.notional);
+  return scored[0]?.p;
+}
+
 function nearlySameTrailPx(a: number, b: number, rel = 1e-5): boolean {
   if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0) return false;
   return Math.abs(a - b) / a < rel;
@@ -189,13 +224,15 @@ function nearlySameTrailPx(a: number, b: number, rel = 1e-5): boolean {
 function pickChartFuturesBracket(
   positions: unknown,
   chartSymbolEffective: string,
-  isMultiCoin: boolean,
+  _isMultiCoin: boolean,
   lastClose: number | null,
+  bot?: unknown,
 ): {
   slPx: number | null;
   tpPx: number | null;
   hasBracket: boolean;
 } {
+  if (!inferFuturesBracketLinesActive(bot)) return { slPx: null, tpPx: null, hasBracket: false };
   const symKey = canonicalChartSymbol(chartSymbolEffective);
   if (!symKey) return { slPx: null, tpPx: null, hasBracket: false };
   const rows = Array.isArray(positions) ? positions : [];
@@ -205,9 +242,7 @@ function pickChartFuturesBracket(
     const q = Number(p?.qty ?? p?.positionAmt);
     if (!Number.isFinite(q) || Math.abs(q) <= 1e-8) return false;
     const v = String(p?.venue ?? "").toUpperCase();
-    /** Multi-coin: only USD-M style rows get chart brackets — empty venue rows were leaking other legs. */
-    if (isMultiCoin) return v === "FUTURES";
-    return v === "FUTURES" || v === "";
+    return v === "FUTURES";
   });
   const seenRow = new Set<string>();
   const here = hereRaw.filter((p: Record<string, unknown>) => {
@@ -217,7 +252,7 @@ function pickChartFuturesBracket(
     seenRow.add(k);
     return true;
   });
-  const pos = here[0] as Record<string, unknown> | undefined;
+  const pos = selectPrimaryFuturesPositionForChart(here);
   if (!pos) return { slPx: null, tpPx: null, hasBracket: false };
   const slRaw = Number(pos.stopLoss);
   const tpRaw = Number(pos.takeProfit);
@@ -237,8 +272,10 @@ function pickChartFuturesBracket(
 function pickChartFuturesPositionRow(
   positions: unknown,
   chartSymbolEffective: string,
-  isMultiCoin: boolean,
+  _isMultiCoin: boolean,
+  bot?: unknown,
 ): Record<string, unknown> | null {
+  if (!inferFuturesBracketLinesActive(bot)) return null;
   const symKey = canonicalChartSymbol(chartSymbolEffective);
   if (!symKey) return null;
   const rows = Array.isArray(positions) ? positions : [];
@@ -248,8 +285,7 @@ function pickChartFuturesPositionRow(
     const q = Number(p?.qty ?? p?.positionAmt);
     if (!Number.isFinite(q) || Math.abs(q) <= 1e-8) return false;
     const v = String(p?.venue ?? "").toUpperCase();
-    if (isMultiCoin) return v === "FUTURES";
-    return v === "FUTURES" || v === "";
+    return v === "FUTURES";
   });
   const seenRow = new Set<string>();
   const here = hereRaw.filter((p: Record<string, unknown>) => {
@@ -259,7 +295,7 @@ function pickChartFuturesPositionRow(
     seenRow.add(k);
     return true;
   });
-  return (here[0] as Record<string, unknown> | undefined) ?? null;
+  return selectPrimaryFuturesPositionForChart(here) ?? null;
 }
 
 function tryApplyAutoFit(
@@ -851,17 +887,30 @@ export function ChartPanel() {
   const symKey = useMemo(() => canonicalChartSymbol(effectiveSym), [effectiveSym]);
 
   const futuresBracket = useMemo(() => {
+    const futActive = inferFuturesBracketLinesActive(bot) ? 1 : 0;
     const { slPx, tpPx, hasBracket } = pickChartFuturesBracket(
       positions,
       effectiveSym,
       isMultiCoinMode,
       ohlcLastClose,
+      bot,
     );
     const slCol = chartTheme === "dark" ? "#f87171" : "#dc2626";
     const tpCol = chartTheme === "dark" ? "#38bdf8" : "#0284c7";
-    const key = `${symKey}|${slPx ?? ""}|${tpPx ?? ""}|${chartTheme}|${isMultiCoinMode ? "M" : "S"}|${ohlcLastClose ?? ""}`;
+    const mm = String(bot?.marketMode ?? "").toUpperCase();
+    const key = `${symKey}|${slPx ?? ""}|${tpPx ?? ""}|${chartTheme}|${isMultiCoinMode ? "M" : "S"}|${ohlcLastClose ?? ""}|${futActive}|${mm}`;
     return { key, slPx, tpPx, hasBracket, slCol, tpCol };
-  }, [positions, effectiveSym, symKey, chartTheme, isMultiCoinMode, ohlcLastClose]);
+  }, [
+    positions,
+    effectiveSym,
+    symKey,
+    chartTheme,
+    isMultiCoinMode,
+    ohlcLastClose,
+    bot?.marketMode,
+    bot?.supertrendFuturesAuto,
+    bot?.supertrendSpotAuto,
+  ]);
 
   /**
    * Trailing preview lines for the charted futures leg.
@@ -871,8 +920,9 @@ export function ChartPanel() {
   const chartTrailingPreview = useMemo(() => {
     const none = (k: string) => ({ key: k, lines: [] as ChartStTrailPreviewLine[] });
     if (bot?.trailingStopLossAuto !== true) return none("trail-off");
+    if (!inferFuturesBracketLinesActive(bot)) return none("trail-venue");
 
-    const pos = pickChartFuturesPositionRow(positions, effectiveSym, isMultiCoinMode);
+    const pos = pickChartFuturesPositionRow(positions, effectiveSym, isMultiCoinMode, bot);
     if (!pos) return none("trail-nopos");
     const q = Number(pos.qty ?? pos.positionAmt);
     if (!Number.isFinite(q) || Math.abs(q) <= 1e-8) return none("trail-flat");
@@ -904,7 +954,7 @@ export function ChartPanel() {
     const bufferRate = 0.0005;
     const maintenanceMarginRate = 0.005;
 
-    const { slPx: chartSlRaw } = pickChartFuturesBracket(positions, effectiveSym, isMultiCoinMode, ohlcLastClose);
+    const { slPx: chartSlRaw } = pickChartFuturesBracket(positions, effectiveSym, isMultiCoinMode, ohlcLastClose, bot);
     const slDup = (px: number) =>
       chartSlRaw != null && Number.isFinite(chartSlRaw) && chartSlRaw > 0 && nearlySameTrailPx(px, chartSlRaw);
 
@@ -1026,6 +1076,9 @@ export function ChartPanel() {
     bot?.trailingStopLossAuto,
     bot?.futuresTrailingStopMode,
     bot?.trailingStopExtraScalpingPcts,
+    bot?.marketMode,
+    bot?.supertrendFuturesAuto,
+    bot?.supertrendSpotAuto,
     positions,
     effectiveSym,
     symKey,
@@ -1076,7 +1129,7 @@ export function ChartPanel() {
             return Number.isFinite(c) && c > 0 ? c : null;
           })()
         : null;
-    const { slPx, tpPx, hasBracket } = pickChartFuturesBracket(live.positions, eff, multi, lastClose);
+    const { slPx, tpPx, hasBracket } = pickChartFuturesBracket(live.positions, eff, multi, lastClose, live.bot);
     const isDark = chartTheme === "dark";
     const slCol = isDark ? "#f87171" : "#dc2626";
     const tpCol = isDark ? "#38bdf8" : "#0284c7";

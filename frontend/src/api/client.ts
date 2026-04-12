@@ -93,7 +93,12 @@ export const api = {
       }),
     );
   },
-  async botStart(opts?: { reason?: string; detail?: Record<string, unknown> }) {
+  async botStart(opts?: {
+    reason?: string;
+    detail?: Record<string, unknown>;
+    /** Start this mode’s engine (defaults to UI’s active trading mode). */
+    mode?: "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE";
+  }) {
     return json<any>(
       await apiFetch(`${HTTP}/api/bot/start`, {
         method: "POST",
@@ -102,7 +107,11 @@ export const api = {
       }),
     );
   },
-  async botStop(opts?: { reason?: string; detail?: Record<string, unknown> }) {
+  async botStop(opts?: {
+    reason?: string;
+    detail?: Record<string, unknown>;
+    mode?: "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE";
+  }) {
     return json<any>(
       await apiFetch(`${HTTP}/api/bot/stop`, {
         method: "POST",
