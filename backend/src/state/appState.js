@@ -11,7 +11,7 @@ import { fileURLToPath } from "url";
 /** Modes that can run as isolated engines (parallel bot + exchange). */
 export const ENGINE_TRADING_MODES = ["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"];
 
-function normalizeTradingMode(raw) {
+export function normalizeTradingMode(raw) {
   let m = String(raw || "PAPER").toUpperCase();
   if (m === "BINANCE_DEMO") m = "PAPER";
   if (m === "BINANCE_DEMO_FUTURES") m = "BINANCE_DEMO_API";
@@ -159,7 +159,7 @@ export function createAppState({ log }) {
         try {
           const tr = await exchange.getTrades().catch(() => []);
           const merged = mergePersistedTradesWithExchange(mode, tr || []);
-          this.wsHub?.broadcast("trades_snapshot", { replace: true, trades: merged });
+          this.wsHub?.broadcast("trades_snapshot", { replace: true, trades: merged, mode });
         } catch {
           /* ignore */
         }

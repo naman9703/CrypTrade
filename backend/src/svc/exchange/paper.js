@@ -196,15 +196,17 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
           slAfterTrail != null &&
           slAfterTrail !== slBeforeTrail
         ) {
+          const slChange = `SL ${slBeforeTrail.toFixed(6)} → ${slAfterTrail.toFixed(6)}`;
           notifyActivity({
             level: "info",
-            msg: `Paper spot trailing SL · ${p.symbol} · ${slBeforeTrail.toFixed(6)} → ${slAfterTrail.toFixed(6)}`,
+            msg: `Paper spot trailing SL · ${p.symbol} · ${slChange}`,
             category: "risk",
             reason: "trailing_sl_advance",
             symbol: p.symbol,
             detail: {
               venue: "SPOT",
               markPx: px,
+              slChange,
               prevStopLoss: slBeforeTrail,
               newStopLoss: slAfterTrail,
               source: "paper_spot",

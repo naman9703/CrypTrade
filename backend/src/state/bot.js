@@ -588,15 +588,33 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   }
 
   /**
-   * Fixed-USDT autotrade: `riskPerTrade` + `fixedUsdtSplitDivisor` passed to `riskPlan`.
-   * MULTIPLE modes use allowed / usable pool and optional per-coin maps.
+   * USDT per-trade sizing for `riskPlan`: pool cap (`allowedBudgetUsdt` vs wallet), open margin (`usable`),
+   * per-order ceiling (`riskPerTrade`), and MULTIPLE split mode (FULL / EQUAL / custom maps).
+   * When `riskPerTradeUnit` is not USDT, returns raw `riskPerTrade` (PCT path).
    */
   function resolveFixedUsdtRiskForOrder(orderSymbol, positions) {
-    if (!isFixedUsdtCapitalMode()) {
+    if (String(state.riskPerTradeUnit || "").toUpperCase() !== "USDT") {
       return { riskPerTrade: state.riskPerTrade, fixedUsdtSplitDivisor: 1 };
     }
+
+    const perTradeCap = Math.max(1e-9, Number(state.riskPerTrade) || 0);
+    const walletCap = walletFreeMarginUsdtForAllowedCap(_cachedAccount, state.marketMode);
+    const allowedRaw = Number(state.allowedBudgetUsdt);
+    let allowed = Number.isFinite(allowedRaw) && allowedRaw > 0 ? allowedRaw : perTradeCap;
+    if (walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
+      allowed = Math.min(allowed, walletCap);
+    }
+    const invested = sumOpenMarginUsedUsdt(positions, state.marketMode);
+    const usable = Math.max(0, allowed - invested);
+    const usePct = state.multiTradeUsePctOfUsable === true;
+    const p = clamp(Number(state.multiTradePctOfUsable ?? 100), 0, 100);
+    const rawPool = usePct ? (usable * p) / 100 : usable;
+    const basePool =
+      Number.isFinite(rawPool) && rawPool > 0 ? rawPool : Math.max(0, Number(state.riskPerTrade) || 0);
+
     if (String(state.universeCoinSelectMode || "").toUpperCase() !== "MULTIPLE") {
-      return { riskPerTrade: state.riskPerTrade, fixedUsdtSplitDivisor: 1 };
+      const lane = Math.min(perTradeCap, Math.max(0, basePool));
+      return { riskPerTrade: Math.max(1, lane), fixedUsdtSplitDivisor: 1 };
     }
 
     const sym = String(orderSymbol || "").trim().toUpperCase();
@@ -604,40 +622,31 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     const list = symbolsForMultiBudgetList();
     const nDiv = Math.max(1, list.length);
 
-    const walletCap = walletFreeMarginUsdtForAllowedCap(_cachedAccount, state.marketMode);
-    const allowedRaw = Number(state.allowedBudgetUsdt);
-    let allowed = Number.isFinite(allowedRaw) && allowedRaw > 0 ? allowedRaw : Number(state.riskPerTrade);
-    if (walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
-      allowed = Math.min(allowed, walletCap);
-    }
-    const invested = sumOpenMarginUsedUsdt(positions, state.marketMode);
-    const usable = Math.max(0, allowed - invested);
-
     if (mode === "CUSTOM_USDT") {
       const m = state.multiBudgetCoinUsdt && typeof state.multiBudgetCoinUsdt === "object" ? state.multiBudgetCoinUsdt : {};
       const v = Number(m[sym]);
-      if (Number.isFinite(v) && v >= 1) return { riskPerTrade: clamp(v, 1, 10_000_000), fixedUsdtSplitDivisor: 1 };
+      const raw = Number.isFinite(v) && v >= 1 ? v : perTradeCap;
+      const lane = Math.min(perTradeCap, raw, Math.max(0, basePool));
+      return { riskPerTrade: Math.max(1, lane), fixedUsdtSplitDivisor: 1 };
     }
     if (mode === "CUSTOM_PCT_ALLOWED") {
       const m = state.multiBudgetCoinPct && typeof state.multiBudgetCoinPct === "object" ? state.multiBudgetCoinPct : {};
       const pc = Number(m[sym]);
       if (Number.isFinite(pc) && pc > 0) {
-        const r = allowed * (clamp(pc, 0, 100) / 100);
-        return { riskPerTrade: Math.max(1, r), fixedUsdtSplitDivisor: 1 };
+        const slice = allowed * (clamp(pc, 0, 100) / 100);
+        const lane = Math.min(perTradeCap, slice, Math.max(0, basePool));
+        return { riskPerTrade: Math.max(1, lane), fixedUsdtSplitDivisor: 1 };
       }
     }
 
-    const usePct = state.multiTradeUsePctOfUsable === true;
-    const p = clamp(Number(state.multiTradePctOfUsable ?? 100), 0, 100);
-    /** Pool for FULL/EQUAL: remainder of allowed cap (`usable`), not legacy `riskPerTrade`, unless %-of-usable mode scales wallet. */
-    const rawPool = usePct ? (usable * p) / 100 : usable;
-    const basePool =
-      Number.isFinite(rawPool) && rawPool > 0 ? rawPool : Math.max(0, Number(state.riskPerTrade) || 0);
-
     if (mode === "EQUAL") {
-      return { riskPerTrade: Math.max(1, basePool), fixedUsdtSplitDivisor: nDiv };
+      const slotBudget = Math.max(0, basePool) / nDiv;
+      const perSlot = Math.min(perTradeCap, slotBudget);
+      return { riskPerTrade: Math.max(1, perSlot * nDiv), fixedUsdtSplitDivisor: nDiv };
     }
-    return { riskPerTrade: Math.max(1, basePool), fixedUsdtSplitDivisor: 1 };
+
+    const lane = Math.min(perTradeCap, Math.max(0, basePool));
+    return { riskPerTrade: Math.max(1, lane), fixedUsdtSplitDivisor: 1 };
   }
 
   function persistTradingConfigToDisk() {
@@ -1119,14 +1128,29 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     if (p.takeProfit != null && Number.isFinite(Number(p.takeProfit))) msg += ` · TP=${Number(p.takeProfit).toFixed(4)}`;
     const level =
       ac === "ERROR" ? "error" : ac === "SKIPPED" ? "warn" : ac === "PENDING" ? "info" : "info";
+    const actSymbol =
+      p.symbol != null && String(p.symbol).trim() !== ""
+        ? String(p.symbol).trim().toUpperCase()
+        : String(state.symbol || "").trim().toUpperCase();
     emitActivity(hub, {
       level,
       msg,
       category: "signal",
       reason: p.reason ? String(p.reason) : undefined,
-      symbol: state.symbol,
+      symbol: actSymbol,
       detail: { kind, strategyKey: sk, venue: ven || undefined, side: sd, action: ac, ...p },
     });
+  }
+
+  /** Demo/paper futures ids like `fut_ADAUSDT` — use for Activity when `tradeSymbol` was omitted on feedback payload. */
+  function inferSymbolFromSupertrendOrderId(orderId) {
+    if (orderId == null) return null;
+    const s = String(orderId).trim();
+    if (!s) return null;
+    const pref = s.match(/^(?:fut|spot)_([A-Z0-9]+)$/i);
+    if (pref) return pref[1].toUpperCase();
+    if (/^[A-Z0-9]{6,}$/i.test(s) && /(USDT|USDC|BUSD|FDUSD)$/i.test(s)) return s.toUpperCase();
+    return null;
   }
 
   function emitSupertrendSignalFeedback(hub, result) {
@@ -1149,7 +1173,19 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       decisionShort,
       stopLoss,
       takeProfit,
+      tradeSymbol,
+      symbol: resSymbol,
     } = result;
+    const fromOrderId = inferSymbolFromSupertrendOrderId(orderId);
+    const primaryU = String(state.symbol || "").trim().toUpperCase();
+    let feedbackSymbol =
+      tradeSymbol != null && String(tradeSymbol).trim() !== ""
+        ? String(tradeSymbol).trim().toUpperCase()
+        : null;
+    if (!feedbackSymbol && fromOrderId) feedbackSymbol = fromOrderId;
+    if (!feedbackSymbol && resSymbol != null && String(resSymbol).trim() !== "")
+      feedbackSymbol = String(resSymbol).trim().toUpperCase();
+    if (feedbackSymbol === primaryU && fromOrderId && fromOrderId !== primaryU) feedbackSymbol = fromOrderId;
     emitSignalActionActivity(hub, {
       kind: "supertrend",
       strategyKey: "SUPERTREND",
@@ -1170,6 +1206,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       expectedMoveShort,
       stopLoss,
       takeProfit,
+      ...(feedbackSymbol ? { symbol: feedbackSymbol } : {}),
     });
   }
 
@@ -1672,6 +1709,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         action: "placed",
         orderId: order.id,
         qty,
+        tradeSymbol: orderSymbol,
         decisionLong: decisionSnapSpot?.long?.total,
         decisionShort: decisionSnapSpot?.short?.total,
         expectedMoveLong: decisionSnapSpot?.expectedMoveLong ?? null,
@@ -1878,6 +1916,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         action: "placed",
         orderId: pos0?.id || pos0?.symbol,
         qty: pos0?.qty,
+        tradeSymbol: orderSymbol,
       };
     }
 
@@ -2284,6 +2323,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         leverage: order.leverage ?? lev,
         stopLoss,
         takeProfit,
+        tradeSymbol: orderSymbol,
         decisionLong: snapUsedForOpen?.long?.total,
         decisionShort: snapUsedForOpen?.short?.total,
         expectedMoveLong: snapUsedForOpen?.expectedMoveLong ?? null,
@@ -2756,7 +2796,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           fixedQuoteSpendUsdt: null,
           multiUnpinnedOrder: true,
         });
-        emitSupertrendSignalFeedback(hubLocal, { ...sellRes, signalStrength: supertrendStrength01 ?? undefined });
+        emitSupertrendSignalFeedback(hubLocal, {
+          ...sellRes,
+          signalStrength: supertrendStrength01 ?? undefined,
+          tradeSymbol: symU,
+        });
         if (sellRes?.action === "placed") {
           await pushImmediateState(hubLocal);
           await refreshOpenSymsAfterTrade();
@@ -2776,7 +2820,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         multiUnpinnedOrder: true,
         aiPredictNoLastAi: true,
       });
-      emitSupertrendSignalFeedback(hubLocal, { ...sellRes, signalStrength: supertrendStrength01 ?? undefined });
+      emitSupertrendSignalFeedback(hubLocal, {
+        ...sellRes,
+        signalStrength: supertrendStrength01 ?? undefined,
+        tradeSymbol: symU,
+      });
       if (sellRes?.action === "placed") {
         await pushImmediateState(hubLocal);
         await refreshOpenSymsAfterTrade();
@@ -2786,7 +2834,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     let acct = ctx.acct;
     let spendQuote = 0;
     const multiPoolBudgetSizing =
-      isFixedUsdtCapitalMode() &&
+      String(state.riskPerTradeUnit || "").toUpperCase() === "USDT" &&
       String(state.universeCoinSelectMode || "").toUpperCase() === "MULTIPLE";
     if (allowBuy && stSpot) {
       try {
@@ -2825,7 +2873,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         fixedQuoteSpendUsdt: multiPoolBudgetSizing ? null : spendQuote,
         multiUnpinnedOrder: true,
       });
-      emitSupertrendSignalFeedback(hubLocal, { ...buyRes, signalStrength: supertrendStrength01 ?? undefined });
+      emitSupertrendSignalFeedback(hubLocal, {
+        ...buyRes,
+        signalStrength: supertrendStrength01 ?? undefined,
+        tradeSymbol: symU,
+      });
       if (buyRes?.action === "placed") {
         await pushImmediateState(hubLocal);
         try {
@@ -2884,7 +2936,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         aiPredictNoLastAi: true,
         maxNotionalUsd: Number.isFinite(maxNotionalUsd) && maxNotionalUsd > 0 ? maxNotionalUsd : null,
       });
-      emitSupertrendSignalFeedback(hubLocal, { ...buyRes, signalStrength: supertrendStrength01 ?? undefined });
+      emitSupertrendSignalFeedback(hubLocal, {
+        ...buyRes,
+        signalStrength: supertrendStrength01 ?? undefined,
+        tradeSymbol: symU,
+      });
       if (buyRes?.action === "placed") {
         await pushImmediateState(hubLocal);
         try {
@@ -3358,9 +3414,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
    */
   function computeAutoMultiWatchSymbolList() {
     const snap = state.universe;
-    const selectedSyms = Array.isArray(snap?.selected) && snap.selected.length ? snap.selected : [];
     const rankedSyms = Array.isArray(snap?.ranked) ? snap.ranked.map((r) => r?.symbol).filter(Boolean) : [];
-    let candidatesRaw = selectedSyms.length ? selectedSyms : rankedSyms;
+    const selectedSyms = Array.isArray(snap?.selected) && snap.selected.length ? snap.selected : [];
+    let candidatesRaw;
     if (
       String(state.universeCoinSelectMode || "SINGLE").toUpperCase() === "MULTIPLE" &&
       universeManualPinningOn() &&
@@ -3368,6 +3424,23 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       state.universePinnedSymbols.length
     ) {
       candidatesRaw = state.universePinnedSymbols;
+    } else if (selectedSyms.length) {
+      const seen = new Set();
+      candidatesRaw = [];
+      for (const s of selectedSyms) {
+        const u = String(s || "").trim().toUpperCase();
+        if (!u || seen.has(u)) continue;
+        seen.add(u);
+        candidatesRaw.push(s);
+      }
+      for (const s of rankedSyms) {
+        const u = String(s || "").trim().toUpperCase();
+        if (!u || seen.has(u)) continue;
+        seen.add(u);
+        candidatesRaw.push(s);
+      }
+    } else {
+      candidatesRaw = rankedSyms;
     }
     const maxStreams = Math.max(1, Math.min(80, Math.floor(Number(process.env.BINANCE_COMBINED_MAX_STREAMS ?? 12))));
     const watchN = Math.min(autoMultiWatchSize(), maxStreams);
@@ -3469,6 +3542,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     const { aiGateBuy, aiGateSell } = await resolveSupertrendBarCloseAiGatesNoLastAi(cr, symU);
     const ss = ev.decisionSnapshotBar?.signalStrength;
     const base = state.multiSymbolWatchSignals && typeof state.multiSymbolWatchSignals === "object" ? state.multiSymbolWatchSignals : {};
+    const prevSnap = base[symU];
+    const signalUnchanged =
+      prevSnap &&
+      Number(prevSnap.ts) === Number(ev.cTs) &&
+      Boolean(prevSnap.buySignal) === Boolean(ev.allowBuy) &&
+      Boolean(prevSnap.sellSignal) === Boolean(ev.allowSell);
     state.multiSymbolWatchSignals = {
       ...base,
       [symU]: {
@@ -3486,6 +3565,23 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         source: source === "sweep" ? "sweep" : "kline_ws",
       },
     };
+    if (wsHubRef && (ev.allowBuy || ev.allowSell) && !signalUnchanged) {
+      const side = ev.allowBuy ? "BUY" : "SELL";
+      emitActivity(wsHubRef, {
+        level: "info",
+        msg: `Multi-watch Supertrend ${side} signal · ${symU} (bar close · ${source === "sweep" ? "sweep" : "kline_ws"})`,
+        category: "strategy",
+        reason: "multi_symbol_st_signal",
+        symbol: symU,
+        detail: {
+          ts: ev.cTs,
+          buySignal: Boolean(ev.allowBuy),
+          sellSignal: Boolean(ev.allowSell),
+          source: source === "sweep" ? "sweep" : "kline_ws",
+          trend: ev.row?.trend,
+        },
+      });
+    }
     debouncedBroadcastWatchSignals();
   }
 
@@ -4266,6 +4362,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         state.multiSymbolWatchSignals && typeof state.multiSymbolWatchSignals === "object"
           ? { ...state.multiSymbolWatchSignals }
           : {},
+      multiCoinSignalTabSymbols:
+        String(state.universeCoinSelectMode || "SINGLE").toUpperCase() === "MULTIPLE"
+          ? computeAutoMultiWatchSymbolList()
+          : [],
     };
   }
 
@@ -4497,7 +4597,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       });
 
       if (strict && account == null) {
-        wsHub.broadcast("trades_snapshot", { replace: true, trades: [] });
+        wsHub.broadcast("trades_snapshot", { replace: true, trades: [], mode: runtimeTradingMode() });
       } else {
         const recentTrades = await exch.getTrades().catch(() => []);
         const mergedTrades = filterStrictPortfolioTradesAfterMerge(
@@ -4505,9 +4605,13 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           mergeTradesById(readTradeWsEvents(400), recentTrades || [])
         );
         if (mergedTrades.length) {
-          wsHub.broadcast("trades_snapshot", { replace: true, trades: mergedTrades.slice(-80) });
+          wsHub.broadcast("trades_snapshot", {
+            replace: true,
+            trades: mergedTrades.slice(-80),
+            mode: runtimeTradingMode(),
+          });
         } else if (strict) {
-          wsHub.broadcast("trades_snapshot", { replace: true, trades: [] });
+          wsHub.broadcast("trades_snapshot", { replace: true, trades: [], mode: runtimeTradingMode() });
         }
       }
     } catch {
@@ -4690,9 +4794,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         const label = evt.kind === "fee_ladder_trailing_sl" ? "Fee-ladder trailing SL" : "Supertrend trailing SL";
         const src = evt.source != null ? String(evt.source) : "";
         const srcBit = src ? ` · ${src}` : "";
+        const slChange =
+          Number.isFinite(prev) && Number.isFinite(next)
+            ? `SL ${prev.toFixed(6)} → ${next.toFixed(6)}`
+            : `SL ${ps} → ${ns}`;
         const detail = {
           symbol: evt.symbol != null ? String(evt.symbol) : null,
           venue: evt.venue != null ? String(evt.venue) : "FUTURES",
+          slChange,
           prevStopLoss: Number.isFinite(prev) ? prev : evt.prevStopLoss,
           newStopLoss: Number.isFinite(next) ? next : evt.newStopLoss,
           trailStep: step,
@@ -4714,7 +4823,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         };
         emitActivity(wsHub, {
           level: "info",
-          msg: `${label} · ${evt.symbol} · ${ps} → ${ns} · ST ${st} · fee BE ${be} (step ${step}/${maxS})${srcBit}`,
+          msg: `${label} · ${evt.symbol} · ${slChange} · ST ${st} · fee BE ${be} (step ${step}/${maxS})${srcBit}`,
           category: "risk",
           reason: "trailing_sl_advance",
           symbol: evt.symbol,

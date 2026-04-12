@@ -9,6 +9,8 @@ import {
   isStrictBinanceAccountMode,
   tradingModeToPersistenceSlug,
 } from "../lib/tradingModePersistence.js";
+import { uiAuthEnabled } from "../auth/uiGate.js";
+import { normalizeTradingMode } from "../state/appState.js";
 
 /** @type {((payload: unknown) => void) | null} */
 let telegramTradeHook = null;
@@ -16,6 +18,50 @@ let telegramTradeHook = null;
 /** Optional: trade OPEN/CLOSE → Telegram queue (non-blocking for execution paths). */
 export function setTelegramTradeHook(fn) {
   telegramTradeHook = typeof fn === "function" ? fn : null;
+}
+
+/**
+ * Build hello + merged trades for one engine (per browser session trading mode when UI auth is on).
+ * @param {Record<string, unknown>} extraHelloFields e.g. uiUserTag, perSessionTradingMode
+ */
+async function snapshotHelloForView(appState, viewMode, extraHelloFields = {}) {
+  const m = normalizeTradingMode(viewMode);
+  appState.ensureEngine(m);
+  const row = appState.getEngine(m);
+  if (!row?.bot) throw new Error(`engine_missing:${m}`);
+  const { bot, exchange: ex } = row;
+  const account = await ex.getAccount().catch(() => null);
+  const strictAcc = isStrictBinanceAccountMode(m);
+  const positions = account == null ? [] : await ex.getPositions().catch(() => []);
+  let trades = [];
+  if (!strictAcc || account != null) {
+    trades = await ex.getTrades().catch(() => []);
+  }
+  let chart = null;
+  try {
+    chart = bot.getChartSnapshot({ hours: 24 });
+  } catch {
+    chart = null;
+  }
+  const activityLog = readActivityLogRecent(500, tradingModeToPersistenceSlug(m));
+  const strictEmpty = strictAcc && account == null;
+  const mergedTrades = strictEmpty ? [] : mergePersistedTradesWithExchange(m, trades || []);
+  const hello = {
+    serverTs: new Date().toISOString(),
+    state: bot.getPublicState(),
+    mode: m,
+    runningByMode: appState.getRunningByMode?.() ?? {},
+    account,
+    positions: Array.isArray(positions) ? positions : [],
+    chart,
+    activityLog,
+    ...extraHelloFields,
+  };
+  return { hello, trades: mergedTrades };
+}
+
+function clientViewMode(ws, globalActive) {
+  return String(ws._clientTradingMode ?? globalActive).toUpperCase();
 }
 
 export function attachWs({ wss, appState }) {
@@ -77,23 +123,84 @@ export function attachWs({ wss, appState }) {
             /* must not break WS */
           }
         }
-        if (origin !== active) return;
-      }
-
-      if (
-        (type === "state" || type === "market" || type === "depth" || type === "external") &&
-        origin !== active
-      ) {
+        const msg = JSON.stringify({ type, payload });
+        for (const ws of clients) {
+          if (ws.readyState !== ws.OPEN) continue;
+          if (origin !== clientViewMode(ws, active)) continue;
+          ws.send(msg);
+        }
         return;
       }
 
-      if (type === "log" && payload && payload.tradingMode && String(payload.tradingMode).toUpperCase() !== active) {
+      if (type === "state" || type === "market" || type === "depth" || type === "external") {
+        const msg = JSON.stringify({ type, payload });
+        for (const ws of clients) {
+          if (ws.readyState !== ws.OPEN) continue;
+          if (origin !== clientViewMode(ws, active)) continue;
+          ws.send(msg);
+        }
+        return;
+      }
+
+      if (type === "trades_snapshot") {
+        const msg = JSON.stringify({ type, payload });
+        for (const ws of clients) {
+          if (ws.readyState !== ws.OPEN) continue;
+          if (origin !== clientViewMode(ws, active)) continue;
+          ws.send(msg);
+        }
+        return;
+      }
+
+      if (type === "log" && payload && payload.tradingMode) {
+        const tm = String(payload.tradingMode).toUpperCase();
+        const msg = JSON.stringify({ type, payload });
+        for (const ws of clients) {
+          if (ws.readyState !== ws.OPEN) continue;
+          if (tm !== clientViewMode(ws, active)) continue;
+          ws.send(msg);
+        }
         return;
       }
 
       const msg = JSON.stringify({ type, payload });
       for (const ws of clients) {
         if (ws.readyState === ws.OPEN) ws.send(msg);
+      }
+    },
+
+    /**
+     * After POST /api/mode/set (session scope), refresh this login’s WebSockets to the new engine snapshot.
+     * @param {string} sessionId express-session id
+     * @param {string} mode trading mode slug
+     */
+    notifySessionTradingMode(sessionId, mode) {
+      if (!sessionId) return;
+      const m = normalizeTradingMode(mode);
+      for (const ws of clients) {
+        if (ws._sessionId !== sessionId) continue;
+        ws._clientTradingMode = m;
+        void (async () => {
+          try {
+            const extra = {};
+            if (ws._uiUserTag) extra.uiUserTag = ws._uiUserTag;
+            if (uiAuthEnabled()) extra.perSessionTradingMode = true;
+            const { hello, trades } = await snapshotHelloForView(appState, m, extra);
+            ws.send(JSON.stringify({ type: "hello", payload: hello }));
+            ws.send(
+              JSON.stringify({
+                type: "trades_snapshot",
+                payload: {
+                  replace: true,
+                  trades: trades.slice(-TRADE_HISTORY_SNAPSHOT_MAX),
+                  mode: m,
+                },
+              }),
+            );
+          } catch {
+            /* ignore */
+          }
+        })();
       }
     },
   };
@@ -108,110 +215,105 @@ export function attachWs({ wss, appState }) {
     }
   }
 
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws, request) => {
     clients.add(ws);
     ws._tradingPongOk = true;
+
+    const globalM = String(appState.mode || "PAPER").toUpperCase();
+    let viewMode = globalM;
+    if (uiAuthEnabled() && request?.session?.uiAuthOk && request.session?.uiTradingMode) {
+      viewMode = normalizeTradingMode(request.session.uiTradingMode);
+    }
+    ws._clientTradingMode = normalizeTradingMode(viewMode);
+    ws._sessionId = request?.sessionID || null;
+    ws._uiUserTag = request?.session?.uiUserTag || null;
+
     ws.on("pong", () => {
       ws._tradingPongOk = true;
     });
 
-    // Send hello + initial trade history so UI isn't empty on connect
-    (async () => {
+    void (async () => {
       try {
-        const account = await appState.exchange.getAccount().catch(() => null);
-        const strictAcc = isStrictBinanceAccountMode(appState.mode);
-        const positions =
-          account == null ? [] : await appState.exchange.getPositions().catch(() => []);
-        let trades = [];
-        if (!strictAcc || account != null) {
-          trades = await appState.exchange.getTrades().catch(() => []);
-        }
-        let chart = null;
-        try {
-          chart = appState.bot.getChartSnapshot({ hours: 24 });
-        } catch {
-          chart = null;
-        }
-        const activityLog = readActivityLogRecent(500, getTradingModePersistenceSlug());
-        ws.send(
-          JSON.stringify({
-            type: "hello",
-            payload: {
-              serverTs: new Date().toISOString(),
-              state: appState.bot.getPublicState(),
-              mode: appState.mode,
-              runningByMode: appState.getRunningByMode?.() ?? {},
-              account,
-              positions: Array.isArray(positions) ? positions : [],
-              chart,
-              activityLog,
-            },
-          })
-        );
-        const recent =
-          strictAcc && account == null
-            ? []
-            : mergePersistedTradesWithExchange(appState.mode, trades || []);
+        const extra = {};
+        if (ws._uiUserTag) extra.uiUserTag = ws._uiUserTag;
+        if (uiAuthEnabled() && request?.session?.uiAuthOk) extra.perSessionTradingMode = true;
+        const { hello, trades } = await snapshotHelloForView(appState, ws._clientTradingMode, extra);
+        ws.send(JSON.stringify({ type: "hello", payload: hello }));
         ws.send(
           JSON.stringify({
             type: "trades_snapshot",
-            payload: { replace: true, trades: recent },
+            payload: {
+              replace: true,
+              trades: trades.slice(-TRADE_HISTORY_SNAPSHOT_MAX),
+              mode: ws._clientTradingMode,
+            },
           }),
         );
       } catch {
-        let chart = null;
         try {
-          chart = appState.bot.getChartSnapshot({ hours: 24 });
-        } catch {
-          chart = null;
-        }
-        const activityLogFallback = readActivityLogRecent(500, getTradingModePersistenceSlug());
-        const strictFallback = isStrictBinanceAccountMode(appState.mode);
-        ws.send(
-          JSON.stringify({
-            type: "hello",
-            payload: {
-              serverTs: new Date().toISOString(),
-              state: appState.bot.getPublicState(),
-              mode: appState.mode,
-              runningByMode: appState.getRunningByMode?.() ?? {},
-              ...(strictFallback ? { account: null, positions: [] } : {}),
-              chart,
-              activityLog: activityLogFallback,
-            },
-          })
-        );
-        try {
-          const snap =
-            strictFallback ? [] : mergePersistedTradesWithExchange(appState.mode, []);
-          ws.send(JSON.stringify({ type: "trades_snapshot", payload: { replace: true, trades: snap } }));
+          const m = normalizeTradingMode(ws._clientTradingMode);
+          const activityLogFallback = readActivityLogRecent(500, tradingModeToPersistenceSlug(m));
+          const strictFallback = isStrictBinanceAccountMode(m);
+          const row = appState.getEngine(m);
+          const bot = row?.bot;
+          const extra = {};
+          if (ws._uiUserTag) extra.uiUserTag = ws._uiUserTag;
+          if (uiAuthEnabled() && request?.session?.uiAuthOk) extra.perSessionTradingMode = true;
+          let chart = null;
+          try {
+            chart = bot?.getChartSnapshot?.({ hours: 24 }) ?? null;
+          } catch {
+            chart = null;
+          }
+          ws.send(
+            JSON.stringify({
+              type: "hello",
+              payload: {
+                serverTs: new Date().toISOString(),
+                state: bot?.getPublicState?.() ?? {},
+                mode: m,
+                runningByMode: appState.getRunningByMode?.() ?? {},
+                ...(strictFallback ? { account: null, positions: [] } : {}),
+                chart,
+                activityLog: activityLogFallback,
+                ...extra,
+              },
+            }),
+          );
+          try {
+            const snap = strictFallback ? [] : mergePersistedTradesWithExchange(m, []);
+            ws.send(
+              JSON.stringify({
+                type: "trades_snapshot",
+                payload: { replace: true, trades: snap, mode: m },
+              }),
+            );
+          } catch {
+            /* ignore */
+          }
         } catch {
           /* ignore */
         }
       }
     })();
 
-    // periodic heartbeat/state so UI can show feed health even if market messages are sparse
     const id = setInterval(() => {
       try {
-        // Do not poll account/positions here — bot `tick` already broadcasts enriched snapshots.
-        // Pushing raw `getAccount()` every 2s overwrites UI equity / daily PnL and causes visible flicker.
-        try {
-          ws.send(
-            JSON.stringify({
-              type: "state",
-              payload: {
-                mode: appState.mode,
-                runningByMode: appState.getRunningByMode?.() ?? {},
-                ...appState.bot.getPublicState(),
-              },
-            })
-          );
-        } catch {
-          /* ignore */
-        }
+        const m = String(ws._clientTradingMode || appState.mode).toUpperCase();
+        const row = appState.getEngine(m);
+        if (!row?.bot) return;
+        ws.send(
+          JSON.stringify({
+            type: "state",
+            payload: {
+              mode: m,
+              runningByMode: appState.getRunningByMode?.() ?? {},
+              ...row.bot.getPublicState(),
+            },
+          }),
+        );
       } catch {
-        // ignore
+        /* ignore */
       }
     }, 2000);
 
@@ -223,4 +325,3 @@ export function attachWs({ wss, appState }) {
     ws.on("error", cleanup);
   });
 }
-

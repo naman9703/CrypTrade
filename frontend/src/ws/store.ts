@@ -65,6 +65,10 @@ type HelloPayload = {
   chart?: ChartSnapshotPayload | null;
   /** Parallel engines: which TRADING_MODE bots are running. */
   runningByMode?: Record<string, boolean>;
+  /** When UI auth is on: stable key for per-user browser prefs (SHA-256 prefix of email on server). */
+  uiUserTag?: string;
+  /** True when trading mode is stored per login session (not shared across users). */
+  perSessionTradingMode?: boolean;
 };
 
 type DepthPayload = {
@@ -89,6 +93,10 @@ type WsState = {
 type AppState = {
   ws: WsState;
   mode?: string;
+  /** When APP_UI_AUTH_ENABLED: server `/api/auth/me` + hello `uiUserTag` for scoped localStorage prefs. */
+  authUiUserTag?: string | null;
+  /** Server hello: session-scoped mode (each login has its own selected mode). */
+  perSessionTradingMode?: boolean;
   /** Server: bot `running` flag per TRADING_MODE (parallel engines). */
   runningByMode?: Record<string, boolean>;
   bot?: any;
@@ -174,7 +182,8 @@ let tradingUiSessionRestoreStarted = false;
 
 function scheduleTradingUiSessionRestore(serverMode: string) {
   if (typeof window === "undefined" || tradingUiSessionRestoreStarted) return;
-  const prefs = loadTradingUiPrefs();
+  const tag = useAppStore.getState().authUiUserTag ?? null;
+  const prefs = loadTradingUiPrefs(tag);
   if (!prefs) return;
   const want = String(prefs.lastMode || "").toUpperCase();
   const have = String(serverMode || "").toUpperCase();
@@ -275,6 +284,8 @@ function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial
 
 export const useAppStore = create<AppState>((set, get) => ({
   ws: { connected: false },
+  authUiUserTag: null,
+  perSessionTradingMode: false,
   candles: [],
   chartDisplaySymbol: null,
   logs: [],
@@ -372,7 +383,12 @@ export const useAppStore = create<AppState>((set, get) => ({
             const strictAcc =
               p.mode === "BINANCE_LIVE" || p.mode === "BINANCE_TESTNET";
             const accMissing = strictAcc && (p as any).account === null;
-            const prefs = loadTradingUiPrefs();
+            const tagNext =
+              typeof (p as HelloPayload & { uiUserTag?: string }).uiUserTag === "string" &&
+              String((p as HelloPayload & { uiUserTag?: string }).uiUserTag).trim()
+                ? String((p as HelloPayload & { uiUserTag?: string }).uiUserTag).trim()
+                : s.authUiUserTag ?? null;
+            const prefs = loadTradingUiPrefs(tagNext);
             const modeKeyHello = String(p.mode || "").toUpperCase();
             const patchHello = prefs?.byMode?.[modeKeyHello];
             const mergedHelloBot =
@@ -381,6 +397,8 @@ export const useAppStore = create<AppState>((set, get) => ({
                 : p.state;
             const base: Partial<AppState> = {
               mode: p.mode,
+              authUiUserTag: tagNext,
+              perSessionTradingMode: (p as HelloPayload).perSessionTradingMode === true,
               runningByMode:
                 p.runningByMode != null && typeof p.runningByMode === "object"
                   ? (p.runningByMode as Record<string, boolean>)
@@ -568,7 +586,7 @@ export async function hydrateStateViaHttp(): Promise<void> {
     const wsOff = !useAppStore.getState().ws.connected;
     let botShape = { ...res.bot } as Record<string, unknown>;
     if (wsOff) {
-      const prefs = loadTradingUiPrefs();
+      const prefs = loadTradingUiPrefs(useAppStore.getState().authUiUserTag ?? null);
       const m = String(res.mode || "").toUpperCase();
       const patch = prefs?.byMode?.[m];
       if (patch && Object.keys(patch).length) {
@@ -598,6 +616,7 @@ export async function hydrateStateViaHttp(): Promise<void> {
 
 /** Close the app WebSocket and suppress auto-reconnect (e.g. UI auth logout). */
 export function forceDisconnectWebSocket() {
+  tradingUiSessionRestoreStarted = false;
   wsIntentionalClose = true;
   if (pendingMarketRaf) {
     cancelAnimationFrame(pendingMarketRaf);

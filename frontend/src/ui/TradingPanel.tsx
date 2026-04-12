@@ -367,36 +367,42 @@ function effectiveAllowedPoolUsdt(bot: any, account: any): number {
 
 /** Per-symbol fixed-USDT order notional target (before venue ~90% cap), mirrors backend `resolveFixedUsdtRiskForOrder`. */
 function previewFixedUsdtRiskUsdt(bot: any, symbol: string, positions: any[] | undefined, account: any): number {
-  const fixed =
-    String(bot?.riskPerTradeUnit || "").toUpperCase() === "USDT" && String(bot?.maxDailyLossUnit || "").toUpperCase() === "USDT";
-  if (!fixed) return Number(bot?.riskPerTrade ?? 0);
+  if (String(bot?.riskPerTradeUnit || "").toUpperCase() !== "USDT") return Number(bot?.riskPerTrade ?? 0);
+  const perTradeCap = Math.max(1e-9, Number(bot?.riskPerTrade ?? 0));
   const mm = String(bot?.marketMode || "AUTO").toUpperCase();
-  const cap = walletFreeMarginUsdt(account, mm);
-  const capOk = Number.isFinite(cap) && cap > 0;
+  const allowed = effectiveAllowedPoolUsdt(bot, account);
+  const invested = sumOpenMarginUsedUsdtForUi(positions, mm);
+  const usable = Math.max(0, allowed - invested);
+  const usePct = bot?.multiTradeUsePctOfUsable === true;
+  const p = clampNum(Number(bot?.multiTradePctOfUsable ?? 100), 0, 100);
+  const rawPool = usePct ? (usable * p) / 100 : usable;
+  const basePool =
+    Number.isFinite(rawPool) && rawPool > 0 ? rawPool : Math.max(0, Number(bot?.riskPerTrade ?? 0));
+
   if (String(bot?.universeCoinSelectMode || "").toUpperCase() !== "MULTIPLE") {
-    const r = Number(bot?.riskPerTrade ?? 0);
-    return capOk ? Math.min(r, cap) : r;
+    return Math.min(perTradeCap, Math.max(0, basePool));
   }
   const mode = derivedMultiBudgetSplitMode(bot);
   const list = multiBudgetSymbolsForUi(bot);
   const nDiv = Math.max(1, list.length);
   const sym = String(symbol || "").toUpperCase();
-  const allowed = effectiveAllowedPoolUsdt(bot, account);
-  const invested = sumOpenMarginUsedUsdtForUi(positions, String(bot?.marketMode || "AUTO"));
-  const usable = Math.max(0, allowed - invested);
   if (mode === "CUSTOM_USDT") {
     const v = Number((bot?.multiBudgetCoinUsdt as Record<string, number> | undefined)?.[sym]);
-    return Number.isFinite(v) && v >= 1 ? v : Number(bot?.riskPerTrade ?? 0);
+    const raw = Number.isFinite(v) && v >= 1 ? v : perTradeCap;
+    return Math.min(perTradeCap, raw, Math.max(0, basePool));
   }
   if (mode === "CUSTOM_PCT_ALLOWED") {
     const pc = Number((bot?.multiBudgetCoinPct as Record<string, number> | undefined)?.[sym]);
-    return Number.isFinite(pc) && pc > 0 ? allowed * (clampNum(pc, 0, 100) / 100) : Number(bot?.riskPerTrade ?? 0);
+    if (Number.isFinite(pc) && pc > 0) {
+      const slice = allowed * (clampNum(pc, 0, 100) / 100);
+      return Math.min(perTradeCap, slice, Math.max(0, basePool));
+    }
   }
-  const usePct = bot?.multiTradeUsePctOfUsable === true;
-  const p = clampNum(Number(bot?.multiTradePctOfUsable ?? 100), 0, 100);
-  const basePool = usePct ? (usable * p) / 100 : Number(bot?.riskPerTrade ?? 0);
-  if (mode === "EQUAL") return Math.max(1e-9, basePool / nDiv);
-  return Math.max(1e-9, basePool);
+  if (mode === "EQUAL") {
+    const slotBudget = Math.max(0, basePool) / nDiv;
+    return Math.min(perTradeCap, slotBudget);
+  }
+  return Math.min(perTradeCap, Math.max(0, basePool));
 }
 
 /** Mirrors backend split divisor / per-leg sizing hint for min-notional and liquidation previews. */
@@ -989,8 +995,8 @@ export function TradingPanel() {
     if (tm <= 0) return { kind: "tier_zero" as const };
 
     const maxAff = futFree * lev * 0.9;
-    const fixedCap = cfg.riskPerTradeUnit === "USDT" && cfg.maxDailyLossUnit === "USDT";
-    const effRisk = fixedCap ? previewFixedUsdtRiskUsdt(bot, activeSymbol, positions, account) : cfg.riskPerTrade;
+    const effRisk =
+      cfg.riskPerTradeUnit === "USDT" ? previewFixedUsdtRiskUsdt(bot, activeSymbol, positions, account) : cfg.riskPerTrade;
     const targetNom = Math.min(effRisk * tm, maxAff);
     if (!(targetNom > 0)) return { kind: "incomplete" as const };
 
@@ -1040,14 +1046,19 @@ export function TradingPanel() {
     const walletFreeMarginTotal = walletFreeMarginUsdt(account, mm);
     const splitDiv = capitalSplitDivisorFromBot(bot);
     const fixedUsd = cfg.riskPerTradeUnit === "USDT" && cfg.maxDailyLossUnit === "USDT";
-    /** Show pool / usable / multi-coin panels whenever per-trade is USDT (not only when max daily is also USDT). */
-    const showUsdtPoolLayout = cfg.riskPerTradeUnit === "USDT";
     let allowedPoolUsdt = 0;
     if (fixedUsd) {
       allowedPoolUsdt = effectiveAllowedPoolUsdt(bot, account);
-    } else if (showUsdtPoolLayout) {
-      const raw = Number(bot?.allowedBudgetUsdt);
-      const poolNominal = Number.isFinite(raw) && raw > 0 ? raw : Number(cfg.riskPerTrade ?? 0);
+    } else {
+      const raw = Number(bot?.allowedBudgetUsdt ?? cfg.allowedBudgetUsdt);
+      let poolNominal = Number.isFinite(raw) && raw > 0 ? raw : 0;
+      if (!(poolNominal > 0) && cfg.riskPerTradeUnit === "USDT") {
+        poolNominal = Number(cfg.riskPerTrade ?? 0);
+      }
+      if (!(poolNominal > 0) && walletFreeMarginTotal > 0) {
+        const wpct = clampNum(Number(cfg.allowedBudgetWalletPct), 0.5, 100);
+        if (wpct > 0) poolNominal = Math.max(1, Math.round((walletFreeMarginTotal * wpct) / 100));
+      }
       const cap = walletFreeMarginUsdt(account, mm);
       allowedPoolUsdt =
         !Number.isFinite(poolNominal) || poolNominal <= 0
@@ -1065,24 +1076,27 @@ export function TradingPanel() {
       cfg.riskPerTradeUnit === "USDT"
         ? previewFixedUsdtRiskUsdt(bot, activeSymbol, positions, account)
         : cfg.riskPerTrade;
-    const allowedMain =
-      cfg.riskPerTradeUnit === "USDT"
-        ? `${allowedPoolUsdt.toLocaleString("en-US", { maximumFractionDigits: 2 })} USDT`
-        : `${(cfg.riskPerTrade * 100).toFixed(2)}% at stop`;
+    const allowedMain = `${allowedPoolUsdt.toLocaleString("en-US", { maximumFractionDigits: 2 })} USDT`;
     const allowedSub =
       fixedUsd && cfg.universeCoinSelectMode === "MULTIPLE" && cfg.multiBudgetSplitMode === "EQUAL" && splitDiv > 1
         ? `Equal split target ≈ ${(laneBudget ?? cfg.riskPerTrade).toFixed(2)} USDT per active symbol (${splitDiv} in list)`
         : fixedUsd && cfg.universeCoinSelectMode === "MULTIPLE" && cfg.multiBudgetSplitMode !== "FULL"
           ? `Mode: ${cfg.multiBudgetSplitMode.replace(/_/g, " ")} · per-symbol notional ≈ ${(laneBudget ?? 0).toFixed(2)} USDT (${activeSymbol})`
-          : null;
+          : cfg.riskPerTradeUnit === "PCT"
+            ? `Per-trade ${(cfg.riskPerTrade * 100).toFixed(2)}% of free margin at stop (before confidence tiers).`
+            : null;
+    const perTradeUsdtForDeploy =
+      cfg.riskPerTradeUnit === "USDT"
+        ? Number(laneBudget ?? cfg.riskPerTrade) || 0
+        : walletFreeMarginTotal > 0
+          ? walletFreeMarginTotal * cfg.riskPerTrade
+          : 0;
     const effFut =
-      cfg.riskPerTradeUnit === "USDT" && futFree != null
-        ? effectiveFuturesOrderNotionalUsdt(laneBudget ?? cfg.riskPerTrade, futFree, lev)
+      futFree != null && perTradeUsdtForDeploy > 0
+        ? effectiveFuturesOrderNotionalUsdt(perTradeUsdtForDeploy, futFree, lev)
         : null;
     const effSpot =
-      cfg.riskPerTradeUnit === "USDT" && spotFree != null
-        ? effectiveSpotOrderNotionalUsdt(laneBudget ?? cfg.riskPerTrade, spotFree)
-        : null;
+      spotFree != null && perTradeUsdtForDeploy > 0 ? effectiveSpotOrderNotionalUsdt(perTradeUsdtForDeploy, spotFree) : null;
     const deployParts: string[] = [];
     if ((mm === "FUTURES" || mm === "AUTO") && effFut != null) {
       deployParts.push(`Futures order ≤ ~${effFut.toFixed(2)} USDT (after margin×lev ~90%)`);
@@ -1092,22 +1106,21 @@ export function TradingPanel() {
     }
     if (deployParts.length === 0) {
       deployParts.push(
-        cfg.riskPerTradeUnit === "USDT" ? "Fund the venue wallet to see venue-capped deployable notional." : "—",
+        cfg.riskPerTradeUnit === "PCT" && perTradeUsdtForDeploy <= 0
+          ? "Connect wallet / load free margin to preview venue-capped deploy from % per-trade."
+          : "Fund the venue wallet to see venue-capped deployable notional.",
       );
     }
-    const usableFormula = showUsdtPoolLayout
-      ? `${allowedPoolUsdt.toFixed(2)} − ${invested.toFixed(2)}`
-      : "";
-    const usableSizingNote = showUsdtPoolLayout
-      ? usablePoolRaw < 0
+    const usableFormula = `${allowedPoolUsdt.toFixed(2)} − ${invested.toFixed(2)}`;
+    const usableSizingNote =
+      usablePoolRaw < 0
         ? "Open margin used exceeds allowed — raise allowed or reduce/close positions so usable ≥ 0."
         : usablePoolRaw === 0
           ? "No pool left at this cap until open margin used drops below allowed."
-          : "With no open legs, margin used → 0 and usable equals allowed."
-      : "";
+          : "With no open legs, margin used → 0 and usable equals allowed.";
     const deployLine = deployParts.join(" · ");
     const walletSliderPct =
-      cfg.riskPerTradeUnit === "USDT" && walletFreeMarginTotal > 0
+      walletFreeMarginTotal > 0 && allowedPoolUsdt > 0
         ? clampNum((allowedPoolUsdt / walletFreeMarginTotal) * 100, 0, 100)
         : cfg.allowedBudgetWalletPct;
     return {
@@ -1117,7 +1130,6 @@ export function TradingPanel() {
       walletFreeMarginTotal,
       walletSliderPct,
       fixedUsd,
-      showUsdtPoolLayout,
       allowedPoolUsdt,
       usableStrategy,
       usablePoolRaw,
@@ -1126,6 +1138,26 @@ export function TradingPanel() {
       investedOpen: invested,
     };
   }, [cfg, bot, account, futuresLevDraft, positions, activeSymbol]);
+
+  const capitalFieldCaps = useMemo(() => {
+    const pool = Number(capitalAllotmentHeadline.allowedPoolUsdt) || 0;
+    const w = Number(capitalAllotmentHeadline.walletFreeMarginTotal) || 0;
+    const showPool = pool > 0;
+    const capByWallet = w > 0 ? w : 10_000_000;
+    const maxRiskUsdt =
+      cfg.riskPerTradeUnit === "USDT"
+        ? showPool && pool > 0
+          ? Math.min(10_000_000, capByWallet, Math.max(1, pool))
+          : Math.min(10_000_000, capByWallet)
+        : 0.05;
+    const maxDailyUsdt =
+      cfg.maxDailyLossUnit === "USDT"
+        ? showPool && pool > 0
+          ? Math.min(10_000_000, Math.max(1, pool))
+          : 10_000_000
+        : 0.2;
+    return { maxRiskUsdt, maxDailyUsdt, pool, showPool };
+  }, [capitalAllotmentHeadline, cfg.riskPerTradeUnit, cfg.maxDailyLossUnit]);
 
   useEffect(() => {
     setCapitalSliderDraftPct(null);
@@ -2464,55 +2496,46 @@ export function TradingPanel() {
                   <p className="mt-0.5 max-w-[22rem] text-[10px] leading-snug text-slate-600 dark:text-slate-400">
                     Allowed is capped at <span className="font-semibold text-slate-700 dark:text-slate-300">free margin</span> (collateral), not
                     leveraged notional. <span className="font-semibold text-slate-700 dark:text-slate-300">Usable</span> is allowed minus open
-                    margin used (futures: notional ÷ leverage; spot: full quote at entry). Per-trade USDT is the fallback pool unless multi-coin “% of
-                    usable” is on. Deploy line is venue-capped order size (~90% buying power).
+                    margin used (futures: notional ÷ leverage; spot: full quote at entry). This pool drives allowed / usable and multi-coin USDT splits;
+                    per-trade below is sizing (% or USDT) and does not collapse this panel. Deploy line is venue-capped order size (~90% buying power).
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
-                  {capitalAllotmentHeadline.showUsdtPoolLayout ? (
-                    <div className="grid grid-cols-2 gap-x-5 gap-y-1">
-                      <div>
-                        <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Allowed</div>
-                        <div className="text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                          {capitalAllotmentHeadline.allowedMain}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Usable</div>
-                        <div
-                          className={`text-lg font-bold tabular-nums ${
-                            capitalAllotmentHeadline.usablePoolRaw < 0
-                              ? "text-amber-600 dark:text-amber-400"
-                              : capitalAllotmentHeadline.usablePoolRaw > 0
-                                ? "text-sky-600 dark:text-sky-400"
-                                : "text-slate-600 dark:text-slate-400"
-                          }`}
-                        >
-                          {capitalAllotmentHeadline.usablePoolRaw.toLocaleString("en-US", {
-                            maximumFractionDigits: 2,
-                            minimumFractionDigits: 2,
-                          })}{" "}
-                          USDT
-                        </div>
-                        <div className="mt-0.5 text-[9px] font-mono text-slate-500 dark:text-slate-400">
-                          {capitalAllotmentHeadline.usableFormula}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
+                  <div className="grid grid-cols-2 gap-x-5 gap-y-1">
                     <div>
-                      <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Per-trade risk</div>
+                      <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Allowed</div>
                       <div className="text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                         {capitalAllotmentHeadline.allowedMain}
                       </div>
                     </div>
-                  )}
+                    <div>
+                      <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Usable</div>
+                      <div
+                        className={`text-lg font-bold tabular-nums ${
+                          capitalAllotmentHeadline.usablePoolRaw < 0
+                            ? "text-amber-600 dark:text-amber-400"
+                            : capitalAllotmentHeadline.usablePoolRaw > 0
+                              ? "text-sky-600 dark:text-sky-400"
+                              : "text-slate-600 dark:text-slate-400"
+                        }`}
+                      >
+                        {capitalAllotmentHeadline.usablePoolRaw.toLocaleString("en-US", {
+                          maximumFractionDigits: 2,
+                          minimumFractionDigits: 2,
+                        })}{" "}
+                        USDT
+                      </div>
+                      <div className="mt-0.5 text-[9px] font-mono text-slate-500 dark:text-slate-400">
+                        {capitalAllotmentHeadline.usableFormula}
+                      </div>
+                    </div>
+                  </div>
                   {capitalAllotmentHeadline.allowedSub ? (
                     <div className="mt-1 max-w-[14rem] text-[9px] leading-tight text-emerald-800/90 dark:text-emerald-200/90">
                       {capitalAllotmentHeadline.allowedSub}
                     </div>
                   ) : null}
-                  {capitalAllotmentHeadline.showUsdtPoolLayout && capitalAllotmentHeadline.usableSizingNote ? (
+                  {capitalAllotmentHeadline.usableSizingNote ? (
                     <div className="mt-1.5 max-w-[15rem] text-[10px] leading-snug text-slate-600 dark:text-slate-400">
                       {capitalAllotmentHeadline.usableSizingNote}
                     </div>
@@ -2524,104 +2547,110 @@ export function TradingPanel() {
                 </div>
               </div>
 
-              {capitalAllotmentHeadline.showUsdtPoolLayout ? (
-                <div className="mt-3 space-y-2 rounded-lg border border-emerald-800/20 bg-white/80 p-2 dark:border-emerald-500/25 dark:bg-slate-950/50">
-                  <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-100">Allowed budget (USDT pool)</div>
-                  <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-500">
-                    Cannot exceed free margin ({capitalAllotmentHeadline.walletFreeMarginTotal > 0 ? `~${capitalAllotmentHeadline.walletFreeMarginTotal.toFixed(0)} USDT loaded` : "connect wallet to cap"}).
-                  </p>
-                  <div className="flex shrink-0 rounded border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 p-0.5 text-[10px] font-medium text-slate-700 dark:text-slate-300">
-                    <button
-                      type="button"
-                      className={`rounded px-2 py-0.5 ${cfg.allowedBudgetInputMode === "USDT" ? "bg-slate-600 text-white" : "hover:text-slate-900 dark:hover:text-slate-100"}`}
-                      onClick={() => {
-                        void api.botConfig({ allowedBudgetInputMode: "USDT" }).catch(() => {
-                          pushLog({ level: "error", msg: "Failed to set allowed budget input mode" });
-                        });
-                      }}
-                    >
-                      USDT value
-                    </button>
-                    <button
-                      type="button"
-                      className={`rounded px-2 py-0.5 ${cfg.allowedBudgetInputMode === "WALLET_PCT" ? "bg-slate-600 text-white" : "hover:text-slate-900 dark:hover:text-slate-100"}`}
-                      onClick={() => {
-                        void api.botConfig({ allowedBudgetInputMode: "WALLET_PCT" }).catch(() => {
-                          pushLog({ level: "error", msg: "Failed to set allowed budget input mode" });
-                        });
-                      }}
-                    >
-                      % of free margin
-                    </button>
-                  </div>
-                  {cfg.allowedBudgetInputMode === "USDT" ? (
-                    <NumericTextInput
-                      key="allowed-usdt"
-                      value={cfg.allowedBudgetUsdt > 0 ? cfg.allowedBudgetUsdt : cfg.riskPerTrade}
-                      min={1}
-                      max={
-                        capitalAllotmentHeadline.walletFreeMarginTotal > 0
-                          ? Math.min(10_000_000, Math.max(1, Math.floor(capitalAllotmentHeadline.walletFreeMarginTotal)))
-                          : 10_000_000
-                      }
-                      onCommit={async (v) => {
-                        try {
-                          await api.botConfig({ allowedBudgetUsdt: v, allowedBudgetInputMode: "USDT" });
-                        } catch {
-                          pushLog({ level: "error", msg: "Failed to set allowed budget" });
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div className="rounded-md border border-slate-200/90 bg-white/90 px-2 py-2 dark:border-slate-700 dark:bg-slate-950/60">
-                      <label className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-                        <span className="shrink-0 text-[10px] font-medium text-slate-600 dark:text-slate-400">
-                          % of free margin (~{capitalAllotmentHeadline.walletFreeMarginTotal.toFixed(0)} USDT
-                          {String(cfg.marketMode || "AUTO").toUpperCase() === "AUTO" ? " spot+futures" : ""})
-                        </span>
-                        <input
-                          type="range"
-                          className="h-2 min-w-0 flex-1 cursor-pointer accent-emerald-600"
-                          min={0.5}
-                          max={100}
-                          step={0.5}
-                          value={
-                            capitalSliderDraftPct ??
-                            (capitalAllotmentHeadline.walletFreeMarginTotal > 0
-                              ? capitalAllotmentHeadline.walletSliderPct
-                              : cfg.allowedBudgetWalletPct)
-                          }
-                          onChange={(e) => {
-                            const pct = Number(e.target.value);
-                            const w = capitalAllotmentHeadline.walletFreeMarginTotal;
-                            if (!Number.isFinite(pct) || w <= 0) return;
-                            setCapitalSliderDraftPct(pct);
-                            if (capitalSliderTimerRef.current) window.clearTimeout(capitalSliderTimerRef.current);
-                            capitalSliderTimerRef.current = window.setTimeout(() => {
-                              capitalSliderTimerRef.current = null;
-                              const nextAllowed = Math.max(1, Math.round((w * pct) / 100));
-                              void api
-                                .botConfig({
-                                  allowedBudgetInputMode: "WALLET_PCT",
-                                  allowedBudgetWalletPct: pct,
-                                  allowedBudgetUsdt: nextAllowed,
-                                })
-                                .catch(() => {
-                                  pushLog({ level: "error", msg: "Failed to set allowed budget from %" });
-                                });
-                            }, 380);
-                          }}
-                        />
-                        <span className="w-12 shrink-0 text-right text-[10px] tabular-nums text-slate-600 dark:text-slate-400">
-                          {(capitalSliderDraftPct ?? capitalAllotmentHeadline.walletSliderPct).toFixed(1)}%
-                        </span>
-                      </label>
-                    </div>
-                  )}
+              <div className="mt-3 space-y-2 rounded-lg border border-emerald-800/20 bg-white/80 p-2 dark:border-emerald-500/25 dark:bg-slate-950/50">
+                <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-100">Allowed budget (USDT pool)</div>
+                <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-500">
+                  Cannot exceed free margin ({capitalAllotmentHeadline.walletFreeMarginTotal > 0 ? `~${capitalAllotmentHeadline.walletFreeMarginTotal.toFixed(0)} USDT loaded` : "connect wallet to cap"}).
+                </p>
+                <div className="flex shrink-0 rounded border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 p-0.5 text-[10px] font-medium text-slate-700 dark:text-slate-300">
+                  <button
+                    type="button"
+                    className={`rounded px-2 py-0.5 ${cfg.allowedBudgetInputMode === "USDT" ? "bg-slate-600 text-white" : "hover:text-slate-900 dark:hover:text-slate-100"}`}
+                    onClick={() => {
+                      void api.botConfig({ allowedBudgetInputMode: "USDT" }).catch(() => {
+                        pushLog({ level: "error", msg: "Failed to set allowed budget input mode" });
+                      });
+                    }}
+                  >
+                    USDT value
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded px-2 py-0.5 ${cfg.allowedBudgetInputMode === "WALLET_PCT" ? "bg-slate-600 text-white" : "hover:text-slate-900 dark:hover:text-slate-100"}`}
+                    onClick={() => {
+                      void api.botConfig({ allowedBudgetInputMode: "WALLET_PCT" }).catch(() => {
+                        pushLog({ level: "error", msg: "Failed to set allowed budget input mode" });
+                      });
+                    }}
+                  >
+                    % of free margin
+                  </button>
                 </div>
-              ) : null}
+                {cfg.allowedBudgetInputMode === "USDT" ? (
+                  <NumericTextInput
+                    key="allowed-usdt"
+                    value={
+                      cfg.allowedBudgetUsdt > 0
+                        ? cfg.allowedBudgetUsdt
+                        : cfg.riskPerTradeUnit === "USDT"
+                          ? cfg.riskPerTrade
+                          : Number.isFinite(capitalAllotmentHeadline.allowedPoolUsdt) && capitalAllotmentHeadline.allowedPoolUsdt > 0
+                            ? Math.max(1, Math.round(capitalAllotmentHeadline.allowedPoolUsdt))
+                            : 1
+                    }
+                    min={1}
+                    max={
+                      capitalAllotmentHeadline.walletFreeMarginTotal > 0
+                        ? Math.min(10_000_000, Math.max(1, Math.floor(capitalAllotmentHeadline.walletFreeMarginTotal)))
+                        : 10_000_000
+                    }
+                    onCommit={async (v) => {
+                      try {
+                        await api.botConfig({ allowedBudgetUsdt: v, allowedBudgetInputMode: "USDT" });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set allowed budget" });
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="rounded-md border border-slate-200/90 bg-white/90 px-2 py-2 dark:border-slate-700 dark:bg-slate-950/60">
+                    <label className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                      <span className="shrink-0 text-[10px] font-medium text-slate-600 dark:text-slate-400">
+                        % of free margin (~{capitalAllotmentHeadline.walletFreeMarginTotal.toFixed(0)} USDT
+                        {String(cfg.marketMode || "AUTO").toUpperCase() === "AUTO" ? " spot+futures" : ""})
+                      </span>
+                      <input
+                        type="range"
+                        className="h-2 min-w-0 flex-1 cursor-pointer accent-emerald-600"
+                        min={0.5}
+                        max={100}
+                        step={0.5}
+                        value={
+                          capitalSliderDraftPct ??
+                          (capitalAllotmentHeadline.walletFreeMarginTotal > 0
+                            ? capitalAllotmentHeadline.walletSliderPct
+                            : cfg.allowedBudgetWalletPct)
+                        }
+                        onChange={(e) => {
+                          const pct = Number(e.target.value);
+                          const w = capitalAllotmentHeadline.walletFreeMarginTotal;
+                          if (!Number.isFinite(pct) || w <= 0) return;
+                          setCapitalSliderDraftPct(pct);
+                          if (capitalSliderTimerRef.current) window.clearTimeout(capitalSliderTimerRef.current);
+                          capitalSliderTimerRef.current = window.setTimeout(() => {
+                            capitalSliderTimerRef.current = null;
+                            const nextAllowed = Math.max(1, Math.round((w * pct) / 100));
+                            void api
+                              .botConfig({
+                                allowedBudgetInputMode: "WALLET_PCT",
+                                allowedBudgetWalletPct: pct,
+                                allowedBudgetUsdt: nextAllowed,
+                              })
+                              .catch(() => {
+                                pushLog({ level: "error", msg: "Failed to set allowed budget from %" });
+                              });
+                          }, 380);
+                        }}
+                      />
+                      <span className="w-12 shrink-0 text-right text-[10px] tabular-nums text-slate-600 dark:text-slate-400">
+                        {(capitalSliderDraftPct ?? capitalAllotmentHeadline.walletSliderPct).toFixed(1)}%
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
 
-              {cfg.universeCoinSelectMode === "MULTIPLE" && capitalAllotmentHeadline.showUsdtPoolLayout ? (
+              {cfg.universeCoinSelectMode === "MULTIPLE" ? (
                 <div className="mt-3 space-y-2 rounded-lg border border-emerald-800/20 bg-white/80 p-2 dark:border-emerald-500/25 dark:bg-slate-950/50">
                   <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-100">Multi-coin sizing</div>
                   <label className="flex cursor-pointer items-start gap-2 text-[11px] text-slate-700 dark:text-slate-200">
@@ -2637,7 +2666,7 @@ export function TradingPanel() {
                     />
                     <span>
                       Use <span className="font-semibold">% of usable</span> capital for the sizing pool (usable = allowed − open margin used). When
-                      off, the per-trade USDT field below is the pool.
+                      off, fixed-USDT per-trade uses the field below; with per-trade in %, the pool here still caps multi-coin USDT splits.
                     </span>
                   </label>
                   {cfg.multiTradeUsePctOfUsable ? (
@@ -2706,59 +2735,89 @@ export function TradingPanel() {
                                   ? "% of allowed (Σ≤100)"
                                   : "—"}
                             </th>
+                            {cfg.multiBudgetSplitMode === "CUSTOM_USDT" || cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" ? (
+                              <th className="px-2 py-1.5">
+                                {cfg.multiBudgetSplitMode === "CUSTOM_USDT" ? "≈ % of allowed" : "≈ USDT (split)"}
+                              </th>
+                            ) : null}
                           </tr>
                         </thead>
                         <tbody>
-                          {capitalMultiSyms.map((sym) => (
-                            <tr key={sym} className="border-t border-slate-200 dark:border-slate-800">
-                              <td className="px-2 py-1.5 font-semibold text-slate-800 dark:text-slate-100">{sym}</td>
-                              <td className="px-2 py-1.5">
-                                {cfg.multiBudgetSplitMode === "CUSTOM_USDT" ? (
-                                  <NumericTextInput
-                                    key={`cu-${sym}`}
-                                    value={Math.max(1, Number(cfg.multiBudgetCoinUsdt[sym] ?? 100))}
-                                    min={1}
-                                    max={10_000_000}
-                                    onCommit={async (v) => {
-                                      try {
-                                        await api.botConfig({
-                                          multiBudgetCoinUsdt: { ...cfg.multiBudgetCoinUsdt, [sym]: v },
-                                        });
-                                      } catch {
-                                        pushLog({ level: "error", msg: `Failed to set USDT for ${sym}` });
-                                      }
-                                    }}
-                                  />
-                                ) : cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" ? (
-                                  <div className="flex items-center gap-1">
-                                    <input
-                                      type="range"
-                                      className="h-1.5 min-w-0 flex-1 cursor-pointer accent-emerald-600"
-                                      min={0}
-                                      max={100}
-                                      step={1}
-                                      value={clampNum(Number(cfg.multiBudgetCoinPct[sym] ?? 0), 0, 100)}
-                                      onChange={(e) => {
-                                        const v = clampNum(Number(e.target.value), 0, 100);
-                                        void api
-                                          .botConfig({
-                                            multiBudgetCoinPct: { ...cfg.multiBudgetCoinPct, [sym]: v },
-                                          })
-                                          .catch(() => {
-                                            pushLog({ level: "error", msg: `Failed to set % for ${sym}` });
+                          {capitalMultiSyms.map((sym) => {
+                            const poolHint = capitalFieldCaps.pool > 0 ? capitalFieldCaps.pool : capitalAllotmentHeadline.allowedPoolUsdt;
+                            const usdtVal = Math.max(1, Number(cfg.multiBudgetCoinUsdt[sym] ?? 100));
+                            const pctVal = clampNum(Number(cfg.multiBudgetCoinPct[sym] ?? 0), 0, 100);
+                            const pctOfPoolUsdt = poolHint > 0 ? (usdtVal / poolHint) * 100 : null;
+                            const usdtFromPct = poolHint > 0 ? (poolHint * pctVal) / 100 : null;
+                            const perCoinUsdtMax =
+                              capitalFieldCaps.showPool && capitalFieldCaps.pool > 0
+                                ? Math.min(10_000_000, Math.max(1, capitalFieldCaps.pool))
+                                : 10_000_000;
+                            return (
+                              <tr key={sym} className="border-t border-slate-200 dark:border-slate-800">
+                                <td className="px-2 py-1.5 font-semibold text-slate-800 dark:text-slate-100">{sym}</td>
+                                <td className="px-2 py-1.5">
+                                  {cfg.multiBudgetSplitMode === "CUSTOM_USDT" ? (
+                                    <NumericTextInput
+                                      key={`cu-${sym}`}
+                                      value={usdtVal}
+                                      min={1}
+                                      max={perCoinUsdtMax}
+                                      onCommit={async (v) => {
+                                        try {
+                                          const capped = clampNum(v, 1, perCoinUsdtMax);
+                                          await api.botConfig({
+                                            multiBudgetCoinUsdt: { ...cfg.multiBudgetCoinUsdt, [sym]: capped },
                                           });
+                                        } catch {
+                                          pushLog({ level: "error", msg: `Failed to set USDT for ${sym}` });
+                                        }
                                       }}
                                     />
-                                    <span className="w-8 shrink-0 text-right tabular-nums">
-                                      {clampNum(Number(cfg.multiBudgetCoinPct[sym] ?? 0), 0, 100)}%
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <span className="text-slate-500 dark:text-slate-500">—</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                                  ) : cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" ? (
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        type="range"
+                                        className="h-1.5 min-w-0 flex-1 cursor-pointer accent-emerald-600"
+                                        min={0}
+                                        max={100}
+                                        step={1}
+                                        value={pctVal}
+                                        onChange={(e) => {
+                                          const v = clampNum(Number(e.target.value), 0, 100);
+                                          void api
+                                            .botConfig({
+                                              multiBudgetCoinPct: { ...cfg.multiBudgetCoinPct, [sym]: v },
+                                            })
+                                            .catch(() => {
+                                              pushLog({ level: "error", msg: `Failed to set % for ${sym}` });
+                                            });
+                                        }}
+                                      />
+                                      <span className="w-8 shrink-0 text-right tabular-nums">{pctVal}%</span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-500 dark:text-slate-500">—</span>
+                                  )}
+                                </td>
+                                {cfg.multiBudgetSplitMode === "CUSTOM_USDT" || cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" ? (
+                                  <td className="px-2 py-1.5 tabular-nums text-slate-600 dark:text-slate-400">
+                                    {cfg.multiBudgetSplitMode === "CUSTOM_USDT" ? (
+                                      pctOfPoolUsdt != null && Number.isFinite(pctOfPoolUsdt) ? (
+                                        `${pctOfPoolUsdt.toFixed(2)}%`
+                                      ) : (
+                                        "—"
+                                      )
+                                    ) : usdtFromPct != null && Number.isFinite(usdtFromPct) ? (
+                                      `${usdtFromPct.toFixed(2)} USDT`
+                                    ) : (
+                                      "—"
+                                    )}
+                                  </td>
+                                ) : null}
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -2774,35 +2833,88 @@ export function TradingPanel() {
                 </div>
               ) : null}
 
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,7.5rem)_auto_1fr] sm:items-center sm:gap-x-2">
-                <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200">Per-trade budget</span>
-                <RiskUnitToggle
-                  value={cfg.riskPerTradeUnit}
-                  onChange={(u) => {
-                    deferTask(() => {
-                      void (async () => {
-                        try {
-                          await api.botConfig({ riskPerTradeUnit: u });
-                        } catch {
-                          pushLog({ level: "error", msg: "Failed to set risk unit" });
-                        }
-                      })();
-                    });
-                  }}
-                />
-                <NumericTextInput
-                  key={`rpt-${cfg.riskPerTradeUnit}`}
-                  value={cfg.riskPerTrade}
-                  min={cfg.riskPerTradeUnit === "USDT" ? 1 : 0.001}
-                  max={cfg.riskPerTradeUnit === "USDT" ? 10_000_000 : 0.05}
-                  onCommit={async (v) => {
-                    try {
-                      await api.botConfig({ riskPerTrade: v });
-                    } catch {
-                      pushLog({ level: "error", msg: "Failed to set risk per trade" });
-                    }
-                  }}
-                />
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,7.5rem)_auto_1fr] sm:items-start sm:gap-x-2">
+                <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200 sm:pt-1.5">Per-trade budget</span>
+                <div className="sm:pt-1">
+                  <RiskUnitToggle
+                    value={cfg.riskPerTradeUnit}
+                    onChange={(u) => {
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ riskPerTradeUnit: u });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set risk unit" });
+                          }
+                        })();
+                      });
+                    }}
+                  />
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <NumericTextInput
+                    key={`rpt-${cfg.riskPerTradeUnit}`}
+                    value={cfg.riskPerTrade}
+                    min={cfg.riskPerTradeUnit === "USDT" ? 1 : 0.001}
+                    max={cfg.riskPerTradeUnit === "USDT" ? capitalFieldCaps.maxRiskUsdt : 0.05}
+                    onCommit={async (v) => {
+                      try {
+                        const cap = cfg.riskPerTradeUnit === "USDT" ? capitalFieldCaps.maxRiskUsdt : 0.05;
+                        const lo = cfg.riskPerTradeUnit === "USDT" ? 1 : 0.001;
+                        await api.botConfig({ riskPerTrade: clampNum(v, lo, cap) });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set risk per trade" });
+                      }
+                    }}
+                  />
+                  {cfg.riskPerTradeUnit === "USDT" && capitalFieldCaps.showPool && capitalFieldCaps.pool > 0 ? (
+                    <>
+                      <input
+                        type="range"
+                        className="h-2 w-full min-w-0 cursor-pointer accent-emerald-600"
+                        min={1}
+                        max={Math.max(1, Math.floor(capitalFieldCaps.maxRiskUsdt))}
+                        step={1}
+                        value={clampNum(Math.round(cfg.riskPerTrade), 1, Math.floor(capitalFieldCaps.maxRiskUsdt))}
+                        onChange={(e) => {
+                          const hi = Math.max(1, Math.floor(capitalFieldCaps.maxRiskUsdt));
+                          const v = clampNum(Math.round(Number(e.target.value)), 1, hi);
+                          void api.botConfig({ riskPerTrade: v }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set risk per trade" });
+                          });
+                        }}
+                      />
+                      <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
+                        ≈ {((cfg.riskPerTrade / capitalFieldCaps.pool) * 100).toFixed(2)}% of allowed pool (
+                        {capitalFieldCaps.pool.toFixed(0)} USDT)
+                      </p>
+                    </>
+                  ) : cfg.riskPerTradeUnit === "PCT" ? (
+                    <>
+                      <input
+                        type="range"
+                        className="h-2 w-full min-w-0 cursor-pointer accent-emerald-600"
+                        min={0.1}
+                        max={5}
+                        step={0.1}
+                        value={clampNum(Math.round(cfg.riskPerTrade * 1000) / 10, 0.1, 5)}
+                        onChange={(e) => {
+                          const v = clampNum(Number(e.target.value), 0.1, 5);
+                          void api.botConfig({ riskPerTrade: clampNum(v / 100, 0.001, 0.05) }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set risk per trade" });
+                          });
+                        }}
+                      />
+                      <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
+                        ≈{" "}
+                        {capitalAllotmentHeadline.walletFreeMarginTotal > 0
+                          ? (cfg.riskPerTrade * capitalAllotmentHeadline.walletFreeMarginTotal).toFixed(2)
+                          : "—"}{" "}
+                        USDT from free balance (rough)
+                      </p>
+                    </>
+                  ) : null}
+                </div>
               </div>
 
               <p className="mt-2 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
@@ -2829,35 +2941,90 @@ export function TradingPanel() {
                 )}
               </p>
 
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,7.5rem)_auto_1fr] sm:items-center sm:gap-x-2">
-                <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200">Max daily loss</span>
-                <RiskUnitToggle
-                  value={cfg.maxDailyLossUnit}
-                  onChange={(u) => {
-                    deferTask(() => {
-                      void (async () => {
-                        try {
-                          await api.botConfig({ maxDailyLossUnit: u });
-                        } catch {
-                          pushLog({ level: "error", msg: "Failed to set max daily loss unit" });
-                        }
-                      })();
-                    });
-                  }}
-                />
-                <NumericTextInput
-                  key={`mdl-${cfg.maxDailyLossUnit}`}
-                  value={cfg.maxDailyLoss}
-                  min={cfg.maxDailyLossUnit === "USDT" ? 1 : 0.01}
-                  max={cfg.maxDailyLossUnit === "USDT" ? 10_000_000 : 0.2}
-                  onCommit={async (v) => {
-                    try {
-                      await api.botConfig({ maxDailyLoss: v });
-                    } catch {
-                      pushLog({ level: "error", msg: "Failed to set max daily loss" });
-                    }
-                  }}
-                />
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,7.5rem)_auto_1fr] sm:items-start sm:gap-x-2">
+                <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200 sm:pt-1.5">Max daily loss</span>
+                <div className="sm:pt-1">
+                  <RiskUnitToggle
+                    value={cfg.maxDailyLossUnit}
+                    onChange={(u) => {
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ maxDailyLossUnit: u });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set max daily loss unit" });
+                          }
+                        })();
+                      });
+                    }}
+                  />
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <NumericTextInput
+                    key={`mdl-${cfg.maxDailyLossUnit}`}
+                    value={cfg.maxDailyLoss}
+                    min={cfg.maxDailyLossUnit === "USDT" ? 1 : 0.01}
+                    max={cfg.maxDailyLossUnit === "USDT" ? capitalFieldCaps.maxDailyUsdt : 0.2}
+                    onCommit={async (v) => {
+                      try {
+                        const cap = cfg.maxDailyLossUnit === "USDT" ? capitalFieldCaps.maxDailyUsdt : 0.2;
+                        const lo = cfg.maxDailyLossUnit === "USDT" ? 1 : 0.01;
+                        await api.botConfig({ maxDailyLoss: clampNum(v, lo, cap) });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set max daily loss" });
+                      }
+                    }}
+                  />
+                  {cfg.maxDailyLossUnit === "USDT" && capitalFieldCaps.showPool && capitalFieldCaps.pool > 0 ? (
+                    <>
+                      <input
+                        type="range"
+                        className="h-2 w-full min-w-0 cursor-pointer accent-emerald-600"
+                        min={1}
+                        max={Math.max(1, Math.floor(capitalFieldCaps.maxDailyUsdt))}
+                        step={1}
+                        value={clampNum(Math.round(cfg.maxDailyLoss), 1, Math.floor(capitalFieldCaps.maxDailyUsdt))}
+                        onChange={(e) => {
+                          const hi = Math.max(1, Math.floor(capitalFieldCaps.maxDailyUsdt));
+                          const v = clampNum(Math.round(Number(e.target.value)), 1, hi);
+                          void api.botConfig({ maxDailyLoss: v }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set max daily loss" });
+                          });
+                        }}
+                      />
+                      <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
+                        ≈ {((cfg.maxDailyLoss / capitalFieldCaps.pool) * 100).toFixed(2)}% of allowed pool (
+                        {capitalFieldCaps.pool.toFixed(0)} USDT)
+                      </p>
+                    </>
+                  ) : cfg.maxDailyLossUnit === "PCT" ? (
+                    <>
+                      <input
+                        type="range"
+                        className="h-2 w-full min-w-0 cursor-pointer accent-emerald-600"
+                        min={1}
+                        max={20}
+                        step={1}
+                        value={clampNum(Math.round(cfg.maxDailyLoss * 100), 1, 20)}
+                        onChange={(e) => {
+                          const v = clampNum(Number(e.target.value), 1, 20);
+                          void api.botConfig({ maxDailyLoss: clampNum(v / 100, 0.01, 0.2) }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set max daily loss" });
+                          });
+                        }}
+                      />
+                      <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
+                        ≈{" "}
+                        {capitalFieldCaps.showPool && capitalFieldCaps.pool > 0
+                          ? ((cfg.maxDailyLoss * capitalFieldCaps.pool).toFixed(2) + " USDT on allowed pool (rough)")
+                          : capitalAllotmentHeadline.walletFreeMarginTotal > 0
+                            ? (cfg.maxDailyLoss * capitalAllotmentHeadline.walletFreeMarginTotal).toFixed(2) +
+                              " USDT vs free balance (rough)"
+                            : "—"}
+                      </p>
+                    </>
+                  ) : null}
+                </div>
               </div>
               <p className="mt-1 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
                 {cfg.maxDailyLossUnit === "USDT" ? (

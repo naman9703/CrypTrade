@@ -285,26 +285,43 @@ function positionIsLong(sideRaw: unknown, qtyRaw?: unknown): boolean {
 }
 
 /**
- * True when current SL is at least at one-way fee breakeven vs entry (same floor as server Supertrend trailing).
+ * True when current SL is at least at ~round-trip taker fee breakeven vs entry (aligned with server `feeCoverageLockPx`).
  */
-function stopLossAtFeeBreakevenOrBetter(entry: number, stopLoss: number, isLong: boolean): boolean {
+function stopLossAtRoundTripFeeBreakevenOrBetter(entry: number, stopLoss: number, isLong: boolean): boolean {
   if (!Number.isFinite(entry) || entry <= 0 || !Number.isFinite(stopLoss) || stopLoss <= 0) return false;
   const feeR = clampTradeCloseFeeRate();
+  const roundTrip = 2 * feeR;
   const eps = entry * 1e-10;
   if (isLong) {
-    const be = entry * (1 + feeR);
+    const be = entry * (1 + roundTrip);
     return stopLoss >= be - eps;
   }
-  const be = entry * (1 - feeR);
+  const be = entry * (1 - roundTrip);
   return stopLoss <= be + eps;
 }
 
-function positionRowBreakevenStopIndicator(p: any): boolean {
+/** Green row lead: trailing auto on + futures + SL locked at/above round-trip fee BE, or discrete trail advanced (trailStep ≥ 1). */
+function positionRowTrailingBreakevenIndicator(p: any, trailingStopLossAuto: boolean): boolean {
+  if (!trailingStopLossAuto) return false;
+  if (String(p?.venue || "").toUpperCase() !== "FUTURES") return false;
   const entry = numFinite(p?.entryPrice);
   const sl = numFinite(p?.stopLoss);
   if (entry == null || sl == null) return false;
   const isLong = positionIsLong(p?.side, p?.qty ?? p?.positionAmt);
-  return stopLossAtFeeBreakevenOrBetter(entry, sl, isLong);
+  const step = Number(p?.meta?.trailStep);
+  const trailArm = p?.meta?.autoTradeTrailing === true;
+  if (trailArm && Number.isFinite(step) && step >= 1) return true;
+  if (!trailArm) return false;
+  return stopLossAtRoundTripFeeBreakevenOrBetter(entry, sl, isLong);
+}
+
+function positionRowBreakevenStopIndicator(p: any, trailingStopLossAuto: boolean): boolean {
+  if (positionRowTrailingBreakevenIndicator(p, trailingStopLossAuto)) return true;
+  const entry = numFinite(p?.entryPrice);
+  const sl = numFinite(p?.stopLoss);
+  if (entry == null || sl == null) return false;
+  const isLong = positionIsLong(p?.side, p?.qty ?? p?.positionAmt);
+  return stopLossAtRoundTripFeeBreakevenOrBetter(entry, sl, isLong);
 }
 
 function findLivePositionForTradeId(positions: any[], tradeId: unknown): any | null {
@@ -324,22 +341,22 @@ function findLivePositionForTradeId(positions: any[], tradeId: unknown): any | n
   return null;
 }
 
-function openTradeRowBreakevenStopIndicator(t: any, positions: any[]): boolean {
+function openTradeRowBreakevenStopIndicator(t: any, positions: any[], trailingStopLossAuto: boolean): boolean {
   if (String(t?.type ?? "") !== "OPEN") return false;
   const live = findLivePositionForTradeId(positions, t?.id);
-  if (live) return positionRowBreakevenStopIndicator(live);
+  if (live) return positionRowBreakevenStopIndicator(live, trailingStopLossAuto);
   const entry = numFinite(t?.price ?? t?.entryPrice ?? t?.meta?.entryPrice);
   const sl = numFinite(t?.stopLoss ?? t?.meta?.stopLoss);
   if (entry == null || sl == null) return false;
   const isLong = positionIsLong(t?.side, t?.qty);
-  return stopLossAtFeeBreakevenOrBetter(entry, sl, isLong);
+  return stopLossAtRoundTripFeeBreakevenOrBetter(entry, sl, isLong);
 }
 
 function BreakevenStopLead() {
   return (
     <div
       className="mx-auto h-8 w-1 shrink-0 rounded-sm bg-emerald-500 shadow-sm dark:bg-emerald-400"
-      title="Stop at or past fee breakeven (trailed)"
+      title="Breakeven: trailing locked stop at/above round-trip fee level, or trail step advanced"
       aria-hidden
     />
   );
@@ -442,41 +459,49 @@ function tradeHistoryReasonLabel(t: any): string {
   if (isLedgerClose(t)) return "Ledger";
 
   const m = t?.meta || {};
-  const trailStep = Number(m.trailStep);
-  const trailed = (Number.isFinite(trailStep) && trailStep > 0) || m.autoTradeTrailing === true;
+  const trailStepClose = Number(m.trailStepAtClose);
+  const trailedExit =
+    m.exitViaTrailedStop === true || (Number.isFinite(trailStepClose) && trailStepClose > 0 && String(m.bracketType || "").toUpperCase() === "SL");
   const trailMode = String(m.trailingMode || m.trailMode || "").toUpperCase();
+
+  const r0 = String(t?.reason || "").toUpperCase().replace(/-/g, "_");
+  if (r0 === "TRAILED_STOP_LOSS") return "Trailed SL";
+  if (r0 === "SUPERTREND_EXIT" || r0 === "SUPERTREND_FLIP") return "Signal";
+  if (r0 === "STOP_LOSS" || r0 === "STOP") {
+    if (trailedExit) return "Trailed SL";
+    return "SL";
+  }
+  if (r0 === "TAKE_PROFIT") return "TP";
+  if (r0 === "MANUAL_CLOSE" || r0 === "MANUAL") return "Manual";
+
+  if (m.supertrendSignalClose === true) return "Signal";
 
   const bracket = String(m.bracketType || "").toUpperCase();
   if (bracket === "SL") {
-    if (trailMode === "FEE_LADDER") return "Fee ladder SL";
-    if (trailed) return "Trailed SL";
+    if (trailedExit) return "Trailed SL";
+    if (trailMode === "FEE_LADDER") return "Trailed SL";
     return "SL";
   }
   if (bracket === "TP") return "TP";
-  if (bracket === "MANUAL_CLOSE") return "Manual";
+  if (bracket === "MANUAL_CLOSE") {
+    if (m.supertrend === true || String(t?.source || "").toUpperCase() === "SUPERTREND") return "Signal";
+    return "Manual";
+  }
 
   const cr = String(m.closeReason || "").toUpperCase();
   if (cr === "STOP" || cr === "STOP_LOSS") {
-    if (trailMode === "FEE_LADDER") return "Fee ladder SL";
-    return trailed ? "Trailed SL" : "SL";
+    if (trailedExit) return "Trailed SL";
+    return "SL";
   }
   if (cr === "TAKE_PROFIT") return "TP";
 
-  const r = String(t?.reason || "").toUpperCase().replace(/-/g, "_");
-  if (r === "STOP_LOSS" || r === "STOP") {
-    if (trailMode === "FEE_LADDER") return "Fee ladder SL";
-    return trailed ? "Trailed SL" : "SL";
-  }
-  if (r === "TAKE_PROFIT") return "TP";
-  if (r === "MANUAL_CLOSE" || r === "MANUAL") return "Manual";
-  if (r === "SUPERTREND_EXIT") return "Signal";
-  if (r === "MARKET_SELL") {
+  if (r0 === "MARKET_SELL") {
     if (m.supertrend === true) return "Signal";
     if (m.manualClose === true) return "Manual";
     return "Market";
   }
-  if (r === "EXECUTION_REPORT") return "Exchange";
-  if (r === "OCO_DONE") return "OCO";
+  if (r0 === "EXECUTION_REPORT") return "Exchange";
+  if (r0 === "OCO_DONE") return "OCO";
 
   if (String(t?.source || "").toUpperCase() === "SUPERTREND" && t?.type === "CLOSE") return "Signal";
 
@@ -509,10 +534,94 @@ function resolveOpenRefForClose(t: any, allTrades: any[], byId: Map<string, any>
   return best;
 }
 
+type TradeHistorySort =
+  | "RECENT"
+  | "OLDEST"
+  | "PNL_HIGH"
+  | "PNL_LOW"
+  | "GROSS_HIGH"
+  | "GROSS_LOW"
+  | "SYMBOL_AZ"
+  | "SYMBOL_ZA";
+
+/** Sort trade history rows; PnL / gross sorts rank closes first, then opens (by time desc). */
+function sortTradeHistoryRows(
+  rows: any[],
+  sort: TradeHistorySort,
+  allTrades: any[],
+  openTradeById: Map<string, any>,
+): any[] {
+  const out = [...rows];
+  const symKey = (t: any) => String(t?.symbol ?? "").toUpperCase();
+  const ts = (t: any) => tradeTsMs(t);
+  const closeNet = (t: any) => {
+    if (t?.type !== "CLOSE") return null;
+    const ref = resolveOpenRefForClose(t, allTrades, openTradeById);
+    return closeTradeNetUsd(t, ref);
+  };
+  const closeGross = (t: any) => {
+    if (t?.type !== "CLOSE") return null;
+    const ref = resolveOpenRefForClose(t, allTrades, openTradeById);
+    const { price, qty } = tradeHistoryDisplayFields(t, ref);
+    return tradeGrossPnlClose(t, qty, price, ref);
+  };
+
+  out.sort((a, b) => {
+    switch (sort) {
+      case "RECENT":
+        return ts(b) - ts(a);
+      case "OLDEST":
+        return ts(a) - ts(b);
+      case "SYMBOL_AZ": {
+        const c = symKey(a).localeCompare(symKey(b));
+        if (c !== 0) return c;
+        return ts(b) - ts(a);
+      }
+      case "SYMBOL_ZA": {
+        const c = symKey(b).localeCompare(symKey(a));
+        if (c !== 0) return c;
+        return ts(b) - ts(a);
+      }
+      case "PNL_HIGH":
+      case "PNL_LOW": {
+        const openA = a?.type !== "CLOSE";
+        const openB = b?.type !== "CLOSE";
+        if (openA && openB) return ts(b) - ts(a);
+        if (openA) return 1;
+        if (openB) return -1;
+        const na = closeNet(a) ?? 0;
+        const nb = closeNet(b) ?? 0;
+        const d = sort === "PNL_HIGH" ? nb - na : na - nb;
+        if (d !== 0) return d;
+        return ts(b) - ts(a);
+      }
+      case "GROSS_HIGH":
+      case "GROSS_LOW": {
+        const openA = a?.type !== "CLOSE";
+        const openB = b?.type !== "CLOSE";
+        if (openA && openB) return ts(b) - ts(a);
+        if (openA) return 1;
+        if (openB) return -1;
+        const ga = closeGross(a);
+        const gb = closeGross(b);
+        const va = ga != null && Number.isFinite(ga) ? ga : 0;
+        const vb = gb != null && Number.isFinite(gb) ? gb : 0;
+        const d = sort === "GROSS_HIGH" ? vb - va : va - vb;
+        if (d !== 0) return d;
+        return ts(b) - ts(a);
+      }
+      default:
+        return ts(b) - ts(a);
+    }
+  });
+  return out;
+}
+
 export function PortfolioPanel() {
   const trades = useAppStore((s) => s.trades);
   const account = useAppStore((s) => s.account);
   const bot = useAppStore((s) => s.bot);
+  const trailingStopLossAuto = bot?.trailingStopLossAuto === true;
   const positions = useAppStore((s) => s.positions) || [];
   const pushLog = useAppStore((s) => s.pushLog);
   const mode = useAppStore((s) => s.mode);
@@ -527,6 +636,7 @@ export function PortfolioPanel() {
   }, [strictAccountMissing, trades]);
 
   const [tradeHistoryView, setTradeHistoryView] = useState<"ALL" | "OPEN_ONLY" | "CLOSED_ONLY">("ALL");
+  const [tradeHistorySort, setTradeHistorySort] = useState<TradeHistorySort>("RECENT");
   // Default "Strategy" (APP): futures demo emits many unmatched income shards; hide unless debugging.
   const [closeSourceFilter, setCloseSourceFilter] = useState<"ALL" | "APP" | "LEDGER">("APP");
   /** Drives net realised PnL, winrate, fee rollup, and trade history timestamps. */
@@ -720,8 +830,18 @@ export function PortfolioPanel() {
     else if (tradeHistoryView === "CLOSED_ONLY") out = closedTrades.filter(keepClose);
     else if (closeSourceFilter === "ALL") out = rows;
     else out = rows.filter((t: any) => (t?.type === "OPEN" ? true : keepClose(t)));
-    return out.filter((t) => tradeMatchesHistoryTime(t, historyRangeFilter));
-  }, [tradeHistoryView, openTrades, closedTrades, portfolioTrades, closeSourceFilter, historyRangeFilter]);
+    const filtered = out.filter((t) => tradeMatchesHistoryTime(t, historyRangeFilter));
+    return sortTradeHistoryRows(filtered, tradeHistorySort, rows, openTradeById);
+  }, [
+    tradeHistoryView,
+    openTrades,
+    closedTrades,
+    portfolioTrades,
+    closeSourceFilter,
+    historyRangeFilter,
+    tradeHistorySort,
+    openTradeById,
+  ]);
 
   /** Legacy standalone local futures (former BINANCE_DEMO_FUTURES without keys); hybrid demo uses name "hybrid". */
   const isPaperFuturesLocal = exchName === "binance_demo_futures";
@@ -1211,7 +1331,7 @@ export function PortfolioPanel() {
                   positions.map((p: any) => (
                     <tr key={p.id} className="border-t border-slate-200 dark:border-slate-900">
                       <td className="w-3 min-w-[12px] max-w-[14px] border-0 px-0 py-2 align-middle">
-                        {positionRowBreakevenStopIndicator(p) ? <BreakevenStopLead /> : null}
+                        {positionRowBreakevenStopIndicator(p, trailingStopLossAuto) ? <BreakevenStopLead /> : null}
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{p.symbol}</td>
                       <td className="px-3 py-2 text-[10px] uppercase text-slate-600 dark:text-slate-500">
@@ -1397,6 +1517,25 @@ export function PortfolioPanel() {
                 >
                   Ledger
                 </button>
+                <span className="mx-1 hidden text-slate-600 sm:inline">|</span>
+                <label className="flex min-w-0 max-w-full items-center gap-1.5 sm:max-w-[14rem]">
+                  <span className="shrink-0 text-[10px] font-medium text-slate-600 dark:text-slate-400">Sort</span>
+                  <select
+                    className="min-w-0 flex-1 cursor-pointer truncate rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-800 shadow-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 sm:flex-none sm:text-[11px]"
+                    value={tradeHistorySort}
+                    onChange={(e) => setTradeHistorySort(e.target.value as TradeHistorySort)}
+                    title="Order rows in the table below"
+                  >
+                    <option value="RECENT">Recent first</option>
+                    <option value="OLDEST">Oldest first</option>
+                    <option value="PNL_HIGH">Net PnL · high → low</option>
+                    <option value="PNL_LOW">Net PnL · low → high</option>
+                    <option value="GROSS_HIGH">Gross · high → low</option>
+                    <option value="GROSS_LOW">Gross · low → high</option>
+                    <option value="SYMBOL_AZ">Symbol A–Z</option>
+                    <option value="SYMBOL_ZA">Symbol Z–A</option>
+                  </select>
+                </label>
               </div>
             </div>
           </div>
@@ -1445,9 +1584,12 @@ export function PortfolioPanel() {
                     const reasonTitle = [t.reason, t?.meta?.closeReason, t?.meta?.bracketType]
                       .filter((x) => x != null && String(x).trim() !== "")
                       .join(" · ");
-                    const beLead = openTradeRowBreakevenStopIndicator(t, positions);
+                    const beLead = openTradeRowBreakevenStopIndicator(t, positions, trailingStopLossAuto);
                     return (
-                      <tr key={idx} className="border-t border-slate-200 dark:border-slate-900">
+                      <tr
+                        key={`${t?.type}-${String(t?.id ?? "")}-${tradeTsMs(t)}-${idx}`}
+                        className="border-t border-slate-200 dark:border-slate-900"
+                      >
                         <td className="w-3 min-w-[12px] max-w-[14px] border-0 px-0 py-2 align-middle">
                           {beLead ? <BreakevenStopLead /> : null}
                         </td>

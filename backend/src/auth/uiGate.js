@@ -211,10 +211,16 @@ export function createUiAuthRouter({ log }) {
 
   r.get("/me", (req, res) => {
     if (!uiAuthEnabled()) {
-      return res.json({ ok: true, enabled: false, authenticated: true });
+      return res.json({ ok: true, enabled: false, authenticated: true, uiUserTag: null, uiTradingMode: null });
     }
     const ok = Boolean(req.session?.uiAuthOk);
-    res.json({ ok: true, enabled: true, authenticated: ok });
+    res.json({
+      ok: true,
+      enabled: true,
+      authenticated: ok,
+      uiUserTag: ok && req.session?.uiUserTag ? String(req.session.uiUserTag) : null,
+      uiTradingMode: ok && req.session?.uiTradingMode ? String(req.session.uiTradingMode) : null,
+    });
   });
 
   r.post("/login", loginRouteLimiter, async (req, res) => {
@@ -264,6 +270,10 @@ export function createUiAuthRouter({ log }) {
       }
       req.session.uiAuthOk = true;
       req.session.uiAuthAt = Date.now();
+      const emailNorm = String(parsed.data.email || "")
+        .toLowerCase()
+        .trim();
+      req.session.uiUserTag = crypto.createHash("sha256").update(emailNorm).digest("hex").slice(0, 24);
       req.session.save((err) => {
         if (err) {
           log.warn("ui_login_session_save", { error: String(err?.message || err) });

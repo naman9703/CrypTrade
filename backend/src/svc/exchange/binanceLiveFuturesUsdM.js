@@ -430,6 +430,24 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
 
         if (mergeInto) {
           mergeInto.pnl = Number(mergeInto.pnl || 0) + pnl;
+          if (mergeInto.reason == null && lc) {
+            mergeInto.reason =
+              lc.bracketType === "SL"
+                ? lc.exitViaTrailedStop
+                  ? "TRAILED_STOP_LOSS"
+                  : "STOP_LOSS"
+                : lc.bracketType === "TP"
+                  ? "TAKE_PROFIT"
+                : lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP"
+                  ? lc.strategyCloseReason
+                  : "MANUAL_CLOSE";
+            if (mergeInto.meta && typeof mergeInto.meta === "object") {
+              mergeInto.meta.exitViaTrailedStop = lc.exitViaTrailedStop === true;
+              mergeInto.meta.trailStepAtClose = lc.trailStepAtClose;
+              mergeInto.meta.supertrendSignalClose =
+                lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP";
+            }
+          }
           mergeInto.meta._incomeEventMs = Math.max(
             Number(mergeInto.meta._incomeEventMs || 0),
             eventMs
@@ -464,6 +482,16 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           const closeQtyN = lc.qty != null ? Number(lc.qty) : NaN;
           const closePxN =
             lc.markPx != null && Number.isFinite(Number(lc.markPx)) ? Number(lc.markPx) : NaN;
+          const reasonNorm =
+            lc.bracketType === "SL"
+              ? lc.exitViaTrailedStop
+                ? "TRAILED_STOP_LOSS"
+                : "STOP_LOSS"
+              : lc.bracketType === "TP"
+                ? "TAKE_PROFIT"
+                : lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP"
+                  ? lc.strategyCloseReason
+                  : "MANUAL_CLOSE";
           mem.trades.push({
             type: "CLOSE",
             id: `finc_${tid}`,
@@ -479,6 +507,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             pnl,
             fee: tradeCloseFeeUsdtFromNotional(closeQtyN, closePxN) ?? undefined,
             strategy: lc.strategy || "AUTO",
+            reason: reasonNorm,
             meta: {
               source: "fapi_income",
               incomeType: row.incomeType || "REALIZED_PNL",
@@ -490,6 +519,10 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
               _incomeEventMs: eventMs,
               leverage: lc.leverage != null ? Number(lc.leverage) : undefined,
               exitPrice: lc.markPx != null ? Number(lc.markPx) : undefined,
+              exitViaTrailedStop: lc.exitViaTrailedStop === true,
+              trailStepAtClose: lc.trailStepAtClose,
+              supertrendSignalClose:
+                lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP",
             },
           });
         }
@@ -548,7 +581,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         const out = [];
         for (const { sym, lb, pb, lev, p } of rows) {
           const oo = await stopTakeFromExchangeOpenOrders(sym);
-          out.push({
+          const symU = String(sym || "").toUpperCase();
+          const trail = mem.trailingBySymbol[symU];
+          const row = {
             id: `fut_${sym}`,
             symbol: sym,
             side: Number(p.positionAmt) > 0 ? "BUY" : "SELL",
@@ -560,7 +595,15 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
             venue: "FUTURES",
             syncSource: "fapi_v2_account",
-          });
+          };
+          if (trail && trail.entryPrice) {
+            row.meta = {
+              autoTradeTrailing: true,
+              trailStep: Number(trail.trailStep) || 0,
+              extremePx: trail.extremePx,
+            };
+          }
+          out.push(row);
         }
         return out;
       } catch (e) {
@@ -847,6 +890,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             // Record the close so income sync attributes PnL to strategy (not ledger).
             // The actual CLOSE trade will be created by syncRealizedIncomeFromExchange
             // when the REALIZED_PNL row arrives, with the real PnL from Binance.
+            const symU = String(symbol || "").toUpperCase();
+            const trailMeta = mem.trailingBySymbol[symU];
+            const exitViaTrailedStop = hit === "SL" && trailMeta && Number(trailMeta.trailStep) > 0;
             mem.recentLocalCloses.push({
               symbol,
               closedAt: Date.now(),
@@ -860,10 +906,12 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
               takeProfit: b.takeProfit,
               leverage: b.leverage,
               markPx: Number(markPx),
+              exitViaTrailedStop,
+              trailStepAtClose: Number(trailMeta?.trailStep) || 0,
             });
             delete mem.localBrackets[symbol];
             delete mem.placedBracketTargets[symbol];
-            delete mem.trailingBySymbol[String(symbol || "").toUpperCase()];
+            delete mem.trailingBySymbol[symU];
           } catch (e) {
             log?.warn?.("binance_live_futures_local_bracket_close_failed", { symbol, hit, error: String(e?.message || e) });
           }
@@ -928,12 +976,16 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           : Number(p.leverage) > 0
             ? Number(p.leverage)
             : undefined;
+      const ur = String(userCloseReason || "").toUpperCase();
+      const isSignal = ur === "SUPERTREND_EXIT" || ur === "SUPERTREND_FLIP";
       mem.recentLocalCloses.push({
         symbol: p.symbol,
         closedAt: Date.now(),
         closeSide,
         strategy: strat,
         bracketType: "MANUAL_CLOSE",
+        strategyCloseReason: isSignal ? ur : "MANUAL_CLOSE",
+        userCloseReason: userCloseReason || null,
         posId: sid,
         qty: p.qty,
         entryPrice: Number(p.entryPrice) || undefined,
@@ -943,7 +995,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       });
       delete mem.localBrackets[p.symbol];
       delete mem.placedBracketTargets[p.symbol];
-      const isSignal = String(userCloseReason || "").toUpperCase() === "SUPERTREND_EXIT";
+      delete mem.trailingBySymbol[String(p.symbol || "").toUpperCase()];
       notifyActivity?.({
         level: "info",
         msg: isSignal

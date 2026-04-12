@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { api } from "../api/client";
+import { useAuthActions } from "../authContext";
 import { deferTask } from "../lib/deferTask";
 import { playEngineStartSound } from "../lib/uiSounds";
 import { useAppStore } from "../ws/store";
@@ -34,6 +35,8 @@ export function HeaderBar() {
   const mode = useAppStore((s) => s.mode);
   const runningByMode = useAppStore((s) => s.runningByMode ?? {});
   const pushLog = useAppStore((s) => s.pushLog);
+  const perSessionTradingMode = useAppStore((s) => s.perSessionTradingMode);
+  const authActions = useAuthActions();
 
   const botRunning = Boolean(bot?.running);
   const exchangeName = bot?.exchange?.name || mode || "—";
@@ -107,13 +110,16 @@ export function HeaderBar() {
                 const next = e.target.value;
                 deferTask(() => {
                   void (async () => {
+                    const sessionHint = perSessionTradingMode
+                      ? " This choice applies only to your login (session); other users keep their own view."
+                      : "";
                     const ok =
                       next === "BINANCE_LIVE"
                         ? window.confirm(
-                            "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Other modes’ bots keep running. Continue?",
+                            `BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Other modes’ bots keep running.${sessionHint} Continue?`,
                           )
                         : window.confirm(
-                            `Switch UI to ${next}? Bots for other modes keep running in the background; Start/Stop applies to each mode separately.`,
+                            `Switch UI to ${next}? Bots for other modes keep running in the background; Start/Stop applies to each mode separately.${sessionHint}`,
                           );
                     if (!ok) return;
                     try {
@@ -131,6 +137,15 @@ export function HeaderBar() {
               <option value="BINANCE_TESTNET">BINANCE TESTNET (spot + futures testnet)</option>
               <option value="BINANCE_LIVE">BINANCE LIVE (mainnet · real money)</option>
             </select>
+
+            {authActions?.gated && perSessionTradingMode ? (
+              <span
+                className="max-w-[14rem] rounded-md border border-sky-500/45 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold leading-snug text-sky-950 dark:border-sky-400/40 dark:bg-sky-500/15 dark:text-sky-100 sm:max-w-xs sm:text-[11px]"
+                title="Trading mode is stored in your session and in this browser per account. It does not change other users’ views."
+              >
+                Mode is per login: other accounts are unaffected.
+              </span>
+            ) : null}
 
             {(mode === "BINANCE_DEMO_API" || exchangeName === "binance_demo_spot") && (
               <button

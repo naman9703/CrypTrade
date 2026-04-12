@@ -18,11 +18,21 @@ export function AuthShell() {
       const enabled = Boolean(r?.enabled);
       setAuthEnabled(enabled);
       if (!enabled) {
+        useAppStore.setState({ authUiUserTag: null, perSessionTradingMode: false });
         setPhase("app");
         return;
       }
+      if (r?.authenticated) {
+        useAppStore.setState({
+          authUiUserTag: r.uiUserTag ?? null,
+          perSessionTradingMode: true,
+        });
+      } else {
+        useAppStore.setState({ authUiUserTag: null, perSessionTradingMode: false });
+      }
       setPhase(r?.authenticated ? "app" : "login");
     } catch {
+      useAppStore.setState({ authUiUserTag: null, perSessionTradingMode: false });
       setPhase("login");
       setAuthEnabled(true);
     }

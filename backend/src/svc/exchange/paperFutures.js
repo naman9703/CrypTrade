@@ -134,6 +134,22 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     const totalFee = openFee + exitFee;
     const netPnl = roundTo(gross - totalFee, 4);
     state.equity = roundTo(state.equity + gross - exitFee, 2);
+    const rU = String(reason || "").toUpperCase();
+    const trailStepAtClose = Number(p?.meta?.trailStep) || 0;
+    const exitViaTrailedStop = (rU === "STOP" || rU === "STOP_LOSS") && trailStepAtClose > 0;
+    let bracketType = null;
+    let reasonNorm = rU;
+    if (rU === "STOP" || rU === "STOP_LOSS") {
+      bracketType = "SL";
+      reasonNorm = exitViaTrailedStop ? "TRAILED_STOP_LOSS" : "STOP_LOSS";
+    } else if (rU === "TAKE_PROFIT") {
+      bracketType = "TP";
+      reasonNorm = "TAKE_PROFIT";
+    } else if (rU === "SUPERTREND_EXIT" || rU === "SUPERTREND_FLIP") {
+      reasonNorm = rU;
+    } else if (rU === "MANUAL_CLOSE" || rU === "MANUAL") {
+      reasonNorm = "MANUAL_CLOSE";
+    }
     state.positions.splice(idx, 1);
     const t = {
       id: posId,
@@ -152,7 +168,18 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
       fee: roundTo(totalFee, 6),
       grossPnl: roundTo(gross, 4),
       strategy: p.strategy,
-      meta: { ...(p.meta || {}), closeReason: reason, openFee, exitFee, totalFee: roundTo(totalFee, 6) },
+      reason: reasonNorm,
+      meta: {
+        ...(p.meta || {}),
+        closeReason: reason,
+        openFee,
+        exitFee,
+        totalFee: roundTo(totalFee, 6),
+        ...(bracketType ? { bracketType } : {}),
+        exitViaTrailedStop,
+        trailStepAtClose,
+        ...(rU === "SUPERTREND_EXIT" || rU === "SUPERTREND_FLIP" ? { supertrendSignalClose: true } : {}),
+      },
     };
     state.trades.push(t);
     persistSoon();

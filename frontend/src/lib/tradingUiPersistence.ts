@@ -1,8 +1,14 @@
 /** Browser persistence for trading mode + bot config fields (survives server restarts / empty data dir). */
 
 /** v2: capital-allotment fields added to persist list; migrate v1 without copying `byMode` (stale prefs broke VPS vs dev). */
-const STORAGE_KEY = "trading-ui-prefs-v2";
+const STORAGE_KEY_BASE = "trading-ui-prefs-v2";
 const LEGACY_STORAGE_KEY = "trading-ui-prefs-v1";
+
+/** When UI auth is on, scope prefs per stable user tag from `/api/auth/me` (SHA-256 prefix of email, not reversible). */
+export function tradingUiStorageKey(userTag?: string | null): string {
+  const t = userTag != null && String(userTag).trim() ? String(userTag).trim() : "";
+  return t ? `${STORAGE_KEY_BASE}:user:${t}` : STORAGE_KEY_BASE;
+}
 
 export type TradingModeSlug = "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE";
 
@@ -134,9 +140,13 @@ export function botMatchesPersistedPatch(bot: Record<string, unknown> | null | u
   return true;
 }
 
-export function loadTradingUiPrefs(): TradingUiPersistedV1 | null {
+export function loadTradingUiPrefs(userTag?: string | null): TradingUiPersistedV1 | null {
   try {
-    let raw = localStorage.getItem(STORAGE_KEY);
+    const key = tradingUiStorageKey(userTag);
+    let raw = localStorage.getItem(key);
+    if (!raw && userTag) {
+      raw = localStorage.getItem(STORAGE_KEY_BASE);
+    }
     if (!raw) {
       const leg = localStorage.getItem(LEGACY_STORAGE_KEY);
       if (leg) {
@@ -148,7 +158,7 @@ export function loadTradingUiPrefs(): TradingUiPersistedV1 | null {
               lastMode: old.lastMode as TradingModeSlug | undefined,
               byMode: {},
             };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+            localStorage.setItem(key, JSON.stringify(migrated));
           }
         } catch {
           /* ignore */
@@ -158,7 +168,7 @@ export function loadTradingUiPrefs(): TradingUiPersistedV1 | null {
         } catch {
           /* ignore */
         }
-        raw = localStorage.getItem(STORAGE_KEY);
+        raw = localStorage.getItem(key);
       }
     }
     if (!raw) return null;
@@ -170,31 +180,37 @@ export function loadTradingUiPrefs(): TradingUiPersistedV1 | null {
   }
 }
 
-export function tradingUiPersistMode(mode: string | undefined) {
+export function tradingUiPersistMode(mode: string | undefined, userTag?: string | null) {
   if (!mode) return;
   const m = String(mode).toUpperCase();
   if (!["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"].includes(m)) return;
   try {
-    const cur = loadTradingUiPrefs() || { v: 1 as const, lastMode: m as TradingModeSlug, byMode: {} };
+    const key = tradingUiStorageKey(userTag);
+    const cur = loadTradingUiPrefs(userTag) || { v: 1 as const, lastMode: m as TradingModeSlug, byMode: {} };
     cur.v = 1;
     cur.lastMode = m as TradingModeSlug;
     cur.byMode = { ...cur.byMode };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cur));
+    localStorage.setItem(key, JSON.stringify(cur));
   } catch {
     /* ignore */
   }
 }
 
-export function tradingUiPersistBotSnapshot(mode: string | undefined, bot: Record<string, unknown> | null | undefined) {
+export function tradingUiPersistBotSnapshot(
+  mode: string | undefined,
+  bot: Record<string, unknown> | null | undefined,
+  userTag?: string | null,
+) {
   if (!mode || !bot || typeof bot !== "object") return;
   const m = String(mode).toUpperCase();
   if (!["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"].includes(m)) return;
   try {
-    const cur = loadTradingUiPrefs() || { v: 1 as const, lastMode: m as TradingModeSlug, byMode: {} };
+    const key = tradingUiStorageKey(userTag);
+    const cur = loadTradingUiPrefs(userTag) || { v: 1 as const, lastMode: m as TradingModeSlug, byMode: {} };
     cur.v = 1;
     cur.lastMode = m as TradingModeSlug;
     cur.byMode = { ...cur.byMode, [m]: extractPersistableBotPatch(bot) };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cur));
+    localStorage.setItem(key, JSON.stringify(cur));
   } catch {
     /* ignore */
   }

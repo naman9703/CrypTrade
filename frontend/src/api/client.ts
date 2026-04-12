@@ -26,7 +26,13 @@ async function json<T>(res: Response): Promise<T> {
 
 export const api = {
   async authMe() {
-    return json<{ ok?: boolean; enabled?: boolean; authenticated?: boolean }>(await apiFetch(`${HTTP}/api/auth/me`));
+    return json<{
+      ok?: boolean;
+      enabled?: boolean;
+      authenticated?: boolean;
+      uiUserTag?: string | null;
+      uiTradingMode?: string | null;
+    }>(await apiFetch(`${HTTP}/api/auth/me`));
   },
   async login(email: string, password: string) {
     return json<{ ok?: boolean }>(
@@ -141,7 +147,11 @@ export const api = {
     if (data?.ok && data.bot && typeof data.bot === "object") {
       const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
       const { useAppStore } = await import("../ws/store");
-      tradingUiPersistBotSnapshot(useAppStore.getState().mode, data.bot as Record<string, unknown>);
+      tradingUiPersistBotSnapshot(
+        useAppStore.getState().mode,
+        data.bot as Record<string, unknown>,
+        useAppStore.getState().authUiUserTag ?? null,
+      );
     }
     return data;
   },
@@ -188,7 +198,7 @@ export const api = {
     );
     if (data?.ok) {
       const { tradingUiPersistMode } = await import("../lib/tradingUiPersistence");
-      tradingUiPersistMode(mode);
+      tradingUiPersistMode(mode, useAppStore.getState().authUiUserTag ?? null);
     }
     return data;
   },

@@ -52,6 +52,10 @@ export function MultiCoinSignalTabs() {
   const tabs = useMemo(() => {
     const multi = String(bot?.universeCoinSelectMode || "").toUpperCase() === "MULTIPLE";
     if (!multi) return [];
+    const serverTabs = Array.isArray(bot?.multiCoinSignalTabSymbols)
+      ? [...new Set(bot.multiCoinSignalTabSymbols.map((x: string) => String(x || "").trim().toUpperCase()).filter(Boolean))]
+      : [];
+    if (serverTabs.length) return serverTabs;
     const manual = String(bot?.universePinControl || "").toUpperCase() === "MANUAL";
     const pins = Array.isArray(bot?.universePinnedSymbols) ? bot!.universePinnedSymbols : [];
     if (manual && pins.length) {
@@ -61,10 +65,24 @@ export function MultiCoinSignalTabs() {
     const ranked = Array.isArray(bot?.universe?.ranked)
       ? bot.universe.ranked.map((r: { symbol?: string }) => r?.symbol).filter(Boolean)
       : [];
-    const raw = sel.length ? sel : ranked;
-    return [...new Set(raw.map((s: string) => String(s).toUpperCase()).filter(Boolean))].slice(0, 12);
+    const seen = new Set<string>();
+    const merged: string[] = [];
+    for (const s of sel) {
+      const u = String(s || "").trim().toUpperCase();
+      if (!u || seen.has(u)) continue;
+      seen.add(u);
+      merged.push(u);
+    }
+    for (const s of ranked) {
+      const u = String(s || "").trim().toUpperCase();
+      if (!u || seen.has(u)) continue;
+      seen.add(u);
+      merged.push(u);
+    }
+    return merged.length ? merged.slice(0, 12) : [];
   }, [
     bot?.universeCoinSelectMode,
+    bot?.multiCoinSignalTabSymbols,
     bot?.universePinControl,
     bot?.universePinnedSymbols,
     bot?.universe?.selected,

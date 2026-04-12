@@ -6,6 +6,8 @@ import { formatAiServiceError } from "../svc/aiHttpError.js";
 import { broadcastActivity } from "../lib/activityLog.js";
 import { mergePersistedTradesWithExchange } from "../lib/activityPersistence.js";
 import { isStrictBinanceAccountMode, tradingModeToPersistenceSlug } from "../lib/tradingModePersistence.js";
+import { uiAuthEnabled } from "../auth/uiGate.js";
+import { normalizeTradingMode } from "../state/appState.js";
 
 const BOT_TARGET_MODES = z.enum(["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"]);
 
@@ -22,8 +24,17 @@ export function createRouter({ appState }) {
     mode: BOT_TARGET_MODES.optional(),
   });
 
-  function getEngineForBotRequest(bodyMode) {
-    const m = bodyMode != null ? String(bodyMode).toUpperCase() : appState.mode;
+  /** Active engine for this HTTP request: explicit body.mode, else session UI mode (when auth), else server default. */
+  function resolveViewTradingMode(req, bodyMode) {
+    if (bodyMode != null) return normalizeTradingMode(bodyMode);
+    if (uiAuthEnabled() && req.session?.uiAuthOk && req.session?.uiTradingMode) {
+      return normalizeTradingMode(req.session.uiTradingMode);
+    }
+    return appState.mode;
+  }
+
+  function getEngineForBotRequest(req, bodyMode) {
+    const m = resolveViewTradingMode(req, bodyMode);
     appState.ensureEngine(m);
     const row = appState.getEngine(m);
     if (!row?.bot) throw new Error(`engine_missing:${m}`);
@@ -37,35 +48,38 @@ export function createRouter({ appState }) {
     ]);
   }
 
-  r.get("/state", async (_req, res) => {
+  r.get("/state", async (req, res) => {
+    const viewM = resolveViewTradingMode(req, undefined);
+    const row = getEngineForBotRequest(req, undefined);
+    const ex = row.exchange;
     let account = null;
     let positions = [];
     let trades = [];
     try {
-      account = await withTimeout(appState.exchange.getAccount(), 2000);
+      account = await withTimeout(ex.getAccount(), 2000);
     } catch {
       account = null;
     }
     try {
-      positions = await withTimeout(appState.exchange.getPositions(), 2000);
+      positions = await withTimeout(ex.getPositions(), 2000);
     } catch {
       positions = [];
     }
     try {
-      trades = await withTimeout(appState.exchange.getTrades(), 2000);
+      trades = await withTimeout(ex.getTrades(), 2000);
     } catch {
       trades = [];
     }
-    if (isStrictBinanceAccountMode(appState.mode) && account == null) {
+    if (isStrictBinanceAccountMode(viewM) && account == null) {
       positions = [];
       trades = [];
     } else {
-      trades = mergePersistedTradesWithExchange(appState.mode, trades);
+      trades = mergePersistedTradesWithExchange(viewM, trades);
     }
     res.json({
       ok: true,
-      mode: appState.mode,
-      bot: appState.bot.getPublicState(),
+      mode: viewM,
+      bot: row.bot.getPublicState(),
       runningByMode: appState.getRunningByMode?.() ?? {},
       account,
       positions,
@@ -78,7 +92,8 @@ export function createRouter({ appState }) {
    * Query: symbol (defaults to bot symbol), venue = SPOT | FUTURES | BOTH (defaults from bot marketMode; AUTO → BOTH).
    */
   r.get("/symbol/constraints", async (req, res) => {
-    const botState = appState.bot.getPublicState();
+    const row = getEngineForBotRequest(req, undefined);
+    const botState = row.bot.getPublicState();
     const symbol = String(req.query.symbol || botState.symbol || "").toUpperCase();
     let venue = String(req.query.venue || "").toUpperCase();
     if (!symbol) return res.status(400).json({ ok: false, error: "symbol_required" });
@@ -87,7 +102,7 @@ export function createRouter({ appState }) {
       venue = mm === "AUTO" ? "BOTH" : mm === "SPOT" ? "SPOT" : "FUTURES";
     }
     try {
-      const ex = appState.exchange;
+      const ex = row.exchange;
       if (!ex?.getSymbolOrderConstraints) {
         return res.json({
           ok: true,
@@ -109,15 +124,17 @@ export function createRouter({ appState }) {
   /** Last N bars for chart (~24h). Default: bot symbol + live buffer. `?symbol=OTHERUSDT` fetches REST OHLC for multi-chart tiles. */
   r.get("/market/candles", async (req, res) => {
     try {
+      const row = getEngineForBotRequest(req, undefined);
+      const bot = row.bot;
       const hours = Math.max(0.25, Math.min(168, Number(req.query.hours ?? 24)));
       const symQ = String(req.query.symbol || "").trim().toUpperCase();
-      const botSym = String(appState.bot.getPublicState().symbol || "").toUpperCase();
-      if (symQ && symQ !== botSym && typeof appState.bot.getChartSnapshotForSymbol === "function") {
-        const snap = await appState.bot.getChartSnapshotForSymbol(symQ, { hours });
+      const botSym = String(bot.getPublicState().symbol || "").toUpperCase();
+      if (symQ && symQ !== botSym && typeof bot.getChartSnapshotForSymbol === "function") {
+        const snap = await bot.getChartSnapshotForSymbol(symQ, { hours });
         if (!snap?.candles?.length) return res.status(503).json({ ok: false, error: "no_candles" });
         return res.json({ ok: true, ...snap });
       }
-      const snap = appState.bot.getChartSnapshot({ hours });
+      const snap = bot.getChartSnapshot({ hours });
       if (!snap?.candles?.length) return res.status(503).json({ ok: false, error: "no_candles" });
       res.json({ ok: true, ...snap });
     } catch (e) {
@@ -169,9 +186,10 @@ export function createRouter({ appState }) {
     }
   });
 
-  r.get("/metrics", (_req, res) => {
+  r.get("/metrics", (req, res) => {
     try {
-      res.json({ ok: true, data: appState.bot.getMetrics?.() || {} });
+      const row = getEngineForBotRequest(req, undefined);
+      res.json({ ok: true, data: row.bot.getMetrics?.() || {} });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
@@ -250,7 +268,8 @@ export function createRouter({ appState }) {
     try {
       const parsed = botLifecycleBody.safeParse(req.body && typeof req.body === "object" ? req.body : {});
       const body = parsed.success ? parsed.data : {};
-      const row = getEngineForBotRequest(body.mode);
+      const row = getEngineForBotRequest(req, body.mode);
+      const targetM = resolveViewTradingMode(req, body.mode);
       row.bot.start({
         wsHub: appState.wsHub,
         reason: body.reason ?? "user_request",
@@ -259,8 +278,8 @@ export function createRouter({ appState }) {
       });
       res.json({
         ok: true,
-        mode: appState.mode,
-        targetMode: body.mode ?? appState.mode,
+        mode: targetM,
+        targetMode: targetM,
         bot: row.bot.getPublicState(),
         runningByMode: appState.getRunningByMode?.() ?? {},
       });
@@ -273,7 +292,8 @@ export function createRouter({ appState }) {
     try {
       const parsed = botLifecycleBody.safeParse(req.body && typeof req.body === "object" ? req.body : {});
       const body = parsed.success ? parsed.data : {};
-      const row = getEngineForBotRequest(body.mode);
+      const row = getEngineForBotRequest(req, body.mode);
+      const targetM = resolveViewTradingMode(req, body.mode);
       row.bot.stop({
         wsHub: appState.wsHub,
         reason: body.reason ?? "user_request",
@@ -282,8 +302,8 @@ export function createRouter({ appState }) {
       });
       res.json({
         ok: true,
-        mode: appState.mode,
-        targetMode: body.mode ?? appState.mode,
+        mode: targetM,
+        targetMode: targetM,
         bot: row.bot.getPublicState(),
         runningByMode: appState.getRunningByMode?.() ?? {},
       });
@@ -293,10 +313,11 @@ export function createRouter({ appState }) {
   });
 
   /** Re-anchor hybrid daily loss baselines to current wallet equity and start the bot (after max-daily-loss stop). */
-  r.post("/bot/reset-daily-loss", (_req, res) => {
+  r.post("/bot/reset-daily-loss", (req, res) => {
     try {
-      appState.bot.resetDailyLossBaselineAndStart({ wsHub: appState.wsHub, source: "http" });
-      res.json({ ok: true, bot: appState.bot.getPublicState() });
+      const row = getEngineForBotRequest(req, undefined);
+      row.bot.resetDailyLossBaselineAndStart({ wsHub: appState.wsHub, source: "http" });
+      res.json({ ok: true, bot: row.bot.getPublicState() });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
@@ -386,7 +407,7 @@ export function createRouter({ appState }) {
     const { mode: configTargetMode, ...patch } = parsed.data;
     let row;
     try {
-      row = getEngineForBotRequest(configTargetMode);
+      row = getEngineForBotRequest(req, configTargetMode);
     } catch (e) {
       return res.status(400).json({ ok: false, error: String(e?.message || e) });
     }
@@ -398,31 +419,32 @@ export function createRouter({ appState }) {
         msg: "Bot configuration updated",
         category: "config",
         reason: "api_patch",
-        detail: { ...patch, targetMode: configTargetMode ?? appState.mode },
-        tradingMode: configTargetMode ?? appState.mode,
+        detail: { ...patch, targetMode: configTargetMode ?? resolveViewTradingMode(req, undefined) },
+        tradingMode: configTargetMode ?? resolveViewTradingMode(req, undefined),
       },
-      { persistenceSlug: tradingModeToPersistenceSlug(String(configTargetMode ?? appState.mode)) },
+      { persistenceSlug: tradingModeToPersistenceSlug(String(configTargetMode ?? resolveViewTradingMode(req, undefined))) },
     );
     // Match WS `state` shape so the UI doesn't drop account/positions until the next heartbeat.
     const ex = row.exchange;
     Promise.all([ex.getAccount().catch(() => null), ex.getPositions().catch(() => [])])
       .then(([account, positions]) => {
-        const m = String(configTargetMode ?? appState.mode).toUpperCase();
+        const m = String(configTargetMode ?? resolveViewTradingMode(req, undefined)).toUpperCase();
         appState.wsHub?.broadcast("state", { mode: m, ...bot, account, positions });
       })
       .catch(() => {
-        const m = String(configTargetMode ?? appState.mode).toUpperCase();
+        const m = String(configTargetMode ?? resolveViewTradingMode(req, undefined)).toUpperCase();
         appState.wsHub?.broadcast("state", { mode: m, ...bot, account: null, positions: [] });
       });
-    res.json({ ok: true, bot, targetMode: configTargetMode ?? appState.mode });
+    res.json({ ok: true, bot, targetMode: configTargetMode ?? resolveViewTradingMode(req, undefined) });
   });
 
   // Scan and rank coins (Binance only). Returns ranked list + selected top symbols.
   // ?refresh=1 forces a fresh scan (otherwise last cached snapshot may be returned).
   r.get("/universe/scan", async (req, res) => {
     try {
+      const row = getEngineForBotRequest(req, undefined);
       const force = String(req.query?.refresh || "") === "1";
-      const out = await appState.bot.getUniverseScan?.({ force });
+      const out = await row.bot.getUniverseScan?.({ force });
       if (!out) return res.status(400).json({ ok: false, error: "universe_unavailable" });
       return res.json(out);
     } catch (e) {
@@ -431,9 +453,10 @@ export function createRouter({ appState }) {
   });
 
   /** Tradable USDT symbols for the active spot/futures universe (custom coin-base picker). */
-  r.get("/universe/symbols", async (_req, res) => {
+  r.get("/universe/symbols", async (req, res) => {
     try {
-      const out = await appState.bot.listTradableUniverseSymbols?.();
+      const row = getEngineForBotRequest(req, undefined);
+      const out = await row.bot.listTradableUniverseSymbols?.();
       if (!out) return res.status(400).json({ ok: false, error: "universe_unavailable" });
       return res.json(out);
     } catch (e) {
@@ -452,7 +475,8 @@ export function createRouter({ appState }) {
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
 
     try {
-      const out = await appState.bot.manualTrade({ wsHub: appState.wsHub, ...parsed.data });
+      const row = getEngineForBotRequest(req, undefined);
+      const out = await row.bot.manualTrade({ wsHub: appState.wsHub, ...parsed.data });
       res.json(out);
     } catch (e) {
       res.status(400).json({ ok: false, error: String(e?.message || e) });
@@ -463,11 +487,13 @@ export function createRouter({ appState }) {
     const schema = z.object({ id: z.string().min(3) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
-    const ex = appState.exchange;
+    const row = getEngineForBotRequest(req, undefined);
+    const ex = row.exchange;
+    const viewM = resolveViewTradingMode(req, undefined);
     if (typeof ex?.closePosition !== "function") {
       return res.status(400).json({ ok: false, error: "close_not_supported" });
     }
-    const candles = appState.bot.feed.getCandles();
+    const candles = row.bot.feed.getCandles();
     const last = candles[candles.length - 1];
     if (!last) return res.status(400).json({ ok: false, error: "no_market_data" });
     try {
@@ -478,9 +504,9 @@ export function createRouter({ appState }) {
             category: partial.category || "risk",
             level: partial.level || "info",
             ...partial,
-            tradingMode: appState.mode,
+            tradingMode: viewM,
           },
-          { persistenceSlug: tradingModeToPersistenceSlug(appState.mode) },
+          { persistenceSlug: tradingModeToPersistenceSlug(viewM) },
         );
       const out = await ex.closePosition({
         id: parsed.data.id,
@@ -503,38 +529,55 @@ export function createRouter({ appState }) {
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    const next = normalizeTradingMode(parsed.data.mode);
+    if (uiAuthEnabled() && req.session?.uiAuthOk) {
+      req.session.uiTradingMode = next;
+      return req.session.save((err) => {
+        if (err) return res.status(500).json({ ok: false, error: "session_save_failed" });
+        try {
+          appState.wsHub?.notifySessionTradingMode?.(req.sessionID, next);
+        } catch {
+          /* ignore */
+        }
+        return res.json({ ok: true, mode: next, scope: "session" });
+      });
+    }
     try {
-      const out = await appState.setMode(parsed.data.mode);
-      return res.json(out);
+      const out = await appState.setMode(next);
+      return res.json({ ...out, scope: "server" });
     } catch (e) {
       return res.status(400).json({ ok: false, error: String(e?.message || e) });
     }
   });
 
-  r.get("/strategies", (_req, res) => {
-    res.json({ ok: true, strategies: appState.bot.getPublicState().topStrategies });
+  r.get("/strategies", (req, res) => {
+    const row = getEngineForBotRequest(req, undefined);
+    res.json({ ok: true, strategies: row.bot.getPublicState().topStrategies });
   });
 
-  r.get("/trading/evaluation", (_req, res) => {
+  r.get("/trading/evaluation", (req, res) => {
+    const row = getEngineForBotRequest(req, undefined);
+    const viewM = resolveViewTradingMode(req, undefined);
     res.json(
       getTradingEvaluationChecklist({
-        mode: appState.mode,
-        bot: appState.bot.getPublicState(),
+        mode: viewM,
+        bot: row.bot.getPublicState(),
       })
     );
   });
 
   r.get("/backtest", (req, res) => {
+    const row = getEngineForBotRequest(req, undefined);
     const limit = Math.max(200, Math.min(1500, Number(req.query.limit || 600)));
     const feeBps = Math.max(0, Math.min(50, Number(req.query.feeBps || 10)));
     const slippageBps = Math.max(0, Math.min(50, Number(req.query.slippageBps || 3)));
-    const candles = appState.bot.feed.getCandles().slice(-limit);
+    const candles = row.bot.feed.getCandles().slice(-limit);
     if (!candles?.length) return res.status(400).json({ ok: false, error: "no_candles" });
     const results = runBacktest({ candles, feeBps, slippageBps });
     res.json({
       ok: true,
-      symbol: appState.bot.getPublicState().symbol,
-      timeframe: appState.bot.getPublicState().timeframe,
+      symbol: row.bot.getPublicState().symbol,
+      timeframe: row.bot.getPublicState().timeframe,
       limit,
       feeBps,
       slippageBps,
@@ -546,8 +589,9 @@ export function createRouter({ appState }) {
     const schema = z.object({ confirm: z.literal(true) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: "confirm_required" });
-    if (appState.exchange?.name !== "paper") return res.status(400).json({ ok: false, error: "not_paper_mode" });
-    const out = await appState.exchange.reset({ confirm: true });
+    const row = getEngineForBotRequest(req, undefined);
+    if (row.exchange?.name !== "paper") return res.status(400).json({ ok: false, error: "not_paper_mode" });
+    const out = await row.exchange.reset({ confirm: true });
     return res.json(out);
   });
 
