@@ -1,6 +1,8 @@
 /** Browser persistence for trading mode + bot config fields (survives server restarts / empty data dir). */
 
-const STORAGE_KEY = "trading-ui-prefs-v1";
+/** v2: capital-allotment fields added to persist list; migrate v1 without copying `byMode` (stale prefs broke VPS vs dev). */
+const STORAGE_KEY = "trading-ui-prefs-v2";
+const LEGACY_STORAGE_KEY = "trading-ui-prefs-v1";
 
 export type TradingModeSlug = "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE";
 
@@ -29,6 +31,15 @@ export const PERSIST_BOT_KEYS = [
   "riskPerTradeUnit",
   "maxDailyLossUnit",
   "capitalSplitAcrossCoins",
+  /** Fixed-USDT capital pool + multi-coin deploy (must persist for session restore / VPS parity). */
+  "allowedBudgetUsdt",
+  "allowedBudgetWalletPct",
+  "allowedBudgetInputMode",
+  "multiTradeUsePctOfUsable",
+  "multiTradePctOfUsable",
+  "multiBudgetSplitMode",
+  "multiBudgetCoinUsdt",
+  "multiBudgetCoinPct",
   "strategyMode",
   "manualStrategy",
   "marketMode",
@@ -62,6 +73,12 @@ export function extractPersistableBotPatch(bot: Record<string, unknown> | null |
     if (Object.prototype.hasOwnProperty.call(bot, key) && bot[key] !== undefined) {
       if (key === "tradingFormDefaults" && bot.tradingFormDefaults && typeof bot.tradingFormDefaults === "object") {
         out.tradingFormDefaults = { ...(bot.tradingFormDefaults as Record<string, unknown>) };
+      } else if (
+        (key === "multiBudgetCoinUsdt" || key === "multiBudgetCoinPct") &&
+        bot[key] &&
+        typeof bot[key] === "object"
+      ) {
+        out[key] = { ...(bot[key] as Record<string, unknown>) };
       } else {
         out[key] = bot[key];
       }
@@ -81,6 +98,13 @@ export function mergePersistedBotPatch(
     if (key === "tradingFormDefaults" && patch.tradingFormDefaults && typeof patch.tradingFormDefaults === "object") {
       const prev = (serverBot.tradingFormDefaults as Record<string, unknown> | undefined) || {};
       out.tradingFormDefaults = { ...prev, ...(patch.tradingFormDefaults as Record<string, unknown>) };
+    } else if (
+      (key === "multiBudgetCoinUsdt" || key === "multiBudgetCoinPct") &&
+      patch[key] &&
+      typeof patch[key] === "object"
+    ) {
+      const prev = ((serverBot as Record<string, unknown>)[key] as Record<string, unknown> | undefined) || {};
+      out[key] = { ...prev, ...(patch[key] as Record<string, unknown>) };
     } else {
       out[key] = patch[key];
     }
@@ -112,7 +136,31 @@ export function botMatchesPersistedPatch(bot: Record<string, unknown> | null | u
 
 export function loadTradingUiPrefs(): TradingUiPersistedV1 | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    let raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      const leg = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (leg) {
+        try {
+          const old = JSON.parse(leg) as TradingUiPersistedV1 & { lastMode?: string };
+          if (old?.v === 1 && typeof old.byMode === "object") {
+            const migrated: TradingUiPersistedV1 = {
+              v: 1,
+              lastMode: old.lastMode as TradingModeSlug | undefined,
+              byMode: {},
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+          }
+        } catch {
+          /* ignore */
+        }
+        try {
+          localStorage.removeItem(LEGACY_STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+        raw = localStorage.getItem(STORAGE_KEY);
+      }
+    }
     if (!raw) return null;
     const data = JSON.parse(raw) as TradingUiPersistedV1;
     if (data.v !== 1 || typeof data.byMode !== "object" || !data.byMode) return null;

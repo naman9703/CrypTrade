@@ -532,12 +532,15 @@ function ThresholdSliderWithLock({
   onDebouncedCommit,
   formatDisplay,
   ariaLabel,
+  accentClassName = "accent-emerald-500",
 }: {
   serverSliderUnits: number;
   disabled?: boolean;
   onDebouncedCommit: (sliderUnits: number) => void;
   formatDisplay: (sliderUnits: number) => string;
   ariaLabel: string;
+  /** Tailwind `accent-*` for the range input (e.g. Indicators section uses violet). */
+  accentClassName?: string;
 }) {
   const [unlocked, setUnlocked] = useState(false);
   const [draft, setDraft] = useState(() => clampNum(Math.round(serverSliderUnits), 0, 100));
@@ -584,7 +587,7 @@ function ThresholdSliderWithLock({
       <input
         type="range"
         aria-label={ariaLabel}
-        className="h-2 min-w-0 flex-1 cursor-pointer accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
+        className={`h-2 min-w-0 flex-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-45 ${accentClassName}`}
         min={0}
         max={100}
         step={1}
@@ -2162,232 +2165,261 @@ export function TradingPanel() {
             )}
 
             {cfg.marketMode !== "SPOT" && (
-              <div className="rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-white/85 dark:bg-slate-950/30 px-2 py-2">
-                <label className="flex cursor-pointer items-start gap-2">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={cfg.trailingStopLossAuto}
-                    onChange={(e) => {
-                      const on = e.currentTarget.checked;
-                      deferTask(() => {
-                        void (async () => {
-                          try {
-                            await api.botConfig({ trailingStopLossAuto: on });
-                            pushLog({
-                              level: "info",
-                              msg: on
-                                ? "Trailing stop: ON — futures autotrade SL updates each tick (mode you selected below)"
-                                : "Trailing stop: OFF",
-                            });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to update trailing stop" });
-                          }
-                        })();
-                      });
-                    }}
-                  />
-                  <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">Trailing stop (futures autotrade)</span>
-                    <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
-                      When <span className="text-slate-600 dark:text-slate-400">on</span>, each tick can tighten stop-loss on autotrade legs (local brackets /
-                      paper sim update in app; live exchange may need order replaces depending on venue). Pick how the next stop is computed:
-                    </span>
-                  </span>
-                </label>
-                <fieldset className="mt-2 space-y-1.5 border-0 pl-6">
-                  <legend className="sr-only">Futures trailing stop calculation</legend>
-                  <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-slate-700 dark:text-slate-300">
+              <div className="mb-3 rounded-xl border-2 border-sky-600/35 bg-gradient-to-br from-sky-50/95 via-white to-slate-50/90 p-3 shadow-md dark:border-sky-500/35 dark:from-sky-950/45 dark:via-slate-950 dark:to-slate-900/90">
+                <div className="flex flex-wrap items-start justify-between gap-2 border-b border-sky-800/15 pb-2 dark:border-sky-300/10">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-50">Features</h3>
+                    <p className="mt-0.5 max-w-[28rem] text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+                      <span className="font-semibold text-sky-900 dark:text-sky-200">Trailing stop</span> for futures autotrade: tick-by-tighten SL on
+                      autotrade legs (local brackets / paper in app; live venues may replace orders). Choose how the next stop is computed below.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 space-y-2 rounded-lg border border-sky-800/25 bg-white/85 p-2 dark:border-sky-400/20 dark:bg-slate-950/50">
+                  <div className="text-[11px] font-semibold text-sky-900 dark:text-sky-100">Trailing stop (futures autotrade)</div>
+                  <label className="flex cursor-pointer items-start gap-2">
                     <input
-                      type="radio"
-                      name="futures-trailing-mode"
+                      type="checkbox"
                       className="mt-0.5"
-                      checked={cfg.futuresTrailingStopMode === "SUPERTREND"}
-                      onChange={() => {
+                      checked={cfg.trailingStopLossAuto}
+                      onChange={(e) => {
+                        const on = e.currentTarget.checked;
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ futuresTrailingStopMode: "SUPERTREND" });
-                              pushLog({ level: "info", msg: "Futures trailing: Supertrend line + fee activation (chart ST, breakeven floor)" });
-                            } catch {
-                              pushLog({ level: "error", msg: "Failed to set trailing mode" });
-                            }
-                          })();
-                        });
-                      }}
-                    />
-                    <span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">Supertrend-based</span> — After price passes a small fee buffer
-                      past entry, the stop ratchets with the <span className="text-slate-600 dark:text-slate-400">Supertrend line</span> (from the bot chart),
-                      never below a one-way fee breakeven vs entry; includes a rough liquidation-vs-breakeven guard. Reacts to structure, not fixed % steps.
-                    </span>
-                  </label>
-                  <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-slate-700 dark:text-slate-300">
-                    <input
-                      type="radio"
-                      name="futures-trailing-mode"
-                      className="mt-0.5"
-                      checked={cfg.futuresTrailingStopMode === "FEE_LADDER"}
-                      onChange={() => {
-                        deferTask(() => {
-                          void (async () => {
-                            try {
-                              await api.botConfig({ futuresTrailingStopMode: "FEE_LADDER" });
+                              await api.botConfig({ trailingStopLossAuto: on });
                               pushLog({
                                 level: "info",
-                                msg: "Futures trailing: Fee ladder — discrete locks from fee model + optional % of entry",
+                                msg: on
+                                  ? "Trailing stop: ON — futures autotrade SL updates each tick (mode you selected below)"
+                                  : "Trailing stop: OFF",
                               });
                             } catch {
-                              pushLog({ level: "error", msg: "Failed to set trailing mode" });
+                              pushLog({ level: "error", msg: "Failed to update trailing stop" });
                             }
                           })();
                         });
                       }}
                     />
-                    <span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">Fee ladder</span> — Discrete locks only: first at{" "}
-                      <span className="text-slate-600 dark:text-slate-400">~round-trip fee break-even</span> on entry, second at another{" "}
-                      <span className="text-slate-600 dark:text-slate-400">fee-equivalent</span> notch, then up to three optional{" "}
-                      <span className="text-slate-600 dark:text-slate-400">% of entry</span> locks you set below. Advance uses favorable excursion (high/low
-                      watermark) vs entry — no Supertrend line.
+                    <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Enable trailing</span>
+                      <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                        When <span className="text-slate-600 dark:text-slate-400">on</span>, each tick can tighten stop-loss on autotrade legs (local brackets /
+                        paper sim update in app; live exchange may need order replaces depending on venue). Pick how the next stop is computed:
+                      </span>
                     </span>
                   </label>
-                </fieldset>
-                <div className="mt-2 space-y-1 pl-6">
-                  <p className="text-[11px] text-slate-600 dark:text-slate-500">
-                    Extra scalping (% of entry, optional — max 3; used by <span className="font-medium">Fee ladder</span>; ignored for Supertrend-based)
-                  </p>
-                  {([0, 1, 2] as const).map((idx) => (
-                    <div key={idx} className="grid grid-cols-[110px_1fr] items-center gap-2">
-                      <span className="text-[11px] text-slate-600 dark:text-slate-500">Extra {idx + 1}</span>
-                      <OptionalTrailingPctInput
-                        value={cfg.trailingStopExtraScalpingPcts[idx]}
-                        min={0.01}
-                        max={5}
-                        onCommit={async (v) => {
-                          const slots: [number | undefined, number | undefined, number | undefined] = [
-                            cfg.trailingStopExtraScalpingPcts[0],
-                            cfg.trailingStopExtraScalpingPcts[1],
-                            cfg.trailingStopExtraScalpingPcts[2],
-                          ];
-                          slots[idx] = v;
-                          const next = [slots[0], slots[1], slots[2]].filter(
-                            (x): x is number => x != null && Number.isFinite(x) && x > 0,
-                          );
-                          try {
-                            await api.botConfig({ trailingStopExtraScalpingPcts: next });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to set trailing extra scalping" });
-                          }
+                  <fieldset className="mt-2 space-y-1.5 border-0 pl-6">
+                    <legend className="sr-only">Futures trailing stop calculation</legend>
+                    <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-slate-700 dark:text-slate-300">
+                      <input
+                        type="radio"
+                        name="futures-trailing-mode"
+                        className="mt-0.5"
+                        checked={cfg.futuresTrailingStopMode === "SUPERTREND"}
+                        onChange={() => {
+                          deferTask(() => {
+                            void (async () => {
+                              try {
+                                await api.botConfig({ futuresTrailingStopMode: "SUPERTREND" });
+                                pushLog({ level: "info", msg: "Futures trailing: Supertrend line + fee activation (chart ST, breakeven floor)" });
+                              } catch {
+                                pushLog({ level: "error", msg: "Failed to set trailing mode" });
+                              }
+                            })();
+                          });
                         }}
                       />
-                    </div>
-                  ))}
+                      <span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">Supertrend-based</span> — After price passes a small fee buffer
+                        past entry, the stop ratchets with the <span className="text-slate-600 dark:text-slate-400">Supertrend line</span> (from the bot chart),
+                        never below a one-way fee breakeven vs entry; includes a rough liquidation-vs-breakeven guard. Reacts to structure, not fixed % steps.
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-slate-700 dark:text-slate-300">
+                      <input
+                        type="radio"
+                        name="futures-trailing-mode"
+                        className="mt-0.5"
+                        checked={cfg.futuresTrailingStopMode === "FEE_LADDER"}
+                        onChange={() => {
+                          deferTask(() => {
+                            void (async () => {
+                              try {
+                                await api.botConfig({ futuresTrailingStopMode: "FEE_LADDER" });
+                                pushLog({
+                                  level: "info",
+                                  msg: "Futures trailing: Fee ladder — discrete locks from fee model + optional % of entry",
+                                });
+                              } catch {
+                                pushLog({ level: "error", msg: "Failed to set trailing mode" });
+                              }
+                            })();
+                          });
+                        }}
+                      />
+                      <span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">Fee ladder</span> — Discrete locks only: first at{" "}
+                        <span className="text-slate-600 dark:text-slate-400">~round-trip fee break-even</span> on entry, second at another{" "}
+                        <span className="text-slate-600 dark:text-slate-400">fee-equivalent</span> notch, then up to three optional{" "}
+                        <span className="text-slate-600 dark:text-slate-400">% of entry</span> locks you set below. Advance uses favorable excursion (high/low
+                        watermark) vs entry — no Supertrend line.
+                      </span>
+                    </label>
+                  </fieldset>
+                  <div className="mt-2 space-y-1 pl-6">
+                    <p className="text-[11px] text-slate-600 dark:text-slate-500">
+                      Extra scalping (% of entry, optional — max 3; used by <span className="font-medium">Fee ladder</span>; ignored for Supertrend-based)
+                    </p>
+                    {([0, 1, 2] as const).map((idx) => (
+                      <div key={idx} className="grid grid-cols-[110px_1fr] items-center gap-2">
+                        <span className="text-[11px] text-slate-600 dark:text-slate-500">Extra {idx + 1}</span>
+                        <OptionalTrailingPctInput
+                          value={cfg.trailingStopExtraScalpingPcts[idx]}
+                          min={0.01}
+                          max={5}
+                          onCommit={async (v) => {
+                            const slots: [number | undefined, number | undefined, number | undefined] = [
+                              cfg.trailingStopExtraScalpingPcts[0],
+                              cfg.trailingStopExtraScalpingPcts[1],
+                              cfg.trailingStopExtraScalpingPcts[2],
+                            ];
+                            slots[idx] = v;
+                            const next = [slots[0], slots[1], slots[2]].filter(
+                              (x): x is number => x != null && Number.isFinite(x) && x > 0,
+                            );
+                            try {
+                              await api.botConfig({ trailingStopExtraScalpingPcts: next });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to set trailing extra scalping" });
+                            }
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
 
-            {cfg.marketMode !== "SPOT" && cfg.supertrendFuturesAuto && (
-              <div className="rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-white/85 dark:bg-slate-950/30 px-2 py-2">
-                <label className="flex cursor-pointer items-start gap-2">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={cfg.supertrendFuturesAiConfidenceFilter}
-                    onChange={(e) => {
-                      const filterOn = e.currentTarget.checked;
-                      const minProbPct = (cfg.supertrendFuturesMinAiProb * 100).toFixed(0);
-                      deferTask(() => {
-                        void (async () => {
-                          try {
-                            await api.botConfig({ supertrendFuturesAiConfidenceFilter: filterOn });
-                            pushLog({
-                              level: "info",
-                              msg: filterOn
-                                ? `Supertrend futures: AI confidence filter ON — opens need AI ≥ ${minProbPct}% (slider) + AI sizing tiers`
-                                : "Supertrend futures: AI confidence filter OFF — signal strength drives sizing tiers; min AI prob skipped",
-                            });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to update Supertrend AI filter" });
-                          }
-                        })();
-                      });
-                    }}
-                  />
-                  <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">AI confidence filter (Supertrend futures)</span>
-                    <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
-                      When <span className="text-slate-600 dark:text-slate-400">on</span>, bar-close opens must meet the minimum AI probability
-                      below (unlock to change). Uses AI for risk tiers. When <span className="text-slate-600 dark:text-slate-400">off</span>, that
-                      gate is skipped and position size follows chart signal strength (and a safe sizing floor).
-                    </span>
-                  </span>
-                </label>
-                <div className="mt-2 flex items-center gap-2 pl-6">
-                  <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min AI prob</span>
-                  <ThresholdSliderWithLock
-                    ariaLabel="Minimum AI probability for Supertrend futures (percent)"
-                    serverSliderUnits={Math.round(cfg.supertrendFuturesMinAiProb * 100)}
-                    formatDisplay={(u) => `${u}%`}
-                    onDebouncedCommit={(u) => {
-                      const p = clampNum(u / 100, 0, 1);
-                      void api.botConfig({ supertrendFuturesMinAiProb: Number(p.toFixed(3)) }).catch(() => {
-                        pushLog({ level: "error", msg: "Failed to set min AI probability" });
-                      });
-                    }}
-                  />
-                </div>
-              </div>
-            )}
             {(cfg.supertrendSpotAuto || cfg.supertrendFuturesAuto) && (
-              <div className="rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-white/85 dark:bg-slate-950/30 px-2 py-2">
-                <label className="flex cursor-pointer items-start gap-2">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={cfg.signalStrengthGatesTrades}
-                    onChange={(e) => {
-                      const gatesOn = e.currentTarget.checked;
-                      const openMin = cfg.signalStrengthOpenMin;
-                      deferTask(() => {
-                        void (async () => {
-                          try {
-                            await api.botConfig({ signalStrengthGatesTrades: gatesOn });
-                            pushLog({
-                              level: "info",
-                              msg: gatesOn
-                                ? `Signal strength gates opens ON — opens need strength ≥ ${openMin} and matching direction`
-                                : "Signal strength gates opens OFF — composite strength is logged/UI only; Supertrend flips are not blocked by the engine",
-                            });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to update signal strength gate" });
-                          }
-                        })();
-                      });
-                    }}
-                  />
-                  <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">Signal strength gates Supertrend opens</span>
-                    <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
-                      When <span className="text-slate-600 dark:text-slate-400">off</span> (default), the composite engine still computes 0–100
-                      strength for the UI — it does not block orders. When <span className="text-slate-600 dark:text-slate-400">on</span>, spot and
-                      futures <span className="text-slate-600 dark:text-slate-400">opening</span> legs after a bar-close signal require composite
-                      strength at least the threshold below (unlock to change) and a matching BUY/SELL. Closes are unchanged.
+              <div className="mb-3 rounded-xl border-2 border-violet-600/35 bg-gradient-to-br from-violet-50/95 via-white to-slate-50/90 p-3 shadow-md dark:border-violet-500/35 dark:from-violet-950/45 dark:via-slate-950 dark:to-slate-900/90">
+                <div className="flex flex-wrap items-start justify-between gap-2 border-b border-violet-800/15 pb-2 dark:border-violet-300/10">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-50">Indicators</h3>
+                    <p className="mt-0.5 max-w-[28rem] text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+                      Optional gates for <span className="font-semibold text-violet-900 dark:text-violet-200">Supertrend autotrade opens</span>:
+                      minimum AI probability on USD-M futures, and minimum composite signal strength on spot and futures. Closes are unchanged.
+                    </p>
+                  </div>
+                </div>
+
+                {cfg.marketMode !== "SPOT" && cfg.supertrendFuturesAuto && (
+                  <div className="mt-3 space-y-2 rounded-lg border border-violet-800/25 bg-white/85 p-2 dark:border-violet-400/20 dark:bg-slate-950/50">
+                    <div className="text-[11px] font-semibold text-violet-900 dark:text-violet-100">Futures · AI confidence</div>
+                    <label className="flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={cfg.supertrendFuturesAiConfidenceFilter}
+                        onChange={(e) => {
+                          const filterOn = e.currentTarget.checked;
+                          const minProbPct = (cfg.supertrendFuturesMinAiProb * 100).toFixed(0);
+                          deferTask(() => {
+                            void (async () => {
+                              try {
+                                await api.botConfig({ supertrendFuturesAiConfidenceFilter: filterOn });
+                                pushLog({
+                                  level: "info",
+                                  msg: filterOn
+                                    ? `Supertrend futures: AI confidence filter ON — opens need AI ≥ ${minProbPct}% (slider) + AI sizing tiers`
+                                    : "Supertrend futures: AI confidence filter OFF — signal strength drives sizing tiers; min AI prob skipped",
+                                });
+                              } catch {
+                                pushLog({ level: "error", msg: "Failed to update Supertrend AI filter" });
+                              }
+                            })();
+                          });
+                        }}
+                      />
+                      <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">AI confidence filter (Supertrend futures)</span>
+                        <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                          When <span className="text-violet-700 dark:text-violet-300">on</span>, bar-close opens must meet the minimum AI probability
+                          below (unlock to change). Uses AI for risk tiers. When <span className="text-violet-700 dark:text-violet-300">off</span>, that
+                          gate is skipped and position size follows chart signal strength (and a safe sizing floor).
+                        </span>
+                      </span>
+                    </label>
+                    <div className="mt-2 flex items-center gap-2 pl-6">
+                      <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min AI prob</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Minimum AI probability for Supertrend futures (percent)"
+                        serverSliderUnits={Math.round(cfg.supertrendFuturesMinAiProb * 100)}
+                        formatDisplay={(u) => `${u}%`}
+                        accentClassName="accent-violet-600"
+                        onDebouncedCommit={(u) => {
+                          const p = clampNum(u / 100, 0, 1);
+                          void api.botConfig({ supertrendFuturesMinAiProb: Number(p.toFixed(3)) }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set min AI probability" });
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-3 space-y-2 rounded-lg border border-violet-800/25 bg-white/85 p-2 dark:border-violet-400/20 dark:bg-slate-950/50">
+                  <div className="text-[11px] font-semibold text-violet-900 dark:text-violet-100">Signal strength</div>
+                  <label className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={cfg.signalStrengthGatesTrades}
+                      onChange={(e) => {
+                        const gatesOn = e.currentTarget.checked;
+                        const openMin = cfg.signalStrengthOpenMin;
+                        deferTask(() => {
+                          void (async () => {
+                            try {
+                              await api.botConfig({ signalStrengthGatesTrades: gatesOn });
+                              pushLog({
+                                level: "info",
+                                msg: gatesOn
+                                  ? `Signal strength gates opens ON — opens need strength ≥ ${openMin} and matching direction`
+                                  : "Signal strength gates opens OFF — composite strength is logged/UI only; Supertrend flips are not blocked by the engine",
+                              });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to update signal strength gate" });
+                            }
+                          })();
+                        });
+                      }}
+                    />
+                    <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Signal strength gates Supertrend opens</span>
+                      <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                        When <span className="text-violet-700 dark:text-violet-300">off</span> (default), the composite engine still computes 0–100
+                        strength for the UI — it does not block orders. When <span className="text-violet-700 dark:text-violet-300">on</span>, spot and
+                        futures <span className="text-violet-700 dark:text-violet-300">opening</span> legs after a bar-close signal require composite
+                        strength at least the threshold below (unlock to change) and a matching BUY/SELL. Closes are unchanged.
+                      </span>
                     </span>
-                  </span>
-                </label>
-                <div className="mt-2 flex items-center gap-2 pl-6">
-                  <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min strength</span>
-                  <ThresholdSliderWithLock
-                    ariaLabel="Minimum composite signal strength to allow Supertrend opens"
-                    serverSliderUnits={cfg.signalStrengthOpenMin}
-                    formatDisplay={(u) => `${u}`}
-                    onDebouncedCommit={(u) => {
-                      void api.botConfig({ signalStrengthOpenMin: Math.round(clampNum(u, 0, 100)) }).catch(() => {
-                        pushLog({ level: "error", msg: "Failed to set min signal strength" });
-                      });
-                    }}
-                  />
+                  </label>
+                  <div className="mt-2 flex items-center gap-2 pl-6">
+                    <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min strength</span>
+                    <ThresholdSliderWithLock
+                      ariaLabel="Minimum composite signal strength to allow Supertrend opens"
+                      serverSliderUnits={cfg.signalStrengthOpenMin}
+                      formatDisplay={(u) => `${u}`}
+                      accentClassName="accent-violet-600"
+                      onDebouncedCommit={(u) => {
+                        void api.botConfig({ signalStrengthOpenMin: Math.round(clampNum(u, 0, 100)) }).catch(() => {
+                          pushLog({ level: "error", msg: "Failed to set min signal strength" });
+                        });
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             )}

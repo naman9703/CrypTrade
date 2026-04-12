@@ -91,7 +91,37 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     return (px - entry) * qty * dir;
   }
 
-  function closePositionInternal(posId, markPx, reason = "CLOSE") {
+  function emitPaperFuturesCloseActivity(notifyActivity, reason, p, markPx) {
+    if (typeof notifyActivity !== "function") return;
+    const r = String(reason || "").toUpperCase();
+    const px = Number(markPx);
+    const pxs = Number.isFinite(px) ? px.toFixed(4) : String(markPx == null ? "" : markPx);
+    let label = "Position closed (paper futures)";
+    let reasonKey = "paper_futures_close";
+    if (r === "STOP" || r === "STOP_LOSS") {
+      label = "Stop loss (paper futures)";
+      reasonKey = "stop_loss_trigger";
+    } else if (r === "TAKE_PROFIT") {
+      label = "Take profit (paper futures)";
+      reasonKey = "take_profit_trigger";
+    } else if (r === "MANUAL_CLOSE" || r === "MANUAL") {
+      label = "Manual close (paper futures)";
+      reasonKey = "manual_close";
+    } else if (r === "TIME_EXIT") {
+      label = "Time-based exit (paper futures)";
+      reasonKey = "time_exit";
+    }
+    notifyActivity({
+      level: "info",
+      msg: `${label} · ${p.symbol} @ ~${pxs}`,
+      category: "risk",
+      reason: reasonKey,
+      symbol: p.symbol,
+      detail: { closeReason: reason, markPx },
+    });
+  }
+
+  function closePositionInternal(posId, markPx, reason = "CLOSE", notifyActivity) {
     const idx = state.positions.findIndex((p) => p.id === posId);
     if (idx < 0) return null;
     const p = state.positions[idx];
@@ -126,10 +156,11 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     };
     state.trades.push(t);
     persistSoon();
+    emitPaperFuturesCloseActivity(notifyActivity, reason, p, markPx);
     return t;
   }
 
-  function reconcileOrders({ markPxBySymbol, trailingStopLoss, onTrailingSlAdvance } = {}) {
+  function reconcileOrders({ markPxBySymbol, trailingStopLoss, onTrailingSlAdvance, notifyActivity } = {}) {
     if (!state.openOrders.length) return;
     const remaining = [];
     for (const o of state.openOrders) {
@@ -252,7 +283,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         (o.type === "SL" && ((o.side === "SELL" && px <= o.stopPx) || (o.side === "BUY" && px >= o.stopPx))) ||
         (o.type === "TP" && ((o.side === "SELL" && px >= o.stopPx) || (o.side === "BUY" && px <= o.stopPx)));
       if (hit) {
-        closePositionInternal(o.posId, px, o.type === "SL" ? "STOP" : "TAKE_PROFIT");
+        closePositionInternal(o.posId, px, o.type === "SL" ? "STOP" : "TAKE_PROFIT", notifyActivity);
       } else {
         remaining.push({ ...o, lastPx: px });
       }
@@ -347,12 +378,12 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         takeProfit: Number(takeProfit),
       };
     },
-    async markToMarket({ symbol, price, markPxBySymbol, trailingStopLoss, onTrailingSlAdvance } = {}) {
+    async markToMarket({ symbol, price, markPxBySymbol, trailingStopLoss, onTrailingSlAdvance, notifyActivity } = {}) {
       const pxMap = { ...(markPxBySymbol || {}) };
       if (symbol && price && Number.isFinite(Number(price))) pxMap[symbol] = Number(price);
-      reconcileOrders({ markPxBySymbol: pxMap, trailingStopLoss, onTrailingSlAdvance });
+      reconcileOrders({ markPxBySymbol: pxMap, trailingStopLoss, onTrailingSlAdvance, notifyActivity });
     },
-    async closePosition({ id, price, reason = "MANUAL_CLOSE" }) {
+    async closePosition({ id, price, reason = "MANUAL_CLOSE", notifyActivity } = {}) {
       rolloverIfNeeded();
       const posRow = state.positions.find((p) => p.id === id);
       let px = Number(price);
@@ -361,7 +392,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         if (Number.isFinite(ep) && ep > 0) px = ep;
       }
       if (!Number.isFinite(px) || px <= 0) return { ok: false, error: "bad_price" };
-      const t = closePositionInternal(id, px, reason);
+      const t = closePositionInternal(id, px, reason, notifyActivity);
       if (!t) return { ok: false, error: "not_found" };
       state.openOrders = state.openOrders.filter((o) => o.posId !== id);
       persistSoon();

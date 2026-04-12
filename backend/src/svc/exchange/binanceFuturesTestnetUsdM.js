@@ -3,6 +3,7 @@ import axios from "axios";
 import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
 import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
+import { buildRiskSlTpTriggerActivity } from "../../lib/activityLog.js";
 import {
   mergeSlTpSymbolMaps,
   slTpFromAlgoOrdersList,
@@ -461,7 +462,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
         meta: meta || {},
       };
     },
-    async markToMarket({ symbol, price, trailingStopLoss, onTrailingSlAdvance } = {}) {
+    async markToMarket({ symbol, price, trailingStopLoss, onTrailingSlAdvance, notifyActivity } = {}) {
       const symU = String(symbol || "").toUpperCase();
       const markPx = Number(price);
       if (symU && Number.isFinite(markPx) && markPx > 0 && trailingStopLoss?.enabled && trailingBySymbol[symU]) {
@@ -518,6 +519,17 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
               ...(b.positionSide ? { positionSide: b.positionSide } : {}),
             });
             log?.info?.("binance_futures_local_bracket_hit", { symbol, hit, markPx, sl: b.stopLoss, tp: b.takeProfit });
+            notifyActivity?.(
+              buildRiskSlTpTriggerActivity({
+                hit,
+                symbol,
+                markPx,
+                stopLoss: b.stopLoss,
+                takeProfit: b.takeProfit,
+                mode: "usd_m_local_bracket",
+                venue: "FUTURES",
+              }),
+            );
             delete localBrackets[symbol];
             delete placedBracketTargets[symbol];
             delete trailingBySymbol[String(symbol || "").toUpperCase()];
@@ -528,7 +540,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
         } // end price sanity check
       }
     },
-    async closePosition({ id }) {
+    async closePosition({ id, notifyActivity, reason: userCloseReason } = {}) {
       if (!apiKey || !apiSecret) return { ok: false, error: "binance_futures_testnet_missing_keys" };
       let positions;
       try {
@@ -568,6 +580,17 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       }
       delete localBrackets[p.symbol];
       delete placedBracketTargets[p.symbol];
+      const isSignal = String(userCloseReason || "").toUpperCase() === "SUPERTREND_EXIT";
+      notifyActivity?.({
+        level: "info",
+        msg: isSignal
+          ? `Signal close · ${p.symbol} · reduce-only market order sent (USD-M testnet)`
+          : `Manual close · ${p.symbol} · reduce-only market order sent (USD-M testnet)`,
+        category: "risk",
+        reason: isSignal ? "supertrend_exit" : "manual_close",
+        symbol: p.symbol,
+        detail: { positionId: sid, venue: "FUTURES", exchange: "binance_futures_testnet_usdm", userCloseReason },
+      });
       return { ok: true };
     },
     async getSymbolOrderConstraints(symbol) {

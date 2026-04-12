@@ -419,7 +419,17 @@ export function createRouter({ appState }) {
     const last = candles[candles.length - 1];
     if (!last) return res.status(400).json({ ok: false, error: "no_market_data" });
     try {
-      const out = await ex.closePosition({ id: parsed.data.id, price: Number(last.close) });
+      const notifyActivity = (partial) =>
+        broadcastActivity(appState.wsHub, {
+          category: partial.category || "risk",
+          level: partial.level || "info",
+          ...partial,
+        });
+      const out = await ex.closePosition({
+        id: parsed.data.id,
+        price: Number(last.close),
+        notifyActivity,
+      });
       if (!out || out.ok === false || out.error) {
         return res.status(400).json(out ?? { ok: false, error: "close_failed" });
       }

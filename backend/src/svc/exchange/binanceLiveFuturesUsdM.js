@@ -7,6 +7,7 @@ import { tradeCloseFeeUsdtFromNotional } from "../../lib/tradeCloseFee.js";
 import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
 import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
+import { buildRiskSlTpTriggerActivity } from "../../lib/activityLog.js";
 import {
   mergeSlTpSymbolMaps,
   slTpFromAlgoOrdersList,
@@ -767,7 +768,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         meta: meta || {},
       };
     },
-    async markToMarket({ symbol, price, trailingStopLoss, onTrailingSlAdvance } = {}) {
+    async markToMarket({ symbol, price, trailingStopLoss, onTrailingSlAdvance, notifyActivity } = {}) {
       await syncRealizedIncomeFromExchange();
 
       const symU = String(symbol || "").toUpperCase();
@@ -832,6 +833,17 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
               ...(b.positionSide ? { positionSide: b.positionSide } : {}),
             });
             log?.info?.("binance_live_futures_local_bracket_hit", { symbol, hit, markPx, sl: b.stopLoss, tp: b.takeProfit });
+            notifyActivity?.(
+              buildRiskSlTpTriggerActivity({
+                hit,
+                symbol,
+                markPx,
+                stopLoss: b.stopLoss,
+                takeProfit: b.takeProfit,
+                mode: "usd_m_local_bracket",
+                venue: "FUTURES",
+              }),
+            );
             // Record the close so income sync attributes PnL to strategy (not ledger).
             // The actual CLOSE trade will be created by syncRealizedIncomeFromExchange
             // when the REALIZED_PNL row arrives, with the real PnL from Binance.
@@ -859,7 +871,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         } // end else (price sanity ok)
       }
     },
-    async closePosition({ id }) {
+    async closePosition({ id, notifyActivity, reason: userCloseReason } = {}) {
       if (!apiKey || !apiSecret) return { ok: false, error: "binance_live_futures_missing_keys" };
       let positions;
       try {
@@ -931,6 +943,17 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       });
       delete mem.localBrackets[p.symbol];
       delete mem.placedBracketTargets[p.symbol];
+      const isSignal = String(userCloseReason || "").toUpperCase() === "SUPERTREND_EXIT";
+      notifyActivity?.({
+        level: "info",
+        msg: isSignal
+          ? `Signal close · ${p.symbol} · reduce-only market order sent (USD-M live)`
+          : `Manual close · ${p.symbol} · reduce-only market order sent (USD-M live)`,
+        category: "risk",
+        reason: isSignal ? "supertrend_exit" : "manual_close",
+        symbol: p.symbol,
+        detail: { positionId: sid, venue: "FUTURES", exchange: "binance_live_futures_usdm", userCloseReason },
+      });
       return { ok: true };
     },
     async getSymbolOrderConstraints(symbol) {

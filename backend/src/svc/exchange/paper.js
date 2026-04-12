@@ -154,7 +154,7 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
       log.info("paper_order_filled", { id, symbol, side, qty: Number(qty), price: filledPrice, strategy });
       return { id, filledPrice };
     },
-    async markToMarket({ symbol, price }) {
+    async markToMarket({ symbol, price, notifyActivity } = {}) {
       rolloverIfNeeded();
       const px = Number(price);
       const stillOpen = [];
@@ -225,11 +225,22 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
         store.appendTradeCsv(tradeRow);
         persistSoon();
         log.info("paper_position_closed", { id: p.id, symbol: p.symbol, reason: exitReason, pnl });
+        if (typeof notifyActivity === "function") {
+          const label = exitReason === "STOP_LOSS" ? "Stop loss (paper spot)" : "Take profit (paper spot)";
+          notifyActivity({
+            level: "info",
+            msg: `${label} · ${p.symbol} @ ~${Number(px).toFixed(4)}`,
+            category: "risk",
+            reason: exitReason === "STOP_LOSS" ? "stop_loss_trigger" : "take_profit_trigger",
+            symbol: p.symbol,
+            detail: { exitReason, markPx: px },
+          });
+        }
       }
       state.positions = stillOpen;
       persistSoon();
     },
-    async closePosition({ id, price, reason = "MANUAL_CLOSE" }) {
+    async closePosition({ id, price, reason = "MANUAL_CLOSE", notifyActivity } = {}) {
       rolloverIfNeeded();
       const px = Number(price);
       const idx = state.positions.findIndex((p) => p.id === id);
@@ -268,6 +279,16 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
       store.appendTradeCsv(tradeRow);
       persistSoon();
       log.info("paper_position_closed", { id: p.id, symbol: p.symbol, reason, pnl });
+      if (typeof notifyActivity === "function") {
+        notifyActivity({
+          level: "info",
+          msg: `Manual close (paper spot) · ${p.symbol} @ ~${Number(px).toFixed(4)}`,
+          category: "risk",
+          reason: "manual_close",
+          symbol: p.symbol,
+          detail: { positionId: id, reason },
+        });
+      }
       return { ok: true, pnl };
     },
     async getClosedTradesSince(n) {

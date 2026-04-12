@@ -1090,6 +1090,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           : p.expectedMoveLong;
       if (em != null && Number.isFinite(Number(em))) msg += ` · expMv≈${Number(em).toFixed(4)}`;
     }
+    if (p.stopLoss != null && Number.isFinite(Number(p.stopLoss))) msg += ` · SL=${Number(p.stopLoss).toFixed(4)}`;
+    if (p.takeProfit != null && Number.isFinite(Number(p.takeProfit))) msg += ` · TP=${Number(p.takeProfit).toFixed(4)}`;
     const level =
       ac === "ERROR" ? "error" : ac === "SKIPPED" ? "warn" : ac === "PENDING" ? "info" : "info";
     broadcastActivity(hub, {
@@ -1120,6 +1122,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       expectedMoveShort,
       decisionLong,
       decisionShort,
+      stopLoss,
+      takeProfit,
     } = result;
     emitSignalActionActivity(hub, {
       kind: "supertrend",
@@ -1139,6 +1143,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       decisionBias,
       expectedMoveLong,
       expectedMoveShort,
+      stopLoss,
+      takeProfit,
     });
   }
 
@@ -1748,10 +1754,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         const closeId = pos.id || pos.symbol;
         const closeRowId = `fut_close_${Date.now()}_${String(orderSymbol).replace(/[^A-Z0-9_]/g, "_")}_${Math.random().toString(36).slice(2, 10)}`;
         try {
+          const notifyActivity = (partial) =>
+            broadcastActivity(wsHub, {
+              category: partial.category || "risk",
+              level: partial.level || "info",
+              ...partial,
+            });
           const r = await closer.closePosition({
             id: closeId,
             ...(Number.isFinite(markPx) && markPx > 0 ? { price: markPx } : {}),
             reason: reasonLabel,
+            notifyActivity,
           });
           if (!r?.ok) {
             wsHub?.broadcast?.("log", {
@@ -2224,6 +2237,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         },
         source: "SUPERTREND",
       });
+      const slN = Number(stopLoss);
+      const tpN = Number(takeProfit);
+      broadcastActivity(wsHub, {
+        level: "info",
+        msg: `SL/TP armed · ${orderSymbol} · SL ${Number.isFinite(slN) ? slN.toFixed(4) : "—"} · TP ${Number.isFinite(tpN) ? tpN.toFixed(4) : "—"} · Supertrend futures`,
+        category: "risk",
+        reason: "sl_tp_armed",
+        symbol: orderSymbol,
+        detail: { stopLoss, takeProfit, leverage: order.leverage ?? lev, trailingAuto: Boolean(state.trailingStopLossAuto) },
+      });
       state.stats[strategyKey].trades += 1;
       state.lastTradeOpenedAt = Date.now();
       if (!multiUnpinnedOrder) state.tradeOpenTimestamps.push(Date.now());
@@ -2234,6 +2257,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         orderId: order.id,
         qty,
         leverage: order.leverage ?? lev,
+        stopLoss,
+        takeProfit,
         decisionLong: snapUsedForOpen?.long?.total,
         decisionShort: snapUsedForOpen?.short?.total,
         expectedMoveLong: snapUsedForOpen?.expectedMoveLong ?? null,
@@ -4614,11 +4639,18 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           detail: evt,
         });
       };
+      const notifyActivity = (partial) =>
+        broadcastActivity(wsHub, {
+          category: "risk",
+          level: partial.level || "info",
+          ...partial,
+        });
       await exch.markToMarket({
         symbol: state.symbol,
         price: last.close,
         trailingStopLoss,
         onTrailingSlAdvance,
+        notifyActivity,
       });
     }
     await ingestClosedTrades({ wsHub });
@@ -5503,6 +5535,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       leverage: futuresLeverage ?? undefined,
       probability: prob,
       threshold: adaptiveThreshold,
+      stopLoss: plan.stopLoss,
+      takeProfit: plan.takeProfit,
     });
     log.info("trade_placed", {
       symbol: state.symbol,
@@ -5532,6 +5566,23 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       strategyKey,
       aiProbability: prob,
     });
+    if (isFuturesVenue && (plan.stopLoss != null || plan.takeProfit != null)) {
+      const slN = Number(plan.stopLoss);
+      const tpN = Number(plan.takeProfit);
+      broadcastActivity(wsHub, {
+        level: "info",
+        msg: `SL/TP armed · ${state.symbol} · SL ${Number.isFinite(slN) ? slN.toFixed(4) : "—"} · TP ${Number.isFinite(tpN) ? tpN.toFixed(4) : "—"} · ${strategyKey}`,
+        category: "risk",
+        reason: "sl_tp_armed",
+        symbol: state.symbol,
+        detail: {
+          stopLoss: plan.stopLoss,
+          takeProfit: plan.takeProfit,
+          strategyKey,
+          trailingAuto: Boolean(state.trailingStopLossAuto),
+        },
+      });
+    }
 
     // Execution quality tracking
     const orderLatencyMs = Date.now() - orderStartMs;
