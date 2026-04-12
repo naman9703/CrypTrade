@@ -1040,7 +1040,22 @@ export function TradingPanel() {
     const walletFreeMarginTotal = walletFreeMarginUsdt(account, mm);
     const splitDiv = capitalSplitDivisorFromBot(bot);
     const fixedUsd = cfg.riskPerTradeUnit === "USDT" && cfg.maxDailyLossUnit === "USDT";
-    const allowedPoolUsdt = fixedUsd ? effectiveAllowedPoolUsdt(bot, account) : cfg.riskPerTradeUnit === "USDT" ? cfg.riskPerTrade : 0;
+    /** Show pool / usable / multi-coin panels whenever per-trade is USDT (not only when max daily is also USDT). */
+    const showUsdtPoolLayout = cfg.riskPerTradeUnit === "USDT";
+    let allowedPoolUsdt = 0;
+    if (fixedUsd) {
+      allowedPoolUsdt = effectiveAllowedPoolUsdt(bot, account);
+    } else if (showUsdtPoolLayout) {
+      const raw = Number(bot?.allowedBudgetUsdt);
+      const poolNominal = Number.isFinite(raw) && raw > 0 ? raw : Number(cfg.riskPerTrade ?? 0);
+      const cap = walletFreeMarginUsdt(account, mm);
+      allowedPoolUsdt =
+        !Number.isFinite(poolNominal) || poolNominal <= 0
+          ? poolNominal
+          : !Number.isFinite(cap) || cap <= 0
+            ? poolNominal
+            : Math.min(poolNominal, cap);
+    }
     const invested = sumOpenMarginUsedUsdtForUi(positions, mm);
     /** Raw pool left from allowed cap (can be negative if invested > allowed). */
     const usablePoolRaw = allowedPoolUsdt - invested;
@@ -1080,10 +1095,10 @@ export function TradingPanel() {
         cfg.riskPerTradeUnit === "USDT" ? "Fund the venue wallet to see venue-capped deployable notional." : "—",
       );
     }
-    const usableFormula = fixedUsd
+    const usableFormula = showUsdtPoolLayout
       ? `${allowedPoolUsdt.toFixed(2)} − ${invested.toFixed(2)}`
       : "";
-    const usableSizingNote = fixedUsd
+    const usableSizingNote = showUsdtPoolLayout
       ? usablePoolRaw < 0
         ? "Open margin used exceeds allowed — raise allowed or reduce/close positions so usable ≥ 0."
         : usablePoolRaw === 0
@@ -1102,6 +1117,7 @@ export function TradingPanel() {
       walletFreeMarginTotal,
       walletSliderPct,
       fixedUsd,
+      showUsdtPoolLayout,
       allowedPoolUsdt,
       usableStrategy,
       usablePoolRaw,
@@ -2453,7 +2469,7 @@ export function TradingPanel() {
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
-                  {capitalAllotmentHeadline.fixedUsd ? (
+                  {capitalAllotmentHeadline.showUsdtPoolLayout ? (
                     <div className="grid grid-cols-2 gap-x-5 gap-y-1">
                       <div>
                         <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Allowed</div>
@@ -2496,7 +2512,7 @@ export function TradingPanel() {
                       {capitalAllotmentHeadline.allowedSub}
                     </div>
                   ) : null}
-                  {capitalAllotmentHeadline.fixedUsd && capitalAllotmentHeadline.usableSizingNote ? (
+                  {capitalAllotmentHeadline.showUsdtPoolLayout && capitalAllotmentHeadline.usableSizingNote ? (
                     <div className="mt-1.5 max-w-[15rem] text-[10px] leading-snug text-slate-600 dark:text-slate-400">
                       {capitalAllotmentHeadline.usableSizingNote}
                     </div>
@@ -2508,7 +2524,7 @@ export function TradingPanel() {
                 </div>
               </div>
 
-              {capitalAllotmentHeadline.fixedUsd ? (
+              {capitalAllotmentHeadline.showUsdtPoolLayout ? (
                 <div className="mt-3 space-y-2 rounded-lg border border-emerald-800/20 bg-white/80 p-2 dark:border-emerald-500/25 dark:bg-slate-950/50">
                   <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-100">Allowed budget (USDT pool)</div>
                   <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-500">
@@ -2605,7 +2621,7 @@ export function TradingPanel() {
                 </div>
               ) : null}
 
-              {cfg.universeCoinSelectMode === "MULTIPLE" && capitalAllotmentHeadline.fixedUsd ? (
+              {cfg.universeCoinSelectMode === "MULTIPLE" && capitalAllotmentHeadline.showUsdtPoolLayout ? (
                 <div className="mt-3 space-y-2 rounded-lg border border-emerald-800/20 bg-white/80 p-2 dark:border-emerald-500/25 dark:bg-slate-950/50">
                   <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-100">Multi-coin sizing</div>
                   <label className="flex cursor-pointer items-start gap-2 text-[11px] text-slate-700 dark:text-slate-200">
@@ -2800,7 +2816,9 @@ export function TradingPanel() {
                   ) : (
                     <>
                       <span className="font-medium text-slate-700 dark:text-slate-300">USDT target notional</span> per autotrade (scaled by
-                      confidence tiers), capped by ~90% buying power. Stops still come from ATR.
+                      confidence tiers), capped by ~90% buying power. Stops still come from ATR. Set{" "}
+                      <span className="font-medium">Max daily loss</span> to USDT as well for server-side fixed pool / multi-coin sizing to match
+                      the controls above.
                     </>
                   )
                 ) : (
