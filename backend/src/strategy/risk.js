@@ -53,6 +53,8 @@ export async function riskPlan({
    */
   riskPerTradeUnit = "PCT",
   fixedUsdtCapitalSizing = false,
+  /** When fixed USDT sizing: divide `riskPerTrade` by this (e.g. pinned coin count) before notional cap. */
+  fixedUsdtSplitDivisor = 1,
   atr,
   futuresLeverage,
   stats,
@@ -77,6 +79,7 @@ export async function riskPlan({
   let sizingMethod = "tier";
   const fixedCapital =
     Boolean(fixedUsdtCapitalSizing) && isUsdtRisk;
+  const splitDiv = Math.max(1, Math.floor(Number(fixedUsdtSplitDivisor) || 1));
 
   if (fixedCapital) {
     tierMult = 1.0;
@@ -134,7 +137,8 @@ export async function riskPlan({
   let qty;
   let riskUsd;
   if (isUsdtRisk) {
-    let targetNotional = riskInput * tierMult;
+    const riskBase = fixedCapital && splitDiv > 1 ? riskInput / splitDiv : riskInput;
+    let targetNotional = riskBase * tierMult;
     targetNotional = Math.min(targetNotional, buyingPower * 0.90);
     qty = roundTo(targetNotional / px, 6);
     riskUsd = qty * perUnitRisk;

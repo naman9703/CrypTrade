@@ -1,4 +1,5 @@
 import { roundTo } from "./math.js";
+import { computeSupertrendTrailingSlUpdate } from "./supertrendTrailingSl.js";
 
 /**
  * Trailing SL for autotrade:
@@ -161,7 +162,23 @@ export function roundStopPx(px, tickSize) {
 
 /**
  * Mutates Binance USD-M in-memory bracket state (local fallback + display targets).
- * @param {{ enabled: boolean; feeRate: number; extraScalpingPcts: number[]; maxTrailSteps: number }} [opts.trailingOpts]
+ *
+ * **Mode `SUPERTREND` (default):** uses `computeSupertrendTrailingSlUpdate` + `supertrendPx` + activation / liquidation geometry.
+ *
+ * **Mode `FEE_LADDER`:** discrete locks from `buildTrailLockPrices` (round-trip fee BE, second fee notch, optional %-of-entry);
+ * advances when favorable excursion vs `extremePx` crosses each lock (`advanceTrailingStopState`).
+ *
+ * @param {{
+ *   enabled: boolean;
+ *   feeRate: number;
+ *   mode?: "SUPERTREND" | "FEE_LADDER";
+ *   supertrendPx?: number | null;
+ *   bufferRate?: number;
+ *   maintenanceMarginRate?: number;
+ *   minSlDistanceFrac?: number;
+ *   extraScalpingPcts?: number[];
+ *   maxTrailSteps?: number;
+ * }} [opts.trailingOpts]
  */
 export function applyTrailingStopBinanceMemory(opts) {
   const sym = String(opts.symbol || "").toUpperCase();
@@ -180,66 +197,127 @@ export function applyTrailingStopBinanceMemory(opts) {
   if (!tr || !tr.entryPrice) return false;
 
   const isLong = Boolean(tr.isLong);
-  const r = advanceTrailingStopState({
-    entryPx: tr.entryPrice,
-    isLong,
-    trailStep: tr.trailStep ?? 0,
-    extremePx: tr.extremePx ?? tr.entryPrice,
-    markPx,
-    feeRate: trailingOpts.feeRate,
-    extraScalpingPctsOfEntry: trailingOpts.extraScalpingPcts,
-  });
+  const b = localBrackets[sym];
+  const tgt = placedBracketTargets?.[sym];
+  const prevRaw = b ? b.stopLoss : tgt?.stopLoss;
+  const prevSl = Number(prevRaw);
+  if (!Number.isFinite(prevSl) || prevSl <= 0) return false;
 
-  if (r.proposedSl == null || !r.advanced) return false;
+  const lev = Number(tr.leverage);
+  const feeR = clampFeeRate(trailingOpts.feeRate);
+  const buf = Number.isFinite(Number(trailingOpts.bufferRate)) ? Number(trailingOpts.bufferRate) : 0.0005;
+  const mm = Number.isFinite(Number(trailingOpts.maintenanceMarginRate))
+    ? Number(trailingOpts.maintenanceMarginRate)
+    : 0.005;
+  const minDist =
+    trailingOpts.minSlDistanceFrac != null && Number.isFinite(Number(trailingOpts.minSlDistanceFrac))
+      ? Number(trailingOpts.minSlDistanceFrac)
+      : 0.002;
 
-  let nextSl = r.proposedSl;
-  if (tickSize != null && Number.isFinite(tickSize) && tickSize > 0) {
-    nextSl = roundStopPx(nextSl, tickSize);
+  const mode = String(trailingOpts.mode || "SUPERTREND").toUpperCase() === "FEE_LADDER" ? "FEE_LADDER" : "SUPERTREND";
+
+  let merged = null;
+  let trailStatus = "OK";
+  let supertrendPxForEvt = null;
+  let trailKind = "supertrend_trailing_sl";
+
+  if (mode === "FEE_LADDER") {
+    const adv = advanceTrailingStopState({
+      entryPx: tr.entryPrice,
+      isLong,
+      trailStep: tr.trailStep,
+      extremePx: tr.extremePx,
+      markPx,
+      feeRate: feeR,
+      extraScalpingPctsOfEntry: trailingOpts.extraScalpingPcts ?? [],
+    });
+    tr.trailStep = adv.trailStep;
+    tr.extremePx = adv.extremePx;
+    if (!adv.advanced || adv.proposedSl == null) return false;
+    merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: adv.proposedSl });
+    trailStatus = "OK";
+    trailKind = "fee_ladder_trailing_sl";
   } else {
-    nextSl = roundTo(nextSl, 8);
+    const stPx = trailingOpts.supertrendPx != null ? Number(trailingOpts.supertrendPx) : NaN;
+    if (!Number.isFinite(stPx) || stPx <= 0) return false;
+    supertrendPxForEvt = stPx;
+
+    const r = computeSupertrendTrailingSlUpdate({
+      entryPrice: tr.entryPrice,
+      currentPrice: markPx,
+      supertrend: stPx,
+      previousSl: prevSl,
+      isLong,
+      leverage: lev,
+      feeRate: feeR,
+      bufferRate: buf,
+      maintenanceMarginRate: mm,
+      minSlDistanceFrac: minDist,
+    });
+
+    if (r.status === "REJECT_TRADE" || r.status === "INVALID") return false;
+    if (r.status === "NO_SUPERTREND" || r.status === "NO_TRAIL") return false;
+    trailStatus = r.status;
+    merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: r.newSl });
   }
 
-  const b = localBrackets[sym];
+  if (merged == null || merged === prevSl) return false;
+
+  const finalSl =
+    tickSize != null && Number.isFinite(tickSize) && tickSize > 0
+      ? roundStopPx(merged, tickSize)
+      : roundTo(merged, 8);
+  if (!Number.isFinite(finalSl) || finalSl <= 0 || finalSl === prevSl) return false;
+
+  const feeRateUsed = feeR;
+  const breakeven = isLong ? tr.entryPrice * (1 + feeRateUsed) : tr.entryPrice * (1 - feeRateUsed);
+  const activation = isLong
+    ? tr.entryPrice * (1 + feeRateUsed + buf)
+    : tr.entryPrice * (1 - feeRateUsed - buf);
+
+  const bumpTrailMetaSupertrend = () => {
+    tr.trailStep = (Number(tr.trailStep) || 0) + 1;
+    tr.extremePx = isLong ? Math.max(Number(tr.extremePx) || markPx, markPx) : Math.min(Number(tr.extremePx) || markPx, markPx);
+  };
+
+  const evtCore = {
+    symbol: sym,
+    venue: "FUTURES",
+    prevStopLoss: prevSl,
+    newStopLoss: finalSl,
+    maxTrailSteps: trailingOpts.maxTrailSteps ?? 1,
+    isLong,
+    entryPrice: tr.entryPrice,
+    supertrendPx: supertrendPxForEvt,
+    trailStatus,
+    breakeven,
+    activationPrice: activation,
+    leverage: lev,
+    bufferRate: buf,
+    maintenanceMarginRate: mm,
+    kind: trailKind,
+    trailingMode: mode,
+  };
+
   if (b) {
-    const prevSl = Number(b.stopLoss);
-    const merged = mergeStopWithTrail({ isLong, currentStopPx: b.stopLoss, trailSlPx: nextSl });
-    tr.trailStep = r.trailStep;
-    tr.extremePx = r.extremePx;
-    if (merged == null || merged === b.stopLoss) return false;
-    b.stopLoss = merged;
+    if (mode === "SUPERTREND") bumpTrailMetaSupertrend();
+    b.stopLoss = finalSl;
     if (placedBracketTargets && placedBracketTargets[sym]) {
-      placedBracketTargets[sym] = { ...placedBracketTargets[sym], stopLoss: merged };
+      placedBracketTargets[sym] = { ...placedBracketTargets[sym], stopLoss: finalSl };
     }
     onTrailingSlAdvance?.({
-      symbol: sym,
-      venue: "FUTURES",
-      prevStopLoss: prevSl,
-      newStopLoss: merged,
+      ...evtCore,
       trailStep: tr.trailStep,
-      maxTrailSteps: trailingOpts.maxTrailSteps,
-      isLong,
-      entryPrice: tr.entryPrice,
       source: "binance_usdm_local_bracket",
     });
     return true;
   }
   if (placedBracketTargets && placedBracketTargets[sym]) {
-    const cur = placedBracketTargets[sym].stopLoss;
-    const prevSl = Number(cur);
-    const merged = mergeStopWithTrail({ isLong, currentStopPx: cur, trailSlPx: nextSl });
-    tr.trailStep = r.trailStep;
-    tr.extremePx = r.extremePx;
-    if (merged == null || merged === cur) return false;
-    placedBracketTargets[sym] = { ...placedBracketTargets[sym], stopLoss: merged };
+    if (mode === "SUPERTREND") bumpTrailMetaSupertrend();
+    placedBracketTargets[sym] = { ...placedBracketTargets[sym], stopLoss: finalSl };
     onTrailingSlAdvance?.({
-      symbol: sym,
-      venue: "FUTURES",
-      prevStopLoss: prevSl,
-      newStopLoss: merged,
+      ...evtCore,
       trailStep: tr.trailStep,
-      maxTrailSteps: trailingOpts.maxTrailSteps,
-      isLong,
-      entryPrice: tr.entryPrice,
       source: "binance_usdm_bracket_targets",
     });
     return true;

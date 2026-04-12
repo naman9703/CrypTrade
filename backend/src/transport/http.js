@@ -279,6 +279,18 @@ export function createRouter({ appState }) {
       maxDailyLoss: z.number().min(0.000001).max(10_000_000).optional(),
       riskPerTradeUnit: z.enum(["PCT", "USDT"]).optional(),
       maxDailyLossUnit: z.enum(["PCT", "USDT"]).optional(),
+      /** With fixed USDT risk + max daily USDT and MULTIPLE pins (2+), divide per-trade notional by pin count. */
+      capitalSplitAcrossCoins: z.boolean().optional(),
+      /** Strategy pool cap (USDT). 0 = fall back to `riskPerTrade` for allowed-size math. */
+      allowedBudgetUsdt: z.number().min(0).max(10_000_000).optional(),
+      /** 0–100 of wallet equity when `allowedBudgetInputMode` is WALLET_PCT (UI sync). */
+      allowedBudgetWalletPct: z.number().min(0).max(100).optional(),
+      allowedBudgetInputMode: z.enum(["USDT", "WALLET_PCT"]).optional(),
+      multiTradeUsePctOfUsable: z.boolean().optional(),
+      multiTradePctOfUsable: z.number().min(0).max(100).optional(),
+      multiBudgetSplitMode: z.enum(["FULL", "EQUAL", "CUSTOM_USDT", "CUSTOM_PCT_ALLOWED"]).optional(),
+      multiBudgetCoinUsdt: z.record(z.string().regex(symbolRe), z.number().min(0).max(10_000_000)).optional(),
+      multiBudgetCoinPct: z.record(z.string().regex(symbolRe), z.number().min(0).max(100)).optional(),
       strategyMode: z.enum(["AUTO", "MANUAL"]).optional(),
       manualStrategy: z.string().optional(),
       marketMode: z.enum(["SPOT", "FUTURES", "AUTO"]).optional(),
@@ -297,6 +309,8 @@ export function createRouter({ appState }) {
       /** Min SurfPulse XGBoost win probability (0–1) when strategy SURF_PULSE_ML is active. */
       surfPulseMlThreshold: z.number().min(0).max(1).optional(),
       trailingStopLossAuto: z.boolean().optional(),
+      /** `SUPERTREND` vs `FEE_LADDER` — see bot `futuresTrailingStopMode`. */
+      futuresTrailingStopMode: z.enum(["SUPERTREND", "FEE_LADDER"]).optional(),
       /** Up to 3 extra trailing locks after fee breakeven + fee-based first scalping; each % of entry (e.g. 0.5 = 0.5%). */
       trailingStopExtraScalpingPcts: z.array(z.number().min(0.01).max(5)).max(3).optional(),
       /** Fixed stop fraction of price (Supertrend futures, AI filter off). */

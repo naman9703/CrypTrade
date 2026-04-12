@@ -445,6 +445,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
           isLong,
           trailStep: 0,
           extremePx: filledPrice,
+          leverage: Math.max(1, Math.min(100, Number(leverage) || 1)),
         };
       }
 
@@ -472,9 +473,14 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
             markPx,
             trailingOpts: {
               enabled: true,
+              mode: trailingStopLoss.mode,
               feeRate: trailingStopLoss.feeRate,
               extraScalpingPcts: trailingStopLoss.extraScalpingPcts ?? [],
               maxTrailSteps: trailingStopLoss.maxTrailSteps,
+              supertrendPx: trailingStopLoss.supertrendPx,
+              bufferRate: trailingStopLoss.bufferRate,
+              maintenanceMarginRate: trailingStopLoss.maintenanceMarginRate,
+              minSlDistanceFrac: trailingStopLoss.minSlDistanceFrac,
             },
             trailingBySymbol,
             localBrackets,

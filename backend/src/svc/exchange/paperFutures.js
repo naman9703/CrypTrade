@@ -1,5 +1,6 @@
 import { roundTo } from "../../lib/math.js";
-import { advanceTrailingStopState, mergeStopWithTrail } from "../../lib/trailingStopLoss.js";
+import { mergeStopWithTrail, clampFeeRate, advanceTrailingStopState } from "../../lib/trailingStopLoss.js";
+import { computeSupertrendTrailingSlUpdate } from "../../lib/supertrendTrailingSl.js";
 import { resolveDefaultPaperFuturesStoreDir } from "../../lib/tradingModePersistence.js";
 import { createPaperStore } from "./paperStore.js";
 
@@ -144,39 +145,104 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
           const entryPx = Number(pos.entryPrice);
           const isLong = pos.side === "BUY";
           const prevSl = Number(o.stopPx);
-          const step0 = Number(pos.meta.trailStep ?? 0);
-          const ext0 = Number(pos.meta.extremePx ?? entryPx);
-          const r = advanceTrailingStopState({
-            entryPx,
-            isLong,
-            trailStep: step0,
-            extremePx: ext0,
-            markPx: px,
-            feeRate: trailingStopLoss.feeRate,
-            extraScalpingPctsOfEntry: trailingStopLoss.extraScalpingPcts ?? [],
-          });
-          pos.meta.trailStep = r.trailStep;
-          pos.meta.extremePx = r.extremePx;
-          if (r.proposedSl != null && r.advanced) {
-            const merged = mergeStopWithTrail({
-              isLong,
-              currentStopPx: o.stopPx,
-              trailSlPx: r.proposedSl,
-            });
-            if (merged != null && merged !== prevSl) {
-              o.stopPx = roundTo(merged, 8);
-              pos.stopLoss = o.stopPx;
-              onTrailingSlAdvance?.({
-                symbol: pos.symbol,
-                venue: "FUTURES",
-                side: pos.side,
-                prevStopLoss: prevSl,
-                newStopLoss: o.stopPx,
+          const lev = Number(pos.leverage ?? pos.meta?.leverage ?? defaultLeverage);
+          const feeR = clampFeeRate(trailingStopLoss.feeRate);
+          const buf = Number.isFinite(Number(trailingStopLoss.bufferRate)) ? Number(trailingStopLoss.bufferRate) : 0.0005;
+          const mm = Number.isFinite(Number(trailingStopLoss.maintenanceMarginRate))
+            ? Number(trailingStopLoss.maintenanceMarginRate)
+            : 0.005;
+          const minDist =
+            trailingStopLoss.minSlDistanceFrac != null &&
+            Number.isFinite(Number(trailingStopLoss.minSlDistanceFrac))
+              ? Number(trailingStopLoss.minSlDistanceFrac)
+              : 0.002;
+          const mode =
+            String(trailingStopLoss.mode || "SUPERTREND").toUpperCase() === "FEE_LADDER" ? "FEE_LADDER" : "SUPERTREND";
+
+          if (Number.isFinite(prevSl) && prevSl > 0) {
+            let merged = null;
+            let trailStatus = "OK";
+            let stPx = NaN;
+            let trailKind = "supertrend_trailing_sl";
+
+            if (mode === "FEE_LADDER") {
+              const adv = advanceTrailingStopState({
+                entryPx,
+                isLong,
                 trailStep: pos.meta.trailStep,
-                maxTrailSteps: trailingStopLoss.maxTrailSteps,
-                entryPrice: entryPx,
-                source: "paper_futures",
+                extremePx: pos.meta.extremePx,
+                markPx: px,
+                feeRate: feeR,
+                extraScalpingPctsOfEntry: trailingStopLoss.extraScalpingPcts ?? [],
               });
+              pos.meta.trailStep = adv.trailStep;
+              pos.meta.extremePx = adv.extremePx;
+              if (adv.advanced && adv.proposedSl != null) {
+                merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: adv.proposedSl });
+                trailKind = "fee_ladder_trailing_sl";
+              }
+            } else {
+              stPx = trailingStopLoss.supertrendPx != null ? Number(trailingStopLoss.supertrendPx) : NaN;
+              if (Number.isFinite(stPx) && stPx > 0) {
+                const r = computeSupertrendTrailingSlUpdate({
+                  entryPrice: entryPx,
+                  currentPrice: px,
+                  supertrend: stPx,
+                  previousSl: prevSl,
+                  isLong,
+                  leverage: lev,
+                  feeRate: feeR,
+                  bufferRate: buf,
+                  maintenanceMarginRate: mm,
+                  minSlDistanceFrac: minDist,
+                });
+                if (
+                  r.status !== "REJECT_TRADE" &&
+                  r.status !== "INVALID" &&
+                  r.status !== "NO_SUPERTREND" &&
+                  r.status !== "NO_TRAIL"
+                ) {
+                  merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: r.newSl });
+                  trailStatus = r.status;
+                }
+              }
+            }
+
+            if (merged != null && merged !== prevSl) {
+              const nextSl = roundTo(merged, 8);
+              if (nextSl !== prevSl) {
+                if (mode === "SUPERTREND") {
+                  pos.meta.trailStep = (Number(pos.meta.trailStep) || 0) + 1;
+                  pos.meta.extremePx = isLong
+                    ? Math.max(Number(pos.meta.extremePx) || px, px)
+                    : Math.min(Number(pos.meta.extremePx) || px, px);
+                }
+                o.stopPx = nextSl;
+                pos.stopLoss = nextSl;
+                const breakeven = isLong ? entryPx * (1 + feeR) : entryPx * (1 - feeR);
+                const activation = isLong ? entryPx * (1 + feeR + buf) : entryPx * (1 - feeR - buf);
+                onTrailingSlAdvance?.({
+                  symbol: pos.symbol,
+                  venue: "FUTURES",
+                  side: pos.side,
+                  prevStopLoss: prevSl,
+                  newStopLoss: nextSl,
+                  trailStep: pos.meta.trailStep,
+                  maxTrailSteps: trailingStopLoss.maxTrailSteps ?? 1,
+                  entryPrice: entryPx,
+                  isLong,
+                  supertrendPx: Number.isFinite(stPx) && stPx > 0 ? stPx : null,
+                  trailStatus,
+                  breakeven,
+                  activationPrice: activation,
+                  leverage: lev,
+                  bufferRate: buf,
+                  maintenanceMarginRate: mm,
+                  kind: trailKind,
+                  trailingMode: mode,
+                  source: "paper_futures",
+                });
+              }
             }
           }
         }

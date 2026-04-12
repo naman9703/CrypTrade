@@ -12,6 +12,7 @@ import {
   spotRoundTripPnlWithFees,
 } from "../../lib/binanceSpotCommissions.js";
 import { extractMinNotionalFromFilters } from "../../lib/binanceMinNotional.js";
+import { buildSpotOcoSellPrices, reanchorSpotLongSlTpToFill } from "../../lib/binanceSpotOco.js";
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
@@ -156,41 +157,6 @@ export function createBinanceTestnetSpotExchange({ log }) {
     if (dot < 0) return 0;
     const frac = s.slice(dot + 1).replace(/0+$/, "");
     return frac.length;
-  }
-
-  function formatPriceToTick(px, tickSize, mode) {
-    const p = Number(px);
-    const t = Number(tickSize || 0);
-    if (!Number.isFinite(p) || !Number.isFinite(t) || t <= 0) return String(px);
-    const stepped = mode === "up" ? Math.ceil(p / t - 1e-12) * t : Math.floor(p / t + 1e-12) * t;
-    const prec = stepPrecision(String(tickSize));
-    return stepped.toFixed(prec);
-  }
-
-  /** Binance OCO SELL after spot BUY: limit TP price > ref, stop trigger < ref, stopLimit < stop. */
-  function ocoSellPrices({ refPx, takeProfitPx, stopLossPx, tickSize }) {
-    const ref = Number(refPx);
-    let tp = Number(takeProfitPx);
-    let stop = Number(stopLossPx);
-    const tick = Number(tickSize || 0.01);
-    if (!Number.isFinite(ref) || ref <= 0) return null;
-
-    const minMove = Math.max(tick * 3, ref * 0.0005);
-    if (!Number.isFinite(tp) || tp <= ref) tp = ref + minMove;
-    if (!Number.isFinite(stop) || stop >= ref) stop = ref - minMove;
-
-    let stopLimit = stop - Math.max(tick, stop * 0.0002);
-    if (stopLimit >= stop) stopLimit = stop - tick;
-
-    const priceStr = formatPriceToTick(tp, tickSize, "up");
-    const stopStr = formatPriceToTick(stop, tickSize, "down");
-    let stopLimitStr = formatPriceToTick(stopLimit, tickSize, "down");
-
-    if (Number(stopLimitStr) >= Number(stopStr)) {
-      stopLimitStr = formatPriceToTick(Number(stopStr) - tick, tickSize, "down");
-    }
-    if (Number(priceStr) <= ref || Number(stopStr) >= ref || Number(stopLimitStr) >= Number(stopStr)) return null;
-    return { price: priceStr, stopPrice: stopStr, stopLimitPrice: stopLimitStr };
   }
 
   function formatQty(qty, stepSize) {
@@ -548,10 +514,17 @@ export function createBinanceTestnetSpotExchange({ log }) {
 
         const filledPx = avgFillPrice(out) ?? Number(price || 0);
         const refPx = Number.isFinite(filledPx) && filledPx > 0 ? filledPx : Number(price || 0);
-        ocoPx = ocoSellPrices({
-          refPx,
-          takeProfitPx,
+        const anchorPx = Number.isFinite(Number(price)) && Number(price) > 0 ? Number(price) : refPx;
+        const { stopLoss: slAnchored, takeProfit: tpAnchored } = reanchorSpotLongSlTpToFill({
+          anchorPx,
+          filledPx: refPx,
           stopLossPx,
+          takeProfitPx,
+        });
+        ocoPx = buildSpotOcoSellPrices({
+          refPx,
+          takeProfitPx: tpAnchored,
+          stopLossPx: slAnchored,
           tickSize: metaInfo.tickSize || "0.01",
         });
         if (!ocoPx) throw new Error("oco_prices_invalid");

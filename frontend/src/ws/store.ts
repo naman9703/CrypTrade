@@ -477,7 +477,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setBot: (bot) => set({ bot }),
 
-  setChartDisplaySymbol: (sym) => set({ chartDisplaySymbol: sym }),
+  setChartDisplaySymbol: (sym) =>
+    set({
+      chartDisplaySymbol: sym == null || String(sym).trim() === "" ? null : normWsSym(String(sym)),
+    }),
 
   pushLog: (p) =>
     set((s) => {

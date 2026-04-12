@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { deferTask } from "../lib/deferTask";
 import { useAppStore } from "../ws/store";
 import { api } from "../api/client";
 import { isIncomeLedgerClose } from "../lib/tradeClassification";
 import { estimatedCloseFeeUsdt } from "../lib/tradeCloseFee";
 import { AiTradeMotionVisual } from "./AiTradeMotionVisual";
+import { initialMarginUsd } from "../lib/futuresLiquidation";
 
 function isLedgerClose(t: any): boolean {
   return isIncomeLedgerClose(t);
@@ -15,6 +16,37 @@ function tradeTsMs(t: any): number {
   if (ts == null) return 0;
   const ms = new Date(String(ts)).getTime();
   return Number.isFinite(ms) ? ms : 0;
+}
+
+/** Value for `<input type="datetime-local" />` in local timezone. */
+function toDatetimeLocalValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function parseDatetimeLocalMs(s: string): number | null {
+  const t = new Date(String(s).trim()).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+type HistoryRangeFilter =
+  | { kind: "all" }
+  | { kind: "range"; startMs: number; endMs: number }
+  | { kind: "invalid" };
+
+function buildHistoryRangeFilter(mode: "all" | "custom", startStr: string, endStr: string): HistoryRangeFilter {
+  if (mode === "all") return { kind: "all" };
+  const startMs = parseDatetimeLocalMs(startStr);
+  const endMs = parseDatetimeLocalMs(endStr);
+  if (startMs == null || endMs == null || startMs > endMs) return { kind: "invalid" };
+  return { kind: "range", startMs, endMs };
+}
+
+function tradeMatchesHistoryTime(t: any, f: HistoryRangeFilter): boolean {
+  if (f.kind === "all" || f.kind === "invalid") return true;
+  const ms = tradeTsMs(t);
+  if (ms <= 0) return false;
+  return ms >= f.startMs && ms <= f.endMs;
 }
 
 /** Per-trade fees in USD where the app models them; ledger / some venues omit breakdown. */
@@ -51,6 +83,104 @@ function tradeFeeUsd(t: any): number | null {
   return null;
 }
 
+/**
+ * Exchange-scoped id for collapsing duplicate trade rows (same venue order / income tran) in history.
+ * OPEN/CLOSE only; other row kinds return null (handled separately in merge).
+ */
+function tradeHistoryMergeOrderKey(t: any): string | null {
+  const ty = String(t?.type ?? "");
+  if (ty !== "OPEN" && ty !== "CLOSE") return null;
+
+  const m = t?.meta || {};
+
+  if (ty === "CLOSE" && isLedgerClose(t)) {
+    const tid =
+      m.tranId ?? (Array.isArray(m.tranIds) && m.tranIds.length ? String(m.tranIds[0]) : null);
+    if (tid != null && String(tid).trim() !== "") return `income:${String(tid).trim()}`;
+  }
+
+  const topOid = t?.exitOrderId ?? t?.orderId ?? t?.entryOrderId;
+  const metaOid = m.orderId ?? m.entryOrderId ?? m.exitOrderId ?? m.closeOrderId;
+  for (const cand of [topOid, metaOid]) {
+    if (cand != null && String(cand).trim() !== "") return String(cand).trim();
+  }
+
+  const id = String(t?.id ?? "").trim();
+  const dm = /^(?:demo_|live_|bn_|test_|paper_)(\d+)$/i.exec(id);
+  if (dm) return dm[1];
+  if (id.startsWith("finc_")) return `income:${id.slice(5)}`;
+
+  return null;
+}
+
+function mergeTradeHistoryGroup(group: any[]): any {
+  if (group.length === 1) return group[0];
+  const sorted = [...group].sort((a, b) => tradeTsMs(a) - tradeTsMs(b));
+  const primary = sorted[sorted.length - 1];
+  const out: any = { ...primary, meta: { ...(primary.meta || {}) } };
+
+  const tranIds = new Set<string>();
+  const addTran = (x: unknown) => {
+    if (x == null || String(x) === "") return;
+    tranIds.add(String(x));
+  };
+  addTran(out.meta.tranId);
+  if (Array.isArray(out.meta.tranIds)) for (const x of out.meta.tranIds) addTran(x);
+
+  for (const r of sorted) {
+    if (r === primary) continue;
+    const m = r.meta || {};
+    addTran(m.tranId);
+    if (Array.isArray(m.tranIds)) for (const x of m.tranIds) addTran(x);
+
+    const q = numFinite(r.qty);
+    if ((out.qty == null || !Number.isFinite(Number(out.qty))) && q != null) out.qty = q;
+    const px = numFinite(r.price ?? r.exitPrice ?? m.exitPrice ?? m.closePrice);
+    if ((out.price == null || !Number.isFinite(Number(out.price))) && px != null) out.price = px;
+    const e = numFinite(r.entryPrice ?? m.entryPrice);
+    if ((out.entryPrice == null || !Number.isFinite(Number(out.entryPrice))) && e != null) out.entryPrice = e;
+    if (out.pnl == null && r.pnl != null && Number.isFinite(Number(r.pnl))) out.pnl = Number(r.pnl);
+    if (out.grossPnl == null && r.grossPnl != null && Number.isFinite(Number(r.grossPnl))) out.grossPnl = Number(r.grossPnl);
+    if (tradeFeeUsd(out) == null && tradeFeeUsd(r) != null && r.fee != null && Number.isFinite(Number(r.fee))) out.fee = Number(r.fee);
+    for (const field of ["stopLoss", "takeProfit", "leverage", "strategy", "reason"] as const) {
+      if (out[field] == null && r[field] != null) (out as any)[field] = r[field];
+    }
+    for (const [k, v] of Object.entries(m)) {
+      if (v == null) continue;
+      if (out.meta[k] == null || out.meta[k] === "") out.meta[k] = v;
+    }
+  }
+  if (tranIds.size > 0) {
+    const arr = [...tranIds];
+    out.meta.tranIds = arr;
+    out.meta.tranId = arr[arr.length - 1];
+  }
+  return out;
+}
+
+/** Merge rows that share the same logical exchange order (or income tran) and the same OPEN/CLOSE type. */
+function mergeTradesByOrderIdAndType(rows: any[]): any[] {
+  if (!rows.length) return rows;
+  const passthrough: any[] = [];
+  const buckets = new Map<string, any[]>();
+  for (const t of rows) {
+    const ty = String(t?.type ?? "");
+    if (ty !== "OPEN" && ty !== "CLOSE") {
+      passthrough.push(t);
+      continue;
+    }
+    const oid = tradeHistoryMergeOrderKey(t);
+    const key = oid != null ? `${ty}|${oid}` : `${ty}|id:${String(t?.id ?? "")}`;
+    const g = buckets.get(key);
+    if (g) g.push(t);
+    else buckets.set(key, [t]);
+  }
+  const merged = [...buckets.values()].map(mergeTradeHistoryGroup);
+  const out = [...passthrough, ...merged];
+  out.sort((a, b) => tradeTsMs(b) - tradeTsMs(a));
+  return out;
+}
+
 /** Fee for display: same as tradeFeeUsd, else modeled close fee from qty×price×0.0004 when possible. */
 function tradeFeeUsdForCloseRow(t: any, displayQty: number | undefined, displayPrice: number | undefined): number | null {
   const direct = tradeFeeUsd(t);
@@ -59,16 +189,47 @@ function tradeFeeUsdForCloseRow(t: any, displayQty: number | undefined, displayP
   return estimatedCloseFeeUsdt(displayQty, displayPrice);
 }
 
-function tradeGrossPnlClose(t: any, displayQty?: number, displayPrice?: number): number | null {
+/**
+ * When CLOSE has no stored `pnl` / `grossPnl`, infer futures-style gross from entry vs exit and close side.
+ * (Some ledger shards or older rows omit net; price + open leg still allow a display gross.)
+ */
+function inferCloseGrossFromPrices(t: any, openRef: any | undefined, displayQty?: number, displayPrice?: number): number | null {
+  if (t?.type !== "CLOSE") return null;
+  const px =
+    displayPrice ??
+    numFinite(t?.price ?? t?.exitPrice ?? t?.meta?.exitPrice ?? t?.meta?.closePrice ?? t?.meta?.markPx);
+  const qty =
+    displayQty ??
+    numFinite(t?.qty) ??
+    numFinite(openRef?.qty ?? t?.meta?.qty ?? openRef?.meta?.qty);
+  const entry = numFinite(
+    t?.entryPrice ?? t?.meta?.entryPrice ?? openRef?.entryPrice ?? openRef?.price ?? openRef?.meta?.entryPx,
+  );
+  if (entry == null || entry <= 0 || px == null || px <= 0 || qty == null || qty <= 0) return null;
+
+  let closeSide = String(t?.side ?? t?.meta?.closeSide ?? "").toUpperCase();
+  if (closeSide !== "BUY" && closeSide !== "SELL") {
+    const openSide = String(openRef?.side ?? "").toUpperCase();
+    if (openSide === "BUY") closeSide = "SELL";
+    else if (openSide === "SELL") closeSide = "BUY";
+  }
+  if (closeSide === "SELL") return (px - entry) * qty;
+  if (closeSide === "BUY") return (entry - px) * qty;
+  return null;
+}
+
+function tradeGrossPnlClose(t: any, displayQty?: number, displayPrice?: number, openRef?: any): number | null {
   if (t?.type !== "CLOSE") return null;
   const m = t?.meta || {};
   if (t?.grossPnl != null && Number.isFinite(Number(t.grossPnl))) return Number(t.grossPnl);
   if (m.grossPnl != null && Number.isFinite(Number(m.grossPnl))) return Number(m.grossPnl);
   const net = Number(t?.pnl ?? m.pnl ?? m.realizedPnl ?? m.realized_pnl);
-  if (!Number.isFinite(net)) return null;
-  const fee = tradeFeeUsdForCloseRow(t, displayQty, displayPrice);
-  if (fee != null && fee > 0) return net + fee;
-  return net;
+  if (Number.isFinite(net)) {
+    const fee = tradeFeeUsdForCloseRow(t, displayQty, displayPrice);
+    if (fee != null && fee > 0) return net + fee;
+    return net;
+  }
+  return inferCloseGrossFromPrices(t, openRef, displayQty, displayPrice);
 }
 
 function tradeNetPnlClose(t: any): number | null {
@@ -81,7 +242,7 @@ function tradeNetPnlClose(t: any): number | null {
 /** Net for a close = gross − fees (fees 0 when unknown); falls back to stored net PnL. */
 function closeTradeNetUsd(t: any, openRef: any | undefined): number {
   const { price, qty } = tradeHistoryDisplayFields(t, openRef);
-  const g = tradeGrossPnlClose(t, qty, price);
+  const g = tradeGrossPnlClose(t, qty, price, openRef);
   const f = tradeFeeUsdForCloseRow(t, qty, price);
   if (g != null && Number.isFinite(g)) {
     const feePart = f != null && Number.isFinite(f) ? f : 0;
@@ -98,6 +259,38 @@ function fmtUsd(x: number | null, digits = 2): string {
 function numFinite(x: any): number | undefined {
   const n = Number(x);
   return Number.isFinite(n) ? n : undefined;
+}
+
+function positionInitialMarginUsd(p: any): string {
+  if (String(p?.venue || "").toUpperCase() !== "FUTURES") return "—";
+  const e = numFinite(p.entryPrice);
+  const q = numFinite(p.qty);
+  const L0 = numFinite(p.leverage);
+  const L = L0 != null && L0 > 0 ? L0 : 1;
+  if (e == null || q == null || e <= 0 || q <= 0) return "—";
+  const m = initialMarginUsd(e, q, L);
+  return m != null ? m.toFixed(2) : "—";
+}
+
+/** Initial margin at open (USDT) for futures-style rows with leverage. */
+function tradeInitialMarginUsd(t: any, openRef: any | undefined, disp: { price?: number; qty?: number; lev?: number }): string {
+  const lev = disp.lev;
+  if (lev == null || !(lev > 0)) return "—";
+  if (t?.type === "OPEN") {
+    const px = disp.price;
+    const qty = disp.qty;
+    if (px == null || qty == null || px <= 0 || qty <= 0) return "—";
+    const m = initialMarginUsd(px, qty, lev);
+    return m != null ? m.toFixed(2) : "—";
+  }
+  if (t?.type === "CLOSE") {
+    const pxE = numFinite(openRef?.price ?? t?.meta?.entryPrice ?? t?.entryPrice);
+    const qE = numFinite(openRef?.qty ?? disp.qty);
+    if (pxE == null || qE == null || pxE <= 0 || qE <= 0) return "—";
+    const m = initialMarginUsd(pxE, qE, lev);
+    return m != null ? m.toFixed(2) : "—";
+  }
+  return "—";
 }
 
 /** CLOSE rows often omit fields; fill from matching OPEN (same id) and common aliases. */
@@ -156,6 +349,58 @@ function tradeHistoryDisplayFields(t: any, openRef: any | undefined) {
   return { lev, price, qty, sl, tp };
 }
 
+/**
+ * Human-readable exit / close driver for the trade history table.
+ * Uses `reason`, `meta.bracketType`, `meta.closeReason`, trailing hints, and Supertrend `source`.
+ */
+function tradeHistoryReasonLabel(t: any): string {
+  if (t?.type === "OPEN") return "—";
+  if (isLedgerClose(t)) return "Ledger";
+
+  const m = t?.meta || {};
+  const trailStep = Number(m.trailStep);
+  const trailed = (Number.isFinite(trailStep) && trailStep > 0) || m.autoTradeTrailing === true;
+  const trailMode = String(m.trailingMode || m.trailMode || "").toUpperCase();
+
+  const bracket = String(m.bracketType || "").toUpperCase();
+  if (bracket === "SL") {
+    if (trailMode === "FEE_LADDER") return "Fee ladder SL";
+    if (trailed) return "Trailed SL";
+    return "SL";
+  }
+  if (bracket === "TP") return "TP";
+  if (bracket === "MANUAL_CLOSE") return "Manual";
+
+  const cr = String(m.closeReason || "").toUpperCase();
+  if (cr === "STOP" || cr === "STOP_LOSS") {
+    if (trailMode === "FEE_LADDER") return "Fee ladder SL";
+    return trailed ? "Trailed SL" : "SL";
+  }
+  if (cr === "TAKE_PROFIT") return "TP";
+
+  const r = String(t?.reason || "").toUpperCase().replace(/-/g, "_");
+  if (r === "STOP_LOSS" || r === "STOP") {
+    if (trailMode === "FEE_LADDER") return "Fee ladder SL";
+    return trailed ? "Trailed SL" : "SL";
+  }
+  if (r === "TAKE_PROFIT") return "TP";
+  if (r === "MANUAL_CLOSE" || r === "MANUAL") return "Manual";
+  if (r === "SUPERTREND_EXIT") return "Signal";
+  if (r === "MARKET_SELL") {
+    if (m.supertrend === true) return "Signal";
+    if (m.manualClose === true) return "Manual";
+    return "Market";
+  }
+  if (r === "EXECUTION_REPORT") return "Exchange";
+  if (r === "OCO_DONE") return "OCO";
+
+  if (String(t?.source || "").toUpperCase() === "SUPERTREND" && t?.type === "CLOSE") return "Signal";
+
+  const fallback = [t.reason, m.closeReason, m.bracketType].find((x) => x != null && String(x).trim() !== "");
+  if (fallback) return String(fallback).replace(/_/g, " ");
+  return "—";
+}
+
 /** When OPEN id ≠ CLOSE id (e.g. fut_BTCUSDT vs finc_*), pick latest OPEN for same symbol before close time. */
 function resolveOpenRefForClose(t: any, allTrades: any[], byId: Map<string, any>): any | undefined {
   if (t?.type !== "CLOSE") return undefined;
@@ -192,15 +437,45 @@ export function PortfolioPanel() {
   const strictAccountMissing =
     (mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET") && account === null;
   /** Testnet/mainnet: do not show local/audit trade rows until Binance account snapshot loads. */
-  const portfolioTrades = strictAccountMissing ? [] : trades || [];
+  const portfolioTrades = useMemo(() => {
+    const raw = strictAccountMissing ? [] : trades || [];
+    return mergeTradesByOrderIdAndType(raw);
+  }, [strictAccountMissing, trades]);
 
   const [tradeHistoryView, setTradeHistoryView] = useState<"ALL" | "OPEN_ONLY" | "CLOSED_ONLY">("ALL");
   // Default "Strategy" (APP): futures demo emits many unmatched income shards; hide unless debugging.
   const [closeSourceFilter, setCloseSourceFilter] = useState<"ALL" | "APP" | "LEDGER">("APP");
+  /** Drives net realised PnL, winrate, fee rollup, and trade history timestamps. */
+  const [pnlHistoryRange, setPnlHistoryRange] = useState<"all" | "custom">("all");
+  const [customRangeStart, setCustomRangeStart] = useState("");
+  const [customRangeEnd, setCustomRangeEnd] = useState("");
+
+  useEffect(() => {
+    if (pnlHistoryRange !== "custom") return;
+    if (customRangeStart.trim() !== "" || customRangeEnd.trim() !== "") return;
+    const end = new Date();
+    const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+    setCustomRangeStart(toDatetimeLocalValue(start));
+    setCustomRangeEnd(toDatetimeLocalValue(end));
+  }, [pnlHistoryRange, customRangeStart, customRangeEnd]);
+
+  const historyRangeFilter = useMemo(
+    () => buildHistoryRangeFilter(pnlHistoryRange, customRangeStart, customRangeEnd),
+    [pnlHistoryRange, customRangeStart, customRangeEnd],
+  );
 
   const closeTrades = (portfolioTrades || []).filter((t: any) => t?.type === "CLOSE");
   const closeTradesApp = closeTrades.filter((t: any) => !isLedgerClose(t));
   const closeTradesLedger = closeTrades.filter((t: any) => isLedgerClose(t));
+
+  const closeTradesAppInRange = useMemo(
+    () => closeTradesApp.filter((t) => tradeMatchesHistoryTime(t, historyRangeFilter)),
+    [closeTradesApp, historyRangeFilter],
+  );
+  const closeTradesLedgerInRange = useMemo(
+    () => closeTradesLedger.filter((t) => tradeMatchesHistoryTime(t, historyRangeFilter)),
+    [closeTradesLedger, historyRangeFilter],
+  );
 
   const openTradeById = useMemo(() => {
     const m = new Map<string, any>();
@@ -219,10 +494,10 @@ export function PortfolioPanel() {
     let stratGross = 0;
     let stratFees = 0;
     const rows = portfolioTrades || [];
-    for (const t of closeTradesApp) {
+    for (const t of closeTradesAppInRange) {
       const openRef = resolveOpenRefForClose(t, rows, openTradeById);
       const { price, qty } = tradeHistoryDisplayFields(t, openRef);
-      const g = tradeGrossPnlClose(t, qty, price);
+      const g = tradeGrossPnlClose(t, qty, price, openRef);
       const fee = tradeFeeUsdForCloseRow(t, qty, price);
       if (g != null && Number.isFinite(g)) stratGross += g;
       if (fee != null && Number.isFinite(fee) && fee > 0) stratFees += fee;
@@ -232,10 +507,10 @@ export function PortfolioPanel() {
     }
     let ledGross = 0;
     let ledFees = 0;
-    for (const t of closeTradesLedger) {
+    for (const t of closeTradesLedgerInRange) {
       const openRef = resolveOpenRefForClose(t, rows, openTradeById);
       const { price, qty } = tradeHistoryDisplayFields(t, openRef);
-      const g = tradeGrossPnlClose(t, qty, price);
+      const g = tradeGrossPnlClose(t, qty, price, openRef);
       const fee = tradeFeeUsdForCloseRow(t, qty, price);
       if (g != null && Number.isFinite(g)) ledGross += g;
       if (fee != null && Number.isFinite(fee) && fee > 0) ledFees += fee;
@@ -246,7 +521,7 @@ export function PortfolioPanel() {
       netRealizedPnlStrategy: stratGross - stratFees,
       netRealizedPnlLedger: ledGross - ledFees,
     };
-  }, [closeTradesApp, closeTradesLedger, portfolioTrades, openTradeById]);
+  }, [closeTradesAppInRange, closeTradesLedgerInRange, portfolioTrades, openTradeById]);
 
   const netRealizedPnlAll = netRealizedPnlStrategy + netRealizedPnlLedger;
   /** Live/testnet: headline matches “app session” (demo-style); optional ledger stays in breakdown or enable BINANCE_LIVE_INCOME_INCLUDE_UNMATCHED=1 on server. */
@@ -259,8 +534,7 @@ export function PortfolioPanel() {
     const rowList = portfolioTrades || [];
     let total = 0;
     let withFee = 0;
-    for (const t of rowList) {
-      if (t?.type !== "CLOSE" || isLedgerClose(t)) continue;
+    for (const t of closeTradesAppInRange) {
       const openRef = resolveOpenRefForClose(t, rowList, openTradeById);
       const { price, qty } = tradeHistoryDisplayFields(t, openRef);
       const f = tradeFeeUsdForCloseRow(t, qty, price);
@@ -270,7 +544,7 @@ export function PortfolioPanel() {
       }
     }
     return { strategyFeeTotal: total, strategyClosesWithFee: withFee };
-  }, [portfolioTrades, openTradeById]);
+  }, [closeTradesAppInRange, portfolioTrades, openTradeById]);
   const winrate = wins + losses > 0 ? wins / (wins + losses) : null;
 
   const last10Min = useMemo(() => {
@@ -295,6 +569,35 @@ export function PortfolioPanel() {
     }
     return { appN, appPnl, ledN, ledPnl };
   }, [portfolioTrades, openTradeById]);
+
+  /** When a custom range is active, show net/count for closes inside that window (same buckets as headline). */
+  const customRangeCloseRollup = useMemo(() => {
+    if (historyRangeFilter.kind !== "range") {
+      return { appN: 0, appPnl: 0, ledN: 0, ledPnl: 0 };
+    }
+    let appN = 0;
+    let appPnl = 0;
+    let ledN = 0;
+    let ledPnl = 0;
+    const rows = portfolioTrades || [];
+    for (const t of closeTradesAppInRange) {
+      const openRef = resolveOpenRefForClose(t, rows, openTradeById);
+      appN += 1;
+      appPnl += closeTradeNetUsd(t, openRef);
+    }
+    for (const t of closeTradesLedgerInRange) {
+      const openRef = resolveOpenRefForClose(t, rows, openTradeById);
+      ledN += 1;
+      ledPnl += closeTradeNetUsd(t, openRef);
+    }
+    return { appN, appPnl, ledN, ledPnl };
+  }, [
+    historyRangeFilter,
+    closeTradesAppInRange,
+    closeTradesLedgerInRange,
+    portfolioTrades,
+    openTradeById,
+  ]);
 
   const openPositionIdTokens = useMemo(() => {
     const set = new Set<string>();
@@ -328,11 +631,13 @@ export function PortfolioPanel() {
       if (closeSourceFilter === "LEDGER" && !led) return false;
       return true;
     };
-    if (tradeHistoryView === "OPEN_ONLY") return openTrades;
-    if (tradeHistoryView === "CLOSED_ONLY") return closedTrades.filter(keepClose);
-    if (closeSourceFilter === "ALL") return rows;
-    return rows.filter((t: any) => (t?.type === "OPEN" ? true : keepClose(t)));
-  }, [tradeHistoryView, openTrades, closedTrades, portfolioTrades, closeSourceFilter]);
+    let out: any[];
+    if (tradeHistoryView === "OPEN_ONLY") out = openTrades;
+    else if (tradeHistoryView === "CLOSED_ONLY") out = closedTrades.filter(keepClose);
+    else if (closeSourceFilter === "ALL") out = rows;
+    else out = rows.filter((t: any) => (t?.type === "OPEN" ? true : keepClose(t)));
+    return out.filter((t) => tradeMatchesHistoryTime(t, historyRangeFilter));
+  }, [tradeHistoryView, openTrades, closedTrades, portfolioTrades, closeSourceFilter, historyRangeFilter]);
 
   /** Legacy standalone local futures (former BINANCE_DEMO_FUTURES without keys); hybrid demo uses name "hybrid". */
   const isPaperFuturesLocal = exchName === "binance_demo_futures";
@@ -524,7 +829,66 @@ export function PortfolioPanel() {
         </div>
 
         <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3 text-xs">
-          <div className="text-slate-600 dark:text-slate-400">Net realised PnL</div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="text-slate-600 dark:text-slate-400">Net realised PnL</div>
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                className={`rounded-md border px-2 py-1 text-[11px] font-semibold ${
+                  pnlHistoryRange === "all"
+                    ? "border-emerald-600/50 bg-emerald-600/20 text-emerald-200"
+                    : "border-slate-300 dark:border-slate-700 bg-slate-200/50 dark:bg-slate-900/30 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900"
+                }`}
+                onClick={() => setPnlHistoryRange("all")}
+              >
+                All time
+              </button>
+              <button
+                type="button"
+                className={`rounded-md border px-2 py-1 text-[11px] font-semibold ${
+                  pnlHistoryRange === "custom"
+                    ? "border-emerald-600/50 bg-emerald-600/20 text-emerald-200"
+                    : "border-slate-300 dark:border-slate-700 bg-slate-200/50 dark:bg-slate-900/30 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900"
+                }`}
+                onClick={() => setPnlHistoryRange("custom")}
+              >
+                Custom range
+              </button>
+            </div>
+          </div>
+          {pnlHistoryRange === "custom" ? (
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400">
+                From (local)
+                <input
+                  type="datetime-local"
+                  value={customRangeStart}
+                  onChange={(e) => setCustomRangeStart(e.target.value)}
+                  className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </label>
+              <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400">
+                To (local)
+                <input
+                  type="datetime-local"
+                  value={customRangeEnd}
+                  onChange={(e) => setCustomRangeEnd(e.target.value)}
+                  className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </label>
+            </div>
+          ) : null}
+          {historyRangeFilter.kind === "invalid" && pnlHistoryRange === "custom" ? (
+            <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+              Set valid start/end (local time). Showing all-time stats until both are valid and start ≤ end.
+            </div>
+          ) : null}
+          {historyRangeFilter.kind === "range" ? (
+            <div className="mt-1 text-[10px] text-slate-600 dark:text-slate-500">
+              Filter: trade row <span className="font-mono">ts</span> in [{new Date(historyRangeFilter.startMs).toLocaleString()} –{" "}
+              {new Date(historyRangeFilter.endMs).toLocaleString()}] (local browser time).
+            </div>
+          ) : null}
           <div
             className={`mt-1 text-lg font-semibold ${netRealizedHeadline >= 0 ? "text-emerald-400" : "text-rose-400"}`}
           >
@@ -547,7 +911,7 @@ export function PortfolioPanel() {
           </div>
           {(mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET") &&
           Number.isFinite(netRealizedPnlAll) &&
-          closeTradesLedger.length > 0 ? (
+          closeTradesLedgerInRange.length > 0 ? (
             <div className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">
               Incl. unmatched ledger (below):{" "}
               <span className={netRealizedPnlAll >= 0 ? "text-emerald-400" : "text-rose-400"}>
@@ -562,17 +926,20 @@ export function PortfolioPanel() {
                 <span className={netRealizedPnlStrategy >= 0 ? "text-emerald-400" : "text-rose-400"}>
                   ${netRealizedPnlStrategy.toFixed(2)}
                 </span>{" "}
-                <span className="text-slate-600">({closeTradesApp.length} CLOSE)</span>
+                <span className="text-slate-600">({closeTradesAppInRange.length} CLOSE)</span>
               </div>
               {strategyClosesWithFee > 0 ? (
                 <div>
                   Total fees (strategy-attributed):{" "}
                   <span className="text-slate-700 dark:text-slate-300">${strategyFeeTotal.toFixed(2)}</span>
-                  {strategyClosesWithFee < closeTradesApp.length ? (
-                    <span className="text-slate-600"> ({strategyClosesWithFee}/{closeTradesApp.length} closes with fee data)</span>
+                  {strategyClosesWithFee < closeTradesAppInRange.length ? (
+                    <span className="text-slate-600">
+                      {" "}
+                      ({strategyClosesWithFee}/{closeTradesAppInRange.length} closes with fee data)
+                    </span>
                   ) : null}
                 </div>
-              ) : closeTradesApp.length > 0 ? (
+              ) : closeTradesAppInRange.length > 0 ? (
                 <div className="text-slate-600">Total fees (strategy): no per-trade fee breakdown in current history.</div>
               ) : null}
               {closeTradesLedger.length > 0 ? (
@@ -581,24 +948,45 @@ export function PortfolioPanel() {
                   <span className={netRealizedPnlLedger >= 0 ? "text-emerald-400" : "text-rose-400"}>
                     ${netRealizedPnlLedger.toFixed(2)}
                   </span>{" "}
-                  <span className="text-slate-600">({closeTradesLedger.length} CLOSE)</span>
+                  <span className="text-slate-600">({closeTradesLedgerInRange.length} CLOSE)</span>
                 </div>
               ) : null}
             </div>
           )}
           <div className="mt-2 text-[11px] leading-snug text-slate-600 dark:text-slate-500">
-            <span className="font-medium text-slate-600 dark:text-slate-400">Last 10 min (net):</span> strategy{" "}
-            <span className="text-slate-700 dark:text-slate-300">{last10Min.appN}</span> closes ·{" "}
-            <span className={last10Min.appPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>${last10Min.appPnl.toFixed(2)}</span>
-            {closeTradesLedger.length > 0 || last10Min.ledN > 0 ? (
+            {historyRangeFilter.kind === "range" ? (
               <>
-                {" "}
-                · ledger <span className="text-slate-700 dark:text-slate-300">{last10Min.ledN}</span> ·{" "}
-                <span className={last10Min.ledPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                  ${last10Min.ledPnl.toFixed(2)}
+                <span className="font-medium text-slate-600 dark:text-slate-400">In selected range (net):</span> strategy{" "}
+                <span className="text-slate-700 dark:text-slate-300">{customRangeCloseRollup.appN}</span> closes ·{" "}
+                <span className={customRangeCloseRollup.appPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                  ${customRangeCloseRollup.appPnl.toFixed(2)}
                 </span>
+                {closeTradesLedger.length > 0 || customRangeCloseRollup.ledN > 0 ? (
+                  <>
+                    {" "}
+                    · ledger <span className="text-slate-700 dark:text-slate-300">{customRangeCloseRollup.ledN}</span> ·{" "}
+                    <span className={customRangeCloseRollup.ledPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                      ${customRangeCloseRollup.ledPnl.toFixed(2)}
+                    </span>
+                  </>
+                ) : null}
               </>
-            ) : null}
+            ) : (
+              <>
+                <span className="font-medium text-slate-600 dark:text-slate-400">Last 10 min (net):</span> strategy{" "}
+                <span className="text-slate-700 dark:text-slate-300">{last10Min.appN}</span> closes ·{" "}
+                <span className={last10Min.appPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>${last10Min.appPnl.toFixed(2)}</span>
+                {closeTradesLedger.length > 0 || last10Min.ledN > 0 ? (
+                  <>
+                    {" "}
+                    · ledger <span className="text-slate-700 dark:text-slate-300">{last10Min.ledN}</span> ·{" "}
+                    <span className={last10Min.ledPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                      ${last10Min.ledPnl.toFixed(2)}
+                    </span>
+                  </>
+                ) : null}
+              </>
+            )}
           </div>
           {showFuturesIncomeLedgerNote ? (
             <div className="mt-1 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
@@ -623,6 +1011,14 @@ export function PortfolioPanel() {
             Wins: <span className="text-slate-700 dark:text-slate-300">{wins}</span> · Losses: <span className="text-slate-700 dark:text-slate-300">{losses}</span>
             <span className="text-slate-600"> (strategy only)</span>
           </div>
+          {pnlHistoryRange === "custom" && historyRangeFilter.kind === "range" ? (
+            <div className="mt-1 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
+              Same time filter as <span className="font-medium text-slate-600 dark:text-slate-400">Net realised PnL</span> (row{" "}
+              <span className="font-mono">ts</span>).
+            </div>
+          ) : pnlHistoryRange === "custom" && historyRangeFilter.kind === "invalid" ? (
+            <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">Win rate follows all-time closes until the range is valid.</div>
+          ) : null}
         </div>
 
         <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3 text-xs">
@@ -697,6 +1093,7 @@ export function PortfolioPanel() {
                   <th className="px-3 py-2">Lev</th>
                   <th className="px-3 py-2">Entry</th>
                   <th className="px-3 py-2">Qty</th>
+                  <th className="px-3 py-2">Margin</th>
                   <th className="px-3 py-2">SL</th>
                   <th className="px-3 py-2">TP</th>
                   <th className="px-3 py-2">uPnL</th>
@@ -706,7 +1103,7 @@ export function PortfolioPanel() {
               <tbody>
                 {positions.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={10}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={11}>
                       No open positions
                     </td>
                   </tr>
@@ -723,6 +1120,9 @@ export function PortfolioPanel() {
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{Number(p.entryPrice).toFixed(2)}</td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{Number(p.qty).toFixed(6)}</td>
+                      <td className="px-3 py-2 text-slate-700 dark:text-slate-300" title="Initial margin ≈ notional / leverage (USD-M)">
+                        {positionInitialMarginUsd(p)}
+                      </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{p.stopLoss != null ? Number(p.stopLoss).toFixed(2) : "—"}</td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
                         {p.takeProfit != null ? Number(p.takeProfit).toFixed(2) : "—"}
@@ -796,7 +1196,23 @@ export function PortfolioPanel() {
         <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40">
           <div className="border-b border-slate-200 dark:border-slate-800 px-3 py-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Trade history</div>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Trade history</div>
+                {historyRangeFilter.kind === "range" ? (
+                  <div className="mt-0.5 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
+                    Time filter:{" "}
+                    <span className="font-mono text-slate-700 dark:text-slate-300">
+                      {new Date(historyRangeFilter.startMs).toLocaleString()}
+                    </span>{" "}
+                    –{" "}
+                    <span className="font-mono text-slate-700 dark:text-slate-300">
+                      {new Date(historyRangeFilter.endMs).toLocaleString()}
+                    </span>
+                  </div>
+                ) : pnlHistoryRange === "custom" && historyRangeFilter.kind === "invalid" ? (
+                  <div className="mt-0.5 text-[10px] text-amber-700 dark:text-amber-300">Invalid range — showing all rows.</div>
+                ) : null}
+              </div>
               <div className="flex flex-wrap items-center gap-1">
                 <button
                   type="button"
@@ -883,7 +1299,9 @@ export function PortfolioPanel() {
                   <th className="px-3 py-2">Lev</th>
                   <th className="px-3 py-2">Price</th>
                   <th className="px-3 py-2">Qty</th>
+                  <th className="px-3 py-2">Margin</th>
                   <th className="px-3 py-2">SL/TP</th>
+                  <th className="px-3 py-2">Reason</th>
                   <th className="px-3 py-2">Src</th>
                   <th className="px-3 py-2">Gross</th>
                   <th className="px-3 py-2">Fee</th>
@@ -893,7 +1311,7 @@ export function PortfolioPanel() {
               <tbody>
                 {displayedTrades.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={11}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={13}>
                       No trades yet
                     </td>
                   </tr>
@@ -905,11 +1323,16 @@ export function PortfolioPanel() {
                         : undefined;
                     const { lev, price, qty, sl, tp } = tradeHistoryDisplayFields(t, openRef);
                     const fee = tradeFeeUsdForCloseRow(t, qty, price);
-                    const gross = t?.type === "CLOSE" ? tradeGrossPnlClose(t, qty, price) : null;
+                    const gross = t?.type === "CLOSE" ? tradeGrossPnlClose(t, qty, price, openRef) : null;
                     const net = t?.type === "CLOSE" ? tradeNetPnlClose(t) : null;
                     const sideDisp =
                       t.side ?? (t?.type === "CLOSE" && t?.meta?.closeSide != null ? String(t.meta.closeSide) : null) ?? "n/a";
                     const slTpDisp = `${sl != null ? sl.toFixed(2) : "n/a"} / ${tp != null ? tp.toFixed(2) : "n/a"}`;
+                    const marginDisp = tradeInitialMarginUsd(t, openRef, { price, qty, lev });
+                    const reasonDisp = tradeHistoryReasonLabel(t);
+                    const reasonTitle = [t.reason, t?.meta?.closeReason, t?.meta?.bracketType]
+                      .filter((x) => x != null && String(x).trim() !== "")
+                      .join(" · ");
                     return (
                       <tr key={idx} className="border-t border-slate-200 dark:border-slate-900">
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.type ?? t.reason ?? "—"}</td>
@@ -924,14 +1347,26 @@ export function PortfolioPanel() {
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
                           {qty != null && qty > 0 ? qty.toFixed(6) : "n/a"}
                         </td>
+                        <td
+                          className="px-3 py-2 text-slate-700 dark:text-slate-300"
+                          title="Initial margin ≈ entry×qty / leverage when leverage is known (futures)"
+                        >
+                          {marginDisp}
+                        </td>
                         <td className="px-3 py-2 text-[10px] text-slate-600 dark:text-slate-400">{slTpDisp}</td>
+                        <td
+                          className="max-w-[7rem] px-3 py-2 text-[10px] text-slate-700 dark:text-slate-300"
+                          title={reasonTitle || undefined}
+                        >
+                          {reasonDisp}
+                        </td>
                         <td className="px-3 py-2 text-[10px] uppercase text-slate-600 dark:text-slate-500">
                           {t.type === "CLOSE" ? (isLedgerClose(t) ? "ledger" : "strat") : t.type === "OPEN" ? "strat" : "—"}
                         </td>
                         <td
                           className={`px-3 py-2 ${gross != null && gross >= 0 ? "text-emerald-400" : gross != null ? "text-rose-400" : "text-slate-600 dark:text-slate-400"}`}
                         >
-                          {gross != null ? fmtUsd(gross) : "n/a"}
+                          {gross != null ? fmtUsd(gross) : t?.type === "CLOSE" ? "n/a" : "—"}
                         </td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
                           {fee != null ? fmtUsd(fee, 4) : "n/a"}

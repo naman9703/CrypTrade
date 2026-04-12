@@ -185,13 +185,13 @@ export function RestCandleTile({
       }`}
       role={onSelect ? "button" : undefined}
       tabIndex={onSelect ? 0 : undefined}
-      onClick={onSelect ? () => onSelect(symbol) : undefined}
+      onClick={onSelect ? () => onSelect(String(symbol || "").trim().toUpperCase()) : undefined}
       onKeyDown={
         onSelect
           ? (e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                onSelect(symbol);
+                onSelect(String(symbol || "").trim().toUpperCase());
               }
             }
           : undefined

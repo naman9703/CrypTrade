@@ -11,6 +11,9 @@ import { buildOhlc, isOhlcBarRenderable, ohlcBarsToMsCandles, type OhlcBar } fro
 import { isPlausibleCandleClose } from "../lib/symbolPriceSanity";
 import { playSupertrendBuySound, playSupertrendSellSound } from "../lib/uiSounds";
 import { buildChartSupertrend } from "../lib/supertrend";
+import { advanceTrailingStopState, buildTrailLockPrices, mergeStopWithTrail } from "../lib/trailingFeeLadder";
+import { computeSupertrendTrailingSlUpdate } from "../lib/supertrendTrailingSl";
+import { clampTradeCloseFeeRate } from "../lib/tradeCloseFee";
 import {
   computeSupertrendSignalVerdicts,
   formatSupertrendSignalVerdict,
@@ -35,6 +38,28 @@ const CHART_BACKGROUND_SYNC_MS = 60_000;
 
 function normalizeSymTf(s: string | undefined) {
   return String(s ?? "").trim();
+}
+
+/** Align chart symbol vs exchange position `symbol` (slashes, dashes, case). */
+function canonicalChartSymbol(s: string | undefined | null): string {
+  return String(s ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[/\s_-]/g, "");
+}
+
+/**
+ * LWC builds price-scale ticks from series `priceFormat`; defaults break for sub‑$1 pairs (e.g. DOGE ~0.09)
+ * — the right axis can look “empty” or show only one tick (see lightweight-charts #1186 / #1452).
+ */
+function inferChartPriceFormat(lastClose: number | null): { type: "price"; precision: number; minMove: number } {
+  const x = lastClose != null && Number.isFinite(lastClose) && lastClose > 0 ? lastClose : null;
+  if (x == null) return { type: "price", precision: 6, minMove: 0.000001 };
+  if (x >= 10_000) return { type: "price", precision: 1, minMove: 0.1 };
+  if (x >= 1000) return { type: "price", precision: 2, minMove: 0.01 };
+  if (x >= 1) return { type: "price", precision: 4, minMove: 0.0001 };
+  if (x >= 0.01) return { type: "price", precision: 5, minMove: 0.00001 };
+  return { type: "price", precision: 6, minMove: 0.000001 };
 }
 
 function timeToUtcMs(time: Time): number {
@@ -138,6 +163,105 @@ function formatHistTimeIst(ts: number): string {
   });
 }
 
+type BracketPriceLineHandle = { remove: () => void };
+
+/**
+ * Drop SL/TP that cannot belong to the charted instrument (wrong row / stale merge), e.g. TP 9 on DOGE ~0.09.
+ * Uses last candle close as reference when available.
+ */
+function futuresBracketLevelSane(chartSymForPlausible: string, px: number, lastClose: number | null): boolean {
+  if (!Number.isFinite(px) || px <= 0) return false;
+  if (lastClose != null && Number.isFinite(lastClose) && lastClose > 0) {
+    const r = px / lastClose;
+    if (!Number.isFinite(r) || r < 1 / 50 || r > 50) return false;
+  }
+  return isPlausibleCandleClose(chartSymForPlausible, px, px * 0.999, lastClose);
+}
+
+type ChartStTrailPreviewLine = { px: number; title: string; kind: "st_activation" | "st_trail" | "fee_trail" };
+
+function nearlySameTrailPx(a: number, b: number, rel = 1e-5): boolean {
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0) return false;
+  return Math.abs(a - b) / a < rel;
+}
+
+/** Futures row for the chart symbol (deduped); used for SL/TP price lines. */
+function pickChartFuturesBracket(
+  positions: unknown,
+  chartSymbolEffective: string,
+  isMultiCoin: boolean,
+  lastClose: number | null,
+): {
+  slPx: number | null;
+  tpPx: number | null;
+  hasBracket: boolean;
+} {
+  const symKey = canonicalChartSymbol(chartSymbolEffective);
+  if (!symKey) return { slPx: null, tpPx: null, hasBracket: false };
+  const rows = Array.isArray(positions) ? positions : [];
+  const hereRaw = rows.filter((p: Record<string, unknown>) => {
+    const ps = canonicalChartSymbol(String(p?.symbol ?? ""));
+    if (!ps || ps !== symKey) return false;
+    const q = Number(p?.qty ?? p?.positionAmt);
+    if (!Number.isFinite(q) || Math.abs(q) <= 1e-8) return false;
+    const v = String(p?.venue ?? "").toUpperCase();
+    /** Multi-coin: only USD-M style rows get chart brackets — empty venue rows were leaking other legs. */
+    if (isMultiCoin) return v === "FUTURES";
+    return v === "FUTURES" || v === "";
+  });
+  const seenRow = new Set<string>();
+  const here = hereRaw.filter((p: Record<string, unknown>) => {
+    const id = String(p?.id ?? "").trim();
+    const k = id || `${String(p?.side ?? "")}|${String(p?.entryPrice ?? "")}`;
+    if (seenRow.has(k)) return false;
+    seenRow.add(k);
+    return true;
+  });
+  const pos = here[0] as Record<string, unknown> | undefined;
+  if (!pos) return { slPx: null, tpPx: null, hasBracket: false };
+  const slRaw = Number(pos.stopLoss);
+  const tpRaw = Number(pos.takeProfit);
+  let slPx = Number.isFinite(slRaw) && slRaw > 0 ? slRaw : null;
+  let tpPx = Number.isFinite(tpRaw) && tpRaw > 0 ? tpRaw : null;
+  const symPlausible = normalizeSymTf(chartSymbolEffective) || chartSymbolEffective;
+  if (slPx != null && !futuresBracketLevelSane(symPlausible, slPx, lastClose)) slPx = null;
+  if (tpPx != null && !futuresBracketLevelSane(symPlausible, tpPx, lastClose)) tpPx = null;
+  return {
+    slPx,
+    tpPx,
+    hasBracket: slPx != null || tpPx != null,
+  };
+}
+
+/** First deduped futures row for the chart symbol (same filter as SL/TP brackets). */
+function pickChartFuturesPositionRow(
+  positions: unknown,
+  chartSymbolEffective: string,
+  isMultiCoin: boolean,
+): Record<string, unknown> | null {
+  const symKey = canonicalChartSymbol(chartSymbolEffective);
+  if (!symKey) return null;
+  const rows = Array.isArray(positions) ? positions : [];
+  const hereRaw = rows.filter((p: Record<string, unknown>) => {
+    const ps = canonicalChartSymbol(String(p?.symbol ?? ""));
+    if (!ps || ps !== symKey) return false;
+    const q = Number(p?.qty ?? p?.positionAmt);
+    if (!Number.isFinite(q) || Math.abs(q) <= 1e-8) return false;
+    const v = String(p?.venue ?? "").toUpperCase();
+    if (isMultiCoin) return v === "FUTURES";
+    return v === "FUTURES" || v === "";
+  });
+  const seenRow = new Set<string>();
+  const here = hereRaw.filter((p: Record<string, unknown>) => {
+    const id = String(p?.id ?? "").trim();
+    const k = id || `${String(p?.side ?? "")}|${String(p?.entryPrice ?? "")}`;
+    if (seenRow.has(k)) return false;
+    seenRow.add(k);
+    return true;
+  });
+  return (here[0] as Record<string, unknown> | undefined) ?? null;
+}
+
 function tryApplyAutoFit(
   chart: IChartApi | null,
   ohlcLen: number,
@@ -162,6 +286,8 @@ export function ChartPanel() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<any>(null);
+  /** Every SL/TP `createPriceLine` handle so we always remove orphans (axis labels stack if `remove` is skipped or races). */
+  const bracketPriceLinesRef = useRef<BracketPriceLineHandle[]>([]);
   const supertrendLineRef = useRef<any>(null);
   const chartOkRef = useRef(false);
   const pendingAutoFitRef = useRef(true);
@@ -194,6 +320,13 @@ export function ChartPanel() {
 
   const isMultiCoinMode = String(bot?.universeCoinSelectMode || "").toUpperCase() === "MULTIPLE";
 
+  /** Server `supertrendLastBarClose` / flips are for `bot.symbol` only — ignore on chart when viewing another pair. */
+  const serverStSnapMatchesChart = useMemo(() => {
+    const es = canonicalChartSymbol(effectiveSym);
+    const bs = canonicalChartSymbol(bot?.symbol);
+    return Boolean(es && bs && es === bs);
+  }, [effectiveSym, bot?.symbol]);
+
   useEffect(() => {
     if (!isMultiCoinMode) setChartDisplaySymbol(null);
   }, [isMultiCoinMode, setChartDisplaySymbol]);
@@ -220,6 +353,8 @@ export function ChartPanel() {
       setAltCandles([]);
       return;
     }
+    /** Avoid painting the previous alt pair while REST loads the newly selected symbol (tab vs chart mismatch). */
+    setAltCandles([]);
     let cancelled = false;
     const load = async () => {
       try {
@@ -244,6 +379,11 @@ export function ChartPanel() {
     () => buildOhlc(baseCandles, { symbol: effectiveSym || undefined }),
     [baseCandles, effectiveSym],
   );
+  const ohlcLastClose = useMemo(() => {
+    if (!ohlc.length) return null;
+    const c = Number(ohlc[ohlc.length - 1]!.close);
+    return Number.isFinite(c) && c > 0 ? c : null;
+  }, [ohlc]);
   /** Same bars as candlesticks (in ms) so Supertrend math cannot diverge from what you see. */
   const ohlcAsMsCandles = useMemo(() => ohlcBarsToMsCandles(ohlc), [ohlc]);
   const candleTimes = useMemo(() => new Set(ohlc.map((b) => Number(b.time))), [ohlc]);
@@ -269,6 +409,7 @@ export function ChartPanel() {
 
   /** Latest k.x may be a no-flip bar; keep showing the last chart-aligned flip that autotrade could use (matches Activity). */
   const supertrendHud = useMemo(() => {
+    if (!serverStSnapMatchesChart) return null;
     type Snap = {
       buySignal?: boolean;
       sellSignal?: boolean;
@@ -285,7 +426,7 @@ export function ChartPanel() {
     if (last?.buySignal || last?.sellSignal) return { snap: last, kind: "latest_kx" as const };
     if (flip?.buySignal || flip?.sellSignal) return { snap: flip, kind: "last_flip" as const };
     return null;
-  }, [bot?.supertrendLastBarClose, bot?.supertrendLastFlipBarClose]);
+  }, [bot?.supertrendLastBarClose, bot?.supertrendLastFlipBarClose, serverStSnapMatchesChart]);
 
   /** Chart-derived markers + server last bar-close (matches Activity when client OHLC lags k.x). */
   const safeMarkers = useMemo(() => {
@@ -320,29 +461,44 @@ export function ChartPanel() {
         }
       }
     };
-    mergeServerFlip(
-      bot?.supertrendLastBarClose as { ts?: number; buySignal?: boolean; sellSignal?: boolean } | null | undefined,
-    );
-    /** Persisted flip — latest close may be a no-flip bar after Activity placed an order. */
-    mergeServerFlip(
-      bot?.supertrendLastFlipBarClose as { ts?: number; buySignal?: boolean; sellSignal?: boolean } | null | undefined,
-    );
+    if (serverStSnapMatchesChart) {
+      mergeServerFlip(
+        bot?.supertrendLastBarClose as { ts?: number; buySignal?: boolean; sellSignal?: boolean } | null | undefined,
+      );
+      /** Persisted flip — latest close may be a no-flip bar after Activity placed an order. */
+      mergeServerFlip(
+        bot?.supertrendLastFlipBarClose as { ts?: number; buySignal?: boolean; sellSignal?: boolean } | null | undefined,
+      );
+    }
     return out.sort((a, b) => a.time - b.time);
-  }, [chartSupertrend.markers, candleTimes, bot?.supertrendLastBarClose, bot?.supertrendLastFlipBarClose, ohlc]);
+  }, [
+    chartSupertrend.markers,
+    candleTimes,
+    bot?.supertrendLastBarClose,
+    bot?.supertrendLastFlipBarClose,
+    ohlc,
+    serverStSnapMatchesChart,
+  ]);
 
   /** Persisted flips for current symbol/timeframe (server); markers + list under chart. T/W/K = TRADE/WAIT/SKIP. */
   const supertrendSignalHistoryRecent = useMemo(() => {
     const raw = Array.isArray(bot?.supertrendSignalHistory)
       ? (bot.supertrendSignalHistory as SupertrendSignalHistRow[])
       : [];
+    const symChart = canonicalChartSymbol(effectiveSym);
+    if (!symChart) return [];
+    const tfBot = normalizeSymTf(bot?.timeframe ?? "").trim();
     const byKey = new Map<string, SupertrendSignalHistRow>();
     for (const h of raw) {
-      const sym = String(h.symbol ?? "").toUpperCase();
-      const tf = String(h.timeframe ?? "");
+      const sym = canonicalChartSymbol(String(h.symbol ?? ""));
+      /** Rows without `symbol` used to leak onto every chart in multi-coin mode — require exact pair match. */
+      if (!sym || sym !== symChart) continue;
+      const tf = String(h.timeframe ?? "").trim();
+      if (tfBot && tf && tf !== tfBot) continue;
       byKey.set(`${h.ts}|${h.side}|${sym}|${tf}`, h);
     }
     return [...byKey.values()].sort((a, b) => Number(a.ts) - Number(b.ts));
-  }, [bot?.supertrendSignalHistory]);
+  }, [bot?.supertrendSignalHistory, bot?.timeframe, effectiveSym]);
 
   const supertrendSignalHistoryNewestFirst = useMemo(
     () => [...supertrendSignalHistoryRecent].reverse(),
@@ -416,7 +572,12 @@ export function ChartPanel() {
 
     return capped.map((m) => {
       const hMatch = histByKey.get(`${m.time}:${m.side}`);
-      const text = formatSupertrendSignalMarkerText(m, hMatch);
+      const text =
+        isMultiCoinMode && !m.preview
+          ? m.side === "buy"
+            ? "▲ ST"
+            : "▼ ST"
+          : formatSupertrendSignalMarkerText(m, hMatch);
       return {
         time: Math.floor(Number(m.time)) as UTCTimestamp,
         position: m.side === "buy" ? ("belowBar" as const) : ("aboveBar" as const),
@@ -430,7 +591,7 @@ export function ChartPanel() {
         text,
       };
     });
-  }, [safeMarkers, supertrendSignalHistoryRecent, candleTimes]);
+  }, [safeMarkers, supertrendSignalHistoryRecent, candleTimes, isMultiCoinMode]);
 
   const supertrendSoundCtx = useMemo(
     () =>
@@ -545,12 +706,27 @@ export function ChartPanel() {
         tickMarkFormatter: (t: Time, tickMarkType: TickMarkType) => formatIstTimeScale(t, tickMarkType),
       },
       /** Single scale for candles + Supertrend — same magnitude as OHLC; avoids dual-axis glitches when line v.s. scale desync. */
-      rightPriceScale: { borderColor: "rgba(148,163,184,0.15)" },
+      rightPriceScale: {
+        visible: true,
+        borderVisible: true,
+        borderColor: "rgba(148,163,184,0.15)",
+        scaleMargins: { top: 0.1, bottom: 0.1 },
+      },
       leftPriceScale: { visible: false },
       crosshair: { mode: 0 },
       handleScroll: true,
       handleScale: true,
     });
+
+    const cur = ohlcRef.current;
+    const last0 =
+      cur.length > 0
+        ? (() => {
+            const c = Number(cur[cur.length - 1]!.close);
+            return Number.isFinite(c) && c > 0 ? c : null;
+          })()
+        : null;
+    const pf0 = inferChartPriceFormat(last0);
 
     const series = chart.addCandlestickSeries({
       priceScaleId: "right",
@@ -560,15 +736,21 @@ export function ChartPanel() {
       borderUpColor: "#34d399",
       wickDownColor: "#fb7185",
       wickUpColor: "#34d399",
+      /** Horizontal “current price” line + label on the right scale (needs `priceFormat` for sub‑$1 pairs). */
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceFormat: pf0,
     });
 
     const stLine = chart.addLineSeries({
       priceScaleId: "right",
       color: "#4ade80",
       lineWidth: 2,
-      title: "Supertrend",
+      /** Empty title avoids an extra scale label column fighting with tick marks. */
+      title: "",
       lastValueVisible: false,
       priceLineVisible: false,
+      priceFormat: pf0,
     });
 
     chartRef.current = chart;
@@ -576,7 +758,6 @@ export function ChartPanel() {
     supertrendLineRef.current = stLine;
     chartOkRef.current = true;
 
-    const cur = ohlcRef.current;
     if (cur.length) {
       try {
         const st = useAppStore.getState();
@@ -599,6 +780,14 @@ export function ChartPanel() {
         clearTimeout(bulkFitFallbackTimerRef.current);
         bulkFitFallbackTimerRef.current = null;
       }
+      for (const pl of bracketPriceLinesRef.current) {
+        try {
+          pl.remove();
+        } catch {
+          /* ignore */
+        }
+      }
+      bracketPriceLinesRef.current = [];
       try {
         chart.remove();
       } catch {
@@ -625,13 +814,307 @@ export function ChartPanel() {
           vertLines: { color: isDark ? "rgba(148,163,184,0.12)" : "rgba(71,85,105,0.16)" },
           horzLines: { color: isDark ? "rgba(148,163,184,0.12)" : "rgba(71,85,105,0.16)" },
         },
-        rightPriceScale: { borderColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(71,85,105,0.22)" },
+        rightPriceScale: {
+          visible: true,
+          borderVisible: true,
+          borderColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(71,85,105,0.22)",
+          scaleMargins: { top: 0.1, bottom: 0.1 },
+        },
       });
-      st?.applyOptions?.({ color: isDark ? "#4ade80" : "#15803d" });
+      st?.applyOptions?.({ color: isDark ? "#4ade80" : "#15803d", title: "" });
     } catch {
       /* ignore */
     }
   }, [chartTheme, chartInstanceKey]);
+
+  /** Keep tick marks valid when switching pairs (esp. sub‑$1 coins like DOGE). */
+  useEffect(() => {
+    if (!chartOkRef.current) return;
+    const pf = inferChartPriceFormat(ohlcLastClose);
+    try {
+      seriesRef.current?.applyOptions?.({
+        lastValueVisible: true,
+        priceLineVisible: true,
+        priceFormat: pf,
+      });
+      supertrendLineRef.current?.applyOptions?.({
+        lastValueVisible: false,
+        priceLineVisible: false,
+        title: "",
+        priceFormat: pf,
+      });
+    } catch {
+      /* ignore */
+    }
+  }, [ohlcLastClose, chartInstanceKey]);
+
+  const symKey = useMemo(() => canonicalChartSymbol(effectiveSym), [effectiveSym]);
+
+  const futuresBracket = useMemo(() => {
+    const { slPx, tpPx, hasBracket } = pickChartFuturesBracket(
+      positions,
+      effectiveSym,
+      isMultiCoinMode,
+      ohlcLastClose,
+    );
+    const slCol = chartTheme === "dark" ? "#f87171" : "#dc2626";
+    const tpCol = chartTheme === "dark" ? "#38bdf8" : "#0284c7";
+    const key = `${symKey}|${slPx ?? ""}|${tpPx ?? ""}|${chartTheme}|${isMultiCoinMode ? "M" : "S"}|${ohlcLastClose ?? ""}`;
+    return { key, slPx, tpPx, hasBracket, slCol, tpCol };
+  }, [positions, effectiveSym, symKey, chartTheme, isMultiCoinMode, ohlcLastClose]);
+
+  /**
+   * Trailing preview lines for the charted futures leg.
+   * Supertrend mode: **ST activation** (mark must cross this for trailing to engage; same as server `activation`) and
+   * **ST trail** (breakeven-capped ST merge — `safeSt` vs `previousSl`, including NO_TRAIL preview). Fee ladder: one line.
+   */
+  const chartTrailingPreview = useMemo(() => {
+    const none = (k: string) => ({ key: k, lines: [] as ChartStTrailPreviewLine[] });
+    if (bot?.trailingStopLossAuto !== true) return none("trail-off");
+
+    const pos = pickChartFuturesPositionRow(positions, effectiveSym, isMultiCoinMode);
+    if (!pos) return none("trail-nopos");
+    const q = Number(pos.qty ?? pos.positionAmt);
+    if (!Number.isFinite(q) || Math.abs(q) <= 1e-8) return none("trail-flat");
+    const isLong = q > 0;
+    const entry = Number(pos.entryPrice);
+    if (!Number.isFinite(entry) || entry <= 0) return none("trail-noentry");
+    const levRaw = Number(pos.leverage);
+    const lev = Math.max(1, Math.floor(Number.isFinite(levRaw) && levRaw > 0 ? levRaw : 1));
+    const mp = Number(pos.markPrice);
+    const cur =
+      Number.isFinite(mp) && mp > 0
+        ? mp
+        : ohlcLastClose != null && Number.isFinite(ohlcLastClose) && ohlcLastClose > 0
+          ? ohlcLastClose
+          : NaN;
+    if (!Number.isFinite(cur) || cur <= 0) return none("trail-nopx");
+
+    const symPlausible = normalizeSymTf(effectiveSym) || effectiveSym;
+    const slRaw = Number(pos.stopLoss);
+    let prevSlChart = Number.isFinite(slRaw) && slRaw > 0 ? slRaw : NaN;
+    if (Number.isFinite(prevSlChart) && !futuresBracketLevelSane(symPlausible, prevSlChart, ohlcLastClose)) {
+      prevSlChart = NaN;
+    }
+    const prevSlForCompute =
+      Number.isFinite(prevSlChart) && prevSlChart > 0 ? prevSlChart : isLong ? entry * 1e-8 : entry * 1e8;
+
+    const mode = String(bot?.futuresTrailingStopMode || "SUPERTREND").toUpperCase() === "FEE_LADDER" ? "FEE_LADDER" : "SUPERTREND";
+    const feeR = clampTradeCloseFeeRate();
+    const bufferRate = 0.0005;
+    const maintenanceMarginRate = 0.005;
+
+    const { slPx: chartSlRaw } = pickChartFuturesBracket(positions, effectiveSym, isMultiCoinMode, ohlcLastClose);
+    const slDup = (px: number) =>
+      chartSlRaw != null && Number.isFinite(chartSlRaw) && chartSlRaw > 0 && nearlySameTrailPx(px, chartSlRaw);
+
+    if (mode === "FEE_LADDER") {
+      let displayPx: number | null = null;
+      const extras = Array.isArray(bot?.trailingStopExtraScalpingPcts)
+        ? (bot.trailingStopExtraScalpingPcts as unknown[]).map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
+        : [];
+      const meta = (pos.meta || {}) as Record<string, unknown>;
+      const ts = Number(meta.trailStep);
+      const step0 = Number.isFinite(ts) && ts >= 0 ? Math.floor(ts) : 0;
+      let extremePx = Number(meta.extremePx);
+      if (!Number.isFinite(extremePx) || extremePx <= 0) extremePx = entry;
+
+      const adv = advanceTrailingStopState({
+        entryPx: entry,
+        isLong,
+        trailStep: step0,
+        extremePx,
+        markPx: cur,
+        feeRate: feeR,
+        extraScalpingPctsOfEntry: extras,
+      });
+
+      if (adv.advanced && adv.proposedSl != null && Number.isFinite(adv.proposedSl)) {
+        const merged = mergeStopWithTrail(isLong, prevSlForCompute, adv.proposedSl);
+        if (merged != null && Number.isFinite(merged) && merged > 0) displayPx = merged;
+      }
+      if (displayPx == null) {
+        const levels = buildTrailLockPrices(entry, isLong, feeR, extras);
+        const next = levels[adv.trailStep];
+        if (next && Number.isFinite(next.lockPx) && next.lockPx > 0) displayPx = next.lockPx;
+      }
+      if (displayPx == null || !Number.isFinite(displayPx) || displayPx <= 0) return none("trail-nodisp");
+      if (!futuresBracketLevelSane(symPlausible, displayPx, ohlcLastClose)) return none("trail-insane");
+      if (slDup(displayPx)) return none("trail-dup-sl");
+      return {
+        key: `trail-FEE-${displayPx.toFixed(6)}|${cur.toFixed(4)}|${symKey}`,
+        lines: [{ px: displayPx, title: "Fee trail", kind: "fee_trail" }],
+      };
+    }
+
+    const pts = chartSupertrend.linePoints;
+    if (!pts.length) return none("trail-nost");
+    const stPx = Number(pts[pts.length - 1]!.value);
+    if (!Number.isFinite(stPx) || stPx <= 0) return none("trail-badst");
+
+    let breakeven: number;
+    let activation: number;
+    let liquidation: number;
+    if (isLong) {
+      breakeven = entry * (1 + feeR);
+      activation = entry * (1 + feeR + bufferRate);
+      liquidation = entry * (1 - 1 / lev + maintenanceMarginRate);
+      if (liquidation >= breakeven) return none("trail-reject");
+    } else {
+      breakeven = entry * (1 - feeR);
+      activation = entry * (1 - feeR - bufferRate);
+      liquidation = entry * (1 + 1 / lev - maintenanceMarginRate);
+      if (liquidation <= breakeven) return none("trail-reject");
+    }
+
+    const r = computeSupertrendTrailingSlUpdate({
+      entryPrice: entry,
+      currentPrice: cur,
+      supertrend: stPx,
+      previousSl: prevSlForCompute,
+      isLong,
+      leverage: lev,
+      feeRate: feeR,
+      bufferRate,
+      maintenanceMarginRate,
+      minSlDistanceFrac: 0.002,
+    });
+
+    if (r.status === "NO_SUPERTREND" || r.status === "INVALID" || r.status === "REJECT_TRADE") {
+      return none(`trail-${r.status}`);
+    }
+
+    let trailPx: number | null = null;
+    if (r.status === "OK") {
+      trailPx = r.newSl;
+    } else if (r.status === "NO_TRAIL") {
+      const safeSt = isLong ? Math.max(stPx, breakeven) : Math.min(stPx, breakeven);
+      const cand = mergeStopWithTrail(isLong, prevSlForCompute, safeSt);
+      if (cand != null && Number.isFinite(cand) && cand > 0) trailPx = cand;
+    }
+
+    const lines: ChartStTrailPreviewLine[] = [];
+
+    if (futuresBracketLevelSane(symPlausible, activation, ohlcLastClose) && !slDup(activation)) {
+      lines.push({
+        px: activation,
+        title: isLong ? "ST activation (mark ≥)" : "ST activation (mark ≤)",
+        kind: "st_activation",
+      });
+    }
+
+    if (
+      trailPx != null &&
+      Number.isFinite(trailPx) &&
+      trailPx > 0 &&
+      futuresBracketLevelSane(symPlausible, trailPx, ohlcLastClose) &&
+      !slDup(trailPx)
+    ) {
+      const dupAct = lines.some((l) => nearlySameTrailPx(l.px, trailPx));
+      if (!dupAct) {
+        lines.push({ px: trailPx, title: "ST trail", kind: "st_trail" });
+      }
+    }
+
+    if (!lines.length) return none("trail-empty");
+
+    return {
+      key: `trail-ST-${lines.map((l) => `${l.kind}:${l.px.toFixed(4)}`).join("|")}|${symKey}`,
+      lines,
+    };
+  }, [
+    bot?.trailingStopLossAuto,
+    bot?.futuresTrailingStopMode,
+    bot?.trailingStopExtraScalpingPcts,
+    positions,
+    effectiveSym,
+    symKey,
+    isMultiCoinMode,
+    ohlcLastClose,
+    chartSupertrend.linePoints,
+  ]);
+
+  function removeAllBracketPriceLines() {
+    for (const pl of bracketPriceLinesRef.current) {
+      try {
+        pl.remove();
+      } catch {
+        /* ignore */
+      }
+    }
+    bracketPriceLinesRef.current = [];
+  }
+
+  /**
+   * Futures SL/TP for the chart symbol.
+   * Do not depend on `positions` identity — WS ticks allocate a new array every update and would
+   * recreate price lines every frame; lightweight-charts can then stack duplicate axis labels.
+   * `futuresBracket.key` already changes when SL/TP/symbol/theme/multi mode meaningfully change.
+   */
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series || !chartOkRef.current) {
+      removeAllBracketPriceLines();
+      return;
+    }
+
+    const live = useAppStore.getState();
+    const eff =
+      normalizeSymTf(live.chartDisplaySymbol ?? "").trim() || normalizeSymTf(live.bot?.symbol ?? "").trim();
+    const symK = canonicalChartSymbol(eff);
+    if (!symK) {
+      removeAllBracketPriceLines();
+      return;
+    }
+
+    const multi = String(live.bot?.universeCoinSelectMode ?? "").toUpperCase() === "MULTIPLE";
+    const oc = ohlcRef.current;
+    const lastClose =
+      oc.length > 0
+        ? (() => {
+            const c = Number(oc[oc.length - 1]!.close);
+            return Number.isFinite(c) && c > 0 ? c : null;
+          })()
+        : null;
+    const { slPx, tpPx, hasBracket } = pickChartFuturesBracket(live.positions, eff, multi, lastClose);
+    const isDark = chartTheme === "dark";
+    const slCol = isDark ? "#f87171" : "#dc2626";
+    const tpCol = isDark ? "#38bdf8" : "#0284c7";
+
+    removeAllBracketPriceLines();
+
+    const lineOpts = (price: number, title: string, color: string) => ({
+      price,
+      color,
+      lineWidth: 1,
+      lineStyle: 2 as const,
+      /** Labels stack and can hide the main price scale; SL/TP are obvious from line color + legend. */
+      axisLabelVisible: false,
+      title,
+    });
+
+    try {
+      if (slPx != null) {
+        bracketPriceLinesRef.current.push(series.createPriceLine(lineOpts(slPx, "SL", slCol)));
+      }
+      if (tpPx != null) {
+        bracketPriceLinesRef.current.push(series.createPriceLine(lineOpts(tpPx, "TP", tpCol)));
+      }
+      const actCol = isDark ? "#c4b5fd" : "#6d28d9";
+      const trailCol = isDark ? "#fbbf24" : "#d97706";
+      for (const ln of chartTrailingPreview.lines) {
+        if (!Number.isFinite(ln.px) || ln.px <= 0) continue;
+        const col = ln.kind === "st_activation" ? actCol : trailCol;
+        bracketPriceLinesRef.current.push(series.createPriceLine(lineOpts(ln.px, ln.title, col)));
+      }
+    } catch {
+      removeAllBracketPriceLines();
+    }
+
+    return () => {
+      removeAllBracketPriceLines();
+    };
+  }, [futuresBracket.key, chartTrailingPreview.key, chartInstanceKey]);
 
   useEffect(() => {
     if (!ohlc.length) {
@@ -971,7 +1454,11 @@ export function ChartPanel() {
               <span className="text-slate-600 dark:text-slate-400">T/W/K</span> = TRADE / WAIT / SKIP (when “gates opens” is on, only{" "}
               <span className="text-slate-600 dark:text-slate-400">T</span> can open).{" "}
               <span className="text-slate-600 dark:text-slate-400">Verdict</span> = indicator check vs next opposite: BUY → Open until next SELL,
-              then True if buy price &lt; that sell price; SELL → Open until next BUY, then True if sell price &gt; that buy price. Latest signal stays Open.
+              then True if buy price &lt; that sell price; SELL → Open until next BUY, then True if sell price &gt; that buy price. Latest signal stays Open.{" "}
+              <span className="text-violet-700/90 dark:text-violet-300/90">Violet</span> = Supertrend <span className="font-medium">activation</span> (mark
+              must cross this so trailing engages; entry + fee + buffer, same as server).{" "}
+              <span className="text-amber-700/90 dark:text-amber-300/90">Amber</span> = <span className="font-medium">ST trail</span> (breakeven-capped ST
+              stop level). <span className="font-medium">Fee trail</span> (amber) when fee-ladder mode is on. Dashed lines hidden if they match the red SL.
             </p>
           </div>
           <button
@@ -1078,7 +1565,9 @@ export function ChartPanel() {
                 {supertrendSignalHistoryNewestFirst.length > SUPERTREND_SIGNAL_LIST_MAX
                   ? `Last ${SUPERTREND_SIGNAL_LIST_MAX} of ${supertrendSignalHistoryNewestFirst.length} signals`
                   : `${supertrendSignalHistoryListRows.length} signal${supertrendSignalHistoryListRows.length === 1 ? "" : "s"}`}{" "}
-                <span className="normal-case text-slate-500">(newest first · scores match markers, times {CHART_TIMEZONE})</span>
+                <span className="normal-case text-slate-500">
+                  ({normalizeSymTf(effectiveSym) || "—"} · newest first · scores match markers, times {CHART_TIMEZONE})
+                </span>
               </div>
               <div
                 className="shrink-0 text-right text-[10px] leading-tight text-slate-600 dark:text-slate-400"

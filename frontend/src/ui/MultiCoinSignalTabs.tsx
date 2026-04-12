@@ -74,19 +74,23 @@ export function MultiCoinSignalTabs() {
   const snaps = (bot?.multiSymbolWatchSignals || {}) as Record<string, WatchSnap>;
   const primary = String(bot?.symbol || "").toUpperCase();
 
-  const activeSym =
-    chartDisplaySymbol && tabs.includes(chartDisplaySymbol) ? chartDisplaySymbol : tabs[0] ?? null;
+  const chartU = String(chartDisplaySymbol ?? "")
+    .trim()
+    .toUpperCase();
+
+  /** Snapshot panel matches the tab row when the main chart is on a listed symbol; otherwise first tab. */
+  const detailSym = chartU && tabs.includes(chartU) ? chartU : tabs[0] ?? null;
 
   useEffect(() => {
     if (!tabs.length) return;
-    if (!chartDisplaySymbol || !tabs.includes(chartDisplaySymbol)) {
+    if (chartDisplaySymbol == null) {
       setChartDisplaySymbol(tabs[0]);
     }
   }, [tabs, chartDisplaySymbol, setChartDisplaySymbol]);
 
   if (tabs.length === 0) return null;
 
-  const snap = activeSym ? snaps[activeSym] : undefined;
+  const snap = detailSym ? snaps[detailSym] : undefined;
 
   return (
     <div className="w-full rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-950/50 px-2 py-2">
@@ -109,7 +113,7 @@ export function MultiCoinSignalTabs() {
               onClick={() => setChartDisplaySymbol(sym)}
               className={clsx(
                 "rounded-t px-2 py-1 text-[11px] font-medium transition-colors",
-                activeSym === sym
+                chartU === sym
                   ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100"
                   : "bg-transparent text-slate-600 hover:bg-slate-200/80 dark:text-slate-400 dark:hover:bg-slate-800/80",
                 isPrimary && "ring-1 ring-sky-500/40",
@@ -135,8 +139,14 @@ export function MultiCoinSignalTabs() {
           );
         })}
       </div>
-      {activeSym ? (
+      {detailSym ? (
         <div className="mt-2 space-y-1 text-[11px] leading-relaxed text-slate-700 dark:text-slate-300">
+          {chartU && !tabs.includes(chartU) ? (
+            <p className="mb-1 text-[10px] text-slate-500 dark:text-slate-500">
+              Main chart <span className="font-mono text-slate-700 dark:text-slate-300">{chartU}</span> — signals below follow{" "}
+              <span className="font-mono">{detailSym}</span> (open position / not in tab list).
+            </p>
+          ) : null}
           {!snap || !Number.isFinite(Number(snap.updatedAt)) ? (
             <div className="text-slate-500 dark:text-slate-500">
               No snapshot yet — waiting for a closed bar on the feed (ensure MARKET_FEED is BINANCE / BINANCE_FUTURES and the bot is running

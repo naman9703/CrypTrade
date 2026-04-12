@@ -40,6 +40,7 @@ import { computeSupertrendSignalVerdictsBackend, closeBySecFromKlines } from "..
 import { learnSmartSignalStrengthThreshold } from "../lib/signalStrengthSmartThreshold.js";
 import { extractSurfPulseFeatures } from "../strategy/surfPulseMl.js";
 import { maxTrailStepsForConfig } from "../lib/trailingStopLoss.js";
+import { entryRejectedLiquidationBreakeven } from "../lib/supertrendTrailingSl.js";
 
 /** Must match /api/bot/config timeframe allowlist. */
 const PERSISTED_TF = new Set(["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"]);
@@ -175,6 +176,100 @@ function normalizeRiskLimits(s) {
   }
 }
 
+/**
+ * **Margin** (collateral) tied in an open leg vs allowed budget — not leveraged notional.
+ * Futures USD-M: approximate initial margin ≈ notional / leverage. Spot: full quote at entry.
+ */
+function positionMarginUsedUsdt(p) {
+  const qty = Math.abs(Number(p?.qty ?? p?.positionAmt ?? 0));
+  if (!(qty > 0)) return 0;
+  const ep = Number(p?.entryPrice || 0);
+  let notional = 0;
+  if (Number.isFinite(ep) && ep > 0) notional = qty * ep;
+  else {
+    const mp = Number(p?.markPrice ?? p?.mark ?? 0);
+    if (Number.isFinite(mp) && mp > 0) notional = qty * mp;
+  }
+  if (!(notional > 0)) return 0;
+  const ven = String(p?.venue || "").toUpperCase();
+  const levRaw = Number(p?.leverage);
+  if (ven === "FUTURES") {
+    const lev = Math.max(1, Math.floor(Number.isFinite(levRaw) && levRaw > 0 ? levRaw : 1));
+    return notional / lev;
+  }
+  return notional;
+}
+
+function sumOpenMarginUsedUsdt(positions, marketMode) {
+  const mm = String(marketMode || "AUTO").toUpperCase();
+  const rows = Array.isArray(positions) ? positions : [];
+  let sum = 0;
+  for (const p of rows) {
+    const ven = String(p?.venue || "").toUpperCase();
+    if (mm === "SPOT" && ven !== "SPOT") continue;
+    if (mm === "FUTURES" && ven !== "FUTURES") continue;
+    if (mm === "AUTO" && ven && ven !== "SPOT" && ven !== "FUTURES") continue;
+    sum += positionMarginUsedUsdt(p);
+  }
+  return sum;
+}
+
+/** Free **margin** (USDT) available to cap allowed budget — hybrid `venues.*.freeBalance`; else `account.freeBalance`. */
+function walletFreeMarginUsdtForAllowedCap(account, marketMode) {
+  if (account == null) return null;
+  const mm = String(marketMode || "AUTO").toUpperCase();
+  const v = account?.venues;
+  if (v && (v.spot != null || v.futures != null)) {
+    const spotF =
+      v.spot && v.spot.freeBalance != null && Number.isFinite(Number(v.spot.freeBalance))
+        ? Math.max(0, Number(v.spot.freeBalance))
+        : 0;
+    const futF =
+      v.futures && v.futures.freeBalance != null && Number.isFinite(Number(v.futures.freeBalance))
+        ? Math.max(0, Number(v.futures.freeBalance))
+        : 0;
+    if (mm === "SPOT") return spotF > 0 ? spotF : null;
+    if (mm === "FUTURES") return futF > 0 ? futF : null;
+    const sum = spotF + futF;
+    return sum > 0 ? sum : null;
+  }
+  const fb = Number(account.freeBalance);
+  return Number.isFinite(fb) && fb > 0 ? fb : null;
+}
+
+function normalizeCapitalBudgetFields(s, SYM_RE) {
+  const ab = Number(s.allowedBudgetUsdt);
+  s.allowedBudgetUsdt = Number.isFinite(ab) && ab >= 0 ? clamp(ab, 0, 10_000_000) : 0;
+  const aw = Number(s.allowedBudgetWalletPct);
+  s.allowedBudgetWalletPct = Number.isFinite(aw) ? clamp(aw, 0, 100) : 0;
+  const im = String(s.allowedBudgetInputMode || "USDT").toUpperCase();
+  s.allowedBudgetInputMode = im === "WALLET_PCT" ? "WALLET_PCT" : "USDT";
+  const mp = Number(s.multiTradePctOfUsable);
+  s.multiTradePctOfUsable = Number.isFinite(mp) ? clamp(mp, 0, 100) : 100;
+  const sanitizeMapNum = (raw, maxVal) => {
+    const next = Object.create(null);
+    if (!raw || typeof raw !== "object") return next;
+    for (const [k, v] of Object.entries(raw)) {
+      const sym = String(k || "").trim().toUpperCase();
+      if (!SYM_RE.test(sym)) continue;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0) continue;
+      next[sym] = clamp(n, 0, maxVal);
+    }
+    return next;
+  };
+  s.multiBudgetCoinUsdt = sanitizeMapNum(s.multiBudgetCoinUsdt, 10_000_000);
+  s.multiBudgetCoinPct = sanitizeMapNum(s.multiBudgetCoinPct, 100);
+  let pctSum = 0;
+  for (const v of Object.values(s.multiBudgetCoinPct)) pctSum += Number(v) || 0;
+  if (pctSum > 100 + 1e-6) {
+    const scale = 100 / pctSum;
+    for (const k of Object.keys(s.multiBudgetCoinPct)) {
+      s.multiBudgetCoinPct[k] = roundTo(Number(s.multiBudgetCoinPct[k]) * scale, 4);
+    }
+  }
+}
+
 export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
   let exch = exchange;
   function runtimeTradingMode() {
@@ -207,6 +302,28 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     riskPerTradeUnit: "PCT",
     /** `"PCT"` = max daily drawdown as fraction of day's start equity; `"USDT"` = max loss in USD from day baseline per venue. */
     maxDailyLossUnit: "PCT",
+    /**
+     * With fixed USDT capital (risk + max daily both USDT) and MULTIPLE pins (2+), divide `riskPerTrade` by pin count
+     * so each active coin gets an equal slice of the per-trade budget.
+     */
+    capitalSplitAcrossCoins: false,
+    /**
+     * Pool cap for strategy (USDT). When 0, UI/back-end treat allowed as `riskPerTrade` for fixed-USDT sizing.
+     * `allowedBudgetWalletPct` + `allowedBudgetInputMode` are UI hints for syncing this from wallet equity.
+     */
+    allowedBudgetUsdt: 0,
+    allowedBudgetWalletPct: 0,
+    allowedBudgetInputMode: "USDT", // USDT | WALLET_PCT
+    /** MULTIPLE + fixed USDT: size opens from % of (allowed − open notional) instead of raw `riskPerTrade`. */
+    multiTradeUsePctOfUsable: false,
+    multiTradePctOfUsable: 100,
+    /**
+     * MULTIPLE capital split: FULL = full pool per active symbol; EQUAL = divide pool across ranked/pins list;
+     * CUSTOM_USDT / CUSTOM_PCT_ALLOWED = per-symbol maps (`multiBudgetCoinUsdt` / `multiBudgetCoinPct`).
+     */
+    multiBudgetSplitMode: null, // null → derive from capitalSplitAcrossCoins
+    multiBudgetCoinUsdt: Object.create(null),
+    multiBudgetCoinPct: Object.create(null),
     strategyMode: "AUTO", // AUTO | MANUAL
     manualStrategy: "EMA_CROSS",
     marketMode: "AUTO", // SPOT | FUTURES | AUTO
@@ -333,6 +450,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     surfPulseMlThreshold: clamp(Number(process.env.SURF_PULSE_ML_THRESHOLD ?? 0.6), 0, 1),
     /** Futures autotrade: fee breakeven, fee-based first scalping, then optional %-of-entry locks (see `trailingStopLoss.js`). */
     trailingStopLossAuto: false,
+    /** `SUPERTREND` = ST line + fee activation (see `supertrendTrailingSl.js`). `FEE_LADDER` = discrete fee/% locks (`advanceTrailingStopState`). */
+    futuresTrailingStopMode: "SUPERTREND",
     /** Up to 3 extra trailing locks, each % of entry (e.g. 0.5 = 0.5%). */
     trailingStopExtraScalpingPcts: [],
     /**
@@ -397,6 +516,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     return out;
   }
 
+  function normalizeFuturesTrailingStopMode(v) {
+    const u = String(v ?? "SUPERTREND").toUpperCase();
+    return u === "FEE_LADDER" ? "FEE_LADDER" : "SUPERTREND";
+  }
+
   function universeManualPinningOn() {
     return String(state.universePinControl || "AUTO").toUpperCase() === "MANUAL";
   }
@@ -407,6 +531,93 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       String(state.riskPerTradeUnit || "PCT").toUpperCase() === "USDT" &&
       String(state.maxDailyLossUnit || "PCT").toUpperCase() === "USDT"
     );
+  }
+
+  /** For fixed-USDT sizing + multi-pin: shrink per-trade notional by pinned symbol count (≥2 pins). */
+  function fixedUsdtCapitalSplitDivisor() {
+    if (!state.capitalSplitAcrossCoins || !isFixedUsdtCapitalMode()) return 1;
+    if (String(state.universeCoinSelectMode || "").toUpperCase() !== "MULTIPLE") return 1;
+    const pins = Array.isArray(state.universePinnedSymbols)
+      ? state.universePinnedSymbols.map((s) => String(s || "").trim().toUpperCase()).filter(Boolean)
+      : [];
+    if (pins.length <= 1) return 1;
+    return pins.length;
+  }
+
+  function derivedMultiBudgetSplitMode() {
+    const m = state.multiBudgetSplitMode;
+    if (m === "FULL" || m === "EQUAL" || m === "CUSTOM_USDT" || m === "CUSTOM_PCT_ALLOWED") return m;
+    return state.capitalSplitAcrossCoins ? "EQUAL" : "FULL";
+  }
+
+  /** Symbols shown in multi budget UI / EQUAL divisor: ranked top table ∩ pins (manual), else ranked slice. */
+  function symbolsForMultiBudgetList() {
+    if (String(state.universeCoinSelectMode || "").toUpperCase() !== "MULTIPLE") return [];
+    const ranked = Array.isArray(state.universe?.ranked) ? state.universe.ranked : [];
+    const rankedSyms = ranked
+      .slice(0, 12)
+      .map((r) => String(r?.symbol || "").trim().toUpperCase())
+      .filter((s) => SYM_RE.test(s));
+    const pins = Array.isArray(state.universePinnedSymbols)
+      ? [...new Set(state.universePinnedSymbols.map((s) => String(s || "").trim().toUpperCase()).filter((s) => SYM_RE.test(s)))]
+      : [];
+    const manual = String(state.universePinControl || "").toUpperCase() === "MANUAL";
+    if (manual && pins.length > 0) {
+      const setR = new Set(rankedSyms);
+      const inTable = pins.filter((p) => setR.has(p));
+      return inTable.length > 0 ? inTable : pins;
+    }
+    return rankedSyms.slice(0, 10);
+  }
+
+  /**
+   * Fixed-USDT autotrade: `riskPerTrade` + `fixedUsdtSplitDivisor` passed to `riskPlan`.
+   * MULTIPLE modes use allowed / usable pool and optional per-coin maps.
+   */
+  function resolveFixedUsdtRiskForOrder(orderSymbol, positions) {
+    if (!isFixedUsdtCapitalMode()) {
+      return { riskPerTrade: state.riskPerTrade, fixedUsdtSplitDivisor: 1 };
+    }
+    if (String(state.universeCoinSelectMode || "").toUpperCase() !== "MULTIPLE") {
+      return { riskPerTrade: state.riskPerTrade, fixedUsdtSplitDivisor: 1 };
+    }
+
+    const sym = String(orderSymbol || "").trim().toUpperCase();
+    const mode = derivedMultiBudgetSplitMode();
+    const list = symbolsForMultiBudgetList();
+    const nDiv = Math.max(1, list.length);
+
+    const walletCap = walletFreeMarginUsdtForAllowedCap(_cachedAccount, state.marketMode);
+    const allowedRaw = Number(state.allowedBudgetUsdt);
+    let allowed = Number.isFinite(allowedRaw) && allowedRaw > 0 ? allowedRaw : Number(state.riskPerTrade);
+    if (walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
+      allowed = Math.min(allowed, walletCap);
+    }
+    const invested = sumOpenMarginUsedUsdt(positions, state.marketMode);
+    const usable = Math.max(0, allowed - invested);
+
+    if (mode === "CUSTOM_USDT") {
+      const m = state.multiBudgetCoinUsdt && typeof state.multiBudgetCoinUsdt === "object" ? state.multiBudgetCoinUsdt : {};
+      const v = Number(m[sym]);
+      if (Number.isFinite(v) && v >= 1) return { riskPerTrade: clamp(v, 1, 10_000_000), fixedUsdtSplitDivisor: 1 };
+    }
+    if (mode === "CUSTOM_PCT_ALLOWED") {
+      const m = state.multiBudgetCoinPct && typeof state.multiBudgetCoinPct === "object" ? state.multiBudgetCoinPct : {};
+      const pc = Number(m[sym]);
+      if (Number.isFinite(pc) && pc > 0) {
+        const r = allowed * (clamp(pc, 0, 100) / 100);
+        return { riskPerTrade: Math.max(1, r), fixedUsdtSplitDivisor: 1 };
+      }
+    }
+
+    const usePct = state.multiTradeUsePctOfUsable === true;
+    const p = clamp(Number(state.multiTradePctOfUsable ?? 100), 0, 100);
+    const basePool = usePct ? (usable * p) / 100 : Number(state.riskPerTrade);
+
+    if (mode === "EQUAL") {
+      return { riskPerTrade: Math.max(1, basePool), fixedUsdtSplitDivisor: nDiv };
+    }
+    return { riskPerTrade: Math.max(1, basePool), fixedUsdtSplitDivisor: 1 };
   }
 
   function persistTradingConfigToDisk() {
@@ -429,6 +640,23 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           maxDailyLoss: state.maxDailyLoss,
           riskPerTradeUnit: state.riskPerTradeUnit,
           maxDailyLossUnit: state.maxDailyLossUnit,
+          capitalSplitAcrossCoins: Boolean(state.capitalSplitAcrossCoins),
+          allowedBudgetUsdt: Number(state.allowedBudgetUsdt) || 0,
+          allowedBudgetWalletPct: clamp(Number(state.allowedBudgetWalletPct || 0), 0, 100),
+          allowedBudgetInputMode: state.allowedBudgetInputMode === "WALLET_PCT" ? "WALLET_PCT" : "USDT",
+          multiTradeUsePctOfUsable: Boolean(state.multiTradeUsePctOfUsable),
+          multiTradePctOfUsable: clamp(Number(state.multiTradePctOfUsable ?? 100), 0, 100),
+          multiBudgetSplitMode:
+            state.multiBudgetSplitMode === "FULL" ||
+            state.multiBudgetSplitMode === "EQUAL" ||
+            state.multiBudgetSplitMode === "CUSTOM_USDT" ||
+            state.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED"
+              ? state.multiBudgetSplitMode
+              : null,
+          multiBudgetCoinUsdt:
+            state.multiBudgetCoinUsdt && typeof state.multiBudgetCoinUsdt === "object" ? { ...state.multiBudgetCoinUsdt } : {},
+          multiBudgetCoinPct:
+            state.multiBudgetCoinPct && typeof state.multiBudgetCoinPct === "object" ? { ...state.multiBudgetCoinPct } : {},
           strategyMode: state.strategyMode,
           manualStrategy: state.manualStrategy,
           marketMode: state.marketMode,
@@ -450,6 +678,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           supertrendFuturesMinAiProb: state.supertrendFuturesMinAiProb,
           surfPulseMlThreshold: state.surfPulseMlThreshold,
           trailingStopLossAuto: state.trailingStopLossAuto,
+          futuresTrailingStopMode: normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode),
           trailingStopExtraScalpingPcts: normalizeTrailingExtraPcts(state.trailingStopExtraScalpingPcts),
           supertrendFuturesFixedSlPct: state.supertrendFuturesFixedSlPct,
           supertrendFuturesFixedTpPct: state.supertrendFuturesFixedTpPct,
@@ -536,6 +765,35 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         state.maxDailyLoss = Number(b.maxDailyLoss);
       }
       normalizeRiskLimits(state);
+      if (typeof b.capitalSplitAcrossCoins === "boolean") state.capitalSplitAcrossCoins = b.capitalSplitAcrossCoins;
+      if (b.allowedBudgetUsdt != null && Number.isFinite(Number(b.allowedBudgetUsdt))) {
+        state.allowedBudgetUsdt = clamp(Number(b.allowedBudgetUsdt), 0, 10_000_000);
+      }
+      if (b.allowedBudgetWalletPct != null && Number.isFinite(Number(b.allowedBudgetWalletPct))) {
+        state.allowedBudgetWalletPct = clamp(Number(b.allowedBudgetWalletPct), 0, 100);
+      }
+      if (b.allowedBudgetInputMode === "WALLET_PCT" || b.allowedBudgetInputMode === "USDT") {
+        state.allowedBudgetInputMode = b.allowedBudgetInputMode;
+      }
+      if (typeof b.multiTradeUsePctOfUsable === "boolean") state.multiTradeUsePctOfUsable = b.multiTradeUsePctOfUsable;
+      if (b.multiTradePctOfUsable != null && Number.isFinite(Number(b.multiTradePctOfUsable))) {
+        state.multiTradePctOfUsable = clamp(Number(b.multiTradePctOfUsable), 0, 100);
+      }
+      if (
+        b.multiBudgetSplitMode === "FULL" ||
+        b.multiBudgetSplitMode === "EQUAL" ||
+        b.multiBudgetSplitMode === "CUSTOM_USDT" ||
+        b.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED"
+      ) {
+        state.multiBudgetSplitMode = b.multiBudgetSplitMode;
+      }
+      if (b.multiBudgetCoinUsdt != null && typeof b.multiBudgetCoinUsdt === "object") {
+        state.multiBudgetCoinUsdt = { ...b.multiBudgetCoinUsdt };
+      }
+      if (b.multiBudgetCoinPct != null && typeof b.multiBudgetCoinPct === "object") {
+        state.multiBudgetCoinPct = { ...b.multiBudgetCoinPct };
+      }
+      normalizeCapitalBudgetFields(state, SYM_RE);
       if (b.strategyMode === "AUTO" || b.strategyMode === "MANUAL") state.strategyMode = b.strategyMode;
       if (typeof b.manualStrategy === "string" && b.manualStrategy.length <= 80) {
         state.manualStrategy = b.manualStrategy;
@@ -573,6 +831,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         state.surfPulseMlThreshold = clamp(Number(b.surfPulseMlThreshold), 0, 1);
       }
       if (typeof b.trailingStopLossAuto === "boolean") state.trailingStopLossAuto = b.trailingStopLossAuto;
+      if (b.futuresTrailingStopMode != null) state.futuresTrailingStopMode = normalizeFuturesTrailingStopMode(b.futuresTrailingStopMode);
       if (Array.isArray(b.trailingStopExtraScalpingPcts)) {
         state.trailingStopExtraScalpingPcts = normalizeTrailingExtraPcts(b.trailingStopExtraScalpingPcts);
       } else if (b.trailingStopScalpingPct != null && Number.isFinite(Number(b.trailingStopScalpingPct))) {
@@ -1235,14 +1494,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         }
       }
     } else {
+      const rpSpot = resolveFixedUsdtRiskForOrder(orderSymbol, positions);
       const plan = await riskPlan({
         exchange: spot,
         side,
         entryPrice: last.close,
         confidence: prob,
-        riskPerTrade: state.riskPerTrade,
+        riskPerTrade: rpSpot.riskPerTrade,
         riskPerTradeUnit: state.riskPerTradeUnit,
         fixedUsdtCapitalSizing: isFixedUsdtCapitalMode(),
+        fixedUsdtSplitDivisor: rpSpot.fixedUsdtSplitDivisor,
         atr: indicators.latest?.atr_14,
         futuresLeverage: undefined,
         stats: state.stats[strategyKey],
@@ -1785,14 +2046,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
             regime: regimeType,
           });
 
+    const rpFut = resolveFixedUsdtRiskForOrder(orderSymbol, positions);
     const plan = await riskPlan({
       exchange: futuresEx,
       side: openingSide,
       entryPrice: last.close,
       confidence: sizingConfidence,
-      riskPerTrade: state.riskPerTrade,
+      riskPerTrade: rpFut.riskPerTrade,
       riskPerTradeUnit: state.riskPerTradeUnit,
       fixedUsdtCapitalSizing: isFixedUsdtCapitalMode(),
+      fixedUsdtSplitDivisor: rpFut.fixedUsdtSplitDivisor,
       atr: indicators.latest?.atr_14,
       futuresLeverage: lev,
       stats: state.stats[strategyKey],
@@ -1865,6 +2128,33 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         });
       }
       return { venue: "FUTURES", side, action: "skipped", reason: "below_min_futures_notional" };
+    }
+
+    const trailMmOpen = Number(process.env.SUPERTREND_TRAIL_MAINTENANCE_MARGIN_RATE ?? 0.005);
+    if (
+      state.trailingStopLossAuto &&
+      entryRejectedLiquidationBreakeven({
+        entryPrice: pxEntry,
+        isLong: openingSide === "BUY",
+        leverage: lev,
+        feeRate: tradeCloseFeeRate(),
+        maintenanceMarginRate: trailMmOpen,
+      })
+    ) {
+      wsHub?.broadcast?.("log", {
+        level: "warn",
+        msg: `Supertrend futures ${openingSide} skipped: approx. liquidation vs fee breakeven invalid at lev=${lev}x (raise leverage or widen fee/MM assumptions).`,
+        symbol: orderSymbol,
+      });
+      broadcastActivity(wsHub, {
+        level: "warn",
+        msg: `Open skipped · ${orderSymbol} · liquidation/breakeven geometry (trailing model) at ${lev}x`,
+        category: "risk",
+        reason: "liquidation_breakeven_reject",
+        symbol: orderSymbol,
+        detail: { leverage: lev, side: openingSide },
+      });
+      return { venue: "FUTURES", side, action: "skipped", reason: "liquidation_breakeven_reject" };
     }
 
     try {
@@ -3198,6 +3488,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
   let _lastStrictAccountWarnAt = 0;
   const ACCOUNT_FETCH_INTERVAL_MS = Number(process.env.ACCOUNT_FETCH_INTERVAL_MS || 5000);
 
+  /** Persisted `allowedBudgetUsdt` (margin budget) must not exceed free margin (not leveraged buying power). */
+  function clampAllowedBudgetToFreeMargin() {
+    const cap = walletFreeMarginUsdtForAllowedCap(_cachedAccount, state.marketMode);
+    if (cap == null || !Number.isFinite(cap) || cap <= 0) return;
+    const ab = Number(state.allowedBudgetUsdt);
+    if (Number.isFinite(ab) && ab > cap) state.allowedBudgetUsdt = roundTo(cap, 6);
+  }
+
   function pickVenueExchange({ side, prob, regime, atrPct }) {
     const spot = exch?.spot || null;
     const futures = exch?.futures || null;
@@ -3771,6 +4069,23 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       maxDailyLoss: state.maxDailyLoss,
       riskPerTradeUnit: state.riskPerTradeUnit === "USDT" ? "USDT" : "PCT",
       maxDailyLossUnit: state.maxDailyLossUnit === "USDT" ? "USDT" : "PCT",
+      capitalSplitAcrossCoins: Boolean(state.capitalSplitAcrossCoins),
+      allowedBudgetUsdt: Number(state.allowedBudgetUsdt) || 0,
+      allowedBudgetWalletPct: clamp(Number(state.allowedBudgetWalletPct || 0), 0, 100),
+      allowedBudgetInputMode: state.allowedBudgetInputMode === "WALLET_PCT" ? "WALLET_PCT" : "USDT",
+      multiTradeUsePctOfUsable: Boolean(state.multiTradeUsePctOfUsable),
+      multiTradePctOfUsable: clamp(Number(state.multiTradePctOfUsable ?? 100), 0, 100),
+      multiBudgetSplitMode:
+        state.multiBudgetSplitMode === "FULL" ||
+        state.multiBudgetSplitMode === "EQUAL" ||
+        state.multiBudgetSplitMode === "CUSTOM_USDT" ||
+        state.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED"
+          ? state.multiBudgetSplitMode
+          : null,
+      multiBudgetCoinUsdt:
+        state.multiBudgetCoinUsdt && typeof state.multiBudgetCoinUsdt === "object" ? { ...state.multiBudgetCoinUsdt } : {},
+      multiBudgetCoinPct:
+        state.multiBudgetCoinPct && typeof state.multiBudgetCoinPct === "object" ? { ...state.multiBudgetCoinPct } : {},
       strategyMode: state.strategyMode,
       manualStrategy: state.manualStrategy,
       marketMode: state.marketMode,
@@ -3846,6 +4161,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       supertrendFuturesMinAiProb: clamp(Number(state.supertrendFuturesMinAiProb ?? 0.55), 0, 1),
       surfPulseMlThreshold: clamp(Number(state.surfPulseMlThreshold ?? 0.6), 0, 1),
       trailingStopLossAuto: state.trailingStopLossAuto === true,
+      futuresTrailingStopMode: normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode),
       trailingStopExtraScalpingPcts: normalizeTrailingExtraPcts(state.trailingStopExtraScalpingPcts),
       supertrendFuturesFixedSlPct: clamp(Number(state.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2),
       supertrendFuturesFixedTpPct: clamp(Number(state.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5),
@@ -4243,13 +4559,36 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
     if (!state.feedExecutionPause) {
       const extraTrailPcts = normalizeTrailingExtraPcts(state.trailingStopExtraScalpingPcts);
+      const trailMode = normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode);
+      let supertrendTrailPx = null;
+      if (state.running && state.trailingStopLossAuto && trailMode === "SUPERTREND") {
+        try {
+          const chartCandlesForTrail = sanitizeCandlesForSt(getChartCandles({ hours: 48 }), state.symbol);
+          const stTrail = computeSupertrendChartModel(chartCandlesForTrail, {
+            withChartArrays: false,
+            symbol: state.symbol,
+          });
+          const ln = stTrail.lastRow?.line;
+          if (ln != null && Number.isFinite(Number(ln))) supertrendTrailPx = Number(ln);
+        } catch {
+          supertrendTrailPx = null;
+        }
+      }
+      const trailBuf = Number(process.env.SUPERTREND_TRAIL_BUFFER_RATE ?? 0.0005);
+      const trailMm = Number(process.env.SUPERTREND_TRAIL_MAINTENANCE_MARGIN_RATE ?? 0.005);
+      const trailMinSlFrac = Number(process.env.SUPERTREND_TRAIL_MIN_SL_DISTANCE_FRAC ?? 0.002);
       const trailingStopLoss =
         state.running && state.trailingStopLossAuto
           ? {
               enabled: true,
+              mode: trailMode,
               feeRate: tradeCloseFeeRate(),
               extraScalpingPcts: extraTrailPcts,
               maxTrailSteps: maxTrailStepsForConfig(extraTrailPcts),
+              supertrendPx: supertrendTrailPx,
+              bufferRate: trailBuf,
+              maintenanceMarginRate: trailMm,
+              minSlDistanceFrac: trailMinSlFrac,
             }
           : null;
       const onTrailingSlAdvance = (evt) => {
@@ -4257,9 +4596,18 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         const next = Number(evt.newStopLoss);
         const ps = Number.isFinite(prev) ? prev.toFixed(6) : String(evt.prevStopLoss);
         const ns = Number.isFinite(next) ? next.toFixed(6) : String(evt.newStopLoss);
+        const st =
+          evt.supertrendPx != null && Number.isFinite(Number(evt.supertrendPx))
+            ? Number(evt.supertrendPx).toFixed(6)
+            : "—";
+        const be =
+          evt.breakeven != null && Number.isFinite(Number(evt.breakeven))
+            ? Number(evt.breakeven).toFixed(6)
+            : "—";
+        const label = evt.kind === "fee_ladder_trailing_sl" ? "Fee-ladder trailing SL" : "Supertrend trailing SL";
         broadcastActivity(wsHub, {
           level: "info",
-          msg: `Trailing stop · ${evt.symbol} · SL ${ps} → ${ns} (step ${evt.trailStep}/${evt.maxTrailSteps})`,
+          msg: `${label} · ${evt.symbol} · ${ps} → ${ns} · ST ${st} · fee BE ${be} (step ${evt.trailStep}/${evt.maxTrailSteps})`,
           category: "risk",
           reason: "trailing_sl_advance",
           symbol: evt.symbol,
@@ -4330,6 +4678,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
           if (account != null && Array.isArray(positions)) {
             _cachedAccount = account;
             _cachedPositions = positions;
+            clampAllowedBudgetToFreeMargin();
             if (strictAcc) _lastStrictAccountWarnAt = 0;
           }
         }
@@ -4407,7 +4756,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       // USD-M on exchange: use Binance-reported unrealized PnL (do not conflate with local paper sim).
       if (p.venue === "FUTURES" && p.syncSource === "fapi_v2_account") {
         const apiUpnl = Number(p.unrealizedPnl ?? p.unrealizedProfit ?? 0);
-        return { ...p, markPrice, unrealizedPnl: Number.isFinite(apiUpnl) ? apiUpnl : null };
+        // Never attach the *chart* symbol’s last close as mark for every row — that breaks other pairs’ MTM and “invested” math.
+        const rowSym = String(p?.symbol || "").toUpperCase();
+        const chartMark = Number.isFinite(markPrice) && markPrice > 0 && rowSym === symU ? markPrice : null;
+        const entryPx = Number(p.entryPrice) > 0 ? Number(p.entryPrice) : null;
+        const rowMark = chartMark ?? entryPx;
+        return { ...p, markPrice: rowMark, unrealizedPnl: Number.isFinite(apiUpnl) ? apiUpnl : null };
       }
       const isLong = p.side === "BUY";
       // Use the live mark price only for the currently streamed symbol.
@@ -5020,14 +5374,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
     // Risk plan (1-2% capital per trade) + SL/TP required.
     // Pass futuresLeverage so max-notional cap matches the leverage we will set on the order.
+    const rpTick = resolveFixedUsdtRiskForOrder(state.symbol, positions);
     const plan = await riskPlan({
       exchange: venueEx,
       side: tradeAction,
       entryPrice: last.close,
       confidence: prob,
-      riskPerTrade: state.riskPerTrade,
+      riskPerTrade: rpTick.riskPerTrade,
       riskPerTradeUnit: state.riskPerTradeUnit,
       fixedUsdtCapitalSizing: isFixedUsdtCapitalMode(),
+      fixedUsdtSplitDivisor: rpTick.fixedUsdtSplitDivisor,
       atr: indicators.latest.atr_14,
       futuresLeverage: futuresLeverage ?? undefined,
       stats: state.stats[strategyKey],
@@ -5043,6 +5399,45 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
         action: "skipped",
         reason: `risk_plan:${plan.reason || "rejected"}`,
         probability: prob,
+      });
+      return;
+    }
+
+    const trailMmStrat = Number(process.env.SUPERTREND_TRAIL_MAINTENANCE_MARGIN_RATE ?? 0.005);
+    if (
+      isFuturesVenue &&
+      state.trailingStopLossAuto &&
+      futuresLeverage != null &&
+      entryRejectedLiquidationBreakeven({
+        entryPrice: last.close,
+        isLong: tradeAction === "BUY",
+        leverage: futuresLeverage,
+        feeRate: tradeCloseFeeRate(),
+        maintenanceMarginRate: trailMmStrat,
+      })
+    ) {
+      noteTradeBlock({
+        reason: "liquidation_breakeven_reject",
+        symbol: state.symbol,
+        strategyKey,
+        detail: { leverage: futuresLeverage },
+      });
+      emitSignalActionActivity(wsHub, {
+        kind: "strategy",
+        strategyKey,
+        venue: stratVenue,
+        side: tradeAction,
+        action: "skipped",
+        reason: "liquidation_breakeven_reject",
+        probability: prob,
+      });
+      broadcastActivity(wsHub, {
+        level: "warn",
+        msg: `Open skipped · ${state.symbol} · liquidation/breakeven geometry (Supertrend trailing) at ${futuresLeverage}x`,
+        category: "risk",
+        reason: "liquidation_breakeven_reject",
+        symbol: state.symbol,
+        detail: { leverage: futuresLeverage, strategyKey },
       });
       return;
     }
@@ -5405,7 +5800,40 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
     if (patch.maxDailyLoss != null && Number.isFinite(Number(patch.maxDailyLoss))) {
       state.maxDailyLoss = Number(patch.maxDailyLoss);
     }
+    if (patch.multiBudgetSplitMode != null) {
+      const v = String(patch.multiBudgetSplitMode).toUpperCase();
+      if (v === "FULL" || v === "EQUAL" || v === "CUSTOM_USDT" || v === "CUSTOM_PCT_ALLOWED") {
+        state.multiBudgetSplitMode = v;
+        state.capitalSplitAcrossCoins = v === "EQUAL";
+      }
+    }
+    if (patch.capitalSplitAcrossCoins != null) {
+      state.capitalSplitAcrossCoins = Boolean(patch.capitalSplitAcrossCoins);
+      if (patch.multiBudgetSplitMode == null) {
+        state.multiBudgetSplitMode = state.capitalSplitAcrossCoins ? "EQUAL" : "FULL";
+      }
+    }
+    if (patch.allowedBudgetUsdt != null && Number.isFinite(Number(patch.allowedBudgetUsdt))) {
+      state.allowedBudgetUsdt = clamp(Number(patch.allowedBudgetUsdt), 0, 10_000_000);
+    }
+    if (patch.allowedBudgetWalletPct != null && Number.isFinite(Number(patch.allowedBudgetWalletPct))) {
+      state.allowedBudgetWalletPct = clamp(Number(patch.allowedBudgetWalletPct), 0, 100);
+    }
+    if (patch.allowedBudgetInputMode === "USDT" || patch.allowedBudgetInputMode === "WALLET_PCT") {
+      state.allowedBudgetInputMode = patch.allowedBudgetInputMode;
+    }
+    if (patch.multiTradeUsePctOfUsable != null) state.multiTradeUsePctOfUsable = Boolean(patch.multiTradeUsePctOfUsable);
+    if (patch.multiTradePctOfUsable != null && Number.isFinite(Number(patch.multiTradePctOfUsable))) {
+      state.multiTradePctOfUsable = clamp(Number(patch.multiTradePctOfUsable), 0, 100);
+    }
+    if (patch.multiBudgetCoinUsdt != null && typeof patch.multiBudgetCoinUsdt === "object") {
+      state.multiBudgetCoinUsdt = { ...state.multiBudgetCoinUsdt, ...patch.multiBudgetCoinUsdt };
+    }
+    if (patch.multiBudgetCoinPct != null && typeof patch.multiBudgetCoinPct === "object") {
+      state.multiBudgetCoinPct = { ...state.multiBudgetCoinPct, ...patch.multiBudgetCoinPct };
+    }
     normalizeRiskLimits(state);
+    normalizeCapitalBudgetFields(state, SYM_RE);
     if (patch.strategyMode) state.strategyMode = patch.strategyMode;
     if (patch.manualStrategy) state.manualStrategy = patch.manualStrategy;
     if (patch.marketMode) {
@@ -5436,6 +5864,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
       state.surfPulseMlThreshold = clamp(Number(patch.surfPulseMlThreshold), 0, 1);
     }
     if (patch.trailingStopLossAuto != null) state.trailingStopLossAuto = Boolean(patch.trailingStopLossAuto);
+    if (patch.futuresTrailingStopMode != null) {
+      state.futuresTrailingStopMode = normalizeFuturesTrailingStopMode(patch.futuresTrailingStopMode);
+    }
     if (patch.trailingStopExtraScalpingPcts != null) {
       state.trailingStopExtraScalpingPcts = normalizeTrailingExtraPcts(patch.trailingStopExtraScalpingPcts);
     }
@@ -5486,6 +5917,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode }) {
 
     syncFeedWatchSymbols();
 
+    clampAllowedBudgetToFreeMargin();
     persistTradingConfigToDisk();
 
     if ((patch.symbol || patch.timeframe) && wsHubRef) {
