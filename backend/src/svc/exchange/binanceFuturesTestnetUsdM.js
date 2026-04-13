@@ -533,7 +533,10 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
               if (Number.isFinite(v) && v > 0) stPx = v;
             }
           }
-          if (trailMode !== "FEE_LADDER" && (!Number.isFinite(stPx) || !stPx || stPx <= 0)) continue;
+          if (trailMode === "SUPERTREND") {
+            const advOn = trailingStopLoss?.supertrendUseAdvancedTrail !== false;
+            if (advOn && (!Number.isFinite(stPx) || !stPx || stPx <= 0)) continue;
+          }
 
           try {
             const m = await getOrLoadSymbolMeta(s);
@@ -551,6 +554,8 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
                 bufferRate: trailingStopLoss.bufferRate,
                 maintenanceMarginRate: trailingStopLoss.maintenanceMarginRate,
                 minSlDistanceFrac: trailingStopLoss.minSlDistanceFrac,
+                supertrendUseFeeBreakeven: trailingStopLoss.supertrendUseFeeBreakeven !== false,
+                supertrendUseAdvancedTrail: trailingStopLoss.supertrendUseAdvancedTrail !== false,
               },
               trailingBySymbol,
               localBrackets,

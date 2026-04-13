@@ -462,25 +462,112 @@ function positionInitialMarginUsd(p: any): string {
   return m != null ? m.toFixed(2) : "—";
 }
 
+/** Initial margin USDT for futures row; null for spot or incomplete. */
+function positionInitialMarginUsdNumber(p: any): number | null {
+  if (String(p?.venue || "").toUpperCase() !== "FUTURES") return null;
+  const e = numFinite(p.entryPrice);
+  const qRaw = numFinite(p.qty);
+  const q = qRaw != null ? Math.abs(qRaw) : 0;
+  const L0 = numFinite(p.leverage);
+  const L = L0 != null && L0 > 0 ? L0 : 1;
+  if (e == null || !(q > 0) || e <= 0) return null;
+  return initialMarginUsd(e, q, L);
+}
+
+/** Return on initial margin (futures) or vs entry notional (spot): uPnL / basis × 100. */
+function positionUnrealizedPnlPct(p: any): number | null {
+  const u = Number(p?.unrealizedPnl ?? p?.unRealizedProfit);
+  if (!Number.isFinite(u)) return null;
+  const ven = String(p?.venue || "").toUpperCase();
+  if (ven === "FUTURES") {
+    const m = positionInitialMarginUsdNumber(p);
+    if (m == null || !(m > 0)) return null;
+    return (u / m) * 100;
+  }
+  const e = numFinite(p.entryPrice);
+  const qRaw = numFinite(p.qty);
+  const q = qRaw != null ? Math.abs(qRaw) : 0;
+  if (e == null || !(q > 0) || e <= 0) return null;
+  const basis = e * q;
+  if (!(basis > 0)) return null;
+  return (u / basis) * 100;
+}
+
+function fmtPnlPct(pct: number | null | undefined): string {
+  if (pct == null || !Number.isFinite(pct)) return "—";
+  return `${pct.toFixed(2)}%`;
+}
+
 /** Initial margin at open (USDT) for futures-style rows with leverage. */
 function tradeInitialMarginUsd(t: any, openRef: any | undefined, disp: { price?: number; qty?: number; lev?: number }): string {
+  const n = tradeInitialMarginUsdNumber(t, openRef, disp);
+  return n != null && Number.isFinite(n) ? n.toFixed(2) : "—";
+}
+
+function tradeInitialMarginUsdNumber(t: any, openRef: any | undefined, disp: { price?: number; qty?: number; lev?: number }): number | null {
   const lev = disp.lev;
-  if (lev == null || !(lev > 0)) return "—";
+  if (lev == null || !(lev > 0)) return null;
   if (t?.type === "OPEN") {
     const px = disp.price;
     const qty = disp.qty;
-    if (px == null || qty == null || px <= 0 || qty <= 0) return "—";
-    const m = initialMarginUsd(px, qty, lev);
-    return m != null ? m.toFixed(2) : "—";
+    if (px == null || qty == null || px <= 0 || qty <= 0) return null;
+    return initialMarginUsd(px, qty, lev);
   }
   if (t?.type === "CLOSE") {
     const pxE = numFinite(openRef?.price ?? t?.meta?.entryPrice ?? t?.entryPrice);
     const qE = numFinite(openRef?.qty ?? disp.qty);
-    if (pxE == null || qE == null || pxE <= 0 || qE <= 0) return "—";
-    const m = initialMarginUsd(pxE, qE, lev);
-    return m != null ? m.toFixed(2) : "—";
+    if (pxE == null || qE == null || pxE <= 0 || qE <= 0) return null;
+    return initialMarginUsd(pxE, qE, lev);
   }
-  return "—";
+  return null;
+}
+
+/** Match OPEN row to a live position for realtime uPnL% (symbol + venue when present). */
+function positionRowMatchingOpenTrade(t: any, positions: readonly any[]): any | undefined {
+  if (t?.type !== "OPEN") return undefined;
+  const sym = String(t?.symbol ?? "").toUpperCase();
+  if (!sym) return undefined;
+  const wantVen = String(t?.venue ?? t?.meta?.venue ?? "").toUpperCase();
+  const rows = Array.isArray(positions) ? positions : [];
+  let symOnly: any;
+  for (const p of rows) {
+    if (String(p?.symbol ?? "").toUpperCase() !== sym) continue;
+    if (wantVen && String(p?.venue ?? "").toUpperCase() !== wantVen) continue;
+    return p;
+  }
+  for (const p of rows) {
+    if (String(p?.symbol ?? "").toUpperCase() !== sym) continue;
+    if (!symOnly) symOnly = p;
+  }
+  return symOnly;
+}
+
+/** Net PnL% on initial margin: CLOSE = realized net / margin at entry; OPEN = live uPnL% when a matching position row exists. */
+function tradeHistoryPnlPct(
+  t: any,
+  openRef: any | undefined,
+  positions: readonly any[],
+  disp: { price?: number; qty?: number; lev?: number },
+): number | null {
+  const pos = positionRowMatchingOpenTrade(t, positions);
+  if (t?.type === "OPEN" && pos) return positionUnrealizedPnlPct(pos);
+  if (t?.type === "CLOSE") {
+    const net = closeTradeNetUsd(t, openRef);
+    if (!Number.isFinite(net)) return null;
+    let m = tradeInitialMarginUsdNumber(t, openRef, disp);
+    if (m == null || !(m > 0)) {
+      const levOk = disp.lev != null && disp.lev > 0;
+      if (!levOk) {
+        const pxE = numFinite(openRef?.price ?? t?.meta?.entryPrice ?? t?.entryPrice);
+        const qRaw = numFinite(openRef?.qty ?? disp.qty);
+        const qE = qRaw != null ? Math.abs(qRaw) : 0;
+        if (pxE != null && pxE > 0 && qE > 0) m = pxE * qE;
+      }
+    }
+    if (m == null || !(m > 0)) return null;
+    return (net / m) * 100;
+  }
+  return null;
 }
 
 /** CLOSE rows often omit fields; fill from matching OPEN (same id) and common aliases. */
@@ -1428,6 +1515,9 @@ export function PortfolioPanel() {
                   <th className="px-3 py-2">Margin</th>
                   <th className="px-3 py-2">SL</th>
                   <th className="px-3 py-2">TP</th>
+                  <th className="px-3 py-2" title="Unrealized P&L as % of initial margin (futures) or entry notional (spot)">
+                    uPnL%
+                  </th>
                   <th className="px-3 py-2">uPnL</th>
                   <th className="px-3 py-2"></th>
                 </tr>
@@ -1435,12 +1525,14 @@ export function PortfolioPanel() {
               <tbody>
                 {positions.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={12}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={13}>
                       No open positions
                     </td>
                   </tr>
                 ) : (
-                  positions.map((p: any) => (
+                  positions.map((p: any) => {
+                    const upnlPct = positionUnrealizedPnlPct(p);
+                    return (
                     <tr key={p.id} className="border-t border-slate-200 dark:border-slate-900">
                       <td className="w-3 min-w-[12px] max-w-[14px] border-0 px-0 py-2 align-middle">
                         {positionRowTrailedStrict(p, trailingStopLossAuto) ? (
@@ -1467,6 +1559,18 @@ export function PortfolioPanel() {
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
                         {p.takeProfit != null ? fmtInstrumentPx(p.takeProfit) : "—"}
+                      </td>
+                      <td
+                        className={`px-3 py-2 tabular-nums ${
+                          upnlPct != null && upnlPct >= 0
+                            ? "text-emerald-400"
+                            : upnlPct != null
+                              ? "text-rose-400"
+                              : "text-slate-600 dark:text-slate-400"
+                        }`}
+                        title="Versus initial margin (futures) or entry notional (spot)"
+                      >
+                        {fmtPnlPct(upnlPct)}
                       </td>
                       <td className={`px-3 py-2 ${Number(p.unrealizedPnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                         {p.unrealizedPnl != null ? Number(p.unrealizedPnl).toFixed(2) : "—"}
@@ -1527,7 +1631,8 @@ export function PortfolioPanel() {
                         })()}
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1675,12 +1780,15 @@ export function PortfolioPanel() {
                   <th className="px-3 py-2">Gross</th>
                   <th className="px-3 py-2">Fee</th>
                   <th className="px-3 py-2">Net</th>
+                  <th className="px-3 py-2" title="OPEN: live uPnL% vs margin when position matches. CLOSE: net / initial margin at entry (futures).">
+                    PnL%
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {displayedTrades.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={14}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={15}>
                       No trades yet
                     </td>
                   </tr>
@@ -1698,6 +1806,7 @@ export function PortfolioPanel() {
                       t.side ?? (t?.type === "CLOSE" && t?.meta?.closeSide != null ? String(t.meta.closeSide) : null) ?? "n/a";
                     const slTpDisp = `${sl != null && Number.isFinite(sl) ? fmtInstrumentPx(sl) : "n/a"} / ${tp != null && Number.isFinite(tp) ? fmtInstrumentPx(tp) : "n/a"}`;
                     const marginDisp = tradeInitialMarginUsd(t, openRef, { price, qty, lev });
+                    const pnlPct = tradeHistoryPnlPct(t, openRef, positions, { price, qty, lev });
                     const reasonDisp = tradeHistoryReasonLabel(t);
                     const reasonTitle = [t.reason, t?.meta?.closeReason, t?.meta?.bracketType]
                       .filter((x) => x != null && String(x).trim() !== "")
@@ -1757,6 +1866,13 @@ export function PortfolioPanel() {
                           className={`px-3 py-2 ${net != null && net >= 0 ? "text-emerald-400" : net != null ? "text-rose-400" : "text-slate-600 dark:text-slate-400"}`}
                         >
                           {net != null ? fmtUsd(net) : "—"}
+                        </td>
+                        <td
+                          className={`px-3 py-2 tabular-nums ${
+                            pnlPct != null && pnlPct >= 0 ? "text-emerald-400" : pnlPct != null ? "text-rose-400" : "text-slate-600 dark:text-slate-400"
+                          }`}
+                        >
+                          {fmtPnlPct(pnlPct)}
                         </td>
                       </tr>
                     );

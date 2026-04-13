@@ -179,6 +179,8 @@ export function roundStopPx(px, tickSize) {
  *   minSlDistanceFrac?: number;
  *   extraScalpingPcts?: number[];
  *   maxTrailSteps?: number;
+ *   supertrendUseFeeBreakeven?: boolean;
+ *   supertrendUseAdvancedTrail?: boolean;
  * }} [opts.trailingOpts]
  * @param {(p: { level: string; msg: string; category?: string; reason?: string; symbol?: string; detail?: object }) => void} [opts.notifyActivity]
  */
@@ -260,9 +262,10 @@ export function applyTrailingStopBinanceMemory(opts) {
     trailStatus = "OK";
     trailKind = "fee_ladder_trailing_sl";
   } else {
+    const useAdvTrail = trailingOpts.supertrendUseAdvancedTrail !== false;
     const stPx = trailingOpts.supertrendPx != null ? Number(trailingOpts.supertrendPx) : NaN;
-    if (!Number.isFinite(stPx) || stPx <= 0) return false;
-    supertrendPxForEvt = stPx;
+    if (useAdvTrail && (!Number.isFinite(stPx) || stPx <= 0)) return false;
+    supertrendPxForEvt = useAdvTrail && Number.isFinite(stPx) && stPx > 0 ? stPx : null;
 
     /**
      * Default `minSlDistanceFrac` (0.2%) is too strict on low-priced / small-tick symbols (e.g. DOGE).
@@ -273,10 +276,12 @@ export function applyTrailingStopBinanceMemory(opts) {
       if (Number.isFinite(tickFrac) && tickFrac > 0) minDistUsed = Math.min(minDistUsed, tickFrac);
     }
 
+    const useFeeBeTrail = trailingOpts.supertrendUseFeeBreakeven !== false;
+
     const r = computeSupertrendTrailingSlUpdate({
       entryPrice: tr.entryPrice,
       currentPrice: markPx,
-      supertrend: stPx,
+      supertrend: useAdvTrail ? stPx : NaN,
       previousSl: prevSl,
       isLong,
       leverage: lev,
@@ -284,11 +289,13 @@ export function applyTrailingStopBinanceMemory(opts) {
       bufferRate: buf,
       maintenanceMarginRate: mm,
       minSlDistanceFrac: minDistUsed,
+      useFeeBreakeven: trailingOpts.supertrendUseFeeBreakeven !== false,
+      useAdvancedTrail: trailingOpts.supertrendUseAdvancedTrail !== false,
     });
 
     const activationPx = isLong
-      ? tr.entryPrice * (1 + feeBe + buf)
-      : tr.entryPrice * (1 - feeBe - buf);
+      ? tr.entryPrice * (1 + (useFeeBeTrail ? feeBe : 0) + buf)
+      : tr.entryPrice * (1 - (useFeeBeTrail ? feeBe : 0) - buf);
 
     if (r.status === "REJECT_TRADE" || r.status === "INVALID") {
       if (trailDiagEmit(tr, `bad_${r.status}`, 120_000)) {
@@ -304,7 +311,7 @@ export function applyTrailingStopBinanceMemory(opts) {
       return false;
     }
     if (r.status === "NO_SUPERTREND") {
-      if (trailDiagEmit(tr, "no_st", 90_000)) {
+      if (useAdvTrail && trailDiagEmit(tr, "no_st", 90_000)) {
         notifyActivity({
           category: "risk",
           level: "warn",
@@ -328,7 +335,7 @@ export function applyTrailingStopBinanceMemory(opts) {
       notifyActivity?.({
         category: "risk",
         level: "info",
-        msg: `Trailing activation · ${sym} · mark passed activation (${activationPx.toFixed(6)}); Supertrend trailing engaged`,
+        msg: `Trailing activation · ${sym} · mark passed activation (${activationPx.toFixed(6)}); futures trailing engaged`,
         reason: "trailing_activation_engaged",
         symbol: sym,
         detail: {
@@ -336,10 +343,14 @@ export function applyTrailingStopBinanceMemory(opts) {
           phase: "activation",
           markPx,
           activationPrice: activationPx,
-          breakeven: isLong ? tr.entryPrice * (1 + feeBe) : tr.entryPrice * (1 - feeBe),
+          breakeven: useFeeBeTrail
+            ? isLong
+              ? tr.entryPrice * (1 + feeBe)
+              : tr.entryPrice * (1 - feeBe)
+            : tr.entryPrice,
           entryPrice: tr.entryPrice,
           isLong,
-          supertrendPx: stPx,
+          supertrendPx: supertrendPxForEvt,
         },
       });
     }
@@ -416,11 +427,19 @@ export function applyTrailingStopBinanceMemory(opts) {
   const finalSl = finalSlPre;
   if (!Number.isFinite(finalSl) || finalSl <= 0 || finalSl === prevEff) return false;
 
-  const feeRateUsed = feeBe;
-  const breakeven = isLong ? tr.entryPrice * (1 + feeRateUsed) : tr.entryPrice * (1 - feeRateUsed);
-  const activation = isLong
-    ? tr.entryPrice * (1 + feeRateUsed + buf)
-    : tr.entryPrice * (1 - feeRateUsed - buf);
+  const stFeeOn = mode !== "SUPERTREND" || trailingOpts.supertrendUseFeeBreakeven !== false;
+  const breakeven = stFeeOn
+    ? isLong
+      ? tr.entryPrice * (1 + feeBe)
+      : tr.entryPrice * (1 - feeBe)
+    : tr.entryPrice;
+  const activation = stFeeOn
+    ? isLong
+      ? tr.entryPrice * (1 + feeBe + buf)
+      : tr.entryPrice * (1 - feeBe - buf)
+    : isLong
+      ? tr.entryPrice * (1 + buf)
+      : tr.entryPrice * (1 - buf);
 
   const bumpTrailMetaSupertrend = () => {
     tr.trailStep = (Number(tr.trailStep) || 0) + 1;

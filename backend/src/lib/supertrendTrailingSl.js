@@ -31,6 +31,8 @@ export function feeRateBreakevenPadded(feeRate) {
  * @param {number} [p.bufferRate]
  * @param {number} [p.maintenanceMarginRate]
  * @param {number} [p.minSlDistanceFrac] if set and >0, avoid tightening SL when too close to price (noise)
+ * @param {boolean} [p.useFeeBreakeven] default true — fee-aware BE floor + activation using `feeRate`
+ * @param {boolean} [p.useAdvancedTrail] default true — follow Supertrend line (with BE floor when both on)
  * @returns {{ newSl: number, status: "OK" | "REJECT_TRADE" | "NO_TRAIL" | "NO_SUPERTREND" | "INVALID" }}
  */
 export function computeSupertrendTrailingSlUpdate(p) {
@@ -45,6 +47,8 @@ export function computeSupertrendTrailingSlUpdate(p) {
   const isLong = Boolean(p.isLong);
   const stRaw = p.supertrend;
   const st = stRaw != null && Number.isFinite(Number(stRaw)) ? Number(stRaw) : null;
+  const useFeeBe = p.useFeeBreakeven !== false;
+  const useAdv = p.useAdvancedTrail !== false;
 
   if (!Number.isFinite(entry) || entry <= 0 || !Number.isFinite(cur) || cur <= 0 || !Number.isFinite(prevSl)) {
     return { newSl: prevSl, status: "INVALID" };
@@ -52,24 +56,53 @@ export function computeSupertrendTrailingSlUpdate(p) {
   if (!Number.isFinite(lev) || lev < 1) {
     return { newSl: prevSl, status: "INVALID" };
   }
+  if (!useFeeBe && !useAdv) {
+    return { newSl: prevSl, status: "INVALID" };
+  }
 
   let breakeven;
   let activation;
   let liquidation;
   if (isLong) {
-    breakeven = entry * (1 + feeRate);
-    activation = entry * (1 + feeRate + bufferRate);
+    if (useFeeBe) {
+      breakeven = entry * (1 + feeRate);
+      activation = entry * (1 + feeRate + bufferRate);
+    } else {
+      breakeven = entry;
+      activation = entry * (1 + bufferRate);
+    }
     liquidation = entry * (1 - 1 / lev + maintenanceMarginRate);
     if (liquidation >= breakeven) {
       return { newSl: prevSl, status: "REJECT_TRADE" };
     }
   } else {
-    breakeven = entry * (1 - feeRate);
-    activation = entry * (1 - feeRate - bufferRate);
+    if (useFeeBe) {
+      breakeven = entry * (1 - feeRate);
+      activation = entry * (1 - feeRate - bufferRate);
+    } else {
+      breakeven = entry;
+      activation = entry * (1 - bufferRate);
+    }
     liquidation = entry * (1 + 1 / lev - maintenanceMarginRate);
     if (liquidation <= breakeven) {
       return { newSl: prevSl, status: "REJECT_TRADE" };
     }
+  }
+
+  /** Fee-BE-only path: ratchet SL to breakeven once mark passes activation (no ST line). */
+  if (useFeeBe && !useAdv) {
+    if (isLong) {
+      if (cur < activation) return { newSl: prevSl, status: "NO_TRAIL" };
+    } else if (cur > activation) {
+      return { newSl: prevSl, status: "NO_TRAIL" };
+    }
+    let newSlOnlyBe = isLong ? Math.max(prevSl, breakeven) : Math.min(prevSl, breakeven);
+    if (Number.isFinite(minDist) && minDist > 0 && cur > 0) {
+      const dist = Math.abs(cur - newSlOnlyBe) / cur;
+      const tightening = isLong ? newSlOnlyBe > prevSl : newSlOnlyBe < prevSl;
+      if (dist < minDist && !tightening) newSlOnlyBe = prevSl;
+    }
+    return { newSl: newSlOnlyBe, status: "OK" };
   }
 
   if (st == null || st <= 0) {
@@ -82,20 +115,31 @@ export function computeSupertrendTrailingSlUpdate(p) {
     if (cur < activation) {
       return { newSl: prevSl, status: "NO_TRAIL" };
     }
-    const safeSt = Math.max(st, breakeven);
-    newSl = Math.max(prevSl, safeSt);
+    let trailAnchor;
+    if (useFeeBe && useAdv) {
+      trailAnchor = Math.max(st, breakeven);
+    } else {
+      trailAnchor = st;
+    }
+    newSl = Math.max(prevSl, trailAnchor);
   } else {
     if (cur > activation) {
       return { newSl: prevSl, status: "NO_TRAIL" };
     }
-    const safeSt = Math.min(st, breakeven);
-    newSl = Math.min(prevSl, safeSt);
+    let trailAnchor;
+    if (useFeeBe && useAdv) {
+      trailAnchor = Math.min(st, breakeven);
+    } else {
+      trailAnchor = st;
+    }
+    newSl = Math.min(prevSl, trailAnchor);
   }
 
   if (Number.isFinite(minDist) && minDist > 0 && cur > 0) {
     const dist = Math.abs(cur - newSl) / cur;
     if (dist < minDist) {
-      newSl = prevSl;
+      const tightening = isLong ? newSl > prevSl : newSl < prevSl;
+      if (!tightening) newSl = prevSl;
     }
   }
 

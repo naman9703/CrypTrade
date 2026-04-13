@@ -1,6 +1,6 @@
 import { roundTo } from "../../lib/math.js";
 import { mergeStopWithTrail, clampFeeRate, advanceTrailingStopState } from "../../lib/trailingStopLoss.js";
-import { computeSupertrendTrailingSlUpdate } from "../../lib/supertrendTrailingSl.js";
+import { computeSupertrendTrailingSlUpdate, feeRateBreakevenPadded } from "../../lib/supertrendTrailingSl.js";
 import { resolveDefaultPaperFuturesStoreDir } from "../../lib/tradingModePersistence.js";
 import { createPaperStore } from "./paperStore.js";
 
@@ -241,18 +241,26 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
               }
             } else {
               stPx = trailingStopLoss.supertrendPx != null ? Number(trailingStopLoss.supertrendPx) : NaN;
-              if (Number.isFinite(stPx) && stPx > 0) {
+              const useAdv = trailingStopLoss.supertrendUseAdvancedTrail !== false;
+              const stForCompute =
+                useAdv && Number.isFinite(stPx) && stPx > 0 ? stPx : null;
+              if (useAdv && stForCompute == null) {
+                /* advanced trail needs a Supertrend price */
+              } else {
+                const feeBe = feeRateBreakevenPadded(feeR);
                 const r = computeSupertrendTrailingSlUpdate({
                   entryPrice: entryPx,
                   currentPrice: px,
-                  supertrend: stPx,
+                  supertrend: stForCompute,
                   previousSl: prevSl,
                   isLong,
                   leverage: lev,
-                  feeRate: feeR,
+                  feeRate: feeBe,
                   bufferRate: buf,
                   maintenanceMarginRate: mm,
                   minSlDistanceFrac: minDist,
+                  useFeeBreakeven: trailingStopLoss.supertrendUseFeeBreakeven !== false,
+                  useAdvancedTrail: trailingStopLoss.supertrendUseAdvancedTrail !== false,
                 });
                 if (
                   r.status !== "REJECT_TRADE" &&
@@ -277,8 +285,9 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                 }
                 o.stopPx = nextSl;
                 pos.stopLoss = nextSl;
-                const breakeven = isLong ? entryPx * (1 + feeR) : entryPx * (1 - feeR);
-                const activation = isLong ? entryPx * (1 + feeR + buf) : entryPx * (1 - feeR - buf);
+                const feeBeEvt = feeRateBreakevenPadded(feeR);
+                const breakeven = isLong ? entryPx * (1 + feeBeEvt) : entryPx * (1 - feeBeEvt);
+                const activation = isLong ? entryPx * (1 + feeBeEvt + buf) : entryPx * (1 - feeBeEvt - buf);
                 onTrailingSlAdvance?.({
                   symbol: pos.symbol,
                   venue: "FUTURES",

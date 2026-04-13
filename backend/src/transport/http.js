@@ -346,7 +346,13 @@ export function createRouter({ appState }) {
       allowedBudgetInputMode: z.enum(["USDT", "WALLET_PCT"]).optional(),
       multiTradeUsePctOfUsable: z.boolean().optional(),
       multiTradePctOfUsable: z.number().min(0).max(100).optional(),
+      /** UI-only: compound close + unrealized P&L into Capital allotment headline pool. */
+      capitalAllotmentCompoundPnlUi: z.boolean().optional(),
       perTradeBudgetCapEnabled: z.boolean().optional(),
+      /** USDT = `riskPerTrade` is margin cap; PCT_OF_USABLE = cap = that % of sized usable (after buffer). */
+      perTradeBudgetInputMode: z.enum(["USDT", "PCT_OF_USABLE"]).optional(),
+      /** MULTIPLE fixed-USDT: multi-budget splits vs per-trade cap path (mutually exclusive). */
+      multiCoinCapitalSizingActive: z.boolean().optional(),
       multiBudgetSplitMode: z.enum(["FULL", "EQUAL", "CUSTOM_USDT", "CUSTOM_PCT_ALLOWED"]).optional(),
       multiBudgetCoinUsdt: z.record(z.string().regex(symbolRe), z.number().min(0).max(10_000_000)).optional(),
       multiBudgetCoinPct: z.record(z.string().regex(symbolRe), z.number().min(0).max(100)).optional(),
@@ -370,6 +376,10 @@ export function createRouter({ appState }) {
       trailingStopLossAuto: z.boolean().optional(),
       /** `SUPERTREND` vs `FEE_LADDER` — see bot `futuresTrailingStopMode`. */
       futuresTrailingStopMode: z.enum(["SUPERTREND", "FEE_LADDER"]).optional(),
+      /** Supertrend trailing: fee breakeven floor (default on). */
+      futuresTrailingStFeeBreakeven: z.boolean().optional(),
+      /** Supertrend trailing: follow chart Supertrend line (default on). */
+      futuresTrailingStAdvanced: z.boolean().optional(),
       /** Up to 3 extra trailing locks after fee breakeven + fee-based first scalping; each % of entry (e.g. 0.5 = 0.5%). */
       trailingStopExtraScalpingPcts: z.array(z.number().min(0.01).max(5)).max(3).optional(),
       /** Fixed stop fraction of price (Supertrend futures, AI filter off). */
