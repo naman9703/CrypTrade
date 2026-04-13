@@ -454,7 +454,7 @@ function futuresLeverageForSizingResolveUi(bot: any, cfg: LevCfg, futuresLevDraf
   return clampNum(lev, 1, 5);
 }
 
-/** `allowed` after wallet cap — matches backend `resolveFixedUsdtRiskForOrder` (USD-M pool = max quote notional). */
+/** `allowed` after wallet cap — matches backend `resolveFixedUsdtRiskForOrder` (pool in margin USDT). */
 function computeResolveAllowedFixedUsdt(
   bot: any,
   account: any,
@@ -465,14 +465,8 @@ function computeResolveAllowedFixedUsdt(
   const walletCap = walletFreeMarginUsdtForAllowedCapUi(account, bot?.marketMode);
   const allowedRaw = Number(bot?.allowedBudgetUsdt);
   let allowed = Number.isFinite(allowedRaw) && allowedRaw > 0 ? allowedRaw : 0;
-  const useFutNotional = useFuturesNotionalAllotmentForUi(bot, symbol, positions);
-  const levSizingClamped = useFutNotional ? Math.max(1, levSizing) : 1;
   if (walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
-    if (useFutNotional) {
-      allowed = Math.min(allowed, walletCap * levSizingClamped);
-    } else {
-      allowed = Math.min(allowed, walletCap);
-    }
+    allowed = Math.min(allowed, walletCap);
   }
   return allowed;
 }
@@ -527,21 +521,16 @@ function previewFixedUsdtRiskUsdt(
   const perTradeCapUsdt = capEnabled ? Math.max(0, rawCap) : 1e15;
   const mm = String(bot?.marketMode || "AUTO").toUpperCase();
   const allowed = computeResolveAllowedFixedUsdt(bot, account, symbol, positions, levSizing);
-  const useFutNotional = useFuturesNotionalAllotmentForUi(bot, symbol, positions);
-  const levSizingClamped = useFutNotional ? Math.max(1, levSizing) : 1;
+  const levSizingClamped = Math.max(1, levSizing);
 
-  const invested = useFutNotional
-    ? sumOpenFuturesNotionalUsdtForUi(positions)
-    : sumOpenMarginUsedUsdtForUi(positions, mm);
+  const invested = sumOpenMarginUsedUsdtForUi(positions, mm);
   const totalUsable = Math.max(0, allowed - invested);
   const usePct = bot?.multiTradeUsePctOfUsable === true;
   const p = clampNum(Number(bot?.multiTradePctOfUsable ?? 100), 0, 100);
   const sizedUsable = usePct ? (totalUsable * p) / 100 : totalUsable;
   const basePool = Number.isFinite(sizedUsable) && sizedUsable > 0 ? sizedUsable : 0;
 
-  const marSym = useFutNotional
-    ? (s: string) => sumFuturesNotionalForSymbolUsdtForUi(positions, s)
-    : (s: string) => sumMarginUsedForSymbolUsdt(positions, mm, s);
+  const marSym = (s: string) => sumMarginUsedForSymbolUsdt(positions, mm, s);
   const sym = String(symbol || "").trim().toUpperCase();
 
   const cappedLane = (laneRawMargin: number) => {
@@ -550,10 +539,6 @@ function previewFixedUsdtRiskUsdt(
   };
 
   const laneMarginFromUnits = (coinU: number, basePoolUnits: number) => {
-    if (useFutNotional) {
-      const poolMargin = Math.max(0, basePoolUnits) / levSizingClamped;
-      return Math.min(cappedLane(Math.max(0, coinU) / levSizingClamped), poolMargin);
-    }
     return Math.min(cappedLane(Math.max(0, coinU)), Math.max(0, basePoolUnits));
   };
 
@@ -584,11 +569,6 @@ function previewFixedUsdtRiskUsdt(
   if (mode === "EQUAL") {
     const equalSlot = nDiv > 0 ? sizedUsable / nDiv : 0;
     const coinU = Math.max(0, equalSlot - marSym(sym));
-    if (useFutNotional) {
-      const perSlotMargin = Math.min(cappedLane(coinU / levSizingClamped), equalSlot / levSizingClamped);
-      const riskPerTradeRaw = Math.max(0, perSlotMargin * nDiv);
-      return nDiv > 1 ? riskPerTradeRaw / nDiv : riskPerTradeRaw;
-    }
     const perSlot = Math.min(cappedLane(coinU), equalSlot);
     const riskPerTradeRaw = Math.max(0, perSlot * nDiv);
     return nDiv > 1 ? riskPerTradeRaw / nDiv : riskPerTradeRaw;
@@ -1318,14 +1298,10 @@ export function TradingPanel() {
     const walletFreeMarginTotal = walletFreeMarginUsdt(account, mm);
     const splitDiv = capitalSplitDivisorFromBot(bot);
     const fixedUsd = cfg.riskPerTradeUnit === "USDT" && cfg.maxDailyLossUnit === "USDT";
-    const useFutAllot = useFuturesNotionalAllotmentForUi(merged, activeSymbol, positions);
     const allowedPoolUsdt = fixedUsd
       ? computeResolveAllowedFixedUsdt(merged, account, activeSymbol, positions, levSizing)
       : effectiveAllowedPoolUsdt(merged, account);
-    const invested =
-      fixedUsd && useFutAllot
-        ? sumOpenFuturesNotionalUsdtForUi(positions)
-        : sumOpenMarginUsedUsdtForUi(positions, mm);
+    const invested = sumOpenMarginUsedUsdtForUi(positions, mm);
     /** Raw pool left from allowed cap (can be negative if invested > allowed). */
     const usablePoolRaw = allowedPoolUsdt - invested;
     /** Pool used for sizing “% of usable” (never negative). */
@@ -1338,14 +1314,14 @@ export function TradingPanel() {
       cfg.riskPerTradeUnit === "USDT"
         ? previewFixedUsdtRiskUsdt(merged, activeSymbol, positions, account, levSizing)
         : cfg.riskPerTrade;
-    /** `laneBudget` is initial margin; USD-M quote notional ≈ margin × leverage (same as backend `riskPlan`). */
-    const laneNotionalApprox = useFutAllot ? (Number(laneBudget) || 0) * levSizing : Number(laneBudget) || 0;
+    /** `laneBudget` is initial margin (invested capital) per symbol (fixed USDT sizing). */
+    const laneMarginApprox = Number(laneBudget) || 0;
     const allowedMain = `${allowedPoolUsdt.toLocaleString("en-US", { maximumFractionDigits: 2 })} USDT`;
     const allowedSub =
       fixedUsd && cfg.universeCoinSelectMode === "MULTIPLE" && cfg.multiBudgetSplitMode === "EQUAL" && splitDiv > 1
-        ? `Equal split target ≈ ${laneNotionalApprox.toFixed(2)} USDT quote notional per active symbol (${splitDiv} in list)`
+        ? `Equal split target ≈ ${laneMarginApprox.toFixed(2)} USDT margin per active symbol (${splitDiv} in list)`
         : fixedUsd && cfg.universeCoinSelectMode === "MULTIPLE" && cfg.multiBudgetSplitMode !== "FULL"
-          ? `Mode: ${cfg.multiBudgetSplitMode.replace(/_/g, " ")} · per-symbol notional ≈ ${laneNotionalApprox.toFixed(2)} USDT (${activeSymbol})`
+          ? `Mode: ${cfg.multiBudgetSplitMode.replace(/_/g, " ")} · per-symbol margin ≈ ${laneMarginApprox.toFixed(2)} USDT (${activeSymbol})`
           : cfg.riskPerTradeUnit === "PCT"
             ? `Per-trade ${clampNum(cfg.riskPerTrade, 0, 100).toFixed(2)}% of allowed pool at stop (before confidence tiers).`
             : null;
@@ -1379,21 +1355,12 @@ export function TradingPanel() {
     const usableFormula = `${allowedPoolUsdt.toFixed(2)} − ${invested.toFixed(2)}`;
     const usableSizingNote =
       usablePoolRaw < 0
-        ? fixedUsd && useFutAllot
-          ? "Open futures notional exceeds allowed — raise allowed or reduce/close positions so usable ≥ 0."
-          : "Open margin used exceeds allowed — raise allowed or reduce/close positions so usable ≥ 0."
+        ? "Open margin used exceeds allowed — raise allowed or reduce/close positions so usable ≥ 0."
         : usablePoolRaw === 0
-          ? fixedUsd && useFutAllot
-            ? "No pool left at this cap until open futures notional drops below allowed."
-            : "No pool left at this cap until open margin used drops below allowed."
-          : fixedUsd && useFutAllot
-            ? "With no open futures legs, notional used → 0 and usable equals allowed (USD-M quote notional cap)."
-            : "With no open legs, margin used → 0 and usable equals allowed.";
+          ? "No pool left at this cap until open margin used drops below allowed."
+          : "With no open legs, margin used → 0 and usable equals allowed.";
     const deployLine = deployParts.join(" · ");
-    const sliderDenom =
-      fixedUsd && useFutAllot && walletFreeMarginTotal > 0
-        ? walletFreeMarginTotal * Math.max(1, levSizing)
-        : walletFreeMarginTotal;
+    const sliderDenom = walletFreeMarginTotal;
     const walletSliderPct =
       sliderDenom > 0 && allowedPoolUsdt > 0
         ? clampNum((allowedPoolUsdt / sliderDenom) * 100, 0, 100)
@@ -2866,11 +2833,11 @@ export function TradingPanel() {
                   <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-50">Capital allotment</h3>
                   <p className="mt-0.5 max-w-[22rem] text-[10px] leading-snug text-slate-600 dark:text-slate-400">
                     Set <span className="font-semibold text-slate-700 dark:text-slate-300">allowed</span> once (USDT pool or % of wallet below). For
-                    USD-M with fixed USDT risk, <span className="font-semibold text-slate-700 dark:text-slate-300">allowed</span> is a max{" "}
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">quote notional</span> pool (USDT); the server clamps it to
-                    about free margin × sizing leverage. <span className="font-semibold text-slate-700 dark:text-slate-300">Usable</span> is allowed
-                    minus open futures notional (or quote margin used on spot). Multi-coin splits use this pool, not a second read of the wallet. Deploy
-                    line is venue-capped order size (~90% buying power).
+                    USD-M with fixed USDT risk, <span className="font-semibold text-slate-700 dark:text-slate-300">allowed</span> is a{" "}
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">margin (invested capital)</span> pool (USDT); the server clamps
+                    it to free margin. <span className="font-semibold text-slate-700 dark:text-slate-300">Usable</span> is allowed minus open margin
+                    used (futures initial margin, or spot quote used). Multi-coin splits use this pool, not a second read of the wallet. Deploy line is
+                    venue-capped order size (~90% buying power).
                     {showFuturesMinNotionalGate ? (
                       <>
                         {" "}

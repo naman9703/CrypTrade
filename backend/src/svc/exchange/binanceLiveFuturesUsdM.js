@@ -59,6 +59,58 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     return data;
   }
 
+  function isBinanceMaxPositionAtLevError(e) {
+    const s = String(e?.message || e || "");
+    return s.includes(":-2027:") || s.toLowerCase().includes("maximum allowable position");
+  }
+
+  async function maxPositionNotionalCapForLeverage(symbol, lev) {
+    const u = String(symbol || "").toUpperCase();
+    const L = Math.max(1, Math.min(125, Math.floor(Number(lev) || 1)));
+    try {
+      const raw = await signed("GET", "/fapi/v1/leverageBracket", { symbol: u });
+      const rows = Array.isArray(raw) ? raw : raw ? [raw] : [];
+      const row = rows.find((r) => String(r?.symbol || "").toUpperCase() === u) || rows[0];
+      const br = Array.isArray(row?.brackets) ? row.brackets : [];
+      if (!br.length) return null;
+      let best = null;
+      let bestD = 1e18;
+      for (const b of br) {
+        const il = Number(b?.initialLeverage);
+        const cap = Number(b?.notionalCap);
+        if (!Number.isFinite(il) || !Number.isFinite(cap) || cap <= 0) continue;
+        const d = Math.abs(il - L);
+        if (d < bestD) {
+          bestD = d;
+          best = cap;
+        }
+      }
+      return best != null ? Number(best) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function currentPositionNotionalUsd(symbol) {
+    const u = String(symbol || "").toUpperCase();
+    try {
+      const a = await signed("GET", "/fapi/v2/account");
+      const ps = Array.isArray(a?.positions) ? a.positions : [];
+      const p = ps.find((x) => String(x?.symbol || "").toUpperCase() === u);
+      const amt = Math.abs(Number(p?.positionAmt || 0));
+      if (!(amt > 1e-12)) return 0;
+      let px = Number(p?.markPrice || 0);
+      if (!Number.isFinite(px) || px <= 0) {
+        const pi = await publicGet("/fapi/v1/premiumIndex", { symbol: u }).catch(() => null);
+        px = Number(pi?.markPrice || 0);
+      }
+      if (!Number.isFinite(px) || px <= 0) return 0;
+      return amt * px;
+    } catch {
+      return 0;
+    }
+  }
+
   const metaCache = new Map();
   let exchangeInfoCache = null;
   let exchangeInfoCacheTs = 0;
@@ -712,14 +764,54 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       const leverage = await ensureLeverage(symbol, meta?.futuresLeverage || meta?.leverage || defaultLeverage);
       const hedgeExtras = await hedgePositionSideExtras(isLong);
 
-      const out = await signed("POST", "/fapi/v1/order", {
-        symbol,
-        side,
-        type: "MARKET",
-        quantity: qtyStr,
-        newClientOrderId: `ai_${Date.now()}`,
-        ...hedgeExtras,
-      });
+      let out;
+      try {
+        out = await signed("POST", "/fapi/v1/order", {
+          symbol,
+          side,
+          type: "MARKET",
+          quantity: qtyStr,
+          newClientOrderId: `ai_${Date.now()}`,
+          ...hedgeExtras,
+        });
+      } catch (e) {
+        if (!isBinanceMaxPositionAtLevError(e)) throw e;
+        const cap = await maxPositionNotionalCapForLeverage(symbol, leverage);
+        const curNotional = await currentPositionNotionalUsd(symbol);
+        let pxUse = Number.isFinite(markPx) && markPx > 0 ? markPx : null;
+        if (!pxUse) {
+          const pi = await publicGet("/fapi/v1/premiumIndex", { symbol }).catch(() => null);
+          const mp = Number(pi?.markPrice);
+          if (Number.isFinite(mp) && mp > 0) pxUse = mp;
+        }
+        const desiredNotional = pxUse != null ? Number(qtyStr) * pxUse : null;
+        const remaining = cap != null ? Math.max(0, cap - curNotional) : 0;
+        if (!pxUse || !(remaining > 0)) throw e;
+        const qty2 = remaining / pxUse;
+        let qtyStr2 = formatToStep(qty2, m);
+        if (!qtyStr2 && meta?.manual === true) qtyStr2 = formatToStepCeil(qty2, m);
+        if (!qtyStr2 || Number(qtyStr2) <= 0) throw e;
+        if (m.minNotional && Number(qtyStr2) * pxUse + 1e-8 < Number(m.minNotional)) throw e;
+        log?.warn?.("binance_live_futures_downsize_max_position", {
+          symbol,
+          leverage,
+          capNotional: cap,
+          currentNotional: curNotional,
+          desiredNotional,
+          remainingNotional: remaining,
+          qtyRequested: Number(qtyStr),
+          qtyUsed: Number(qtyStr2),
+        });
+        out = await signed("POST", "/fapi/v1/order", {
+          symbol,
+          side,
+          type: "MARKET",
+          quantity: qtyStr2,
+          newClientOrderId: `ai_cap_${Date.now()}`,
+          ...hedgeExtras,
+        });
+        qtyStr = qtyStr2;
+      }
 
       const orderId = String(out?.orderId || Date.now());
       const filledPrice =

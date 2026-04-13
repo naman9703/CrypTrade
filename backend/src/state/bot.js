@@ -701,26 +701,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   }
 
   /**
-   * USD-M futures: `allowedBudgetUsdt` is **max quote notional** (USDT) for the strategy pool, not initial margin.
-   * Open legs consume **notional**; lane margin = laneNotional / leverage → `riskPlan` notional ≈ laneNotional.
-   * Spot / mixed: pool stays **margin / quote** as before.
-   */
-  function useFuturesNotionalAllotment(orderSymbol, positions) {
-    const mm = String(state.marketMode || "AUTO").toUpperCase();
-    if (mm === "SPOT") return false;
-    if (mm === "FUTURES") return true;
-    const sym = String(orderSymbol || "").trim().toUpperCase();
-    const rows = Array.isArray(positions) ? positions : [];
-    for (const p of rows) {
-      if (String(p?.symbol || "").toUpperCase() !== sym) continue;
-      return String(p?.venue || "").toUpperCase() === "FUTURES";
-    }
-    return sym === String(state.symbol || "").toUpperCase();
-  }
-
-  /**
    * USDT **initial margin** per trade for `riskPlan` (futures): pool from **`allowedBudgetUsdt` only** (capital allotment),
-   * capped by wallet (free margin × leverage for USD-M notional cap, or free margin for spot-style pool),
+   * capped by wallet free margin,
    * minus open usage, then optional per-trade cap and MULTIPLE split.
    * There is **no** fallback to `riskPerTrade` for the pool — if `allowedBudgetUsdt` is unset or zero after clamp, usable is zero.
    * `riskPerTrade` is only used when `perTradeBudgetCapEnabled` as an upper bound on each lane (margin USDT).
@@ -738,22 +720,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     const walletCap = walletFreeMarginUsdtForAllowedCap(_cachedAccount, state.marketMode);
     const allowedRaw = Number(state.allowedBudgetUsdt);
     let allowed = Number.isFinite(allowedRaw) && allowedRaw > 0 ? allowedRaw : 0;
-
-    const useFutNotional = useFuturesNotionalAllotment(orderSymbol, positions);
-    const levSizing = useFutNotional ? futuresLeverageForSizingResolve() : 1;
-
-    if (useFutNotional) {
-      if (walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
-        const maxNotionalFromWallet = walletCap * levSizing;
-        allowed = Math.min(allowed, maxNotionalFromWallet);
-      }
-    } else if (walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
+    if (walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
       allowed = Math.min(allowed, walletCap);
     }
 
-    const invested = useFutNotional
-      ? sumOpenFuturesNotionalUsdt(positions)
-      : sumOpenMarginUsedUsdt(positions, state.marketMode);
+    const invested = sumOpenMarginUsedUsdt(positions, state.marketMode);
     const totalUsable = Math.max(0, allowed - invested);
     const usePct = state.multiTradeUsePctOfUsable === true;
     const p = clamp(Number(state.multiTradePctOfUsable ?? 100), 0, 100);
@@ -761,9 +732,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     const basePool = Number.isFinite(sizedUsable) && sizedUsable > 0 ? sizedUsable : 0;
 
     const mm = state.marketMode;
-    const marSym = useFutNotional
-      ? (s) => sumFuturesNotionalForSymbolUsdt(positions, s)
-      : (s) => sumMarginUsedForSymbolUsdt(positions, mm, s);
+    const marSym = (s) => sumMarginUsedForSymbolUsdt(positions, mm, s);
     const sym = String(orderSymbol || "").trim().toUpperCase();
 
     const cappedLane = (laneRawMargin) => {
@@ -771,13 +740,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       return capEnabled ? Math.min(perTradeCapUsdt, x) : x;
     };
 
-    const laneMarginFromUnits = (coinU, basePoolUnits) => {
-      if (useFutNotional) {
-        const poolMargin = Math.max(0, basePoolUnits) / levSizing;
-        return Math.min(cappedLane(Math.max(0, coinU) / levSizing), poolMargin);
-      }
-      return Math.min(cappedLane(Math.max(0, coinU)), Math.max(0, basePoolUnits));
-    };
+    const laneMarginFromUnits = (coinU, basePoolUnits) =>
+      Math.min(cappedLane(Math.max(0, coinU)), Math.max(0, basePoolUnits));
 
     if (String(state.universeCoinSelectMode || "").toUpperCase() !== "MULTIPLE") {
       const coinU = Math.max(0, sizedUsable - marSym(sym));
@@ -810,10 +774,6 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     if (mode === "EQUAL") {
       const equalSlot = nDiv > 0 ? sizedUsable / nDiv : 0;
       const coinU = Math.max(0, equalSlot - marSym(sym));
-      if (useFutNotional) {
-        const perSlotMargin = Math.min(cappedLane(coinU / levSizing), equalSlot / levSizing);
-        return { riskPerTrade: Math.max(0, perSlotMargin * nDiv), fixedUsdtSplitDivisor: nDiv };
-      }
       const perSlot = Math.min(cappedLane(coinU), equalSlot);
       return { riskPerTrade: Math.max(0, perSlot * nDiv), fixedUsdtSplitDivisor: nDiv };
     }
