@@ -1,5 +1,5 @@
 import { roundTo } from "./math.js";
-import { computeSupertrendTrailingSlUpdate } from "./supertrendTrailingSl.js";
+import { computeSupertrendTrailingSlUpdate, feeRateBreakevenPadded } from "./supertrendTrailingSl.js";
 
 /**
  * Trailing SL for autotrade:
@@ -59,7 +59,8 @@ export function buildTrailLockPrices({ entryPx, isLong, feeRate, extraScalpingPc
     .slice(0, 3);
 
   const out = [];
-  const feePx = feeCoverageLockPx({ entryPx: E, isLong, feeRate: r });
+  const rBe = feeRateBreakevenPadded(r);
+  const feePx = feeCoverageLockPx({ entryPx: E, isLong, feeRate: rBe });
   if (feePx != null) out.push({ kind: "fee_breakeven", lockPx: feePx });
 
   const fsPx = firstScalpingFeeEquivLockPx({ entryPx: E, isLong, feeRate: r });
@@ -218,6 +219,7 @@ export function applyTrailingStopBinanceMemory(opts) {
 
   const lev = Number(tr.leverage);
   const feeR = clampFeeRate(trailingOpts.feeRate);
+  const feeBe = feeRateBreakevenPadded(trailingOpts.feeRate);
   const buf = Number.isFinite(Number(trailingOpts.bufferRate)) ? Number(trailingOpts.bufferRate) : 0.0005;
   const mm = Number.isFinite(Number(trailingOpts.maintenanceMarginRate))
     ? Number(trailingOpts.maintenanceMarginRate)
@@ -228,6 +230,8 @@ export function applyTrailingStopBinanceMemory(opts) {
       : 0.002;
 
   const mode = String(trailingOpts.mode || "SUPERTREND").toUpperCase() === "FEE_LADDER" ? "FEE_LADDER" : "SUPERTREND";
+  // Persist last applied mode so exchange-native closes can be labeled correctly in history.
+  tr.trailingMode = mode;
 
   let merged = null;
   let trailStatus = "";
@@ -276,15 +280,15 @@ export function applyTrailingStopBinanceMemory(opts) {
       previousSl: prevSl,
       isLong,
       leverage: lev,
-      feeRate: feeR,
+      feeRate: feeBe,
       bufferRate: buf,
       maintenanceMarginRate: mm,
       minSlDistanceFrac: minDistUsed,
     });
 
     const activationPx = isLong
-      ? tr.entryPrice * (1 + feeR + buf)
-      : tr.entryPrice * (1 - feeR - buf);
+      ? tr.entryPrice * (1 + feeBe + buf)
+      : tr.entryPrice * (1 - feeBe - buf);
 
     if (r.status === "REJECT_TRADE" || r.status === "INVALID") {
       if (trailDiagEmit(tr, `bad_${r.status}`, 120_000)) {
@@ -332,7 +336,7 @@ export function applyTrailingStopBinanceMemory(opts) {
           phase: "activation",
           markPx,
           activationPrice: activationPx,
-          breakeven: isLong ? tr.entryPrice * (1 + feeR) : tr.entryPrice * (1 - feeR),
+          breakeven: isLong ? tr.entryPrice * (1 + feeBe) : tr.entryPrice * (1 - feeBe),
           entryPrice: tr.entryPrice,
           isLong,
           supertrendPx: stPx,
@@ -391,7 +395,7 @@ export function applyTrailingStopBinanceMemory(opts) {
   const finalSl = finalSlPre;
   if (!Number.isFinite(finalSl) || finalSl <= 0 || finalSl === prevSl) return false;
 
-  const feeRateUsed = feeR;
+  const feeRateUsed = feeBe;
   const breakeven = isLong ? tr.entryPrice * (1 + feeRateUsed) : tr.entryPrice * (1 - feeRateUsed);
   const activation = isLong
     ? tr.entryPrice * (1 + feeRateUsed + buf)

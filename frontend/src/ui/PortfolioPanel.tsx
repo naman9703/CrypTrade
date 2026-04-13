@@ -462,6 +462,14 @@ function positionInitialMarginUsd(p: any): string {
   return m != null ? m.toFixed(2) : "—";
 }
 
+function positionNotionalUsd(p: any): string {
+  const e = numFinite(p.entryPrice);
+  const q = numFinite(p.qty);
+  if (e == null || q == null || e <= 0 || q <= 0) return "—";
+  const n = e * q;
+  return Number.isFinite(n) && n > 0 ? n.toFixed(2) : "—";
+}
+
 /** Initial margin at open (USDT) for futures-style rows with leverage. */
 function tradeInitialMarginUsd(t: any, openRef: any | undefined, disp: { price?: number; qty?: number; lev?: number }): string {
   const lev = disp.lev;
@@ -479,6 +487,24 @@ function tradeInitialMarginUsd(t: any, openRef: any | undefined, disp: { price?:
     if (pxE == null || qE == null || pxE <= 0 || qE <= 0) return "—";
     const m = initialMarginUsd(pxE, qE, lev);
     return m != null ? m.toFixed(2) : "—";
+  }
+  return "—";
+}
+
+function tradeNotionalUsd(t: any, openRef: any | undefined, disp: { price?: number; qty?: number }): string {
+  if (t?.type === "OPEN") {
+    const px = disp.price;
+    const qty = disp.qty;
+    if (px == null || qty == null || px <= 0 || qty <= 0) return "—";
+    const n = px * qty;
+    return Number.isFinite(n) && n > 0 ? n.toFixed(2) : "—";
+  }
+  if (t?.type === "CLOSE") {
+    const pxE = numFinite(openRef?.price ?? t?.meta?.entryPrice ?? t?.entryPrice);
+    const qE = numFinite(openRef?.qty ?? disp.qty);
+    if (pxE == null || qE == null || pxE <= 0 || qE <= 0) return "—";
+    const n = pxE * qE;
+    return Number.isFinite(n) && n > 0 ? n.toFixed(2) : "—";
   }
   return "—";
 }
@@ -554,10 +580,11 @@ function tradeHistoryReasonLabel(t: any): string {
   const trailMode = String(m.trailingMode || m.trailMode || "").toUpperCase();
 
   const r0 = String(t?.reason || "").toUpperCase().replace(/-/g, "_");
+  if (r0 === "TRAILED_SUPERTREND") return "Trailed ST";
   if (r0 === "TRAILED_STOP_LOSS") return "Trailed SL";
   if (r0 === "SUPERTREND_EXIT" || r0 === "SUPERTREND_FLIP") return "Signal";
   if (r0 === "STOP_LOSS" || r0 === "STOP") {
-    if (trailedExit) return "Trailed SL";
+    if (trailedExit) return trailMode === "SUPERTREND" ? "Trailed ST" : "Trailed SL";
     return "SL";
   }
   if (r0 === "TAKE_PROFIT") return "TP";
@@ -567,7 +594,7 @@ function tradeHistoryReasonLabel(t: any): string {
 
   const bracket = String(m.bracketType || "").toUpperCase();
   if (bracket === "SL") {
-    if (trailedExit) return "Trailed SL";
+    if (trailedExit) return trailMode === "SUPERTREND" ? "Trailed ST" : "Trailed SL";
     if (trailMode === "FEE_LADDER") return "Trailed SL";
     return "SL";
   }
@@ -1424,7 +1451,7 @@ export function PortfolioPanel() {
                   <th className="px-3 py-2">Lev</th>
                   <th className="px-3 py-2">Entry</th>
                   <th className="px-3 py-2">Qty</th>
-                  <th className="px-3 py-2">Margin</th>
+                  <th className="px-3 py-2">Invested</th>
                   <th className="px-3 py-2">SL</th>
                   <th className="px-3 py-2">TP</th>
                   <th className="px-3 py-2">uPnL</th>
@@ -1458,8 +1485,8 @@ export function PortfolioPanel() {
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{fmtInstrumentPx(p.entryPrice)}</td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{Number(p.qty).toFixed(6)}</td>
-                      <td className="px-3 py-2 text-slate-700 dark:text-slate-300" title="Initial margin ≈ notional / leverage (USD-M)">
-                        {positionInitialMarginUsd(p)}
+                      <td className="px-3 py-2 text-slate-700 dark:text-slate-300" title="Invested quote notional ≈ entry×qty (USD-M)">
+                        {positionNotionalUsd(p)}
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
                         {p.stopLoss != null ? fmtInstrumentPx(p.stopLoss) : "—"}
@@ -1667,7 +1694,7 @@ export function PortfolioPanel() {
                   <th className="px-3 py-2">Lev</th>
                   <th className="px-3 py-2">Price</th>
                   <th className="px-3 py-2">Qty</th>
-                  <th className="px-3 py-2">Margin</th>
+                  <th className="px-3 py-2">Invested</th>
                   <th className="px-3 py-2">SL/TP</th>
                   <th className="px-3 py-2">Reason</th>
                   <th className="px-3 py-2">Src</th>
@@ -1697,6 +1724,7 @@ export function PortfolioPanel() {
                       t.side ?? (t?.type === "CLOSE" && t?.meta?.closeSide != null ? String(t.meta.closeSide) : null) ?? "n/a";
                     const slTpDisp = `${sl != null && Number.isFinite(sl) ? fmtInstrumentPx(sl) : "n/a"} / ${tp != null && Number.isFinite(tp) ? fmtInstrumentPx(tp) : "n/a"}`;
                     const marginDisp = tradeInitialMarginUsd(t, openRef, { price, qty, lev });
+                    const investedDisp = tradeNotionalUsd(t, openRef, { price, qty });
                     const reasonDisp = tradeHistoryReasonLabel(t);
                     const reasonTitle = [t.reason, t?.meta?.closeReason, t?.meta?.bracketType]
                       .filter((x) => x != null && String(x).trim() !== "")
@@ -1730,9 +1758,9 @@ export function PortfolioPanel() {
                         </td>
                         <td
                           className="px-3 py-2 text-slate-700 dark:text-slate-300"
-                          title="Initial margin ≈ entry×qty / leverage when leverage is known (futures)"
+                          title="Invested quote notional ≈ entry×qty (USD-M)"
                         >
-                          {marginDisp}
+                          {investedDisp}
                         </td>
                         <td className="px-3 py-2 text-[10px] text-slate-600 dark:text-slate-400">{slTpDisp}</td>
                         <td

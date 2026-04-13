@@ -3,6 +3,22 @@
  * Breakeven uses one-way fee_rate (same as TRADE_CLOSE_FEE_RATE convention).
  */
 
+function clampFeeRateLocal(r) {
+  const x = Number(r);
+  if (!Number.isFinite(x) || x < 0) return 0.0004;
+  return Math.min(0.01, Math.max(0, x));
+}
+
+/**
+ * Slightly tighter fee assumption for breakeven activation (~0.08% → ~0.1% style margin). See `FUTURES_TRAIL_FEE_BE_MULT`.
+ */
+export function feeRateBreakevenPadded(feeRate) {
+  const r = clampFeeRateLocal(feeRate);
+  const mult = Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25);
+  const m = Number.isFinite(mult) && mult >= 1 ? Math.min(2, mult) : 1.25;
+  return Math.min(0.01, r * m);
+}
+
 /**
  * @param {object} p
  * @param {number} p.entryPrice
@@ -99,7 +115,7 @@ export function computeSupertrendTrailingSlUpdate(p) {
 export function entryRejectedLiquidationBreakeven(p) {
   const entry = Number(p.entryPrice);
   const lev = Number(p.leverage);
-  const fee = Number(p.feeRate ?? 0.0008);
+  const fee = feeRateBreakevenPadded(Number(p.feeRate ?? 0.0008));
   const mm = Number(p.maintenanceMarginRate ?? 0.005);
   if (!Number.isFinite(entry) || entry <= 0 || !Number.isFinite(lev) || lev < 1) return true;
   if (p.isLong) {

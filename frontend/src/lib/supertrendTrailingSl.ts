@@ -2,6 +2,17 @@
  * Fee-aware Supertrend trailing stop (LONG/SHORT) — mirrors `backend/src/lib/supertrendTrailingSl.js`.
  */
 
+function clampFeeRateLocal(r: number): number {
+  const x = Number(r);
+  if (!Number.isFinite(x) || x < 0) return 0.0004;
+  return Math.min(0.01, Math.max(0, x));
+}
+
+export function feeRateBreakevenPadded(feeRate: number): number {
+  const r = clampFeeRateLocal(feeRate);
+  return Math.min(0.01, r * 1.25);
+}
+
 export type SupertrendTrailSlStatus = "OK" | "REJECT_TRADE" | "NO_TRAIL" | "NO_SUPERTREND" | "INVALID";
 
 export function computeSupertrendTrailingSlUpdate(p: {
@@ -20,7 +31,7 @@ export function computeSupertrendTrailingSlUpdate(p: {
   const cur = Number(p.currentPrice);
   const prevSl = Number(p.previousSl);
   const lev = Number(p.leverage);
-  const feeRate = Number(p.feeRate ?? 0.0008);
+  const feeRate = feeRateBreakevenPadded(Number(p.feeRate ?? 0.0008));
   const bufferRate = Number(p.bufferRate ?? 0.0005);
   const maintenanceMarginRate = Number(p.maintenanceMarginRate ?? 0.005);
   const minDist = p.minSlDistanceFrac != null ? Number(p.minSlDistanceFrac) : 0;

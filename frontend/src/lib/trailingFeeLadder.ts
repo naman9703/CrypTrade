@@ -8,6 +8,12 @@ export function clampFeeRate(r: number): number {
   return Math.min(0.01, Math.max(0, x));
 }
 
+/** Breakeven-only fee padding — mirrors backend `feeRateBreakevenPadded` (default ×1.25). */
+export function feeRateBreakevenPadded(feeRate: number): number {
+  const r = clampFeeRate(feeRate);
+  return Math.min(0.01, r * 1.25);
+}
+
 export function feeCoverageLockPx(entryPx: number, isLong: boolean, feeRate: number): number | null {
   const E = Number(entryPx);
   const r = clampFeeRate(feeRate);
@@ -50,7 +56,8 @@ export function buildTrailLockPrices(
     .slice(0, 3);
 
   const out: TrailLockRow[] = [];
-  const feePx = feeCoverageLockPx(E, isLong, r);
+  const rBe = feeRateBreakevenPadded(r);
+  const feePx = feeCoverageLockPx(E, isLong, rBe);
   if (feePx != null) out.push({ kind: "fee_breakeven", lockPx: feePx });
 
   const fsPx = firstScalpingFeeEquivLockPx(E, isLong, r);

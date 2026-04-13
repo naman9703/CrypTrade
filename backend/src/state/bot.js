@@ -658,6 +658,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       .slice(0, 12)
       .map((r) => String(r?.symbol || "").trim().toUpperCase())
       .filter((s) => SYM_RE.test(s));
+    // Custom universe can suppress ranked display (`aiRankedDisplayTop=0`) but still has an explicit list.
+    // Use it as the equal-split divisor so fixed-USDT multi sizing doesn't silently fall back to divisor=1.
+    const customRaw = Array.isArray(state.universeCustomSymbols) ? state.universeCustomSymbols : [];
+    const customSyms = [...new Set(customRaw.map((s) => String(s || "").trim().toUpperCase()).filter((s) => SYM_RE.test(s)))].slice(0, 10);
     const pins = Array.isArray(state.universePinnedSymbols)
       ? [...new Set(state.universePinnedSymbols.map((s) => String(s || "").trim().toUpperCase()).filter((s) => SYM_RE.test(s)))]
       : [];
@@ -667,7 +671,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       const inTable = pins.filter((p) => setR.has(p));
       return inTable.length > 0 ? inTable : pins;
     }
-    return rankedSyms.slice(0, 10);
+    // AUTO pin-control: use ranked list when available, else fallback to custom list.
+    if (rankedSyms.length > 0) return rankedSyms.slice(0, 10);
+    const coinBase = String(state.universeCoinBase || "ALL").toUpperCase();
+    if (coinBase === "CUSTOM" && customSyms.length > 0) return customSyms;
+    return [];
   }
 
   /**

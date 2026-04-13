@@ -7,6 +7,7 @@ import { tradeCloseFeeUsdtFromNotional } from "../../lib/tradeCloseFee.js";
 import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
 import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
+import { reconcileUsdMExternalClosesFromPositions } from "../../lib/binanceUsdmExternalCloseReconcile.js";
 import { buildRiskSlTpTriggerActivity } from "../../lib/activityLog.js";
 import {
   mergeSlTpSymbolMaps,
@@ -304,6 +305,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     /** Recent local bracket closes — income sync uses these to attribute PnL to strategy, not ledger */
     recentLocalCloses: [],
     trailingBySymbol: {},
+    /** Last `/fapi/v2/account` position qty by symbol — detect exchange-native closes (SL/TP) for income + history sync */
+    prevFuturesQtyBySymbol: {},
   };
 
   /** Exchange-native SL/TP closes do not hit `localBrackets` — drop orphan trail/bracket memory. */
@@ -367,8 +370,39 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
 
   loadIncomeSyncFromDisk();
 
+  async function refreshUsdMPositionSnapshotAndReconcile() {
+    if (!apiKey || !apiSecret) return;
+    try {
+      const a = await signed("GET", "/fapi/v2/account");
+      const ps = Array.isArray(a?.positions) ? a.positions : [];
+      await reconcileUsdMExternalClosesFromPositions(
+        { mem, publicGet, clearMemBracketTrailForSymbol, log },
+        ps,
+      );
+    } catch (e) {
+      log?.warn?.("binance_live_futures_position_reconcile_failed", { error: String(e?.message || e) });
+    }
+  }
+
+  function closeReasonFromLocalCloseHint(lc) {
+    const bt = String(lc?.bracketType || "").toUpperCase();
+    const tmode = String(lc?.trailingMode || "").toUpperCase();
+    if (bt === "SL") {
+      if (lc?.exitViaTrailedStop === true) {
+        if (tmode === "SUPERTREND") return "TRAILED_SUPERTREND";
+        return "TRAILED_STOP_LOSS";
+      }
+      return "STOP_LOSS";
+    }
+    if (bt === "TP") return "TAKE_PROFIT";
+    const scr = String(lc?.strategyCloseReason || "").toUpperCase();
+    if (scr === "SUPERTREND_EXIT" || scr === "SUPERTREND_FLIP") return scr;
+    return "MANUAL_CLOSE";
+  }
+
   async function syncRealizedIncomeFromExchange() {
     if (!apiKey || !apiSecret) return;
+    await refreshUsdMPositionSnapshotAndReconcile();
     const now = Date.now();
     if (now - mem.lastIncomePollAt < 2500) return;
     mem.lastIncomePollAt = now;
@@ -457,19 +491,11 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         if (mergeInto) {
           mergeInto.pnl = Number(mergeInto.pnl || 0) + pnl;
           if (mergeInto.reason == null && lc) {
-            mergeInto.reason =
-              lc.bracketType === "SL"
-                ? lc.exitViaTrailedStop
-                  ? "TRAILED_STOP_LOSS"
-                  : "STOP_LOSS"
-                : lc.bracketType === "TP"
-                  ? "TAKE_PROFIT"
-                : lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP"
-                  ? lc.strategyCloseReason
-                  : "MANUAL_CLOSE";
+            mergeInto.reason = closeReasonFromLocalCloseHint(lc);
             if (mergeInto.meta && typeof mergeInto.meta === "object") {
               mergeInto.meta.exitViaTrailedStop = lc.exitViaTrailedStop === true;
               mergeInto.meta.trailStepAtClose = lc.trailStepAtClose;
+              if (lc.trailingMode != null) mergeInto.meta.trailingMode = String(lc.trailingMode);
               mergeInto.meta.supertrendSignalClose =
                 lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP";
             }
@@ -508,16 +534,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           const closeQtyN = lc.qty != null ? Number(lc.qty) : NaN;
           const closePxN =
             lc.markPx != null && Number.isFinite(Number(lc.markPx)) ? Number(lc.markPx) : NaN;
-          const reasonNorm =
-            lc.bracketType === "SL"
-              ? lc.exitViaTrailedStop
-                ? "TRAILED_STOP_LOSS"
-                : "STOP_LOSS"
-              : lc.bracketType === "TP"
-                ? "TAKE_PROFIT"
-                : lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP"
-                  ? lc.strategyCloseReason
-                  : "MANUAL_CLOSE";
+          const reasonNorm = closeReasonFromLocalCloseHint(lc);
           mem.trades.push({
             type: "CLOSE",
             id: `finc_${tid}`,
@@ -540,6 +557,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
               tranId: tid,
               tranIds: [tid],
               bracketType: lc.bracketType,
+              trailingMode: lc.trailingMode != null ? String(lc.trailingMode) : undefined,
               localEnforcement: true,
               localCloseKey,
               _incomeEventMs: eventMs,
@@ -595,6 +613,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       try {
         const a = await signed("GET", "/fapi/v2/account");
         const ps = Array.isArray(a?.positions) ? a.positions : [];
+        await reconcileUsdMExternalClosesFromPositions({ mem, publicGet, clearMemBracketTrailForSymbol, log }, ps);
         const rows = ps
           .filter((p) => Math.abs(Number(p?.positionAmt || 0)) > 1e-8)
           .map((p) => {
@@ -638,6 +657,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       }
     },
     async getTrades() {
+      await refreshUsdMPositionSnapshotAndReconcile();
       await syncRealizedIncomeFromExchange();
       let rows = mem.trades.slice(-MAX_MEM_TRADES);
       if (!includeUnmatchedIncomeLedger) {
@@ -838,6 +858,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       };
     },
     async markToMarket({ symbol, price, trailingStopLoss, onTrailingSlAdvance, notifyActivity } = {}) {
+      await refreshUsdMPositionSnapshotAndReconcile();
       await syncRealizedIncomeFromExchange();
 
       const primarySymU = String(symbol || "").toUpperCase();
@@ -980,6 +1001,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             markPx: Number(markPx),
             exitViaTrailedStop,
             trailStepAtClose: Number(trailMeta?.trailStep) || 0,
+            trailingMode: trailMeta?.trailingMode != null ? String(trailMeta.trailingMode) : undefined,
           });
           delete mem.localBrackets[lbSym];
           delete mem.placedBracketTargets[lbSym];
