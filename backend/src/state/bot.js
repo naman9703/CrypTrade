@@ -751,7 +751,31 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
     const mode = derivedMultiBudgetSplitMode();
     const list = symbolsForMultiBudgetList();
-    const nDiv = Math.max(1, list.length);
+    // Production guard: if the ranked/pin/custom list is temporarily empty (scan lag, UI already has rows),
+    // do not silently collapse EQUAL split to divisor=1 (would oversize each coin).
+    let nDiv = Math.max(1, list.length);
+    if (nDiv <= 1 && mode === "EQUAL") {
+      const pins = Array.isArray(state.universePinnedSymbols)
+        ? state.universePinnedSymbols.map((s) => String(s || "").trim().toUpperCase()).filter((s) => SYM_RE.test(s))
+        : [];
+      const custom = Array.isArray(state.universeCustomSymbols)
+        ? state.universeCustomSymbols.map((s) => String(s || "").trim().toUpperCase()).filter((s) => SYM_RE.test(s))
+        : [];
+      const ranked = Array.isArray(state.universe?.ranked) ? state.universe.ranked : [];
+      const rankedSyms = ranked
+        .slice(0, 12)
+        .map((r) => String(r?.symbol || "").trim().toUpperCase())
+        .filter((s) => SYM_RE.test(s));
+      const manualPins = String(state.universePinControl || "").toUpperCase() === "MANUAL";
+      const fallback =
+        manualPins && pins.length > 1 ? pins.length :
+        String(state.universeCoinBase || "ALL").toUpperCase() === "CUSTOM" && custom.length > 1 ? custom.length :
+        rankedSyms.length > 1 ? Math.min(10, rankedSyms.length) :
+        pins.length > 1 ? pins.length :
+        custom.length > 1 ? custom.length :
+        1;
+      nDiv = Math.max(1, fallback);
+    }
 
     if (mode === "CUSTOM_USDT") {
       const m = state.multiBudgetCoinUsdt && typeof state.multiBudgetCoinUsdt === "object" ? state.multiBudgetCoinUsdt : {};

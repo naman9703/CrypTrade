@@ -1225,11 +1225,11 @@ export function ChartPanel() {
 
   useEffect(() => {
     if (!symKey) return;
-    /** Persist when server meta has advanced (`trailed`) or live preview shows a successful trail tick (`trailing`). */
-    if (chartTrailingPreview.badge?.trailed === true || chartTrailingPreview.badge?.trailing === true) {
+    /** Persist only when the server has actually tightened SL at least once (`trailStep` ≥ 1). */
+    if (chartTrailingPreview.badge?.trailed === true) {
       setChartTrailedSessionBySymbol((prev) => (prev[symKey] ? prev : { ...prev, [symKey]: true }));
     }
-  }, [symKey, chartTrailingPreview.badge?.trailed, chartTrailingPreview.badge?.trailing]);
+  }, [symKey, chartTrailingPreview.badge?.trailed]);
 
   const trailingStatusChipsVisible = useMemo(() => {
     if (bot?.trailingStopLossAuto !== true) return false;
@@ -1246,7 +1246,6 @@ export function ChartPanel() {
 
   const trailingChipTrailedHighlight =
     chartTrailingPreview.badge?.trailed === true ||
-    chartTrailingPreview.badge?.trailing === true ||
     Boolean(symKey && chartTrailedSessionBySymbol[symKey]);
 
   /**

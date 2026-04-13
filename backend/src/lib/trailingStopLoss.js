@@ -356,7 +356,27 @@ export function applyTrailingStopBinanceMemory(opts) {
         : roundTo(merged, 8)
       : null;
 
-  if (merged == null || merged === prevSl || finalSlPre == null || finalSlPre === prevSl) {
+  // Compare using the same rounding grid we apply to the new stop. Otherwise we can get stuck when
+  // `merged` equals the previous raw stop, but tick rounding would advance (e.g. 0.238999 → 0.2390).
+  const prevEff =
+    tickSize != null && Number.isFinite(tickSize) && tickSize > 0
+      ? roundStopPx(prevSl, tickSize)
+      : roundTo(prevSl, 8);
+
+  if (merged == null || finalSlPre == null) {
+    return false;
+  }
+
+  // Tick-alignment: exchange triggers are on tick grid; sometimes the stored SL is off-grid (e.g. from open-orders parsing),
+  // and our proposed SL rounds onto the same tick. In that case, sync the stored target to the tick without counting it
+  // as a real trail advancement.
+  if (finalSlPre === prevEff) {
+    if (prevSl !== prevEff) {
+      if (b) b.stopLoss = prevEff;
+      if (placedBracketTargets && placedBracketTargets[sym]) {
+        placedBracketTargets[sym] = { ...placedBracketTargets[sym], stopLoss: prevEff };
+      }
+    }
     const inTrailContext = stInTrailZone || mode === "FEE_LADDER";
     /**
      * After at least one successful trail tighten (`trailStep >= 1`), the engine still evaluates every mark;
@@ -377,6 +397,7 @@ export function applyTrailingStopBinanceMemory(opts) {
           phase: "tighten",
           markPx,
           prevStopLoss: prevSl,
+          prevStopLossRounded: prevEff,
           proposedTrailSl,
           proposedMerged: merged,
           proposedRounded: finalSlPre,
@@ -393,7 +414,7 @@ export function applyTrailingStopBinanceMemory(opts) {
   }
 
   const finalSl = finalSlPre;
-  if (!Number.isFinite(finalSl) || finalSl <= 0 || finalSl === prevSl) return false;
+  if (!Number.isFinite(finalSl) || finalSl <= 0 || finalSl === prevEff) return false;
 
   const feeRateUsed = feeBe;
   const breakeven = isLong ? tr.entryPrice * (1 + feeRateUsed) : tr.entryPrice * (1 - feeRateUsed);
