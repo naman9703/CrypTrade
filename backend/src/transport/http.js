@@ -332,20 +332,21 @@ export function createRouter({ appState }) {
       timeframe: z.string().refine((v) => allowedTimeframes.has(v), "Unsupported timeframe").optional(),
       aiThreshold: z.number().min(0).max(1).optional(),
       /** Interpretation set by `riskPerTradeUnit`: PCT = fraction of balance at stop; USDT = target per-trade notional / investing capital in USDT (≥1). */
-      riskPerTrade: z.number().min(0.000001).max(10_000_000).optional(),
-      /** Interpretation set by `maxDailyLossUnit`: PCT = max daily drawdown fraction; USDT = max daily loss USD per venue. */
-      maxDailyLoss: z.number().min(0.000001).max(10_000_000).optional(),
+      riskPerTrade: z.number().min(0).max(10_000_000).optional(),
+      /** Interpretation set by `maxDailyLossUnit`: PCT = max daily drawdown 0–100 (% points); USDT = max daily loss USD per venue. */
+      maxDailyLoss: z.number().min(0).max(10_000_000).optional(),
       riskPerTradeUnit: z.enum(["PCT", "USDT"]).optional(),
       maxDailyLossUnit: z.enum(["PCT", "USDT"]).optional(),
       /** With fixed USDT risk + max daily USDT and MULTIPLE pins (2+), divide per-trade notional by pin count. */
       capitalSplitAcrossCoins: z.boolean().optional(),
-      /** Strategy pool cap (USDT). 0 = fall back to `riskPerTrade` for allowed-size math. */
+      /** Strategy pool cap (USDT). Fixed-USDT sizing uses only this (after wallet clamp); no fallback to `riskPerTrade`. */
       allowedBudgetUsdt: z.number().min(0).max(10_000_000).optional(),
       /** 0–100 of wallet equity when `allowedBudgetInputMode` is WALLET_PCT (UI sync). */
       allowedBudgetWalletPct: z.number().min(0).max(100).optional(),
       allowedBudgetInputMode: z.enum(["USDT", "WALLET_PCT"]).optional(),
       multiTradeUsePctOfUsable: z.boolean().optional(),
       multiTradePctOfUsable: z.number().min(0).max(100).optional(),
+      perTradeBudgetCapEnabled: z.boolean().optional(),
       multiBudgetSplitMode: z.enum(["FULL", "EQUAL", "CUSTOM_USDT", "CUSTOM_PCT_ALLOWED"]).optional(),
       multiBudgetCoinUsdt: z.record(z.string().regex(symbolRe), z.number().min(0).max(10_000_000)).optional(),
       multiBudgetCoinPct: z.record(z.string().regex(symbolRe), z.number().min(0).max(100)).optional(),

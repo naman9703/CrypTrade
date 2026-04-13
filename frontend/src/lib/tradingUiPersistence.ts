@@ -12,11 +12,19 @@ export function tradingUiStorageKey(userTag?: string | null): string {
 
 export type TradingModeSlug = "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE";
 
+export type PortfolioPnlRangePersisted = {
+  pnlHistoryRange: "all" | "custom";
+  customRangeStart: string;
+  customRangeEnd: string;
+};
+
 export type TradingUiPersistedV1 = {
   v: 1;
   /** Last mode the operator selected (used to restore after server restarts). */
   lastMode?: TradingModeSlug;
   byMode: Record<string, Record<string, unknown>>;
+  /** Portfolio trade-history PnL window per mode (browser-only; survives backend restarts). */
+  portfolioPnlRangeByMode?: Record<string, PortfolioPnlRangePersisted>;
 };
 
 /** Keys mirror backend `persistTradingConfigToDisk` + tradingFormDefaults + pin symbol. */
@@ -210,6 +218,56 @@ export function tradingUiPersistBotSnapshot(
     cur.v = 1;
     cur.lastMode = m as TradingModeSlug;
     cur.byMode = { ...cur.byMode, [m]: extractPersistableBotPatch(bot) };
+    localStorage.setItem(key, JSON.stringify(cur));
+  } catch {
+    /* ignore */
+  }
+}
+
+const MODE_SLUGS = new Set(["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"]);
+
+/** Read saved portfolio PnL custom range for the active trading mode. */
+export function loadPortfolioPnlRangeForMode(
+  mode: string | undefined,
+  userTag?: string | null,
+): PortfolioPnlRangePersisted | null {
+  const m = String(mode || "").toUpperCase();
+  if (!MODE_SLUGS.has(m)) return null;
+  const cur = loadTradingUiPrefs(userTag);
+  const row = cur?.portfolioPnlRangeByMode?.[m];
+  if (!row || typeof row !== "object") return null;
+  const pnlHistoryRange = row.pnlHistoryRange === "custom" ? "custom" : "all";
+  return {
+    pnlHistoryRange,
+    customRangeStart: typeof row.customRangeStart === "string" ? row.customRangeStart : "",
+    customRangeEnd: typeof row.customRangeEnd === "string" ? row.customRangeEnd : "",
+  };
+}
+
+/** Persist portfolio PnL history range for one trading mode (same storage bucket as bot prefs). */
+export function tradingUiPersistPortfolioPnlRange(
+  mode: string | undefined,
+  payload: PortfolioPnlRangePersisted,
+  userTag?: string | null,
+) {
+  const m = String(mode || "").toUpperCase();
+  if (!MODE_SLUGS.has(m)) return;
+  try {
+    const key = tradingUiStorageKey(userTag);
+    const cur = loadTradingUiPrefs(userTag) || { v: 1 as const, lastMode: m as TradingModeSlug, byMode: {} };
+    cur.v = 1;
+    cur.lastMode = (cur.lastMode ?? m) as TradingModeSlug;
+    cur.byMode = cur.byMode && typeof cur.byMode === "object" ? cur.byMode : {};
+    cur.portfolioPnlRangeByMode = {
+      ...(cur.portfolioPnlRangeByMode && typeof cur.portfolioPnlRangeByMode === "object"
+        ? cur.portfolioPnlRangeByMode
+        : {}),
+      [m]: {
+        pnlHistoryRange: payload.pnlHistoryRange === "custom" ? "custom" : "all",
+        customRangeStart: String(payload.customRangeStart ?? ""),
+        customRangeEnd: String(payload.customRangeEnd ?? ""),
+      },
+    };
     localStorage.setItem(key, JSON.stringify(cur));
   } catch {
     /* ignore */

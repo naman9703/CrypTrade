@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { clsx } from "clsx";
 import { HeaderBar } from "./HeaderBar";
 import { HeaderSignalsStrip } from "./HeaderSignalsStrip";
+import { ActivityToasts } from "./ActivityToasts";
 import { ChartPanel } from "./ChartPanel";
 import { ChartErrorBoundary } from "./ChartErrorBoundary";
 import { TradingPanel } from "./TradingPanel";
@@ -13,11 +14,18 @@ import { TradingModeBadge } from "./TradingModeBadge";
 import { useAuthActions } from "../authContext";
 import { hydrateStateViaHttp, useAppStore } from "../ws/store";
 
+function notificationsEnabledFromEnv(): boolean {
+  const raw = String(import.meta.env.VITE_ACTIVITY_NOTIFICATIONS ?? "1").trim().toLowerCase();
+  if (!raw) return true;
+  return raw !== "0" && raw !== "false" && raw !== "off";
+}
+
 export function App() {
   const auth = useAuthActions();
   const connect = useAppStore((s) => s.connect);
   const connected = useAppStore((s) => s.ws.connected);
   const wsLastError = useAppStore((s) => s.ws.lastError);
+  const notificationsOn = notificationsEnabledFromEnv();
   useEffect(() => {
     connect();
   }, [connect]);
@@ -34,6 +42,7 @@ export function App() {
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <HeaderSignalsStrip />
       <HeaderBar />
+      {notificationsOn ? <ActivityToasts /> : null}
 
       <div className="mx-auto max-w-[1600px] px-4 pb-6 pt-4">
         <div

@@ -179,6 +179,7 @@ export function roundStopPx(px, tickSize) {
  *   extraScalpingPcts?: number[];
  *   maxTrailSteps?: number;
  * }} [opts.trailingOpts]
+ * @param {(p: { level: string; msg: string; category?: string; reason?: string; symbol?: string; detail?: object }) => void} [opts.notifyActivity]
  */
 export function applyTrailingStopBinanceMemory(opts) {
   const sym = String(opts.symbol || "").toUpperCase();
@@ -189,6 +190,18 @@ export function applyTrailingStopBinanceMemory(opts) {
   const placedBracketTargets = opts.placedBracketTargets;
   const tickSize = opts.tickSize != null ? Number(opts.tickSize) : null;
   const onTrailingSlAdvance = opts.onTrailingSlAdvance;
+  const notifyActivity = typeof opts.notifyActivity === "function" ? opts.notifyActivity : null;
+
+  /** Throttle diagnostic activity per symbol + reason (ms). */
+  function trailDiagEmit(tr, reason, minMs) {
+    if (!notifyActivity || !tr) return false;
+    const now = Date.now();
+    const t = tr._trailDiagTs || (tr._trailDiagTs = {});
+    const last = t[reason] || 0;
+    if (now - last < minMs) return false;
+    t[reason] = now;
+    return true;
+  }
 
   if (!sym || !Number.isFinite(markPx) || markPx <= 0) return false;
   if (!trailingOpts?.enabled || !trailingBySymbol) return false;
@@ -217,8 +230,12 @@ export function applyTrailingStopBinanceMemory(opts) {
   const mode = String(trailingOpts.mode || "SUPERTREND").toUpperCase() === "FEE_LADDER" ? "FEE_LADDER" : "SUPERTREND";
 
   let merged = null;
-  let trailStatus = "OK";
+  let trailStatus = "";
+  /** True only in SUPERTREND branch after mark is past activation (`computeSupertrendTrailingSlUpdate` returned OK). */
+  let stInTrailZone = false;
   let supertrendPxForEvt = null;
+  let proposedTrailSl = null;
+  let minDistUsed = minDist;
   let trailKind = "supertrend_trailing_sl";
 
   if (mode === "FEE_LADDER") {
@@ -234,6 +251,7 @@ export function applyTrailingStopBinanceMemory(opts) {
     tr.trailStep = adv.trailStep;
     tr.extremePx = adv.extremePx;
     if (!adv.advanced || adv.proposedSl == null) return false;
+    proposedTrailSl = adv.proposedSl;
     merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: adv.proposedSl });
     trailStatus = "OK";
     trailKind = "fee_ladder_trailing_sl";
@@ -241,6 +259,15 @@ export function applyTrailingStopBinanceMemory(opts) {
     const stPx = trailingOpts.supertrendPx != null ? Number(trailingOpts.supertrendPx) : NaN;
     if (!Number.isFinite(stPx) || stPx <= 0) return false;
     supertrendPxForEvt = stPx;
+
+    /**
+     * Default `minSlDistanceFrac` (0.2%) is too strict on low-priced / small-tick symbols (e.g. DOGE).
+     * When tick size is known, relax the fraction guard down to a small tick-based fraction so trailing can advance.
+     */
+    if (tickSize != null && Number.isFinite(tickSize) && tickSize > 0 && markPx > 0) {
+      const tickFrac = (2 * tickSize) / markPx; // ~2 ticks away from mark
+      if (Number.isFinite(tickFrac) && tickFrac > 0) minDistUsed = Math.min(minDistUsed, tickFrac);
+    }
 
     const r = computeSupertrendTrailingSlUpdate({
       entryPrice: tr.entryPrice,
@@ -252,21 +279,116 @@ export function applyTrailingStopBinanceMemory(opts) {
       feeRate: feeR,
       bufferRate: buf,
       maintenanceMarginRate: mm,
-      minSlDistanceFrac: minDist,
+      minSlDistanceFrac: minDistUsed,
     });
 
-    if (r.status === "REJECT_TRADE" || r.status === "INVALID") return false;
-    if (r.status === "NO_SUPERTREND" || r.status === "NO_TRAIL") return false;
+    const activationPx = isLong
+      ? tr.entryPrice * (1 + feeR + buf)
+      : tr.entryPrice * (1 - feeR - buf);
+
+    if (r.status === "REJECT_TRADE" || r.status === "INVALID") {
+      if (trailDiagEmit(tr, `bad_${r.status}`, 120_000)) {
+        notifyActivity({
+          category: "risk",
+          level: r.status === "REJECT_TRADE" ? "warn" : "error",
+          msg: `Trailing ${r.status === "REJECT_TRADE" ? "blocked" : "invalid"} · ${sym} · ${r.status} (mark ${markPx}, entry ${tr.entryPrice})`,
+          reason: "trailing_sl_diagnostic",
+          symbol: sym,
+          detail: { outcome: "failure", phase: "geometry", trailStatus: r.status, markPx, entryPrice: tr.entryPrice, isLong },
+        });
+      }
+      return false;
+    }
+    if (r.status === "NO_SUPERTREND") {
+      if (trailDiagEmit(tr, "no_st", 90_000)) {
+        notifyActivity({
+          category: "risk",
+          level: "warn",
+          msg: `Trailing activation unavailable · ${sym} · no Supertrend price for this mark (cannot align SL to ST)`,
+          reason: "trailing_sl_diagnostic",
+          symbol: sym,
+          detail: { outcome: "failure", phase: "activation", trailStatus: r.status, markPx },
+        });
+      }
+      return false;
+    }
+    if (r.status === "NO_TRAIL") {
+      return false;
+    }
+
+    stInTrailZone = r.status === "OK";
+
+    /** Mark has crossed fee+buffer activation — ST trailing zone (server will tighten when geometry allows). */
+    if (r.status === "OK" && !tr._trailingActivationLogged) {
+      tr._trailingActivationLogged = true;
+      notifyActivity?.({
+        category: "risk",
+        level: "info",
+        msg: `Trailing activation · ${sym} · mark passed activation (${activationPx.toFixed(6)}); Supertrend trailing engaged`,
+        reason: "trailing_activation_engaged",
+        symbol: sym,
+        detail: {
+          outcome: "success",
+          phase: "activation",
+          markPx,
+          activationPrice: activationPx,
+          breakeven: isLong ? tr.entryPrice * (1 + feeR) : tr.entryPrice * (1 - feeR),
+          entryPrice: tr.entryPrice,
+          isLong,
+          supertrendPx: stPx,
+        },
+      });
+    }
+
     trailStatus = r.status;
+    proposedTrailSl = r.newSl;
     merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: r.newSl });
   }
 
-  if (merged == null || merged === prevSl) return false;
+  const finalSlPre =
+    merged != null && Number.isFinite(Number(merged)) && Number(merged) > 0
+      ? tickSize != null && Number.isFinite(tickSize) && tickSize > 0
+        ? roundStopPx(merged, tickSize)
+        : roundTo(merged, 8)
+      : null;
 
-  const finalSl =
-    tickSize != null && Number.isFinite(tickSize) && tickSize > 0
-      ? roundStopPx(merged, tickSize)
-      : roundTo(merged, 8);
+  if (merged == null || merged === prevSl || finalSlPre == null || finalSlPre === prevSl) {
+    const inTrailContext = stInTrailZone || mode === "FEE_LADDER";
+    /**
+     * After at least one successful trail tighten (`trailStep >= 1`), the engine still evaluates every mark;
+     * geometry often matches exchange SL (tick / min-distance) → noisy repeat noops. Only log noops while
+     * we have not yet advanced (`trailStep === 0`) — first tighten is the hard case to diagnose.
+     */
+    const trailStepN = Number(tr.trailStep) || 0;
+    const allowNoopDiag = trailStepN < 1;
+    if (inTrailContext && tr && allowNoopDiag && trailDiagEmit(tr, "noop_same_sl", 45_000)) {
+      notifyActivity?.({
+        category: "risk",
+        level: "warn",
+        msg: `Trailing no SL move · ${sym} · mark in trail zone but stop unchanged vs exchange (tick/min-distance or merge)`,
+        reason: "trailing_sl_noop",
+        symbol: sym,
+        detail: {
+          outcome: "failure",
+          phase: "tighten",
+          markPx,
+          prevStopLoss: prevSl,
+          proposedTrailSl,
+          proposedMerged: merged,
+          proposedRounded: finalSlPre,
+          tickSize: tickSize != null && Number.isFinite(tickSize) ? tickSize : null,
+          minSlDistanceFrac: minDist,
+          minSlDistanceFracUsed: minDistUsed,
+          trailStatus,
+          trailingMode: mode,
+          kind: trailKind,
+        },
+      });
+    }
+    return false;
+  }
+
+  const finalSl = finalSlPre;
   if (!Number.isFinite(finalSl) || finalSl <= 0 || finalSl === prevSl) return false;
 
   const feeRateUsed = feeR;

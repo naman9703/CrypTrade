@@ -1,4 +1,4 @@
-import { ColorType, createChart, type IChartApi, type ISeriesApi } from "lightweight-charts";
+import { ColorType, createChart, LineStyle, type IChartApi, type ISeriesApi } from "lightweight-charts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useThemeStore } from "../themeStore";
@@ -157,6 +157,11 @@ export function RestCandleTile({
       borderVisible: false,
       wickUpColor: "#34d399",
       wickDownColor: "#fb7185",
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 1,
+      priceLineStyle: LineStyle.Dashed,
+      priceLineColor: dark ? "#ffffff" : "#0f172a",
     });
     chartRef.current = chart;
     seriesRef.current = series;

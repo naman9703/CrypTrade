@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { deferTask } from "../lib/deferTask";
 import { useAppStore } from "../ws/store";
 import { UniverseCustomCoinsModal } from "./UniverseCustomCoinsModal";
+import { RangeSliderReleaseCommit } from "./RangeSliderReleaseCommit";
 import {
   buildAutotradeLongLiquidationPreview,
   DEFAULT_MAINTENANCE_MARGIN_RATE,
@@ -259,14 +260,17 @@ function constraintsLegs(data: any): {
   return out;
 }
 
-/** Match backend riskPlan: buying power = freeBalance × leverage (futures), cap ~90% of that. */
-function effectiveFuturesOrderNotionalUsdt(riskUsdt: number, freeBalance: number | null, leverage: number): number | null {
-  if (!Number.isFinite(riskUsdt) || riskUsdt <= 0) return null;
+/**
+ * Futures: `marginUsdt` is **initial margin** (USDT-M), same as backend `riskPlan` / `resolveFixedUsdtRiskForOrder`.
+ * Quote notional ≈ margin × leverage; cap vs ~90% of wallet buying power (free margin × leverage).
+ */
+function effectiveFuturesOrderNotionalUsdt(marginUsdt: number, freeBalance: number | null, leverage: number): number | null {
+  if (!Number.isFinite(marginUsdt) || marginUsdt <= 0) return null;
   if (freeBalance == null || !Number.isFinite(freeBalance) || freeBalance <= 0) return null;
   const lev = Math.max(1, Math.min(100, Number(leverage) || 1));
-  const buyingPower = freeBalance * lev;
-  const cap = buyingPower * 0.9;
-  return Math.min(riskUsdt, cap);
+  const notionalFromMargin = marginUsdt * lev;
+  const walletNotionalCap = freeBalance * lev * 0.9;
+  return Math.min(notionalFromMargin, walletNotionalCap);
 }
 
 function effectiveSpotOrderNotionalUsdt(riskUsdt: number, freeBalance: number | null): number | null {
@@ -336,6 +340,143 @@ function sumOpenMarginUsedUsdtForUi(positions: any[] | undefined, marketMode: st
   return sum;
 }
 
+/** Open initial margin (USDT) for one symbol, same venue rules as `sumOpenMarginUsedUsdtForUi`. */
+function sumMarginUsedForSymbolUsdt(positions: any[] | undefined, marketMode: string, symbol: string): number {
+  const mm = String(marketMode || "AUTO").toUpperCase();
+  const sym = String(symbol || "").trim().toUpperCase();
+  const rows = Array.isArray(positions) ? positions : [];
+  let sum = 0;
+  for (const p of rows) {
+    const ps = String(p?.symbol || "").trim().toUpperCase();
+    if (ps !== sym) continue;
+    const ven = String(p?.venue || "").toUpperCase();
+    if (mm === "SPOT" && ven !== "SPOT") continue;
+    if (mm === "FUTURES" && ven !== "FUTURES") continue;
+    if (mm === "AUTO" && ven && ven !== "SPOT" && ven !== "FUTURES") continue;
+    sum += positionMarginUsedUsdtForUi(p);
+  }
+  return sum;
+}
+
+function futuresPositionNotionalUsdtForUi(p: any): number {
+  const qty = Math.abs(Number(p?.qty ?? p?.positionAmt ?? 0));
+  if (!(qty > 0)) return 0;
+  const px = Number(p?.markPrice ?? p?.mark ?? p?.entryPrice ?? 0);
+  return Number.isFinite(px) && px > 0 ? qty * px : 0;
+}
+
+function sumOpenFuturesNotionalUsdtForUi(positions: any[] | undefined): number {
+  const rows = Array.isArray(positions) ? positions : [];
+  let sum = 0;
+  for (const p of rows) {
+    if (String(p?.venue || "").toUpperCase() !== "FUTURES") continue;
+    sum += futuresPositionNotionalUsdtForUi(p);
+  }
+  return sum;
+}
+
+function sumFuturesNotionalForSymbolUsdtForUi(positions: any[] | undefined, symbol: string): number {
+  const sym = String(symbol || "").trim().toUpperCase();
+  const rows = Array.isArray(positions) ? positions : [];
+  let sum = 0;
+  for (const p of rows) {
+    if (String(p?.symbol || "").trim().toUpperCase() !== sym) continue;
+    if (String(p?.venue || "").toUpperCase() !== "FUTURES") continue;
+    sum += futuresPositionNotionalUsdtForUi(p);
+  }
+  return sum;
+}
+
+/** Matches backend `useFuturesNotionalAllotment` for USD-M sizing pool (notional, not margin). */
+function useFuturesNotionalAllotmentForUi(bot: any, orderSymbol: string, positions: any[] | undefined): boolean {
+  const mm = String(bot?.marketMode || "AUTO").toUpperCase();
+  if (mm === "SPOT") return false;
+  if (mm === "FUTURES") return true;
+  const sym = String(orderSymbol || "").trim().toUpperCase();
+  const rows = Array.isArray(positions) ? positions : [];
+  for (const p of rows) {
+    if (String(p?.symbol || "").toUpperCase() !== sym) continue;
+    return String(p?.venue || "").toUpperCase() === "FUTURES";
+  }
+  return sym === String(bot?.symbol || "").toUpperCase();
+}
+
+type LevCfg = {
+  futuresLeverage: number;
+  futuresLeverageMode: string;
+  riskPerTradeUnit?: string;
+  maxDailyLossUnit?: string;
+};
+
+/** Free margin for capping — matches backend `walletFreeMarginUsdtForAllowedCap` (null when no balance). */
+function walletFreeMarginUsdtForAllowedCapUi(account: any, marketMode: string): number | null {
+  if (account == null) return null;
+  const mm = String(marketMode || "AUTO").toUpperCase();
+  const v = account?.venues;
+  if (v && (v.spot != null || v.futures != null)) {
+    const spotF =
+      v.spot && v.spot.freeBalance != null && Number.isFinite(Number(v.spot.freeBalance))
+        ? Math.max(0, Number(v.spot.freeBalance))
+        : 0;
+    const futF =
+      v.futures && v.futures.freeBalance != null && Number.isFinite(Number(v.futures.freeBalance))
+        ? Math.max(0, Number(v.futures.freeBalance))
+        : 0;
+    if (mm === "SPOT") return spotF > 0 ? spotF : null;
+    if (mm === "FUTURES") return futF > 0 ? futF : null;
+    const sum = spotF + futF;
+    return sum > 0 ? sum : null;
+  }
+  const fb = Number(account.freeBalance);
+  return Number.isFinite(fb) && fb > 0 ? fb : null;
+}
+
+/** Same rule as backend `futuresLeverageForSizingResolve` (not `decideFuturesLeverage` on orders). */
+function futuresLeverageForSizingResolveUi(bot: any, cfg: LevCfg, futuresLevDraft: number | null): number {
+  const mode = String(cfg.futuresLeverageMode || "AUTO").toUpperCase();
+  if (mode === "MANUAL") {
+    if (futuresLevDraft != null && Number.isFinite(futuresLevDraft)) {
+      return clampNum(Math.floor(futuresLevDraft), 1, 100);
+    }
+    return clampNum(Math.floor(Number(cfg.futuresLeverage) || 1), 1, 100);
+  }
+  const p = clampNum(Number(bot?.lastAi?.gateProbability ?? bot?.lastAi?.probability ?? 0.5), 0, 1);
+  const a = Math.max(0, Number(bot?.lastRegime?.atrPct ?? 0));
+  const reg = String(bot?.lastRegime?.type ?? "").toUpperCase();
+  const volatile = reg.includes("VOLAT") || a >= 0.012;
+  let lev =
+    p >= 0.85 ? 15 :
+    p >= 0.78 ? 10 :
+    p >= 0.7 ? 7 :
+    p >= 0.62 ? 5 :
+    p >= 0.55 ? 3 : 2;
+  if (volatile) lev = Math.max(2, Math.floor(lev * 0.6));
+  return clampNum(lev, 1, 5);
+}
+
+/** `allowed` after wallet cap — matches backend `resolveFixedUsdtRiskForOrder` (USD-M pool = max quote notional). */
+function computeResolveAllowedFixedUsdt(
+  bot: any,
+  account: any,
+  symbol: string,
+  positions: any[] | undefined,
+  levSizing: number,
+): number {
+  const walletCap = walletFreeMarginUsdtForAllowedCapUi(account, bot?.marketMode);
+  const allowedRaw = Number(bot?.allowedBudgetUsdt);
+  let allowed = Number.isFinite(allowedRaw) && allowedRaw > 0 ? allowedRaw : 0;
+  const useFutNotional = useFuturesNotionalAllotmentForUi(bot, symbol, positions);
+  const levSizingClamped = useFutNotional ? Math.max(1, levSizing) : 1;
+  if (walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
+    if (useFutNotional) {
+      allowed = Math.min(allowed, walletCap * levSizingClamped);
+    } else {
+      allowed = Math.min(allowed, walletCap);
+    }
+  }
+  return allowed;
+}
+
 /** Free margin (USDT) — matches backend `walletFreeMarginUsdtForAllowedCap` for allowed / % slider caps. */
 function walletFreeMarginUsdt(account: any, marketMode: string): number {
   const mm = String(marketMode || "AUTO").toUpperCase();
@@ -347,62 +488,114 @@ function walletFreeMarginUsdt(account: any, marketMode: string): number {
   return spotF + futF;
 }
 
-/** Strategy allowed margin pool (USDT), never above free margin (not leveraged buying power). */
+/**
+ * Strategy allowed **margin** pool (USDT), clamped to free margin — mirrors backend `effectivePolicyAllowedPoolUsdt`
+ * (allowed budget first, then USDT risk fallback, then % of wallet, then min(wallet)).
+ */
 function effectiveAllowedPoolUsdt(bot: any, account: any): number {
   const mm = String(bot?.marketMode || "AUTO").toUpperCase();
-  const fixedUsd =
-    String(bot?.riskPerTradeUnit || "").toUpperCase() === "USDT" && String(bot?.maxDailyLossUnit || "").toUpperCase() === "USDT";
   const raw = Number(bot?.allowedBudgetUsdt);
-  const poolNominal =
-    fixedUsd && Number.isFinite(raw) && raw > 0
-      ? raw
-      : String(bot?.riskPerTradeUnit || "").toUpperCase() === "USDT"
-        ? Number(bot?.riskPerTrade ?? 0)
-        : 0;
-  if (!fixedUsd || !Number.isFinite(poolNominal) || poolNominal <= 0) return poolNominal;
+  let poolNominal = Number.isFinite(raw) && raw > 0 ? raw : 0;
+  if (!(poolNominal > 0) && String(bot?.riskPerTradeUnit || "").toUpperCase() === "USDT") {
+    poolNominal = Math.max(0, Number(bot?.riskPerTrade ?? 0));
+  }
+  if (!(poolNominal > 0)) {
+    const walletCap = walletFreeMarginUsdt(account, mm);
+    const wpct = clampNum(Number(bot?.allowedBudgetWalletPct || 0), 0.5, 100);
+    if (walletCap > 0 && wpct > 0) poolNominal = Math.max(1, Math.round((walletCap * wpct) / 100));
+  }
+  if (!Number.isFinite(poolNominal) || poolNominal <= 0) return 0;
   const cap = walletFreeMarginUsdt(account, mm);
   if (!Number.isFinite(cap) || cap <= 0) return poolNominal;
   return Math.min(poolNominal, cap);
 }
 
-/** Per-symbol fixed-USDT order notional target (before venue ~90% cap), mirrors backend `resolveFixedUsdtRiskForOrder`. */
-function previewFixedUsdtRiskUsdt(bot: any, symbol: string, positions: any[] | undefined, account: any): number {
+/**
+ * Per-symbol **initial margin** USDT for `riskPlan` (futures USD-M), matching backend `resolveFixedUsdtRiskForOrder`.
+ * Quote notional ≈ margin × leverage. `levSizing` must match `futuresLeverageForSizingResolve` on the server.
+ */
+function previewFixedUsdtRiskUsdt(
+  bot: any,
+  symbol: string,
+  positions: any[] | undefined,
+  account: any,
+  levSizing: number,
+): number {
   if (String(bot?.riskPerTradeUnit || "").toUpperCase() !== "USDT") return Number(bot?.riskPerTrade ?? 0);
-  const perTradeCap = Math.max(1e-9, Number(bot?.riskPerTrade ?? 0));
+  const capEnabled = bot?.perTradeBudgetCapEnabled !== false;
+  const rawCap = Number(bot?.riskPerTrade) || 0;
+  const perTradeCapUsdt = capEnabled ? Math.max(0, rawCap) : 1e15;
   const mm = String(bot?.marketMode || "AUTO").toUpperCase();
-  const allowed = effectiveAllowedPoolUsdt(bot, account);
-  const invested = sumOpenMarginUsedUsdtForUi(positions, mm);
-  const usable = Math.max(0, allowed - invested);
+  const allowed = computeResolveAllowedFixedUsdt(bot, account, symbol, positions, levSizing);
+  const useFutNotional = useFuturesNotionalAllotmentForUi(bot, symbol, positions);
+  const levSizingClamped = useFutNotional ? Math.max(1, levSizing) : 1;
+
+  const invested = useFutNotional
+    ? sumOpenFuturesNotionalUsdtForUi(positions)
+    : sumOpenMarginUsedUsdtForUi(positions, mm);
+  const totalUsable = Math.max(0, allowed - invested);
   const usePct = bot?.multiTradeUsePctOfUsable === true;
   const p = clampNum(Number(bot?.multiTradePctOfUsable ?? 100), 0, 100);
-  const rawPool = usePct ? (usable * p) / 100 : usable;
-  const basePool =
-    Number.isFinite(rawPool) && rawPool > 0 ? rawPool : Math.max(0, Number(bot?.riskPerTrade ?? 0));
+  const sizedUsable = usePct ? (totalUsable * p) / 100 : totalUsable;
+  const basePool = Number.isFinite(sizedUsable) && sizedUsable > 0 ? sizedUsable : 0;
+
+  const marSym = useFutNotional
+    ? (s: string) => sumFuturesNotionalForSymbolUsdtForUi(positions, s)
+    : (s: string) => sumMarginUsedForSymbolUsdt(positions, mm, s);
+  const sym = String(symbol || "").trim().toUpperCase();
+
+  const cappedLane = (laneRawMargin: number) => {
+    const x = Math.max(0, laneRawMargin);
+    return capEnabled ? Math.min(perTradeCapUsdt, x) : x;
+  };
+
+  const laneMarginFromUnits = (coinU: number, basePoolUnits: number) => {
+    if (useFutNotional) {
+      const poolMargin = Math.max(0, basePoolUnits) / levSizingClamped;
+      return Math.min(cappedLane(Math.max(0, coinU) / levSizingClamped), poolMargin);
+    }
+    return Math.min(cappedLane(Math.max(0, coinU)), Math.max(0, basePoolUnits));
+  };
 
   if (String(bot?.universeCoinSelectMode || "").toUpperCase() !== "MULTIPLE") {
-    return Math.min(perTradeCap, Math.max(0, basePool));
+    const coinU = Math.max(0, sizedUsable - marSym(sym));
+    const lane = laneMarginFromUnits(coinU, basePool);
+    return lane;
   }
+
   const mode = derivedMultiBudgetSplitMode(bot);
   const list = multiBudgetSymbolsForUi(bot);
   const nDiv = Math.max(1, list.length);
-  const sym = String(symbol || "").toUpperCase();
+
   if (mode === "CUSTOM_USDT") {
-    const v = Number((bot?.multiBudgetCoinUsdt as Record<string, number> | undefined)?.[sym]);
-    const raw = Number.isFinite(v) && v >= 1 ? v : perTradeCap;
-    return Math.min(perTradeCap, raw, Math.max(0, basePool));
+    const m = (bot?.multiBudgetCoinUsdt as Record<string, number> | undefined) || {};
+    const v = Number(m[sym]);
+    const allocated = Number.isFinite(v) && v >= 0 ? v : 0;
+    const coinU = Math.max(0, allocated - marSym(sym));
+    return laneMarginFromUnits(coinU, basePool);
   }
   if (mode === "CUSTOM_PCT_ALLOWED") {
-    const pc = Number((bot?.multiBudgetCoinPct as Record<string, number> | undefined)?.[sym]);
-    if (Number.isFinite(pc) && pc > 0) {
-      const slice = allowed * (clampNum(pc, 0, 100) / 100);
-      return Math.min(perTradeCap, slice, Math.max(0, basePool));
-    }
+    const m = (bot?.multiBudgetCoinPct as Record<string, number> | undefined) || {};
+    const pc = Number(m[sym]);
+    const slice = Number.isFinite(pc) && pc >= 0 ? allowed * (clampNum(pc, 0, 100) / 100) : 0;
+    const coinU = Math.max(0, slice - marSym(sym));
+    return laneMarginFromUnits(coinU, basePool);
   }
   if (mode === "EQUAL") {
-    const slotBudget = Math.max(0, basePool) / nDiv;
-    return Math.min(perTradeCap, slotBudget);
+    const equalSlot = nDiv > 0 ? sizedUsable / nDiv : 0;
+    const coinU = Math.max(0, equalSlot - marSym(sym));
+    if (useFutNotional) {
+      const perSlotMargin = Math.min(cappedLane(coinU / levSizingClamped), equalSlot / levSizingClamped);
+      const riskPerTradeRaw = Math.max(0, perSlotMargin * nDiv);
+      return nDiv > 1 ? riskPerTradeRaw / nDiv : riskPerTradeRaw;
+    }
+    const perSlot = Math.min(cappedLane(coinU), equalSlot);
+    const riskPerTradeRaw = Math.max(0, perSlot * nDiv);
+    return nDiv > 1 ? riskPerTradeRaw / nDiv : riskPerTradeRaw;
   }
-  return Math.min(perTradeCap, Math.max(0, basePool));
+
+  const coinU = Math.max(0, sizedUsable - marSym(sym));
+  return laneMarginFromUnits(coinU, basePool);
 }
 
 /** Mirrors backend split divisor / per-leg sizing hint for min-notional and liquidation previews. */
@@ -431,13 +624,6 @@ function decideFuturesLeverageUi(prob: number, atrPct: number, regimeType: strin
   if (volatile) lev = Math.max(2, Math.floor(lev * 0.6));
   return clampNum(lev, 1, 5);
 }
-
-type LevCfg = {
-  futuresLeverage: number;
-  futuresLeverageMode: string;
-  riskPerTradeUnit?: string;
-  maxDailyLossUnit?: string;
-};
 
 /**
  * Futures leverage used for margin×leverage caps in the UI.
@@ -476,6 +662,26 @@ function futuresLeverageUsedForMarginCap(
     return clampNum(Math.floor(Number(cfg.futuresLeverage) || 1), 1, 100);
   }
   return effectiveFuturesLeverageForSizing(bot, cfg, opts);
+}
+
+/**
+ * Quote notional for the next auto futures open on `symbol` — matches backend `marginBase * lev` after
+ * `resolveFixedUsdtRiskForOrder` (lane margin × order leverage, not the sizing-resolve ladder alone).
+ */
+function estimateFuturesOpenNotionalForOrderUi(
+  bot: any,
+  cfg: LevCfg,
+  symbol: string,
+  positions: any[] | undefined,
+  account: any,
+  futuresLevDraft: number | null,
+): number | null {
+  const merged = { ...cfg, ...bot };
+  const levSizing = futuresLeverageForSizingResolveUi(merged, cfg, futuresLevDraft);
+  const margin = previewFixedUsdtRiskUsdt(merged, symbol, positions, account, levSizing);
+  if (!useFuturesNotionalAllotmentForUi(merged, symbol, positions)) return null;
+  const levOrder = futuresLeverageUsedForMarginCap(merged, cfg, futuresLevDraft, { manualTrade: false });
+  return Math.max(0, Number(margin) || 0) * levOrder;
 }
 
 function RiskUnitToggle({
@@ -530,7 +736,7 @@ function UnlockIcon() {
 
 /**
  * Slider 0–100 in UI units. Parent maps to API on commit (e.g. AI prob ÷ 100).
- * Locked by default: unlock to drag; lock again commits immediately and disables the slider.
+ * Locked by default: unlock to drag; value commits on pointer release or when locking again.
  */
 function ThresholdSliderWithLock({
   serverSliderUnits,
@@ -550,7 +756,14 @@ function ThresholdSliderWithLock({
 }) {
   const [unlocked, setUnlocked] = useState(false);
   const [draft, setDraft] = useState(() => clampNum(Math.round(serverSliderUnits), 0, 100));
-  const debRef = useRef<number | null>(null);
+  const unlockedRef = useRef(unlocked);
+  const draftRef = useRef(draft);
+  const removeUpRef = useRef<(() => void) | null>(null);
+  const onCommitRef = useRef(onDebouncedCommit);
+  onCommitRef.current = onDebouncedCommit;
+
+  unlockedRef.current = unlocked;
+  draftRef.current = draft;
 
   useEffect(() => {
     if (!unlocked) setDraft(clampNum(Math.round(serverSliderUnits), 0, 100));
@@ -558,27 +771,19 @@ function ThresholdSliderWithLock({
 
   const shown = unlocked ? draft : clampNum(Math.round(serverSliderUnits), 0, 100);
 
-  const clearDebounce = () => {
-    if (debRef.current != null) {
-      window.clearTimeout(debRef.current);
-      debRef.current = null;
-    }
+  const clearUp = () => {
+    removeUpRef.current?.();
+    removeUpRef.current = null;
   };
 
-  const schedule = (sliderUnits: number) => {
-    clearDebounce();
-    debRef.current = window.setTimeout(() => {
-      debRef.current = null;
-      onDebouncedCommit(sliderUnits);
-    }, 450);
-  };
+  useEffect(() => () => clearUp(), []);
 
   const toggleLock = () => {
     if (disabled) return;
     if (unlocked) {
-      clearDebounce();
-      const toSave = clampNum(draft, 0, 100);
-      deferTask(() => onDebouncedCommit(toSave));
+      clearUp();
+      const toSave = clampNum(draftRef.current, 0, 100);
+      deferTask(() => onCommitRef.current(toSave));
       setUnlocked(false);
     } else {
       setDraft(clampNum(Math.round(serverSliderUnits), 0, 100));
@@ -586,7 +791,20 @@ function ThresholdSliderWithLock({
     }
   };
 
-  useEffect(() => () => clearDebounce(), []);
+  const onRangePointerDown = () => {
+    if (disabled || !unlocked) return;
+    clearUp();
+    const up = () => {
+      clearUp();
+      if (unlockedRef.current) deferTask(() => onCommitRef.current(clampNum(draftRef.current, 0, 100)));
+    };
+    window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", up, true);
+    removeUpRef.current = () => {
+      window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", up, true);
+    };
+  };
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -599,10 +817,11 @@ function ThresholdSliderWithLock({
         step={1}
         value={shown}
         disabled={disabled || !unlocked}
+        onPointerDown={onRangePointerDown}
         onChange={(e) => {
           const v = Number(e.target.value);
           setDraft(v);
-          if (unlocked) schedule(v);
+          draftRef.current = v;
         }}
       />
       <span className="w-11 shrink-0 text-right text-[11px] tabular-nums text-slate-600 dark:text-slate-400">{formatDisplay(shown)}</span>
@@ -616,6 +835,44 @@ function ThresholdSliderWithLock({
       >
         {unlocked ? <UnlockIcon /> : <LockIcon />}
       </button>
+    </div>
+  );
+}
+
+function MultiBudgetCoinPctSliderRow({
+  sym,
+  pctVal,
+  multiBudgetCoinPct,
+  onLogError,
+}: {
+  sym: string;
+  pctVal: number;
+  multiBudgetCoinPct: Record<string, number>;
+  onLogError: (msg: string) => void;
+}) {
+  const [preview, setPreview] = useState<number | null>(null);
+  const display = preview ?? pctVal;
+  return (
+    <div className="flex items-center gap-1">
+      <RangeSliderReleaseCommit
+        min={0}
+        max={100}
+        step={1}
+        value={clampNum(pctVal, 0, 100)}
+        className="h-1.5 min-w-0 flex-1 cursor-pointer accent-emerald-600"
+        onPreviewValue={setPreview}
+        onCommit={(v) => {
+          setPreview(null);
+          void api
+            .botConfig({
+              multiBudgetCoinPct: { ...multiBudgetCoinPct, [sym]: v },
+            })
+            .catch(() => {
+              onLogError(`Failed to set % for ${sym}`);
+            });
+        }}
+      />
+      <span className="w-8 shrink-0 text-right tabular-nums">{display}%</span>
     </div>
   );
 }
@@ -645,9 +902,9 @@ export function TradingPanel() {
   const [manualOrderBusy, setManualOrderBusy] = useState(false);
   const manualFormHydratedRef = useRef(false);
   const skipManualFormPersistRef = useRef(true);
-  const capitalSliderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Local % while dragging deployable slider; cleared when server `riskPerTrade` updates. */
-  const [capitalSliderDraftPct, setCapitalSliderDraftPct] = useState<number | null>(null);
+  /** Live % label while dragging allowed-budget wallet slider (API commits on release only). */
+  const [capitalSliderPreviewPct, setCapitalSliderPreviewPct] = useState<number | null>(null);
+  const [multiTradePctPreview, setMultiTradePctPreview] = useState<number | null>(null);
 
   useEffect(() => {
     const d = bot?.tradingFormDefaults as { amountUsdStr?: string; slPctStr?: string; tpPctStr?: string } | undefined;
@@ -683,10 +940,11 @@ export function TradingPanel() {
   const cfg = useMemo(() => {
     return {
       aiThreshold: Number(bot?.aiThreshold ?? 0.65),
-      riskPerTrade: Number(bot?.riskPerTrade ?? 0.01),
-      maxDailyLoss: Number(bot?.maxDailyLoss ?? 0.05),
+      riskPerTrade: Number(bot?.riskPerTrade ?? 1),
+      maxDailyLoss: Number(bot?.maxDailyLoss ?? 5),
       riskPerTradeUnit: bot?.riskPerTradeUnit === "USDT" ? ("USDT" as const) : ("PCT" as const),
       maxDailyLossUnit: bot?.maxDailyLossUnit === "USDT" ? ("USDT" as const) : ("PCT" as const),
+      perTradeBudgetCapEnabled: bot?.perTradeBudgetCapEnabled !== false,
       strategyMode: bot?.strategyMode ?? "AUTO",
       manualStrategy: bot?.manualStrategy ?? "EMA_CROSS",
       symbolMode: bot?.symbolMode ?? "SINGLE",
@@ -751,6 +1009,8 @@ export function TradingPanel() {
   });
 
   const [constraintsRaw, setConstraintsRaw] = useState<any>(null);
+  /** USD-M MIN_NOTIONAL per symbol (from exchangeInfo) for multi-coin capital gate labels. */
+  const [futuresMinNotionalBySymbol, setFuturesMinNotionalBySymbol] = useState<Record<string, number>>({});
   /** MANUAL leverage while typing (before blur/commit); keeps min-notional hints in sync with Leverage ×. */
   const [futuresLevDraft, setFuturesLevDraft] = useState<number | null>(null);
 
@@ -815,19 +1075,24 @@ export function TradingPanel() {
         warn: false,
       });
     }
+    const sizingBot = { ...cfg, ...bot };
+    const levSizingAt = futuresLeverageForSizingResolveUi(sizingBot, cfg, futuresLevDraft);
+    const fixedCapital = cfg.riskPerTradeUnit === "USDT" && cfg.maxDailyLossUnit === "USDT";
     const effRiskUsdt =
-      cfg.riskPerTradeUnit === "USDT" && cfg.maxDailyLossUnit === "USDT"
-        ? previewFixedUsdtRiskUsdt(bot, activeSymbol, positions, account)
+      fixedCapital
+        ? previewFixedUsdtRiskUsdt(sizingBot, activeSymbol, positions, account, levSizingAt)
         : cfg.riskPerTrade;
     if (cfg.riskPerTradeUnit === "USDT") {
       if (needFut && legs.fut) {
         const { min: futMin, qa: futQa } = legs.fut;
+        const levForNom = fixedCapital ? levSizingAt : levFutures;
         const levLabel =
           String(cfg.futuresLeverageMode || "AUTO").toUpperCase() === "MANUAL"
-            ? `Leverage × ${levFutures}`
-            : `AUTO ~${levFutures}x`;
-        const maxAff = futFree != null ? futFree * levFutures * 0.9 : null;
-        const orderNom = maxAff != null ? Math.min(effRiskUsdt, maxAff) : effRiskUsdt;
+            ? `Leverage × ${levForNom}`
+            : `AUTO ~${levForNom}x`;
+        const maxAff = futFree != null ? futFree * levForNom * 0.9 : null;
+        const notionalFromMargin = effRiskUsdt * levForNom;
+        const orderNom = maxAff != null ? Math.min(notionalFromMargin, maxAff) : notionalFromMargin;
         if (maxAff != null && futuresBuyingPowerBelowMin(maxAff, futMin)) {
           lines.push({
             key: "risk-fut-bp",
@@ -990,20 +1255,25 @@ export function TradingPanel() {
 
     const lev = futuresLeverageUsedForMarginCap(bot, cfg, futuresLevDraft, { manualTrade: false });
     const fixedUsdt = cfg.riskPerTradeUnit === "USDT" && cfg.maxDailyLossUnit === "USDT";
+    const levSizingAt = futuresLeverageForSizingResolveUi(bot, cfg, futuresLevDraft);
+    const levForNom = fixedUsdt ? levSizingAt : lev;
     const prob = fixedUsdt ? 0.75 : Number(bot?.lastAi?.gateProbability ?? bot?.lastAi?.probability ?? 0.5);
     const tm = riskTierMultPreview(prob, fixedUsdt);
     if (tm <= 0) return { kind: "tier_zero" as const };
 
-    const maxAff = futFree * lev * 0.9;
+    const maxAff = futFree * levForNom * 0.9;
     const effRisk =
-      cfg.riskPerTradeUnit === "USDT" ? previewFixedUsdtRiskUsdt(bot, activeSymbol, positions, account) : cfg.riskPerTrade;
-    const targetNom = Math.min(effRisk * tm, maxAff);
+      fixedUsdt
+        ? previewFixedUsdtRiskUsdt({ ...cfg, ...bot }, activeSymbol, positions, account, levSizingAt)
+        : cfg.riskPerTrade;
+    /** `effRisk` is initial margin USDT; notional = margin × leverage (same as `riskPlan` / liquidation preview). */
+    const targetNom = Math.min(effRisk * tm * levForNom, maxAff);
     if (!(targetNom > 0)) return { kind: "incomplete" as const };
 
     const regime = String(bot?.lastRegime?.type || "RANGE");
     const p = buildAutotradeLongLiquidationPreview({
       entryPx: marketClose,
-      leverage: lev,
+      leverage: levForNom,
       targetNotionalUsd: targetNom,
       atr: atr14,
       regimeType: regime,
@@ -1034,6 +1304,8 @@ export function TradingPanel() {
 
   const capitalAllotmentHeadline = useMemo(() => {
     const mm = String(cfg.marketMode || "AUTO").toUpperCase();
+    const merged = { ...cfg, ...bot };
+    const levSizing = futuresLeverageForSizingResolveUi(merged, cfg, futuresLevDraft);
     const lev = futuresLeverageUsedForMarginCap(bot, cfg, futuresLevDraft, { manualTrade: false });
     const futFreeRaw = account?.venues?.futures?.freeBalance;
     const spotFreeRaw = account?.venues?.spot?.freeBalance;
@@ -1046,54 +1318,47 @@ export function TradingPanel() {
     const walletFreeMarginTotal = walletFreeMarginUsdt(account, mm);
     const splitDiv = capitalSplitDivisorFromBot(bot);
     const fixedUsd = cfg.riskPerTradeUnit === "USDT" && cfg.maxDailyLossUnit === "USDT";
-    let allowedPoolUsdt = 0;
-    if (fixedUsd) {
-      allowedPoolUsdt = effectiveAllowedPoolUsdt(bot, account);
-    } else {
-      const raw = Number(bot?.allowedBudgetUsdt ?? cfg.allowedBudgetUsdt);
-      let poolNominal = Number.isFinite(raw) && raw > 0 ? raw : 0;
-      if (!(poolNominal > 0) && cfg.riskPerTradeUnit === "USDT") {
-        poolNominal = Number(cfg.riskPerTrade ?? 0);
-      }
-      if (!(poolNominal > 0) && walletFreeMarginTotal > 0) {
-        const wpct = clampNum(Number(cfg.allowedBudgetWalletPct), 0.5, 100);
-        if (wpct > 0) poolNominal = Math.max(1, Math.round((walletFreeMarginTotal * wpct) / 100));
-      }
-      const cap = walletFreeMarginUsdt(account, mm);
-      allowedPoolUsdt =
-        !Number.isFinite(poolNominal) || poolNominal <= 0
-          ? poolNominal
-          : !Number.isFinite(cap) || cap <= 0
-            ? poolNominal
-            : Math.min(poolNominal, cap);
-    }
-    const invested = sumOpenMarginUsedUsdtForUi(positions, mm);
+    const useFutAllot = useFuturesNotionalAllotmentForUi(merged, activeSymbol, positions);
+    const allowedPoolUsdt = fixedUsd
+      ? computeResolveAllowedFixedUsdt(merged, account, activeSymbol, positions, levSizing)
+      : effectiveAllowedPoolUsdt(merged, account);
+    const invested =
+      fixedUsd && useFutAllot
+        ? sumOpenFuturesNotionalUsdtForUi(positions)
+        : sumOpenMarginUsedUsdtForUi(positions, mm);
     /** Raw pool left from allowed cap (can be negative if invested > allowed). */
     const usablePoolRaw = allowedPoolUsdt - invested;
     /** Pool used for sizing “% of usable” (never negative). */
     const usableStrategy = Math.max(0, usablePoolRaw);
+    const sizedUsableUsdt =
+      cfg.multiTradeUsePctOfUsable === true
+        ? (usableStrategy * clampNum(Number(cfg.multiTradePctOfUsable ?? 100), 0, 100)) / 100
+        : usableStrategy;
     const laneBudget =
       cfg.riskPerTradeUnit === "USDT"
-        ? previewFixedUsdtRiskUsdt(bot, activeSymbol, positions, account)
+        ? previewFixedUsdtRiskUsdt(merged, activeSymbol, positions, account, levSizing)
         : cfg.riskPerTrade;
+    /** `laneBudget` is initial margin; USD-M quote notional ≈ margin × leverage (same as backend `riskPlan`). */
+    const laneNotionalApprox = useFutAllot ? (Number(laneBudget) || 0) * levSizing : Number(laneBudget) || 0;
     const allowedMain = `${allowedPoolUsdt.toLocaleString("en-US", { maximumFractionDigits: 2 })} USDT`;
     const allowedSub =
       fixedUsd && cfg.universeCoinSelectMode === "MULTIPLE" && cfg.multiBudgetSplitMode === "EQUAL" && splitDiv > 1
-        ? `Equal split target ≈ ${(laneBudget ?? cfg.riskPerTrade).toFixed(2)} USDT per active symbol (${splitDiv} in list)`
+        ? `Equal split target ≈ ${laneNotionalApprox.toFixed(2)} USDT quote notional per active symbol (${splitDiv} in list)`
         : fixedUsd && cfg.universeCoinSelectMode === "MULTIPLE" && cfg.multiBudgetSplitMode !== "FULL"
-          ? `Mode: ${cfg.multiBudgetSplitMode.replace(/_/g, " ")} · per-symbol notional ≈ ${(laneBudget ?? 0).toFixed(2)} USDT (${activeSymbol})`
+          ? `Mode: ${cfg.multiBudgetSplitMode.replace(/_/g, " ")} · per-symbol notional ≈ ${laneNotionalApprox.toFixed(2)} USDT (${activeSymbol})`
           : cfg.riskPerTradeUnit === "PCT"
-            ? `Per-trade ${(cfg.riskPerTrade * 100).toFixed(2)}% of free margin at stop (before confidence tiers).`
+            ? `Per-trade ${clampNum(cfg.riskPerTrade, 0, 100).toFixed(2)}% of allowed pool at stop (before confidence tiers).`
             : null;
     const perTradeUsdtForDeploy =
       cfg.riskPerTradeUnit === "USDT"
         ? Number(laneBudget ?? cfg.riskPerTrade) || 0
-        : walletFreeMarginTotal > 0
-          ? walletFreeMarginTotal * cfg.riskPerTrade
+        : allowedPoolUsdt > 0
+          ? allowedPoolUsdt * (clampNum(cfg.riskPerTrade, 0, 100) / 100)
           : 0;
+    const levForFixedDeploy = fixedUsd ? levSizing : lev;
     const effFut =
       futFree != null && perTradeUsdtForDeploy > 0
-        ? effectiveFuturesOrderNotionalUsdt(perTradeUsdtForDeploy, futFree, lev)
+        ? effectiveFuturesOrderNotionalUsdt(perTradeUsdtForDeploy, futFree, levForFixedDeploy)
         : null;
     const effSpot =
       spotFree != null && perTradeUsdtForDeploy > 0 ? effectiveSpotOrderNotionalUsdt(perTradeUsdtForDeploy, spotFree) : null;
@@ -1107,21 +1372,31 @@ export function TradingPanel() {
     if (deployParts.length === 0) {
       deployParts.push(
         cfg.riskPerTradeUnit === "PCT" && perTradeUsdtForDeploy <= 0
-          ? "Connect wallet / load free margin to preview venue-capped deploy from % per-trade."
+          ? "Set allowed budget (above) to preview venue-capped deploy from % per-trade."
           : "Fund the venue wallet to see venue-capped deployable notional.",
       );
     }
     const usableFormula = `${allowedPoolUsdt.toFixed(2)} − ${invested.toFixed(2)}`;
     const usableSizingNote =
       usablePoolRaw < 0
-        ? "Open margin used exceeds allowed — raise allowed or reduce/close positions so usable ≥ 0."
+        ? fixedUsd && useFutAllot
+          ? "Open futures notional exceeds allowed — raise allowed or reduce/close positions so usable ≥ 0."
+          : "Open margin used exceeds allowed — raise allowed or reduce/close positions so usable ≥ 0."
         : usablePoolRaw === 0
-          ? "No pool left at this cap until open margin used drops below allowed."
-          : "With no open legs, margin used → 0 and usable equals allowed.";
+          ? fixedUsd && useFutAllot
+            ? "No pool left at this cap until open futures notional drops below allowed."
+            : "No pool left at this cap until open margin used drops below allowed."
+          : fixedUsd && useFutAllot
+            ? "With no open futures legs, notional used → 0 and usable equals allowed (USD-M quote notional cap)."
+            : "With no open legs, margin used → 0 and usable equals allowed.";
     const deployLine = deployParts.join(" · ");
+    const sliderDenom =
+      fixedUsd && useFutAllot && walletFreeMarginTotal > 0
+        ? walletFreeMarginTotal * Math.max(1, levSizing)
+        : walletFreeMarginTotal;
     const walletSliderPct =
-      walletFreeMarginTotal > 0 && allowedPoolUsdt > 0
-        ? clampNum((allowedPoolUsdt / walletFreeMarginTotal) * 100, 0, 100)
+      sliderDenom > 0 && allowedPoolUsdt > 0
+        ? clampNum((allowedPoolUsdt / sliderDenom) * 100, 0, 100)
         : cfg.allowedBudgetWalletPct;
     return {
       allowedMain,
@@ -1132,6 +1407,7 @@ export function TradingPanel() {
       fixedUsd,
       allowedPoolUsdt,
       usableStrategy,
+      sizedUsableUsdt,
       usablePoolRaw,
       usableFormula,
       usableSizingNote,
@@ -1141,34 +1417,37 @@ export function TradingPanel() {
 
   const capitalFieldCaps = useMemo(() => {
     const pool = Number(capitalAllotmentHeadline.allowedPoolUsdt) || 0;
-    const w = Number(capitalAllotmentHeadline.walletFreeMarginTotal) || 0;
+    const su = Number(capitalAllotmentHeadline.sizedUsableUsdt) || 0;
     const showPool = pool > 0;
-    const capByWallet = w > 0 ? w : 10_000_000;
+    const showSized = su > 0;
     const maxRiskUsdt =
       cfg.riskPerTradeUnit === "USDT"
-        ? showPool && pool > 0
-          ? Math.min(10_000_000, capByWallet, Math.max(1, pool))
-          : Math.min(10_000_000, capByWallet)
-        : 0.05;
+        ? showSized
+          ? Math.min(10_000_000, su)
+          : 10_000_000
+        : 100;
     const maxDailyUsdt =
       cfg.maxDailyLossUnit === "USDT"
-        ? showPool && pool > 0
-          ? Math.min(10_000_000, Math.max(1, pool))
+        ? showSized
+          ? Math.min(10_000_000, su)
           : 10_000_000
-        : 0.2;
-    return { maxRiskUsdt, maxDailyUsdt, pool, showPool };
+        : 100;
+    return { maxRiskUsdt, maxDailyUsdt, pool, showPool, sizedUsableUsdt: su, showSized };
   }, [capitalAllotmentHeadline, cfg.riskPerTradeUnit, cfg.maxDailyLossUnit]);
 
   useEffect(() => {
-    setCapitalSliderDraftPct(null);
-  }, [cfg.riskPerTrade, cfg.allowedBudgetUsdt, capitalAllotmentHeadline.walletFreeMarginTotal]);
+    setCapitalSliderPreviewPct(null);
+  }, [
+    cfg.riskPerTrade,
+    cfg.allowedBudgetUsdt,
+    cfg.allowedBudgetWalletPct,
+    capitalAllotmentHeadline.allowedPoolUsdt,
+    capitalAllotmentHeadline.walletSliderPct,
+  ]);
 
-  useEffect(
-    () => () => {
-      if (capitalSliderTimerRef.current) window.clearTimeout(capitalSliderTimerRef.current);
-    },
-    [],
-  );
+  useEffect(() => {
+    setMultiTradePctPreview(null);
+  }, [cfg.multiTradePctOfUsable]);
 
   const manualFuturesLiqUi = useMemo(() => {
     const mm = String(cfg.marketMode || "AUTO").toUpperCase();
@@ -1239,6 +1518,82 @@ export function TradingPanel() {
     () => capitalMultiSyms.reduce((a, s) => a + clampNum(Number(cfg.multiBudgetCoinPct[s] ?? 0), 0, 100), 0),
     [capitalMultiSyms, cfg.multiBudgetCoinPct],
   );
+
+  /** Per-row USDT slice for EQUAL mode: sized usable ÷ N, or theoretical allowed ÷ N when usable is 0 (matches server pool units). */
+  const equalSplitSlotUsdt = useMemo(() => {
+    if (cfg.multiBudgetSplitMode !== "EQUAL" || capitalMultiSyms.length === 0) return null;
+    const n = Math.max(1, capitalMultiSyms.length);
+    const su = Number(capitalAllotmentHeadline.sizedUsableUsdt) || 0;
+    const allow = Number(capitalAllotmentHeadline.allowedPoolUsdt) || 0;
+    if (su > 0) return su / n;
+    if (allow > 0) return allow / n;
+    return 0;
+  }, [
+    cfg.multiBudgetSplitMode,
+    capitalMultiSyms,
+    capitalAllotmentHeadline.sizedUsableUsdt,
+    capitalAllotmentHeadline.allowedPoolUsdt,
+  ]);
+
+  const showFuturesMinNotionalGate =
+    cfg.riskPerTradeUnit === "USDT" &&
+    cfg.maxDailyLossUnit === "USDT" &&
+    cfg.universeCoinSelectMode === "MULTIPLE" &&
+    (cfg.marketMode === "FUTURES" || cfg.marketMode === "AUTO");
+
+  const capitalAndRankedSymbolsKey = useMemo(
+    () =>
+      [...capitalMultiSyms].sort().join("|") +
+      "§" +
+      (Array.isArray(rankedCoins) ? rankedCoins.map((c: any) => String(c?.symbol || "").toUpperCase()).join("|") : ""),
+    [capitalMultiSyms, rankedCoins],
+  );
+
+  useEffect(() => {
+    let alive = true;
+    if (!showFuturesMinNotionalGate) {
+      setFuturesMinNotionalBySymbol({});
+      return () => {
+        alive = false;
+      };
+    }
+    const syms = [
+      ...new Set([
+        ...capitalMultiSyms.map((s) => String(s).toUpperCase()),
+        ...(Array.isArray(rankedCoins)
+          ? rankedCoins.map((c: any) => String(c?.symbol || "").toUpperCase()).filter(Boolean)
+          : []),
+      ]),
+    ].filter(Boolean);
+    if (syms.length === 0) {
+      setFuturesMinNotionalBySymbol({});
+      return () => {
+        alive = false;
+      };
+    }
+    void (async () => {
+      const next: Record<string, number> = {};
+      const venueQ = cfg.marketMode === "AUTO" ? "BOTH" : "FUTURES";
+      await Promise.all(
+        syms.map(async (sym) => {
+          try {
+            const r = await api.symbolConstraints(sym, venueQ);
+            const legs = constraintsLegs(r);
+            const mn = legs.fut?.min;
+            if (Number.isFinite(mn) && mn > 0) next[sym] = mn;
+          } catch {
+            /* ignore */
+          }
+        }),
+      );
+      if (alive) setFuturesMinNotionalBySymbol(next);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [showFuturesMinNotionalGate, capitalAndRankedSymbolsKey, cfg.marketMode]);
+
+  const capitalMultiSet = useMemo(() => new Set(capitalMultiSyms.map((s) => String(s).toUpperCase())), [capitalMultiSyms]);
 
   useEffect(() => {
     let alive = true;
@@ -1926,6 +2281,13 @@ export function TradingPanel() {
                             const multiPinFull = coinSelectMultiple && !isPinnedRow && pinnedMulti.length >= 10;
                             const pinRowActive = isPinnedRow && pinsManual;
                             const pinRowSavedOnly = isPinnedRow && !pinsManual;
+                            const estOpenRank = estimateFuturesOpenNotionalForOrderUi(bot, cfg, symU, positions, account, futuresLevDraft);
+                            const belowMinRanked =
+                              capitalMultiSet.has(symU) &&
+                              showFuturesMinNotionalGate &&
+                              estOpenRank != null &&
+                              Number.isFinite(futuresMinNotionalBySymbol[symU]) &&
+                              futuresOrderNotionalBelowMin(estOpenRank, futuresMinNotionalBySymbol[symU]);
                             return (
                               <tr
                                 key={c.symbol}
@@ -1948,16 +2310,25 @@ export function TradingPanel() {
                                         : "text-slate-800 dark:text-slate-200"
                                   }`}
                                 >
-                                  {c.symbol}
-                                  {pinRowActive ? (
-                                    <span className="ml-1.5 rounded bg-emerald-600/80 px-1 py-px text-[9px] font-bold uppercase text-white">
-                                      pinned
-                                    </span>
-                                  ) : pinRowSavedOnly ? (
-                                    <span className="ml-1.5 rounded bg-slate-500/50 px-1 py-px text-[9px] font-bold uppercase text-slate-200 dark:text-slate-400">
-                                      saved
-                                    </span>
-                                  ) : null}
+                                  <div className="flex min-w-0 flex-col gap-0.5">
+                                    <div className="flex flex-wrap items-center gap-x-1.5">
+                                      {c.symbol}
+                                      {pinRowActive ? (
+                                        <span className="ml-1.5 rounded bg-emerald-600/80 px-1 py-px text-[9px] font-bold uppercase text-white">
+                                          pinned
+                                        </span>
+                                      ) : pinRowSavedOnly ? (
+                                        <span className="ml-1.5 rounded bg-slate-500/50 px-1 py-px text-[9px] font-bold uppercase text-slate-200 dark:text-slate-400">
+                                          saved
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    {belowMinRanked ? (
+                                      <div className="max-w-[15rem] text-[9px] font-medium leading-snug text-amber-800 dark:text-amber-200/90">
+                                        Won&apos;t be used to trade: below min notional value
+                                      </div>
+                                    ) : null}
+                                  </div>
                                 </td>
                                 <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
                                   {c.aiProb != null && Number.isFinite(Number(c.aiProb)) ? Number(c.aiProb).toFixed(3) : "—"}
@@ -2494,10 +2865,19 @@ export function TradingPanel() {
                 <div className="min-w-0">
                   <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-50">Capital allotment</h3>
                   <p className="mt-0.5 max-w-[22rem] text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-                    Allowed is capped at <span className="font-semibold text-slate-700 dark:text-slate-300">free margin</span> (collateral), not
-                    leveraged notional. <span className="font-semibold text-slate-700 dark:text-slate-300">Usable</span> is allowed minus open
-                    margin used (futures: notional ÷ leverage; spot: full quote at entry). This pool drives allowed / usable and multi-coin USDT splits;
-                    per-trade below is sizing (% or USDT) and does not collapse this panel. Deploy line is venue-capped order size (~90% buying power).
+                    Set <span className="font-semibold text-slate-700 dark:text-slate-300">allowed</span> once (USDT pool or % of wallet below). For
+                    USD-M with fixed USDT risk, <span className="font-semibold text-slate-700 dark:text-slate-300">allowed</span> is a max{" "}
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">quote notional</span> pool (USDT); the server clamps it to
+                    about free margin × sizing leverage. <span className="font-semibold text-slate-700 dark:text-slate-300">Usable</span> is allowed
+                    minus open futures notional (or quote margin used on spot). Multi-coin splits use this pool, not a second read of the wallet. Deploy
+                    line is venue-capped order size (~90% buying power).
+                    {showFuturesMinNotionalGate ? (
+                      <>
+                        {" "}
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">Min notional gate:</span> if the estimated open notional
+                        for a listed symbol (lane margin × order leverage) is below the exchange minimum, autotrade will not open that symbol.
+                      </>
+                    ) : null}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
@@ -2549,9 +2929,6 @@ export function TradingPanel() {
 
               <div className="mt-3 space-y-2 rounded-lg border border-emerald-800/20 bg-white/80 p-2 dark:border-emerald-500/25 dark:bg-slate-950/50">
                 <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-100">Allowed budget (USDT pool)</div>
-                <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-500">
-                  Cannot exceed free margin ({capitalAllotmentHeadline.walletFreeMarginTotal > 0 ? `~${capitalAllotmentHeadline.walletFreeMarginTotal.toFixed(0)} USDT loaded` : "connect wallet to cap"}).
-                </p>
                 <div className="flex shrink-0 rounded border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 p-0.5 text-[10px] font-medium text-slate-700 dark:text-slate-300">
                   <button
                     type="button"
@@ -2609,41 +2986,41 @@ export function TradingPanel() {
                         % of free margin (~{capitalAllotmentHeadline.walletFreeMarginTotal.toFixed(0)} USDT
                         {String(cfg.marketMode || "AUTO").toUpperCase() === "AUTO" ? " spot+futures" : ""})
                       </span>
-                      <input
-                        type="range"
+                      <RangeSliderReleaseCommit
                         className="h-2 min-w-0 flex-1 cursor-pointer accent-emerald-600"
                         min={0.5}
                         max={100}
                         step={0.5}
+                        disabled={capitalAllotmentHeadline.walletFreeMarginTotal <= 0}
                         value={
-                          capitalSliderDraftPct ??
-                          (capitalAllotmentHeadline.walletFreeMarginTotal > 0
+                          capitalAllotmentHeadline.walletFreeMarginTotal > 0
                             ? capitalAllotmentHeadline.walletSliderPct
-                            : cfg.allowedBudgetWalletPct)
+                            : cfg.allowedBudgetWalletPct
                         }
-                        onChange={(e) => {
-                          const pct = Number(e.target.value);
+                        onPreviewValue={setCapitalSliderPreviewPct}
+                        onCommit={(pct) => {
                           const w = capitalAllotmentHeadline.walletFreeMarginTotal;
                           if (!Number.isFinite(pct) || w <= 0) return;
-                          setCapitalSliderDraftPct(pct);
-                          if (capitalSliderTimerRef.current) window.clearTimeout(capitalSliderTimerRef.current);
-                          capitalSliderTimerRef.current = window.setTimeout(() => {
-                            capitalSliderTimerRef.current = null;
-                            const nextAllowed = Math.max(1, Math.round((w * pct) / 100));
-                            void api
-                              .botConfig({
-                                allowedBudgetInputMode: "WALLET_PCT",
-                                allowedBudgetWalletPct: pct,
-                                allowedBudgetUsdt: nextAllowed,
-                              })
-                              .catch(() => {
-                                pushLog({ level: "error", msg: "Failed to set allowed budget from %" });
-                              });
-                          }, 380);
+                          const nextAllowed = Math.max(1, Math.round((w * pct) / 100));
+                          void api
+                            .botConfig({
+                              allowedBudgetInputMode: "WALLET_PCT",
+                              allowedBudgetWalletPct: pct,
+                              allowedBudgetUsdt: nextAllowed,
+                            })
+                            .catch(() => {
+                              pushLog({ level: "error", msg: "Failed to set allowed budget from %" });
+                            });
                         }}
                       />
                       <span className="w-12 shrink-0 text-right text-[10px] tabular-nums text-slate-600 dark:text-slate-400">
-                        {(capitalSliderDraftPct ?? capitalAllotmentHeadline.walletSliderPct).toFixed(1)}%
+                        {(
+                          capitalSliderPreviewPct ??
+                          (capitalAllotmentHeadline.walletFreeMarginTotal > 0
+                            ? capitalAllotmentHeadline.walletSliderPct
+                            : cfg.allowedBudgetWalletPct)
+                        ).toFixed(1)}
+                        %
                       </span>
                     </label>
                   </div>
@@ -2672,21 +3049,23 @@ export function TradingPanel() {
                   {cfg.multiTradeUsePctOfUsable ? (
                     <div className="flex items-center gap-2 pl-6">
                       <span className="w-24 shrink-0 text-[10px] text-slate-600 dark:text-slate-400">% of usable</span>
-                      <input
-                        type="range"
+                      <RangeSliderReleaseCommit
                         className="h-2 min-w-0 flex-1 cursor-pointer accent-emerald-600"
                         min={1}
                         max={100}
                         step={1}
                         value={cfg.multiTradePctOfUsable}
-                        onChange={(e) => {
-                          const v = clampNum(Number(e.target.value), 1, 100);
-                          void api.botConfig({ multiTradePctOfUsable: v }).catch(() => {
+                        onPreviewValue={setMultiTradePctPreview}
+                        onCommit={(v) => {
+                          const n = clampNum(v, 1, 100);
+                          void api.botConfig({ multiTradePctOfUsable: n }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to set % of usable" });
                           });
                         }}
                       />
-                      <span className="w-10 text-right text-[10px] tabular-nums text-slate-600 dark:text-slate-400">{cfg.multiTradePctOfUsable}%</span>
+                      <span className="w-10 text-right text-[10px] tabular-nums text-slate-600 dark:text-slate-400">
+                        {(multiTradePctPreview ?? cfg.multiTradePctOfUsable)}%
+                      </span>
                     </div>
                   ) : null}
                   <div className="text-[10px] font-medium text-slate-600 dark:text-slate-400">Split budget across coins</div>
@@ -2717,6 +3096,15 @@ export function TradingPanel() {
                       </button>
                     ))}
                   </div>
+                  <p className="mt-2 max-w-[36rem] text-[10px] leading-snug text-slate-600 dark:text-slate-500">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">Full pool per symbol</span>: each listed symbol may use up to
+                    the <span className="italic">entire</span> multi-coin sizing pool when the bot sizes a trade for that symbol (the pool is{" "}
+                    <span className="italic">not</span> divided by row count). Per-trade USDT still caps each order.{" "}
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">Equal split (list)</span>:{" "}
+                    <span className="font-semibold">total sized usable</span> (allowed − open margin, then optional % of usable) is divided evenly
+                    across <span className="font-mono text-[9px]">N</span> list symbols (<span className="font-mono text-[9px]">usable ÷ N</span> per
+                    row); each symbol’s fixed-USDT target uses that slice minus its own open margin (and optional per-trade cap).
+                  </p>
                   {capitalMultiSyms.length === 0 ? (
                     <p className="text-[10px] text-amber-800 dark:text-amber-200/90">
                       No symbols in the Top coins list yet — run a universe scan (or pin symbols that appear in the table) to configure per-coin
@@ -2728,93 +3116,185 @@ export function TradingPanel() {
                         <thead className="sticky top-0 bg-slate-100 dark:bg-slate-900">
                           <tr className="text-left text-slate-600 dark:text-slate-400">
                             <th className="px-2 py-1.5">Symbol</th>
-                            <th className="px-2 py-1.5">
-                              {cfg.multiBudgetSplitMode === "CUSTOM_USDT"
-                                ? "USDT / trade"
-                                : cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED"
-                                  ? "% of allowed (Σ≤100)"
-                                  : "—"}
-                            </th>
-                            {cfg.multiBudgetSplitMode === "CUSTOM_USDT" || cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" ? (
-                              <th className="px-2 py-1.5">
-                                {cfg.multiBudgetSplitMode === "CUSTOM_USDT" ? "≈ % of allowed" : "≈ USDT (split)"}
-                              </th>
-                            ) : null}
+                            {cfg.multiBudgetSplitMode === "EQUAL" ? (
+                              <>
+                                <th className="px-2 py-1.5">Split (USDT)</th>
+                                <th className="px-2 py-1.5">Margin</th>
+                                <th className="px-2 py-1.5">Usable</th>
+                                {showFuturesMinNotionalGate ? (
+                                  <th className="px-2 py-1.5 text-slate-500">Venue min</th>
+                                ) : null}
+                              </>
+                            ) : (
+                              <>
+                                <th className="px-2 py-1.5">
+                                  {cfg.multiBudgetSplitMode === "CUSTOM_USDT"
+                                    ? "USDT / trade"
+                                    : cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED"
+                                      ? "% of allowed (Σ≤100)"
+                                      : "—"}
+                                </th>
+                                {cfg.multiBudgetSplitMode === "CUSTOM_USDT" || cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" ? (
+                                  <th className="px-2 py-1.5">
+                                    {cfg.multiBudgetSplitMode === "CUSTOM_USDT" ? "≈ % of allowed" : "≈ USDT (split)"}
+                                  </th>
+                                ) : null}
+                                {cfg.multiBudgetSplitMode === "CUSTOM_USDT" || cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" ? (
+                                  <>
+                                    <th className="px-2 py-1.5">Margin</th>
+                                    <th className="px-2 py-1.5">Usable</th>
+                                    {showFuturesMinNotionalGate ? (
+                                      <th className="px-2 py-1.5 text-slate-500">Venue min</th>
+                                    ) : null}
+                                  </>
+                                ) : null}
+                              </>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
                           {capitalMultiSyms.map((sym) => {
+                            const mm = String(cfg.marketMode || "AUTO").toUpperCase();
                             const poolHint = capitalFieldCaps.pool > 0 ? capitalFieldCaps.pool : capitalAllotmentHeadline.allowedPoolUsdt;
-                            const usdtVal = Math.max(1, Number(cfg.multiBudgetCoinUsdt[sym] ?? 100));
+                            const usdtVal = Math.max(0, Number(cfg.multiBudgetCoinUsdt[sym] ?? 0));
                             const pctVal = clampNum(Number(cfg.multiBudgetCoinPct[sym] ?? 0), 0, 100);
                             const pctOfPoolUsdt = poolHint > 0 ? (usdtVal / poolHint) * 100 : null;
                             const usdtFromPct = poolHint > 0 ? (poolHint * pctVal) / 100 : null;
                             const perCoinUsdtMax =
-                              capitalFieldCaps.showPool && capitalFieldCaps.pool > 0
-                                ? Math.min(10_000_000, Math.max(1, capitalFieldCaps.pool))
-                                : 10_000_000;
+                              capitalFieldCaps.showSized && capitalFieldCaps.sizedUsableUsdt > 0
+                                ? Math.min(10_000_000, capitalFieldCaps.sizedUsableUsdt)
+                                : capitalFieldCaps.showPool && capitalFieldCaps.pool > 0
+                                  ? Math.min(10_000_000, capitalFieldCaps.pool)
+                                  : 10_000_000;
+                            const isEqual = cfg.multiBudgetSplitMode === "EQUAL";
+                            const isCustom =
+                              cfg.multiBudgetSplitMode === "CUSTOM_USDT" || cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED";
+                            const marginSym = sumMarginUsedForSymbolUsdt(positions, mm, sym);
+                            const splitU = isEqual ? equalSplitSlotUsdt ?? 0 : 0;
+                            const customAlloc =
+                              cfg.multiBudgetSplitMode === "CUSTOM_USDT"
+                                ? usdtVal
+                                : cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED"
+                                  ? poolHint > 0
+                                    ? (poolHint * pctVal) / 100
+                                    : 0
+                                  : 0;
+                            const usableCol = isEqual ? splitU - marginSym : isCustom ? customAlloc - marginSym : 0;
+                            const estOpenForMin =
+                              showFuturesMinNotionalGate && cfg.riskPerTradeUnit === "USDT" && cfg.maxDailyLossUnit === "USDT"
+                                ? estimateFuturesOpenNotionalForOrderUi(bot, cfg, sym, positions, account, futuresLevDraft)
+                                : null;
                             return (
                               <tr key={sym} className="border-t border-slate-200 dark:border-slate-800">
                                 <td className="px-2 py-1.5 font-semibold text-slate-800 dark:text-slate-100">{sym}</td>
-                                <td className="px-2 py-1.5">
-                                  {cfg.multiBudgetSplitMode === "CUSTOM_USDT" ? (
-                                    <NumericTextInput
-                                      key={`cu-${sym}`}
-                                      value={usdtVal}
-                                      min={1}
-                                      max={perCoinUsdtMax}
-                                      onCommit={async (v) => {
-                                        try {
-                                          const capped = clampNum(v, 1, perCoinUsdtMax);
-                                          await api.botConfig({
-                                            multiBudgetCoinUsdt: { ...cfg.multiBudgetCoinUsdt, [sym]: capped },
-                                          });
-                                        } catch {
-                                          pushLog({ level: "error", msg: `Failed to set USDT for ${sym}` });
-                                        }
-                                      }}
-                                    />
-                                  ) : cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" ? (
-                                    <div className="flex items-center gap-1">
-                                      <input
-                                        type="range"
-                                        className="h-1.5 min-w-0 flex-1 cursor-pointer accent-emerald-600"
-                                        min={0}
-                                        max={100}
-                                        step={1}
-                                        value={pctVal}
-                                        onChange={(e) => {
-                                          const v = clampNum(Number(e.target.value), 0, 100);
-                                          void api
-                                            .botConfig({
-                                              multiBudgetCoinPct: { ...cfg.multiBudgetCoinPct, [sym]: v },
-                                            })
-                                            .catch(() => {
-                                              pushLog({ level: "error", msg: `Failed to set % for ${sym}` });
-                                            });
-                                        }}
-                                      />
-                                      <span className="w-8 shrink-0 text-right tabular-nums">{pctVal}%</span>
-                                    </div>
-                                  ) : (
-                                    <span className="text-slate-500 dark:text-slate-500">—</span>
-                                  )}
-                                </td>
-                                {cfg.multiBudgetSplitMode === "CUSTOM_USDT" || cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" ? (
-                                  <td className="px-2 py-1.5 tabular-nums text-slate-600 dark:text-slate-400">
-                                    {cfg.multiBudgetSplitMode === "CUSTOM_USDT" ? (
-                                      pctOfPoolUsdt != null && Number.isFinite(pctOfPoolUsdt) ? (
-                                        `${pctOfPoolUsdt.toFixed(2)}%`
+                                {isEqual ? (
+                                  <>
+                                    <td className="px-2 py-1.5 tabular-nums text-slate-700 dark:text-slate-200">{splitU.toFixed(2)}</td>
+                                    <td className="px-2 py-1.5 tabular-nums text-slate-600 dark:text-slate-400">{marginSym.toFixed(2)}</td>
+                                    <td
+                                      className={`px-2 py-1.5 tabular-nums ${
+                                        usableCol < 0 ? "text-amber-700 dark:text-amber-300" : "text-slate-700 dark:text-slate-200"
+                                      }`}
+                                    >
+                                      {usableCol.toFixed(2)}
+                                    </td>
+                                    {showFuturesMinNotionalGate ? (
+                                      <td className="px-2 py-1.5 align-top">
+                                        {Number.isFinite(futuresMinNotionalBySymbol[sym]) ? (
+                                          <>
+                                            <span className="tabular-nums text-slate-600 dark:text-slate-400">
+                                              {futuresMinNotionalBySymbol[sym].toFixed(2)}
+                                            </span>
+                                            {estOpenForMin != null &&
+                                            futuresOrderNotionalBelowMin(estOpenForMin, futuresMinNotionalBySymbol[sym]) ? (
+                                              <div className="mt-0.5 max-w-[7rem] text-[9px] font-mono text-amber-800 dark:text-amber-200">
+                                                Below min notional — won&apos;t trade
+                                              </div>
+                                            ) : null}
+                                          </>
+                                        ) : (
+                                          <span className="text-slate-500">—</span>
+                                        )}
+                                      </td>
+                                    ) : null}
+                                  </>
+                                ) : (
+                                  <>
+                                    <td className="px-2 py-1.5">
+                                      {cfg.multiBudgetSplitMode === "CUSTOM_USDT" ? (
+                                        <NumericTextInput
+                                          key={`cu-${sym}`}
+                                          value={usdtVal}
+                                          min={0}
+                                          max={perCoinUsdtMax}
+                                          onCommit={async (v) => {
+                                            try {
+                                              const capped = clampNum(v, 0, perCoinUsdtMax);
+                                              await api.botConfig({
+                                                multiBudgetCoinUsdt: { ...cfg.multiBudgetCoinUsdt, [sym]: capped },
+                                              });
+                                            } catch {
+                                              pushLog({ level: "error", msg: `Failed to set USDT for ${sym}` });
+                                            }
+                                          }}
+                                        />
+                                      ) : cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" ? (
+                                        <MultiBudgetCoinPctSliderRow
+                                          sym={sym}
+                                          pctVal={pctVal}
+                                          multiBudgetCoinPct={cfg.multiBudgetCoinPct}
+                                          onLogError={(msg) => pushLog({ level: "error", msg })}
+                                        />
                                       ) : (
-                                        "—"
-                                      )
-                                    ) : usdtFromPct != null && Number.isFinite(usdtFromPct) ? (
-                                      `${usdtFromPct.toFixed(2)} USDT`
-                                    ) : (
-                                      "—"
-                                    )}
-                                  </td>
-                                ) : null}
+                                        <span className="text-slate-500 dark:text-slate-500">—</span>
+                                      )}
+                                    </td>
+                                    {cfg.multiBudgetSplitMode === "CUSTOM_USDT" || cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" ? (
+                                      <>
+                                        <td className="px-2 py-1.5 tabular-nums text-slate-600 dark:text-slate-400">
+                                          {cfg.multiBudgetSplitMode === "CUSTOM_USDT" ? (
+                                            pctOfPoolUsdt != null && Number.isFinite(pctOfPoolUsdt) ? (
+                                              `${pctOfPoolUsdt.toFixed(2)}%`
+                                            ) : (
+                                              "—"
+                                            )
+                                          ) : usdtFromPct != null && Number.isFinite(usdtFromPct) ? (
+                                            `${usdtFromPct.toFixed(2)} USDT`
+                                          ) : (
+                                            "—"
+                                          )}
+                                        </td>
+                                        <td className="px-2 py-1.5 tabular-nums text-slate-600 dark:text-slate-400">{marginSym.toFixed(2)}</td>
+                                        <td
+                                          className={`px-2 py-1.5 tabular-nums ${
+                                            usableCol < 0 ? "text-amber-700 dark:text-amber-300" : "text-slate-700 dark:text-slate-200"
+                                          }`}
+                                        >
+                                          {usableCol.toFixed(2)}
+                                        </td>
+                                        {showFuturesMinNotionalGate ? (
+                                          <td className="px-2 py-1.5 align-top">
+                                            {Number.isFinite(futuresMinNotionalBySymbol[sym]) ? (
+                                              <>
+                                                <span className="tabular-nums text-slate-600 dark:text-slate-400">
+                                                  {futuresMinNotionalBySymbol[sym].toFixed(2)}
+                                                </span>
+                                                {estOpenForMin != null &&
+                                                futuresOrderNotionalBelowMin(estOpenForMin, futuresMinNotionalBySymbol[sym]) ? (
+                                                  <div className="mt-0.5 max-w-[7rem] text-[9px] font-mono text-amber-800 dark:text-amber-200">
+                                                    Below min notional — won&apos;t trade
+                                                  </div>
+                                                ) : null}
+                                              </>
+                                            ) : (
+                                              <span className="text-slate-500">—</span>
+                                            )}
+                                          </td>
+                                        ) : null}
+                                      </>
+                                    ) : null}
+                                  </>
+                                )}
                               </tr>
                             );
                           })}
@@ -2822,6 +3302,28 @@ export function TradingPanel() {
                       </table>
                     </div>
                   )}
+                  {cfg.multiBudgetSplitMode === "EQUAL" && capitalMultiSyms.length > 0 ? (
+                    <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-500">
+                      <span className="font-medium text-slate-700 dark:text-slate-300">Split</span> = total sized usable ÷{" "}
+                      <span className="font-mono">{capitalMultiSyms.length}</span>. <span className="font-medium text-slate-700 dark:text-slate-300">
+                        Margin
+                      </span>{" "}
+                      = open margin for this symbol. <span className="font-medium text-slate-700 dark:text-slate-300">Usable</span> = Split − Margin
+                      (what fixed-USDT sizing uses per coin; negative means this symbol's margin exceeds its equal slice).
+                    </p>
+                  ) : null}
+                  {cfg.multiBudgetSplitMode === "CUSTOM_USDT" || cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" ? (
+                    <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-500">
+                      <span className="font-medium text-slate-700 dark:text-slate-300">Usable</span> = configured USDT cap or % slice of allowed −
+                      this symbol's open margin (same as server lane before per-trade cap).
+                    </p>
+                  ) : null}
+                  {showFuturesMinNotionalGate ? (
+                    <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-500">
+                      <span className="font-medium text-slate-700 dark:text-slate-300">Venue min</span> is the exchange minimum order notional (quote).
+                      Rows marked below min use the same estimate as the server (lane margin × leverage); autotrade skips opens that fall short.
+                    </p>
+                  ) : null}
                   {cfg.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED" && multiBudgetPctSum > 100 + 0.01 ? (
                     <p className="text-[10px] font-medium text-amber-800 dark:text-amber-200">
                       Per-coin % of allowed sums to {multiBudgetPctSum.toFixed(1)}% — server scales down to ≤100% on save; reduce sliders for a
@@ -2833,9 +3335,9 @@ export function TradingPanel() {
                 </div>
               ) : null}
 
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,7.5rem)_auto_1fr] sm:items-start sm:gap-x-2">
-                <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200 sm:pt-1.5">Per-trade budget</span>
-                <div className="sm:pt-1">
+              <div className="mt-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200">Per-trade budget</span>
                   <RiskUnitToggle
                     value={cfg.riskPerTradeUnit}
                     onChange={(u) => {
@@ -2850,80 +3352,70 @@ export function TradingPanel() {
                       });
                     }}
                   />
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[10px] text-slate-600 dark:text-slate-400">
+                    <input
+                      type="checkbox"
+                      className="rounded border-slate-400"
+                      checked={cfg.perTradeBudgetCapEnabled}
+                      onChange={(e) => {
+                        void api.botConfig({ perTradeBudgetCapEnabled: e.target.checked }).catch(() => {
+                          pushLog({ level: "error", msg: "Failed to toggle per-trade cap" });
+                        });
+                      }}
+                    />
+                    <span>
+                      Cap per-trade {cfg.riskPerTradeUnit === "USDT" ? "USDT" : "%"} (off = only pool / per-symbol usable + venue limits)
+                    </span>
+                  </label>
                 </div>
-                <div className="flex min-w-0 flex-col gap-1">
+                <div className="max-w-xs">
                   <NumericTextInput
                     key={`rpt-${cfg.riskPerTradeUnit}`}
                     value={cfg.riskPerTrade}
-                    min={cfg.riskPerTradeUnit === "USDT" ? 1 : 0.001}
-                    max={cfg.riskPerTradeUnit === "USDT" ? capitalFieldCaps.maxRiskUsdt : 0.05}
+                    min={0}
+                    max={cfg.riskPerTradeUnit === "USDT" ? capitalFieldCaps.maxRiskUsdt : 100}
                     onCommit={async (v) => {
                       try {
-                        const cap = cfg.riskPerTradeUnit === "USDT" ? capitalFieldCaps.maxRiskUsdt : 0.05;
-                        const lo = cfg.riskPerTradeUnit === "USDT" ? 1 : 0.001;
-                        await api.botConfig({ riskPerTrade: clampNum(v, lo, cap) });
+                        const cap = cfg.riskPerTradeUnit === "USDT" ? capitalFieldCaps.maxRiskUsdt : 100;
+                        await api.botConfig({ riskPerTrade: clampNum(v, 0, cap) });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set risk per trade" });
                       }
                     }}
                   />
-                  {cfg.riskPerTradeUnit === "USDT" && capitalFieldCaps.showPool && capitalFieldCaps.pool > 0 ? (
-                    <>
-                      <input
-                        type="range"
-                        className="h-2 w-full min-w-0 cursor-pointer accent-emerald-600"
-                        min={1}
-                        max={Math.max(1, Math.floor(capitalFieldCaps.maxRiskUsdt))}
-                        step={1}
-                        value={clampNum(Math.round(cfg.riskPerTrade), 1, Math.floor(capitalFieldCaps.maxRiskUsdt))}
-                        onChange={(e) => {
-                          const hi = Math.max(1, Math.floor(capitalFieldCaps.maxRiskUsdt));
-                          const v = clampNum(Math.round(Number(e.target.value)), 1, hi);
-                          void api.botConfig({ riskPerTrade: v }).catch(() => {
-                            pushLog({ level: "error", msg: "Failed to set risk per trade" });
-                          });
-                        }}
-                      />
-                      <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
-                        ≈ {((cfg.riskPerTrade / capitalFieldCaps.pool) * 100).toFixed(2)}% of allowed pool (
-                        {capitalFieldCaps.pool.toFixed(0)} USDT)
-                      </p>
-                    </>
-                  ) : cfg.riskPerTradeUnit === "PCT" ? (
-                    <>
-                      <input
-                        type="range"
-                        className="h-2 w-full min-w-0 cursor-pointer accent-emerald-600"
-                        min={0.1}
-                        max={5}
-                        step={0.1}
-                        value={clampNum(Math.round(cfg.riskPerTrade * 1000) / 10, 0.1, 5)}
-                        onChange={(e) => {
-                          const v = clampNum(Number(e.target.value), 0.1, 5);
-                          void api.botConfig({ riskPerTrade: clampNum(v / 100, 0.001, 0.05) }).catch(() => {
-                            pushLog({ level: "error", msg: "Failed to set risk per trade" });
-                          });
-                        }}
-                      />
-                      <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
-                        ≈{" "}
-                        {capitalAllotmentHeadline.walletFreeMarginTotal > 0
-                          ? (cfg.riskPerTrade * capitalAllotmentHeadline.walletFreeMarginTotal).toFixed(2)
-                          : "—"}{" "}
-                        USDT from free balance (rough)
-                      </p>
-                    </>
-                  ) : null}
                 </div>
+                {cfg.riskPerTradeUnit === "USDT" && capitalFieldCaps.showSized ? (
+                  <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
+                    0–{capitalFieldCaps.sizedUsableUsdt.toFixed(2)} USDT (total sized usable).{" "}
+                    {cfg.perTradeBudgetCapEnabled && cfg.riskPerTrade > capitalFieldCaps.sizedUsableUsdt * 0.35 ? (
+                      <span className="font-medium text-amber-700 dark:text-amber-300">
+                        High vs usable — you are capping a large fraction of free slice per order.
+                      </span>
+                    ) : !cfg.perTradeBudgetCapEnabled && cfg.riskPerTrade > capitalFieldCaps.sizedUsableUsdt * 0.35 ? (
+                      <span className="font-medium text-amber-700 dark:text-amber-300">
+                        Aggressive USDT target vs total sized usable (venue and slice still apply).
+                      </span>
+                    ) : null}
+                  </p>
+                ) : cfg.riskPerTradeUnit === "PCT" ? (
+                  <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
+                    0–100% of policy capital at the stop (before confidence tiers).{" "}
+                    {cfg.riskPerTrade > 25 ? (
+                      <span className="font-medium text-amber-700 dark:text-amber-300">
+                        Unsafe range: very large fraction of capital at risk at the stop.
+                      </span>
+                    ) : null}
+                  </p>
+                ) : null}
               </div>
 
               <p className="mt-2 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
                 {cfg.riskPerTradeUnit === "USDT" ? (
                   capitalAllotmentHeadline.fixedUsd ? (
                     <>
-                      <span className="font-medium text-slate-700 dark:text-slate-300">Fixed USDT mode</span>: notional follows allowed / usable
-                      rules above and multi split mode. <span className="font-medium">Per-trade USDT</span> is the fallback pool when “% of usable”
-                      is off. SL/TP from ATR; venue still caps near ~90% buying power.
+                      <span className="font-medium text-slate-700 dark:text-slate-300">Fixed USDT mode</span>: sizing uses per-symbol usable (split
+                      minus open margin) from the allotment above; optional per-trade cap limits the ceiling. SL/TP from ATR; venue still caps near
+                      ~90% buying power.
                     </>
                   ) : (
                     <>
@@ -2935,15 +3427,15 @@ export function TradingPanel() {
                   )
                 ) : (
                   <>
-                    Fraction of <span className="text-slate-600 dark:text-slate-400">free balance</span> at the stop (0.1%–5%) before confidence
-                    tiers.
+                    Percent of <span className="text-slate-600 dark:text-slate-400">policy capital</span> at the stop (0–100% UI) before confidence
+                    tiers; venue still caps buying power.
                   </>
                 )}
               </p>
 
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,7.5rem)_auto_1fr] sm:items-start sm:gap-x-2">
-                <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200 sm:pt-1.5">Max daily loss</span>
-                <div className="sm:pt-1">
+              <div className="mt-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200">Max daily loss</span>
                   <RiskUnitToggle
                     value={cfg.maxDailyLossUnit}
                     onChange={(u) => {
@@ -2959,72 +3451,41 @@ export function TradingPanel() {
                     }}
                   />
                 </div>
-                <div className="flex min-w-0 flex-col gap-1">
+                <div className="max-w-xs">
                   <NumericTextInput
                     key={`mdl-${cfg.maxDailyLossUnit}`}
                     value={cfg.maxDailyLoss}
-                    min={cfg.maxDailyLossUnit === "USDT" ? 1 : 0.01}
-                    max={cfg.maxDailyLossUnit === "USDT" ? capitalFieldCaps.maxDailyUsdt : 0.2}
+                    min={0}
+                    max={cfg.maxDailyLossUnit === "USDT" ? capitalFieldCaps.maxDailyUsdt : 100}
                     onCommit={async (v) => {
                       try {
-                        const cap = cfg.maxDailyLossUnit === "USDT" ? capitalFieldCaps.maxDailyUsdt : 0.2;
-                        const lo = cfg.maxDailyLossUnit === "USDT" ? 1 : 0.01;
-                        await api.botConfig({ maxDailyLoss: clampNum(v, lo, cap) });
+                        const cap = cfg.maxDailyLossUnit === "USDT" ? capitalFieldCaps.maxDailyUsdt : 100;
+                        await api.botConfig({ maxDailyLoss: clampNum(v, 0, cap) });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set max daily loss" });
                       }
                     }}
                   />
-                  {cfg.maxDailyLossUnit === "USDT" && capitalFieldCaps.showPool && capitalFieldCaps.pool > 0 ? (
-                    <>
-                      <input
-                        type="range"
-                        className="h-2 w-full min-w-0 cursor-pointer accent-emerald-600"
-                        min={1}
-                        max={Math.max(1, Math.floor(capitalFieldCaps.maxDailyUsdt))}
-                        step={1}
-                        value={clampNum(Math.round(cfg.maxDailyLoss), 1, Math.floor(capitalFieldCaps.maxDailyUsdt))}
-                        onChange={(e) => {
-                          const hi = Math.max(1, Math.floor(capitalFieldCaps.maxDailyUsdt));
-                          const v = clampNum(Math.round(Number(e.target.value)), 1, hi);
-                          void api.botConfig({ maxDailyLoss: v }).catch(() => {
-                            pushLog({ level: "error", msg: "Failed to set max daily loss" });
-                          });
-                        }}
-                      />
-                      <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
-                        ≈ {((cfg.maxDailyLoss / capitalFieldCaps.pool) * 100).toFixed(2)}% of allowed pool (
-                        {capitalFieldCaps.pool.toFixed(0)} USDT)
-                      </p>
-                    </>
-                  ) : cfg.maxDailyLossUnit === "PCT" ? (
-                    <>
-                      <input
-                        type="range"
-                        className="h-2 w-full min-w-0 cursor-pointer accent-emerald-600"
-                        min={1}
-                        max={20}
-                        step={1}
-                        value={clampNum(Math.round(cfg.maxDailyLoss * 100), 1, 20)}
-                        onChange={(e) => {
-                          const v = clampNum(Number(e.target.value), 1, 20);
-                          void api.botConfig({ maxDailyLoss: clampNum(v / 100, 0.01, 0.2) }).catch(() => {
-                            pushLog({ level: "error", msg: "Failed to set max daily loss" });
-                          });
-                        }}
-                      />
-                      <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
-                        ≈{" "}
-                        {capitalFieldCaps.showPool && capitalFieldCaps.pool > 0
-                          ? ((cfg.maxDailyLoss * capitalFieldCaps.pool).toFixed(2) + " USDT on allowed pool (rough)")
-                          : capitalAllotmentHeadline.walletFreeMarginTotal > 0
-                            ? (cfg.maxDailyLoss * capitalAllotmentHeadline.walletFreeMarginTotal).toFixed(2) +
-                              " USDT vs free balance (rough)"
-                            : "—"}
-                      </p>
-                    </>
-                  ) : null}
                 </div>
+                {cfg.maxDailyLossUnit === "USDT" && capitalFieldCaps.showSized ? (
+                  <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
+                    0–{capitalFieldCaps.sizedUsableUsdt.toFixed(2)} USDT (total sized usable).{" "}
+                    {cfg.maxDailyLoss > capitalFieldCaps.sizedUsableUsdt * 0.5 ? (
+                      <span className="font-medium text-amber-700 dark:text-amber-300">
+                        Aggressive: daily halt threshold is a large share of usable collateral.
+                      </span>
+                    ) : null}
+                  </p>
+                ) : cfg.maxDailyLossUnit === "PCT" ? (
+                  <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
+                    0–100% drawdown from day-start equity per venue (hybrid: spot and futures).{" "}
+                    {cfg.maxDailyLoss > 40 ? (
+                      <span className="font-medium text-amber-700 dark:text-amber-300">
+                        Unsafe range: halts only after a very large intraday drop.
+                      </span>
+                    ) : null}
+                  </p>
+                ) : null}
               </div>
               <p className="mt-1 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
                 {cfg.maxDailyLossUnit === "USDT" ? (
@@ -3036,7 +3497,7 @@ export function TradingPanel() {
                 ) : (
                   <>
                     Halt when today’s <span className="text-slate-600 dark:text-slate-400">return vs day start</span> falls below{" "}
-                    <span className="text-slate-600 dark:text-slate-400">−(this fraction)</span> on any venue.
+                    <span className="text-slate-600 dark:text-slate-400">−(this %)</span> on any venue (values are 0–100 in the field).
                   </>
                 )}
               </p>

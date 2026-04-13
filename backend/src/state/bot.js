@@ -51,6 +51,35 @@ const SUPERTREND_SIGNAL_STATE_MAX = Math.max(
 );
 const SYM_RE = /^[A-Z0-9]{5,20}$/i;
 
+/**
+ * Trailing uses the lower ST rail for longs and the upper rail for shorts.
+ * `line` flips with trend and is wrong for counter-trend legs (shows opposite side vs stop geometry).
+ */
+function futuresSideIsLongCached(positions, symU) {
+  if (!Array.isArray(positions) || !symU) return null;
+  const u = String(symU).trim().toUpperCase();
+  if (!u) return null;
+  for (const x of positions) {
+    if (String(x?.venue || "").toUpperCase() !== "FUTURES") continue;
+    if (String(x?.symbol || "").trim().toUpperCase() !== u) continue;
+    const q = Math.abs(Number(x?.qty ?? x?.positionAmt ?? 0));
+    if (!Number.isFinite(q) || q <= 1e-8) continue;
+    return String(x?.side || "").toUpperCase() === "BUY";
+  }
+  return null;
+}
+
+function supertrendTrailPxPickFromStRow(row, isLong) {
+  if (!row || typeof row !== "object") return null;
+  const up = Number(row.up);
+  const dn = Number(row.dn);
+  const line = Number(row.line);
+  if (isLong === true && Number.isFinite(up) && up > 0) return up;
+  if (isLong === false && Number.isFinite(dn) && dn > 0) return dn;
+  if (Number.isFinite(line) && line > 0) return line;
+  return null;
+}
+
 function activityStopMsg(reason) {
   const r = String(reason || "user_request");
   const labels = {
@@ -163,16 +192,20 @@ function normalizeRiskLimits(s) {
   const ru = String(s.riskPerTradeUnit || "PCT").toUpperCase() === "USDT" ? "USDT" : "PCT";
   s.riskPerTradeUnit = ru;
   if (ru === "USDT") {
-    s.riskPerTrade = clamp(Number(s.riskPerTrade), 1, 10_000_000);
+    s.riskPerTrade = clamp(Number(s.riskPerTrade), 0, 10_000_000);
   } else {
-    s.riskPerTrade = clamp(Number(s.riskPerTrade), 0.001, 0.05);
+    let rp = Number(s.riskPerTrade);
+    if (Number.isFinite(rp) && rp > 0 && rp <= 0.051) rp *= 100;
+    s.riskPerTrade = clamp(rp, 0, 100);
   }
   const lu = String(s.maxDailyLossUnit || "PCT").toUpperCase() === "USDT" ? "USDT" : "PCT";
   s.maxDailyLossUnit = lu;
   if (lu === "USDT") {
-    s.maxDailyLoss = clamp(Number(s.maxDailyLoss), 1, 10_000_000);
+    s.maxDailyLoss = clamp(Number(s.maxDailyLoss), 0, 10_000_000);
   } else {
-    s.maxDailyLoss = clamp(Number(s.maxDailyLoss), 0.01, 0.2);
+    let md = Number(s.maxDailyLoss);
+    if (Number.isFinite(md) && md > 0 && md <= 0.25) md *= 100;
+    s.maxDailyLoss = clamp(md, 0, 100);
   }
 }
 
@@ -210,6 +243,53 @@ function sumOpenMarginUsedUsdt(positions, marketMode) {
     if (mm === "FUTURES" && ven !== "FUTURES") continue;
     if (mm === "AUTO" && ven && ven !== "SPOT" && ven !== "FUTURES") continue;
     sum += positionMarginUsedUsdt(p);
+  }
+  return sum;
+}
+
+function sumMarginUsedForSymbolUsdt(positions, marketMode, symbol) {
+  const mm = String(marketMode || "AUTO").toUpperCase();
+  const sym = String(symbol || "").trim().toUpperCase();
+  const rows = Array.isArray(positions) ? positions : [];
+  let sum = 0;
+  for (const p of rows) {
+    const ps = String(p?.symbol || "").trim().toUpperCase();
+    if (ps !== sym) continue;
+    const ven = String(p?.venue || "").toUpperCase();
+    if (mm === "SPOT" && ven !== "SPOT") continue;
+    if (mm === "FUTURES" && ven !== "FUTURES") continue;
+    if (mm === "AUTO" && ven && ven !== "SPOT" && ven !== "FUTURES") continue;
+    sum += positionMarginUsedUsdt(p);
+  }
+  return sum;
+}
+
+/** USD-M quote notional (USDT) for open futures legs — used when capital allotment is expressed as max notional, not margin. */
+function futuresPositionNotionalUsdt(p) {
+  const qty = Math.abs(Number(p?.qty ?? p?.positionAmt ?? 0));
+  if (!(qty > 0)) return 0;
+  const px = Number(p?.markPrice ?? p?.mark ?? p?.entryPrice ?? 0);
+  return Number.isFinite(px) && px > 0 ? qty * px : 0;
+}
+
+function sumOpenFuturesNotionalUsdt(positions) {
+  const rows = Array.isArray(positions) ? positions : [];
+  let sum = 0;
+  for (const p of rows) {
+    if (String(p?.venue || "").toUpperCase() !== "FUTURES") continue;
+    sum += futuresPositionNotionalUsdt(p);
+  }
+  return sum;
+}
+
+function sumFuturesNotionalForSymbolUsdt(positions, symbol) {
+  const sym = String(symbol || "").trim().toUpperCase();
+  const rows = Array.isArray(positions) ? positions : [];
+  let sum = 0;
+  for (const p of rows) {
+    if (String(p?.symbol || "").trim().toUpperCase() !== sym) continue;
+    if (String(p?.venue || "").toUpperCase() !== "FUTURES") continue;
+    sum += futuresPositionNotionalUsdt(p);
   }
   return sum;
 }
@@ -325,15 +405,18 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
      */
     capitalSplitAcrossCoins: false,
     /**
-     * Pool cap for strategy (USDT). When 0, UI/back-end treat allowed as `riskPerTrade` for fixed-USDT sizing.
+     * Pool cap for strategy (USDT). Fixed-USDT sizing uses **only** this value (after wallet clamp) as the allotment pool;
+     * there is no fallback to `riskPerTrade`. Set a positive value before relying on autotrade size.
      * `allowedBudgetWalletPct` + `allowedBudgetInputMode` are UI hints for syncing this from wallet equity.
      */
     allowedBudgetUsdt: 0,
     allowedBudgetWalletPct: 0,
     allowedBudgetInputMode: "USDT", // USDT | WALLET_PCT
-    /** MULTIPLE + fixed USDT: size opens from % of (allowed − open notional) instead of raw `riskPerTrade`. */
+    /** MULTIPLE + fixed USDT: size opens from % of (allowed − open notional); pool is `allowedBudgetUsdt` only. */
     multiTradeUsePctOfUsable: false,
     multiTradePctOfUsable: 100,
+    /** When false, per-trade USDT cap (`riskPerTrade`) is ignored for sizing (still venue-limited). */
+    perTradeBudgetCapEnabled: true,
     /**
      * MULTIPLE capital split: FULL = full pool per active symbol; EQUAL = divide pool across ranked/pins list;
      * CUSTOM_USDT / CUSTOM_PCT_ALLOWED = per-symbol maps (`multiBudgetCoinUsdt` / `multiBudgetCoinPct`).
@@ -588,8 +671,51 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   }
 
   /**
-   * USDT per-trade sizing for `riskPlan`: pool cap (`allowedBudgetUsdt` vs wallet), open margin (`usable`),
-   * per-order ceiling (`riskPerTrade`), and MULTIPLE split mode (FULL / EQUAL / custom maps).
+   * Same leverage rule as live orders (MANUAL vs AUTO) — used to turn USD-M **notional** allotment into initial margin for `riskPlan`.
+   * Declared before `decideFuturesLeverage` (later in file); keep in sync with that function + `futuresLeverageMode`.
+   */
+  function futuresLeverageForSizingResolve() {
+    if (String(state.futuresLeverageMode || "").toUpperCase() === "MANUAL") {
+      return clamp(Number(state.futuresLeverage) || 1, 1, 100);
+    }
+    const p = clamp(Number(state.lastAi?.gateProbability ?? state.lastAi?.probability ?? 0.5), 0, 1);
+    const a = Math.max(0, Number(state.lastRegime?.atrPct || 0));
+    const reg = String(state.lastRegime?.type || "").toUpperCase();
+    const volatile = reg.includes("VOLAT") || a >= 0.012;
+    let lev =
+      p >= 0.85 ? 15 :
+      p >= 0.78 ? 10 :
+      p >= 0.7 ? 7 :
+      p >= 0.62 ? 5 :
+      p >= 0.55 ? 3 : 2;
+    if (volatile) lev = Math.max(2, Math.floor(lev * 0.6));
+    return clamp(lev, 1, 5);
+  }
+
+  /**
+   * USD-M futures: `allowedBudgetUsdt` is **max quote notional** (USDT) for the strategy pool, not initial margin.
+   * Open legs consume **notional**; lane margin = laneNotional / leverage → `riskPlan` notional ≈ laneNotional.
+   * Spot / mixed: pool stays **margin / quote** as before.
+   */
+  function useFuturesNotionalAllotment(orderSymbol, positions) {
+    const mm = String(state.marketMode || "AUTO").toUpperCase();
+    if (mm === "SPOT") return false;
+    if (mm === "FUTURES") return true;
+    const sym = String(orderSymbol || "").trim().toUpperCase();
+    const rows = Array.isArray(positions) ? positions : [];
+    for (const p of rows) {
+      if (String(p?.symbol || "").toUpperCase() !== sym) continue;
+      return String(p?.venue || "").toUpperCase() === "FUTURES";
+    }
+    return sym === String(state.symbol || "").toUpperCase();
+  }
+
+  /**
+   * USDT **initial margin** per trade for `riskPlan` (futures): pool from **`allowedBudgetUsdt` only** (capital allotment),
+   * capped by wallet (free margin × leverage for USD-M notional cap, or free margin for spot-style pool),
+   * minus open usage, then optional per-trade cap and MULTIPLE split.
+   * There is **no** fallback to `riskPerTrade` for the pool — if `allowedBudgetUsdt` is unset or zero after clamp, usable is zero.
+   * `riskPerTrade` is only used when `perTradeBudgetCapEnabled` as an upper bound on each lane (margin USDT).
    * When `riskPerTradeUnit` is not USDT, returns raw `riskPerTrade` (PCT path).
    */
   function resolveFixedUsdtRiskForOrder(orderSymbol, positions) {
@@ -597,27 +723,60 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       return { riskPerTrade: state.riskPerTrade, fixedUsdtSplitDivisor: 1 };
     }
 
-    const perTradeCap = Math.max(1e-9, Number(state.riskPerTrade) || 0);
+    const capEnabled = state.perTradeBudgetCapEnabled !== false;
+    const rawCap = Number(state.riskPerTrade) || 0;
+    const perTradeCapUsdt = capEnabled ? Math.max(0, rawCap) : 1e15;
+
     const walletCap = walletFreeMarginUsdtForAllowedCap(_cachedAccount, state.marketMode);
     const allowedRaw = Number(state.allowedBudgetUsdt);
-    let allowed = Number.isFinite(allowedRaw) && allowedRaw > 0 ? allowedRaw : perTradeCap;
-    if (walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
+    let allowed = Number.isFinite(allowedRaw) && allowedRaw > 0 ? allowedRaw : 0;
+
+    const useFutNotional = useFuturesNotionalAllotment(orderSymbol, positions);
+    const levSizing = useFutNotional ? futuresLeverageForSizingResolve() : 1;
+
+    if (useFutNotional) {
+      if (walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
+        const maxNotionalFromWallet = walletCap * levSizing;
+        allowed = Math.min(allowed, maxNotionalFromWallet);
+      }
+    } else if (walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
       allowed = Math.min(allowed, walletCap);
     }
-    const invested = sumOpenMarginUsedUsdt(positions, state.marketMode);
-    const usable = Math.max(0, allowed - invested);
+
+    const invested = useFutNotional
+      ? sumOpenFuturesNotionalUsdt(positions)
+      : sumOpenMarginUsedUsdt(positions, state.marketMode);
+    const totalUsable = Math.max(0, allowed - invested);
     const usePct = state.multiTradeUsePctOfUsable === true;
     const p = clamp(Number(state.multiTradePctOfUsable ?? 100), 0, 100);
-    const rawPool = usePct ? (usable * p) / 100 : usable;
-    const basePool =
-      Number.isFinite(rawPool) && rawPool > 0 ? rawPool : Math.max(0, Number(state.riskPerTrade) || 0);
+    const sizedUsable = usePct ? (totalUsable * p) / 100 : totalUsable;
+    const basePool = Number.isFinite(sizedUsable) && sizedUsable > 0 ? sizedUsable : 0;
+
+    const mm = state.marketMode;
+    const marSym = useFutNotional
+      ? (s) => sumFuturesNotionalForSymbolUsdt(positions, s)
+      : (s) => sumMarginUsedForSymbolUsdt(positions, mm, s);
+    const sym = String(orderSymbol || "").trim().toUpperCase();
+
+    const cappedLane = (laneRawMargin) => {
+      const x = Math.max(0, laneRawMargin);
+      return capEnabled ? Math.min(perTradeCapUsdt, x) : x;
+    };
+
+    const laneMarginFromUnits = (coinU, basePoolUnits) => {
+      if (useFutNotional) {
+        const poolMargin = Math.max(0, basePoolUnits) / levSizing;
+        return Math.min(cappedLane(Math.max(0, coinU) / levSizing), poolMargin);
+      }
+      return Math.min(cappedLane(Math.max(0, coinU)), Math.max(0, basePoolUnits));
+    };
 
     if (String(state.universeCoinSelectMode || "").toUpperCase() !== "MULTIPLE") {
-      const lane = Math.min(perTradeCap, Math.max(0, basePool));
-      return { riskPerTrade: Math.max(1, lane), fixedUsdtSplitDivisor: 1 };
+      const coinU = Math.max(0, sizedUsable - marSym(sym));
+      const lane = laneMarginFromUnits(coinU, basePool);
+      return { riskPerTrade: lane, fixedUsdtSplitDivisor: 1 };
     }
 
-    const sym = String(orderSymbol || "").trim().toUpperCase();
     const mode = derivedMultiBudgetSplitMode();
     const list = symbolsForMultiBudgetList();
     const nDiv = Math.max(1, list.length);
@@ -625,28 +784,60 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     if (mode === "CUSTOM_USDT") {
       const m = state.multiBudgetCoinUsdt && typeof state.multiBudgetCoinUsdt === "object" ? state.multiBudgetCoinUsdt : {};
       const v = Number(m[sym]);
-      const raw = Number.isFinite(v) && v >= 1 ? v : perTradeCap;
-      const lane = Math.min(perTradeCap, raw, Math.max(0, basePool));
-      return { riskPerTrade: Math.max(1, lane), fixedUsdtSplitDivisor: 1 };
+      const allocated = Number.isFinite(v) && v >= 0 ? v : 0;
+      const coinU = Math.max(0, allocated - marSym(sym));
+      const lane = laneMarginFromUnits(coinU, basePool);
+      return { riskPerTrade: lane, fixedUsdtSplitDivisor: 1 };
     }
     if (mode === "CUSTOM_PCT_ALLOWED") {
       const m = state.multiBudgetCoinPct && typeof state.multiBudgetCoinPct === "object" ? state.multiBudgetCoinPct : {};
       const pc = Number(m[sym]);
-      if (Number.isFinite(pc) && pc > 0) {
-        const slice = allowed * (clamp(pc, 0, 100) / 100);
-        const lane = Math.min(perTradeCap, slice, Math.max(0, basePool));
-        return { riskPerTrade: Math.max(1, lane), fixedUsdtSplitDivisor: 1 };
-      }
+      const slice =
+        Number.isFinite(pc) && pc >= 0 ? allowed * (clamp(pc, 0, 100) / 100) : 0;
+      const coinU = Math.max(0, slice - marSym(sym));
+      const lane = laneMarginFromUnits(coinU, basePool);
+      return { riskPerTrade: lane, fixedUsdtSplitDivisor: 1 };
     }
 
     if (mode === "EQUAL") {
-      const slotBudget = Math.max(0, basePool) / nDiv;
-      const perSlot = Math.min(perTradeCap, slotBudget);
-      return { riskPerTrade: Math.max(1, perSlot * nDiv), fixedUsdtSplitDivisor: nDiv };
+      const equalSlot = nDiv > 0 ? sizedUsable / nDiv : 0;
+      const coinU = Math.max(0, equalSlot - marSym(sym));
+      if (useFutNotional) {
+        const perSlotMargin = Math.min(cappedLane(coinU / levSizing), equalSlot / levSizing);
+        return { riskPerTrade: Math.max(0, perSlotMargin * nDiv), fixedUsdtSplitDivisor: nDiv };
+      }
+      const perSlot = Math.min(cappedLane(coinU), equalSlot);
+      return { riskPerTrade: Math.max(0, perSlot * nDiv), fixedUsdtSplitDivisor: nDiv };
     }
 
-    const lane = Math.min(perTradeCap, Math.max(0, basePool));
-    return { riskPerTrade: Math.max(1, lane), fixedUsdtSplitDivisor: 1 };
+    const coinU = Math.max(0, sizedUsable - marSym(sym));
+    const lane = laneMarginFromUnits(coinU, basePool);
+    return { riskPerTrade: lane, fixedUsdtSplitDivisor: 1 };
+  }
+
+  /** Allowed USDT pool for PCT sizing when not in fixed-USDT mode (matches UI capital allotment). */
+  function effectivePolicyAllowedPoolUsdt() {
+    if (isFixedUsdtCapitalMode()) return 0;
+    const walletCap = walletFreeMarginUsdtForAllowedCap(_cachedAccount, state.marketMode);
+    const raw = Number(state.allowedBudgetUsdt);
+    let poolNominal = Number.isFinite(raw) && raw > 0 ? raw : 0;
+    if (!(poolNominal > 0) && String(state.riskPerTradeUnit || "").toUpperCase() === "USDT") {
+      poolNominal = Math.max(0, Number(state.riskPerTrade) || 0);
+    }
+    if (!(poolNominal > 0) && walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
+      const wpct = clamp(Number(state.allowedBudgetWalletPct || 0), 0.5, 100);
+      if (wpct > 0) poolNominal = Math.max(1, Math.round((walletCap * wpct) / 100));
+    }
+    if (!Number.isFinite(poolNominal) || poolNominal <= 0) return 0;
+    if (walletCap != null && Number.isFinite(walletCap) && walletCap > 0) {
+      return Math.min(poolNominal, walletCap);
+    }
+    return poolNominal;
+  }
+
+  function pctPolicyCapForRiskPlan() {
+    const p = effectivePolicyAllowedPoolUsdt();
+    return p > 0 ? p : null;
   }
 
   function persistTradingConfigToDisk() {
@@ -676,6 +867,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           allowedBudgetInputMode: state.allowedBudgetInputMode === "WALLET_PCT" ? "WALLET_PCT" : "USDT",
           multiTradeUsePctOfUsable: Boolean(state.multiTradeUsePctOfUsable),
           multiTradePctOfUsable: clamp(Number(state.multiTradePctOfUsable ?? 100), 0, 100),
+          perTradeBudgetCapEnabled: Boolean(state.perTradeBudgetCapEnabled !== false),
           multiBudgetSplitMode:
             state.multiBudgetSplitMode === "FULL" ||
             state.multiBudgetSplitMode === "EQUAL" ||
@@ -811,6 +1003,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       if (b.multiTradePctOfUsable != null && Number.isFinite(Number(b.multiTradePctOfUsable))) {
         state.multiTradePctOfUsable = clamp(Number(b.multiTradePctOfUsable), 0, 100);
       }
+      if (typeof b.perTradeBudgetCapEnabled === "boolean") state.perTradeBudgetCapEnabled = b.perTradeBudgetCapEnabled;
       if (
         b.multiBudgetSplitMode === "FULL" ||
         b.multiBudgetSplitMode === "EQUAL" ||
@@ -1572,6 +1765,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         riskPerTradeUnit: state.riskPerTradeUnit,
         fixedUsdtCapitalSizing: isFixedUsdtCapitalMode(),
         fixedUsdtSplitDivisor: rpSpot.fixedUsdtSplitDivisor,
+        pctPolicyCapUsdt: pctPolicyCapForRiskPlan(),
         atr: indicators.latest?.atr_14,
         futuresLeverage: undefined,
         stats: state.stats[strategyKey],
@@ -1722,6 +1916,30 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       log.warn("supertrend_order_failed", { error: String(e?.message || e), side, symbol: orderSymbol });
       return { venue: "SPOT", side, action: "error", reason: String(e?.message || e) };
     }
+  }
+
+  /** symbol → { ts, min } — exchange MIN_NOTIONAL (quote USDT) for USD-M. */
+  const futuresMinNotionalCache = new Map();
+
+  async function getFuturesMinNotionalCached(symU) {
+    const k = String(symU || "").toUpperCase();
+    if (!k) return 5;
+    const now = Date.now();
+    const prev = futuresMinNotionalCache.get(k);
+    if (prev && now - prev.ts < 3_600_000) return prev.min;
+    let min = 5;
+    try {
+      if (typeof exch?.getSymbolOrderConstraints === "function") {
+        const c = await exch.getSymbolOrderConstraints({ symbol: k, venue: "FUTURES" });
+        if (c && c.minNotional != null && Number.isFinite(Number(c.minNotional)) && Number(c.minNotional) > 0) {
+          min = Number(c.minNotional);
+        }
+      }
+    } catch {
+      /* keep default */
+    }
+    futuresMinNotionalCache.set(k, { ts: now, min });
+    return min;
   }
 
   /**
@@ -2124,6 +2342,31 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           });
 
     const rpFut = resolveFixedUsdtRiskForOrder(orderSymbol, positions);
+    if (isFixedUsdtCapitalMode()) {
+      const splitDiv = Math.max(1, Math.floor(Number(rpFut.fixedUsdtSplitDivisor) || 1));
+      const marginBase = Number(rpFut.riskPerTrade) / splitDiv;
+      const estOpenNotional = marginBase * lev;
+      try {
+        const minN = await getFuturesMinNotionalCached(orderSymbol);
+        if (Number.isFinite(minN) && minN > 0 && estOpenNotional + 1e-9 < minN) {
+          wsHub?.broadcast?.("log", {
+            level: "info",
+            msg: `Supertrend futures ${openingSide} skipped: open notional ~${estOpenNotional.toFixed(2)} USDT < exchange min ${minN} USDT (capital allotment slice for ${orderSymbol})`,
+            symbol: orderSymbol,
+          });
+          return {
+            venue: "FUTURES",
+            side,
+            action: "skipped",
+            reason: "below_min_notional",
+            estOpenNotional,
+            minNotional: minN,
+          };
+        }
+      } catch (e) {
+        log?.warn?.("futures_min_notional_lookup_failed", { symbol: orderSymbol, error: String(e?.message || e) });
+      }
+    }
     const plan = await riskPlan({
       exchange: futuresEx,
       side: openingSide,
@@ -2133,6 +2376,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       riskPerTradeUnit: state.riskPerTradeUnit,
       fixedUsdtCapitalSizing: isFixedUsdtCapitalMode(),
       fixedUsdtSplitDivisor: rpFut.fixedUsdtSplitDivisor,
+      pctPolicyCapUsdt: pctPolicyCapForRiskPlan(),
       atr: indicators.latest?.atr_14,
       futuresLeverage: lev,
       stats: state.stats[strategyKey],
@@ -2176,8 +2420,13 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       const riskUsd = Number(plan.riskUsd);
       if (perUnitRisk > 0 && riskUsd > 0) {
         qty = roundTo(riskUsd / perUnitRisk, 6);
-        const buyingPower = Number(plan.tradableBalance) * lev;
-        const maxNotional = buyingPower * 0.9;
+        const walletBp = Number(plan.tradableBalance) * lev;
+        const usdtUnit = String(state.riskPerTradeUnit || "").toUpperCase() === "USDT";
+        const allotmentBp =
+          usdtUnit && Number.isFinite(lev) && lev > 0 && Number(rpFut.riskPerTrade) > 0
+            ? Math.max(0, Number(rpFut.riskPerTrade)) * lev
+            : walletBp;
+        const maxNotional = Math.min(walletBp, allotmentBp) * 0.9;
         const notional = qty * pxEntry;
         if (notional > maxNotional && pxEntry > 0) qty = roundTo(maxNotional / pxEntry, 6);
       }
@@ -2719,6 +2968,42 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       const closedRaw = rows.length >= 2 ? rows.slice(0, -1) : rows;
       const ev = evaluateSupertrendLastClosedBar(closedRaw, symU);
       if (!ev || !ev.allowBuy) continue;
+      if (
+        isFixedUsdtCapitalMode() &&
+        String(state.universeCoinSelectMode || "").toUpperCase() === "MULTIPLE" &&
+        String(state.marketMode || "AUTO").toUpperCase() !== "SPOT"
+      ) {
+        const mm = String(state.marketMode || "AUTO").toUpperCase();
+        const futPath = mm === "FUTURES" || (mm === "AUTO" && state.supertrendFuturesAuto);
+        if (futPath) {
+          let pos = _cachedPositions || [];
+          try {
+            pos = await exch.getPositions();
+            _cachedPositions = pos;
+          } catch {
+            /* use cache */
+          }
+          const rp = resolveFixedUsdtRiskForOrder(symU, pos);
+          const levPick =
+            String(state.futuresLeverageMode || "").toUpperCase() === "MANUAL"
+              ? clamp(Number(state.futuresLeverage), 1, 100)
+              : decideFuturesLeverage({
+                  prob: 0.75,
+                  atrPct: state.lastRegime?.atrPct,
+                  regime: state.lastRegime?.type || "RANGE",
+                });
+          const splitDiv = Math.max(1, Math.floor(Number(rp.fixedUsdtSplitDivisor) || 1));
+          const est = (Number(rp.riskPerTrade) / splitDiv) * levPick;
+          try {
+            const minN = await getFuturesMinNotionalCached(symU);
+            if (Number.isFinite(minN) && minN > 0 && est + 1e-9 < minN) {
+              continue;
+            }
+          } catch {
+            /* allow pick if lookup fails */
+          }
+        }
+      }
       return symU;
     }
     return null;
@@ -3665,12 +3950,24 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   let _lastStrictAccountWarnAt = 0;
   const ACCOUNT_FETCH_INTERVAL_MS = Number(process.env.ACCOUNT_FETCH_INTERVAL_MS || 5000);
 
-  /** Persisted `allowedBudgetUsdt` (margin budget) must not exceed free margin (not leveraged buying power). */
+  /**
+   * Persisted `allowedBudgetUsdt` must not exceed what the wallet can support.
+   * USD-M: allotment is **quote notional**; max ≈ free margin × leverage (same bound as `resolveFixedUsdtRiskForOrder`).
+   * Spot-style: still **margin / quote** vs free balance.
+   */
   function clampAllowedBudgetToFreeMargin() {
     const cap = walletFreeMarginUsdtForAllowedCap(_cachedAccount, state.marketMode);
     if (cap == null || !Number.isFinite(cap) || cap <= 0) return;
     const ab = Number(state.allowedBudgetUsdt);
-    if (Number.isFinite(ab) && ab > cap) state.allowedBudgetUsdt = roundTo(cap, 6);
+    if (!Number.isFinite(ab) || ab <= 0) return;
+    const mm = String(state.marketMode || "AUTO").toUpperCase();
+    if (mm === "FUTURES" || mm === "AUTO") {
+      const lev = futuresLeverageForSizingResolve();
+      const maxNotional = cap * lev;
+      if (ab > maxNotional) state.allowedBudgetUsdt = roundTo(maxNotional, 6);
+      return;
+    }
+    if (ab > cap) state.allowedBudgetUsdt = roundTo(cap, 6);
   }
 
   function pickVenueExchange({ side, prob, regime, atrPct }) {
@@ -3752,7 +4049,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         dailyPnlUsdByVenue: null,
         dailyPnlPctWorst: pct,
         dailyPnlUsdWorst: null,
-        exceeded: pct <= -limit,
+        exceeded: pct <= -limit / 100,
       };
     }
 
@@ -3793,7 +4090,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         return Number(start) >= MIN_START && Number.isFinite(usd) && usd <= -limit;
       });
     } else {
-      const threshold = -limit;
+      /** `maxDailyLoss` is 0–100 (percent points); venue returns are fractional (e.g. -0.05 = -5%). */
+      const threshold = -limit / 100;
       exceeded = ["spot", "futures"].some((k) => {
         const p = dailyPnlPctByVenue[k];
         if (p == null || !Number.isFinite(p)) return false;
@@ -4252,6 +4550,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       allowedBudgetInputMode: state.allowedBudgetInputMode === "WALLET_PCT" ? "WALLET_PCT" : "USDT",
       multiTradeUsePctOfUsable: Boolean(state.multiTradeUsePctOfUsable),
       multiTradePctOfUsable: clamp(Number(state.multiTradePctOfUsable ?? 100), 0, 100),
+      perTradeBudgetCapEnabled: Boolean(state.perTradeBudgetCapEnabled !== false),
       multiBudgetSplitMode:
         state.multiBudgetSplitMode === "FULL" ||
         state.multiBudgetSplitMode === "EQUAL" ||
@@ -4746,15 +5045,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       const extraTrailPcts = normalizeTrailingExtraPcts(state.trailingStopExtraScalpingPcts);
       const trailMode = normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode);
       let supertrendTrailPx = null;
-      if (state.running && state.trailingStopLossAuto && trailMode === "SUPERTREND") {
+      if (state.trailingStopLossAuto && trailMode === "SUPERTREND") {
         try {
           const chartCandlesForTrail = sanitizeCandlesForSt(getChartCandles({ hours: 48 }), state.symbol);
           const stTrail = computeSupertrendChartModel(chartCandlesForTrail, {
             withChartArrays: false,
             symbol: state.symbol,
           });
-          const ln = stTrail.lastRow?.line;
-          if (ln != null && Number.isFinite(Number(ln))) supertrendTrailPx = Number(ln);
+          const symTrailU = String(state.symbol || "").toUpperCase();
+          const ilPri = futuresSideIsLongCached(_cachedPositions, symTrailU);
+          supertrendTrailPx = supertrendTrailPxPickFromStRow(stTrail.lastRow, ilPri);
         } catch {
           supertrendTrailPx = null;
         }
@@ -4762,21 +5062,65 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       const trailBuf = Number(process.env.SUPERTREND_TRAIL_BUFFER_RATE ?? 0.0005);
       const trailMm = Number(process.env.SUPERTREND_TRAIL_MAINTENANCE_MARGIN_RATE ?? 0.005);
       const trailMinSlFrac = Number(process.env.SUPERTREND_TRAIL_MIN_SL_DISTANCE_FRAC ?? 0.002);
-      const trailingStopLoss =
-        state.running && state.trailingStopLossAuto
-          ? {
-              enabled: true,
-              mode: trailMode,
-              feeRate: tradeCloseFeeRate(),
-              extraScalpingPcts: extraTrailPcts,
-              maxTrailSteps: maxTrailStepsForConfig(extraTrailPcts),
-              supertrendPx: supertrendTrailPx,
-              bufferRate: trailBuf,
-              maintenanceMarginRate: trailMm,
-              minSlDistanceFrac: trailMinSlFrac,
+      /** Per-symbol last ST line for USD-M trailing when multiple futures legs are open (not only `state.symbol`). */
+      const supertrendBySymbol = {};
+      if (state.trailingStopLossAuto && trailMode === "SUPERTREND" && Array.isArray(_cachedPositions)) {
+        const trailSyms = [
+          ...new Set(
+            _cachedPositions
+              .filter(
+                (p) =>
+                  String(p?.venue || "").toUpperCase() === "FUTURES" &&
+                  p?.meta?.autoTradeTrailing === true &&
+                  String(p?.symbol || "").trim(),
+              )
+              .map((p) => String(p.symbol).toUpperCase()),
+          ),
+        ];
+        const primaryU = String(state.symbol || "").toUpperCase();
+        for (const s of trailSyms) {
+          if (s === primaryU) {
+            if (supertrendTrailPx != null && Number.isFinite(supertrendTrailPx) && supertrendTrailPx > 0) {
+              supertrendBySymbol[s] = supertrendTrailPx;
             }
-          : null;
+          } else {
+            try {
+              const snap = await getChartSnapshotForSymbol(s, { hours: 48 });
+              const rowS = snap?.supertrend;
+              const ilS = futuresSideIsLongCached(_cachedPositions, s);
+              const v = supertrendTrailPxPickFromStRow(rowS, ilS);
+              if (v != null && Number.isFinite(Number(v)) && Number(v) > 0) supertrendBySymbol[s] = Number(v);
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+        if (
+          primaryU &&
+          supertrendTrailPx != null &&
+          Number.isFinite(supertrendTrailPx) &&
+          supertrendTrailPx > 0 &&
+          supertrendBySymbol[primaryU] == null
+        ) {
+          supertrendBySymbol[primaryU] = supertrendTrailPx;
+        }
+      }
+      const trailingStopLoss = state.trailingStopLossAuto
+        ? {
+            enabled: true,
+            mode: trailMode,
+            feeRate: tradeCloseFeeRate(),
+            extraScalpingPcts: extraTrailPcts,
+            maxTrailSteps: maxTrailStepsForConfig(extraTrailPcts),
+            supertrendPx: supertrendTrailPx,
+            supertrendBySymbol: Object.keys(supertrendBySymbol).length ? supertrendBySymbol : undefined,
+            bufferRate: trailBuf,
+            maintenanceMarginRate: trailMm,
+            minSlDistanceFrac: trailMinSlFrac,
+          }
+        : null;
       const onTrailingSlAdvance = (evt) => {
+        _lastAccountFetchAt = 0;
         const prev = Number(evt.prevStopLoss);
         const next = Number(evt.newStopLoss);
         const ps = Number.isFinite(prev) ? prev.toFixed(6) : String(evt.prevStopLoss);
@@ -5608,6 +5952,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       riskPerTradeUnit: state.riskPerTradeUnit,
       fixedUsdtCapitalSizing: isFixedUsdtCapitalMode(),
       fixedUsdtSplitDivisor: rpTick.fixedUsdtSplitDivisor,
+      pctPolicyCapUsdt: pctPolicyCapForRiskPlan(),
       atr: indicators.latest.atr_14,
       futuresLeverage: futuresLeverage ?? undefined,
       stats: state.stats[strategyKey],
@@ -6069,6 +6414,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     if (patch.multiTradePctOfUsable != null && Number.isFinite(Number(patch.multiTradePctOfUsable))) {
       state.multiTradePctOfUsable = clamp(Number(patch.multiTradePctOfUsable), 0, 100);
     }
+    if (patch.perTradeBudgetCapEnabled != null) state.perTradeBudgetCapEnabled = Boolean(patch.perTradeBudgetCapEnabled);
     if (patch.multiBudgetCoinUsdt != null && typeof patch.multiBudgetCoinUsdt === "object") {
       state.multiBudgetCoinUsdt = { ...state.multiBudgetCoinUsdt, ...patch.multiBudgetCoinUsdt };
     }

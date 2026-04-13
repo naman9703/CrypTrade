@@ -46,15 +46,23 @@ export async function riskPlan({
   confidence,
   riskPerTrade,
   /**
-   * `"PCT"` = `riskPerTrade` is fraction of balance (0.001–0.05); qty sized so ~that fraction is at risk at the stop.
-   * `"USDT"` = target **investing capital** per trade: quote notional (before tiers), capped by ~90% buying power;
+   * `"PCT"` = `riskPerTrade` is fraction of capital at stop (0.001–0.05), by default vs exchange free balance; when
+   * `pctPolicyCapUsdt` is set, vs `min(free balance, that cap)` so sizing matches configured allowed pool.
+   * `"USDT"` = target quote **notional** per trade on **spot** (before tiers), capped by ~90% wallet buying power.
+   * **Futures USD-M** (when `futuresLeverage` is passed): `riskPerTrade` is **initial margin USDT** (collateral
+   * before leverage); quote notional ≈ margin × `futuresLeverage`, then capped by ~90% wallet buying power.
    * SL/TP still ATR-based; returned `riskUsd` is implied USD at stop for the final qty.
-   * When `fixedUsdtCapitalSizing` is true (Risk/trade + max daily loss both USDT), notional = `riskPerTrade` × 1 with no AI/Kelly tiering.
+   * When `fixedUsdtCapitalSizing` is true (Risk/trade + max daily loss both USDT), tier multiplier is 1 (no Kelly on size).
    */
   riskPerTradeUnit = "PCT",
   fixedUsdtCapitalSizing = false,
   /** When fixed USDT sizing: divide `riskPerTrade` by this (e.g. pinned coin count) before notional cap. */
   fixedUsdtSplitDivisor = 1,
+  /**
+   * When `riskPerTradeUnit` is PCT: optional cap (USDT) on the balance used for %‑of‑capital at stop — typically
+   * `allowedBudgetUsdt` (clamped to wallet once). Exchange still caps by real buying power below.
+   */
+  pctPolicyCapUsdt = null,
   atr,
   futuresLeverage,
   stats,
@@ -69,11 +77,22 @@ export async function riskPlan({
 
   const conf = clamp(Number(confidence ?? 0.5), 0, 1);
   const isUsdtRisk = String(riskPerTradeUnit || "PCT").toUpperCase() === "USDT";
-  const riskInput = Number(riskPerTrade ?? (isUsdtRisk ? 100 : 0.01));
-  /** Implied balance fraction for Kelly scaling (USDT path: target notional ÷ balance). */
+  const riskInput = Number(riskPerTrade ?? (isUsdtRisk ? 100 : 1));
+  const policyCap = Number(pctPolicyCapUsdt);
+  const pctBalanceBase =
+    !isUsdtRisk && Number.isFinite(policyCap) && policyCap > 0
+      ? Math.min(tradableBalance, policyCap)
+      : tradableBalance;
+  /**
+   * USDT sizing: Kelly tiers compare risk vs **capital allotment** when `pctPolicyCapUsdt` is set (same pool as UI),
+   * not full wallet free balance.
+   */
+  const usdtKellyBase =
+    Number.isFinite(policyCap) && policyCap > 0 ? Math.min(tradableBalance, policyCap) : tradableBalance;
+  /** Implied balance fraction for Kelly scaling (USDT path: target margin ÷ allowed pool). */
   const basePctForKelly = isUsdtRisk
-    ? clamp(riskInput / Math.max(tradableBalance, 1e-9), 0.00001, 0.5)
-    : clamp(riskInput, 0.001, 0.05);
+    ? clamp(riskInput / Math.max(usdtKellyBase, 1e-9), 0.00001, 0.5)
+    : clamp(clamp(riskInput, 0, 100) / 100, 0, 1);
 
   let tierMult = 1.0;
   let sizingMethod = "tier";
@@ -132,22 +151,35 @@ export async function riskPlan({
   const lev = Number.isFinite(levHint) && levHint > 0
     ? clamp(levHint, 1, 100)
     : clamp(Number(account.leverage ?? 1), 1, 100);
-  const buyingPower = tradableBalance * (Number.isFinite(lev) ? lev : 1);
+  /** Wallet cap on quote notional (USDT-M: free margin × leverage). */
+  const walletBuyingPower = tradableBalance * (Number.isFinite(lev) ? lev : 1);
+  /**
+   * When `futuresLeverage` is supplied, `riskPerTrade` / `riskBase` are **initial margin USDT** from the
+   * capital-allotment path (not quote notional). Linear futures: notional ≈ margin × leverage.
+   * Spot / non-futures: `futuresLeverage` is omitted → treat `riskBase` as quote notional (unchanged).
+   */
+  const futuresMarginSizing = isUsdtRisk && Number.isFinite(levHint) && levHint > 0;
 
   let qty;
   let riskUsd;
   if (isUsdtRisk) {
     const riskBase = fixedCapital && splitDiv > 1 ? riskInput / splitDiv : riskInput;
+    if (fixedCapital && (!Number.isFinite(riskBase) || riskBase <= 0)) {
+      return { ok: false, reason: "no_capital_allotment" };
+    }
     let targetNotional = riskBase * tierMult;
-    targetNotional = Math.min(targetNotional, buyingPower * 0.90);
+    if (futuresMarginSizing) {
+      targetNotional = riskBase * tierMult * lev;
+    }
+    targetNotional = Math.min(targetNotional, walletBuyingPower * 0.90);
     qty = roundTo(targetNotional / px, 6);
     riskUsd = qty * perUnitRisk;
   } else {
-    const riskBudget = Math.min(tradableBalance * basePctForKelly * tierMult, tradableBalance * 0.25);
+    const riskBudget = Math.min(pctBalanceBase * basePctForKelly * tierMult, pctBalanceBase * 0.25);
     qty = roundTo(riskBudget / perUnitRisk, 6);
     const notional = qty * px;
-    if (notional > buyingPower * 0.90) {
-      qty = roundTo((buyingPower * 0.90) / px, 6);
+    if (notional > walletBuyingPower * 0.90) {
+      qty = roundTo((walletBuyingPower * 0.90) / px, 6);
     }
     riskUsd = qty * perUnitRisk;
   }

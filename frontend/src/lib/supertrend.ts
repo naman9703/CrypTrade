@@ -226,6 +226,9 @@ export type ChartSupertrend = {
   linePoints: Array<{ time: number; value: number }>;
   markers: Array<{ time: number; side: "buy" | "sell"; preview?: boolean }>;
   lastTrend: number | null;
+  /** Lower / upper ST rails on the last bar — trailing uses `up` for longs, `dn` for shorts (not regime `line`). */
+  lastUp: number | null;
+  lastDn: number | null;
 };
 
 /** Line + confirmed-bar markers from the same candles the chart will paint. */
@@ -236,7 +239,7 @@ export function buildChartSupertrend(
   const clean = sanitizeCandlesForSt(candles, opts.symbol);
   const period = Math.max(1, opts.period);
   if (clean.length < Math.max(2, period)) {
-    return { linePoints: [], markers: [], lastTrend: null };
+    return { linePoints: [], markers: [], lastTrend: null, lastUp: null, lastDn: null };
   }
 
   const stSer = computeSupertrendSeries(clean, {
@@ -304,6 +307,10 @@ export function buildChartSupertrend(
   const last = stSer[stSer.length - 1];
   const lastTrend =
     last?.ready && last.trend != null && Number.isFinite(Number(last.trend)) ? Number(last.trend) : null;
+  const lastUp =
+    last?.ready && last.up != null && Number.isFinite(Number(last.up)) && Number(last.up) > 0 ? Number(last.up) : null;
+  const lastDn =
+    last?.ready && last.dn != null && Number.isFinite(Number(last.dn)) && Number(last.dn) > 0 ? Number(last.dn) : null;
 
-  return { linePoints, markers: markersCapped, lastTrend };
+  return { linePoints, markers: markersCapped, lastTrend, lastUp, lastDn };
 }

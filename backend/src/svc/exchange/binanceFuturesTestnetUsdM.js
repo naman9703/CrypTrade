@@ -226,6 +226,31 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
   const placedBracketTargets = {};
   const trailingBySymbol = {};
 
+  function clearBracketTrailForSymbol(symU) {
+    const u = String(symU || "").toUpperCase();
+    delete trailingBySymbol[u];
+    for (const k of Object.keys(localBrackets)) {
+      if (String(k).toUpperCase() === u) delete localBrackets[k];
+    }
+    for (const k of Object.keys(placedBracketTargets)) {
+      if (String(k).toUpperCase() === u) delete placedBracketTargets[k];
+    }
+  }
+
+  async function futuresPositionQtyAbs(symU) {
+    if (!apiKey || !apiSecret) return NaN;
+    const u = String(symU || "").toUpperCase();
+    try {
+      const a = await signed("GET", "/fapi/v2/account");
+      const ps = Array.isArray(a?.positions) ? a.positions : [];
+      const p = ps.find((x) => String(x.symbol || "").toUpperCase() === u);
+      if (!p) return 0;
+      return Math.abs(Number(p.positionAmt || 0));
+    } catch {
+      return NaN;
+    }
+  }
+
   return {
     name: "binance_futures_testnet_usdm",
     supportsAutoTrading: true,
@@ -463,42 +488,91 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       };
     },
     async markToMarket({ symbol, price, trailingStopLoss, onTrailingSlAdvance, notifyActivity } = {}) {
-      const symU = String(symbol || "").toUpperCase();
-      const markPx = Number(price);
-      if (symU && Number.isFinite(markPx) && markPx > 0 && trailingStopLoss?.enabled && trailingBySymbol[symU]) {
+      const primarySymU = String(symbol || "").toUpperCase();
+      const primaryMark = Number(price);
+
+      async function markPxForSymbol(sym) {
+        const u = String(sym || "").toUpperCase();
+        if (u === primarySymU && Number.isFinite(primaryMark) && primaryMark > 0) return primaryMark;
         try {
-          const m = await getOrLoadSymbolMeta(symU);
-          const tick = Number(m?.tickSize);
-          applyTrailingStopBinanceMemory({
-            symbol: symU,
-            markPx,
-            trailingOpts: {
-              enabled: true,
-              mode: trailingStopLoss.mode,
-              feeRate: trailingStopLoss.feeRate,
-              extraScalpingPcts: trailingStopLoss.extraScalpingPcts ?? [],
-              maxTrailSteps: trailingStopLoss.maxTrailSteps,
-              supertrendPx: trailingStopLoss.supertrendPx,
-              bufferRate: trailingStopLoss.bufferRate,
-              maintenanceMarginRate: trailingStopLoss.maintenanceMarginRate,
-              minSlDistanceFrac: trailingStopLoss.minSlDistanceFrac,
-            },
-            trailingBySymbol,
-            localBrackets,
-            placedBracketTargets,
-            tickSize: Number.isFinite(tick) && tick > 0 ? tick : null,
-            onTrailingSlAdvance,
-          });
+          const d = await publicGet("/fapi/v1/premiumIndex", { symbol: u });
+          const m = Number(d?.markPrice);
+          return Number.isFinite(m) && m > 0 ? m : NaN;
         } catch {
-          /* ignore */
+          return NaN;
         }
       }
 
-      if (symbol && Number.isFinite(markPx) && markPx > 0 && localBrackets[symbol]) {
-        const b = localBrackets[symbol];
+      const stBySym =
+        trailingStopLoss?.supertrendBySymbol && typeof trailingStopLoss.supertrendBySymbol === "object"
+          ? trailingStopLoss.supertrendBySymbol
+          : null;
+      const trailMode = String(trailingStopLoss?.mode || "SUPERTREND").toUpperCase();
+
+      if (trailingStopLoss?.enabled) {
+        const trailSyms = [...new Set(Object.keys(trailingBySymbol).map((k) => String(k || "").toUpperCase()))];
+        for (const s of trailSyms) {
+          if (!trailingBySymbol[s]) continue;
+          const markPx = await markPxForSymbol(s);
+          if (!Number.isFinite(markPx) || markPx <= 0) continue;
+          const qtyAbs = await futuresPositionQtyAbs(s);
+          if (Number.isFinite(qtyAbs) && qtyAbs < 1e-8) {
+            clearBracketTrailForSymbol(s);
+            continue;
+          }
+          if (!Number.isFinite(qtyAbs) || qtyAbs < 1e-8) continue;
+
+          let stPx = null;
+          if (trailMode === "FEE_LADDER") {
+            stPx = Number(trailingStopLoss.supertrendPx);
+          } else {
+            const fromMap = stBySym?.[s];
+            if (fromMap != null && Number.isFinite(Number(fromMap)) && Number(fromMap) > 0) stPx = Number(fromMap);
+            else if (s === primarySymU && trailingStopLoss.supertrendPx != null) {
+              const v = Number(trailingStopLoss.supertrendPx);
+              if (Number.isFinite(v) && v > 0) stPx = v;
+            }
+          }
+          if (trailMode !== "FEE_LADDER" && (!Number.isFinite(stPx) || !stPx || stPx <= 0)) continue;
+
+          try {
+            const m = await getOrLoadSymbolMeta(s);
+            const tick = Number(m?.tickSize);
+            applyTrailingStopBinanceMemory({
+              symbol: s,
+              markPx,
+              trailingOpts: {
+                enabled: true,
+                mode: trailingStopLoss.mode,
+                feeRate: trailingStopLoss.feeRate,
+                extraScalpingPcts: trailingStopLoss.extraScalpingPcts ?? [],
+                maxTrailSteps: trailingStopLoss.maxTrailSteps,
+                supertrendPx: trailMode === "FEE_LADDER" ? trailingStopLoss.supertrendPx : stPx,
+                bufferRate: trailingStopLoss.bufferRate,
+                maintenanceMarginRate: trailingStopLoss.maintenanceMarginRate,
+                minSlDistanceFrac: trailingStopLoss.minSlDistanceFrac,
+              },
+              trailingBySymbol,
+              localBrackets,
+              placedBracketTargets,
+              tickSize: Number.isFinite(tick) && tick > 0 ? tick : null,
+              onTrailingSlAdvance,
+              notifyActivity,
+            });
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+
+      for (const lbSym of Object.keys(localBrackets)) {
+        const markPx = await markPxForSymbol(lbSym);
+        if (!Number.isFinite(markPx) || markPx <= 0) continue;
+        const b = localBrackets[lbSym];
+        if (!b) continue;
         const bracketLo = Math.min(b.stopLoss, b.takeProfit) * 0.90;
         const bracketHi = Math.max(b.stopLoss, b.takeProfit) * 1.10;
-        if (markPx >= bracketLo && markPx <= bracketHi) {
+        if (markPx < bracketLo || markPx > bracketHi) continue;
         let hit = null;
         if (b.isLong) {
           if (markPx <= b.stopLoss) hit = "SL";
@@ -507,37 +581,45 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
           if (markPx >= b.stopLoss) hit = "SL";
           else if (markPx <= b.takeProfit) hit = "TP";
         }
-        if (hit) {
-          try {
-            await signed("POST", "/fapi/v1/order", {
-              symbol,
-              side: b.closeSide,
-              type: "MARKET",
-              quantity: b.qty,
-              reduceOnly: "true",
-              newClientOrderId: `local_${hit.toLowerCase()}_${Date.now()}`,
-              ...(b.positionSide ? { positionSide: b.positionSide } : {}),
-            });
-            log?.info?.("binance_futures_local_bracket_hit", { symbol, hit, markPx, sl: b.stopLoss, tp: b.takeProfit });
-            notifyActivity?.(
-              buildRiskSlTpTriggerActivity({
-                hit,
-                symbol,
-                markPx,
-                stopLoss: b.stopLoss,
-                takeProfit: b.takeProfit,
-                mode: "usd_m_local_bracket",
-                venue: "FUTURES",
-              }),
-            );
-            delete localBrackets[symbol];
-            delete placedBracketTargets[symbol];
-            delete trailingBySymbol[String(symbol || "").toUpperCase()];
-          } catch (e) {
-            log?.warn?.("binance_futures_local_bracket_close_failed", { symbol, hit, error: String(e?.message || e) });
-          }
+        if (!hit) continue;
+        try {
+          await signed("POST", "/fapi/v1/order", {
+            symbol: lbSym,
+            side: b.closeSide,
+            type: "MARKET",
+            quantity: b.qty,
+            reduceOnly: "true",
+            newClientOrderId: `local_${hit.toLowerCase()}_${Date.now()}`,
+            ...(b.positionSide ? { positionSide: b.positionSide } : {}),
+          });
+          log?.info?.("binance_futures_local_bracket_hit", {
+            symbol: lbSym,
+            hit,
+            markPx,
+            sl: b.stopLoss,
+            tp: b.takeProfit,
+          });
+          notifyActivity?.(
+            buildRiskSlTpTriggerActivity({
+              hit,
+              symbol: lbSym,
+              markPx,
+              stopLoss: b.stopLoss,
+              takeProfit: b.takeProfit,
+              mode: "usd_m_local_bracket",
+              venue: "FUTURES",
+            }),
+          );
+          delete localBrackets[lbSym];
+          delete placedBracketTargets[lbSym];
+          delete trailingBySymbol[String(lbSym || "").toUpperCase()];
+        } catch (e) {
+          log?.warn?.("binance_futures_local_bracket_close_failed", {
+            symbol: lbSym,
+            hit,
+            error: String(e?.message || e),
+          });
         }
-        } // end price sanity check
       }
     },
     async closePosition({ id, notifyActivity, reason: userCloseReason } = {}) {

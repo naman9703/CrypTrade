@@ -1,5 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { deferTask } from "../lib/deferTask";
+import {
+  loadPortfolioPnlRangeForMode,
+  tradingUiPersistPortfolioPnlRange,
+} from "../lib/tradingUiPersistence";
 import { useAppStore } from "../ws/store";
 import { api } from "../api/client";
 import { isIncomeLedgerClose } from "../lib/tradeClassification";
@@ -269,6 +273,54 @@ function fmtUsd(x: number | null, digits = 2): string {
   return Number(x).toFixed(digits);
 }
 
+/** Positions / trade history: at least this many digit characters in integer + fraction (decimal point not counted). */
+const MIN_INSTRUMENT_PRICE_DIGITS = 5;
+const MAX_INSTRUMENT_FRAC_DIGITS = 18;
+
+function countNumericDigits(s: string): number {
+  return (s.match(/\d/g) || []).length;
+}
+
+/** Smallest k ≥ minFrac where `toFixed(k)` matches `toFixed(k+1)` numerically (avoids 1.19999… tails). */
+function stableFracDigits(v: number, minFrac: number, maxFrac: number): number {
+  let chosen = minFrac;
+  for (let k = minFrac; k <= maxFrac; k++) {
+    const a = Number.parseFloat(v.toFixed(k));
+    const b = k < maxFrac ? Number.parseFloat(v.toFixed(k + 1)) : a;
+    chosen = k;
+    if (Math.abs(a - b) < 1e-14 || k === maxFrac) break;
+  }
+  return Math.max(minFrac, chosen);
+}
+
+function fmtInstrumentPx(x: unknown): string {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return "—";
+  const sign = n < 0 ? "-" : "";
+  const v = Math.abs(n);
+  if (v === 0) return `${sign}0.${"0".repeat(MIN_INSTRUMENT_PRICE_DIGITS - 1)}`;
+
+  const intPart = Math.trunc(v);
+  const intStr = intPart === 0 ? "0" : String(intPart);
+  const dInt = intStr.length;
+
+  const minFrac = Math.max(0, MIN_INSTRUMENT_PRICE_DIGITS - dInt);
+  const fracDigits = Math.min(MAX_INSTRUMENT_FRAC_DIGITS, stableFracDigits(v, minFrac, MAX_INSTRUMENT_FRAC_DIGITS));
+
+  const s = v.toFixed(fracDigits);
+  const [iPart, fRaw = ""] = s.split(".");
+  let fp = fRaw;
+  let total = countNumericDigits(iPart) + countNumericDigits(fp);
+  while (total < MIN_INSTRUMENT_PRICE_DIGITS && fp.length < MAX_INSTRUMENT_FRAC_DIGITS) {
+    fp += "0";
+    total++;
+  }
+  if (!fp.length && dInt < MIN_INSTRUMENT_PRICE_DIGITS) {
+    fp = "0".repeat(MIN_INSTRUMENT_PRICE_DIGITS - dInt);
+  }
+  return fp.length > 0 ? `${sign}${iPart}.${fp}` : `${sign}${iPart}`;
+}
+
 function numFinite(x: any): number | undefined {
   const n = Number(x);
   return Number.isFinite(n) ? n : undefined;
@@ -298,6 +350,15 @@ function stopLossAtRoundTripFeeBreakevenOrBetter(entry: number, stopLoss: number
   }
   const be = entry * (1 - roundTrip);
   return stopLoss <= be + eps;
+}
+
+/** Futures + trailing on + at least one trail SL update on the server (`trailStep` ≥ 1). */
+function positionRowTrailedStrict(p: any, trailingStopLossAuto: boolean): boolean {
+  if (!trailingStopLossAuto) return false;
+  if (String(p?.venue || "").toUpperCase() !== "FUTURES") return false;
+  const step = Number(p?.meta?.trailStep);
+  const trailArm = p?.meta?.autoTradeTrailing === true;
+  return trailArm && Number.isFinite(step) && step >= 1;
 }
 
 /** Green row lead: trailing auto on + futures + SL locked at/above round-trip fee BE, or discrete trail advanced (trailStep ≥ 1). */
@@ -352,11 +413,39 @@ function openTradeRowBreakevenStopIndicator(t: any, positions: any[], trailingSt
   return stopLossAtRoundTripFeeBreakevenOrBetter(entry, sl, isLong);
 }
 
+function openTradeRowTrailedStrict(t: any, positions: any[], trailingStopLossAuto: boolean): boolean {
+  if (String(t?.type ?? "") !== "OPEN") return false;
+  const live = findLivePositionForTradeId(positions, t?.id);
+  if (live) return positionRowTrailedStrict(live, trailingStopLossAuto);
+  return false;
+}
+
+function closeTradeRowTrailedStrict(t: any): boolean {
+  if (String(t?.type ?? "") !== "CLOSE") return false;
+  const m = t?.meta || {};
+  const trailStepClose = Number(m.trailStepAtClose);
+  return (
+    m.exitViaTrailedStop === true ||
+    (Number.isFinite(trailStepClose) && trailStepClose > 0 && String(m.bracketType || "").toUpperCase() === "SL")
+  );
+}
+
 function BreakevenStopLead() {
   return (
     <div
       className="mx-auto h-8 w-1 shrink-0 rounded-sm bg-emerald-500 shadow-sm dark:bg-emerald-400"
       title="Breakeven: trailing locked stop at/above round-trip fee level, or trail step advanced"
+      aria-hidden
+    />
+  );
+}
+
+/** Same emerald bar as breakeven lead; title distinguishes “stop actually moved by trailing”. */
+function TrailedStopLead() {
+  return (
+    <div
+      className="mx-auto h-8 w-1 shrink-0 rounded-sm bg-emerald-400 shadow-sm ring-1 ring-emerald-300/60 dark:bg-emerald-300 dark:ring-emerald-500/40"
+      title="Trailed: stop loss was tightened at least once by auto-trailing"
       aria-hidden
     />
   );
@@ -625,6 +714,7 @@ export function PortfolioPanel() {
   const positions = useAppStore((s) => s.positions) || [];
   const pushLog = useAppStore((s) => s.pushLog);
   const mode = useAppStore((s) => s.mode);
+  const authUiUserTag = useAppStore((s) => s.authUiUserTag ?? null);
   const exchName = useAppStore((s) => s.bot?.exchange?.name) as string | undefined;
 
   const strictAccountMissing =
@@ -643,6 +733,27 @@ export function PortfolioPanel() {
   const [pnlHistoryRange, setPnlHistoryRange] = useState<"all" | "custom">("all");
   const [customRangeStart, setCustomRangeStart] = useState("");
   const [customRangeEnd, setCustomRangeEnd] = useState("");
+  const skipPortfolioPnlPersist = useRef(true);
+
+  useEffect(() => {
+    skipPortfolioPnlPersist.current = true;
+    const pr = loadPortfolioPnlRangeForMode(mode, authUiUserTag);
+    setPnlHistoryRange(pr?.pnlHistoryRange === "custom" ? "custom" : "all");
+    setCustomRangeStart(pr?.customRangeStart ?? "");
+    setCustomRangeEnd(pr?.customRangeEnd ?? "");
+    queueMicrotask(() => {
+      skipPortfolioPnlPersist.current = false;
+    });
+  }, [mode, authUiUserTag]);
+
+  useEffect(() => {
+    if (skipPortfolioPnlPersist.current) return;
+    tradingUiPersistPortfolioPnlRange(
+      mode,
+      { pnlHistoryRange, customRangeStart, customRangeEnd },
+      authUiUserTag,
+    );
+  }, [mode, authUiUserTag, pnlHistoryRange, customRangeStart, customRangeEnd]);
 
   useEffect(() => {
     if (pnlHistoryRange !== "custom") return;
@@ -1331,7 +1442,11 @@ export function PortfolioPanel() {
                   positions.map((p: any) => (
                     <tr key={p.id} className="border-t border-slate-200 dark:border-slate-900">
                       <td className="w-3 min-w-[12px] max-w-[14px] border-0 px-0 py-2 align-middle">
-                        {positionRowBreakevenStopIndicator(p, trailingStopLossAuto) ? <BreakevenStopLead /> : null}
+                        {positionRowTrailedStrict(p, trailingStopLossAuto) ? (
+                          <TrailedStopLead />
+                        ) : positionRowBreakevenStopIndicator(p, trailingStopLossAuto) ? (
+                          <BreakevenStopLead />
+                        ) : null}
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{p.symbol}</td>
                       <td className="px-3 py-2 text-[10px] uppercase text-slate-600 dark:text-slate-500">
@@ -1341,14 +1456,16 @@ export function PortfolioPanel() {
                       <td className="px-3 py-2 text-amber-300/80">
                         {p.leverage != null && Number(p.leverage) > 0 ? `${Number(p.leverage)}x` : "—"}
                       </td>
-                      <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{Number(p.entryPrice).toFixed(2)}</td>
+                      <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{fmtInstrumentPx(p.entryPrice)}</td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{Number(p.qty).toFixed(6)}</td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300" title="Initial margin ≈ notional / leverage (USD-M)">
                         {positionInitialMarginUsd(p)}
                       </td>
-                      <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{p.stopLoss != null ? Number(p.stopLoss).toFixed(2) : "—"}</td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
-                        {p.takeProfit != null ? Number(p.takeProfit).toFixed(2) : "—"}
+                        {p.stopLoss != null ? fmtInstrumentPx(p.stopLoss) : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                        {p.takeProfit != null ? fmtInstrumentPx(p.takeProfit) : "—"}
                       </td>
                       <td className={`px-3 py-2 ${Number(p.unrealizedPnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                         {p.unrealizedPnl != null ? Number(p.unrealizedPnl).toFixed(2) : "—"}
@@ -1578,20 +1695,26 @@ export function PortfolioPanel() {
                     const net = t?.type === "CLOSE" ? tradeNetPnlClose(t) : null;
                     const sideDisp =
                       t.side ?? (t?.type === "CLOSE" && t?.meta?.closeSide != null ? String(t.meta.closeSide) : null) ?? "n/a";
-                    const slTpDisp = `${sl != null ? sl.toFixed(2) : "n/a"} / ${tp != null ? tp.toFixed(2) : "n/a"}`;
+                    const slTpDisp = `${sl != null && Number.isFinite(sl) ? fmtInstrumentPx(sl) : "n/a"} / ${tp != null && Number.isFinite(tp) ? fmtInstrumentPx(tp) : "n/a"}`;
                     const marginDisp = tradeInitialMarginUsd(t, openRef, { price, qty, lev });
                     const reasonDisp = tradeHistoryReasonLabel(t);
                     const reasonTitle = [t.reason, t?.meta?.closeReason, t?.meta?.bracketType]
                       .filter((x) => x != null && String(x).trim() !== "")
                       .join(" · ");
-                    const beLead = openTradeRowBreakevenStopIndicator(t, positions, trailingStopLossAuto);
+                    const trailLead = openTradeRowTrailedStrict(t, positions, trailingStopLossAuto);
+                    const beLead = !trailLead && openTradeRowBreakevenStopIndicator(t, positions, trailingStopLossAuto);
+                    const closeTrailLead = t?.type === "CLOSE" && closeTradeRowTrailedStrict(t);
                     return (
                       <tr
                         key={`${t?.type}-${String(t?.id ?? "")}-${tradeTsMs(t)}-${idx}`}
                         className="border-t border-slate-200 dark:border-slate-900"
                       >
                         <td className="w-3 min-w-[12px] max-w-[14px] border-0 px-0 py-2 align-middle">
-                          {beLead ? <BreakevenStopLead /> : null}
+                          {trailLead || closeTrailLead ? (
+                            <TrailedStopLead />
+                          ) : beLead ? (
+                            <BreakevenStopLead />
+                          ) : null}
                         </td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.type ?? t.reason ?? "—"}</td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.symbol ?? "n/a"}</td>
@@ -1600,7 +1723,7 @@ export function PortfolioPanel() {
                           {lev != null && lev > 0 ? `${lev}x` : "n/a"}
                         </td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
-                          {price != null && price > 0 ? price.toFixed(2) : "n/a"}
+                          {price != null && price > 0 ? fmtInstrumentPx(price) : "n/a"}
                         </td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
                           {qty != null && qty > 0 ? qty.toFixed(6) : "n/a"}
