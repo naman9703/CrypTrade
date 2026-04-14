@@ -286,11 +286,12 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
             qty: Math.abs(Number(p.positionAmt)),
             entryPrice: Number(p.entryPrice || 0),
             unrealizedPnl: Number(p.unrealizedProfit || 0),
-            stopLoss: oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? null,
+            stopLoss: lb?.stopLoss ?? pb?.stopLoss ?? oo.sl ?? null,
             takeProfit: oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? null,
             leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
             venue: "FUTURES",
             syncSource: "fapi_v2_account",
+            updateTime: Number(p.updateTime) || null,
           });
         }
         return out;

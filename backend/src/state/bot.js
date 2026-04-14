@@ -154,7 +154,7 @@ function isIncomeLedgerClose(t) {
 
 /** Backfill fee (qty×price×rate) and top-level price / SL / TP for WS trade history when exchange rows omit them. */
 function enrichCloseTradeForHistory(t) {
-  if (!t || t.type !== "CLOSE" || isIncomeLedgerClose(t)) return t;
+  if (!t || t.type !== "CLOSE") return t;
   const m = { ...(t.meta || {}) };
   const px = Number(t.price ?? t.exitPrice ?? m.exitPrice ?? m.closePrice ?? m.markPx);
   const q = Number(t.qty);
@@ -167,6 +167,12 @@ function enrichCloseTradeForHistory(t) {
   }
   if (Number.isFinite(Number(m.takeProfit)) && (next.takeProfit == null || !Number.isFinite(Number(next.takeProfit)))) {
     next.takeProfit = Number(m.takeProfit);
+  }
+  if (Number.isFinite(Number(m.leverage)) && (next.leverage == null || !Number.isFinite(Number(next.leverage)))) {
+    next.leverage = Number(m.leverage);
+  }
+  if (Number.isFinite(Number(m.entryPrice)) && (next.entryPrice == null || !Number.isFinite(Number(next.entryPrice)))) {
+    next.entryPrice = Number(m.entryPrice);
   }
   const fExisting = Number(next.fee);
   if (!Number.isFinite(fExisting) || fExisting <= 0) {

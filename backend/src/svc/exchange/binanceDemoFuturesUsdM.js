@@ -602,20 +602,48 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
           });
         }
       } else {
+        // No recentLocalCloses hint matched — try to fill fields from the most recent OPEN trade
+        // for this symbol so the history row isn't completely blank.
+        let openRef = null;
+        for (let j = mem.trades.length - 1; j >= 0; j--) {
+          const tr = mem.trades[j];
+          if (tr?.type === "OPEN" && String(tr.symbol || "").toUpperCase() === sym) {
+            openRef = tr;
+            break;
+          }
+        }
+        const refLev = openRef?.meta?.leverage ?? openRef?.leverage;
+        const refQty = openRef?.qty;
+        const refEntry = openRef?.price ?? openRef?.entryPrice;
+        const refSl = openRef?.stopLoss;
+        const refTp = openRef?.takeProfit;
+        const refSide = openRef?.side;
+        const closeSide = refSide === "BUY" ? "SELL" : refSide === "SELL" ? "BUY" : "—";
+        const feePx = refQty != null && Number.isFinite(Number(refEntry)) ? Number(refEntry) : NaN;
+        const fee = tradeCloseFeeUsdtFromNotional(Number(refQty), feePx);
         mem.trades.push({
           type: "CLOSE",
           id: `finc_${tid}`,
           ts: tsIso,
           symbol: sym,
-          side: "—",
+          side: closeSide,
+          qty: refQty != null ? Number(refQty) : undefined,
+          price: undefined,
+          entryPrice: refEntry != null ? Number(refEntry) : undefined,
+          stopLoss: refSl != null ? Number(refSl) : undefined,
+          takeProfit: refTp != null ? Number(refTp) : undefined,
+          leverage: refLev != null ? Number(refLev) : undefined,
           pnl,
-          strategy: "INCOME_LEDGER",
+          fee: fee ?? undefined,
+          strategy: openRef?.strategy || "INCOME_LEDGER",
           ledgerEvent: true,
           meta: {
             source: "fapi_income",
             incomeType: row.incomeType || "REALIZED_PNL",
             tranId: tid,
             note: "realized_pnl_ledger_row",
+            leverage: refLev != null ? Number(refLev) : undefined,
+            openRefId: openRef?.id,
           },
         });
       }
@@ -1079,7 +1107,31 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         }
       }
 
-      if (!placed) return { ok: false, code: lastCode, msg: lastMsg || "not_placed" };
+      if (!placed) {
+        // All exchange placement attempts failed after we already cancelled the old SL.
+        // Install a local bracket as safety net so the position is never left unprotected.
+        log?.warn?.("binance_demo_futures_trail_sl_place_failed_safety_bracket", {
+          symbol: symU,
+          newSlPx,
+          code: lastCode,
+          msg: lastMsg,
+        });
+        const qStr = resolveQtyStr();
+        const positionSideField = hedgeExtrasR.positionSide || undefined;
+        mem.localBrackets[symU] = {
+          stopLoss: newSlPx,
+          takeProfit: Number(tgt.takeProfit) || (isLong ? newSlPx * 10 : newSlPx * 0.01),
+          isLong,
+          closeSide: tgt.closeSide,
+          qty: qStr || tgt.qty || "0",
+          positionSide: positionSideField,
+          entryPrice: mem.trailingBySymbol[symU]?.entryPrice ?? 0,
+          leverage: mem.trailingBySymbol[symU]?.leverage ?? defaultLeverage,
+          strategy: "trailing_sl_safety",
+        };
+        mem.placedBracketTargets[symU] = { ...tgt, stopLoss: newSlPx };
+        return { ok: false, code: lastCode, msg: lastMsg || "not_placed", localBracketInstalled: true };
+      }
 
       mem.placedBracketTargets[symU] = { ...tgt, stopLoss: newSlPx };
       log?.info?.("binance_demo_futures_trail_sl_replaced", { symbol: symU, prevSl: tgt.stopLoss, newSl: newSlPx });
@@ -1094,7 +1146,24 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         msg,
         error: String(e?.message || e),
       });
-      return { ok: false, code, msg };
+      // If the cancel already ran, position may be unprotected. Install local bracket as safety.
+      if (!mem.localBrackets[symU]) {
+        const qStr = resolveQtyStr();
+        const positionSideField = (tgt.hedgeExtras || {}).positionSide || undefined;
+        mem.localBrackets[symU] = {
+          stopLoss: newSlPx,
+          takeProfit: Number(tgt.takeProfit) || (isLong ? newSlPx * 10 : newSlPx * 0.01),
+          isLong,
+          closeSide: tgt.closeSide,
+          qty: qStr || tgt.qty || "0",
+          positionSide: positionSideField,
+          entryPrice: mem.trailingBySymbol[symU]?.entryPrice ?? 0,
+          leverage: mem.trailingBySymbol[symU]?.leverage ?? defaultLeverage,
+          strategy: "trailing_sl_safety",
+        };
+        mem.placedBracketTargets[symU] = { ...tgt, stopLoss: newSlPx };
+      }
+      return { ok: false, code, msg, localBracketInstalled: true };
     }
   }
 
@@ -1135,11 +1204,12 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
             qty: Math.abs(Number(p.positionAmt)),
             entryPrice: Number(p.entryPrice || 0),
             unrealizedPnl: Number(p.unrealizedProfit || 0),
-            stopLoss: oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? null,
+            stopLoss: lb?.stopLoss ?? pb?.stopLoss ?? oo.sl ?? null,
             takeProfit: oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? null,
             leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
             venue: "FUTURES",
             syncSource: "fapi_v2_account",
+            updateTime: Number(p.updateTime) || null,
           };
           if (trail && trail.entryPrice) {
             row.meta = {

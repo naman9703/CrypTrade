@@ -22,6 +22,18 @@ function tradeTsMs(t: any): number {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+function fmtTimestamp(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function fmtTimestampFull(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  return new Date(ms).toLocaleString();
+}
+
 /** Value for `<input type="datetime-local" />` in local timezone. */
 function toDatetimeLocalValue(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -202,7 +214,7 @@ function mergeTradesByOrderIdAndType(rows: any[]): any[] {
 function tradeFeeUsdForCloseRow(t: any, displayQty: number | undefined, displayPrice: number | undefined): number | null {
   const direct = tradeFeeUsd(t);
   if (direct != null) return direct;
-  if (t?.type !== "CLOSE" || isLedgerClose(t)) return null;
+  if (t?.type !== "CLOSE") return null;
   return estimatedCloseFeeUsdt(displayQty, displayPrice);
 }
 
@@ -1526,6 +1538,7 @@ export function PortfolioPanel() {
               <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
                 <tr className="text-left text-slate-600 dark:text-slate-400">
                   <th className="w-3 min-w-[12px] max-w-[14px] border-0 p-0" aria-hidden />
+                  <th className="px-3 py-2">Time</th>
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Venue</th>
                   <th className="px-3 py-2">Side</th>
@@ -1545,7 +1558,7 @@ export function PortfolioPanel() {
               <tbody>
                 {positions.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={13}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={14}>
                       No open positions
                     </td>
                   </tr>
@@ -1560,6 +1573,12 @@ export function PortfolioPanel() {
                         ) : positionRowBreakevenStopIndicator(p, trailingStopLossAuto) ? (
                           <BreakevenStopLead />
                         ) : null}
+                      </td>
+                      <td
+                        className="px-3 py-2 text-[10px] tabular-nums text-slate-500 dark:text-slate-400"
+                        title={fmtTimestampFull(Number(p.openedAt ? new Date(String(p.openedAt)).getTime() : p.updateTime || 0))}
+                      >
+                        {fmtTimestamp(Number(p.openedAt ? new Date(String(p.openedAt)).getTime() : p.updateTime || 0))}
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{p.symbol}</td>
                       <td className="px-3 py-2 text-[10px] uppercase text-slate-600 dark:text-slate-500">
@@ -1804,6 +1823,7 @@ export function PortfolioPanel() {
               <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
                 <tr className="text-left text-slate-600 dark:text-slate-400">
                   <th className="w-3 min-w-[12px] max-w-[14px] border-0 p-0" aria-hidden />
+                  <th className="px-3 py-2">Time</th>
                   <th className="px-3 py-2">Type</th>
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Side</th>
@@ -1825,7 +1845,7 @@ export function PortfolioPanel() {
               <tbody>
                 {displayedTrades.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={15}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={16}>
                       No trades yet
                     </td>
                   </tr>
@@ -1838,7 +1858,9 @@ export function PortfolioPanel() {
                     const { lev, price, qty, sl, tp } = tradeHistoryDisplayFields(t, openRef);
                     const fee = tradeFeeUsdForCloseRow(t, qty, price);
                     const gross = t?.type === "CLOSE" ? tradeGrossPnlClose(t, qty, price, openRef) : null;
-                    const net = t?.type === "CLOSE" ? tradeNetPnlClose(t) : null;
+                    const net = t?.type === "CLOSE"
+                      ? (tradeNetPnlClose(t) ?? (gross != null ? gross - (fee ?? 0) : null))
+                      : null;
                     const sideDisp =
                       t.side ?? (t?.type === "CLOSE" && t?.meta?.closeSide != null ? String(t.meta.closeSide) : null) ?? "n/a";
                     const slTpDisp = `${sl != null && Number.isFinite(sl) ? fmtInstrumentPx(sl) : "n/a"} / ${tp != null && Number.isFinite(tp) ? fmtInstrumentPx(tp) : "n/a"}`;
@@ -1862,6 +1884,12 @@ export function PortfolioPanel() {
                           ) : beLead ? (
                             <BreakevenStopLead />
                           ) : null}
+                        </td>
+                        <td
+                          className="px-3 py-2 text-[10px] tabular-nums text-slate-500 dark:text-slate-400"
+                          title={fmtTimestampFull(tradeTsMs(t))}
+                        >
+                          {fmtTimestamp(tradeTsMs(t))}
                         </td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.type ?? t.reason ?? "—"}</td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.symbol ?? "n/a"}</td>

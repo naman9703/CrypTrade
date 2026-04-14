@@ -623,20 +623,46 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           });
         }
       } else if (includeUnmatchedIncomeLedger) {
+        let openRef = null;
+        for (let j = mem.trades.length - 1; j >= 0; j--) {
+          const tr = mem.trades[j];
+          if (tr?.type === "OPEN" && String(tr.symbol || "").toUpperCase() === sym) {
+            openRef = tr;
+            break;
+          }
+        }
+        const refLev = openRef?.meta?.leverage ?? openRef?.leverage;
+        const refQty = openRef?.qty;
+        const refEntry = openRef?.price ?? openRef?.entryPrice;
+        const refSl = openRef?.stopLoss;
+        const refTp = openRef?.takeProfit;
+        const refSide = openRef?.side;
+        const closeSide = refSide === "BUY" ? "SELL" : refSide === "SELL" ? "BUY" : "—";
+        const feePx = refQty != null && Number.isFinite(Number(refEntry)) ? Number(refEntry) : NaN;
+        const fee = tradeCloseFeeUsdtFromNotional(Number(refQty), feePx);
         mem.trades.push({
           type: "CLOSE",
           id: `finc_${tid}`,
           ts: tsIso,
           symbol: sym,
-          side: "—",
+          side: closeSide,
+          qty: refQty != null ? Number(refQty) : undefined,
+          price: undefined,
+          entryPrice: refEntry != null ? Number(refEntry) : undefined,
+          stopLoss: refSl != null ? Number(refSl) : undefined,
+          takeProfit: refTp != null ? Number(refTp) : undefined,
+          leverage: refLev != null ? Number(refLev) : undefined,
           pnl,
-          strategy: "INCOME_LEDGER",
+          fee: fee ?? undefined,
+          strategy: openRef?.strategy || "INCOME_LEDGER",
           ledgerEvent: true,
           meta: {
             source: "fapi_income",
             incomeType: row.incomeType || "REALIZED_PNL",
             tranId: tid,
             note: "realized_pnl_ledger_row",
+            leverage: refLev != null ? Number(refLev) : undefined,
+            openRefId: openRef?.id,
           },
         });
       }
@@ -687,11 +713,12 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             qty: Math.abs(Number(p.positionAmt)),
             entryPrice: Number(p.entryPrice || 0),
             unrealizedPnl: Number(p.unrealizedProfit || 0),
-            stopLoss: oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? null,
+            stopLoss: lb?.stopLoss ?? pb?.stopLoss ?? oo.sl ?? null,
             takeProfit: oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? null,
             leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
             venue: "FUTURES",
             syncSource: "fapi_v2_account",
+            updateTime: Number(p.updateTime) || null,
           };
           if (trail && trail.entryPrice) {
             row.meta = {
