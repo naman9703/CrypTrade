@@ -18,7 +18,9 @@ import {
   extrapolateTrailTierLockPx,
   feeRateBreakevenPadded,
   mergeStopWithTrail,
+  supertrendTieredActivationGate,
   tierLabelForTrailIndex,
+  trailLadderConsecutiveLocksReached,
 } from "../lib/trailingFeeLadder";
 import { computeSupertrendTrailingSlUpdate } from "../lib/supertrendTrailingSl";
 import { clampTradeCloseFeeRate } from "../lib/tradeCloseFee";
@@ -1350,6 +1352,13 @@ export function ChartPanel() {
       : [];
     const tsMeta = Number((pos.meta as Record<string, unknown> | undefined)?.trailStep);
     const stepNow = Number.isFinite(tsMeta) && tsMeta >= 0 ? Math.floor(tsMeta) : 0;
+    const locksReachedBySl =
+      tieredStMode && stLevels.length > 0 && Number.isFinite(prevSlForCompute) && prevSlForCompute > 0
+        ? trailLadderConsecutiveLocksReached(stLevels, prevSlForCompute, isLong)
+        : 0;
+    /** Cap "(trailed)" labels so they match the real stop; `trailStep` can run ahead of the exchange SL. */
+    const uiTrailedStep = Math.min(stepNow, locksReachedBySl);
+    const serverStepAheadOfSl = stepNow > locksReachedBySl;
 
     let breakeven: number;
     let activation: number;
@@ -1365,11 +1374,11 @@ export function ChartPanel() {
       liquidation = entry * (1 + 1 / lev - maintenanceMarginRate);
       if (liquidation <= breakeven) return none("trail-reject", mkBadge(false));
     }
-    // nextActivationTier: the NEXT uncrossed tier — do not clamp; undefined means all tiers done.
-    const nextActivationTier = stLevels[stepNow] ?? null;
-    if (nextActivationTier && Number.isFinite(Number(nextActivationTier.lockPx)) && Number(nextActivationTier.lockPx) > 0) {
-      activation = Number(nextActivationTier.lockPx);
-    }
+    const tierAct = tieredStMode
+      ? supertrendTieredActivationGate(entry, isLong, paddedFeeST, bufferRate, useFeeBeTrail, stepNow, stLevels)
+      : { activationPx: activation, activationTierLabel: null as string | null, nextRow: null };
+    activation = tierAct.activationPx;
+    const nextActivationTier = tierAct.nextRow;
 
     const minSlDist = Number.isFinite(Number(bot?.trailMinSlDistFrac)) ? Number(bot?.trailMinSlDistFrac) : 0.002;
     const r = computeSupertrendTrailingSlUpdate({
@@ -1400,23 +1409,29 @@ export function ChartPanel() {
       if (lines.some((l) => nearlySameTrailPx(l.px, px))) return;
       lines.push({ px, title, kind, tierLabel });
     };
+    /** Tier ladder reference prices — do not hide when they equal the chart SL (`slDup`), or "(trailed)" looks inconsistent. */
+    const pushTierRef = (px: number, title: string, kind: ChartStTrailPreviewLine["kind"], tierLabel?: string) => {
+      if (!Number.isFinite(px) || px <= 0 || !futuresBracketLevelSane(symPlausible, px, ohlcLastClose)) return;
+      if (lines.some((l) => nearlySameTrailPx(l.px, px))) return;
+      lines.push({ px, title, kind, tierLabel });
+    };
 
     if (tieredStMode && stLevels.length > 0) {
       const feeBeAct = isLong ? entry * (1 + paddedFeeST + bufferRate) : entry * (1 - paddedFeeST - bufferRate);
       const t0Lock = extrapolateTrailTierLockPx(stLevels, 0, isLong, entry);
       if (t0Lock != null) {
         const t0Lab = tierLabelForTrailIndex(stLevels, 0);
-        if (stepNow > 0) {
-          pushUnique(t0Lock, `${t0Lab} lock (trailed)`, "trail_tier_activated", t0Lab);
+        if (uiTrailedStep > 0) {
+          pushTierRef(t0Lock, `${t0Lab} lock (trailed)`, "trail_tier_activated", t0Lab);
         } else {
-          pushUnique(t0Lock, `${t0Lab} lock`, "trail_tier_lock", t0Lab);
+          pushTierRef(t0Lock, `${t0Lab} lock`, "trail_tier_lock", t0Lab);
         }
         if (!nearlySameTrailPx(feeBeAct, t0Lock)) {
-          pushUnique(
+          pushTierRef(
             feeBeAct,
             isLong ? "ST trail T0 activation (mark ≥)" : "ST trail T0 activation (mark ≤)",
             "st_tier_activation",
-            "T0",
+            undefined,
           );
         }
       }
@@ -1425,17 +1440,17 @@ export function ChartPanel() {
         const lockPx = extrapolateTrailTierLockPx(stLevels, j, isLong, entry);
         if (lockPx == null) continue;
         const tl = tierLabelForTrailIndex(stLevels, j);
-        if (j < stepNow) {
-          pushUnique(lockPx, `${tl} lock (trailed)`, "trail_tier_activated", tl);
-        } else if (j === stepNow) {
-          pushUnique(
+        if (j < uiTrailedStep) {
+          pushTierRef(lockPx, `${tl} lock (trailed)`, "trail_tier_activated", tl);
+        } else if (!serverStepAheadOfSl && j === stepNow) {
+          pushTierRef(
             lockPx,
             isLong ? `ST trail opens ${tl} (mark ≥) · ${tl} lock` : `ST trail opens ${tl} (mark ≤) · ${tl} lock`,
             "st_tier_activation",
             tl,
           );
         } else {
-          pushUnique(lockPx, `Next ${tl} lock / ST gate`, "trail_tier_next", tl);
+          pushTierRef(lockPx, `Next ${tl} lock / ST gate`, "trail_tier_next", tl);
         }
       }
     } else {
@@ -1472,7 +1487,14 @@ export function ChartPanel() {
       currentSl: Number.isFinite(prevSlChart) && prevSlChart > 0 ? prevSlChart : null,
       takeProfit: Number.isFinite(tpHud) && tpHud > 0 ? tpHud : null,
       nextActivationPx: Number.isFinite(activation) && activation > 0 ? activation : null,
-      nextTierLabel: nextActivationTier?.tierLabel != null ? String(nextActivationTier.tierLabel) : `T${stepNow}`,
+      nextTierLabel:
+        tieredStMode && stLevels.length > 0
+          ? tierAct.activationTierLabel != null
+            ? String(tierAct.activationTierLabel)
+            : `T${stepNow}`
+          : nextActivationTier?.tierLabel != null
+            ? String(nextActivationTier.tierLabel)
+            : `T${stepNow}`,
       liveTrailSlPx: trailPx != null && Number.isFinite(trailPx) && trailPx > 0 ? trailPx : null,
     };
 

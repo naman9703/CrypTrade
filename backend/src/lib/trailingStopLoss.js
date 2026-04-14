@@ -55,7 +55,7 @@ export function pctOfEntryLockPx({ entryPx, isLong, pctOfEntry }) {
  * @param {number}  [closeFeeRate]    Taker fee for SL exit (fraction).
  * @param {number}  [roundTripFeeRate] Pre-computed round-trip (openFeeRate+closeFeeRate). Overrides openFeeRate+closeFeeRate.
  * @param {number}  [feeBeMultiplier]  Safety padding ×N applied to round-trip for T0 SL (default 1.0 = exact).
- * @returns {{ kind: string; lockPx: number; tierLabel: string; pct?: number; feeEquivPct?: number }[]} sorted for activation
+ * @returns {{ kind: string; lockPx: number; tierLabel: string; pct?: number; feeEquivPct?: number }[]} canonical T0 → T1 → T2+ (not sorted by price — sorting scrambled tier indices vs fee-buffer activation)
  */
 export function buildTrailLockPrices({
   entryPx,
@@ -111,7 +111,6 @@ export function buildTrailLockPrices({
   }
 
   const eps = E * 1e-10;
-  out.sort((a, b) => (isLong ? a.lockPx - b.lockPx : b.lockPx - a.lockPx));
   const dedup = [];
   for (const row of out) {
     const last = dedup[dedup.length - 1];
@@ -119,6 +118,56 @@ export function buildTrailLockPrices({
     dedup.push(row);
   }
   return dedup; // no artificial tier cap — unlimited advancement
+}
+
+/**
+ * Tiered SUPERTREND: activation threshold for the next SL advance at current `trailStep`.
+ * Step 0 uses fee + buffer (not `stLevels[0].lockPx`), because %-of-entry locks can sit below padded fee locks
+ * and must not drive the first gate or activation logs.
+ */
+export function resolveSupertrendTieredActivationGate({
+  stepNow,
+  isLong,
+  entryPx,
+  feeBe,
+  bufferRate,
+  useFeeBeTrail,
+  stLevels,
+}) {
+  const E = Number(entryPx);
+  const buf = Number(bufferRate);
+  const fb = Number(feeBe);
+  const defaultActivationPx = isLong
+    ? E * (1 + (useFeeBeTrail ? fb : 0) + buf)
+    : E * (1 - (useFeeBeTrail ? fb : 0) - buf);
+  const levels = Array.isArray(stLevels) ? stLevels : [];
+  const nLv = levels.length;
+  if (!Number.isFinite(E) || E <= 0 || !nLv) {
+    return { activationPx: defaultActivationPx, activationTierLabel: null };
+  }
+  if (stepNow <= 0) {
+    return { activationPx: defaultActivationPx, activationTierLabel: "T0" };
+  }
+  if (stepNow < nLv) {
+    const L = levels[stepNow];
+    const lockPx = Number(L?.lockPx);
+    const good = Number.isFinite(lockPx) && lockPx > 0;
+    return {
+      activationPx: good ? lockPx : defaultActivationPx,
+      activationTierLabel: L?.tierLabel != null ? String(L.tierLabel) : `T${stepNow}`,
+    };
+  }
+  const lastDef = levels[nLv - 1];
+  const prevDef = levels[nLv - 2];
+  const interval =
+    nLv >= 2 && prevDef != null && Number.isFinite(Number(prevDef.lockPx))
+      ? Math.abs(Number(lastDef.lockPx) - Number(prevDef.lockPx))
+      : Math.max(Math.abs(Number(lastDef.lockPx)) * 0.001, Math.abs(Number(lastDef.lockPx) - E));
+  const off = stepNow - (nLv - 1);
+  const activationPx = isLong
+    ? Number(lastDef.lockPx) + off * interval
+    : Number(lastDef.lockPx) - off * interval;
+  return { activationPx, activationTierLabel: `T${stepNow}` };
 }
 
 /** Max defined trail steps: breakeven (T0) + first fee-scalp (T1) + all user % locks. Continuation beyond is unlimited. */
@@ -426,11 +475,20 @@ export function applyTrailingStopBinanceMemory(opts) {
       const hwm = isLong ? Math.max(ext0, markPx) : Math.min(ext0, markPx);
       tr.extremePx = hwm;
 
-      const nextLevel = stLevels.length > 0 ? stLevels[Math.min(stepNow, stLevels.length - 1)] : null;
-      const activationPx =
-        nextLevel?.lockPx != null && Number.isFinite(Number(nextLevel.lockPx)) && Number(nextLevel.lockPx) > 0
-          ? Number(nextLevel.lockPx)
-          : defaultActivationPx;
+      const tieredGate =
+        tieredStMode && stLevels.length > 0
+          ? resolveSupertrendTieredActivationGate({
+              stepNow,
+              isLong,
+              entryPx: tr.entryPrice,
+              feeBe,
+              bufferRate: buf,
+              useFeeBeTrail,
+              stLevels,
+            })
+          : { activationPx: defaultActivationPx, activationTierLabel: null };
+      const activationPx = tieredGate.activationPx;
+      const activationTierLabelGate = tieredGate.activationTierLabel;
       activationPriceForEvt = activationPx;
       breakevenForEvt = evtBreakevenBase;
       const crossedTierActivation = isLong ? hwm >= activationPx : hwm <= activationPx;
@@ -485,8 +543,12 @@ export function applyTrailingStopBinanceMemory(opts) {
 
       stInTrailZone = r.status === "OK";
 
-      const activationTierLabel = nextLevel?.tierLabel != null ? String(nextLevel.tierLabel) : null;
-      const activationKey = activationTierLabel ?? "ST";
+      const activationTierLabel =
+        activationTierLabelGate != null ? String(activationTierLabelGate) : null;
+      const activationKey =
+        tieredStMode && stLevels.length > 0 && stepNow <= 0
+          ? `fee_gate:${activationPx.toFixed(8)}`
+          : activationTierLabel ?? "ST";
       if (r.status === "OK" && tr._trailingActivationLoggedTier !== activationKey) {
         tr._trailingActivationLoggedTier = activationKey;
         notifyActivity?.({

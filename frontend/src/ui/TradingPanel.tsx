@@ -26,6 +26,8 @@ function NumericTextInput({
   onCommit,
   parse,
   onDraftParsed,
+  className,
+  title,
 }: {
   value: number;
   disabled?: boolean;
@@ -36,6 +38,8 @@ function NumericTextInput({
   parse?: (raw: string) => number;
   /** Fires while typing so parents (e.g. leverage) can recompute derived hints before commit. */
   onDraftParsed?: (n: number | null) => void;
+  className?: string;
+  title?: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
@@ -86,7 +90,8 @@ function NumericTextInput({
       autoComplete="off"
       spellCheck={false}
       disabled={disabled}
-      className={numericInputClass}
+      title={title}
+      className={className ?? numericInputClass}
       value={shown}
       onFocus={() => {
         setFocused(true);
@@ -230,18 +235,21 @@ function TrailMetricGroup({
   items,
   cfg,
   onChange,
+  disabled,
 }: {
   title: string;
   items: TrailMetricItem[];
   cfg: Record<string, number | unknown>;
   onChange: (key: TrailMetricKey, storedValue: number) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="ml-4 space-y-1 rounded border border-sky-200/50 bg-white/60 px-2 py-1.5 dark:border-sky-800/30 dark:bg-slate-950/50">
       <div className="text-[9px] font-semibold uppercase tracking-wide text-sky-800/70 dark:text-sky-300/50">{title}</div>
-      {items.map(({ key, label, tip, min, max, step, decimals, pct }) => {
-        const raw = Number(cfg[key]);
-        const display = pct ? +(raw * 100).toFixed(decimals) : +raw.toFixed(decimals);
+      {items.map(({ key, label, tip, min, max, decimals, pct }) => {
+        const raw0 = Number(cfg[key]);
+        const raw = Number.isFinite(raw0) ? raw0 : 0;
+        const displayVal = pct ? +(raw * 100).toFixed(decimals) : +raw.toFixed(decimals);
         return (
           <div key={key} className="grid grid-cols-[1fr_76px] items-center gap-2">
             <label
@@ -250,17 +258,15 @@ function TrailMetricGroup({
             >
               {label}
             </label>
-            <input
-              type="number"
+            <NumericTextInput
+              value={displayVal}
+              disabled={disabled}
               min={min}
               max={max}
-              step={step}
-              value={display}
               title={tip}
+              inputMode="decimal"
               className="w-full rounded border border-sky-200 bg-white px-1.5 py-0.5 text-right text-[10px] tabular-nums dark:border-sky-700 dark:bg-slate-900"
-              onChange={(e) => {
-                const v = parseFloat(e.currentTarget.value);
-                if (!Number.isFinite(v)) return;
+              onCommit={(v) => {
                 onChange(key, pct ? v / 100 : v);
               }}
             />

@@ -10,7 +10,11 @@ import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/bin
 import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
 import { trailStepToTierLabel } from "../../lib/supertrendTrailingSl.js";
 import { reconcileUsdMExternalClosesFromPositions } from "../../lib/binanceUsdmExternalCloseReconcile.js";
-import { verifyUsdMPositionAfterOpen } from "../../lib/binanceUsdmPositionVerify.js";
+import {
+  buildSyntheticImmediateAfterOpenCloseRow,
+  postOpenStableProbeMs,
+  verifyUsdMPositionAfterOpen,
+} from "../../lib/binanceUsdmPositionVerify.js";
 import { buildRiskSlTpTriggerActivity } from "../../lib/activityLog.js";
 import {
   mergeSlTpSymbolMaps,
@@ -1667,6 +1671,47 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         );
       }
 
+      let immediateCloseTrade = null;
+      const stableMs = postOpenStableProbeMs();
+      if (stableMs > 0) {
+        await new Promise((r) => setTimeout(r, stableMs));
+        const stableChk = await verifyUsdMPositionAfterOpen({ signed, symbol: symU, retries: 2, delayMs: 120 });
+        if (!stableChk.ok) {
+          const exitPx =
+            Number.isFinite(markRef) && markRef > 0 ? markRef : Number.isFinite(filledPrice) && filledPrice > 0 ? filledPrice : NaN;
+          const qtyNum = Number(executedQty) || Number(qtyStr);
+          immediateCloseTrade = buildSyntheticImmediateAfterOpenCloseRow({
+            symbol,
+            symU,
+            posId,
+            closeSide,
+            qtyNum,
+            filledPrice,
+            exitPx,
+            isLong,
+            leverage,
+            strategy,
+          });
+          mem.trades.push(immediateCloseTrade);
+          if (mem.trades.length > MAX_MEM_TRADES) mem.trades = mem.trades.slice(-MAX_MEM_TRADES);
+          for (const k of Object.keys(mem.trailingBySymbol || {})) {
+            if (String(k).toUpperCase() === symU) delete mem.trailingBySymbol[k];
+          }
+          for (const k of Object.keys(mem.placedBracketTargets || {})) {
+            if (String(k).toUpperCase() === symU) delete mem.placedBracketTargets[k];
+          }
+          for (const k of Object.keys(mem.localBrackets || {})) {
+            if (String(k).toUpperCase() === symU) delete mem.localBrackets[k];
+          }
+          log?.warn?.("binance_demo_futures_post_open_immediate_flat", {
+            symbol: symU,
+            posId,
+            stableMs,
+            exitPx: immediateCloseTrade.price,
+          });
+        }
+      }
+
       return {
         id: posId,
         filledPrice,
@@ -1677,6 +1722,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         raw: out,
         strategy,
         meta: meta || {},
+        immediateCloseTrade,
       };
     },
     async markToMarket({ symbol, price, trailingStopLoss, onTrailingSlAdvance, notifyActivity } = {}) {

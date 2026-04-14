@@ -111,14 +111,86 @@ export function buildTrailLockPrices(
   }
 
   const eps = E * 1e-10;
-  out.sort((a, b) => (isLong ? a.lockPx - b.lockPx : b.lockPx - a.lockPx));
   const dedup: TrailLockRow[] = [];
   for (const row of out) {
     const last = dedup[dedup.length - 1];
     if (last && Math.abs(last.lockPx - row.lockPx) <= eps) continue;
     dedup.push(row);
   }
-  return dedup; // no artificial tier cap — unlimited advancement via continuation
+  return dedup; // canonical T0 → T1 → T2+; do not sort by px (breaks tier index vs fee-buffer activation on server)
+}
+
+export function supertrendTieredActivationGate(
+  entryPx: number,
+  isLong: boolean,
+  paddedFeeRate: number,
+  bufferRate: number,
+  useFeeBeTrail: boolean,
+  stepNow: number,
+  levels: TrailLockRow[],
+): { activationPx: number; activationTierLabel: string | null; nextRow: TrailLockRow | null } {
+  const E = Number(entryPx);
+  const buf = Number(bufferRate);
+  const fb = Number(paddedFeeRate);
+  const defaultActivationPx = isLong
+    ? E * (1 + (useFeeBeTrail ? fb : 0) + buf)
+    : E * (1 - (useFeeBeTrail ? fb : 0) - buf);
+  const nLv = levels.length;
+  if (!Number.isFinite(E) || E <= 0 || !nLv) {
+    return { activationPx: defaultActivationPx, activationTierLabel: null, nextRow: null };
+  }
+  if (stepNow <= 0) {
+    return { activationPx: defaultActivationPx, activationTierLabel: "T0", nextRow: null };
+  }
+  if (stepNow < nLv) {
+    const L = levels[stepNow]!;
+    const lockPx = Number(L.lockPx);
+    const good = Number.isFinite(lockPx) && lockPx > 0;
+    return {
+      activationPx: good ? lockPx : defaultActivationPx,
+      activationTierLabel: L.tierLabel != null ? String(L.tierLabel) : `T${stepNow}`,
+      nextRow: L,
+    };
+  }
+  const lastDef = levels[nLv - 1]!;
+  const prevDef = levels[nLv - 2];
+  const interval =
+    nLv >= 2 && prevDef && Number.isFinite(Number(prevDef.lockPx))
+      ? Math.abs(Number(lastDef.lockPx) - Number(prevDef.lockPx))
+      : Math.max(Math.abs(Number(lastDef.lockPx)) * 0.001, Math.abs(Number(lastDef.lockPx) - E));
+  const off = stepNow - (nLv - 1);
+  const activationPx = isLong
+    ? Number(lastDef.lockPx) + off * interval
+    : Number(lastDef.lockPx) - off * interval;
+  return { activationPx, activationTierLabel: `T${stepNow}`, nextRow: null };
+}
+
+/**
+ * How many canonical ladder locks (L0, L1, … in order) the stop has consecutively reached.
+ * Long: SL has tightened up to each lock; short: SL down to each lock. Stops at first miss (non‑monotonic ladders).
+ */
+export function trailLadderConsecutiveLocksReached(
+  levels: TrailLockRow[],
+  stopPx: number,
+  isLong: boolean,
+  relTol = 1e-6,
+): number {
+  const sl = Number(stopPx);
+  if (!levels.length || !Number.isFinite(sl) || sl <= 0) return 0;
+  const absTol = Math.max(sl * relTol, sl * 1e-12);
+  let n = 0;
+  for (let i = 0; i < levels.length; i++) {
+    const L = Number(levels[i]!.lockPx);
+    if (!Number.isFinite(L) || L <= 0) break;
+    if (isLong) {
+      if (sl + absTol >= L) n++;
+      else break;
+    } else {
+      if (sl - absTol <= L) n++;
+      else break;
+    }
+  }
+  return n;
 }
 
 /** Lock price for tier index `tierIndex` (0 = T0); continuation beyond `levels.length` uses last interval. */

@@ -708,6 +708,7 @@ function tradeHistoryReasonLabel(t: any): string {
   if (r0 === "TRAILED_SUPERTREND") return trailTierClose ? `SL trail ${trailTierClose}` : "Trailed ST";
   if (r0 === "TRAILED_STOP_LOSS") return trailTierClose ? `SL trail ${trailTierClose}` : "Trailed SL";
   if (r0 === "STOP_LOSS_DEFAULT") return "Default SL";
+  if (r0 === "IMMEDIATE_FLAT_AFTER_OPEN") return "Flat immediately (post-open)";
   if (r0 === "SUPERTREND_EXIT" || r0 === "SUPERTREND_FLIP") return "Signal";
   if (r0 === "STOP_LOSS" || r0 === "STOP") {
     if (trailedExit) {
