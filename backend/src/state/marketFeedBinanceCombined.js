@@ -152,8 +152,7 @@ export function createBinanceCombinedMarketFeed({
 
     for (const batch of batches) {
       for (const c of batch) {
-        const arr = buf.toArray();
-        const prev = arr.length ? arr[arr.length - 1] : null;
+        const prev = buf.last();
         const safe = sanitizeKlineCandle(symU, c, prev, log);
         if (safe) buf.push(safe);
       }
@@ -279,8 +278,7 @@ export function createBinanceCombinedMarketFeed({
       };
       const msgSym = normalizeSymbol(inner.s || streams[0]);
       const buf = bufFor(msgSym);
-      const arr = buf.toArray();
-      const prev = arr.length ? arr[arr.length - 1] : null;
+      const prev = buf.last();
       const candle = sanitizeKlineCandle(msgSym, candleRaw, prev, log);
       if (candle == null) return;
       buf.push(candle);
@@ -352,7 +350,7 @@ export function createBinanceCombinedMarketFeed({
         wsBase: defaultWsBase,
         onDelta: ({ openTime, buy_volume, sell_volume }) => {
           const buf = bufFor(symbol);
-          const arr = buf.toArray();
+          const arr = buf.raw();
           for (let i = arr.length - 1; i >= 0 && i >= arr.length - 5; i--) {
             if (Number(arr[i].ts) === Number(openTime)) {
               arr[i].buy_volume = buy_volume;

@@ -167,9 +167,19 @@ export async function riskPlan({
     if (fixedCapital && (!Number.isFinite(riskBase) || riskBase <= 0)) {
       return { ok: false, reason: "no_capital_allotment" };
     }
-    let targetNotional = riskBase * tierMult;
+    let targetNotional;
     if (futuresMarginSizing) {
-      targetNotional = riskBase * tierMult * lev;
+      /**
+       * riskBase IS the per-coin margin cap from capital allotment.
+       * Rule: notional = margin × leverage. tierMult must not inflate beyond the allocated cap
+       * (only allows conservative downscaling for lower-confidence entries, never upscaling).
+       * Formula: targetNotional = riskBase × min(tierMult, 1.0) × lev
+       *          → final margin = targetNotional / lev ≤ riskBase always.
+       */
+      const safeTierMult = fixedCapital ? 1.0 : Math.min(tierMult, 1.0);
+      targetNotional = riskBase * safeTierMult * lev;
+    } else {
+      targetNotional = riskBase * tierMult;
     }
     targetNotional = Math.min(targetNotional, walletBuyingPower * 0.90);
     qty = roundTo(targetNotional / px, 6);

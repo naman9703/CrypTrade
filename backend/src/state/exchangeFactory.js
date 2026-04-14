@@ -77,6 +77,14 @@ export function createExchange({ mode, log }) {
     }
     return createHybridExchange({ spot, futures, log });
   }
+  if (m === "PAPER") {
+    const spot = createPaperExchange({ log });
+    const futures = createPaperFuturesExchange({ log, name: "paper_futures" });
+    log?.info?.("paper_exchange_hybrid", {
+      detail: "Local spot + USD-M sim; public Binance candles come from bot feed (see PAPER_MARKET_FEED / MARKET_FEED). Headline equity sums both ledgers.",
+    });
+    return createHybridExchange({ spot, futures, log });
+  }
   return createPaperExchange({ log });
 }
 

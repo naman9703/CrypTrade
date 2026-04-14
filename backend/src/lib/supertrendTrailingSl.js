@@ -1,6 +1,8 @@
 /**
  * Fee-aware, liquidation-aware Supertrend trailing stop (LONG/SHORT).
- * Breakeven uses one-way fee_rate (same as TRADE_CLOSE_FEE_RATE convention).
+ * Caller should pass feeRate = openFeeRate + closeFeeRate (round-trip) × optional feeBeMultiplier.
+ * Formula: breakeven = entry × (1 + feeRate)  [LONG]
+ *          activation = entry × (1 + feeRate + bufferRate)
  */
 
 function clampFeeRateLocal(r) {
@@ -10,13 +12,26 @@ function clampFeeRateLocal(r) {
 }
 
 /**
- * Slightly tighter fee assumption for breakeven activation (~0.08% → ~0.1% style margin). See `FUTURES_TRAIL_FEE_BE_MULT`.
+ * Apply optional safety multiplier on top of the round-trip fee rate.
+ * Formula: paddedRate = roundTripFeeRate × multiplier
+ *          where roundTripFeeRate = openFeeRate + closeFeeRate (caller's responsibility)
+ *
+ * @param {number} roundTripFeeRate  Full round-trip fee (openFeeRate + closeFeeRate), e.g. 0.0008 = 0.08%
+ * @param {number} [multiplier]      Safety margin ×N; 1.0 = exact breakeven, 1.25 = 25% padding.
+ *                                   Defaults to env `FUTURES_TRAIL_FEE_BE_MULT` (default 1.0).
  */
-export function feeRateBreakevenPadded(feeRate) {
-  const r = clampFeeRateLocal(feeRate);
-  const mult = Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25);
-  const m = Number.isFinite(mult) && mult >= 1 ? Math.min(2, mult) : 1.25;
-  return Math.min(0.01, r * m);
+export function feeRateBreakevenPadded(roundTripFeeRate, multiplier) {
+  const r = clampFeeRateLocal(roundTripFeeRate);
+  const envMult = Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.0);
+  const raw = multiplier != null && Number.isFinite(Number(multiplier)) ? Number(multiplier) : envMult;
+  const m = Number.isFinite(raw) && raw >= 1 ? Math.min(2, raw) : 1.0;
+  return Math.min(0.02, r * m);
+}
+
+/** Convert a trail step (1-based) to a tier label string: step 1 → "T0", step 2 → "T1", etc. */
+export function trailStepToTierLabel(trailStep) {
+  const s = Math.floor(Number(trailStep) || 0);
+  return s >= 1 ? `T${s - 1}` : null;
 }
 
 /**
@@ -29,6 +44,8 @@ export function feeRateBreakevenPadded(feeRate) {
  * @param {number} p.leverage
  * @param {number} [p.feeRate]
  * @param {number} [p.bufferRate]
+ * @param {number} [p.activationPrice] optional activation override (tier-based gates T1/T2/...)
+ * @param {number} [p.breakevenPrice] optional breakeven override
  * @param {number} [p.maintenanceMarginRate]
  * @param {number} [p.minSlDistanceFrac] if set and >0, avoid tightening SL when too close to price (noise)
  * @param {boolean} [p.useFeeBreakeven] default true — fee-aware BE floor + activation using `feeRate`
@@ -87,6 +104,15 @@ export function computeSupertrendTrailingSlUpdate(p) {
     if (liquidation <= breakeven) {
       return { newSl: prevSl, status: "REJECT_TRADE" };
     }
+  }
+
+  const beOverride = Number(p.breakevenPrice);
+  if (Number.isFinite(beOverride) && beOverride > 0) {
+    breakeven = beOverride;
+  }
+  const activationOverride = Number(p.activationPrice);
+  if (Number.isFinite(activationOverride) && activationOverride > 0) {
+    activation = activationOverride;
   }
 
   /** Fee-BE-only path: ratchet SL to breakeven once mark passes activation (no ST line). */

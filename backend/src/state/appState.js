@@ -168,6 +168,7 @@ export function createAppState({ log }) {
           msg: `Trading mode active · ${mode}`,
           category: "trading_mode",
           reason: "mode_changed",
+          tradingMode: mode,
           detail: { mode, parallelEngines: true },
         });
       } catch {
@@ -177,6 +178,7 @@ export function createAppState({ log }) {
           msg: `Trading mode active · ${mode} (account/positions unavailable)`,
           category: "trading_mode",
           reason: "mode_changed_partial",
+          tradingMode: mode,
           detail: { mode },
         });
       }

@@ -197,6 +197,9 @@ function emailsMatch(expected, given) {
 }
 
 /** HTTP-layer limit on POST /login per IP (complements in-memory lockout after failed attempts). */
+const loginHttpRateLimitOff =
+  truthyEnv(process.env.LOGIN_HTTP_RATE_LIMIT_DISABLED) ||
+  String(process.env.LOGIN_HTTP_RATE_LIMIT_MAX ?? "").trim() === "0";
 const loginRouteLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: Math.max(6, Math.min(120, Number(process.env.LOGIN_HTTP_RATE_LIMIT_MAX || 24))),
@@ -223,7 +226,7 @@ export function createUiAuthRouter({ log }) {
     });
   });
 
-  r.post("/login", loginRouteLimiter, async (req, res) => {
+  r.post("/login", loginHttpRateLimitOff ? ((_req, _res, next) => next()) : loginRouteLimiter, async (req, res) => {
     if (!uiAuthEnabled()) {
       return res.status(400).json({ ok: false, error: "auth_disabled" });
     }

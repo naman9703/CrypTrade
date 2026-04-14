@@ -83,8 +83,7 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
 
     for (const batch of batches) {
       for (const c of batch) {
-        const arr = buf.toArray();
-        const prev = arr.length ? arr[arr.length - 1] : null;
+        const prev = buf.last();
         const safe = sanitizeKlineCandle(sym, c, prev, log);
         if (safe) buf.push(safe);
       }
@@ -124,8 +123,7 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
           sell_volume: null,
         };
         const msgSym = normalizeSymbol(msg.s || sym);
-        const arr = buf.toArray();
-        const prev = arr.length ? arr[arr.length - 1] : null;
+        const prev = buf.last();
         const candle = sanitizeKlineCandle(msgSym, candleRaw, prev, log);
         if (candle == null) return;
         buf.push(candle);
@@ -171,8 +169,7 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
         timeframe,
         wsBase,
         onDelta: ({ openTime, buy_volume, sell_volume }) => {
-          // update the latest candle matching openTime (best-effort)
-          const arr = buf.toArray();
+          const arr = buf.raw();
           for (let i = arr.length - 1; i >= 0 && i >= arr.length - 5; i--) {
             if (Number(arr[i].ts) === Number(openTime)) {
               arr[i].buy_volume = buy_volume;

@@ -26,8 +26,11 @@ function syntheticBasePrice(symbol) {
 }
 
 // Feed factory. Default: SYNTH. Optional: BINANCE (spot) or BINANCE_FUTURES (USDT-M public fapi + fstream).
-export function createMarketFeed({ log, symbol, timeframe, onCandleClose = null }) {
-  const kind = String(process.env.MARKET_FEED || "SYNTH").toUpperCase();
+// `feedKind` lets PAPER use live public data while process.env.MARKET_FEED stays SYNTH for other modes.
+export function createMarketFeed({ log, symbol, timeframe, onCandleClose = null, feedKind } = {}) {
+  const kind = String(
+    feedKind != null && String(feedKind).trim() ? feedKind : process.env.MARKET_FEED || "SYNTH",
+  ).toUpperCase();
   if (kind === "BINANCE") {
     return createBinanceCombinedMarketFeed({
       log,
@@ -55,7 +58,7 @@ export function createMarketFeed({ log, symbol, timeframe, onCandleClose = null 
 
   if (kind !== "SYNTH") {
     log.warn("market_feed_unrecognized_using_synthetic", {
-      envValue: process.env.MARKET_FEED,
+      envValue: feedKind != null ? feedKind : process.env.MARKET_FEED,
       kind,
       hint: "Use MARKET_FEED=SYNTH, BINANCE, or BINANCE_FUTURES. If BINANCE_FUTURES is set but you still see SYNTH, redeploy so the backend includes futures feed support.",
     });

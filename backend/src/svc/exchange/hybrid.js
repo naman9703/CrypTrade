@@ -140,6 +140,25 @@ export function createHybridExchange({ spot, futures, log }) {
         // ignore
       }
     },
+    recoverTrailingExtremeFromCandles(candlesBySymbol) {
+      try {
+        futures?.recoverTrailingExtremeFromCandles?.(candlesBySymbol);
+      } catch {
+        // ignore
+      }
+    },
+    startRealtimeTrailingPoll(intervalMs) {
+      try { futures?.startRealtimeTrailingPoll?.(intervalMs); } catch { /* ignore */ }
+    },
+    stopRealtimeTrailingPoll() {
+      try { futures?.stopRealtimeTrailingPoll?.(); } catch { /* ignore */ }
+    },
+    updateRealtimeTrailingConfig(opts) {
+      try { futures?.updateRealtimeTrailingConfig?.(opts); } catch { /* ignore */ }
+    },
+    async runRealtimePollOnce(opts) {
+      try { await futures?.runRealtimePollOnce?.(opts); } catch { /* ignore */ }
+    },
     async close() {
       try {
         await spot?.close?.();

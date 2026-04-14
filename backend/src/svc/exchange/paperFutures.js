@@ -1,6 +1,6 @@
 import { roundTo } from "../../lib/math.js";
-import { mergeStopWithTrail, clampFeeRate, advanceTrailingStopState } from "../../lib/trailingStopLoss.js";
-import { computeSupertrendTrailingSlUpdate, feeRateBreakevenPadded } from "../../lib/supertrendTrailingSl.js";
+import { mergeStopWithTrail, clampFeeRate, advanceTrailingStopState, buildTrailLockPrices } from "../../lib/trailingStopLoss.js";
+import { computeSupertrendTrailingSlUpdate, feeRateBreakevenPadded, trailStepToTierLabel } from "../../lib/supertrendTrailingSl.js";
 import { resolveDefaultPaperFuturesStoreDir } from "../../lib/tradingModePersistence.js";
 import { createPaperStore } from "./paperStore.js";
 
@@ -136,12 +136,18 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     state.equity = roundTo(state.equity + gross - exitFee, 2);
     const rU = String(reason || "").toUpperCase();
     const trailStepAtClose = Number(p?.meta?.trailStep) || 0;
+    const trailTierAtClose = p?.meta?.trailTierLabel ?? (trailStepAtClose > 0 ? trailStepToTierLabel(trailStepAtClose) : null);
     const exitViaTrailedStop = (rU === "STOP" || rU === "STOP_LOSS") && trailStepAtClose > 0;
     let bracketType = null;
     let reasonNorm = rU;
     if (rU === "STOP" || rU === "STOP_LOSS") {
       bracketType = "SL";
-      reasonNorm = exitViaTrailedStop ? "TRAILED_STOP_LOSS" : "STOP_LOSS";
+      /** e.g. "TRAILED_STOP_LOSS_T0", "TRAILED_STOP_LOSS_T1" — or plain TRAILED_STOP_LOSS if no tier info */
+      reasonNorm = exitViaTrailedStop
+        ? trailTierAtClose
+          ? `TRAILED_STOP_LOSS_${trailTierAtClose}`
+          : "TRAILED_STOP_LOSS"
+        : "STOP_LOSS";
     } else if (rU === "TAKE_PROFIT") {
       bracketType = "TP";
       reasonNorm = "TAKE_PROFIT";
@@ -178,6 +184,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         ...(bracketType ? { bracketType } : {}),
         exitViaTrailedStop,
         trailStepAtClose,
+        trailTierAtClose,
         ...(rU === "SUPERTREND_EXIT" || rU === "SUPERTREND_FLIP" ? { supertrendSignalClose: true } : {}),
       },
     };
@@ -224,6 +231,10 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
             let trailKind = "supertrend_trailing_sl";
 
             if (mode === "FEE_LADDER") {
+              const feeBeMultiplierFL = trailingStopLoss.feeBeMultiplier != null ? Number(trailingStopLoss.feeBeMultiplier) : undefined;
+              const openRFL = trailingStopLoss.openFeeRate != null ? Number(trailingStopLoss.openFeeRate) : null;
+              const closeRFL = trailingStopLoss.closeFeeRate != null ? Number(trailingStopLoss.closeFeeRate) : null;
+              const rtRateFL = openRFL != null && closeRFL != null ? openRFL + closeRFL : null;
               const adv = advanceTrailingStopState({
                 entryPx,
                 isLong,
@@ -231,26 +242,84 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                 extremePx: pos.meta.extremePx,
                 markPx: px,
                 feeRate: feeR,
+                roundTripFeeRate: rtRateFL ?? undefined,
+                feeBeMultiplier: feeBeMultiplierFL,
                 extraScalpingPctsOfEntry: trailingStopLoss.extraScalpingPcts ?? [],
               });
               pos.meta.trailStep = adv.trailStep;
               pos.meta.extremePx = adv.extremePx;
               if (adv.advanced && adv.proposedSl != null) {
+                pos.meta.trailTierLabel = adv.tierLabel;
                 merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: adv.proposedSl });
                 trailKind = "fee_ladder_trailing_sl";
               }
             } else {
-              stPx = trailingStopLoss.supertrendPx != null ? Number(trailingStopLoss.supertrendPx) : NaN;
+              /**
+               * Per-symbol ST price: prefer `supertrendBySymbol[pos.symbol]` (set for each open
+               * futures position by bot.js) over the primary-symbol fallback `supertrendPx`.
+               * Without this, multi-coin positions (XRPUSDT, ETHUSDT, etc.) would trail using the
+               * primary bot symbol's Supertrend line — wrong price, wrong direction.
+               */
+              const stBySymMap = trailingStopLoss.supertrendBySymbol;
+              const stFromMap =
+                stBySymMap && typeof stBySymMap === "object"
+                  ? Number(stBySymMap[pos.symbol] ?? stBySymMap[pos.symbol?.toUpperCase()])
+                  : NaN;
+              const stFallback =
+                trailingStopLoss.supertrendPx != null ? Number(trailingStopLoss.supertrendPx) : NaN;
+              stPx = Number.isFinite(stFromMap) && stFromMap > 0 ? stFromMap : stFallback;
+
               const useAdv = trailingStopLoss.supertrendUseAdvancedTrail !== false;
-              const stForCompute =
-                useAdv && Number.isFinite(stPx) && stPx > 0 ? stPx : null;
-              if (useAdv && stForCompute == null) {
-                /* advanced trail needs a Supertrend price */
+              const useFeeBeTrail = trailingStopLoss.supertrendUseFeeBreakeven !== false;
+              const tieredStMode = useFeeBeTrail && useAdv;
+              const hasValidStPx = Number.isFinite(stPx) && stPx > 0;
+              /**
+               * Degrade gracefully when ST price is unavailable: if fee-breakeven trail is enabled,
+               * still ratchet SL to breakeven once activation is crossed (don't silently skip).
+               * Previously the code did nothing here, so a momentary ST compute failure would
+               * prevent trailing even after activation was already reached.
+               */
+              const effectiveUseAdv = useAdv && hasValidStPx;
+              const stForCompute = effectiveUseAdv ? stPx : null;
+
+              if (!effectiveUseAdv && !useFeeBeTrail) {
+                /* neither ST nor fee-BE available — nothing to do */
               } else {
-                const feeBe = feeRateBreakevenPadded(feeR);
+                const feeBeMultiplier = trailingStopLoss.feeBeMultiplier != null ? Number(trailingStopLoss.feeBeMultiplier) : undefined;
+                const openRST = trailingStopLoss.openFeeRate != null ? Number(trailingStopLoss.openFeeRate) : null;
+                const closeRST = trailingStopLoss.closeFeeRate != null ? Number(trailingStopLoss.closeFeeRate) : null;
+                const rtRateST = openRST != null && closeRST != null ? openRST + closeRST : 2 * feeR;
+                const feeBe = feeRateBreakevenPadded(rtRateST, feeBeMultiplier);
+                const stLevels = tieredStMode
+                  ? buildTrailLockPrices({
+                      entryPx,
+                      isLong,
+                      feeRate: feeR,
+                      roundTripFeeRate: rtRateST,
+                      feeBeMultiplier,
+                      extraScalpingPctsOfEntry: trailingStopLoss.extraScalpingPcts ?? [],
+                    })
+                  : [];
+                const stepNow = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
+                const ext0 = Number.isFinite(Number(pos.meta.extremePx)) ? Number(pos.meta.extremePx) : px;
+                const hwm = isLong ? Math.max(ext0, px) : Math.min(ext0, px);
+                pos.meta.extremePx = hwm;
+                const nextLevel = stLevels.length ? stLevels[Math.min(stepNow, stLevels.length - 1)] : null;
+                const activationTierPx = nextLevel?.lockPx != null ? Number(nextLevel.lockPx) : null;
+                const crossedTier =
+                  activationTierPx == null ? true : isLong ? hwm >= activationTierPx : hwm <= activationTierPx;
+                if (!crossedTier) {
+                  // Keep existing SL unchanged; hit-check still runs below on this tick.
+                } else {
+                const pxForCompute = activationTierPx == null ? px : (isLong ? Math.max(px, activationTierPx) : Math.min(px, activationTierPx));
+                const bePx = useFeeBeTrail
+                  ? isLong
+                    ? entryPx * (1 + feeBe)
+                    : entryPx * (1 - feeBe)
+                  : entryPx;
                 const r = computeSupertrendTrailingSlUpdate({
                   entryPrice: entryPx,
-                  currentPrice: px,
+                  currentPrice: pxForCompute,
                   supertrend: stForCompute,
                   previousSl: prevSl,
                   isLong,
@@ -259,8 +328,10 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                   bufferRate: buf,
                   maintenanceMarginRate: mm,
                   minSlDistanceFrac: minDist,
-                  useFeeBreakeven: trailingStopLoss.supertrendUseFeeBreakeven !== false,
-                  useAdvancedTrail: trailingStopLoss.supertrendUseAdvancedTrail !== false,
+                  useFeeBreakeven: useFeeBeTrail,
+                  useAdvancedTrail: effectiveUseAdv,
+                  activationPrice: activationTierPx ?? undefined,
+                  breakevenPrice: bePx,
                 });
                 if (
                   r.status !== "REJECT_TRADE" &&
@@ -271,6 +342,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                   merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: r.newSl });
                   trailStatus = r.status;
                 }
+                }
               }
             }
 
@@ -279,13 +351,19 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
               if (nextSl !== prevSl) {
                 if (mode === "SUPERTREND") {
                   pos.meta.trailStep = (Number(pos.meta.trailStep) || 0) + 1;
+                  /** T0 = first advance (fee-BE), T1 = second, etc. */
+                  pos.meta.trailTierLabel = trailStepToTierLabel(pos.meta.trailStep);
                   pos.meta.extremePx = isLong
                     ? Math.max(Number(pos.meta.extremePx) || px, px)
                     : Math.min(Number(pos.meta.extremePx) || px, px);
                 }
                 o.stopPx = nextSl;
                 pos.stopLoss = nextSl;
-                const feeBeEvt = feeRateBreakevenPadded(feeR);
+                const feeBeMultiplier2 = trailingStopLoss.feeBeMultiplier != null ? Number(trailingStopLoss.feeBeMultiplier) : undefined;
+                const openREvt = trailingStopLoss.openFeeRate != null ? Number(trailingStopLoss.openFeeRate) : null;
+                const closeREvt = trailingStopLoss.closeFeeRate != null ? Number(trailingStopLoss.closeFeeRate) : null;
+                const rtEvt = openREvt != null && closeREvt != null ? openREvt + closeREvt : 2 * feeR;
+                const feeBeEvt = feeRateBreakevenPadded(rtEvt, feeBeMultiplier2);
                 const breakeven = isLong ? entryPx * (1 + feeBeEvt) : entryPx * (1 - feeBeEvt);
                 const activation = isLong ? entryPx * (1 + feeBeEvt + buf) : entryPx * (1 - feeBeEvt - buf);
                 onTrailingSlAdvance?.({
@@ -295,6 +373,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                   prevStopLoss: prevSl,
                   newStopLoss: nextSl,
                   trailStep: pos.meta.trailStep,
+                  tierLabel: pos.meta.trailTierLabel,
                   maxTrailSteps: trailingStopLoss.maxTrailSteps ?? 1,
                   entryPrice: entryPx,
                   isLong,
@@ -346,6 +425,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         ...p,
         venue: p.venue || "FUTURES",
         syncSource: p.syncSource || "paper_local",
+        trailTierLabel: p.meta?.trailTierLabel ?? null,
       }));
     },
     async getTrades() {
@@ -454,6 +534,68 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     },
     getStatus() {
       return { udf: { ok: true, syncMode: "sim", error: null } };
+    },
+    /**
+     * Recovery pass after bot restart: reconstruct extremePx for open trailing positions
+     * that have never been trailed (trailStep === 0) by scanning historical OHLCV candles
+     * for the true high (LONG) or low (SHORT) since entry.
+     *
+     * Call once per symbol before the first markToMarket so the FEE_LADDER mode
+     * correctly skips tiers that were already crossed during downtime, and
+     * so the SUPERTREND mode starts from the correct extreme.
+     *
+     * @param {Record<string, Array<{time?: number; high?: number; low?: number; close?: number}>>} candlesBySymbol
+     */
+    recoverTrailingExtremeFromCandles(candlesBySymbol = {}) {
+      let changed = false;
+      for (const pos of state.positions) {
+        if (!pos.meta?.autoTradeTrailing) continue;
+        // Already advanced — extremePx is being tracked live; only recover cold positions
+        if ((pos.meta.trailStep ?? 0) > 0) continue;
+        const sym = String(pos.symbol || "").toUpperCase();
+        const bars = candlesBySymbol[sym];
+        if (!Array.isArray(bars) || !bars.length) continue;
+        const isLong = pos.side === "BUY";
+        // Filter candles that opened at or after the position's entry (with 2-min grace)
+        const entryMs =
+          pos.meta?.entryTime != null
+            ? Number(pos.meta.entryTime)
+            : pos.openedAt != null
+              ? new Date(String(pos.openedAt)).getTime()
+              : 0;
+        const entryTimeSec = entryMs > 0 ? Math.floor(entryMs / 1000) : 0;
+        const barsAfterEntry =
+          entryTimeSec > 0
+            ? bars.filter((b) => Number(b.time ?? 0) >= entryTimeSec - 120)
+            : bars;
+        if (!barsAfterEntry.length) continue;
+        let extremePx;
+        if (isLong) {
+          extremePx = barsAfterEntry.reduce(
+            (mx, b) => Math.max(mx, Number(b.high) || Number(b.close) || 0),
+            0,
+          );
+        } else {
+          extremePx = barsAfterEntry.reduce(
+            (mn, b) => Math.min(mn, Number(b.low) || Number(b.close) || Infinity),
+            Infinity,
+          );
+        }
+        if (!Number.isFinite(extremePx) || extremePx <= 0 || extremePx === Infinity) continue;
+        const currentExtreme = Number.isFinite(Number(pos.meta.extremePx))
+          ? Number(pos.meta.extremePx)
+          : Number(pos.entryPrice ?? 0);
+        if (isLong && extremePx > currentExtreme) {
+          pos.meta.extremePx = extremePx;
+          changed = true;
+          log?.debug?.("trail_extreme_recovered", { symbol: sym, side: "LONG", extremePx, prevExtreme: currentExtreme });
+        } else if (!isLong && extremePx < currentExtreme) {
+          pos.meta.extremePx = extremePx;
+          changed = true;
+          log?.debug?.("trail_extreme_recovered", { symbol: sym, side: "SHORT", extremePx, prevExtreme: currentExtreme });
+        }
+      }
+      if (changed) persistSoon();
     },
   };
 }

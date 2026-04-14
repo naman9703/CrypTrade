@@ -636,16 +636,30 @@ function tradeHistoryReasonLabel(t: any): string {
 
   const m = t?.meta || {};
   const trailStepClose = Number(m.trailStepAtClose);
+  const trailTierClose: string | null =
+    m.trailTierAtClose != null
+      ? String(m.trailTierAtClose)
+      : trailStepClose >= 1
+        ? `T${Math.max(0, Math.floor(trailStepClose) - 1)}`
+        : null;
   const trailedExit =
     m.exitViaTrailedStop === true || (Number.isFinite(trailStepClose) && trailStepClose > 0 && String(m.bracketType || "").toUpperCase() === "SL");
   const trailMode = String(m.trailingMode || m.trailMode || "").toUpperCase();
 
   const r0 = String(t?.reason || "").toUpperCase().replace(/-/g, "_");
-  if (r0 === "TRAILED_SUPERTREND") return "Trailed ST";
-  if (r0 === "TRAILED_STOP_LOSS") return "Trailed SL";
+  /** e.g. TRAILED_STOP_LOSS_T0 / TRAILED_STOP_LOSS_T1 — extract tier label from reason itself. */
+  if (r0.startsWith("TRAILED_STOP_LOSS_T")) {
+    const tier = r0.replace("TRAILED_STOP_LOSS_", "");
+    return `SL trail ${tier}`;
+  }
+  if (r0 === "TRAILED_SUPERTREND") return trailTierClose ? `SL trail ${trailTierClose}` : "Trailed ST";
+  if (r0 === "TRAILED_STOP_LOSS") return trailTierClose ? `SL trail ${trailTierClose}` : "Trailed SL";
   if (r0 === "SUPERTREND_EXIT" || r0 === "SUPERTREND_FLIP") return "Signal";
   if (r0 === "STOP_LOSS" || r0 === "STOP") {
-    if (trailedExit) return trailMode === "SUPERTREND" ? "Trailed ST" : "Trailed SL";
+    if (trailedExit) {
+      if (trailTierClose) return `SL trail ${trailTierClose}`;
+      return trailMode === "SUPERTREND" ? "Trailed ST" : "Trailed SL";
+    }
     return "SL";
   }
   if (r0 === "TAKE_PROFIT") return "TP";
@@ -655,7 +669,10 @@ function tradeHistoryReasonLabel(t: any): string {
 
   const bracket = String(m.bracketType || "").toUpperCase();
   if (bracket === "SL") {
-    if (trailedExit) return trailMode === "SUPERTREND" ? "Trailed ST" : "Trailed SL";
+    if (trailedExit) {
+      if (trailTierClose) return `SL trail ${trailTierClose}`;
+      return trailMode === "SUPERTREND" ? "Trailed ST" : "Trailed SL";
+    }
     if (trailMode === "FEE_LADDER") return "Trailed SL";
     return "SL";
   }
@@ -667,7 +684,10 @@ function tradeHistoryReasonLabel(t: any): string {
 
   const cr = String(m.closeReason || "").toUpperCase();
   if (cr === "STOP" || cr === "STOP_LOSS") {
-    if (trailedExit) return "Trailed SL";
+    if (trailedExit) {
+      if (trailTierClose) return `SL trail ${trailTierClose}`;
+      return "Trailed SL";
+    }
     return "SL";
   }
   if (cr === "TAKE_PROFIT") return "TP";
@@ -1556,6 +1576,23 @@ export function PortfolioPanel() {
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
                         {p.stopLoss != null ? fmtInstrumentPx(p.stopLoss) : "—"}
+                        {(() => {
+                          const tier =
+                            p.trailTierLabel != null
+                              ? String(p.trailTierLabel)
+                              : (() => {
+                                  const step = Number((p.meta as Record<string, unknown> | undefined)?.trailStep);
+                                  return Number.isFinite(step) && step >= 1 ? `T${Math.max(0, Math.floor(step) - 1)}` : null;
+                                })();
+                          return tier ? (
+                            <span
+                              className="ml-1 rounded bg-emerald-600/20 px-1 py-0.5 text-[9px] font-semibold text-emerald-500 dark:text-emerald-400"
+                              title={`SL trail ${tier} — stop tightened by auto-trailing`}
+                            >
+                              {tier}
+                            </span>
+                          ) : null;
+                        })()}
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
                         {p.takeProfit != null ? fmtInstrumentPx(p.takeProfit) : "—"}

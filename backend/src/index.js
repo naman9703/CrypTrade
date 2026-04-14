@@ -65,6 +65,11 @@ function truthyProxy(v) {
   return s === "1" || s === "true" || s === "yes";
 }
 
+function truthyEnv(v) {
+  const s = String(v ?? "").toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
+
 const log = createLogger();
 validateUiAuthEnv(log);
 process.on("unhandledRejection", (err) => {
@@ -106,18 +111,26 @@ app.use(
 );
 app.use(express.json({ limit: "2mb" }));
 
-const apiRateWindowMs = Math.max(60_000, Number(process.env.API_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000));
-const apiRateMax = Math.max(20, Number(process.env.API_RATE_LIMIT_MAX || 400));
-app.use(
-  "/api",
-  rateLimit({
-    windowMs: apiRateWindowMs,
-    max: apiRateMax,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { ok: false, error: "rate_limited" },
-  }),
-);
+const apiRateLimitOff =
+  truthyEnv(process.env.API_RATE_LIMIT_DISABLED) || String(process.env.API_RATE_LIMIT_MAX ?? "").trim() === "0";
+if (apiRateLimitOff) {
+  if (String(process.env.NODE_ENV || "").toLowerCase() === "production") {
+    log.warn("api_rate_limit_disabled", { hint: "Re-enable for public hosts (API_RATE_LIMIT_DISABLED unset, API_RATE_LIMIT_MAX>0)" });
+  }
+} else {
+  const apiRateWindowMs = Math.max(60_000, Number(process.env.API_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000));
+  const apiRateMax = Math.max(20, Number(process.env.API_RATE_LIMIT_MAX || 400));
+  app.use(
+    "/api",
+    rateLimit({
+      windowMs: apiRateWindowMs,
+      max: apiRateMax,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { ok: false, error: "rate_limited" },
+    }),
+  );
+}
 
 let sessionMiddleware = null;
 if (uiAuthEnabled()) {

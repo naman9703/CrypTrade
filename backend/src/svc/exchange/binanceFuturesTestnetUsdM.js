@@ -511,63 +511,75 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
 
       if (trailingStopLoss?.enabled) {
         const trailSyms = [...new Set(Object.keys(trailingBySymbol).map((k) => String(k || "").toUpperCase()))];
-        for (const s of trailSyms) {
-          if (!trailingBySymbol[s]) continue;
-          const markPx = await markPxForSymbol(s);
-          if (!Number.isFinite(markPx) || markPx <= 0) continue;
-          const qtyAbs = await futuresPositionQtyAbs(s);
-          if (Number.isFinite(qtyAbs) && qtyAbs < 1e-8) {
-            clearBracketTrailForSymbol(s);
-            continue;
-          }
-          if (!Number.isFinite(qtyAbs) || qtyAbs < 1e-8) continue;
 
-          let stPx = null;
-          if (trailMode === "FEE_LADDER") {
-            stPx = Number(trailingStopLoss.supertrendPx);
-          } else {
-            const fromMap = stBySym?.[s];
-            if (fromMap != null && Number.isFinite(Number(fromMap)) && Number(fromMap) > 0) stPx = Number(fromMap);
-            else if (s === primarySymU && trailingStopLoss.supertrendPx != null) {
-              const v = Number(trailingStopLoss.supertrendPx);
-              if (Number.isFinite(v) && v > 0) stPx = v;
+        // Fetch all mark prices + qty in parallel
+        const trailData = await Promise.allSettled(
+          trailSyms.map(async (s) => {
+            const [markPx, qtyAbs] = await Promise.all([markPxForSymbol(s), futuresPositionQtyAbs(s)]);
+            return { s, markPx, qtyAbs };
+          }),
+        );
+
+        await Promise.all(
+          trailData.map(async (r) => {
+            if (r.status !== "fulfilled") return;
+            const { s, markPx, qtyAbs } = r.value;
+            if (!trailingBySymbol[s]) return;
+            if (!Number.isFinite(markPx) || markPx <= 0) return;
+            if (Number.isFinite(qtyAbs) && qtyAbs < 1e-8) {
+              clearBracketTrailForSymbol(s);
+              return;
             }
-          }
-          if (trailMode === "SUPERTREND") {
-            const advOn = trailingStopLoss?.supertrendUseAdvancedTrail !== false;
-            if (advOn && (!Number.isFinite(stPx) || !stPx || stPx <= 0)) continue;
-          }
+            if (!Number.isFinite(qtyAbs) || qtyAbs < 1e-8) return;
 
-          try {
-            const m = await getOrLoadSymbolMeta(s);
-            const tick = Number(m?.tickSize);
-            applyTrailingStopBinanceMemory({
-              symbol: s,
-              markPx,
-              trailingOpts: {
-                enabled: true,
-                mode: trailingStopLoss.mode,
-                feeRate: trailingStopLoss.feeRate,
-                extraScalpingPcts: trailingStopLoss.extraScalpingPcts ?? [],
-                maxTrailSteps: trailingStopLoss.maxTrailSteps,
-                supertrendPx: trailMode === "FEE_LADDER" ? trailingStopLoss.supertrendPx : stPx,
-                bufferRate: trailingStopLoss.bufferRate,
-                maintenanceMarginRate: trailingStopLoss.maintenanceMarginRate,
-                minSlDistanceFrac: trailingStopLoss.minSlDistanceFrac,
-                supertrendUseFeeBreakeven: trailingStopLoss.supertrendUseFeeBreakeven !== false,
-                supertrendUseAdvancedTrail: trailingStopLoss.supertrendUseAdvancedTrail !== false,
-              },
-              trailingBySymbol,
-              localBrackets,
-              placedBracketTargets,
-              tickSize: Number.isFinite(tick) && tick > 0 ? tick : null,
-              onTrailingSlAdvance,
-              notifyActivity,
-            });
-          } catch {
-            /* ignore */
-          }
-        }
+            let stPx = null;
+            if (trailMode === "FEE_LADDER") {
+              stPx = Number(trailingStopLoss.supertrendPx);
+            } else {
+              const fromMap = stBySym?.[s];
+              if (fromMap != null && Number.isFinite(Number(fromMap)) && Number(fromMap) > 0) stPx = Number(fromMap);
+              else if (s === primarySymU && trailingStopLoss.supertrendPx != null) {
+                const v = Number(trailingStopLoss.supertrendPx);
+                if (Number.isFinite(v) && v > 0) stPx = v;
+              }
+            }
+            if (trailMode === "SUPERTREND") {
+              const advOn = trailingStopLoss?.supertrendUseAdvancedTrail !== false;
+              const feeBeOn = trailingStopLoss?.supertrendUseFeeBreakeven !== false;
+              if (advOn && (!Number.isFinite(stPx) || !stPx || stPx <= 0) && !feeBeOn) return;
+            }
+
+            try {
+              const m = await getOrLoadSymbolMeta(s);
+              const tick = Number(m?.tickSize);
+              applyTrailingStopBinanceMemory({
+                symbol: s,
+                markPx,
+                trailingOpts: {
+                  enabled: true,
+                  mode: trailingStopLoss.mode,
+                  feeRate: trailingStopLoss.feeRate,
+                  extraScalpingPcts: trailingStopLoss.extraScalpingPcts ?? [],
+                  maxTrailSteps: trailingStopLoss.maxTrailSteps,
+                  supertrendPx: trailMode === "FEE_LADDER" ? trailingStopLoss.supertrendPx : stPx,
+                  bufferRate: trailingStopLoss.bufferRate,
+                  maintenanceMarginRate: trailingStopLoss.maintenanceMarginRate,
+                  minSlDistanceFrac: trailingStopLoss.minSlDistanceFrac,
+                  supertrendUseFeeBreakeven: trailingStopLoss.supertrendUseFeeBreakeven !== false,
+                  supertrendUseAdvancedTrail: trailingStopLoss.supertrendUseAdvancedTrail !== false,
+                },
+                trailingBySymbol,
+                localBrackets,
+                placedBracketTargets,
+                tickSize: Number.isFinite(tick) && tick > 0 ? tick : null,
+                onTrailingSlAdvance,
+                notifyActivity,
+              });
+            } catch {
+              /* ignore */
+            }
+          }),
+        );
       }
 
       for (const lbSym of Object.keys(localBrackets)) {

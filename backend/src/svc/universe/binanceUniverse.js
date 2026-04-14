@@ -108,8 +108,10 @@ async function mapLimit(items, limit, fn) {
   return out;
 }
 
-export function createBinanceUniverse({ log, restBase }) {
-  const mf = String(process.env.MARKET_FEED || "SYNTH").toUpperCase();
+export function createBinanceUniverse({ log, restBase, feedKind } = {}) {
+  const mf = String(
+    feedKind != null && String(feedKind).trim() ? feedKind : process.env.MARKET_FEED || "SYNTH",
+  ).toUpperCase();
   const useFuturesUniverse = mf === "BINANCE_FUTURES";
   const spotBase = restBase || process.env.BINANCE_REST_BASE || "https://api.binance.com";
   const fapiBase = process.env.BINANCE_FUTURES_REST_BASE || "https://fapi.binance.com";

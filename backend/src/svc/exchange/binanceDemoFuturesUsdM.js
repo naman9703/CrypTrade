@@ -2,6 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import axios from "axios";
+import WsModule from "ws";
 import { resolveDefaultDemoFuturesIncomeSyncPath } from "../../lib/tradingModePersistence.js";
 import { tradeCloseFeeUsdtFromNotional } from "../../lib/tradeCloseFee.js";
 import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
@@ -333,6 +334,8 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     /** Per-symbol trailing SL state when `meta.autoTradeTrailing` on open */
     trailingBySymbol: {},
     prevFuturesQtyBySymbol: {},
+    /** Last positions snapshot from /fapi/v2/account — used to reconstruct trailing state on restart. */
+    lastPositionSnapshot: [],
   };
 
   /** Exchange-native SL/TP closes do not hit `localBrackets` — drop orphan trail/bracket memory. */
@@ -401,6 +404,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     try {
       const a = await signed("GET", "/fapi/v2/account");
       const ps = Array.isArray(a?.positions) ? a.positions : [];
+      mem.lastPositionSnapshot = ps;
       await reconcileUsdMExternalClosesFromPositions(
         { mem, publicGet, clearMemBracketTrailForSymbol, log },
         ps,
@@ -625,6 +629,475 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     if (mem.trades.length > MAX_MEM_TRADES) mem.trades = mem.trades.slice(-MAX_MEM_TRADES);
   }
 
+  // ─── Real-time trailing state (factory scope) ───────────────────────────────
+  /** Last trailing config + callbacks provided by markToMarket; reused by real-time poll. */
+  let _cachedTrailingConfig = null;
+  /** Timer handle for the real-time trailing poll loop. */
+  let _realtimeTrailingTimer = null;
+  /** Per-symbol lock to prevent concurrent SL replacements for the same symbol. */
+  const _trailSymLock = new Set();
+
+  // ─── Mark-price WebSocket stream (replaces REST premiumIndex polling) ───────
+  const _markPxCache = new Map();
+  let _markPxWs = null;
+  let _markPxWsReconnectTimer = null;
+  let _markPxWsSymbols = [];
+
+  function _connectMarkPxWs() {
+    if (_markPxWs) {
+      try { _markPxWs.removeAllListeners?.(); _markPxWs.terminate?.(); } catch { /* */ }
+      _markPxWs = null;
+    }
+    const syms = _markPxWsSymbols;
+    if (!syms.length) return;
+
+    const wsBaseUrl = process.env.BINANCE_DEMO_FUTURES_WS_BASE
+      || process.env.BINANCE_FUTURES_WS_BASE
+      || "wss://fstream.binance.com/ws";
+    const streams = syms.map((s) => `${s.toLowerCase()}@markPrice@1s`);
+    const url = streams.length === 1
+      ? `${wsBaseUrl.replace(/\/$/, "")}/${streams[0]}`
+      : `${wsBaseUrl.replace(/\/ws\/?$/, "/stream")}?streams=${streams.join("/")}`;
+
+    let ws;
+    try {
+      ws = new WsModule(url);
+    } catch {
+      return;
+    }
+    _markPxWs = ws;
+    ws.on?.("message", (raw) => {
+      try {
+        const msg = JSON.parse(String(raw));
+        const d = msg?.data ?? msg;
+        if (d?.e === "markPriceUpdate") {
+          const m = Number(d.p);
+          if (Number.isFinite(m) && m > 0) {
+            _markPxCache.set(String(d.s).toUpperCase(), { px: m, at: Date.now() });
+          }
+        }
+      } catch { /* */ }
+    });
+    ws.on?.("error", () => { /* reconnect handles it */ });
+    ws.on?.("close", () => {
+      _markPxWs = null;
+      if (_markPxWsReconnectTimer) clearTimeout(_markPxWsReconnectTimer);
+      _markPxWsReconnectTimer = setTimeout(() => {
+        _markPxWsReconnectTimer = null;
+        _connectMarkPxWs();
+      }, 2000);
+    });
+  }
+
+  function _ensureMarkPxWs(symbols) {
+    const sorted = [...new Set(symbols.map((s) => String(s).toUpperCase()))].sort();
+    const prev = [..._markPxWsSymbols].sort();
+    if (sorted.join(",") === prev.join(",") && _markPxWs?.readyState === 1) return;
+    _markPxWsSymbols = sorted;
+    _connectMarkPxWs();
+  }
+
+  function _getMarkPxFromCache(symU, maxAgeMs = 5000) {
+    const entry = _markPxCache.get(symU);
+    if (!entry) return null;
+    if (Date.now() - entry.at > maxAgeMs) return null;
+    return entry.px;
+  }
+
+  /** Qty from last position snapshot — no extra API call. Returns 0 if flat, NaN if snapshot unavailable. */
+  function qtyAbsFromSnapshot(symU) {
+    if (!Array.isArray(mem.lastPositionSnapshot) || !mem.lastPositionSnapshot.length) return NaN;
+    const p = mem.lastPositionSnapshot.find((r) => String(r?.symbol || "").toUpperCase() === symU);
+    if (!p) return 0;
+    return Math.abs(Number(p.positionAmt || 0));
+  }
+
+  /**
+   * Core trailing evaluation for a single symbol.
+   * Re-entrant safe: per-symbol lock prevents concurrent SL replacement.
+   */
+  async function evalTrailingForSymbol(s, markPx, trailingStopLoss, onTrailingSlAdvance, notifyActivity) {
+    if (_trailSymLock.has(s)) return; // already in-flight for this symbol
+    const trailMode = String(trailingStopLoss?.mode || "SUPERTREND").toUpperCase();
+    const stBySym =
+      trailingStopLoss?.supertrendBySymbol && typeof trailingStopLoss.supertrendBySymbol === "object"
+        ? trailingStopLoss.supertrendBySymbol
+        : null;
+    let stPx = null;
+    if (trailMode === "FEE_LADDER") {
+      stPx = Number(trailingStopLoss.supertrendPx);
+    } else {
+      const fromMap = stBySym?.[s];
+      if (fromMap != null && Number.isFinite(Number(fromMap)) && Number(fromMap) > 0) stPx = Number(fromMap);
+      else if (trailingStopLoss.supertrendPx != null) {
+        const v = Number(trailingStopLoss.supertrendPx);
+        if (Number.isFinite(v) && v > 0) stPx = v;
+      }
+    }
+    if (trailMode === "SUPERTREND") {
+      const advOn = trailingStopLoss?.supertrendUseAdvancedTrail !== false;
+      const feeBeOn = trailingStopLoss?.supertrendUseFeeBreakeven !== false;
+      if (advOn && (!Number.isFinite(stPx) || stPx <= 0) && !feeBeOn) return;
+    }
+
+    _trailSymLock.add(s);
+    try {
+      const m = await getOrLoadSymbolMeta(s);
+      const tick = Number(m?.tickSize);
+      const advanced = applyTrailingStopBinanceMemory({
+        symbol: s,
+        markPx,
+        trailingOpts: {
+          enabled: true,
+          mode: trailingStopLoss.mode,
+          feeRate: trailingStopLoss.feeRate,
+          openFeeRate: trailingStopLoss.openFeeRate,
+          closeFeeRate: trailingStopLoss.closeFeeRate,
+          feeBeMultiplier: trailingStopLoss.feeBeMultiplier,
+          extraScalpingPcts: trailingStopLoss.extraScalpingPcts ?? [],
+          maxTrailSteps: trailingStopLoss.maxTrailSteps,
+          supertrendPx: trailMode === "FEE_LADDER" ? trailingStopLoss.supertrendPx : stPx,
+          bufferRate: trailingStopLoss.bufferRate,
+          maintenanceMarginRate: trailingStopLoss.maintenanceMarginRate,
+          minSlDistanceFrac: trailingStopLoss.minSlDistanceFrac,
+          supertrendUseFeeBreakeven: trailingStopLoss.supertrendUseFeeBreakeven !== false,
+          supertrendUseAdvancedTrail: trailingStopLoss.supertrendUseAdvancedTrail !== false,
+        },
+        trailingBySymbol: mem.trailingBySymbol,
+        localBrackets: mem.localBrackets,
+        placedBracketTargets: mem.placedBracketTargets,
+        tickSize: Number.isFinite(tick) && tick > 0 ? tick : null,
+        onTrailingSlAdvance,
+        notifyActivity,
+      });
+      if (advanced) {
+        const pb = mem.placedBracketTargets[s];
+        if (!pb) return;
+        const newSlPx = pb.stopLoss;
+        if (!Number.isFinite(newSlPx) || newSlPx <= 0) return;
+
+        // If the venue is in local bracket mode (e.g. brackets failed with -4120 earlier),
+        // trailing will only update in-memory SL/TP enforcement; Binance will show no SL/TP.
+        if (mem.localBrackets[s]) {
+          try {
+            notifyActivity?.({
+              level: "warn",
+              category: "trailing",
+              reason: "trail_advanced_local_brackets",
+              msg: `${s} trail advanced but exchange brackets are LOCAL (Binance SL/TP will stay empty)`,
+              detail: { symbol: s, newSlPx },
+            });
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
+
+        if (!pb.closeSide) {
+          try {
+            notifyActivity?.({
+              level: "warn",
+              category: "trailing",
+              reason: "trail_advanced_missing_close_side",
+              msg: `${s} trail advanced but cannot replace Binance SL (missing closeSide)`,
+              detail: { symbol: s, newSlPx },
+            });
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
+
+        const rep = await replaceExchangeSlOrder(s, newSlPx, markPx).catch(() => ({ ok: false }));
+        if (rep?.ok && rep?.localBracketInstalled) {
+          try {
+            notifyActivity?.({
+              level: "info",
+              category: "trailing",
+              reason: "trail_sl_breached_local_close",
+              msg: `${s} mark already crossed trailing SL ${newSlPx} — local bracket installed for immediate close`,
+              detail: { symbol: s, newSlPx },
+            });
+          } catch {
+            /* ignore */
+          }
+        } else if (!rep?.ok) {
+          try {
+            notifyActivity?.({
+              level: "warn",
+              category: "trailing",
+              reason: "trail_exchange_sl_replace_failed",
+              msg: `${s} trail advanced but Binance SL replace failed${rep?.code != null ? ` (code ${rep.code})` : ""}${rep?.msg ? `: ${String(rep.msg).slice(0, 120)}` : ""}`,
+              detail: { symbol: s, newSlPx, code: rep?.code ?? null, msg: rep?.msg ?? null },
+            });
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    } catch {
+      // ignore — individual symbol errors must not block others
+    } finally {
+      _trailSymLock.delete(s);
+    }
+  }
+
+  /** Real-time poll: use mark-price WS cache, fall back to REST only on miss. */
+  async function _runRealtimePoll() {
+    if (!_cachedTrailingConfig?.trailingStopLoss?.enabled) return;
+    const { trailingStopLoss, onTrailingSlAdvance, notifyActivity } = _cachedTrailingConfig;
+    const symKeys = [...new Set(Object.keys(mem.trailingBySymbol).map((k) => String(k || "").toUpperCase()))];
+    if (!symKeys.length) return;
+
+    // Ensure mark-price WS stream covers all trailing symbols
+    _ensureMarkPxWs(symKeys);
+
+    // Resolve mark prices: WS cache first (sub-second), REST fallback for cache misses
+    const markEntries = await Promise.allSettled(
+      symKeys.map(async (s) => {
+        const cached = _getMarkPxFromCache(s);
+        if (cached != null) return { s, markPx: cached };
+        try {
+          const d = await publicGet("/fapi/v1/premiumIndex", { symbol: s });
+          const m = Number(d?.markPrice);
+          return { s, markPx: Number.isFinite(m) && m > 0 ? m : null };
+        } catch {
+          return { s, markPx: null };
+        }
+      }),
+    );
+
+    // Evaluate trailing for all symbols in parallel, using snapshot for qty check
+    await Promise.all(
+      markEntries.map((r) => {
+        if (r.status !== "fulfilled" || !r.value?.markPx) return;
+        const { s, markPx } = r.value;
+        if (!mem.trailingBySymbol[s]) return;
+        const qty = qtyAbsFromSnapshot(s);
+        if (Number.isNaN(qty)) return;
+        if (qty < 1e-8) {
+          if (qty === 0) clearMemBracketTrailForSymbol(s);
+          return;
+        }
+        return evalTrailingForSymbol(s, markPx, trailingStopLoss, onTrailingSlAdvance, notifyActivity);
+      }),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Cancel open STOP (SL) orders on this symbol for the close-out side only.
+   * Used when Binance rejects a new closePosition SL with -4130 / -4135 (only one allowed).
+   * Does not cancel TAKE_PROFIT orders.
+   */
+  async function cancelAllStopLossOrdersForDirection(symU, closeSide) {
+    const sideU = String(closeSide || "").toUpperCase();
+    const [openClassic, algoRaw] = await Promise.all([
+      signed("GET", "/fapi/v1/openOrders", { symbol: symU }).catch(() => []),
+      signed("GET", "/fapi/v1/openAlgoOrders", { symbol: symU }).catch(() => null),
+    ]);
+    const classicOrders = Array.isArray(openClassic) ? openClassic : [];
+    const algoList = Array.isArray(algoRaw)
+      ? algoRaw
+      : Array.isArray(algoRaw?.orders)
+        ? algoRaw.orders
+        : Array.isArray(algoRaw?.data)
+          ? algoRaw.data
+          : [];
+    let n = 0;
+    for (const o of classicOrders) {
+      const typ = String(o.origType || o.type || "").toUpperCase();
+      const side = String(o.side || "").toUpperCase();
+      const isSl = typ.includes("STOP") && !typ.includes("TAKE_PROFIT");
+      if (!isSl || side !== sideU) continue;
+      await signed("DELETE", "/fapi/v1/order", { symbol: symU, orderId: String(o.orderId) }).catch(() => null);
+      n += 1;
+    }
+    for (const ao of algoList) {
+      if (String(ao.symbol || "").toUpperCase() !== symU) continue;
+      const typ = String(ao.orderType || ao.origType || ao.type || "").toUpperCase();
+      const side = String(ao.side || "").toUpperCase();
+      const isSl = typ.includes("STOP") && !typ.includes("TAKE_PROFIT");
+      if (!isSl || side !== sideU) continue;
+      const algoId = ao.algoId ?? ao.orderId;
+      if (!algoId) continue;
+      await signed("DELETE", "/fapi/v1/algoOrder", { symbol: symU, algoId: String(algoId) }).catch(() => null);
+      n += 1;
+    }
+    if (n > 0) log?.info?.("binance_demo_futures_trail_sl_cancelled_conflicting", { symbol: symU, side: sideU, count: n });
+  }
+
+  /**
+   * Replace the STOP (SL) order on the exchange with a new price after a trailing advance.
+   *
+   * Strategy (cancel-first for trailing):
+   *   1. Cancel all existing SL orders for this symbol/direction (TP untouched).
+   *   2. Place the new SL via algo endpoint (primary) with classic fallback.
+   *   3. On -2021 ("would immediately trigger"): the mark has ALREADY crossed the trailing SL.
+   *      → Install a local bracket so the next markToMarket tick closes the position via MARKET.
+   */
+  async function replaceExchangeSlOrder(symU, newSlPx, markPxHint) {
+    const tgt = mem.placedBracketTargets[symU];
+    if (!tgt || !Number.isFinite(newSlPx) || newSlPx <= 0) return { ok: false, code: null, msg: "missing_target" };
+    if (!tgt.closeSide) return { ok: false, code: null, msg: "missing_close_side" };
+    const isLong = tgt.closeSide === "SELL";
+    const m = await getOrLoadSymbolMeta(symU).catch(() => null);
+    const { stopStr: stopStr0, slLimitStr } = usdmBracketPriceStrings({
+      isLong,
+      stopPx: newSlPx,
+      tpPx: Number(tgt.takeProfit) || newSlPx * (isLong ? 2 : 0.5),
+      meta: m,
+      closeSide: tgt.closeSide,
+    });
+    const stopStr = stopStr0;
+    if (!stopStr || !slLimitStr) return { ok: false, code: null, msg: "bad_stop_str" };
+
+    function resolveQtyStr() {
+      const q0 = Number(tgt.qty ?? 0);
+      if (Number.isFinite(q0) && q0 > 0) return String(q0);
+      if (Array.isArray(mem.lastPositionSnapshot)) {
+        const p = mem.lastPositionSnapshot.find((r) => String(r?.symbol || "").toUpperCase() === symU);
+        const qa = Math.abs(Number(p?.positionAmt || 0));
+        if (Number.isFinite(qa) && qa > 0) return String(qa);
+      }
+      return null;
+    }
+
+    const hedgeExtrasR = tgt.hedgeExtras || {};
+    const isHedge = Boolean(hedgeExtrasR.positionSide);
+
+    try {
+      // ── Step 1: Cancel all existing SL orders for this direction (TP untouched) ──
+      await cancelAllStopLossOrdersForDirection(symU, tgt.closeSide);
+      slTpOpenOrdersCache = { at: 0, map: new Map() };
+
+      // ── Step 2: Place new SL ──
+      // Try algo endpoint first (avoids -4120), then classic as fallback.
+      let placed = false;
+      let lastCode = null;
+      let lastMsg = null;
+
+      // Attempts: [algo closePosition, algo reduceOnly, classic closePosition, classic reduceOnly]
+      const attempts = [
+        { endpoint: "algo", mode: "closePosition" },
+        { endpoint: "algo", mode: "reduceOnly" },
+        { endpoint: "classic", mode: "closePosition" },
+        { endpoint: "classic", mode: "reduceOnly" },
+      ];
+
+      for (const { endpoint, mode } of attempts) {
+        if (placed) break;
+        try {
+          if (mode === "reduceOnly") {
+            if (isHedge) continue;
+            const qStr = resolveQtyStr();
+            if (!qStr) continue;
+            if (endpoint === "algo") {
+              await signed("POST", "/fapi/v1/algoOrder", {
+                algoType: "CONDITIONAL",
+                symbol: symU,
+                side: tgt.closeSide,
+                type: "STOP_MARKET",
+                triggerPrice: stopStr,
+                workingType: "MARK_PRICE",
+                reduceOnly: "true",
+                quantity: qStr,
+                newClientAlgoId: `trail_sl_ro_${Date.now()}`,
+                ...hedgeExtrasR,
+              });
+            } else {
+              await signed("POST", "/fapi/v1/order", {
+                symbol: symU,
+                side: tgt.closeSide,
+                type: "STOP_MARKET",
+                stopPrice: stopStr,
+                workingType: "MARK_PRICE",
+                reduceOnly: "true",
+                quantity: qStr,
+                newClientOrderId: `trail_sl_ro_${Date.now()}`,
+                ...hedgeExtrasR,
+              });
+            }
+          } else {
+            if (endpoint === "algo") {
+              await signed("POST", "/fapi/v1/algoOrder", {
+                algoType: "CONDITIONAL",
+                symbol: symU,
+                side: tgt.closeSide,
+                type: "STOP_MARKET",
+                triggerPrice: stopStr,
+                workingType: "MARK_PRICE",
+                closePosition: "true",
+                newClientAlgoId: `trail_sl_${Date.now()}`,
+                ...hedgeExtrasR,
+              });
+            } else {
+              await signed("POST", "/fapi/v1/order", {
+                symbol: symU,
+                side: tgt.closeSide,
+                type: "STOP_MARKET",
+                stopPrice: stopStr,
+                workingType: "MARK_PRICE",
+                closePosition: "true",
+                newClientOrderId: `trail_sl_${Date.now()}`,
+                ...hedgeExtrasR,
+              });
+            }
+          }
+          placed = true;
+        } catch (e) {
+          lastCode = e?.cause?.response?.data?.code ?? e?.response?.data?.code ?? null;
+          lastMsg = e?.cause?.response?.data?.msg ?? e?.response?.data?.msg ?? e?.message ?? null;
+
+          // -2021: mark already crossed the trailing SL → install local bracket for immediate close
+          if (lastCode === -2021) {
+            log?.info?.("binance_demo_futures_trail_sl_immediate_trigger", {
+              symbol: symU,
+              newSlPx,
+              msg: "Mark crossed trailing SL — installing local bracket for immediate close",
+            });
+            const qStr = resolveQtyStr();
+            const positionSideField = hedgeExtrasR.positionSide || undefined;
+            mem.localBrackets[symU] = {
+              stopLoss: newSlPx,
+              takeProfit: Number(tgt.takeProfit) || (isLong ? newSlPx * 10 : newSlPx * 0.01),
+              isLong,
+              closeSide: tgt.closeSide,
+              qty: qStr || tgt.qty || "0",
+              positionSide: positionSideField,
+              entryPrice: mem.trailingBySymbol[symU]?.entryPrice ?? 0,
+              leverage: mem.trailingBySymbol[symU]?.leverage ?? defaultLeverage,
+              strategy: "trailing_sl_breach",
+            };
+            mem.placedBracketTargets[symU] = { ...tgt, stopLoss: newSlPx };
+            return { ok: true, localBracketInstalled: true };
+          }
+
+          // -4120 on classic: already handled by algo being tried first; skip
+          // -4130 / -4135: we already cancelled before placing — rare edge, skip to next attempt
+        }
+      }
+
+      if (!placed) return { ok: false, code: lastCode, msg: lastMsg || "not_placed" };
+
+      mem.placedBracketTargets[symU] = { ...tgt, stopLoss: newSlPx };
+      log?.info?.("binance_demo_futures_trail_sl_replaced", { symbol: symU, prevSl: tgt.stopLoss, newSl: newSlPx });
+      return { ok: true };
+    } catch (e) {
+      const code = e?.cause?.response?.data?.code ?? e?.response?.data?.code ?? null;
+      const msg = e?.cause?.response?.data?.msg ?? e?.response?.data?.msg ?? e?.message ?? null;
+      log?.warn?.("binance_demo_futures_trail_replace_sl_failed", {
+        symbol: symU,
+        newSlPx,
+        code,
+        msg,
+        error: String(e?.message || e),
+      });
+      return { ok: false, code, msg };
+    }
+  }
+
   return {
     name: "binance_demo_futures_usdm",
     supportsAutoTrading: true,
@@ -673,7 +1146,9 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
               autoTradeTrailing: true,
               trailStep: Number(trail.trailStep) || 0,
               extremePx: trail.extremePx,
+              trailTierLabel: trail.trailTierLabel ?? null,
             };
+            row.trailTierLabel = trail.trailTierLabel ?? null;
           }
           out.push(row);
         }
@@ -886,6 +1361,15 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
           leverage: Math.max(1, Math.min(100, Number(leverage) || 1)),
         };
       }
+      // Expand placedBracketTargets to include details needed for SL order replacement during trailing.
+      if (bracketsPlaced && mem.placedBracketTargets[symbol]) {
+        mem.placedBracketTargets[symbol] = {
+          ...mem.placedBracketTargets[symbol],
+          closeSide,
+          hedgeExtras: { ...hedgeExtras },
+          qty: executedQty,
+        };
+      }
 
       return {
         id: posId,
@@ -925,64 +1409,84 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
       const trailMode = String(trailingStopLoss?.mode || "SUPERTREND").toUpperCase();
 
       if (trailingStopLoss?.enabled) {
-        const trailSyms = [...new Set(Object.keys(mem.trailingBySymbol).map((k) => String(k || "").toUpperCase()))];
-        for (const s of trailSyms) {
-          if (!mem.trailingBySymbol[s]) continue;
-          const markPx = await markPxForSymbol(s);
-          if (!Number.isFinite(markPx) || markPx <= 0) continue;
-          const qtyAbs = await futuresPositionQtyAbs(s);
-          if (Number.isFinite(qtyAbs) && qtyAbs < 1e-8) {
-            clearMemBracketTrailForSymbol(s);
-            continue;
-          }
-          if (!Number.isFinite(qtyAbs) || qtyAbs < 1e-8) continue;
-
-          let stPx = null;
-          if (trailMode === "FEE_LADDER") {
-            stPx = Number(trailingStopLoss.supertrendPx);
-          } else {
-            const fromMap = stBySym?.[s];
-            if (fromMap != null && Number.isFinite(Number(fromMap)) && Number(fromMap) > 0) stPx = Number(fromMap);
-            else if (s === primarySymU && trailingStopLoss.supertrendPx != null) {
-              const v = Number(trailingStopLoss.supertrendPx);
-              if (Number.isFinite(v) && v > 0) stPx = v;
+        // Reconstruct trailingBySymbol for open positions that lost in-memory state on bot restart.
+        // This ensures trailing evaluation runs for all open positions, not only newly placed ones.
+        if (Array.isArray(mem.lastPositionSnapshot)) {
+          for (const p of mem.lastPositionSnapshot) {
+            const qty = Number(p.positionAmt || 0);
+            if (Math.abs(qty) < 1e-8) continue;
+            const symU = String(p.symbol || "").toUpperCase();
+            if (mem.trailingBySymbol[symU]) continue;
+            const entryPx = Number(p.entryPrice || 0);
+            if (!entryPx) continue;
+            const posIsLong = qty > 0;
+            const lev = Number(p.leverage || defaultLeverage);
+            mem.trailingBySymbol[symU] = {
+              entryPrice: entryPx,
+              isLong: posIsLong,
+              trailStep: 0,
+              extremePx: entryPx,
+              leverage: Math.max(1, Math.min(100, Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage)),
+              _reconstructed: true,
+            };
+            log?.info?.("binance_demo_futures_trail_state_reconstructed", { symbol: symU, entryPx, isLong: posIsLong });
+            // Seed placedBracketTargets from exchange open orders so applyTrailingStopBinanceMemory
+            // has a valid prevSl to work with on the first tick after restart.
+            if (!mem.placedBracketTargets[symU] && !mem.localBrackets[symU]) {
+              try {
+                const oo = await stopTakeFromExchangeOpenOrders(symU);
+                if (oo.sl != null) {
+                  const closeSideR = posIsLong ? "SELL" : "BUY";
+                  const positionSideField = String(p.positionSide || "").toUpperCase();
+                  const hedgeExtrasR =
+                    positionSideField === "LONG" || positionSideField === "SHORT"
+                      ? { positionSide: positionSideField }
+                      : {};
+                  mem.placedBracketTargets[symU] = {
+                    stopLoss: oo.sl,
+                    takeProfit: oo.tp ?? 0,
+                    closeSide: closeSideR,
+                    hedgeExtras: hedgeExtrasR,
+                    qty: String(Math.abs(qty)),
+                    _fromRestart: true,
+                  };
+                  log?.info?.("binance_demo_futures_trail_bracket_seeded", { symbol: symU, sl: oo.sl, tp: oo.tp });
+                }
+              } catch {
+                // ignore — will retry next tick
+              }
             }
           }
-          if (trailMode === "SUPERTREND") {
-            const advOn = trailingStopLoss?.supertrendUseAdvancedTrail !== false;
-            if (advOn && (!Number.isFinite(stPx) || !stPx || stPx <= 0)) continue;
-          }
-
-          try {
-            const m = await getOrLoadSymbolMeta(s);
-            const tick = Number(m?.tickSize);
-            applyTrailingStopBinanceMemory({
-              symbol: s,
-              markPx,
-              trailingOpts: {
-                enabled: true,
-                mode: trailingStopLoss.mode,
-                feeRate: trailingStopLoss.feeRate,
-                extraScalpingPcts: trailingStopLoss.extraScalpingPcts ?? [],
-                maxTrailSteps: trailingStopLoss.maxTrailSteps,
-                supertrendPx: trailMode === "FEE_LADDER" ? trailingStopLoss.supertrendPx : stPx,
-                bufferRate: trailingStopLoss.bufferRate,
-                maintenanceMarginRate: trailingStopLoss.maintenanceMarginRate,
-                minSlDistanceFrac: trailingStopLoss.minSlDistanceFrac,
-                supertrendUseFeeBreakeven: trailingStopLoss.supertrendUseFeeBreakeven !== false,
-                supertrendUseAdvancedTrail: trailingStopLoss.supertrendUseAdvancedTrail !== false,
-              },
-              trailingBySymbol: mem.trailingBySymbol,
-              localBrackets: mem.localBrackets,
-              placedBracketTargets: mem.placedBracketTargets,
-              tickSize: Number.isFinite(tick) && tick > 0 ? tick : null,
-              onTrailingSlAdvance,
-              notifyActivity,
-            });
-          } catch {
-            /* ignore */
-          }
         }
+
+        // Cache config for real-time poll (always refresh on each candle tick)
+        _cachedTrailingConfig = { trailingStopLoss, onTrailingSlAdvance, notifyActivity };
+
+        const trailSyms = [...new Set(Object.keys(mem.trailingBySymbol).map((k) => String(k || "").toUpperCase()))];
+
+        // Fetch all mark prices in parallel (primary symbol uses candle close, others use premiumIndex)
+        const markPxResults = await Promise.allSettled(trailSyms.map((s) => markPxForSymbol(s)));
+        const markPxBySymbol = new Map();
+        trailSyms.forEach((s, i) => {
+          const r = markPxResults[i];
+          if (r.status === "fulfilled" && Number.isFinite(r.value) && r.value > 0) markPxBySymbol.set(s, r.value);
+        });
+
+        // Determine active symbols using snapshot qty (no per-symbol API call)
+        const activeTrailSyms = trailSyms.filter((s) => {
+          if (!mem.trailingBySymbol[s] || !markPxBySymbol.has(s)) return false;
+          const qty = qtyAbsFromSnapshot(s);
+          if (Number.isNaN(qty)) return false; // snapshot not ready — skip, not clear
+          if (qty < 1e-8) { clearMemBracketTrailForSymbol(s); return false; }
+          return true;
+        });
+
+        // Evaluate trailing for all active symbols in parallel
+        await Promise.all(
+          activeTrailSyms.map((s) =>
+            evalTrailingForSymbol(s, markPxBySymbol.get(s), trailingStopLoss, onTrailingSlAdvance, notifyActivity),
+          ),
+        );
       }
 
       // Local SL/TP enforcement for positions where exchange brackets failed (-4120)
@@ -1165,11 +1669,99 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         rule: "Binance USD-M futures exchangeInfo: MIN_NOTIONAL notional (USDT)",
       };
     },
+    /**
+     * Start a real-time trailing poll that runs every `intervalMs` ms independently of candle ticks.
+     * Uses the last cached trailing config; refreshed on every `markToMarket` call.
+     * @param {number} [intervalMs=3000]
+     */
+    startRealtimeTrailingPoll(intervalMs = 3000) {
+      // Stop any existing loop first
+      if (_realtimeTrailingTimer != null) {
+        clearTimeout(_realtimeTrailingTimer);
+        _realtimeTrailingTimer = null;
+      }
+      const ms = Math.max(1000, Number(intervalMs) || 3000);
+      const loop = async () => {
+        try {
+          await _runRealtimePoll();
+        } catch {
+          // ignore — loop must survive errors
+        }
+        _realtimeTrailingTimer = setTimeout(loop, ms);
+      };
+      _realtimeTrailingTimer = setTimeout(loop, ms);
+      log?.info?.("binance_demo_futures_realtime_trail_started", { intervalMs: ms });
+    },
+    /** Stop the real-time trailing poll and mark-price WS (called on bot shutdown). */
+    stopRealtimeTrailingPoll() {
+      if (_realtimeTrailingTimer != null) {
+        clearTimeout(_realtimeTrailingTimer);
+        _realtimeTrailingTimer = null;
+      }
+      if (_markPxWsReconnectTimer) { clearTimeout(_markPxWsReconnectTimer); _markPxWsReconnectTimer = null; }
+      if (_markPxWs) {
+        try { _markPxWs.removeAllListeners?.(); _markPxWs.terminate?.(); } catch { /* */ }
+        _markPxWs = null;
+      }
+      _markPxCache.clear();
+      log?.info?.("binance_demo_futures_realtime_trail_stopped");
+    },
+    /** Refresh the trailing config used by the real-time poll. Called once per candle tick. */
+    updateRealtimeTrailingConfig({ trailingStopLoss, onTrailingSlAdvance, notifyActivity }) {
+      if (trailingStopLoss?.enabled) {
+        _cachedTrailingConfig = { trailingStopLoss, onTrailingSlAdvance, notifyActivity };
+      } else {
+        _cachedTrailingConfig = null;
+      }
+    },
+    /**
+     * Run a single poll cycle immediately (used for restart catch-up to apply farthest crossed tier at once).
+     * Optionally overrides _cachedTrailingConfig for this one run.
+     */
+    async runRealtimePollOnce({ trailingStopLoss, onTrailingSlAdvance, notifyActivity } = {}) {
+      if (trailingStopLoss?.enabled) {
+        _cachedTrailingConfig = { trailingStopLoss, onTrailingSlAdvance, notifyActivity };
+      }
+      await _runRealtimePoll();
+    },
     async close() {
-      // no-op
+      // Stop real-time trailing poll on exchange close
+      if (_realtimeTrailingTimer != null) {
+        clearTimeout(_realtimeTrailingTimer);
+        _realtimeTrailingTimer = null;
+      }
     },
     getStatus() {
       return { udf: { ok: true, syncMode: "rest", error: null } };
+    },
+    /**
+     * Recover extremePx for open trailing positions by scanning historical candles since entry.
+     * Mirrors the same method in paperFutures — call once per symbol before the first markToMarket
+     * after startup so that any price excursion during bot downtime is captured.
+     * @param {Record<string, Array<{time?: number; high?: number; low?: number; close?: number}>>} candlesBySymbol
+     */
+    recoverTrailingExtremeFromCandles(candlesBySymbol = {}) {
+      for (const [symU, tr] of Object.entries(mem.trailingBySymbol)) {
+        if ((tr.trailStep ?? 0) > 0) continue;
+        const bars = candlesBySymbol[symU];
+        if (!Array.isArray(bars) || !bars.length) continue;
+        const isLong = Boolean(tr.isLong);
+        let extremePx;
+        if (isLong) {
+          extremePx = bars.reduce((mx, b) => Math.max(mx, Number(b.high) || Number(b.close) || 0), 0);
+        } else {
+          extremePx = bars.reduce((mn, b) => Math.min(mn, Number(b.low) || Number(b.close) || Infinity), Infinity);
+        }
+        if (!Number.isFinite(extremePx) || extremePx <= 0 || extremePx === Infinity) continue;
+        const currentExtreme = Number.isFinite(Number(tr.extremePx)) ? Number(tr.extremePx) : Number(tr.entryPrice ?? 0);
+        if (isLong && extremePx > currentExtreme) {
+          tr.extremePx = extremePx;
+          log?.debug?.("trail_extreme_recovered_demo", { symbol: symU, side: "LONG", extremePx, prevExtreme: currentExtreme });
+        } else if (!isLong && extremePx < currentExtreme) {
+          tr.extremePx = extremePx;
+          log?.debug?.("trail_extreme_recovered_demo", { symbol: symU, side: "SHORT", extremePx, prevExtreme: currentExtreme });
+        }
+      }
     },
   };
 }

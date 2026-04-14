@@ -408,7 +408,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 (p as any).account !== undefined ? (p as any).account : s.account,
               positions:
                 (p as any).positions !== undefined ? (p as any).positions : s.positions,
-              ...(logsFromServer.length ? { logs: logsFromServer } : {}),
+              logs: logsFromServer,
               ...(accMissing ? { trades: [] } : {}),
             };
             if (chart?.candles?.length) {
@@ -472,6 +472,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           return;
         }
         if (type === "log") {
+          const raw = payload as LogPayload & { tradingMode?: string };
+          const tm =
+            raw.tradingMode != null && String(raw.tradingMode).trim() !== ""
+              ? String(raw.tradingMode).trim().toUpperCase()
+              : null;
+          const current = String(get().mode || "PAPER").toUpperCase();
+          if (tm != null && tm !== current) return;
           get().pushLog(payload as LogPayload);
           return;
         }

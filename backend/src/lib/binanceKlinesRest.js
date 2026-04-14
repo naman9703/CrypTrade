@@ -1,7 +1,11 @@
 import axios from "axios";
 
-function binanceKlinesHttp() {
-  const mf = String(process.env.MARKET_FEED || "SYNTH").toUpperCase();
+function binanceKlinesHttp(feedKindOverride) {
+  const mf = String(
+    feedKindOverride != null && String(feedKindOverride).trim()
+      ? feedKindOverride
+      : process.env.MARKET_FEED || "SYNTH",
+  ).toUpperCase();
   if (mf !== "BINANCE" && mf !== "BINANCE_FUTURES") return null;
   const isFut = mf === "BINANCE_FUTURES";
   const base = isFut
@@ -23,8 +27,8 @@ function mapKlineRow(k) {
 }
 
 /** @returns {Array<{ ts: number, open: number, high: number, low: number, close: number, volume: number }>} */
-export async function fetchBinanceKlinesRows({ symbol, interval, limit = 120 }) {
-  const h = binanceKlinesHttp();
+export async function fetchBinanceKlinesRows({ symbol, interval, limit = 120, feedKind } = {}) {
+  const h = binanceKlinesHttp(feedKind);
   if (!h) return [];
   const sym = String(symbol || "").toUpperCase();
   const lim = Math.min(1000, Math.max(10, Number(limit) || 120));
@@ -40,8 +44,8 @@ export async function fetchBinanceKlinesRows({ symbol, interval, limit = 120 }) 
  * Paginated klines between startTime and endTime (both ms, Binance semantics).
  * Used to resolve signal-list verdicts over long histories.
  */
-export async function fetchBinanceKlinesRange({ symbol, interval, startTime, endTime, maxRows = 50_000 }) {
-  const h = binanceKlinesHttp();
+export async function fetchBinanceKlinesRange({ symbol, interval, startTime, endTime, maxRows = 50_000, feedKind } = {}) {
+  const h = binanceKlinesHttp(feedKind);
   if (!h) return [];
   const sym = String(symbol || "").toUpperCase();
   const intv = String(interval || "1m");

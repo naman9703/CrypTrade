@@ -205,6 +205,72 @@ function OptionalTrailingPctInput({
   );
 }
 
+type TrailMetricKey =
+  | "trailOpenFeeRate"
+  | "trailCloseFeeRate"
+  | "trailFeeBeMultiplier"
+  | "trailBufferRate"
+  | "trailMinSlDistFrac"
+  | "trailMaintMarginRate";
+
+interface TrailMetricItem {
+  key: TrailMetricKey;
+  label: string;
+  tip: string;
+  min: number;
+  max: number;
+  step: number;
+  decimals: number;
+  pct: boolean;
+}
+
+/** Renders a labelled group of trail metric inputs with formula tooltips. */
+function TrailMetricGroup({
+  title,
+  items,
+  cfg,
+  onChange,
+}: {
+  title: string;
+  items: TrailMetricItem[];
+  cfg: Record<string, number | unknown>;
+  onChange: (key: TrailMetricKey, storedValue: number) => void;
+}) {
+  return (
+    <div className="ml-4 space-y-1 rounded border border-sky-200/50 bg-white/60 px-2 py-1.5 dark:border-sky-800/30 dark:bg-slate-950/50">
+      <div className="text-[9px] font-semibold uppercase tracking-wide text-sky-800/70 dark:text-sky-300/50">{title}</div>
+      {items.map(({ key, label, tip, min, max, step, decimals, pct }) => {
+        const raw = Number(cfg[key]);
+        const display = pct ? +(raw * 100).toFixed(decimals) : +raw.toFixed(decimals);
+        return (
+          <div key={key} className="grid grid-cols-[1fr_76px] items-center gap-2">
+            <label
+              className="min-w-0 text-[10px] leading-snug text-slate-700 dark:text-slate-300"
+              title={tip}
+            >
+              {label}
+            </label>
+            <input
+              type="number"
+              min={min}
+              max={max}
+              step={step}
+              value={display}
+              title={tip}
+              className="w-full rounded border border-sky-200 bg-white px-1.5 py-0.5 text-right text-[10px] tabular-nums dark:border-sky-700 dark:bg-slate-900"
+              onChange={(e) => {
+                const v = parseFloat(e.currentTarget.value);
+                if (!Number.isFinite(v)) return;
+                onChange(key, pct ? v / 100 : v);
+              }}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * Legacy manual form stored SL/TP as fractions of price (e.g. 0.002 = 0.2%).
  * Now the UI uses percent (e.g. 0.2 = 0.2%). Migrate small legacy pairs only.
@@ -282,6 +348,10 @@ function effectiveSpotOrderNotionalUsdt(riskUsdt: number, freeBalance: number | 
 /** Ranked top-table symbols used for multi budget UI / EQUAL divisor (matches backend `symbolsForMultiBudgetList`). */
 function multiBudgetSymbolsForUi(bot: any): string[] {
   if (String(bot?.universeCoinSelectMode || "").toUpperCase() !== "MULTIPLE") return [];
+  const cycleSyms = Array.isArray(bot?.capitalCycleSymbols)
+    ? [...new Set((bot.capitalCycleSymbols as unknown[]).map((s) => String(s || "").trim().toUpperCase()).filter(Boolean))]
+    : [];
+  if (cycleSyms.length > 0) return cycleSyms.slice(0, 10);
   const ranked = Array.isArray(bot?.universe?.ranked) ? (bot.universe.ranked as any[]) : [];
   const rankedSyms = ranked
     .slice(0, 12)
@@ -327,19 +397,44 @@ function closeNetPnlUsdFromTrade(t: any): number | null {
   return Number.isFinite(net) ? net : null;
 }
 
-/** Signed sum of net P&L on CLOSE rows (wins positive, losses negative; fees inside net when payload includes them). */
-function cumulativeSignedClosePnlUsd(trades: readonly any[] | undefined): number {
+/** Row time for filtering compound P&L vs `allowedBudgetPnlAnchorMs` (close / ledger time). */
+function capitalCloseTradeTsMs(t: any): number {
+  const ts = t?.ts ?? t?.closedAt ?? t?.openedAt;
+  if (ts == null) return 0;
+  if (typeof ts === "number" && Number.isFinite(ts)) return ts;
+  const ms = Date.parse(String(ts));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function positionOpenedAtMsForCapital(p: any): number | null {
+  const raw = p?.openedAt ?? p?.meta?.openedAt;
+  if (raw == null) return null;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  const ms = Date.parse(String(raw));
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Signed sum of net P&L on CLOSE rows at/after anchor (net ≈ profit − fees when backend stores it that way).
+ * `anchorMs` null = include all closes (legacy sessions with no anchor yet).
+ */
+function cumulativeSignedClosePnlUsd(trades: readonly any[] | undefined, anchorMs: number | null): number {
   if (!Array.isArray(trades)) return 0;
   let sum = 0;
   for (const t of trades) {
     const net = closeNetPnlUsdFromTrade(t);
-    if (net != null && Number.isFinite(net)) sum += net;
+    if (net == null || !Number.isFinite(net)) continue;
+    if (anchorMs != null && Number.isFinite(anchorMs) && capitalCloseTradeTsMs(t) < anchorMs) continue;
+    sum += net;
   }
   return sum;
 }
 
-/** Sum venue unrealized P&L (USDT) for positions visible under the current market mode filter. */
-function sumUnrealizedPnlUsdtForUi(positions: any[] | undefined, marketMode: string): number {
+/**
+ * Sum venue unrealized P&L (USDT) for positions in market mode; when `anchorMs` is set, only positions opened at/after anchor
+ * (so unrealized from legs opened before the last allowed-cap edit does not move the headline).
+ */
+function sumUnrealizedPnlUsdtForUi(positions: any[] | undefined, marketMode: string, anchorMs: number | null): number {
   const mm = String(marketMode || "AUTO").toUpperCase();
   const rows = Array.isArray(positions) ? positions : [];
   let sum = 0;
@@ -348,6 +443,10 @@ function sumUnrealizedPnlUsdtForUi(positions: any[] | undefined, marketMode: str
     if (mm === "SPOT" && ven !== "SPOT") continue;
     if (mm === "FUTURES" && ven !== "FUTURES") continue;
     if (mm === "AUTO" && ven && ven !== "SPOT" && ven !== "FUTURES") continue;
+    if (anchorMs != null && Number.isFinite(anchorMs)) {
+      const opened = positionOpenedAtMsForCapital(p);
+      if (opened == null || opened < anchorMs) continue;
+    }
     const u = Number(p?.unrealizedPnl ?? p?.unRealizedProfit ?? NaN);
     if (Number.isFinite(u)) sum += u;
   }
@@ -587,7 +686,10 @@ function previewFixedUsdtRiskUsdt(
   if (String(bot?.riskPerTradeUnit || "").toUpperCase() !== "USDT") return Number(bot?.riskPerTrade ?? 0);
   const bufferPct = usableBufferPctFromBot(bot);
   const isMultiple = String(bot?.universeCoinSelectMode || "").toUpperCase() === "MULTIPLE";
+  const mode = derivedMultiBudgetSplitMode(bot);
+  const splitModeCycle = mode === "EQUAL" || mode === "CUSTOM_USDT" || mode === "CUSTOM_PCT_ALLOWED";
   const multiSizing = isMultiple && multiCoinSizingActiveFromBot(bot) === true;
+  const cycleMode = multiSizing && splitModeCycle;
   const capEnabled = bot?.perTradeBudgetCapEnabled !== false && !multiSizing;
   const rawCap = Number(bot?.riskPerTrade) || 0;
   const usePctCap = String(bot?.perTradeBudgetInputMode || "USDT").toUpperCase() === "PCT_OF_USABLE";
@@ -600,12 +702,16 @@ function previewFixedUsdtRiskUsdt(
   const usePct = bot?.multiTradeUsePctOfUsable === true;
   const p = clampNum(Number(bot?.multiTradePctOfUsable ?? 100), 0, 100);
   const sizedUsable = usePct ? (totalUsableBuffered * p) / 100 : totalUsableBuffered;
-  const basePool = Number.isFinite(sizedUsable) && sizedUsable > 0 ? sizedUsable : 0;
+  const cycleAnchorRaw = Number(bot?.capitalCyclePoolAnchorUsdt ?? 0);
+  const cycleAnchor = Number.isFinite(cycleAnchorRaw) && cycleAnchorRaw > 0 ? cycleAnchorRaw : allowed;
+  const cycleSized = usePct ? (cycleAnchor * p) / 100 : cycleAnchor;
+  const splitPool = cycleMode ? cycleSized : sizedUsable;
+  const basePool = Number.isFinite(splitPool) && splitPool > 0 ? splitPool : 0;
 
   let perTradeCapUsdt = 1e15;
   if (capEnabled) {
     if (usePctCap) {
-      perTradeCapUsdt = Math.max(0, (sizedUsable * clampNum(rawCap, 0, 100)) / 100);
+      perTradeCapUsdt = Math.max(0, (splitPool * clampNum(rawCap, 0, 100)) / 100);
     } else {
       perTradeCapUsdt = Math.max(0, rawCap);
     }
@@ -624,13 +730,12 @@ function previewFixedUsdtRiskUsdt(
   };
 
   if (!isMultiple || !multiSizing) {
-    const coinU = Math.max(0, sizedUsable - marSym(sym));
+    const coinU = Math.max(0, splitPool - marSym(sym));
     return laneMarginFromUnits(coinU, basePool);
   }
-
-  const mode = derivedMultiBudgetSplitMode(bot);
   const list = multiBudgetSymbolsForUi(bot);
   const nDiv = Math.max(1, list.length);
+  if (cycleMode && invested >= basePool - 1e-9) return 0;
 
   if (mode === "CUSTOM_USDT") {
     const m = (bot?.multiBudgetCoinUsdt as Record<string, number> | undefined) || {};
@@ -642,19 +747,19 @@ function previewFixedUsdtRiskUsdt(
   if (mode === "CUSTOM_PCT_ALLOWED") {
     const m = (bot?.multiBudgetCoinPct as Record<string, number> | undefined) || {};
     const pc = Number(m[sym]);
-    const slice = Number.isFinite(pc) && pc >= 0 ? sizedUsable * (clampNum(pc, 0, 100) / 100) : 0;
+    const slice = Number.isFinite(pc) && pc >= 0 ? splitPool * (clampNum(pc, 0, 100) / 100) : 0;
     const coinU = Math.max(0, slice - marSym(sym));
     return laneMarginFromUnits(coinU, basePool);
   }
   if (mode === "EQUAL") {
-    const equalSlot = nDiv > 0 ? sizedUsable / nDiv : 0;
+    const equalSlot = nDiv > 0 ? splitPool / nDiv : 0;
     const coinU = Math.max(0, equalSlot - marSym(sym));
     const perSlot = Math.min(cappedLane(coinU), equalSlot);
     const riskPerTradeRaw = Math.max(0, perSlot * nDiv);
     return nDiv > 1 ? riskPerTradeRaw / nDiv : riskPerTradeRaw;
   }
 
-  const coinU = Math.max(0, sizedUsable - marSym(sym));
+  const coinU = Math.max(0, splitPool - marSym(sym));
   return laneMarginFromUnits(coinU, basePool);
 }
 
@@ -1029,6 +1134,12 @@ export function TradingPanel() {
       futuresTrailingStFeeBreakeven: bot?.futuresTrailingStFeeBreakeven !== false,
       futuresTrailingStAdvanced: bot?.futuresTrailingStAdvanced !== false,
       trailingStopExtraScalpingPcts: parseTrailingExtraPcts(bot),
+      trailOpenFeeRate: clampNum(Number(bot?.trailOpenFeeRate ?? 0.0004), 0, 0.01),
+      trailCloseFeeRate: clampNum(Number(bot?.trailCloseFeeRate ?? 0.0004), 0, 0.01),
+      trailFeeBeMultiplier: clampNum(Number(bot?.trailFeeBeMultiplier ?? 1.0), 1, 2),
+      trailBufferRate: clampNum(Number(bot?.trailBufferRate ?? 0.0005), 0, 0.05),
+      trailMinSlDistFrac: clampNum(Number(bot?.trailMinSlDistFrac ?? 0.002), 0, 0.1),
+      trailMaintMarginRate: clampNum(Number(bot?.trailMaintMarginRate ?? 0.005), 0, 0.1),
       supertrendFuturesFixedSlPct: clampNum(Number(bot?.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2),
       supertrendFuturesFixedTpPct: clampNum(Number(bot?.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5),
       supertrendFuturesTwoWay: bot?.supertrendFuturesTwoWay === true,
@@ -1056,6 +1167,10 @@ export function TradingPanel() {
         ? (bot.multiBudgetCoinPct as Record<string, number>)
         : {}) as Record<string, number>,
       capitalAllotmentCompoundPnlUi: bot?.capitalAllotmentCompoundPnlUi === true,
+      capitalCycleStrategyBalanceUsdt: Math.max(0, Number(bot?.capitalCycleStrategyBalanceUsdt ?? 0)),
+      capitalCyclePoolAnchorUsdt: Math.max(0, Number(bot?.capitalCyclePoolAnchorUsdt ?? 0)),
+      capitalCycleRealizedPnlUsdt: Number(bot?.capitalCycleRealizedPnlUsdt ?? 0),
+      capitalCycleSymbols: Array.isArray(bot?.capitalCycleSymbols) ? [...bot.capitalCycleSymbols] : [],
     };
   }, [bot]);
 
@@ -1387,14 +1502,25 @@ export function TradingPanel() {
     const walletFreeMarginTotal = walletFreeMarginUsdt(account, mm);
     const splitDiv = capitalSplitDivisorFromBot(merged);
     const fixedUsd = cfg.riskPerTradeUnit === "USDT" && cfg.maxDailyLossUnit === "USDT";
+    const splitMode = derivedMultiBudgetSplitMode(merged);
+    const cycleMode =
+      fixedUsd &&
+      cfg.universeCoinSelectMode === "MULTIPLE" &&
+      cfg.multiCoinCapitalSizingActive &&
+      (splitMode === "EQUAL" || splitMode === "CUSTOM_USDT" || splitMode === "CUSTOM_PCT_ALLOWED");
     const baseAllowedPoolUsdt = fixedUsd
       ? computeResolveAllowedFixedUsdt(merged, account, activeSymbol, positions, levSizing)
       : effectiveAllowedPoolUsdt(merged, account);
     const compoundOn = cfg.capitalAllotmentCompoundPnlUi === true;
-    const compoundCloseNet = compoundOn ? cumulativeSignedClosePnlUsd(trades) : 0;
-    const compoundUnrealized = compoundOn ? sumUnrealizedPnlUsdtForUi(positions, mm) : 0;
+    const pnlAnchorRaw = Number(bot?.allowedBudgetPnlAnchorMs);
+    const allowedBudgetPnlAnchorMs =
+      Number.isFinite(pnlAnchorRaw) && pnlAnchorRaw > 0 ? Math.round(pnlAnchorRaw) : null;
+    const compoundCloseNet = compoundOn ? cumulativeSignedClosePnlUsd(trades, allowedBudgetPnlAnchorMs) : 0;
+    const compoundUnrealized = compoundOn ? sumUnrealizedPnlUsdtForUi(positions, mm, allowedBudgetPnlAnchorMs) : 0;
     const compoundTradingAdj = compoundCloseNet + compoundUnrealized;
-    const allowedPoolUsdt = baseAllowedPoolUsdt + compoundTradingAdj;
+    const cycleAnchor = Number(cfg.capitalCyclePoolAnchorUsdt) || 0;
+    const cycleBase = cycleAnchor > 0 ? cycleAnchor : baseAllowedPoolUsdt;
+    const allowedPoolUsdt = cycleMode ? cycleBase : baseAllowedPoolUsdt + compoundTradingAdj;
     const invested = sumOpenMarginUsedUsdtForUi(positions, mm);
     /** Raw headroom from allowed cap (can be negative if invested > allowed). */
     const usablePoolRaw = allowedPoolUsdt - invested;
@@ -1402,10 +1528,15 @@ export function TradingPanel() {
     const usableBuffered = Math.max(0, usablePoolRaw) * (bufferPct / 100);
     /** Pool used for sizing after optional “% of usable” trim (never negative). */
     const usableStrategy = usableBuffered;
-    const sizedUsableUsdt =
+    const cycleSizedUsdt =
       cfg.multiTradeUsePctOfUsable === true
-        ? (usableStrategy * clampNum(Number(cfg.multiTradePctOfUsable ?? 100), 0, 100)) / 100
-        : usableStrategy;
+        ? (cycleBase * clampNum(Number(cfg.multiTradePctOfUsable ?? 100), 0, 100)) / 100
+        : cycleBase;
+    const sizedUsableUsdt = cycleMode
+      ? Math.max(0, cycleSizedUsdt)
+      : (cfg.multiTradeUsePctOfUsable === true
+          ? (usableStrategy * clampNum(Number(cfg.multiTradePctOfUsable ?? 100), 0, 100)) / 100
+          : usableStrategy);
     const laneBudget =
       cfg.riskPerTradeUnit === "USDT"
         ? previewFixedUsdtRiskUsdt(merged, activeSymbol, positions, account, levSizing)
@@ -1413,11 +1544,18 @@ export function TradingPanel() {
     /** `laneBudget` is initial margin (invested capital) per symbol (fixed USDT sizing). */
     const laneMarginApprox = Number(laneBudget) || 0;
     const allowedMain = `${allowedPoolUsdt.toLocaleString("en-US", { maximumFractionDigits: 2 })} USDT`;
-    const compoundBreakdownLine =
-      compoundOn && (compoundCloseNet !== 0 || compoundUnrealized !== 0 || baseAllowedPoolUsdt !== allowedPoolUsdt)
-        ? `Base cap ${baseAllowedPoolUsdt.toFixed(2)} + closes ${compoundCloseNet >= 0 ? "+" : ""}${compoundCloseNet.toFixed(2)} + open uPnL ${compoundUnrealized >= 0 ? "+" : ""}${compoundUnrealized.toFixed(2)}`
+    const anchorHint =
+      compoundOn && allowedBudgetPnlAnchorMs != null
+        ? ` · P&L since allowed-budget edit ${new Date(allowedBudgetPnlAnchorMs).toLocaleString()}`
         : compoundOn
-          ? `Base cap ${baseAllowedPoolUsdt.toFixed(2)} (no P&L data in list / positions yet)`
+          ? " · No anchor yet — next change to allowed USDT / % / input mode starts the clock"
+          : "";
+    const compoundBreakdownLine = cycleMode
+      ? `Cycle pool anchor ${cycleBase.toFixed(2)} USDT${cfg.capitalCycleRealizedPnlUsdt !== 0 ? ` · realized this cycle ${cfg.capitalCycleRealizedPnlUsdt >= 0 ? "+" : ""}${Number(cfg.capitalCycleRealizedPnlUsdt).toFixed(2)}` : ""}`
+      : compoundOn && (compoundCloseNet !== 0 || compoundUnrealized !== 0 || baseAllowedPoolUsdt !== allowedPoolUsdt)
+        ? `Base cap ${baseAllowedPoolUsdt.toFixed(2)} + closes (net, after anchor) ${compoundCloseNet >= 0 ? "+" : ""}${compoundCloseNet.toFixed(2)} + open uPnL (opens ≥ anchor) ${compoundUnrealized >= 0 ? "+" : ""}${compoundUnrealized.toFixed(2)}${anchorHint}`
+        : compoundOn
+          ? `Base cap ${baseAllowedPoolUsdt.toFixed(2)} (no post-anchor P&L in list / no qualifying open legs)${anchorHint}`
           : null;
     const allowedSub =
       fixedUsd && cfg.universeCoinSelectMode === "MULTIPLE" && cfg.multiCoinCapitalSizingActive && cfg.multiBudgetSplitMode === "EQUAL" && splitDiv > 1
@@ -1454,9 +1592,12 @@ export function TradingPanel() {
           : "Fund the venue wallet to see venue-capped deployable notional.",
       );
     }
-    const usableFormula = `max(0, ${allowedPoolUsdt.toFixed(2)} − ${invested.toFixed(2)}) × ${bufferPct}%`;
-    const usableSizingNote =
-      usablePoolRaw < 0
+    const usableFormula = cycleMode
+      ? `cycle pool ${cycleBase.toFixed(2)}${cfg.multiTradeUsePctOfUsable === true ? ` × ${clampNum(Number(cfg.multiTradePctOfUsable ?? 100), 0, 100).toFixed(2)}%` : ""} (fixed until flat rebalance)`
+      : `max(0, ${allowedPoolUsdt.toFixed(2)} − ${invested.toFixed(2)}) × ${bufferPct}%`;
+    const usableSizingNote = cycleMode
+      ? "Cycle mode: per-coin slots stay fixed during open positions (no cross-coin shrink). Rebalance happens after all positions are flat, using realized PnL."
+      : usablePoolRaw < 0
         ? "Open margin exceeds allowed — raise allowed or close positions so headroom recovers."
         : usablePoolRaw === 0
           ? "No headroom at this cap until open margin drops below allowed."
@@ -1474,12 +1615,14 @@ export function TradingPanel() {
       walletFreeMarginTotal,
       walletSliderPct,
       fixedUsd,
+      cycleMode,
       allowedPoolUsdt,
       allowedPoolUsdtBase: baseAllowedPoolUsdt,
       capitalAllotmentCompoundPnlUi: compoundOn,
       compoundCloseNet,
       compoundUnrealized,
       compoundBreakdownLine,
+      allowedBudgetPnlAnchorMs,
       usableStrategy,
       sizedUsableUsdt,
       usablePoolRaw,
@@ -1616,6 +1759,13 @@ export function TradingPanel() {
   const equalSplitSlotUsdt = useMemo(() => {
     if (cfg.multiBudgetSplitMode !== "EQUAL" || capitalMultiSyms.length === 0) return null;
     const n = Math.max(1, capitalMultiSyms.length);
+    const cycleAnchor = Number(cfg.capitalCyclePoolAnchorUsdt) || 0;
+    if (cycleAnchor > 0) {
+      const usePct = cfg.multiTradeUsePctOfUsable === true;
+      const pct = clampNum(Number(cfg.multiTradePctOfUsable ?? 100), 0, 100);
+      const cycleSized = usePct ? (cycleAnchor * pct) / 100 : cycleAnchor;
+      return cycleSized / n;
+    }
     const su = Number(capitalAllotmentHeadline.sizedUsableUsdt) || 0;
     const allow = Number(capitalAllotmentHeadline.allowedPoolUsdt) || 0;
     if (su > 0) return su / n;
@@ -1626,6 +1776,9 @@ export function TradingPanel() {
     capitalMultiSyms,
     capitalAllotmentHeadline.sizedUsableUsdt,
     capitalAllotmentHeadline.allowedPoolUsdt,
+    cfg.capitalCyclePoolAnchorUsdt,
+    cfg.multiTradeUsePctOfUsable,
+    cfg.multiTradePctOfUsable,
   ]);
 
   const showFuturesMinNotionalGate =
@@ -2749,8 +2902,10 @@ export function TradingPanel() {
                       </span>
                     </label>
                     {cfg.futuresTrailingStopMode === "SUPERTREND" ? (
-                      <div className="ml-6 space-y-1.5 rounded-md border border-sky-200/90 bg-sky-50/70 px-2 py-1.5 dark:border-sky-800/50 dark:bg-slate-900/60">
+                      <div className="ml-6 space-y-2 rounded-md border border-sky-200/90 bg-sky-50/70 px-2 py-1.5 dark:border-sky-800/50 dark:bg-slate-900/60">
                         <div className="text-[10px] font-semibold text-sky-900 dark:text-sky-200">Supertrend-based (apply any combination)</div>
+
+                        {/* ── Fee Breakeven toggle + its metrics ── */}
                         <label className="flex cursor-pointer items-start gap-2 text-[10px] leading-snug text-slate-700 dark:text-slate-300">
                           <input
                             type="checkbox"
@@ -2762,22 +2917,57 @@ export function TradingPanel() {
                                 void api
                                   .botConfig({ futuresTrailingStFeeBreakeven: false, futuresTrailingStAdvanced: true })
                                   .catch(() => pushLog({ level: "error", msg: "Failed to update Supertrend trailing" }));
-                                pushLog({
-                                  level: "info",
-                                  msg: "Supertrend trailing: kept Advanced on — at least one of Fee breakeven / Advanced must be enabled",
-                                });
+                                pushLog({ level: "info", msg: "Supertrend trailing: kept Advanced on" });
                                 return;
                               }
-                              void api.botConfig({ futuresTrailingStFeeBreakeven: on }).catch(() => {
-                                pushLog({ level: "error", msg: "Failed to update fee breakeven trailing" });
-                              });
+                              void api.botConfig({ futuresTrailingStFeeBreakeven: on }).catch(() =>
+                                pushLog({ level: "error", msg: "Failed to update fee breakeven trailing" }),
+                              );
                             }}
                           />
                           <span>
-                            <span className="font-semibold text-slate-800 dark:text-slate-200">Fee breakeven</span> — Fee-aware activation past entry and
-                            a stop floor at ~fee recovery (padded fee rate); no Supertrend line needed when this alone is on.
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">Fee breakeven (T0)</span>
+                            {" — "}When mark price crosses the T0 activation price, the SL is locked at the T0 floor
+                            (round-trip breakeven). No Supertrend line needed.
                           </span>
                         </label>
+                        {cfg.futuresTrailingStFeeBreakeven && (
+                          <TrailMetricGroup
+                            title="Fee breakeven parameters"
+                            items={[
+                              {
+                                key: "trailOpenFeeRate",
+                                label: "Open fee rate (%)",
+                                tip: `Taker/maker fee paid when opening the position.\nUsed in: T0 SL = entry × (1 + openFee + closeFee) × multiplier\nDefault: ${(cfg.trailOpenFeeRate * 100).toFixed(4)}%`,
+                                min: 0, max: 1, step: 0.01, decimals: 4, pct: true,
+                              },
+                              {
+                                key: "trailCloseFeeRate",
+                                label: "Close fee rate (%)",
+                                tip: `Taker fee paid when the SL exit fires.\nRound-trip = openFee + closeFee.\nT0 SL = entry × (1 + round-trip × multiplier)\nDefault: ${(cfg.trailCloseFeeRate * 100).toFixed(4)}%`,
+                                min: 0, max: 1, step: 0.01, decimals: 4, pct: true,
+                              },
+                              {
+                                key: "trailFeeBeMultiplier",
+                                label: "Safety multiplier ×",
+                                tip: `Optional safety margin applied on top of the round-trip fee.\nFormula: T0_SL = entry × (1 + (openFee + closeFee) × multiplier)\nT0_activation = entry × (1 + (openFee + closeFee) × multiplier + bufferRate)\n1.0 = exact breakeven, 1.25 = 25% extra padding.\nDefault: ${cfg.trailFeeBeMultiplier.toFixed(2)}`,
+                                min: 1, max: 2, step: 0.05, decimals: 2, pct: false,
+                              },
+                              {
+                                key: "trailBufferRate",
+                                label: "Activation buffer (%)",
+                                tip: `Extra gap ABOVE the T0 floor required before trailing activates.\nFormula: activation = entry × (1 + paddedFee + bufferRate)\nPurpose: prevent activation on micro-noise immediately after entry.\nDefault: ${(cfg.trailBufferRate * 100).toFixed(3)}%`,
+                                min: 0, max: 5, step: 0.01, decimals: 3, pct: true,
+                              },
+                            ]}
+                            cfg={cfg}
+                            onChange={(k, v) => void api.botConfig({ [k]: v }).catch(() =>
+                              pushLog({ level: "error", msg: `Failed to update ${k}` }),
+                            )}
+                          />
+                        )}
+
+                        {/* ── Advanced trailing toggle + its metrics ── */}
                         <label className="flex cursor-pointer items-start gap-2 text-[10px] leading-snug text-slate-700 dark:text-slate-300">
                           <input
                             type="checkbox"
@@ -2789,25 +2979,48 @@ export function TradingPanel() {
                                 void api
                                   .botConfig({ futuresTrailingStAdvanced: false, futuresTrailingStFeeBreakeven: true })
                                   .catch(() => pushLog({ level: "error", msg: "Failed to update Supertrend trailing" }));
-                                pushLog({
-                                  level: "info",
-                                  msg: "Supertrend trailing: kept Fee breakeven on — at least one sub-option must stay enabled",
-                                });
+                                pushLog({ level: "info", msg: "Supertrend trailing: kept Fee breakeven on" });
                                 return;
                               }
-                              void api.botConfig({ futuresTrailingStAdvanced: on }).catch(() => {
-                                pushLog({ level: "error", msg: "Failed to update advanced Supertrend trailing" });
-                              });
+                              void api.botConfig({ futuresTrailingStAdvanced: on }).catch(() =>
+                                pushLog({ level: "error", msg: "Failed to update advanced Supertrend trailing" }),
+                              );
                             }}
                           />
                           <span>
-                            <span className="font-semibold text-slate-800 dark:text-slate-200">Advanced trailing</span> — Ratchet stop with the live
-                            Supertrend line from the bot chart (with fee floor when Fee breakeven is also on). Fixes prior behavior where min-distance to
-                            mark could block legitimate tighten steps.
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">Advanced trailing (T1, T2…)</span>
+                            {" — "}Continuously ratchets SL to the live Supertrend line (with T0 floor when Fee breakeven is also
+                            on). Each ST advance creates a new tier:{" "}
+                            <span className="font-mono text-sky-700 dark:text-sky-300">T0 → T1 → T2…</span>
                           </span>
                         </label>
+                        {cfg.futuresTrailingStAdvanced && (
+                          <TrailMetricGroup
+                            title="Advanced trailing parameters"
+                            items={[
+                              {
+                                key: "trailMinSlDistFrac",
+                                label: "Min SL distance (%)",
+                                tip: `Minimum fractional improvement from the current mark to move the SL.\nFormula: |mark − newSL| / mark ≥ minSlDistFrac\nPrevents ratchet spam on tiny ST fluctuations.\nDefault: ${(cfg.trailMinSlDistFrac * 100).toFixed(3)}%`,
+                                min: 0, max: 10, step: 0.01, decimals: 3, pct: true,
+                              },
+                              {
+                                key: "trailMaintMarginRate",
+                                label: "Maint margin rate (%)",
+                                tip: `Liquidation zone guard used at order-open time.\nFormula: liqPrice = entry × (1 − 1/leverage + maintMarginRate)  [LONG]\nOpen is rejected if liqPrice ≥ T0_breakeven (money lost to fees before liq).\nDefault: ${(cfg.trailMaintMarginRate * 100).toFixed(3)}%`,
+                                min: 0, max: 10, step: 0.05, decimals: 3, pct: true,
+                              },
+                            ]}
+                            cfg={cfg}
+                            onChange={(k, v) => void api.botConfig({ [k]: v }).catch(() =>
+                              pushLog({ level: "error", msg: `Failed to update ${k}` }),
+                            )}
+                          />
+                        )}
                       </div>
                     ) : null}
+
+                    {/* ── Fee Ladder radio + its metrics ── */}
                     <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-slate-700 dark:text-slate-300">
                       <input
                         type="radio"
@@ -2819,10 +3032,7 @@ export function TradingPanel() {
                             void (async () => {
                               try {
                                 await api.botConfig({ futuresTrailingStopMode: "FEE_LADDER" });
-                                pushLog({
-                                  level: "info",
-                                  msg: "Futures trailing: Fee ladder — discrete locks from fee model + optional % of entry",
-                                });
+                                pushLog({ level: "info", msg: "Futures trailing: Fee ladder — discrete locks" });
                               } catch {
                                 pushLog({ level: "error", msg: "Failed to set trailing mode" });
                               }
@@ -2831,45 +3041,81 @@ export function TradingPanel() {
                         }}
                       />
                       <span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">Fee ladder</span> — Discrete locks only: first at{" "}
-                        <span className="text-slate-600 dark:text-slate-400">~round-trip fee break-even</span> on entry, second at another{" "}
-                        <span className="text-slate-600 dark:text-slate-400">fee-equivalent</span> notch, then up to three optional{" "}
-                        <span className="text-slate-600 dark:text-slate-400">% of entry</span> locks you set below. Advance uses favorable excursion (high/low
-                        watermark) vs entry — no Supertrend line.
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">Fee ladder</span>
+                        {" — "}Discrete price locks using high/low watermark (no Supertrend needed):{" "}
+                        <span className="font-mono text-slate-500 dark:text-slate-400">T0</span> = round-trip breakeven,{" "}
+                        <span className="font-mono text-slate-500 dark:text-slate-400">T1</span> = 2× round-trip,{" "}
+                        <span className="font-mono text-slate-500 dark:text-slate-400">T2/T3/T4</span> = optional % of entry locks.
                       </span>
                     </label>
-                  </fieldset>
-                  <div className="mt-2 space-y-1 pl-6">
-                    <p className="text-[11px] text-slate-600 dark:text-slate-500">
-                      Extra scalping (% of entry, optional — max 3; used by <span className="font-medium">Fee ladder</span>; ignored for Supertrend-based)
-                    </p>
-                    {([0, 1, 2] as const).map((idx) => (
-                      <div key={idx} className="grid grid-cols-[110px_1fr] items-center gap-2">
-                        <span className="text-[11px] text-slate-600 dark:text-slate-500">Extra {idx + 1}</span>
-                        <OptionalTrailingPctInput
-                          value={cfg.trailingStopExtraScalpingPcts[idx]}
-                          min={0.01}
-                          max={5}
-                          onCommit={async (v) => {
-                            const slots: [number | undefined, number | undefined, number | undefined] = [
-                              cfg.trailingStopExtraScalpingPcts[0],
-                              cfg.trailingStopExtraScalpingPcts[1],
-                              cfg.trailingStopExtraScalpingPcts[2],
-                            ];
-                            slots[idx] = v;
-                            const next = [slots[0], slots[1], slots[2]].filter(
-                              (x): x is number => x != null && Number.isFinite(x) && x > 0,
-                            );
-                            try {
-                              await api.botConfig({ trailingStopExtraScalpingPcts: next });
-                            } catch {
-                              pushLog({ level: "error", msg: "Failed to set trailing extra scalping" });
-                            }
-                          }}
+                    {cfg.futuresTrailingStopMode === "FEE_LADDER" && (
+                      <div className="ml-6 space-y-2 rounded-md border border-slate-200/80 bg-slate-50/70 px-2 py-1.5 dark:border-slate-700/60 dark:bg-slate-900/60">
+                        <TrailMetricGroup
+                          title="Fee rates (T0 and T1 calculation)"
+                          items={[
+                            {
+                              key: "trailOpenFeeRate",
+                              label: "Open fee rate (%)",
+                              tip: `Taker/maker fee for opening the position.\nT0 lock = entry × (1 + (openFee + closeFee) × multiplier)\nT1 lock = entry × (1 + 2 × (openFee + closeFee))\nDefault: ${(cfg.trailOpenFeeRate * 100).toFixed(4)}%`,
+                              min: 0, max: 1, step: 0.01, decimals: 4, pct: true,
+                            },
+                            {
+                              key: "trailCloseFeeRate",
+                              label: "Close fee rate (%)",
+                              tip: `Taker fee for the SL exit.\nRound-trip = openFee + closeFee.\nT0 = entry × (1 + roundTrip)\nT1 = entry × (1 + 2 × roundTrip)\nDefault: ${(cfg.trailCloseFeeRate * 100).toFixed(4)}%`,
+                              min: 0, max: 1, step: 0.01, decimals: 4, pct: true,
+                            },
+                            {
+                              key: "trailFeeBeMultiplier",
+                              label: "T0 safety multiplier ×",
+                              tip: `Safety margin on the T0 (breakeven) lock only.\nT0 = entry × (1 + roundTrip × multiplier)\nT1 onwards use exact round-trip (no multiplier).\n1.0 = exact round-trip breakeven.\nDefault: ${cfg.trailFeeBeMultiplier.toFixed(2)}`,
+                              min: 1, max: 2, step: 0.05, decimals: 2, pct: false,
+                            },
+                          ]}
+                          cfg={cfg}
+                          onChange={(k, v) => void api.botConfig({ [k]: v }).catch(() =>
+                            pushLog({ level: "error", msg: `Failed to update ${k}` }),
+                          )}
                         />
+                        <div className="space-y-1 border-t border-slate-200/60 pt-2 dark:border-slate-700/40">
+                          <p className="text-[10px] text-slate-600 dark:text-slate-500">
+                            <span className="font-semibold">T2 / T3 / T4</span> — Extra scalp locks at % of entry (T2, T3, T4). Leave blank to skip.
+                          </p>
+                          {([0, 1, 2] as const).map((idx) => (
+                            <div key={idx} className="grid grid-cols-[80px_1fr] items-center gap-2">
+                              <span
+                                className="text-[10px] text-slate-600 dark:text-slate-500"
+                                title={`T${2 + idx} lock = entry × (1 ± pct/100). Activates when high/low watermark crosses this price.`}
+                              >
+                                T{2 + idx} lock (%)
+                              </span>
+                              <OptionalTrailingPctInput
+                                value={cfg.trailingStopExtraScalpingPcts[idx]}
+                                min={0.01}
+                                max={5}
+                                onCommit={async (v) => {
+                                  const slots: [number | undefined, number | undefined, number | undefined] = [
+                                    cfg.trailingStopExtraScalpingPcts[0],
+                                    cfg.trailingStopExtraScalpingPcts[1],
+                                    cfg.trailingStopExtraScalpingPcts[2],
+                                  ];
+                                  slots[idx] = v;
+                                  const next = [slots[0], slots[1], slots[2]].filter(
+                                    (x): x is number => x != null && Number.isFinite(x) && x > 0,
+                                  );
+                                  try {
+                                    await api.botConfig({ trailingStopExtraScalpingPcts: next });
+                                  } catch {
+                                    pushLog({ level: "error", msg: "Failed to set trailing extra scalping" });
+                                  }
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                    )}
+                  </fieldset>
                 </div>
               </div>
             )}
@@ -3040,7 +3286,11 @@ export function TradingPanel() {
                   <div className="grid grid-cols-2 gap-x-5 gap-y-2">
                     <div>
                       <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        {capitalAllotmentHeadline.capitalAllotmentCompoundPnlUi ? "Allowed (net est.)" : "Allowed"}
+                        {capitalAllotmentHeadline.cycleMode
+                          ? "Allowed (cycle anchor)"
+                          : capitalAllotmentHeadline.capitalAllotmentCompoundPnlUi
+                            ? "Allowed (net est.)"
+                            : "Allowed"}
                       </div>
                       <div
                         className={`text-lg font-bold tabular-nums ${
@@ -3257,12 +3507,13 @@ export function TradingPanel() {
                     }}
                   />
                   <span>
-                    <span className="font-semibold">Compound trading result into headline pool</span> — show{" "}
-                    <span className="font-medium">base allowed cap + signed close P&L + open unrealized</span> as the &quot;Allowed&quot; number and
-                    rebuild usable/headroom from that (live as trades and marks update). Close P&L is net when the trade row carries it (fees are
-                    usually already in that net).{" "}
+                    <span className="font-semibold">Compound trading result into headline pool</span> —{" "}
+                    <span className="font-medium">allowed ≈ base cap + net close P&L + open unrealized</span> (close rows use stored net = P&amp;L
+                    after fees when the backend provides it). Only <span className="font-medium">CLOSE</span> rows at/after the last{" "}
+                    <span className="font-medium">allowed budget</span> edit count; open unrealized only from positions opened on/after that time.
+                    Editing allowed USDT, % of wallet, or USDT/% input mode resets the anchor to now.{" "}
                     <span className="text-slate-600 dark:text-slate-400">
-                      Autotrade sizing still uses the configured allowed USDT until you change that cap.
+                      Autotrade sizing still uses the configured allowed USDT cap until you change that cap.
                     </span>
                   </span>
                 </label>
