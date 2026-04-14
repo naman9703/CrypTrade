@@ -8,12 +8,16 @@ import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/bin
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
 import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
 import { reconcileUsdMExternalClosesFromPositions } from "../../lib/binanceUsdmExternalCloseReconcile.js";
+import { verifyUsdMPositionAfterOpen } from "../../lib/binanceUsdmPositionVerify.js";
 import { buildRiskSlTpTriggerActivity } from "../../lib/activityLog.js";
 import {
   mergeSlTpSymbolMaps,
+  normalizeAlgoOrdersPayload,
   slTpFromAlgoOrdersList,
   slTpFromOpenOrdersList,
 } from "../../lib/binanceFuturesOpenOrdersSlTp.js";
+import { evalTrailingForSymbolUsdM } from "../../lib/binanceUsdMTrailSlReplace.js";
+import { trailStepToTierLabel } from "../../lib/supertrendTrailingSl.js";
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
@@ -31,6 +35,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     timeout: 10_000,
     headers: { "X-MBX-APIKEY": apiKey },
   });
+
+  /** Per-symbol SL/TP from open orders (2s TTL). Scoped GETs avoid missing older SL legs in unpaged “all symbols” responses. */
+  const slTpOpenOrdersCacheBySym = new Map();
 
   async function signed(method, path, params = {}) {
     const ts = Date.now();
@@ -311,28 +318,29 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
   }
 
   /** SL/TP trigger prices from exchange open conditional orders (when brackets posted, localBrackets may be empty). */
-  let slTpOpenOrdersCache = { at: 0, map: new Map() };
   async function stopTakeFromExchangeOpenOrders(symbol) {
     const sym = String(symbol || "").toUpperCase();
     const now = Date.now();
-    if (now - slTpOpenOrdersCache.at < 2000 && slTpOpenOrdersCache.map.has(sym)) {
-      return slTpOpenOrdersCache.map.get(sym);
-    }
-    const map = new Map();
+    const hit = slTpOpenOrdersCacheBySym.get(sym);
+    if (hit && now - hit.at < 2000) return { sl: hit.sl, tp: hit.tp };
+    let sl = null;
+    let tp = null;
     try {
       const [all, algoRaw] = await Promise.all([
-        signed("GET", "/fapi/v1/openOrders").catch(() => []),
-        signed("GET", "/fapi/v1/openAlgoOrders").catch(() => []),
+        signed("GET", "/fapi/v1/openOrders", { symbol: sym }).catch(() => []),
+        signed("GET", "/fapi/v1/openAlgoOrders", { symbol: sym, algoType: "CONDITIONAL" }).catch(() => []),
       ]);
       const parsed = slTpFromOpenOrdersList(Array.isArray(all) ? all : []);
       const parsedAlgo = slTpFromAlgoOrdersList(algoRaw);
       const merged = mergeSlTpSymbolMaps(parsed, parsedAlgo);
-      for (const [k, v] of merged) map.set(k, v);
+      const row = merged.get(sym) || { sl: null, tp: null };
+      sl = row.sl;
+      tp = row.tp;
     } catch (e) {
       log?.warn?.("binance_live_futures_open_orders_failed", { error: String(e?.message || e) });
     }
-    slTpOpenOrdersCache = { at: now, map };
-    return map.get(sym) || { sl: null, tp: null };
+    slTpOpenOrdersCacheBySym.set(sym, { at: now, sl, tp });
+    return { sl, tp };
   }
 
   const incomeSyncPath = resolveDefaultLiveFuturesIncomeSyncPath();
@@ -357,9 +365,21 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     /** Recent local bracket closes — income sync uses these to attribute PnL to strategy, not ledger */
     recentLocalCloses: [],
     trailingBySymbol: {},
+    /** Last `/fapi/v2/account` positions array (shallow-cloned rows) — trailing qty + restart reconstruction */
+    lastPositionSnapshot: [],
     /** Last `/fapi/v2/account` position qty by symbol — detect exchange-native closes (SL/TP) for income + history sync */
     prevFuturesQtyBySymbol: {},
   };
+
+  const trailSymLock = new Set();
+
+  /** Qty from last position snapshot — no extra API call per symbol during trailing. */
+  function qtyAbsFromSnapshot(symU) {
+    if (!Array.isArray(mem.lastPositionSnapshot) || !mem.lastPositionSnapshot.length) return NaN;
+    const p = mem.lastPositionSnapshot.find((r) => String(r?.symbol || "").toUpperCase() === symU);
+    if (!p) return 0;
+    return Math.abs(Number(p.positionAmt || 0));
+  }
 
   /** Exchange-native SL/TP closes do not hit `localBrackets` — drop orphan trail/bracket memory. */
   function clearMemBracketTrailForSymbol(symU) {
@@ -370,20 +390,6 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     }
     for (const k of Object.keys(mem.placedBracketTargets)) {
       if (String(k).toUpperCase() === u) delete mem.placedBracketTargets[k];
-    }
-  }
-
-  async function futuresPositionQtyAbs(symU) {
-    if (!apiKey || !apiSecret) return NaN;
-    const u = String(symU || "").toUpperCase();
-    try {
-      const a = await signed("GET", "/fapi/v2/account");
-      const ps = Array.isArray(a?.positions) ? a.positions : [];
-      const p = ps.find((x) => String(x.symbol || "").toUpperCase() === u);
-      if (!p) return 0;
-      return Math.abs(Number(p.positionAmt || 0));
-    } catch {
-      return NaN;
     }
   }
 
@@ -427,6 +433,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     try {
       const a = await signed("GET", "/fapi/v2/account");
       const ps = Array.isArray(a?.positions) ? a.positions : [];
+      mem.lastPositionSnapshot = ps.map((p) => (p && typeof p === "object" ? { ...p } : p));
       await reconcileUsdMExternalClosesFromPositions(
         { mem, publicGet, clearMemBracketTrailForSymbol, log },
         ps,
@@ -439,12 +446,15 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
   function closeReasonFromLocalCloseHint(lc) {
     const bt = String(lc?.bracketType || "").toUpperCase();
     const tmode = String(lc?.trailingMode || "").toUpperCase();
+    const tierLc = lc?.trailTierAtClose != null ? String(lc.trailTierAtClose).toUpperCase() : null;
     if (bt === "SL") {
       if (lc?.exitViaTrailedStop === true) {
-        if (tmode === "SUPERTREND") return "TRAILED_SUPERTREND";
-        return "TRAILED_STOP_LOSS";
+        if (tmode === "SUPERTREND") {
+          return tierLc ? `TRAILED_SUPERTREND_${tierLc}` : "TRAILED_SUPERTREND";
+        }
+        return tierLc ? `TRAILED_STOP_LOSS_${tierLc}` : "TRAILED_STOP_LOSS";
       }
-      return "STOP_LOSS";
+      return "STOP_LOSS_DEFAULT";
     }
     if (bt === "TP") return "TAKE_PROFIT";
     const scr = String(lc?.strategyCloseReason || "").toUpperCase();
@@ -547,6 +557,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             if (mergeInto.meta && typeof mergeInto.meta === "object") {
               mergeInto.meta.exitViaTrailedStop = lc.exitViaTrailedStop === true;
               mergeInto.meta.trailStepAtClose = lc.trailStepAtClose;
+              if (lc.trailTierAtClose != null) mergeInto.meta.trailTierAtClose = String(lc.trailTierAtClose);
               if (lc.trailingMode != null) mergeInto.meta.trailingMode = String(lc.trailingMode);
               mergeInto.meta.supertrendSignalClose =
                 lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP";
@@ -617,6 +628,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
               exitPrice: lc.markPx != null ? Number(lc.markPx) : undefined,
               exitViaTrailedStop: lc.exitViaTrailedStop === true,
               trailStepAtClose: lc.trailStepAtClose,
+              trailTierAtClose: lc.trailTierAtClose != null ? String(lc.trailTierAtClose) : undefined,
               supertrendSignalClose:
                 lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP",
             },
@@ -713,7 +725,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             qty: Math.abs(Number(p.positionAmt)),
             entryPrice: Number(p.entryPrice || 0),
             unrealizedPnl: Number(p.unrealizedProfit || 0),
-            stopLoss: lb?.stopLoss ?? pb?.stopLoss ?? oo.sl ?? null,
+            stopLoss: oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? null,
             takeProfit: oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? null,
             leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
             venue: "FUTURES",
@@ -901,7 +913,13 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           logPrefix: "binance_live_futures",
         });
         bracketsPlaced = true;
-        mem.placedBracketTargets[symbol] = { stopLoss: stopPx, takeProfit: tpPx };
+        mem.placedBracketTargets[symbol] = {
+          stopLoss: stopPx,
+          takeProfit: tpPx,
+          closeSide,
+          hedgeExtras: { ...hedgeExtras },
+          qty: executedQty,
+        };
       } catch (e) {
         const is4120 = futuresOrderIs4120(e);
         if (is4120) {
@@ -961,7 +979,37 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           trailStep: 0,
           extremePx: filledPrice,
           leverage: Math.max(1, Math.min(100, Number(leverage) || 1)),
+          _openedAt: Date.now(),
         };
+      }
+
+      const symU = String(symbol || "").toUpperCase();
+      const posCheck = await verifyUsdMPositionAfterOpen({ signed, symbol: symU });
+      if (!posCheck.ok) {
+        for (let i = mem.trades.length - 1; i >= 0; i--) {
+          const t = mem.trades[i];
+          if (t?.type === "OPEN" && String(t.id) === String(posId)) {
+            mem.trades.splice(i, 1);
+            break;
+          }
+        }
+        for (const k of Object.keys(mem.trailingBySymbol || {})) {
+          if (String(k).toUpperCase() === symU) delete mem.trailingBySymbol[k];
+        }
+        for (const k of Object.keys(mem.placedBracketTargets || {})) {
+          if (String(k).toUpperCase() === symU) delete mem.placedBracketTargets[k];
+        }
+        for (const k of Object.keys(mem.localBrackets || {})) {
+          if (String(k).toUpperCase() === symU) delete mem.localBrackets[k];
+        }
+        log?.warn?.("binance_live_futures_post_open_verify_flat", {
+          symbol: symU,
+          posId,
+          absAmt: posCheck.absAmt,
+        });
+        throw new Error(
+          `binance_live_futures_post_open_flat:${symU} — market reported a fill but /fapi/v2/account shows no open position (e.g. SL/TP triggered instantly, or exchange lag). Check Binance order history.`,
+        );
       }
 
       return {
@@ -995,83 +1043,108 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         }
       }
 
-      const stBySym =
-        trailingStopLoss?.supertrendBySymbol && typeof trailingStopLoss.supertrendBySymbol === "object"
-          ? trailingStopLoss.supertrendBySymbol
-          : null;
-      const trailMode = String(trailingStopLoss?.mode || "SUPERTREND").toUpperCase();
-
       if (trailingStopLoss?.enabled) {
-        const trailSyms = [...new Set(Object.keys(mem.trailingBySymbol).map((k) => String(k || "").toUpperCase()))];
-
-        // Fetch all mark prices + qty in parallel (not serially)
-        const trailData = await Promise.allSettled(
-          trailSyms.map(async (s) => {
-            const [markPx, qtyAbs] = await Promise.all([markPxForSymbol(s), futuresPositionQtyAbs(s)]);
-            return { s, markPx, qtyAbs };
-          }),
-        );
-
-        // Evaluate trailing in parallel
-        await Promise.all(
-          trailData.map(async (r) => {
-            if (r.status !== "fulfilled") return;
-            const { s, markPx, qtyAbs } = r.value;
-            if (!mem.trailingBySymbol[s]) return;
-            if (!Number.isFinite(markPx) || markPx <= 0) return;
-            if (Number.isFinite(qtyAbs) && qtyAbs < 1e-8) {
-              clearMemBracketTrailForSymbol(s);
-              return;
-            }
-            if (!Number.isFinite(qtyAbs) || qtyAbs < 1e-8) return;
-
-            let stPx = null;
-            if (trailMode === "FEE_LADDER") {
-              stPx = Number(trailingStopLoss.supertrendPx);
-            } else {
-              const fromMap = stBySym?.[s];
-              if (fromMap != null && Number.isFinite(Number(fromMap)) && Number(fromMap) > 0) stPx = Number(fromMap);
-              else if (s === primarySymU && trailingStopLoss.supertrendPx != null) {
-                const v = Number(trailingStopLoss.supertrendPx);
-                if (Number.isFinite(v) && v > 0) stPx = v;
+        if (Array.isArray(mem.lastPositionSnapshot)) {
+          for (const p of mem.lastPositionSnapshot) {
+            const qty = Number(p.positionAmt || 0);
+            if (Math.abs(qty) < 1e-8) continue;
+            const symU = String(p.symbol || "").toUpperCase();
+            if (mem.trailingBySymbol[symU]) continue;
+            const entryPx = Number(p.entryPrice || 0);
+            if (!entryPx) continue;
+            const posIsLong = qty > 0;
+            const lev = Number(p.leverage || defaultLeverage);
+            mem.trailingBySymbol[symU] = {
+              entryPrice: entryPx,
+              isLong: posIsLong,
+              trailStep: 0,
+              extremePx: entryPx,
+              leverage: Math.max(1, Math.min(100, Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage)),
+              _reconstructed: true,
+            };
+            log?.info?.("binance_live_futures_trail_state_reconstructed", { symbol: symU, entryPx, isLong: posIsLong });
+            if (!mem.placedBracketTargets[symU] && !mem.localBrackets[symU]) {
+              try {
+                const oo = await stopTakeFromExchangeOpenOrders(symU);
+                if (oo.sl != null) {
+                  const closeSideR = posIsLong ? "SELL" : "BUY";
+                  const positionSideField = String(p.positionSide || "").toUpperCase();
+                  const hedgeExtrasR =
+                    positionSideField === "LONG" || positionSideField === "SHORT"
+                      ? { positionSide: positionSideField }
+                      : {};
+                  mem.placedBracketTargets[symU] = {
+                    stopLoss: oo.sl,
+                    takeProfit: oo.tp ?? 0,
+                    closeSide: closeSideR,
+                    hedgeExtras: hedgeExtrasR,
+                    qty: String(Math.abs(qty)),
+                    _fromRestart: true,
+                  };
+                  log?.info?.("binance_live_futures_trail_bracket_seeded", { symbol: symU, sl: oo.sl, tp: oo.tp });
+                }
+              } catch {
+                /* retry next tick */
               }
             }
-            if (trailMode === "SUPERTREND") {
-              const advOn = trailingStopLoss?.supertrendUseAdvancedTrail !== false;
-              const feeBeOn = trailingStopLoss?.supertrendUseFeeBreakeven !== false;
-              if (advOn && (!Number.isFinite(stPx) || !stPx || stPx <= 0) && !feeBeOn) return;
-            }
+          }
+        }
 
-            try {
-              const m = await getOrLoadSymbolMeta(s);
-              const tick = Number(m?.tickSize);
-              applyTrailingStopBinanceMemory({
-                symbol: s,
-                markPx,
-                trailingOpts: {
-                  enabled: true,
-                  mode: trailingStopLoss.mode,
-                  feeRate: trailingStopLoss.feeRate,
-                  extraScalpingPcts: trailingStopLoss.extraScalpingPcts ?? [],
-                  maxTrailSteps: trailingStopLoss.maxTrailSteps,
-                  supertrendPx: trailMode === "FEE_LADDER" ? trailingStopLoss.supertrendPx : stPx,
-                  bufferRate: trailingStopLoss.bufferRate,
-                  maintenanceMarginRate: trailingStopLoss.maintenanceMarginRate,
-                  minSlDistanceFrac: trailingStopLoss.minSlDistanceFrac,
-                  supertrendUseFeeBreakeven: trailingStopLoss.supertrendUseFeeBreakeven !== false,
-                  supertrendUseAdvancedTrail: trailingStopLoss.supertrendUseAdvancedTrail !== false,
-                },
-                trailingBySymbol: mem.trailingBySymbol,
-                localBrackets: mem.localBrackets,
-                placedBracketTargets: mem.placedBracketTargets,
-                tickSize: Number.isFinite(tick) && tick > 0 ? tick : null,
-                onTrailingSlAdvance,
-                notifyActivity,
-              });
-            } catch {
-              /* ignore */
-            }
-          }),
+        const trailSyms = [...new Set(Object.keys(mem.trailingBySymbol).map((k) => String(k || "").toUpperCase()))];
+
+        const markPxResults = await Promise.allSettled(trailSyms.map((s) => markPxForSymbol(s)));
+        const markPxBySymbol = new Map();
+        trailSyms.forEach((s, i) => {
+          const r = markPxResults[i];
+          if (r.status === "fulfilled" && Number.isFinite(r.value) && r.value > 0) markPxBySymbol.set(s, r.value);
+        });
+
+        const activeTrailSyms = trailSyms.filter((s) => {
+          if (!mem.trailingBySymbol[s] || !markPxBySymbol.has(s)) return false;
+          const qty = qtyAbsFromSnapshot(s);
+          if (Number.isNaN(qty)) return false;
+          if (qty < 1e-8) {
+            clearMemBracketTrailForSymbol(s);
+            return false;
+          }
+          return true;
+        });
+
+        const replaceCtxBase = {
+          mem,
+          signed,
+          publicGet,
+          getOrLoadSymbolMeta,
+          defaultLeverage,
+          log,
+          logPrefix: "binance_live_futures",
+          normalizeAlgoOrdersPayload,
+          clearSlTpOpenOrdersCache: (symU) => {
+            slTpOpenOrdersCacheBySym.delete(String(symU || "").toUpperCase());
+          },
+        };
+
+        await Promise.all(
+          activeTrailSyms.map((s) =>
+            evalTrailingForSymbolUsdM({
+              s,
+              markPx: markPxBySymbol.get(s),
+              trailingStopLoss,
+              onTrailingSlAdvance,
+              notifyActivity,
+              primaryChartSymU: primarySymU,
+              mem,
+              applyTrailingStopBinanceMemory,
+              getOrLoadSymbolMeta,
+              signed,
+              publicGet,
+              defaultLeverage,
+              trailSymLock,
+              stopTakeFromExchangeOpenOrders,
+              replaceCtxBase,
+              log,
+            }),
+          ),
         );
       }
 
@@ -1080,6 +1153,13 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         if (!Number.isFinite(markPx) || markPx <= 0) continue;
         const b = mem.localBrackets[lbSym];
         if (!b) continue;
+        if (
+          (b.strategy === "trailing_sl_safety" || b.strategy === "trailing_sl_breach") &&
+          b._installedAt != null &&
+          Date.now() - b._installedAt < 10_000
+        ) {
+          continue;
+        }
         const bracketLo = Math.min(b.stopLoss, b.takeProfit) * 0.90;
         const bracketHi = Math.max(b.stopLoss, b.takeProfit) * 1.10;
         if (markPx < bracketLo || markPx > bracketHi) continue;
@@ -1123,6 +1203,12 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           const symU = String(lbSym || "").toUpperCase();
           const trailMeta = mem.trailingBySymbol[symU];
           const exitViaTrailedStop = hit === "SL" && trailMeta && Number(trailMeta.trailStep) > 0;
+          const trailTierAtClose =
+            trailMeta?.trailTierLabel != null
+              ? String(trailMeta.trailTierLabel)
+              : exitViaTrailedStop && trailMeta && Number(trailMeta.trailStep) > 0
+                ? trailStepToTierLabel(Number(trailMeta.trailStep))
+                : null;
           mem.recentLocalCloses.push({
             symbol: lbSym,
             closedAt: Date.now(),
@@ -1138,6 +1224,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             markPx: Number(markPx),
             exitViaTrailedStop,
             trailStepAtClose: Number(trailMeta?.trailStep) || 0,
+            trailTierAtClose,
             trailingMode: trailMeta?.trailingMode != null ? String(trailMeta.trailingMode) : undefined,
           });
           delete mem.localBrackets[lbSym];

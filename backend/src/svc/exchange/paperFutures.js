@@ -147,7 +147,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         ? trailTierAtClose
           ? `TRAILED_STOP_LOSS_${trailTierAtClose}`
           : "TRAILED_STOP_LOSS"
-        : "STOP_LOSS";
+        : "STOP_LOSS_DEFAULT";
     } else if (rU === "TAKE_PROFIT") {
       bracketType = "TP";
       reasonNorm = "TAKE_PROFIT";

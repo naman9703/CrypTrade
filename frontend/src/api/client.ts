@@ -173,6 +173,15 @@ export const api = {
       }),
     );
   },
+  async tradeRefresh() {
+    return json<{ ok?: boolean; count?: number }>(
+      await apiFetch(`${HTTP}/api/trade/refresh`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+    );
+  },
   async paperReset() {
     return json<any>(
       await apiFetch(`${HTTP}/api/paper/reset`, {

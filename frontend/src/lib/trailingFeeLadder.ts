@@ -121,6 +121,41 @@ export function buildTrailLockPrices(
   return dedup; // no artificial tier cap — unlimited advancement via continuation
 }
 
+/** Lock price for tier index `tierIndex` (0 = T0); continuation beyond `levels.length` uses last interval. */
+export function extrapolateTrailTierLockPx(
+  levels: TrailLockRow[],
+  tierIndex: number,
+  isLong: boolean,
+  entryPx: number,
+): number | null {
+  const n = levels.length;
+  const j = Math.floor(Number(tierIndex));
+  if (!Number.isFinite(j) || j < 0 || !Number.isFinite(entryPx) || entryPx <= 0) return null;
+  if (j < n) {
+    const row = levels[j];
+    if (!row) return null;
+    const px = Number(row.lockPx);
+    return Number.isFinite(px) && px > 0 ? px : null;
+  }
+  if (n < 1) return null;
+  const lastDef = levels[n - 1]!;
+  const interval =
+    n >= 2
+      ? Math.abs(levels[n - 1]!.lockPx - levels[n - 2]!.lockPx)
+      : Math.max(Math.abs(lastDef.lockPx) * 0.001, Math.abs(lastDef.lockPx - entryPx));
+  if (!(interval > 0)) return null;
+  const contSteps = j - (n - 1);
+  const contLockPx = isLong ? lastDef.lockPx + contSteps * interval : lastDef.lockPx - contSteps * interval;
+  return contLockPx > 0 ? contLockPx : null;
+}
+
+export function tierLabelForTrailIndex(levels: TrailLockRow[], tierIndex: number): string {
+  const j = Math.floor(Number(tierIndex));
+  if (!Number.isFinite(j) || j < 0) return "T?";
+  if (j < levels.length) return levels[j]?.tierLabel ?? `T${j}`;
+  return `T${j}`;
+}
+
 export function advanceTrailingStopState(p: {
   entryPx: number;
   isLong: boolean;

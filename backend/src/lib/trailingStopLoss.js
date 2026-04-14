@@ -367,15 +367,6 @@ export function applyTrailingStopBinanceMemory(opts) {
     const effectiveUseAdv = useAdvTrail && hasValidStPx;
     supertrendPxForEvt = effectiveUseAdv ? stPx : null;
 
-    /**
-     * Default `minSlDistanceFrac` (0.2%) is too strict on low-priced / small-tick symbols (e.g. DOGE).
-     * When tick size is known, relax the fraction guard down to a small tick-based fraction so trailing can advance.
-     */
-    if (tickSize != null && Number.isFinite(tickSize) && tickSize > 0 && markPx > 0) {
-      const tickFrac = (2 * tickSize) / markPx; // ~2 ticks away from mark
-      if (Number.isFinite(tickFrac) && tickFrac > 0) minDistUsed = Math.min(minDistUsed, tickFrac);
-    }
-
     const stLevels = tieredStMode
       ? buildTrailLockPrices({
           entryPx: tr.entryPrice,
@@ -386,105 +377,216 @@ export function applyTrailingStopBinanceMemory(opts) {
           extraScalpingPctsOfEntry: trailingOpts.extraScalpingPcts ?? [],
         })
       : [];
-    const stepNow = Math.max(0, Math.floor(Number(tr.trailStep) || 0));
-    const ext0 = Number.isFinite(Number(tr.extremePx)) ? Number(tr.extremePx) : markPx;
-    const hwm = isLong ? Math.max(ext0, markPx) : Math.min(ext0, markPx);
-    tr.extremePx = hwm;
-    const nextLevel = stLevels.length > 0 ? stLevels[Math.min(stepNow, stLevels.length - 1)] : null;
+
     const defaultActivationPx = isLong
       ? tr.entryPrice * (1 + (useFeeBeTrail ? feeBe : 0) + buf)
       : tr.entryPrice * (1 - (useFeeBeTrail ? feeBe : 0) - buf);
-    const activationPx = nextLevel?.lockPx != null ? Number(nextLevel.lockPx) : defaultActivationPx;
-    activationPriceForEvt = activationPx;
-    breakevenForEvt = useFeeBeTrail
+
+    const bumpTrailMetaSupertrendInner = () => {
+      tr.trailStep = (Number(tr.trailStep) || 0) + 1;
+      tr.extremePx = isLong
+        ? Math.max(Number(tr.extremePx) || markPx, markPx)
+        : Math.min(Number(tr.extremePx) || markPx, markPx);
+      tr.trailTierLabel = trailStepToTierLabel(tr.trailStep);
+      advanceTierLabel = tr.trailTierLabel;
+    };
+
+    const stFeeOnEvt = useFeeBeTrail;
+    const evtBreakevenBase = stFeeOnEvt
       ? isLong
         ? tr.entryPrice * (1 + feeBe)
         : tr.entryPrice * (1 - feeBe)
       : tr.entryPrice;
-    const crossedTierActivation = isLong ? hwm >= activationPx : hwm <= activationPx;
-    if (!crossedTierActivation) return false;
-    // Once crossed by HWM/LWM, don't miss trailing due a pullback on current mark.
-    const pxForCompute = isLong ? Math.max(markPx, activationPx) : Math.min(markPx, activationPx);
+    const evtActivationFallback = stFeeOnEvt
+      ? isLong
+        ? tr.entryPrice * (1 + feeBe + buf)
+        : tr.entryPrice * (1 - feeBe - buf)
+      : isLong
+        ? tr.entryPrice * (1 + buf)
+        : tr.entryPrice * (1 - buf);
 
-    const r = computeSupertrendTrailingSlUpdate({
-      entryPrice: tr.entryPrice,
-      currentPrice: pxForCompute,
-      supertrend: effectiveUseAdv ? stPx : NaN,
-      previousSl: prevSl,
-      isLong,
-      leverage: lev,
-      feeRate: feeBe,
-      bufferRate: buf,
-      maintenanceMarginRate: mm,
-      minSlDistanceFrac: minDistUsed,
-      useFeeBreakeven: useFeeBeTrail,
-      useAdvancedTrail: effectiveUseAdv,
-      activationPrice: activationPx,
-      breakevenPrice: breakevenForEvt,
-    });
+    const maxCatchUpIters = 32;
+    let advancedAny = false;
 
-    if (r.status === "REJECT_TRADE" || r.status === "INVALID") {
-      if (trailDiagEmit(tr, `bad_${r.status}`, 120_000)) {
-        notifyActivity({
-          category: "risk",
-          level: r.status === "REJECT_TRADE" ? "warn" : "error",
-          msg: `Trailing ${r.status === "REJECT_TRADE" ? "blocked" : "invalid"} · ${sym} · ${r.status} (mark ${markPx}, entry ${tr.entryPrice})`,
-          reason: "trailing_sl_diagnostic",
-          symbol: sym,
-          detail: { outcome: "failure", phase: "geometry", trailStatus: r.status, markPx, entryPrice: tr.entryPrice, isLong },
-        });
+    for (let catchUp = 0; catchUp < maxCatchUpIters; catchUp++) {
+      const bCur = localBrackets[sym];
+      const tgtCur = placedBracketTargets?.[sym];
+      const prevRawCur = bCur ? bCur.stopLoss : tgtCur?.stopLoss;
+      const prevSlCur = Number(prevRawCur);
+      if (!Number.isFinite(prevSlCur) || prevSlCur <= 0) break;
+
+      let minDistLoop = minDist;
+      if (tickSize != null && Number.isFinite(tickSize) && tickSize > 0 && markPx > 0) {
+        const tickFrac = (2 * tickSize) / markPx;
+        if (Number.isFinite(tickFrac) && tickFrac > 0) minDistLoop = Math.min(minDistLoop, tickFrac);
       }
-      return false;
-    }
-    if (r.status === "NO_SUPERTREND") {
-      if (useAdvTrail && trailDiagEmit(tr, "no_st", 90_000)) {
-        notifyActivity({
-          category: "risk",
-          level: "warn",
-          msg: `Trailing activation unavailable · ${sym} · no Supertrend price for this mark (cannot align SL to ST)`,
-          reason: "trailing_sl_diagnostic",
-          symbol: sym,
-          detail: { outcome: "failure", phase: "activation", trailStatus: r.status, markPx },
-        });
-      }
-      return false;
-    }
-    if (r.status === "NO_TRAIL") {
-      return false;
-    }
 
-    stInTrailZone = r.status === "OK";
+      const stepNow = Math.max(0, Math.floor(Number(tr.trailStep) || 0));
+      const ext0 = Number.isFinite(Number(tr.extremePx)) ? Number(tr.extremePx) : markPx;
+      const hwm = isLong ? Math.max(ext0, markPx) : Math.min(ext0, markPx);
+      tr.extremePx = hwm;
 
-    /** Mark has crossed fee+buffer activation — ST trailing zone (server will tighten when geometry allows). */
-    const activationTierLabel = nextLevel?.tierLabel != null ? String(nextLevel.tierLabel) : null;
-    const activationKey = activationTierLabel ?? "ST";
-    if (r.status === "OK" && tr._trailingActivationLoggedTier !== activationKey) {
-      tr._trailingActivationLoggedTier = activationKey;
-      notifyActivity?.({
-        category: "risk",
-        level: "info",
-        msg: activationTierLabel
-          ? `Trailing activation ${activationTierLabel} · ${sym} · mark passed activation (${activationPx.toFixed(6)}); futures trailing engaged`
-          : `Trailing activation · ${sym} · mark passed activation (${activationPx.toFixed(6)}); futures trailing engaged`,
-        reason: "trailing_activation_engaged",
-        symbol: sym,
-        detail: {
-          outcome: "success",
-          phase: "activation",
-          markPx,
-          activationPrice: activationPx,
-          breakeven: breakevenForEvt,
-          tierLabel: activationTierLabel,
-          entryPrice: tr.entryPrice,
-          isLong,
-          supertrendPx: supertrendPxForEvt,
-        },
+      const nextLevel = stLevels.length > 0 ? stLevels[Math.min(stepNow, stLevels.length - 1)] : null;
+      const activationPx =
+        nextLevel?.lockPx != null && Number.isFinite(Number(nextLevel.lockPx)) && Number(nextLevel.lockPx) > 0
+          ? Number(nextLevel.lockPx)
+          : defaultActivationPx;
+      activationPriceForEvt = activationPx;
+      breakevenForEvt = evtBreakevenBase;
+      const crossedTierActivation = isLong ? hwm >= activationPx : hwm <= activationPx;
+      if (!crossedTierActivation) break;
+
+      const pxForCompute = isLong ? Math.max(markPx, activationPx) : Math.min(markPx, activationPx);
+
+      const r = computeSupertrendTrailingSlUpdate({
+        entryPrice: tr.entryPrice,
+        currentPrice: pxForCompute,
+        supertrend: effectiveUseAdv ? stPx : NaN,
+        previousSl: prevSlCur,
+        isLong,
+        leverage: lev,
+        feeRate: feeBe,
+        bufferRate: buf,
+        maintenanceMarginRate: mm,
+        minSlDistanceFrac: minDistLoop,
+        useFeeBreakeven: useFeeBeTrail,
+        useAdvancedTrail: effectiveUseAdv,
+        activationPrice: activationPx,
+        breakevenPrice: breakevenForEvt,
       });
+
+      if (r.status === "REJECT_TRADE" || r.status === "INVALID") {
+        if (!advancedAny && trailDiagEmit(tr, `bad_${r.status}`, 120_000)) {
+          notifyActivity({
+            category: "risk",
+            level: r.status === "REJECT_TRADE" ? "warn" : "error",
+            msg: `Trailing ${r.status === "REJECT_TRADE" ? "blocked" : "invalid"} · ${sym} · ${r.status} (mark ${markPx}, entry ${tr.entryPrice})`,
+            reason: "trailing_sl_diagnostic",
+            symbol: sym,
+            detail: { outcome: "failure", phase: "geometry", trailStatus: r.status, markPx, entryPrice: tr.entryPrice, isLong },
+          });
+        }
+        break;
+      }
+      if (r.status === "NO_SUPERTREND") {
+        if (!advancedAny && useAdvTrail && trailDiagEmit(tr, "no_st", 90_000)) {
+          notifyActivity({
+            category: "risk",
+            level: "warn",
+            msg: `Trailing activation unavailable · ${sym} · no Supertrend price for this mark (cannot align SL to ST)`,
+            reason: "trailing_sl_diagnostic",
+            symbol: sym,
+            detail: { outcome: "failure", phase: "activation", trailStatus: r.status, markPx },
+          });
+        }
+        break;
+      }
+      if (r.status === "NO_TRAIL") break;
+
+      stInTrailZone = r.status === "OK";
+
+      const activationTierLabel = nextLevel?.tierLabel != null ? String(nextLevel.tierLabel) : null;
+      const activationKey = activationTierLabel ?? "ST";
+      if (r.status === "OK" && tr._trailingActivationLoggedTier !== activationKey) {
+        tr._trailingActivationLoggedTier = activationKey;
+        notifyActivity?.({
+          category: "risk",
+          level: "info",
+          msg: activationTierLabel
+            ? `Trailing activation ${activationTierLabel} · ${sym} · mark passed activation (${activationPx.toFixed(6)}); futures trailing engaged`
+            : `Trailing activation · ${sym} · mark passed activation (${activationPx.toFixed(6)}); futures trailing engaged`,
+          reason: "trailing_activation_engaged",
+          symbol: sym,
+          detail: {
+            outcome: "success",
+            phase: "activation",
+            markPx,
+            activationPrice: activationPx,
+            breakeven: breakevenForEvt,
+            tierLabel: activationTierLabel,
+            entryPrice: tr.entryPrice,
+            isLong,
+            supertrendPx: supertrendPxForEvt,
+          },
+        });
+      }
+
+      trailStatus = r.status;
+      proposedTrailSl = r.newSl;
+      const mergedLoop = mergeStopWithTrail({ isLong, currentStopPx: prevSlCur, trailSlPx: r.newSl });
+
+      const finalSlPreLoop =
+        mergedLoop != null && Number.isFinite(Number(mergedLoop)) && Number(mergedLoop) > 0
+          ? tickSize != null && Number.isFinite(tickSize) && tickSize > 0
+            ? roundStopPx(mergedLoop, tickSize)
+            : roundTo(mergedLoop, 8)
+          : null;
+      const prevEffLoop =
+        tickSize != null && Number.isFinite(tickSize) && tickSize > 0
+          ? roundStopPx(prevSlCur, tickSize)
+          : roundTo(prevSlCur, 8);
+
+      if (mergedLoop == null || finalSlPreLoop == null) break;
+
+      if (finalSlPreLoop === prevEffLoop) {
+        if (prevSlCur !== prevEffLoop) {
+          if (bCur) bCur.stopLoss = prevEffLoop;
+          if (placedBracketTargets && placedBracketTargets[sym]) {
+            placedBracketTargets[sym] = { ...placedBracketTargets[sym], stopLoss: prevEffLoop };
+          }
+        }
+        break;
+      }
+
+      const finalSlLoop = finalSlPreLoop;
+      if (!Number.isFinite(finalSlLoop) || finalSlLoop <= 0 || finalSlLoop === prevEffLoop) break;
+
+      const evtActivationLine = activationPriceForEvt != null ? activationPriceForEvt : evtActivationFallback;
+      bumpTrailMetaSupertrendInner();
+      const evtCoreLoop = {
+        symbol: sym,
+        venue: "FUTURES",
+        prevStopLoss: prevSlCur,
+        newStopLoss: finalSlLoop,
+        maxTrailSteps: trailingOpts.maxTrailSteps ?? 1,
+        isLong,
+        entryPrice: tr.entryPrice,
+        supertrendPx: supertrendPxForEvt,
+        trailStatus: r.status,
+        breakeven: breakevenForEvt,
+        activationPrice: evtActivationLine,
+        leverage: lev,
+        bufferRate: buf,
+        maintenanceMarginRate: mm,
+        kind: "supertrend_trailing_sl",
+        trailingMode: mode,
+        tierLabel: advanceTierLabel,
+      };
+
+      if (bCur) {
+        bCur.stopLoss = finalSlLoop;
+        if (placedBracketTargets && placedBracketTargets[sym]) {
+          placedBracketTargets[sym] = { ...placedBracketTargets[sym], stopLoss: finalSlLoop };
+        }
+        onTrailingSlAdvance?.({
+          ...evtCoreLoop,
+          trailStep: tr.trailStep,
+          source: "binance_usdm_local_bracket",
+        });
+      } else if (tgtCur) {
+        placedBracketTargets[sym] = { ...tgtCur, stopLoss: finalSlLoop };
+        onTrailingSlAdvance?.({
+          ...evtCoreLoop,
+          trailStep: tr.trailStep,
+          source: "binance_usdm_bracket_targets",
+        });
+      } else {
+        break;
+      }
+      advancedAny = true;
     }
 
-    trailStatus = r.status;
-    proposedTrailSl = r.newSl;
-    merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: r.newSl });
+    return advancedAny;
   }
 
   const finalSlPre =

@@ -533,6 +533,33 @@ export function createRouter({ appState }) {
     }
   });
 
+  r.post("/trade/refresh", async (req, res) => {
+    try {
+      const row = getEngineForBotRequest(req, undefined);
+      const viewM = resolveViewTradingMode(req, undefined);
+      const ex = row.exchange;
+      let trades = [];
+      try {
+        trades = await ex.getTrades();
+      } catch {
+        trades = [];
+      }
+      if (isStrictBinanceAccountMode(viewM)) {
+        const acct = await ex.getAccount().catch(() => null);
+        if (acct == null) trades = [];
+      }
+      trades = mergePersistedTradesWithExchange(viewM, trades);
+      appState.wsHub?.broadcast?.("trades_snapshot", {
+        replace: true,
+        trades: trades.slice(-500),
+        mode: viewM,
+      });
+      res.json({ ok: true, count: trades.length });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
   r.post("/mode/set", async (req, res) => {
     const schema = z.object({
       mode: z.enum(["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"]),

@@ -25,9 +25,8 @@ export function slTpFromOpenOrdersList(all) {
     if (!map.has(s)) map.set(s, { sl: null, tp: null });
     const typ = String(o.origType || o.orderType || o.type || "");
     let trig = Number(o.stopPrice);
-    if (!Number.isFinite(trig) || trig <= 0) {
-      trig = Number(o.activatePrice);
-    }
+    if (!Number.isFinite(trig) || trig <= 0) trig = Number(o.activatePrice);
+    if (!Number.isFinite(trig) || trig <= 0) trig = Number(o.triggerPrice);
     if (!Number.isFinite(trig) || trig <= 0) continue;
     const row = map.get(s);
     const kind = classifyConditionalOrderType(typ);
@@ -37,10 +36,17 @@ export function slTpFromOpenOrdersList(all) {
   return map;
 }
 
-function normalizeAlgoOrdersPayload(raw) {
+export function normalizeAlgoOrdersPayload(raw) {
   if (Array.isArray(raw)) return raw;
   if (raw && typeof raw === "object") {
-    const inner = raw.orders ?? raw.data ?? raw.rows;
+    const inner =
+      raw.orders ??
+      raw.data ??
+      raw.rows ??
+      raw.result ??
+      raw.orderList ??
+      raw.algoOrders ??
+      raw.openOrders;
     if (Array.isArray(inner)) return inner;
   }
   return [];

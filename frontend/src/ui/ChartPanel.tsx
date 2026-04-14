@@ -12,7 +12,14 @@ import { buildOhlc, isOhlcBarRenderable, ohlcBarsToMsCandles, type OhlcBar } fro
 import { isPlausibleCandleClose } from "../lib/symbolPriceSanity";
 import { playSupertrendBuySound, playSupertrendSellSound } from "../lib/uiSounds";
 import { buildChartSupertrend } from "../lib/supertrend";
-import { advanceTrailingStopState, buildTrailLockPrices, feeRateBreakevenPadded, mergeStopWithTrail } from "../lib/trailingFeeLadder";
+import {
+  advanceTrailingStopState,
+  buildTrailLockPrices,
+  extrapolateTrailTierLockPx,
+  feeRateBreakevenPadded,
+  mergeStopWithTrail,
+  tierLabelForTrailIndex,
+} from "../lib/trailingFeeLadder";
 import { computeSupertrendTrailingSlUpdate } from "../lib/supertrendTrailingSl";
 import { clampTradeCloseFeeRate } from "../lib/tradeCloseFee";
 import {
@@ -124,6 +131,8 @@ type SupertrendSignalHistRow = {
   stAction: string | null;
   /** SurfPulse ML /predict/surfpulse win probability at bar close (0–1). */
   surfPulse?: number | null;
+  /** Server: closed-bar OHLC close at signal (preferred over chart OHLC lookup). */
+  signalBarClose?: number | null;
 };
 
 /** On-chart marker (compact; full text also in list under chart). */
@@ -182,7 +191,14 @@ function futuresBracketLevelSane(chartSymForPlausible: string, px: number, lastC
 type ChartStTrailPreviewLine = {
   px: number;
   title: string;
-  kind: "st_activation" | "st_trail" | "fee_trail" | "trail_tier_activated" | "trail_tier_next";
+  kind:
+    | "st_activation"
+    | "st_trail"
+    | "fee_trail"
+    | "trail_tier_activated"
+    | "trail_tier_next"
+    | "trail_tier_lock"
+    | "st_tier_activation";
   /** T0, T1, T2 … label for left-side overlay */
   tierLabel?: string;
 };
@@ -190,7 +206,20 @@ type ChartStTrailPreviewLine = {
 /** Live “mark past activation” vs server-persisted trail step (≥1 SL trail update). */
 type ChartTrailingBadge = { trailing: boolean; trailed: boolean; tierLabel?: string | null };
 
-type ChartTrailingPreview = { key: string; lines: ChartStTrailPreviewLine[]; badge: ChartTrailingBadge | null };
+type ChartTrailHud = {
+  currentSl: number | null;
+  takeProfit: number | null;
+  nextActivationPx: number | null;
+  nextTierLabel: string | null;
+  liveTrailSlPx: number | null;
+};
+
+type ChartTrailingPreview = {
+  key: string;
+  lines: ChartStTrailPreviewLine[];
+  badge: ChartTrailingBadge | null;
+  trailHud?: ChartTrailHud | null;
+};
 
 /** Main chart SL/TP / trailing preview only when the bot is routed to futures (not pure spot). */
 function inferFuturesBracketLinesActive(bot: unknown): boolean {
@@ -310,9 +339,18 @@ function buildMergedFuturesBracketPriceSpecs(
     nearlySameTrailPx(slPx, trailStopPx);
   const slUseTrailAmber = Boolean(badge?.trailed || slAsTrail);
   const slLineCol = slUseTrailAmber ? amberTrail : slCol;
+  const tierTag = badge?.tierLabel != null && String(badge.tierLabel).trim() !== "" ? String(badge.tierLabel) : null;
+  const slTitle =
+    slPx == null
+      ? "SL"
+      : slUseTrailAmber && tierTag
+        ? `SL (${tierTag} trail)`
+        : slUseTrailAmber
+          ? "SL trail"
+          : "SL (default)";
   const bracketSpecs: HorzBracketLineSpec[] = [];
   if (slPx != null) {
-    bracketSpecs.push({ px: slPx, title: slUseTrailAmber ? "SL trail" : "SL", color: slLineCol });
+    bracketSpecs.push({ px: slPx, title: slTitle, color: slLineCol });
   }
   if (tpPx != null) {
     bracketSpecs.push({ px: tpPx, title: "TP", color: tpCol });
@@ -320,9 +358,9 @@ function buildMergedFuturesBracketPriceSpecs(
   for (const ln of trailLines) {
     if (!Number.isFinite(ln.px) || ln.px <= 0) continue;
     let col: string;
-    if (ln.kind === "st_activation") {
+    if (ln.kind === "st_activation" || ln.kind === "st_tier_activation") {
       col = amberTrailSoft;
-    } else if (ln.kind === "trail_tier_activated") {
+    } else if (ln.kind === "trail_tier_activated" || ln.kind === "trail_tier_lock") {
       // Already-crossed tiers — show as muted green to distinguish from active SL
       col = isDark ? "#6ee7b7" : "#059669";
     } else if (ln.kind === "trail_tier_next") {
@@ -1100,6 +1138,7 @@ export function ChartPanel() {
       key: k,
       lines: [] as ChartStTrailPreviewLine[],
       badge,
+      trailHud: null,
     });
     if (bot?.trailingStopLossAuto !== true) return none("trail-off");
     if (!inferFuturesBracketLinesActive(bot)) return none("trail-venue");
@@ -1262,7 +1301,7 @@ export function ChartPanel() {
       if (displayPx == null || !Number.isFinite(displayPx) || displayPx <= 0) {
         if (tierLines.length > 0) {
           const tierKey = tierLines.map((l) => l.px.toFixed(6)).join("|");
-          return { key: `trail-FEE-tiers-${tierKey}|${symKey}`, lines: tierLines, badge: mkBadge(feeTrailingLive) };
+          return { key: `trail-FEE-tiers-${tierKey}|${symKey}`, lines: tierLines, badge: mkBadge(feeTrailingLive), trailHud: null };
         }
         return none("trail-nodisp", mkBadge(feeTrailingLive));
       }
@@ -1280,6 +1319,7 @@ export function ChartPanel() {
         key: `trail-FEE-${displayPx.toFixed(6)}|${symKey}`,
         lines: allTierLines,
         badge: mkBadge(feeTrailingLive),
+        trailHud: null,
       };
     }
 
@@ -1354,45 +1394,61 @@ export function ChartPanel() {
     const stTrailingLive = r.status === "OK";
 
     const lines: ChartStTrailPreviewLine[] = [];
+    const pushUnique = (px: number, title: string, kind: ChartStTrailPreviewLine["kind"], tierLabel?: string) => {
+      if (!Number.isFinite(px) || px <= 0 || !futuresBracketLevelSane(symPlausible, px, ohlcLastClose)) return;
+      if (slDup(px)) return;
+      if (lines.some((l) => nearlySameTrailPx(l.px, px))) return;
+      lines.push({ px, title, kind, tierLabel });
+    };
 
-    // Activation line: only shown when there is actually a next tier to cross
-    if (nextActivationTier && futuresBracketLevelSane(symPlausible, activation, ohlcLastClose) && !slDup(activation)) {
-      const nextTierLabel = nextActivationTier.tierLabel ?? null;
-      lines.push({
-        px: activation,
-        title: nextTierLabel
-          ? isLong ? `ST trail opens ${nextTierLabel} (mark ≥)` : `ST trail opens ${nextTierLabel} (mark ≤)`
-          : isLong ? "ST trail opens (mark ≥)" : "ST trail opens (mark ≤)",
-        kind: "st_activation",
-        tierLabel: nextTierLabel ?? undefined,
-      });
-    }
-
-    // Tier reference lines: show last 3 activated tiers (already crossed) + next uncrossed tier.
-    // Activated = indices 0 .. stepNow-1 in stLevels (SL already moved to at least that level).
-    const activatedTierIndices: number[] = [];
-    for (let i = 0; i < stepNow && i < stLevels.length; i++) activatedTierIndices.push(i);
-    for (const idx of activatedTierIndices.slice(-3)) {
-      const L = stLevels[idx]!;
-      const lPx = Number(L.lockPx);
-      if (!Number.isFinite(lPx) || lPx <= 0) continue;
-      if (!futuresBracketLevelSane(symPlausible, lPx, ohlcLastClose)) continue;
-      if (slDup(lPx)) continue;
-      if (lines.some((l) => nearlySameTrailPx(l.px, lPx))) continue;
-      const tl = L.tierLabel ?? `T${idx}`;
-      lines.push({ px: lPx, title: `SL trail ${tl}`, kind: "trail_tier_activated", tierLabel: tl });
-    }
-    // Next uncrossed tier (same as nextActivationTier but shown as "Next trail Tn" reference)
-    if (nextActivationTier) {
-      const nlPx = Number(nextActivationTier.lockPx);
-      if (
-        Number.isFinite(nlPx) && nlPx > 0 &&
-        futuresBracketLevelSane(symPlausible, nlPx, ohlcLastClose) &&
-        !slDup(nlPx) &&
-        !lines.some((l) => nearlySameTrailPx(l.px, nlPx))
-      ) {
-        const tl = nextActivationTier.tierLabel ?? `T${stepNow}`;
-        lines.push({ px: nlPx, title: `Next trail ${tl}`, kind: "trail_tier_next", tierLabel: tl });
+    if (tieredStMode && stLevels.length > 0) {
+      const feeBeAct = isLong ? entry * (1 + paddedFeeST + bufferRate) : entry * (1 - paddedFeeST - bufferRate);
+      const t0Lock = extrapolateTrailTierLockPx(stLevels, 0, isLong, entry);
+      if (t0Lock != null) {
+        const t0Lab = tierLabelForTrailIndex(stLevels, 0);
+        if (stepNow > 0) {
+          pushUnique(t0Lock, `${t0Lab} lock (trailed)`, "trail_tier_activated", t0Lab);
+        } else {
+          pushUnique(t0Lock, `${t0Lab} lock`, "trail_tier_lock", t0Lab);
+        }
+        if (!nearlySameTrailPx(feeBeAct, t0Lock)) {
+          pushUnique(
+            feeBeAct,
+            isLong ? "ST trail T0 activation (mark ≥)" : "ST trail T0 activation (mark ≤)",
+            "st_tier_activation",
+            "T0",
+          );
+        }
+      }
+      const maxIdx = Math.min(14, Math.max(stLevels.length + 1, stepNow + 2));
+      for (let j = 1; j <= maxIdx; j++) {
+        const lockPx = extrapolateTrailTierLockPx(stLevels, j, isLong, entry);
+        if (lockPx == null) continue;
+        const tl = tierLabelForTrailIndex(stLevels, j);
+        if (j < stepNow) {
+          pushUnique(lockPx, `${tl} lock (trailed)`, "trail_tier_activated", tl);
+        } else if (j === stepNow) {
+          pushUnique(
+            lockPx,
+            isLong ? `ST trail opens ${tl} (mark ≥) · ${tl} lock` : `ST trail opens ${tl} (mark ≤) · ${tl} lock`,
+            "st_tier_activation",
+            tl,
+          );
+        } else {
+          pushUnique(lockPx, `Next ${tl} lock / ST gate`, "trail_tier_next", tl);
+        }
+      }
+    } else {
+      if (nextActivationTier && futuresBracketLevelSane(symPlausible, activation, ohlcLastClose) && !slDup(activation)) {
+        const nextTierLabel = nextActivationTier.tierLabel ?? null;
+        lines.push({
+          px: activation,
+          title: nextTierLabel
+            ? isLong ? `ST trail opens ${nextTierLabel} (mark ≥)` : `ST trail opens ${nextTierLabel} (mark ≤)`
+            : isLong ? "ST trail opens (mark ≥)" : "ST trail opens (mark ≤)",
+          kind: "st_activation",
+          tierLabel: nextTierLabel ?? undefined,
+        });
       }
     }
 
@@ -1405,15 +1461,23 @@ export function ChartPanel() {
     ) {
       const dupAct = lines.some((l) => nearlySameTrailPx(l.px, trailPx));
       if (!dupAct) {
-        // Use the server-side tier label if available
         const { trailed, tierLabel: serverTierLabel } = metaTrailTrailedFromPosition(pos);
         const trailTitle = trailed && serverTierLabel ? `ST trail · ${serverTierLabel}` : "ST trail";
         lines.push({ px: trailPx, title: trailTitle, kind: "st_trail", tierLabel: serverTierLabel ?? undefined });
       }
     }
 
+    const tpHud = Number(pos.takeProfit);
+    const trailHud: ChartTrailHud = {
+      currentSl: Number.isFinite(prevSlChart) && prevSlChart > 0 ? prevSlChart : null,
+      takeProfit: Number.isFinite(tpHud) && tpHud > 0 ? tpHud : null,
+      nextActivationPx: Number.isFinite(activation) && activation > 0 ? activation : null,
+      nextTierLabel: nextActivationTier?.tierLabel != null ? String(nextActivationTier.tierLabel) : `T${stepNow}`,
+      liveTrailSlPx: trailPx != null && Number.isFinite(trailPx) && trailPx > 0 ? trailPx : null,
+    };
+
     if (!lines.length) {
-      return { key: `trail-empty|${symKey}`, lines: [], badge: mkBadge(stTrailingLive) };
+      return { key: `trail-empty|${symKey}`, lines: [], badge: mkBadge(stTrailingLive), trailHud };
     }
 
     return {
@@ -1421,6 +1485,7 @@ export function ChartPanel() {
       key: `trail-ST-${lines.map((l) => `${l.kind}:${l.px.toFixed(2)}`).join("|")}|${symKey}`,
       lines,
       badge: mkBadge(stTrailingLive),
+      trailHud,
     };
   }, [
     bot?.trailingStopLossAuto,
@@ -1451,7 +1516,15 @@ export function ChartPanel() {
   // always has fresh tier prices when computing y-coordinates for the overlay labels.
   useEffect(() => {
     const specs = chartTrailingPreview.lines
-      .filter((l) => l.tierLabel && (l.kind === "trail_tier_activated" || l.kind === "trail_tier_next" || l.kind === "st_trail"))
+      .filter(
+        (l) =>
+          l.tierLabel &&
+          (l.kind === "trail_tier_activated" ||
+            l.kind === "trail_tier_next" ||
+            l.kind === "st_trail" ||
+            l.kind === "trail_tier_lock" ||
+            l.kind === "st_tier_activation"),
+      )
       .map((l) => ({ label: l.tierLabel!, px: l.px }));
     tierLinePricesRef.current = specs;
     // Immediately recompute positions with the current series scale
@@ -2090,7 +2163,7 @@ export function ChartPanel() {
               )}
             </div>
           ) : null}
-          {futuresBracketAxisLegend.length > 0 ? (
+              {futuresBracketAxisLegend.length > 0 ? (
             <div
               className="pointer-events-none absolute bottom-2 right-2 z-10 max-w-[min(20rem,92%)] space-y-0.5 rounded-md border border-slate-600/50 bg-slate-950/85 px-2 py-1.5 text-[10px] leading-tight shadow-lg backdrop-blur-sm dark:border-slate-500/40 dark:bg-slate-950/90"
               aria-label="Futures bracket and trail levels"
@@ -2103,6 +2176,42 @@ export function ChartPanel() {
                   <span className="shrink-0 font-mono tabular-nums text-slate-100">{row.px.toLocaleString("en-US", { maximumFractionDigits: 6 })}</span>
                 </div>
               ))}
+            </div>
+          ) : null}
+          {chartTrailingPreview.trailHud && inferFuturesBracketLinesActive(bot) ? (
+            <div
+              className="pointer-events-none absolute bottom-2 left-2 z-10 max-w-[min(18rem,88%)] space-y-0.5 rounded-md border border-amber-700/40 bg-slate-950/88 px-2 py-1.5 text-[10px] leading-tight text-amber-100/95 shadow-lg backdrop-blur-sm dark:border-amber-600/35 dark:bg-slate-950/90"
+              aria-label="Trail summary"
+            >
+              <div className="text-[9px] font-semibold uppercase tracking-wide text-amber-200/90">Trail</div>
+              {chartTrailingPreview.trailHud.currentSl != null ? (
+                <div className="font-mono text-slate-100">
+                  SL now: {chartTrailingPreview.trailHud.currentSl.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : (
+                <div className="text-slate-400">SL now: —</div>
+              )}
+              {chartTrailingPreview.trailHud.takeProfit != null ? (
+                <div className="font-mono text-slate-100">
+                  TP: {chartTrailingPreview.trailHud.takeProfit.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : (
+                <div className="text-slate-400">TP: —</div>
+              )}
+              {chartTrailingPreview.trailHud.nextActivationPx != null && chartTrailingPreview.trailHud.nextTierLabel ? (
+                <div className="font-mono text-amber-100/90">
+                  Next ST {chartTrailingPreview.trailHud.nextTierLabel} activation:{" "}
+                  {chartTrailingPreview.trailHud.nextActivationPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : null}
+              {chartTrailingPreview.trailHud.liveTrailSlPx != null ? (
+                <div className="font-mono text-emerald-200/90">
+                  Live ST trail SL:{" "}
+                  {chartTrailingPreview.trailHud.liveTrailSlPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : (
+                <div className="text-slate-500">Live ST trail SL: (not in trail zone)</div>
+              )}
             </div>
           ) : null}
           {trailingStatusChipsVisible ? (
@@ -2183,7 +2292,15 @@ export function ChartPanel() {
                 const chronoIdx = nAll - 1 - i;
                 const verdict = supertrendSignalVerdictsChrono[chronoIdx];
                 const sec = Math.floor(Number(h.ts) / 1000);
-                const entryPx = Number.isFinite(sec) ? signalListCloseBySec.get(sec) : undefined;
+                const fromServer =
+                  h.signalBarClose != null &&
+                  Number.isFinite(Number(h.signalBarClose)) &&
+                  Number(h.signalBarClose) > 0
+                    ? Number(h.signalBarClose)
+                    : undefined;
+                const entryPx =
+                  fromServer ??
+                  (Number.isFinite(sec) ? signalListCloseBySec.get(sec) : undefined);
                 const entryStr =
                   entryPx != null && Number.isFinite(entryPx) && entryPx > 0 ? entryPx.toFixed(2) : "—";
                 const vLabel = formatSupertrendSignalVerdict(verdict);

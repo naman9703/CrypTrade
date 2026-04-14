@@ -1644,6 +1644,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
     if (p.stopLoss != null && Number.isFinite(Number(p.stopLoss))) msg += ` · SL=${Number(p.stopLoss).toFixed(4)}`;
     if (p.takeProfit != null && Number.isFinite(Number(p.takeProfit))) msg += ` · TP=${Number(p.takeProfit).toFixed(4)}`;
+    if (p.signalBarClose != null && Number.isFinite(Number(p.signalBarClose))) {
+      msg += ` · signalClose=${Number(p.signalBarClose).toFixed(4)}`;
+    }
+    if (p.filledPrice != null && Number.isFinite(Number(p.filledPrice))) {
+      msg += ` · fill=${Number(p.filledPrice).toFixed(4)}`;
+    }
     const level =
       ac === "ERROR" ? "error" : ac === "SKIPPED" ? "warn" : ac === "PENDING" ? "info" : "info";
     const actSymbol =
@@ -1693,6 +1699,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       takeProfit,
       tradeSymbol,
       symbol: resSymbol,
+      signalBarClose,
+      filledPrice,
     } = result;
     const fromOrderId = inferSymbolFromSupertrendOrderId(orderId);
     const primaryU = String(state.symbol || "").trim().toUpperCase();
@@ -1724,6 +1732,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       expectedMoveShort,
       stopLoss,
       takeProfit,
+      ...(Number.isFinite(Number(signalBarClose)) && Number(signalBarClose) > 0 ? { signalBarClose: Number(signalBarClose) } : {}),
+      ...(Number.isFinite(Number(filledPrice)) && Number(filledPrice) > 0 ? { filledPrice: Number(filledPrice) } : {}),
       ...(feedbackSymbol ? { symbol: feedbackSymbol } : {}),
     });
   }
@@ -1803,6 +1813,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           indicatorFullCapital: true,
           dedupeKey: pending.dedupeKeyBuy,
           decisionSnapshot: resolveSupertrendDecisionSnapshot(null),
+          candlesOverride: candles.map((c) => (c && typeof c === "object" ? { ...c } : c)),
+          anchorBarTs: pending.barTs,
         });
         emitSupertrendSignalFeedback(hub, buyRes);
         if (buyRes?.action === "placed") await pushImmediateState(hub);
@@ -1813,6 +1825,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           wsHub: hub,
           dedupeKey: pending.dedupeKeyBuyFut,
           decisionSnapshot: resolveSupertrendDecisionSnapshot(null),
+          candlesOverride: candles.map((c) => (c && typeof c === "object" ? { ...c } : c)),
+          anchorBarTs: pending.barTs,
         });
         emitSupertrendSignalFeedback(hub, buyRes);
         if (buyRes?.action === "placed") await pushImmediateState(hub);
@@ -1829,6 +1843,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           indicatorFullCapital: true,
           dedupeKey: pending.dedupeKeySellSpot,
           decisionSnapshot: resolveSupertrendDecisionSnapshot(null),
+          candlesOverride: candles.map((c) => (c && typeof c === "object" ? { ...c } : c)),
+          anchorBarTs: pending.barTs,
         });
         emitSupertrendSignalFeedback(hub, sellRes);
         if (sellRes?.action === "placed") await pushImmediateState(hub);
@@ -1839,6 +1855,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           wsHub: hub,
           dedupeKey: pending.dedupeKeySellFut,
           decisionSnapshot: resolveSupertrendDecisionSnapshot(null),
+          candlesOverride: candles.map((c) => (c && typeof c === "object" ? { ...c } : c)),
+          anchorBarTs: pending.barTs,
         });
         emitSupertrendSignalFeedback(hub, sellRes);
         if (sellRes?.action === "placed") await pushImmediateState(hub);
@@ -1847,8 +1865,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   }
 
   /**
-   * @param {{ side: string, strategyKey: string, wsHub: any, indicatorFullCapital?: boolean, dedupeKey?: string | null, tradeSymbol?: string | null, candlesOverride?: array | null, fixedQuoteSpendUsdt?: number | null, multiUnpinnedOrder?: boolean }} args
+   * @param {{ side: string, strategyKey: string, wsHub: any, indicatorFullCapital?: boolean, dedupeKey?: string | null, tradeSymbol?: string | null, candlesOverride?: array | null, fixedQuoteSpendUsdt?: number | null, multiUnpinnedOrder?: boolean, anchorBarTs?: number | null }} args
    * `indicatorFullCapital`: spot wallet — BUY spends ~all quote free balance; SELL closes full base position (Supertrend-only path).
+   * `anchorBarTs`: when set, size/price use the candle with this `ts` (closed bar) instead of the buffer tail — needed when override ends with the next forming bar (AUTO-multi / mux).
    */
   async function trySupertrendSpotOrder({
     side,
@@ -1861,6 +1880,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     candlesOverride = null,
     fixedQuoteSpendUsdt = null,
     multiUnpinnedOrder = false,
+    anchorBarTs = null,
   }) {
     let spot = exch?.spot;
     if (!spot?.placeOrder && typeof exch?.placeOrder === "function") spot = exch;
@@ -1877,7 +1897,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     const orderSymbol = String(tradeSymbol || state.symbol).toUpperCase();
     const candles =
       Array.isArray(candlesOverride) && candlesOverride.length ? candlesOverride : feed.getCandles();
-    const last = candles[candles.length - 1];
+    const anchorTsSpot = Number(anchorBarTs);
+    let last = candles.length ? candles[candles.length - 1] : null;
+    if (Number.isFinite(anchorTsSpot) && anchorTsSpot > 0 && Array.isArray(candles)) {
+      const hit = candles.find((c) => Number(c?.ts) === anchorTsSpot);
+      if (hit) last = hit;
+    }
     if (!last) {
       wsHub?.broadcast?.("log", {
         level: "warn",
@@ -2278,6 +2303,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
    * Supertrend autotrade on USD-M futures: bar-close BUY/SELL uses AI /predict for leverage (AUTO) and sizing.
    * 1-way: BUY opens long; SELL closes long only. 2-way: BUY flips short→long; SELL flips long→short.
    * With AI confidence filter off: SL/TP default to fixed % (0.002 / 0.015) after risk-based qty.
+   * Optional `anchorBarTs`: use the candle with this `ts` for entry mark / sizing when the override buffer tail is a newer forming bar (AUTO-multi / mux).
    */
   async function trySupertrendFuturesOrder({
     side,
@@ -2291,6 +2317,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     multiUnpinnedOrder = false,
     aiPredictNoLastAi = false,
     maxNotionalUsd = null,
+    anchorBarTs = null,
   }) {
     let futuresEx = exch?.futures;
     if (!futuresEx?.placeOrder && typeof exch?.placeOrder === "function") {
@@ -2309,9 +2336,18 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
 
     const orderSymbol = String(tradeSymbol || state.symbol).toUpperCase();
-    const candles =
-      Array.isArray(candlesOverride) && candlesOverride.length ? candlesOverride : feed.getCandles();
-    const last = candles[candles.length - 1];
+    const _hasCandlesOverride = Array.isArray(candlesOverride) && candlesOverride.length > 0;
+    const candles = _hasCandlesOverride ? candlesOverride : feed.getCandles();
+    const anchorTsFut = Number(anchorBarTs);
+    let last = candles.length ? candles[candles.length - 1] : null;
+    let anchoredFromBarTs = false;
+    if (Number.isFinite(anchorTsFut) && anchorTsFut > 0 && Array.isArray(candles)) {
+      const hit = candles.find((c) => Number(c?.ts) === anchorTsFut);
+      if (hit) {
+        last = hit;
+        anchoredFromBarTs = true;
+      }
+    }
     if (!last) {
       wsHub?.broadcast?.("log", {
         level: "warn",
@@ -2320,6 +2356,42 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       });
       return { venue: "FUTURES", side, action: "skipped", reason: "no_candles" };
     }
+    // #region agent log
+    {
+      const fb = typeof feed.getCandlesForSymbol === "function" ? feed.getCandlesForSymbol(orderSymbol) : feed.getCandles();
+      const fbL = Array.isArray(fb) && fb.length ? fb[fb.length - 1] : null;
+      const crTail = candles.length ? candles[candles.length - 1] : null;
+      const h2Data = {
+        orderSymbol,
+        side,
+        hasOverride: _hasCandlesOverride,
+        anchorBarTs: Number.isFinite(anchorTsFut) && anchorTsFut > 0 ? anchorTsFut : null,
+        anchoredFromBarTs,
+        crTailTs: crTail != null ? Number(crTail.ts) : null,
+        crTailClose: crTail != null ? Number(crTail.close) : null,
+        candleLen: candles.length,
+        lastTs: Number(last.ts),
+        lastClose: Number(last.close),
+        feedTailTs: fbL != null ? Number(fbL.ts) : null,
+        feedTailClose: fbL != null ? Number(fbL.close) : null,
+        tailMatchesFeed: fbL != null ? Number(last.ts) === Number(fbL.ts) : null,
+      };
+      log.info("debug_supertrend_h2", { sessionId: "b66075", hypothesisId: "H2", ...h2Data });
+      fetch("http://127.0.0.1:7607/ingest/19a148df-af4d-4baa-8f12-56d6d537b33c", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b66075" },
+        body: JSON.stringify({
+          sessionId: "b66075",
+          runId: "pre",
+          hypothesisId: "H2",
+          location: "bot.js:trySupertrendFuturesOrder",
+          message: "candles_tail_for_order",
+          data: h2Data,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
 
     const indicators = computeIndicators(candles);
     const regimeType = state.lastRegime?.type || "UNKNOWN";
@@ -2892,6 +2964,37 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       if (!Number.isFinite(qty) || qty <= 0) {
         return { venue: "FUTURES", side, action: "skipped", reason: "capital_cap_exhausted" };
       }
+      const pxEntryOpen = Number(last.close);
+      let slN0 = Number(stopLoss);
+      let tpN0 = Number(takeProfit);
+      const slOk =
+        Number.isFinite(slN0) &&
+        slN0 > 0 &&
+        Number.isFinite(pxEntryOpen) &&
+        pxEntryOpen > 0 &&
+        (openingSide === "BUY" ? slN0 < pxEntryOpen : slN0 > pxEntryOpen);
+      const tpOk =
+        Number.isFinite(tpN0) &&
+        tpN0 > 0 &&
+        Number.isFinite(pxEntryOpen) &&
+        pxEntryOpen > 0 &&
+        (openingSide === "BUY" ? tpN0 > pxEntryOpen : tpN0 < pxEntryOpen);
+      if (!slOk || !tpOk) {
+        const slPctFb = clamp(Number(state.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2);
+        const tpPctFb = clamp(Number(state.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5);
+        if (openingSide === "BUY") {
+          stopLoss = pxEntryOpen * (1 - slPctFb);
+          takeProfit = pxEntryOpen * (1 + tpPctFb);
+        } else {
+          stopLoss = pxEntryOpen * (1 + slPctFb);
+          takeProfit = pxEntryOpen * (1 - tpPctFb);
+        }
+        wsHub?.broadcast?.("log", {
+          level: "warn",
+          msg: `Supertrend futures ${openingSide}: invalid or missing SL/TP vs entry — using configured default SL/TP % (sl=${slPctFb}, tp=${tpPctFb})`,
+          symbol: orderSymbol,
+        });
+      }
       const order = await futuresEx.placeOrder({
         symbol: orderSymbol,
         side: openingSide,
@@ -2921,6 +3024,31 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         leverage: lev,
         strategyKey,
       });
+      const signalBarClose = Number(last.close);
+      const fillPx = Number(order.filledPrice);
+      // #region agent log
+      {
+        const d =
+          Number.isFinite(signalBarClose) && signalBarClose > 0 && Number.isFinite(fillPx) && fillPx > 0
+            ? (fillPx - signalBarClose) / signalBarClose
+            : null;
+        const h3Data = { orderSymbol, side: openingSide, signalBarClose, fillPx, relSlippage: d };
+        log.info("debug_supertrend_h3", { sessionId: "b66075", hypothesisId: "H3", ...h3Data });
+        fetch("http://127.0.0.1:7607/ingest/19a148df-af4d-4baa-8f12-56d6d537b33c", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b66075" },
+          body: JSON.stringify({
+            sessionId: "b66075",
+            runId: "pre",
+            hypothesisId: "H3",
+            location: "bot.js:trySupertrendFuturesOrder:after_place",
+            message: "signal_close_vs_fill",
+            data: h3Data,
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+      }
+      // #endregion
       broadcastTrade(wsHub, {
         type: "OPEN",
         id: order.id,
@@ -2942,6 +3070,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           venue: "FUTURES",
           stopLoss,
           takeProfit,
+          /** Closed-bar close used for sizing / SL-TP anchor (matches chart signal list “@” when WS is aligned). */
+          signalBarClose: Number.isFinite(signalBarClose) && signalBarClose > 0 ? signalBarClose : undefined,
+          avgFillPrice: Number.isFinite(fillPx) && fillPx > 0 ? fillPx : undefined,
         },
         source: "SUPERTREND",
       });
@@ -2953,7 +3084,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         category: "risk",
         reason: "sl_tp_armed",
         symbol: orderSymbol,
-        detail: { stopLoss, takeProfit, leverage: order.leverage ?? lev, trailingAuto: Boolean(state.trailingStopLossAuto) },
+        detail: {
+          stopLoss,
+          takeProfit,
+          leverage: order.leverage ?? lev,
+          trailingAuto: Boolean(state.trailingStopLossAuto),
+          signalBarClose: Number.isFinite(signalBarClose) && signalBarClose > 0 ? signalBarClose : null,
+          avgFillPrice: Number.isFinite(fillPx) && fillPx > 0 ? fillPx : null,
+        },
       });
       state.stats[strategyKey].trades += 1;
       state.lastTradeOpenedAt = Date.now();
@@ -2968,6 +3106,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         stopLoss,
         takeProfit,
         tradeSymbol: orderSymbol,
+        signalBarClose: Number.isFinite(signalBarClose) && signalBarClose > 0 ? signalBarClose : undefined,
+        filledPrice: Number.isFinite(fillPx) && fillPx > 0 ? fillPx : undefined,
         decisionLong: snapUsedForOpen?.long?.total,
         decisionShort: snapUsedForOpen?.short?.total,
         expectedMoveLong: snapUsedForOpen?.expectedMoveLong ?? null,
@@ -3113,6 +3253,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       strength: entry.strength,
       stAction: entry.stAction,
       surfPulse: entry.surfPulse != null && Number.isFinite(Number(entry.surfPulse)) ? Number(entry.surfPulse) : null,
+      ...(entry.signalBarClose != null &&
+      Number.isFinite(Number(entry.signalBarClose)) &&
+      Number(entry.signalBarClose) > 0
+        ? { signalBarClose: Number(entry.signalBarClose) }
+        : {}),
     });
     filt.sort((a, b) => Number(a.ts) - Number(b.ts));
     state.supertrendSignalHistory = filt.slice(-SUPERTREND_SIGNAL_STATE_MAX);
@@ -3333,7 +3478,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       row,
       decisionSnapshotBar,
       supertrendStrength01,
-      closedRaw: raw,
+      /** Clone bars so later feed updates cannot mutate the bar-close row before `trySupertrend*Order` runs. */
+      closedRaw: raw.map((c) => (c && typeof c === "object" ? { ...c } : c)),
     };
   }
 
@@ -3433,6 +3579,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     const surfPulseSweep = await fetchSurfPulseScoreForHistory(cr);
     const histSide = allowBuy ? "BUY" : "SELL";
     const ssHist = decisionSnapshotBar.signalStrength;
+    const barAtFlip = Array.isArray(cr) ? cr.find((b) => Number(b?.ts) === Number(cTs)) : null;
+    const signalBarCloseMulti =
+      barAtFlip != null && Number.isFinite(Number(barAtFlip.close)) && Number(barAtFlip.close) > 0
+        ? Number(barAtFlip.close)
+        : null;
     mergeSupertrendSignalHistoryFromAutoMulti(
       {
         ts: Number(cTs),
@@ -3450,9 +3601,44 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           ssHist?.strength != null && Number.isFinite(Number(ssHist.strength)) ? Number(ssHist.strength) : null,
         stAction: ssHist?.action != null ? String(ssHist.action) : null,
         surfPulse: surfPulseSweep,
+        ...(signalBarCloseMulti != null ? { signalBarClose: signalBarCloseMulti } : {}),
       },
       hubLocal,
     );
+    // #region agent log
+    {
+      const snapL = Array.isArray(cr) && cr.length ? cr[cr.length - 1] : null;
+      const live =
+        typeof feed.getCandlesForSymbol === "function" ? feed.getCandlesForSymbol(symU) : feed.getCandles();
+      const liveL = Array.isArray(live) && live.length ? live[live.length - 1] : null;
+      const h1mData = {
+        sym: symU,
+        cTs,
+        crLen: Array.isArray(cr) ? cr.length : 0,
+        crLastTs: snapL != null ? Number(snapL.ts) : null,
+        crLastClose: snapL != null ? Number(snapL.close) : null,
+        barAtCtsClose: signalBarCloseMulti,
+        liveLen: Array.isArray(live) ? live.length : null,
+        liveLastTs: liveL != null ? Number(liveL.ts) : null,
+        liveLastClose: liveL != null ? Number(liveL.close) : null,
+        crTailSameTsAsCts: snapL != null ? Number(snapL.ts) === Number(cTs) : null,
+      };
+      log.info("debug_supertrend_h1_multi", { sessionId: "b66075", hypothesisId: "H1m", ...h1mData });
+      fetch("http://127.0.0.1:7607/ingest/19a148df-af4d-4baa-8f12-56d6d537b33c", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b66075" },
+        body: JSON.stringify({
+          sessionId: "b66075",
+          runId: "pre",
+          hypothesisId: "H1m",
+          location: "bot.js:processAutoMultiFromEval",
+          message: "multi_bar_close_cr_vs_live",
+          data: h1mData,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
 
     if (allowSell && allowBuy) {
       hubLocal?.broadcast?.("log", {
@@ -3476,6 +3662,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           candlesOverride: cr,
           fixedQuoteSpendUsdt: null,
           multiUnpinnedOrder: true,
+          anchorBarTs: cTs,
         });
         emitSupertrendSignalFeedback(hubLocal, {
           ...sellRes,
@@ -3500,6 +3687,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         candlesOverride: cr,
         multiUnpinnedOrder: true,
         aiPredictNoLastAi: true,
+        anchorBarTs: cTs,
       });
       emitSupertrendSignalFeedback(hubLocal, {
         ...sellRes,
@@ -3553,6 +3741,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         candlesOverride: cr,
         fixedQuoteSpendUsdt: multiPoolBudgetSizing ? null : spendQuote,
         multiUnpinnedOrder: true,
+        anchorBarTs: cTs,
       });
       emitSupertrendSignalFeedback(hubLocal, {
         ...buyRes,
@@ -3616,6 +3805,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         multiUnpinnedOrder: true,
         aiPredictNoLastAi: true,
         maxNotionalUsd: Number.isFinite(maxNotionalUsd) && maxNotionalUsd > 0 ? maxNotionalUsd : null,
+        anchorBarTs: cTs,
       });
       emitSupertrendSignalFeedback(hubLocal, {
         ...buyRes,
@@ -3885,6 +4075,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       const side = allowBuy ? "BUY" : "SELL";
       const ss = decisionSnapshotBar.signalStrength;
       const surfPulseHist = await fetchSurfPulseScoreForHistory(rawCandles);
+      const signalBarClose =
+        strengthBar && Number.isFinite(Number(strengthBar.close)) && Number(strengthBar.close) > 0
+          ? Number(strengthBar.close)
+          : idxC >= 0 && clean[idxC] && Number.isFinite(Number(clean[idxC].close)) && Number(clean[idxC].close) > 0
+            ? Number(clean[idxC].close)
+            : null;
       const entry = {
         ts: Number(row.ts),
         side,
@@ -3900,6 +4096,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         strength: ss?.strength != null && Number.isFinite(Number(ss.strength)) ? Number(ss.strength) : null,
         stAction: ss?.action != null ? String(ss.action) : null,
         surfPulse: surfPulseHist,
+        ...(signalBarClose != null ? { signalBarClose } : {}),
       };
       appendSupertrendSignalHistoryEntry(entry, cfgPersistenceSlug);
       const prev = Array.isArray(state.supertrendSignalHistory) ? state.supertrendSignalHistory : [];
@@ -3923,6 +4120,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         strength: entry.strength,
         stAction: entry.stAction,
         surfPulse: entry.surfPulse != null && Number.isFinite(Number(entry.surfPulse)) ? Number(entry.surfPulse) : null,
+        ...(entry.signalBarClose != null &&
+        Number.isFinite(Number(entry.signalBarClose)) &&
+        Number(entry.signalBarClose) > 0
+          ? { signalBarClose: Number(entry.signalBarClose) }
+          : {}),
       });
       filt.sort((a, b) => Number(a.ts) - Number(b.ts));
       state.supertrendSignalHistory = filt.slice(-SUPERTREND_SIGNAL_STATE_MAX);
@@ -4037,6 +4239,48 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
     state.supertrendStHandledCloseKey = barCloseKey;
 
+    /**
+     * `rawCandles` was captured at handler entry (with the closed bar as tail). After `await` work (AI gates,
+     * history, disk), `feed.getCandles()` would advance to the next bar — pass this snapshot into
+     * `trySupertrend*Order` so `last.close` / indicators match the signal bar, not the live tail.
+     * Deep-clone bars so in-buffer updates to the forming next candle cannot mutate objects in this snapshot.
+     */
+    const barCloseCandlesSnapshot = rawCandles.map((c) =>
+      c && typeof c === "object" ? { ...c } : c,
+    );
+    // #region agent log
+    {
+      const snapL = barCloseCandlesSnapshot[barCloseCandlesSnapshot.length - 1];
+      const live = feed.getCandles();
+      const liveL = Array.isArray(live) && live.length ? live[live.length - 1] : null;
+      const h1Data = {
+        sym: symTrade,
+        cTs,
+        snapLen: barCloseCandlesSnapshot.length,
+        snapLastTs: snapL != null ? Number(snapL.ts) : null,
+        snapLastClose: snapL != null ? Number(snapL.close) : null,
+        liveLen: Array.isArray(live) ? live.length : null,
+        liveLastTs: liveL != null ? Number(liveL.ts) : null,
+        liveLastClose: liveL != null ? Number(liveL.close) : null,
+        tsMatch: snapL != null && liveL != null ? Number(snapL.ts) === Number(liveL.ts) : null,
+      };
+      log.info("debug_supertrend_h1", { sessionId: "b66075", hypothesisId: "H1", ...h1Data });
+      fetch("http://127.0.0.1:7607/ingest/19a148df-af4d-4baa-8f12-56d6d537b33c", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b66075" },
+        body: JSON.stringify({
+          sessionId: "b66075",
+          runId: "pre",
+          hypothesisId: "H1",
+          location: "bot.js:processSupertrendCandleClose",
+          message: "bar_close_snapshot_vs_live_feed_tail",
+          data: h1Data,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
+
     if (allowBuy) {
       let buyRes;
       if (stSpot) {
@@ -4047,6 +4291,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           indicatorFullCapital: true,
           dedupeKey: `${Number(row.ts)}:BUY`,
           decisionSnapshot: decisionSnapshotBar,
+          candlesOverride: barCloseCandlesSnapshot,
+          anchorBarTs: cTs,
         });
       } else {
         buyRes = await trySupertrendFuturesOrder({
@@ -4056,6 +4302,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           dedupeKey: `${Number(row.ts)}:FUT:BUY`,
           signalStrength: supertrendStrength01,
           decisionSnapshot: decisionSnapshotBar,
+          candlesOverride: barCloseCandlesSnapshot,
+          anchorBarTs: cTs,
         });
       }
       emitSupertrendSignalFeedback(hub, { ...buyRes, signalStrength: supertrendStrength01 ?? undefined });
@@ -4071,6 +4319,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           indicatorFullCapital: true,
           dedupeKey: `${Number(row.ts)}:SELL`,
           decisionSnapshot: decisionSnapshotBar,
+          candlesOverride: barCloseCandlesSnapshot,
+          anchorBarTs: cTs,
         });
       } else {
         sellRes = await trySupertrendFuturesOrder({
@@ -4080,6 +4330,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           dedupeKey: `${Number(row.ts)}:FUT:SELL`,
           signalStrength: supertrendStrength01,
           decisionSnapshot: decisionSnapshotBar,
+          candlesOverride: barCloseCandlesSnapshot,
+          anchorBarTs: cTs,
         });
       }
       emitSupertrendSignalFeedback(hub, { ...sellRes, signalStrength: supertrendStrength01 ?? undefined });
@@ -5704,7 +5956,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
             // without waiting for the next candle or the first poll interval to expire.
             if (trailingStopLoss?.enabled && typeof exch.runRealtimePollOnce === "function") {
               exch
-                .runRealtimePollOnce({ trailingStopLoss, onTrailingSlAdvance, notifyActivity })
+                .runRealtimePollOnce({
+                  trailingStopLoss,
+                  onTrailingSlAdvance,
+                  notifyActivity,
+                  primaryChartSymU: String(state.symbol || "").toUpperCase(),
+                })
                 .catch(() => null);
             }
           } catch {
@@ -5725,7 +5982,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       // The poll runs between ticks so trailing fires immediately when activation is crossed,
       // not just when the next candle arrives.
       if (typeof exch.updateRealtimeTrailingConfig === "function") {
-        exch.updateRealtimeTrailingConfig({ trailingStopLoss, onTrailingSlAdvance, notifyActivity });
+        exch.updateRealtimeTrailingConfig({
+          trailingStopLoss,
+          onTrailingSlAdvance,
+          notifyActivity,
+          primaryChartSymU: String(state.symbol || "").toUpperCase(),
+        });
       }
       if (!_realtimeTrailingPollStarted && trailingStopLoss?.enabled && typeof exch.startRealtimeTrailingPoll === "function") {
         exch.startRealtimeTrailingPoll(1000);

@@ -55,6 +55,10 @@ function cleanRow(e) {
   if (!Number.isFinite(Number(e.ts))) return null;
   const surf =
     e.surfPulse != null && Number.isFinite(Number(e.surfPulse)) ? Number(e.surfPulse) : null;
+  const sbc =
+    e.signalBarClose != null && Number.isFinite(Number(e.signalBarClose)) && Number(e.signalBarClose) > 0
+      ? Number(e.signalBarClose)
+      : null;
   return {
     ts: Number(e.ts),
     side: e.side,
@@ -64,6 +68,7 @@ function cleanRow(e) {
     strength: e.strength != null && Number.isFinite(Number(e.strength)) ? Number(e.strength) : null,
     stAction: e.stAction != null ? String(e.stAction) : null,
     surfPulse: surf,
+    ...(sbc != null ? { signalBarClose: sbc } : {}),
   };
 }
 
@@ -145,6 +150,10 @@ export function readSupertrendSignalHistory({ symbol, timeframe, limit = 2000, a
       if (String(o.timeframe || "") !== tf) continue;
       if (o.side !== "BUY" && o.side !== "SELL") continue;
       if (!Number.isFinite(Number(o.ts))) continue;
+      const sbcR =
+        o.signalBarClose != null && Number.isFinite(Number(o.signalBarClose)) && Number(o.signalBarClose) > 0
+          ? Number(o.signalBarClose)
+          : null;
       out.push({
         ts: Number(o.ts),
         side: o.side,
@@ -155,6 +164,7 @@ export function readSupertrendSignalHistory({ symbol, timeframe, limit = 2000, a
         stAction: o.stAction != null ? String(o.stAction) : null,
         surfPulse:
           o.surfPulse != null && Number.isFinite(Number(o.surfPulse)) ? Number(o.surfPulse) : null,
+        ...(sbcR != null ? { signalBarClose: sbcR } : {}),
       });
     } catch {
       /* skip */

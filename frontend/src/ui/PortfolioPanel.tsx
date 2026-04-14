@@ -8,6 +8,11 @@ import { useAppStore } from "../ws/store";
 import { api } from "../api/client";
 import { isIncomeLedgerClose } from "../lib/tradeClassification";
 import { clampTradeCloseFeeRate, estimatedCloseFeeUsdt } from "../lib/tradeCloseFee";
+import {
+  buildTrailLockPrices,
+  extrapolateTrailTierLockPx,
+  tierLabelForTrailIndex,
+} from "../lib/trailingFeeLadder";
 import { AiTradeMotionVisual } from "./AiTradeMotionVisual";
 import { initialMarginUsd } from "../lib/futuresLiquidation";
 
@@ -32,6 +37,38 @@ function fmtTimestamp(ms: number): string {
 function fmtTimestampFull(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return "";
   return new Date(ms).toLocaleString();
+}
+
+/** Tooltip: planned T0,T1,… lock prices (matches chart / server ladder). */
+function futuresTrailLadderSummaryTitle(p: any, bot: any): string | undefined {
+  if (String(p?.venue) !== "FUTURES" || bot?.trailingStopLossAuto !== true) return undefined;
+  const entry = Number(p.entryPrice);
+  if (!Number.isFinite(entry) || entry <= 0) return undefined;
+  const side = String(p?.side || "").toUpperCase();
+  const isLong =
+    side === "BUY" || side === "LONG" || (Number.isFinite(Number(p?.qty)) && Number(p.qty) > 0);
+  const feeR = clampTradeCloseFeeRate();
+  const openR = Number.isFinite(Number(bot?.trailOpenFeeRate)) && Number(bot.trailOpenFeeRate) > 0 ? Number(bot.trailOpenFeeRate) : feeR;
+  const closeR = Number.isFinite(Number(bot?.trailCloseFeeRate)) && Number(bot.trailCloseFeeRate) > 0 ? Number(bot.trailCloseFeeRate) : feeR;
+  const mult = Number.isFinite(Number(bot?.trailFeeBeMultiplier)) && Number(bot.trailFeeBeMultiplier) >= 1 ? Number(bot.trailFeeBeMultiplier) : 1;
+  const extras = Array.isArray(bot?.trailingStopExtraScalpingPcts)
+    ? (bot.trailingStopExtraScalpingPcts as unknown[]).map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
+    : [];
+  const levels = buildTrailLockPrices(entry, isLong, feeR, extras, {
+    openFeeRate: openR,
+    closeFeeRate: closeR,
+    feeBeMultiplier: mult,
+  });
+  if (!levels.length) return undefined;
+  const parts: string[] = [];
+  const nShow = Math.min(levels.length + 2, 8);
+  for (let j = 0; j < nShow; j++) {
+    const px = extrapolateTrailTierLockPx(levels, j, isLong, entry);
+    if (px == null || !Number.isFinite(px)) continue;
+    const tl = tierLabelForTrailIndex(levels, j);
+    parts.push(`${tl} @ ${px.toLocaleString("en-US", { maximumFractionDigits: 8 })}`);
+  }
+  return `Trail lock ladder: ${parts.join(" · ")}`;
 }
 
 /** Value for `<input type="datetime-local" />` in local timezone. */
@@ -664,8 +701,13 @@ function tradeHistoryReasonLabel(t: any): string {
     const tier = r0.replace("TRAILED_STOP_LOSS_", "");
     return `SL trail ${tier}`;
   }
+  if (r0.startsWith("TRAILED_SUPERTREND_T")) {
+    const tier = r0.replace("TRAILED_SUPERTREND_", "");
+    return `SL trail ${tier}`;
+  }
   if (r0 === "TRAILED_SUPERTREND") return trailTierClose ? `SL trail ${trailTierClose}` : "Trailed ST";
   if (r0 === "TRAILED_STOP_LOSS") return trailTierClose ? `SL trail ${trailTierClose}` : "Trailed SL";
+  if (r0 === "STOP_LOSS_DEFAULT") return "Default SL";
   if (r0 === "SUPERTREND_EXIT" || r0 === "SUPERTREND_FLIP") return "Signal";
   if (r0 === "STOP_LOSS" || r0 === "STOP") {
     if (trailedExit) {
@@ -847,6 +889,7 @@ export function PortfolioPanel() {
 
   const [tradeHistoryView, setTradeHistoryView] = useState<"ALL" | "OPEN_ONLY" | "CLOSED_ONLY">("ALL");
   const [tradeHistorySort, setTradeHistorySort] = useState<TradeHistorySort>("RECENT");
+  const [tradeRefreshing, setTradeRefreshing] = useState(false);
   // Default "Strategy" (APP): futures demo emits many unmatched income shards; hide unless debugging.
   const [closeSourceFilter, setCloseSourceFilter] = useState<"ALL" | "APP" | "LEDGER">("APP");
   /** Drives net realised PnL, winrate, fee rollup, and trade history timestamps. */
@@ -1593,7 +1636,10 @@ export function PortfolioPanel() {
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300" title="Initial margin ≈ notional / leverage (USD-M)">
                         {positionInitialMarginUsd(p)}
                       </td>
-                      <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                      <td
+                        className="px-3 py-2 text-slate-700 dark:text-slate-300"
+                        title={p.venue === "FUTURES" ? futuresTrailLadderSummaryTitle(p, bot) : undefined}
+                      >
                         {p.stopLoss != null ? fmtInstrumentPx(p.stopLoss) : "—"}
                         {(() => {
                           const tier =
@@ -1699,7 +1745,43 @@ export function PortfolioPanel() {
           <div className="border-b border-slate-200 dark:border-slate-800 px-3 py-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Trade history</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Trade history</span>
+                  <button
+                    type="button"
+                    disabled={tradeRefreshing}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 disabled:opacity-40"
+                    title="Refresh trade history from exchange"
+                    onClick={() => {
+                      setTradeRefreshing(true);
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.tradeRefresh();
+                            pushLog({ level: "info", msg: "Trade history refreshed" });
+                          } catch (e: unknown) {
+                            pushLog({ level: "error", msg: `Refresh failed: ${e instanceof Error ? e.message : String(e)}` });
+                          } finally {
+                            setTradeRefreshing(false);
+                          }
+                        })();
+                      });
+                    }}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      className={`h-3.5 w-3.5${tradeRefreshing ? " animate-spin" : ""}`}
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311V15a.75.75 0 01-1.5 0v-3.5a.75.75 0 01.75-.75H8.5a.75.75 0 010 1.5H7.058l.166.174a4 4 0 006.703-1.8.75.75 0 011.385.575zM4.688 8.576a5.5 5.5 0 019.201-2.466l.312.311V5a.75.75 0 011.5 0v3.5a.75.75 0 01-.75.75H11.5a.75.75 0 010-1.5h1.442l-.166-.174a4 4 0 00-6.703 1.8.75.75 0 01-1.385-.575z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </button>
+                </div>
                 {historyRangeFilter.kind === "range" ? (
                   <div className="mt-0.5 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
                     Time filter:{" "}

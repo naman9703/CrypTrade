@@ -3,7 +3,12 @@ import type { OhlcBar } from "./chartOhlc";
 /** `open` = no opposite signal yet (includes chronologically latest); boolean = indicator “efficiency”; null = missing bar price. */
 export type SupertrendSignalVerdict = "open" | boolean | null;
 
-export type SupertrendSignalHistLike = { ts: number; side: "BUY" | "SELL" };
+export type SupertrendSignalHistLike = {
+  ts: number;
+  side: "BUY" | "SELL";
+  /** When set (from server), use this instead of OHLC lookup for bar close price. */
+  signalBarClose?: number | null;
+};
 
 /**
  * Position price = bar close at signal time (UTC bar second = floor(ts/1000)).
@@ -25,8 +30,15 @@ export function computeSupertrendSignalVerdicts(
     if (Number.isFinite(t) && Number.isFinite(c) && c > 0) closeBySec.set(t, c);
   }
 
-  function closeAtSignalTs(ts: number): number | null {
-    const sec = Math.floor(Number(ts) / 1000);
+  function closeAtSignalTs(row: SupertrendSignalHistLike): number | null {
+    const fromRow =
+      row.signalBarClose != null &&
+      Number.isFinite(Number(row.signalBarClose)) &&
+      Number(row.signalBarClose) > 0
+        ? Number(row.signalBarClose)
+        : null;
+    if (fromRow != null) return fromRow;
+    const sec = Math.floor(Number(row.ts) / 1000);
     const c = closeBySec.get(sec);
     return c != null && Number.isFinite(c) && c > 0 ? c : null;
   }
@@ -36,7 +48,7 @@ export function computeSupertrendSignalVerdicts(
 
   for (let i = 0; i < n; i++) {
     const row = rowsOldestFirst[i]!;
-    const p = closeAtSignalTs(row.ts);
+    const p = closeAtSignalTs(row);
 
     if (row.side === "BUY") {
       let j = i + 1;
@@ -45,7 +57,7 @@ export function computeSupertrendSignalVerdicts(
         out[i] = "open";
         continue;
       }
-      const sp = closeAtSignalTs(rowsOldestFirst[j]!.ts);
+      const sp = closeAtSignalTs(rowsOldestFirst[j]!);
       if (p == null || sp == null) out[i] = null;
       else out[i] = p < sp;
     } else {
@@ -55,7 +67,7 @@ export function computeSupertrendSignalVerdicts(
         out[i] = "open";
         continue;
       }
-      const bp = closeAtSignalTs(rowsOldestFirst[j]!.ts);
+      const bp = closeAtSignalTs(rowsOldestFirst[j]!);
       if (p == null || bp == null) out[i] = null;
       else out[i] = p > bp;
     }

@@ -26,6 +26,9 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
     headers: { "X-MBX-APIKEY": apiKey },
   });
 
+  /** Per-symbol SL/TP from open orders (2s TTL). Scoped GETs avoid missing older SL legs in unpaged “all symbols” responses. */
+  const slTpOpenOrdersCacheBySym = new Map();
+
   async function signed(method, path, params = {}) {
     const ts = Date.now();
     const qp = new URLSearchParams({ ...params, timestamp: String(ts) });
@@ -197,28 +200,29 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
     return { stopPx: f + slDist, tpPx: f - tpDist };
   }
 
-  let slTpOpenOrdersCache = { at: 0, map: new Map() };
   async function stopTakeFromExchangeOpenOrders(symbol) {
     const sym = String(symbol || "").toUpperCase();
     const now = Date.now();
-    if (now - slTpOpenOrdersCache.at < 2000 && slTpOpenOrdersCache.map.has(sym)) {
-      return slTpOpenOrdersCache.map.get(sym);
-    }
-    const map = new Map();
+    const hit = slTpOpenOrdersCacheBySym.get(sym);
+    if (hit && now - hit.at < 2000) return { sl: hit.sl, tp: hit.tp };
+    let sl = null;
+    let tp = null;
     try {
       const [all, algoRaw] = await Promise.all([
-        signed("GET", "/fapi/v1/openOrders").catch(() => []),
-        signed("GET", "/fapi/v1/openAlgoOrders").catch(() => []),
+        signed("GET", "/fapi/v1/openOrders", { symbol: sym }).catch(() => []),
+        signed("GET", "/fapi/v1/openAlgoOrders", { symbol: sym, algoType: "CONDITIONAL" }).catch(() => []),
       ]);
       const parsed = slTpFromOpenOrdersList(Array.isArray(all) ? all : []);
       const parsedAlgo = slTpFromAlgoOrdersList(algoRaw);
       const merged = mergeSlTpSymbolMaps(parsed, parsedAlgo);
-      for (const [k, v] of merged) map.set(k, v);
+      const row = merged.get(sym) || { sl: null, tp: null };
+      sl = row.sl;
+      tp = row.tp;
     } catch (e) {
       log?.warn?.("binance_futures_testnet_open_orders_failed", { error: String(e?.message || e) });
     }
-    slTpOpenOrdersCache = { at: now, map };
-    return map.get(sym) || { sl: null, tp: null };
+    slTpOpenOrdersCacheBySym.set(sym, { at: now, sl, tp });
+    return { sl, tp };
   }
 
   const localBrackets = {};
@@ -286,7 +290,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
             qty: Math.abs(Number(p.positionAmt)),
             entryPrice: Number(p.entryPrice || 0),
             unrealizedPnl: Number(p.unrealizedProfit || 0),
-            stopLoss: lb?.stopLoss ?? pb?.stopLoss ?? oo.sl ?? null,
+            stopLoss: oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? null,
             takeProfit: oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? null,
             leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
             venue: "FUTURES",
