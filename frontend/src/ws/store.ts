@@ -108,6 +108,8 @@ type AppState = {
   candles: Candle[];
   /** Multi-coin UI: main chart shows this symbol; null = follow `bot.symbol`. */
   chartDisplaySymbol: string | null;
+  /** Incremented on each WS `hello` full `activityLog` replace so ActivityToasts can re-hydrate (no replay after reconnect/login). */
+  activityLogBulkGeneration: number;
   logs: Array<{ ts: string } & LogPayload>;
   trades: TradePayload[];
 
@@ -288,6 +290,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   perSessionTradingMode: false,
   candles: [],
   chartDisplaySymbol: null,
+  activityLogBulkGeneration: 0,
   logs: [],
   trades: [],
   runningByMode: {},
@@ -395,6 +398,8 @@ export const useAppStore = create<AppState>((set, get) => ({
               patchHello && Object.keys(patchHello).length
                 ? mergePersistedBotPatch(p.state as Record<string, unknown>, patchHello as Record<string, unknown>)
                 : p.state;
+            const prevBulk =
+              typeof s.activityLogBulkGeneration === "number" ? s.activityLogBulkGeneration : 0;
             const base: Partial<AppState> = {
               mode: p.mode,
               authUiUserTag: tagNext,
@@ -409,6 +414,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               positions:
                 (p as any).positions !== undefined ? (p as any).positions : s.positions,
               logs: logsFromServer,
+              activityLogBulkGeneration: prevBulk + 1,
               ...(accMissing ? { trades: [] } : {}),
             };
             if (chart?.candles?.length) {
@@ -493,8 +499,22 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
           set((s) => {
             const id = p?.id;
-            if (id != null && id !== "" && s.trades.some((t: any) => t?.id === id)) {
-              return s;
+            if (id != null && id !== "") {
+              const idx = s.trades.findIndex((t: any) => t?.id === id);
+              if (idx >= 0) {
+                const prev = s.trades[idx] as Record<string, unknown>;
+                const merged = {
+                  ...prev,
+                  ...p,
+                  meta: {
+                    ...((prev.meta as Record<string, unknown>) || {}),
+                    ...((p as Record<string, unknown>).meta || {}),
+                  },
+                };
+                const next = s.trades.slice();
+                next[idx] = merged as TradePayload;
+                return { trades: next.slice(0, TRADE_HISTORY_UI_MAX) };
+              }
             }
             return { trades: [p, ...s.trades].slice(0, TRADE_HISTORY_UI_MAX) };
           });

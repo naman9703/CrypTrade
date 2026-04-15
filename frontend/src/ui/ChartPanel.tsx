@@ -382,6 +382,73 @@ function buildMergedFuturesBracketPriceSpecs(
   return mergeBracketLineSpecsByPrice(bracketSpecs);
 }
 
+function parseTierIndexFromTrailLine(l: ChartStTrailPreviewLine): number {
+  const fromLabel = String(l.tierLabel ?? "").match(/^T(\d+)/i);
+  if (fromLabel) return Number(fromLabel[1]);
+  const fromTitle = String(l.title ?? "").match(/\bT(\d+)\b/i);
+  if (fromTitle) return Number(fromTitle[1]);
+  if (l.kind === "st_activation") return 0;
+  return 999;
+}
+
+function isForwardSlTnLockKind(k: ChartStTrailPreviewLine["kind"]): boolean {
+  return (
+    k === "trail_tier_next" ||
+    k === "trail_tier_lock" ||
+    k === "st_tier_activation" ||
+    k === "st_activation"
+  );
+}
+
+/**
+ * Lower-right chart legend: exactly three rows for upcoming SL tier locks (Tn), fixed layout.
+ * Pads with placeholders when fewer than three forward tiers exist (e.g. fee ladder).
+ */
+function pickNextThreeSlTnLockLegendRows(
+  trailLines: ChartStTrailPreviewLine[],
+  isDark: boolean,
+): HorzBracketLineSpec[] {
+  const amberSoft = isDark ? "#fbbf24" : "#f59e0b";
+  const greenLock = isDark ? "#6ee7b7" : "#059669";
+  const muted = isDark ? "#64748b" : "#94a3b8";
+
+  const forward = trailLines.filter((l) => isForwardSlTnLockKind(l.kind));
+  const byTier = new Map<number, ChartStTrailPreviewLine>();
+  for (const l of forward) {
+    const ti = parseTierIndexFromTrailLine(l);
+    const prev = byTier.get(ti);
+    if (!prev) {
+      byTier.set(ti, l);
+      continue;
+    }
+    const rank = (k: ChartStTrailPreviewLine["kind"]) =>
+      k === "trail_tier_next" ? 4 : k === "st_tier_activation" ? 3 : k === "trail_tier_lock" ? 2 : 1;
+    if (rank(l.kind) > rank(prev.kind)) byTier.set(ti, l);
+  }
+  const sorted = [...byTier.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, v]) => v);
+
+  const picked = sorted.slice(0, 3);
+  const out: HorzBracketLineSpec[] = [];
+  for (let i = 0; i < 3; i++) {
+    const L = picked[i];
+    if (!L) {
+      out.push({ px: -1, title: "—", color: muted });
+      continue;
+    }
+    const col = L.kind === "trail_tier_lock" ? greenLock : amberSoft;
+    let shortTitle: string;
+    if (L.kind === "trail_tier_lock" && L.tierLabel) shortTitle = `${L.tierLabel} lock`;
+    else if (L.kind === "st_tier_activation" && L.tierLabel) shortTitle = `ST gate · ${L.tierLabel} lock`;
+    else if (L.kind === "trail_tier_next" && L.tierLabel) shortTitle = `Next ${L.tierLabel} lock`;
+    else if (L.kind === "st_activation") shortTitle = "ST activation";
+    else shortTitle = L.tierLabel ? `Next ${L.tierLabel} lock` : L.title;
+    out.push({ px: L.px, title: shortTitle, color: col });
+  }
+  return out;
+}
+
 /** Futures row for the chart symbol (deduped); used for SL/TP price lines. */
 function pickChartFuturesBracket(
   positions: unknown,
@@ -1622,9 +1689,9 @@ export function ChartPanel() {
     ],
   );
 
-  /** One row per merged price level — replaces LWC axis tags (disabled to avoid stacked duplicates). */
-  const futuresBracketAxisLegend = useMemo((): HorzBracketLineSpec[] => {
-    if (!inferFuturesBracketLinesActive(bot)) return [];
+  /** Lower-right panel: fixed size, always three rows for next SL · Tn lock (see `pickNextThreeSlTnLockLegendRows`). */
+  const shouldShowFuturesBracketLegend = useMemo(() => {
+    if (!inferFuturesBracketLinesActive(bot)) return false;
     const { slPx, tpPx } = pickChartFuturesBracket(
       positions,
       effectiveSym,
@@ -1638,16 +1705,15 @@ export function ChartPanel() {
       (tpPx == null || !Number.isFinite(tpPx)) &&
       !hasTrail
     ) {
-      return [];
+      return false;
     }
-    return buildMergedFuturesBracketPriceSpecs(
-      slPx,
-      tpPx,
-      chartTrailingPreview.lines,
-      chartTrailingPreview.badge,
-      chartTheme === "dark",
-    );
-  }, [bot, positions, effectiveSym, isMultiCoinMode, ohlcLastClose, chartTrailingPreview, chartTheme]);
+    return true;
+  }, [bot, positions, effectiveSym, isMultiCoinMode, ohlcLastClose, chartTrailingPreview.lines.length]);
+
+  const chartNextSlLockLegendRows = useMemo(
+    () => pickNextThreeSlTnLockLegendRows(chartTrailingPreview.lines, chartTheme === "dark"),
+    [chartTrailingPreview.lines, chartTheme],
+  );
 
   function removeAllBracketPriceLines() {
     const prev = bracketPriceLinesRef.current;
@@ -2202,19 +2268,29 @@ export function ChartPanel() {
               )}
             </div>
           ) : null}
-              {futuresBracketAxisLegend.length > 0 ? (
+              {shouldShowFuturesBracketLegend ? (
             <div
-              className="pointer-events-none absolute bottom-2 right-2 z-10 max-w-[min(20rem,92%)] space-y-0.5 rounded-md border border-slate-600/50 bg-slate-950/85 px-2 py-1.5 text-[10px] leading-tight shadow-lg backdrop-blur-sm dark:border-slate-500/40 dark:bg-slate-950/90"
-              aria-label="Futures bracket and trail levels"
+              className="pointer-events-none absolute bottom-2 right-2 z-10 flex h-[6rem] w-[17rem] max-w-[92%] flex-col rounded-md border border-slate-600/50 bg-slate-950/85 px-2 py-1.5 text-[10px] leading-tight shadow-lg backdrop-blur-sm dark:border-slate-500/40 dark:bg-slate-950/90"
+              aria-label="Next SL tier lock levels"
             >
-              {futuresBracketAxisLegend.map((row) => (
-                <div key={`${row.title}-${row.px}`} className="flex flex-wrap items-baseline justify-end gap-x-1.5 gap-y-0">
-                  <span className="max-w-[14rem] truncate font-medium" style={{ color: row.color }}>
-                    {row.title}
-                  </span>
-                  <span className="shrink-0 font-mono tabular-nums text-slate-100">{row.px.toLocaleString("en-US", { maximumFractionDigits: 6 })}</span>
-                </div>
-              ))}
+              <div className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Next SL · Tn lock</div>
+              <div className="mt-1 flex min-h-0 flex-1 flex-col justify-between gap-0.5">
+                {chartNextSlLockLegendRows.map((row, idx) => (
+                  <div
+                    key={idx}
+                    className="flex min-h-0 flex-nowrap items-baseline justify-between gap-2"
+                  >
+                    <span className="min-w-0 flex-1 truncate font-medium" style={{ color: row.color }}>
+                      {row.title}
+                    </span>
+                    <span className="shrink-0 font-mono tabular-nums text-slate-100">
+                      {Number.isFinite(row.px) && row.px > 0
+                        ? row.px.toLocaleString("en-US", { maximumFractionDigits: 6 })
+                        : "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
           {chartTrailingPreview.trailHud && inferFuturesBracketLinesActive(bot) ? (

@@ -81,6 +81,10 @@ export function buildSyntheticImmediateAfterOpenCloseRow({
     reason: "IMMEDIATE_FLAT_AFTER_OPEN",
     venue: "FUTURES",
     leverage,
-    meta: { syntheticImmediateClose: true, openPositionId: String(posId) },
+    meta: {
+      syntheticImmediateClose: true,
+      openPositionId: String(posId),
+      closeReason: "IMMEDIATE_FLAT_AFTER_OPEN",
+    },
   };
 }

@@ -4,7 +4,10 @@ import { runBacktest } from "../backtest/backtest.js";
 import { getTradingEvaluationChecklist } from "../evaluation/tradingChecklist.js";
 import { formatAiServiceError } from "../svc/aiHttpError.js";
 import { broadcastActivity } from "../lib/activityLog.js";
-import { mergePersistedTradesWithExchange } from "../lib/activityPersistence.js";
+import {
+  mergePersistedTradesWithExchange,
+  TRADE_HISTORY_SNAPSHOT_MAX,
+} from "../lib/activityPersistence.js";
 import { isStrictBinanceAccountMode, tradingModeToPersistenceSlug } from "../lib/tradingModePersistence.js";
 import { uiAuthEnabled } from "../auth/uiGate.js";
 import { normalizeTradingMode } from "../state/appState.js";
@@ -39,6 +42,31 @@ export function createRouter({ appState }) {
     const row = appState.getEngine(m);
     if (!row?.bot) throw new Error(`engine_missing:${m}`);
     return row;
+  }
+
+  /** Merged audit + exchange `getTrades()`, then WS `trades_snapshot` replace (all clients). */
+  async function broadcastMergedTradesSnapshot(req, bodyMode) {
+    const row = getEngineForBotRequest(req, bodyMode);
+    const viewM = resolveViewTradingMode(req, bodyMode);
+    const ex = row.exchange;
+    let trades = [];
+    try {
+      trades = await ex.getTrades();
+    } catch {
+      trades = [];
+    }
+    if (isStrictBinanceAccountMode(viewM)) {
+      const acct = await ex.getAccount().catch(() => null);
+      if (acct == null) trades = [];
+    }
+    trades = mergePersistedTradesWithExchange(viewM, trades);
+    const cap = Math.min(500, TRADE_HISTORY_SNAPSHOT_MAX);
+    appState.wsHub?.broadcast?.("trades_snapshot", {
+      replace: true,
+      trades: trades.slice(-cap),
+      mode: viewM,
+    });
+    return { ok: true, count: trades.length };
   }
 
   async function withTimeout(promise, ms) {
@@ -527,6 +555,11 @@ export function createRouter({ appState }) {
       if (!out || out.ok === false || out.error) {
         return res.status(400).json(out ?? { ok: false, error: "close_failed" });
       }
+      try {
+        await broadcastMergedTradesSnapshot(req, undefined);
+      } catch {
+        /* WS snapshot is best-effort; client may POST /trade/refresh */
+      }
       return res.json(out);
     } catch (e) {
       return res.status(400).json({ ok: false, error: String(e?.message || e) });
@@ -535,26 +568,8 @@ export function createRouter({ appState }) {
 
   r.post("/trade/refresh", async (req, res) => {
     try {
-      const row = getEngineForBotRequest(req, undefined);
-      const viewM = resolveViewTradingMode(req, undefined);
-      const ex = row.exchange;
-      let trades = [];
-      try {
-        trades = await ex.getTrades();
-      } catch {
-        trades = [];
-      }
-      if (isStrictBinanceAccountMode(viewM)) {
-        const acct = await ex.getAccount().catch(() => null);
-        if (acct == null) trades = [];
-      }
-      trades = mergePersistedTradesWithExchange(viewM, trades);
-      appState.wsHub?.broadcast?.("trades_snapshot", {
-        replace: true,
-        trades: trades.slice(-500),
-        mode: viewM,
-      });
-      res.json({ ok: true, count: trades.length });
+      const { count } = await broadcastMergedTradesSnapshot(req, undefined);
+      res.json({ ok: true, count });
     } catch (e) {
       res.status(400).json({ ok: false, error: String(e?.message || e) });
     }

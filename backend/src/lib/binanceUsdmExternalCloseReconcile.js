@@ -6,6 +6,8 @@
  * memory is cleared on the next mark-to-market pass.
  */
 
+import { trailStepToTierLabel } from "./supertrendTrailingSl.js";
+
 function pickBracketTargets(map, symU) {
   const U = String(symU || "").toUpperCase();
   if (!map || typeof map !== "object") return null;
@@ -25,7 +27,8 @@ function findLastOpenTrade(trades, symU) {
   return null;
 }
 
-function inferSlTpFromMark(isLong, markPx, sl, tp) {
+/** Infer whether exit was nearer to SL or TP from mark vs bracket prices (used for income rows without a local close hint). */
+export function inferSlTpFromMark(isLong, markPx, sl, tp) {
   if (!Number.isFinite(markPx) || markPx <= 0) return "SL";
   const eps = Math.max(markPx * 2e-4, markPx * 1e-6);
   const S = Number(sl);
@@ -98,6 +101,13 @@ export async function reconcileUsdMExternalClosesFromPositions(ctx, rawPositions
     }
 
     mem.recentLocalCloses = Array.isArray(mem.recentLocalCloses) ? mem.recentLocalCloses : [];
+    const trailTierAtClose =
+      exitViaTrailedStop && trailStep > 0
+        ? trMeta?.trailTierLabel != null
+          ? String(trMeta.trailTierLabel)
+          : trailStepToTierLabel(trailStep)
+        : undefined;
+
     mem.recentLocalCloses.push({
       symbol: symDisplay,
       closedAt: Date.now(),
@@ -113,6 +123,7 @@ export async function reconcileUsdMExternalClosesFromPositions(ctx, rawPositions
       markPx: Number.isFinite(markPx) ? markPx : undefined,
       exitViaTrailedStop,
       trailStepAtClose: trailStep,
+      trailTierAtClose,
       trailingMode: trMeta?.trailingMode != null ? String(trMeta.trailingMode) : undefined,
       exchangeNativeClose: true,
     });

@@ -65,6 +65,31 @@ function pickReason(l: Record<string, unknown>): string | null {
   return r ? r : null;
 }
 
+/** Stable across repeated WS / jsonl lines (timestamps differ). Suppresses duplicate toasts + replay after login. */
+function toastStableDedupeKey(l: LogPayload & Record<string, unknown>): string {
+  const cat = String(l.category ?? "").trim().toLowerCase();
+  const d =
+    l.detail && typeof l.detail === "object" && !Array.isArray(l.detail)
+      ? (l.detail as Record<string, unknown>)
+      : null;
+  const sym = (pickSymbol(l) ?? "").toUpperCase();
+  if (cat === "signal" && d && String(d.kind ?? "").toLowerCase() === "supertrend") {
+    const ac = String(d.action ?? "").toUpperCase();
+    const side = String(d.side ?? "").toUpperCase();
+    const venue = String(d.venue ?? "").toUpperCase();
+    if (ac === "PENDING") {
+      const pdk = String(d.pendingDedupeKey ?? "").trim();
+      return `sig:st:PEN:${sym}:${side}:${venue}:${pdk}`;
+    }
+  }
+  const reason = String(l.reason ?? "").trim();
+  const msg = String(l.msg ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
+  return `gen:${cat}:${reason}:${sym}:${msg}`;
+}
+
 type ToastViewModel = {
   title: string;
   headline: string;
@@ -177,22 +202,59 @@ function buildToastViewModel(l: LogPayload & Record<string, unknown>): ToastView
 export function ActivityToasts() {
   const auth = useAuthActions();
   const authUiUserTag = useAppStore((s) => s.authUiUserTag ?? null);
+  const activityLogBulkGeneration = useAppStore((s) => s.activityLogBulkGeneration ?? 0);
+  const pendingStAction = useAppStore((s) => s.bot?.pendingSupertrendAction as Record<string, unknown> | null | undefined);
   /** UI auth off → always show; UI auth on → only after `/api/auth/me` authenticated (tag set). */
   const activityToastsAllowed = !auth?.gated || authUiUserTag != null;
 
   const logs = useAppStore((s) => s.logs);
   const seenRef = useRef(new Set<string>());
+  /** Dedupe keys for which we must not toast again (hydrated history + shown lines) until reconnect or pending clears. */
+  const blockedToastDedupeKeysRef = useRef(new Set<string>());
   /** After login / first allow: mark existing `logs` as seen without showing (real-time only, no replay pool). */
   const sessionLogsHydratedRef = useRef(false);
+  /** Skip treating first `bulkGen===0` mount as a server snapshot bump; react only to hello increments. */
+  const lastBulkReactedRef = useRef(-1);
+  const prevPendingKeyRef = useRef<string | null>(null);
   const [toasts, setToasts] = useState<ToastRow[]>([]);
 
   useEffect(() => {
     if (!activityToastsAllowed) {
       setToasts([]);
       seenRef.current.clear();
+      blockedToastDedupeKeysRef.current.clear();
       sessionLogsHydratedRef.current = false;
+      lastBulkReactedRef.current = -1;
+      prevPendingKeyRef.current = null;
     }
   }, [activityToastsAllowed]);
+
+  /** When queued Supertrend is cleared (start / cancel), allow a future PENDING toast for a new bar. */
+  useEffect(() => {
+    const pk = pendingStAction
+      ? `${String(pendingStAction.symbol ?? "")}|${String(pendingStAction.side ?? "")}|${String(pendingStAction.venue ?? "")}`
+      : null;
+    if (prevPendingKeyRef.current && !pk) {
+      for (const k of [...blockedToastDedupeKeysRef.current]) {
+        if (k.startsWith("sig:st:PEN:")) blockedToastDedupeKeysRef.current.delete(k);
+      }
+    }
+    prevPendingKeyRef.current = pk;
+  }, [pendingStAction]);
+
+  /** WS `hello` replaces the whole activity log — ids may not match client-side `logId` pre-hello, so re-hydrate silently. */
+  useEffect(() => {
+    if (!activityToastsAllowed) return;
+    if (activityLogBulkGeneration === 0) {
+      lastBulkReactedRef.current = activityLogBulkGeneration;
+      return;
+    }
+    if (lastBulkReactedRef.current === activityLogBulkGeneration) return;
+    lastBulkReactedRef.current = activityLogBulkGeneration;
+    seenRef.current.clear();
+    blockedToastDedupeKeysRef.current.clear();
+    sessionLogsHydratedRef.current = false;
+  }, [activityLogBulkGeneration, activityToastsAllowed]);
 
   useEffect(() => {
     if (!activityToastsAllowed) return;
@@ -201,8 +263,10 @@ export function ActivityToasts() {
     if (!sessionLogsHydratedRef.current) {
       for (const raw of logs) {
         if (!raw || typeof raw !== "object") continue;
-        const id = logId(raw as LogPayload & Record<string, unknown>);
+        const l = raw as LogPayload & Record<string, unknown>;
+        const id = logId(l);
         if (id) seenRef.current.add(id);
+        blockedToastDedupeKeysRef.current.add(toastStableDedupeKey(l));
       }
       sessionLogsHydratedRef.current = true;
       return;
@@ -216,8 +280,14 @@ export function ActivityToasts() {
       const id = logId(raw as LogPayload & Record<string, unknown>);
       if (!id) continue;
       if (seenRef.current.has(id)) break;
-      seenRef.current.add(id);
       const l = raw as LogPayload & Record<string, unknown>;
+      const dk = toastStableDedupeKey(l);
+      if (blockedToastDedupeKeysRef.current.has(dk)) {
+        seenRef.current.add(id);
+        continue;
+      }
+      seenRef.current.add(id);
+      blockedToastDedupeKeysRef.current.add(dk);
       adds.push({
         id,
         createdAt: now,
@@ -246,12 +316,23 @@ export function ActivityToasts() {
     if (!toasts.length) return;
     const id = window.setInterval(() => {
       const now = Date.now();
-      setToasts((prev) => prev.filter((t) => t.hovering || t.expiresAt > now));
+      setToasts((prev) =>
+        prev.filter((t) => {
+          if (t.hovering || t.expiresAt > now) return true;
+          blockedToastDedupeKeysRef.current.add(toastStableDedupeKey(t.log));
+          return false;
+        }),
+      );
     }, 250);
     return () => window.clearInterval(id);
   }, [toasts.length]);
 
-  const close = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
+  const close = (id: string) =>
+    setToasts((prev) => {
+      const row = prev.find((t) => t.id === id);
+      if (row) blockedToastDedupeKeysRef.current.add(toastStableDedupeKey(row.log));
+      return prev.filter((t) => t.id !== id);
+    });
 
   const setHover = (id: string, on: boolean) => {
     setToasts((prev) =>

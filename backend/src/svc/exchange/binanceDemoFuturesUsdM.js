@@ -9,7 +9,7 @@ import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/bin
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
 import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
 import { trailStepToTierLabel } from "../../lib/supertrendTrailingSl.js";
-import { reconcileUsdMExternalClosesFromPositions } from "../../lib/binanceUsdmExternalCloseReconcile.js";
+import { inferSlTpFromMark, reconcileUsdMExternalClosesFromPositions } from "../../lib/binanceUsdmExternalCloseReconcile.js";
 import {
   buildSyntheticImmediateAfterOpenCloseRow,
   postOpenStableProbeMs,
@@ -26,6 +26,27 @@ import { evalTrailingForSymbolUsdM } from "../../lib/binanceUsdMTrailSlReplace.j
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
+}
+
+/** Latest OPEN for symbol carrying Binance `orderId` on `meta` (USD-M market entry). */
+function lastOpenBinanceEntryMetaForSymbol(trades, symU) {
+  const U = String(symU || "").toUpperCase();
+  if (!Array.isArray(trades)) return null;
+  for (let i = trades.length - 1; i >= 0; i--) {
+    const tr = trades[i];
+    if (tr?.type === "OPEN" && String(tr.symbol || "").toUpperCase() === U) {
+      const m = tr.meta || {};
+      const oid = m.orderId ?? m.binanceOrderId;
+      if (oid != null && String(oid).trim() !== "" && String(oid) !== "undefined") {
+        return {
+          orderId: String(oid),
+          clientOrderId:
+            m.clientOrderId != null && String(m.clientOrderId).trim() !== "" ? String(m.clientOrderId) : null,
+        };
+      }
+    }
+  }
+  return null;
 }
 
 export function createBinanceDemoFuturesUsdMExchange({ log }) {
@@ -535,15 +556,20 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
 
         if (mergeInto) {
           mergeInto.pnl = Number(mergeInto.pnl || 0) + pnl;
-          if (mergeInto.reason == null && lc) {
+          const reasonMissing =
+            mergeInto.reason == null || String(mergeInto.reason).trim() === "";
+          if (reasonMissing && lc) {
             mergeInto.reason = closeReasonFromLocalCloseHint(lc);
-            if (mergeInto.meta && typeof mergeInto.meta === "object") {
-              mergeInto.meta.exitViaTrailedStop = lc.exitViaTrailedStop === true;
-              mergeInto.meta.trailStepAtClose = lc.trailStepAtClose;
-              if (lc.trailTierAtClose != null) mergeInto.meta.trailTierAtClose = String(lc.trailTierAtClose);
-              if (lc.trailingMode != null) mergeInto.meta.trailingMode = String(lc.trailingMode);
-              mergeInto.meta.supertrendSignalClose =
-                lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP";
+          }
+          if (lc && mergeInto.meta && typeof mergeInto.meta === "object") {
+            mergeInto.meta.exitViaTrailedStop = lc.exitViaTrailedStop === true;
+            mergeInto.meta.trailStepAtClose = lc.trailStepAtClose;
+            if (lc.trailTierAtClose != null) mergeInto.meta.trailTierAtClose = String(lc.trailTierAtClose);
+            if (lc.trailingMode != null) mergeInto.meta.trailingMode = String(lc.trailingMode);
+            mergeInto.meta.supertrendSignalClose =
+              lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP";
+            if (mergeInto.reason != null && String(mergeInto.reason).trim() !== "") {
+              mergeInto.meta.closeReason = String(mergeInto.reason);
             }
           }
           mergeInto.meta._incomeEventMs = Math.max(
@@ -603,6 +629,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
               incomeType: row.incomeType || "REALIZED_PNL",
               tranId: tid,
               tranIds: [tid],
+              closeReason: reasonNorm,
               bracketType: lc.bracketType,
               trailingMode: lc.trailingMode != null ? String(lc.trailingMode) : undefined,
               localEnforcement: true,
@@ -638,6 +665,23 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         const closeSide = refSide === "BUY" ? "SELL" : refSide === "SELL" ? "BUY" : "—";
         const feePx = refQty != null && Number.isFinite(Number(refEntry)) ? Number(refEntry) : NaN;
         const fee = tradeCloseFeeUsdtFromNotional(Number(refQty), feePx);
+        let markPxLedger = NaN;
+        if (typeof publicGet === "function") {
+          try {
+            const d = await publicGet("/fapi/v1/premiumIndex", { symbol: sym });
+            markPxLedger = Number(d?.markPrice);
+          } catch {
+            /* ignore */
+          }
+        }
+        const isLong = refSide === "BUY";
+        let inferredBracket = null;
+        let reasonLedger = "EXCHANGE_REALIZED";
+        if (openRef && Number.isFinite(markPxLedger) && markPxLedger > 0) {
+          inferredBracket = inferSlTpFromMark(isLong, markPxLedger, refSl, refTp);
+          if (inferredBracket === "TP") reasonLedger = "TAKE_PROFIT";
+          else if (inferredBracket === "SL") reasonLedger = "STOP_LOSS";
+        }
         mem.trades.push({
           type: "CLOSE",
           id: `finc_${tid}`,
@@ -645,7 +689,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
           symbol: sym,
           side: closeSide,
           qty: refQty != null ? Number(refQty) : undefined,
-          price: undefined,
+          price: Number.isFinite(markPxLedger) && markPxLedger > 0 ? markPxLedger : undefined,
           entryPrice: refEntry != null ? Number(refEntry) : undefined,
           stopLoss: refSl != null ? Number(refSl) : undefined,
           takeProfit: refTp != null ? Number(refTp) : undefined,
@@ -653,6 +697,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
           pnl,
           fee: fee ?? undefined,
           strategy: openRef?.strategy || "INCOME_LEDGER",
+          reason: reasonLedger,
           ledgerEvent: true,
           meta: {
             source: "fapi_income",
@@ -661,6 +706,8 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
             note: "realized_pnl_ledger_row",
             leverage: refLev != null ? Number(refLev) : undefined,
             openRefId: openRef?.id,
+            closeReason: reasonLedger,
+            ...(inferredBracket ? { bracketType: inferredBracket, exitInferredFromMark: true } : {}),
           },
         });
       }
@@ -1183,6 +1230,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
           const oo = await stopTakeFromExchangeOpenOrders(sym);
           const symU = String(sym || "").toUpperCase();
           const trail = mem.trailingBySymbol[symU];
+          const entryEx = lastOpenBinanceEntryMetaForSymbol(mem.trades, symU);
           const row = {
             id: `fut_${sym}`,
             symbol: sym,
@@ -1197,8 +1245,16 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
             syncSource: "fapi_v2_account",
             updateTime: Number(p.updateTime) || null,
           };
+          const entryMeta =
+            entryEx != null
+              ? {
+                  binanceEntryOrderId: entryEx.orderId,
+                  ...(entryEx.clientOrderId ? { binanceClientOrderId: entryEx.clientOrderId } : {}),
+                }
+              : {};
           if (trail && trail.entryPrice) {
             row.meta = {
+              ...entryMeta,
               autoTradeTrailing: true,
               trailStep: Number(trail.trailStep) || 0,
               extremePx: trail.extremePx,
@@ -1206,6 +1262,8 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
               ...(trail.slTrailConfirm ? { trailSlConfirm: { ...trail.slTrailConfirm } } : {}),
             };
             row.trailTierLabel = trail.trailTierLabel ?? null;
+          } else if (Object.keys(entryMeta).length) {
+            row.meta = entryMeta;
           }
           out.push(row);
         }
@@ -1393,6 +1451,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         }
       }
 
+      const clientOid = out?.clientOrderId != null && String(out.clientOrderId).trim() !== "" ? String(out.clientOrderId) : null;
       mem.trades.push({
         type: "OPEN",
         id: posId,
@@ -1405,7 +1464,13 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         takeProfit: tpPx,
         leverage,
         strategy: strategy || "AUTO",
-        meta: { ...(meta || {}), leverage, venue: "FUTURES" },
+        meta: {
+          ...(meta || {}),
+          leverage,
+          venue: "FUTURES",
+          orderId,
+          ...(clientOid ? { clientOrderId: clientOid } : {}),
+        },
       });
       if (mem.trades.length > MAX_MEM_TRADES) mem.trades = mem.trades.slice(-MAX_MEM_TRADES);
 

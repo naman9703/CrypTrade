@@ -12,6 +12,9 @@ const BCRYPT_NO_USER_PLACEHOLDER = "$2b$12$fDmbJ2juUJ.mNaCFylelnudb3Tlhj4Q05rpRm
 let uiAuthUsersCache = [];
 
 const SESSION_NAME = "trading.sid";
+
+/** Default browser session length when `APP_UI_AUTH_SESSION_MS` is unset (24 hours). */
+const DEFAULT_UI_AUTH_SESSION_MS = 24 * 60 * 60 * 1000;
 const LOGIN_BODY = z.object({
   email: z.string().email().max(255),
   password: z.string().min(1).max(500),
@@ -131,16 +134,23 @@ export function createSessionMiddleware({ log }) {
       : process.env.NODE_ENV === "production"
         ? !firstFrontendOrigin.toLowerCase().startsWith("http://")
         : false;
+  const sessionMsRaw = String(process.env.APP_UI_AUTH_SESSION_MS ?? "").trim();
+  const sessionMsParsed = sessionMsRaw !== "" ? Number(sessionMsRaw) : DEFAULT_UI_AUTH_SESSION_MS;
+  const cookieMaxAge =
+    Number.isFinite(sessionMsParsed) && sessionMsParsed > 0 ? sessionMsParsed : DEFAULT_UI_AUTH_SESSION_MS;
+
   return session({
     name: SESSION_NAME,
     secret,
     resave: false,
     saveUninitialized: false,
+    /** Reset `Set-Cookie` expiry on each response so active users keep the full window (idle timeout = maxAge). */
+    rolling: true,
     cookie: {
       httpOnly: true,
       secure,
       sameSite: "lax",
-      maxAge: Number(process.env.APP_UI_AUTH_SESSION_MS || 7 * 24 * 60 * 60 * 1000),
+      maxAge: cookieMaxAge,
       path: "/",
     },
   });

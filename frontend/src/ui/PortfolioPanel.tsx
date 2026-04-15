@@ -16,6 +16,20 @@ import {
 import { AiTradeMotionVisual } from "./AiTradeMotionVisual";
 import { initialMarginUsd } from "../lib/futuresLiquidation";
 
+function IconTableFullscreen({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M4.5 3A1.5 1.5 0 003 4.5v3a.5.5 0 001 0V5.207l2.147 2.146a.5.5 0 10.708-.708L4.707 4.5H7.5a.5.5 0 000-1h-3zM12.5 3H16A1.5 1.5 0 0117.5 4.5v3a.5.5 0 01-1 0V5.207l-2.146 2.146a.5.5 0 01-.708-.708L15.293 4.5H12.5a.5.5 0 010-1zM3 12.5a.5.5 0 01.5-.5h3a.5.5 0 010 1H4.707l2.147 2.147a.5.5 0 01-.708.708L3.5 13.793V16.5a.5.5 0 01-1 0v-3A1.5 1.5 0 013 12.5zm14 0A1.5 1.5 0 0116 14h-3a.5.5 0 010-1h2.793l-2.147 2.147a.5.5 0 10.708.708L16.5 13.793V16.5a.5.5 0 001 0v-3a1.5 1.5 0 00-1.5-1.5z" />
+    </svg>
+  );
+}
+
 function isLedgerClose(t: any): boolean {
   return isIncomeLedgerClose(t);
 }
@@ -679,9 +693,90 @@ function tradeHistoryDisplayFields(t: any, openRef: any | undefined) {
  * Human-readable exit / close driver for the trade history table.
  * Uses `reason`, `meta.bracketType`, `meta.closeReason`, trailing hints, and Supertrend `source`.
  */
+/** Reduce-only close order side from the opening leg (SELL closes long, BUY closes short). */
+function closeOrderSideFromOpenLeg(open: any | undefined): string | null {
+  const os = String(open?.side ?? "").toUpperCase();
+  if (os === "BUY") return "SELL";
+  if (os === "SELL") return "BUY";
+  return null;
+}
+
+function shortenBinanceId(raw: string, maxLen = 16): string {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, 6)}…${s.slice(-4)}`;
+}
+
+/** Open positions: Binance USD-M market entry `orderId` (from last OPEN trade for that symbol). */
+function portfolioBinanceRefForPosition(p: any): { label: string; title: string } {
+  const m = (p?.meta || {}) as Record<string, unknown>;
+  const oid = m.binanceEntryOrderId ?? m.orderId ?? m.binanceOrderId;
+  const s = oid != null ? String(oid).trim() : "";
+  const cid = m.binanceClientOrderId ?? m.clientOrderId;
+  if (!s) return { label: "—", title: "" };
+  const title =
+    cid != null && String(cid).trim() !== ""
+      ? `Binance order id: ${s}\nClient order id: ${String(cid)}`
+      : `Binance order id: ${s}`;
+  return { label: shortenBinanceId(s, 18), title };
+}
+
+/** Trade history: OPEN = Binance order id; CLOSE = income tran id (REALIZED_PNL) when present. */
+function portfolioBinanceRefForTradeRow(t: any): { label: string; title: string } {
+  const m = (t?.meta || {}) as Record<string, unknown>;
+  const typ = String(t?.type || "").toUpperCase();
+  const orderId = m.orderId ?? m.binanceOrderId ?? m.exchangeOrderId;
+  const tranId =
+    m.tranId ??
+    (Array.isArray(m.tranIds) && m.tranIds.length ? String(m.tranIds[m.tranIds.length - 1]) : null);
+  const cid = m.clientOrderId;
+
+  if (typ === "OPEN") {
+    const o = orderId != null ? String(orderId).trim() : "";
+    if (!o) return { label: "—", title: t?.id != null ? `App id: ${t.id}` : "" };
+    const title =
+      cid != null && String(cid).trim() !== ""
+        ? `Binance order id: ${o}\nClient order id: ${String(cid)}`
+        : `Binance order id: ${o}`;
+    return { label: shortenBinanceId(o, 18), title };
+  }
+  if (typ === "CLOSE") {
+    const tr = tranId != null ? String(tranId).trim() : "";
+    const o = orderId != null ? String(orderId).trim() : "";
+    if (tr) {
+      const parts = [`Binance income tran id: ${tr}`];
+      if (o) parts.unshift(`Order id: ${o}`);
+      if (cid != null && String(cid).trim() !== "") parts.push(`Client order id: ${String(cid)}`);
+      return { label: shortenBinanceId(tr, 18), title: parts.join("\n") };
+    }
+    if (o) {
+      const title =
+        cid != null && String(cid).trim() !== ""
+          ? `Binance order id: ${o}\nClient order id: ${String(cid)}`
+          : `Binance order id: ${o}`;
+      return { label: shortenBinanceId(o, 18), title };
+    }
+  }
+  return { label: "—", title: t?.id != null ? `App id: ${t.id}` : "" };
+}
+
 function tradeHistoryReasonLabel(t: any): string {
   if (t?.type === "OPEN") return "—";
-  if (isLedgerClose(t)) return "Ledger";
+  if (isLedgerClose(t)) {
+    const m0 = t?.meta || {};
+    const r0early = String(t?.reason || "").toUpperCase();
+    const inferredExit = m0.exitInferredFromMark === true;
+    if (
+      !inferredExit &&
+      r0early !== "STOP_LOSS" &&
+      r0early !== "STOP_LOSS_DEFAULT" &&
+      r0early !== "TAKE_PROFIT" &&
+      r0early !== "EXCHANGE_REALIZED"
+    ) {
+      return "Ledger";
+    }
+  }
 
   const m = t?.meta || {};
   const trailStepClose = Number(m.trailStepAtClose);
@@ -753,6 +848,7 @@ function tradeHistoryReasonLabel(t: any): string {
     return "Market";
   }
   if (r0 === "EXECUTION_REPORT") return "Exchange";
+  if (r0 === "EXCHANGE_REALIZED") return "Exchange";
   if (r0 === "OCO_DONE") return "OCO";
 
   if (String(t?.source || "").toUpperCase() === "SUPERTREND" && t?.type === "CLOSE") return "Signal";
@@ -993,11 +1089,12 @@ export function PortfolioPanel() {
   }, [closeTradesAppInRange, closeTradesLedgerInRange, portfolioTrades, openTradeById]);
 
   const netRealizedPnlAll = netRealizedPnlStrategy + netRealizedPnlLedger;
-  /** Live/testnet: headline matches “app session” (demo-style); optional ledger stays in breakdown or enable BINANCE_LIVE_INCOME_INCLUDE_UNMATCHED=1 on server. */
+  /**
+   * Mode-specific headline: Binance-backed modes show strategy / bracket-attributed net only (same
+   * read as live). Paper / non-exchange session uses all CLOSE rows in range (typically no income ledger).
+   */
   const netRealizedHeadline =
-    mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET"
-      ? netRealizedPnlStrategy
-      : netRealizedPnlAll;
+    mode === "PAPER" ? netRealizedPnlAll : netRealizedPnlStrategy;
 
   const { strategyFeeTotal, strategyClosesWithFee } = useMemo(() => {
     const rowList = portfolioTrades || [];
@@ -1039,7 +1136,7 @@ export function PortfolioPanel() {
     return { appN, appPnl, ledN, ledPnl };
   }, [portfolioTrades, openTradeById]);
 
-  /** When a custom range is active, show net/count for closes inside that window (same buckets as headline). */
+  /** When a custom range is active, show per-bucket net/count (strategy vs ledger) inside that window. */
   const customRangeCloseRollup = useMemo(() => {
     if (!historyFilterHasWindow(historyRangeFilter)) {
       return { appN: 0, appPnl: 0, ledN: 0, ledPnl: 0 };
@@ -1208,8 +1305,32 @@ export function PortfolioPanel() {
   const pct = (x: number | null | undefined) =>
     x != null && Number.isFinite(Number(x)) ? `${(Number(x) * 100).toFixed(2)}%` : "—";
 
+  const [portfolioFullscreen, setPortfolioFullscreen] = useState<null | "positions" | "tradeHistory">(null);
+
+  useEffect(() => {
+    if (!portfolioFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPortfolioFullscreen(null);
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.documentElement.style.overflow = prev;
+    };
+  }, [portfolioFullscreen]);
+
   return (
-    <div className="p-4">
+    <>
+      {portfolioFullscreen ? (
+        <div
+          className="fixed inset-0 z-[199] bg-slate-950/60 dark:bg-black/70"
+          aria-hidden
+          onClick={() => setPortfolioFullscreen(null)}
+        />
+      ) : null}
+      <div className="p-4">
       <div className="mb-2">
         <div className="text-sm font-semibold">Portfolio</div>
         <div className="text-xs text-slate-600 dark:text-slate-400">{subtitle}</div>
@@ -1389,11 +1510,18 @@ export function PortfolioPanel() {
             {Number.isFinite(netRealizedHeadline) ? `$${netRealizedHeadline.toFixed(2)}` : "—"}
           </div>
           <div className="mt-1 text-slate-600 dark:text-slate-500">
-            {mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET" ? (
+            {mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET" || mode === "BINANCE_DEMO_API" ? (
               <>
-                Strategy / bracket-attributed closes only (demo-style). Unmatched Binance{" "}
-                <span className="font-mono">REALIZED_PNL</span> shards are excluded unless{" "}
-                <span className="font-mono">BINANCE_LIVE_INCOME_INCLUDE_UNMATCHED=1</span>.
+                <span className="font-semibold text-slate-700 dark:text-slate-300">Headline</span> = strategy /
+                bracket-attributed net in this range. Unmatched <span className="font-mono">REALIZED_PNL</span> ledger
+                totals stay in the breakdown only.
+                {mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET" ? (
+                  <>
+                    {" "}
+                    Live list omits unmatched income rows unless{" "}
+                    <span className="font-mono">BINANCE_LIVE_INCOME_INCLUDE_UNMATCHED=1</span>.
+                  </>
+                ) : null}
               </>
             ) : (
               <>
@@ -1403,11 +1531,11 @@ export function PortfolioPanel() {
               </>
             )}
           </div>
-          {(mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET") &&
+          {(mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET" || mode === "BINANCE_DEMO_API") &&
           Number.isFinite(netRealizedPnlAll) &&
           closeTradesLedgerInRange.length > 0 ? (
             <div className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">
-              Incl. unmatched ledger (below):{" "}
+              Strategy + ledger (same range, not in headline):{" "}
               <span className={netRealizedPnlAll >= 0 ? "text-emerald-400" : "text-rose-400"}>
                 ${netRealizedPnlAll.toFixed(2)}
               </span>
@@ -1575,15 +1703,49 @@ export function PortfolioPanel() {
       ) : null}
 
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40">
-          <div className="border-b border-slate-200 dark:border-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200">Positions</div>
-          <div className="max-h-[260px] overflow-auto">
+        <div
+          className={`rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 ${
+            portfolioFullscreen === "positions"
+              ? "fixed left-2 top-2 z-[200] flex h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none flex-col shadow-2xl ring-1 ring-slate-300/70 dark:ring-slate-600"
+              : ""
+          }`}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 px-3 py-2">
+            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Positions</span>
+            <button
+              type="button"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+              title={portfolioFullscreen === "positions" ? "Close" : "Fullscreen table"}
+              aria-label={portfolioFullscreen === "positions" ? "Close fullscreen" : "Open positions table fullscreen"}
+              onClick={(e) => {
+                e.stopPropagation();
+                setPortfolioFullscreen((s) => (s === "positions" ? null : "positions"));
+              }}
+            >
+              {portfolioFullscreen === "positions" ? (
+                <span className="text-xl leading-none">×</span>
+              ) : (
+                <IconTableFullscreen className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </div>
+          <div
+            className={
+              portfolioFullscreen === "positions" ? "min-h-0 flex-1 overflow-auto" : "max-h-[260px] overflow-auto"
+            }
+          >
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
                 <tr className="text-left text-slate-600 dark:text-slate-400">
                   <th className="w-3 min-w-[12px] max-w-[14px] border-0 p-0" aria-hidden />
                   <th className="px-3 py-2">Time</th>
                   <th className="px-3 py-2">Symbol</th>
+                  <th
+                    className="max-w-[5.5rem] px-3 py-2"
+                    title="Binance USD-M market entry order id (from the bot OPEN fill for this symbol)"
+                  >
+                    Binance ID
+                  </th>
                   <th className="px-3 py-2">Venue</th>
                   <th className="px-3 py-2">Side</th>
                   <th className="px-3 py-2">Lev</th>
@@ -1602,13 +1764,14 @@ export function PortfolioPanel() {
               <tbody>
                 {positions.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={14}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={15}>
                       No open positions
                     </td>
                   </tr>
                 ) : (
                   positions.flatMap((p: any) => {
                     const upnlPct = positionUnrealizedPnlPct(p);
+                    const binRefPos = portfolioBinanceRefForPosition(p);
                     const trailSlSt = (p.meta as Record<string, unknown> | undefined)?.trailSlConfirm as
                       | { status?: string }
                       | undefined;
@@ -1629,6 +1792,12 @@ export function PortfolioPanel() {
                         {fmtTimestamp(Number(p.openedAt ? new Date(String(p.openedAt)).getTime() : p.updateTime || 0))}
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{p.symbol}</td>
+                      <td
+                        className="max-w-[5.5rem] px-3 py-2 font-mono text-[10px] text-slate-600 dark:text-slate-400"
+                        title={binRefPos.title || undefined}
+                      >
+                        {binRefPos.label}
+                      </td>
                       <td className="px-3 py-2 text-[10px] uppercase text-slate-600 dark:text-slate-500">
                         {p.venue === "FUTURES" ? "Fut" : "Spot"}
                       </td>
@@ -1717,6 +1886,11 @@ export function PortfolioPanel() {
                                       void (async () => {
                                         try {
                                           await api.closeTrade(id);
+                                          try {
+                                            await api.tradeRefresh();
+                                          } catch {
+                                            /* WS may have updated; ignore */
+                                          }
                                           pushLog({ level: "info", msg: "Position closed", id });
                                         } catch (e: unknown) {
                                           pushLog({
@@ -1742,7 +1916,7 @@ export function PortfolioPanel() {
                     if (!trailSlPending) return [mainRow];
                     return [
                       <tr key={`${p.id}-trail-pending`} className="border-0 bg-amber-500/[0.07] dark:bg-amber-950/25">
-                        <td colSpan={14} className="px-3 py-1">
+                        <td colSpan={15} className="px-3 py-1">
                           <div className="flex items-center gap-2 text-[10px] font-medium text-amber-800 dark:text-amber-200">
                             <span
                               className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-amber-600 border-t-transparent dark:border-amber-400"
@@ -1761,24 +1935,52 @@ export function PortfolioPanel() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40">
-          <div className="border-b border-slate-200 dark:border-slate-800 px-3 py-2">
+        <div
+          className={`rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 ${
+            portfolioFullscreen === "tradeHistory"
+              ? "fixed left-2 top-2 z-[200] flex h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none flex-col shadow-2xl ring-1 ring-slate-300/70 dark:ring-slate-600"
+              : ""
+          }`}
+        >
+          <div className="shrink-0 border-b border-slate-200 dark:border-slate-800 px-3 py-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Trade history</span>
                   <button
                     type="button"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    title={portfolioFullscreen === "tradeHistory" ? "Close" : "Fullscreen table"}
+                    aria-label={
+                      portfolioFullscreen === "tradeHistory" ? "Close fullscreen" : "Open trade history fullscreen"
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPortfolioFullscreen((s) => (s === "tradeHistory" ? null : "tradeHistory"));
+                    }}
+                  >
+                    {portfolioFullscreen === "tradeHistory" ? (
+                      <span className="text-lg leading-none">×</span>
+                    ) : (
+                      <IconTableFullscreen className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
                     disabled={tradeRefreshing}
                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 disabled:opacity-40"
-                    title="Refresh trade history from exchange"
+                    title="Reload trade history from the server (POST /api/trade/refresh — merges exchange + saved trades)"
+                    aria-label="Refresh trade history from server"
                     onClick={() => {
                       setTradeRefreshing(true);
                       deferTask(() => {
                         void (async () => {
                           try {
-                            await api.tradeRefresh();
-                            pushLog({ level: "info", msg: "Trade history refreshed" });
+                            const r = await api.tradeRefresh();
+                            pushLog({
+                              level: "info",
+                              msg: `Trade history refreshed (${Number(r?.count ?? 0)} rows)`,
+                            });
                           } catch (e: unknown) {
                             pushLog({ level: "error", msg: `Refresh failed: ${e instanceof Error ? e.message : String(e)}` });
                           } finally {
@@ -1920,7 +2122,11 @@ export function PortfolioPanel() {
               </div>
             </div>
           </div>
-          <div className="max-h-[260px] overflow-auto">
+          <div
+            className={
+              portfolioFullscreen === "tradeHistory" ? "min-h-0 flex-1 overflow-auto" : "max-h-[260px] overflow-auto"
+            }
+          >
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
                 <tr className="text-left text-slate-600 dark:text-slate-400">
@@ -1928,6 +2134,12 @@ export function PortfolioPanel() {
                   <th className="px-3 py-2">Time</th>
                   <th className="px-3 py-2">Type</th>
                   <th className="px-3 py-2">Symbol</th>
+                  <th
+                    className="max-w-[5.5rem] px-3 py-2"
+                    title="Binance: order id on OPEN (market entry); income tran id on CLOSE (REALIZED_PNL)"
+                  >
+                    Binance ID
+                  </th>
                   <th className="px-3 py-2">Side</th>
                   <th className="px-3 py-2">Lev</th>
                   <th className="px-3 py-2">Price</th>
@@ -1947,7 +2159,7 @@ export function PortfolioPanel() {
               <tbody>
                 {displayedTrades.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={16}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={17}>
                       No trades yet
                     </td>
                   </tr>
@@ -1964,11 +2176,16 @@ export function PortfolioPanel() {
                       ? (tradeNetPnlClose(t) ?? (gross != null ? gross - (fee ?? 0) : null))
                       : null;
                     const sideDisp =
-                      t.side ?? (t?.type === "CLOSE" && t?.meta?.closeSide != null ? String(t.meta.closeSide) : null) ?? "n/a";
+                      t?.type === "CLOSE"
+                        ? (t?.meta?.closeSide != null
+                            ? String(t.meta.closeSide)
+                            : closeOrderSideFromOpenLeg(openRef) ?? (t.side != null ? String(t.side) : null) ?? "n/a")
+                        : (t.side != null ? String(t.side) : "n/a");
                     const slTpDisp = `${sl != null && Number.isFinite(sl) ? fmtInstrumentPx(sl) : "n/a"} / ${tp != null && Number.isFinite(tp) ? fmtInstrumentPx(tp) : "n/a"}`;
                     const marginDisp = tradeInitialMarginUsd(t, openRef, { price, qty, lev });
                     const pnlPct = tradeHistoryPnlPct(t, openRef, positions, { price, qty, lev });
                     const reasonDisp = tradeHistoryReasonLabel(t);
+                    const binRefTrade = portfolioBinanceRefForTradeRow(t);
                     const reasonTitle = [t.reason, t?.meta?.closeReason, t?.meta?.bracketType]
                       .filter((x) => x != null && String(x).trim() !== "")
                       .join(" · ");
@@ -1995,6 +2212,12 @@ export function PortfolioPanel() {
                         </td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.type ?? t.reason ?? "—"}</td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.symbol ?? "n/a"}</td>
+                        <td
+                          className="max-w-[5.5rem] px-3 py-2 font-mono text-[10px] text-slate-600 dark:text-slate-400"
+                          title={binRefTrade.title || undefined}
+                        >
+                          {binRefTrade.label}
+                        </td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{sideDisp}</td>
                         <td className="px-3 py-2 text-amber-300/80">
                           {lev != null && lev > 0 ? `${lev}x` : "n/a"}
@@ -2051,6 +2274,7 @@ export function PortfolioPanel() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

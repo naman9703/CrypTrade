@@ -26,7 +26,11 @@ import {
   computeSupertrendSignalStrength01,
 } from "../lib/supertrendChartAlign.js";
 import { broadcastActivity } from "../lib/activityLog.js";
-import { mergeTradesById, readTradeWsEvents } from "../lib/activityPersistence.js";
+import {
+  mergeTradesById,
+  readTradeWsEvents,
+  TRADE_HISTORY_SNAPSHOT_MAX,
+} from "../lib/activityPersistence.js";
 import { filterStrictPortfolioTradesAfterMerge } from "../lib/tradeLedgerClassification.js";
 import { readBotTradingConfig, writeBotTradingConfig } from "../lib/botTradingConfigStore.js";
 import {
@@ -56,6 +60,16 @@ const SUPERTREND_SIGNAL_STATE_MAX = Math.max(
   Math.min(50_000, Number(process.env.SUPERTREND_SIGNAL_HISTORY_STATE_MAX || 2000)),
 );
 const SYM_RE = /^[A-Z0-9]{5,20}$/i;
+
+/** Optional local Cursor/agent ingest; avoids hot-path TCP when unset. */
+function postSupertrendLocalAgentIngestIfEnabled(body) {
+  if (String(process.env.TRADING_DEBUG_AGENT_INGEST || "") !== "1") return;
+  fetch("http://127.0.0.1:7607/ingest/19a148df-af4d-4baa-8f12-56d6d537b33c", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b66075" },
+    body: JSON.stringify(body),
+  }).catch(() => {});
+}
 
 /**
  * Trailing uses the lower ST rail for longs and the upper rail for shorts.
@@ -179,6 +193,12 @@ function enrichCloseTradeForHistory(t) {
   if (!Number.isFinite(fExisting) || fExisting <= 0) {
     const modeled = tradeCloseFeeUsdtFromNotional(q, px);
     if (modeled != null) next.fee = modeled;
+  }
+  if (next.reason != null && String(next.reason).trim() !== "") {
+    if (m.closeReason == null || String(m.closeReason).trim() === "") {
+      m.closeReason = String(next.reason);
+    }
+    next.meta = m;
   }
   return next;
 }
@@ -1702,6 +1722,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       symbol: resSymbol,
       signalBarClose,
       filledPrice,
+      pendingDedupeKey,
     } = result;
     const fromOrderId = inferSymbolFromSupertrendOrderId(orderId);
     const primaryU = String(state.symbol || "").trim().toUpperCase();
@@ -1747,6 +1768,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       ...(Number.isFinite(Number(filledPrice)) && Number(filledPrice) > 0 ? { filledPrice: Number(filledPrice) } : {}),
       ...(feedbackSymbol ? { symbol: feedbackSymbol } : {}),
       ...(entryVenueHint ? { entryVenueHint } : {}),
+      ...(pendingDedupeKey != null && String(pendingDedupeKey).trim() !== ""
+        ? { pendingDedupeKey: String(pendingDedupeKey).trim() }
+        : {}),
     });
   }
 
@@ -2391,19 +2415,15 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         tailMatchesFeed: fbL != null ? Number(last.ts) === Number(fbL.ts) : null,
       };
       log.info("debug_supertrend_h2", { sessionId: "b66075", hypothesisId: "H2", ...h2Data });
-      fetch("http://127.0.0.1:7607/ingest/19a148df-af4d-4baa-8f12-56d6d537b33c", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b66075" },
-        body: JSON.stringify({
-          sessionId: "b66075",
-          runId: "pre",
-          hypothesisId: "H2",
-          location: "bot.js:trySupertrendFuturesOrder",
-          message: "candles_tail_for_order",
-          data: h2Data,
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
+      postSupertrendLocalAgentIngestIfEnabled({
+        sessionId: "b66075",
+        runId: "pre",
+        hypothesisId: "H2",
+        location: "bot.js:trySupertrendFuturesOrder",
+        message: "candles_tail_for_order",
+        data: h2Data,
+        timestamp: Date.now(),
+      });
     }
     // #endregion
 
@@ -2516,6 +2536,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
               leverage: pos.leverage,
               entryPrice: Number(pos.entryPrice) > 0 ? Number(pos.entryPrice) : undefined,
               openPositionId: String(closeId),
+              closeReason: reasonLabel,
             },
           });
           state.stats[strategyKey].trades += 1;
@@ -3057,19 +3078,15 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
             : null;
         const h3Data = { orderSymbol, side: openingSide, signalBarClose, fillPx, relSlippage: d };
         log.info("debug_supertrend_h3", { sessionId: "b66075", hypothesisId: "H3", ...h3Data });
-        fetch("http://127.0.0.1:7607/ingest/19a148df-af4d-4baa-8f12-56d6d537b33c", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b66075" },
-          body: JSON.stringify({
-            sessionId: "b66075",
-            runId: "pre",
-            hypothesisId: "H3",
-            location: "bot.js:trySupertrendFuturesOrder:after_place",
-            message: "signal_close_vs_fill",
-            data: h3Data,
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
+        postSupertrendLocalAgentIngestIfEnabled({
+          sessionId: "b66075",
+          runId: "pre",
+          hypothesisId: "H3",
+          location: "bot.js:trySupertrendFuturesOrder:after_place",
+          message: "signal_close_vs_fill",
+          data: h3Data,
+          timestamp: Date.now(),
+        });
       }
       // #endregion
       broadcastTrade(wsHub, {
@@ -3856,19 +3873,15 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           crTailSameTsAsCts: snapL != null ? Number(snapL.ts) === Number(cTs) : null,
         };
         log.info("debug_supertrend_h1_multi", { sessionId: "b66075", hypothesisId: "H1m", ...h1mData });
-        fetch("http://127.0.0.1:7607/ingest/19a148df-af4d-4baa-8f12-56d6d537b33c", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b66075" },
-          body: JSON.stringify({
-            sessionId: "b66075",
-            runId: "pre",
-            hypothesisId: "H1m",
-            location: "bot.js:processAutoMultiFromEval",
-            message: "multi_bar_close_cr_vs_live",
-            data: h1mData,
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
+        postSupertrendLocalAgentIngestIfEnabled({
+          sessionId: "b66075",
+          runId: "pre",
+          hypothesisId: "H1m",
+          location: "bot.js:processAutoMultiFromEval",
+          message: "multi_bar_close_cr_vs_live",
+          data: h1mData,
+          timestamp: Date.now(),
+        });
       }
       // #endregion
     }
@@ -4121,7 +4134,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       expectedMoveLong: decisionSnapshotBar.expectedMoveLong ?? null,
       expectedMoveShort: decisionSnapshotBar.expectedMoveShort ?? null,
     };
-    if (allowBuy || allowSell) {
+
+    if (wsHubRef) {
+      wsHubRef.broadcast("state", {
+        mode: runtimeTradingMode(),
+        ...getPublicState(),
+      });
+    }
+
+    async function flushSupertrendFlipSignalHistoryIfNeeded() {
+      if (!(allowBuy || allowSell)) return;
       state.supertrendLastFlipBarClose = { ...state.supertrendLastBarClose };
       const side = allowBuy ? "BUY" : "SELL";
       const ss = decisionSnapshotBar.signalStrength;
@@ -4181,12 +4203,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       state.supertrendSignalHistory = filt.slice(-SUPERTREND_SIGNAL_STATE_MAX);
       persistTradingConfigToDisk();
       scheduleSmartSsRefresh(8000);
-    }
-    if (wsHubRef) {
-      wsHubRef.broadcast("state", {
-        mode: runtimeTradingMode(),
-        ...getPublicState(),
-      });
+      if (wsHubRef) {
+        wsHubRef.broadcast("state", {
+          mode: runtimeTradingMode(),
+          ...getPublicState(),
+        });
+      }
     }
 
     if (!(row.buySignal || row.sellSignal)) return;
@@ -4197,6 +4219,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
 
     if (!stSpot && !stFut) {
+      await flushSupertrendFlipSignalHistoryIfNeeded();
       if (wsHubRef) {
         emitSignalActionActivity(wsHubRef, {
           kind: "supertrend",
@@ -4213,6 +4236,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
     if (state.running && state.feedExecutionPause && (allowBuy || allowSell)) {
       state.supertrendStHandledCloseKey = barCloseKey;
+      await flushSupertrendFlipSignalHistoryIfNeeded();
       if (wsHubRef) {
         emitSignalActionActivity(wsHubRef, {
           kind: "supertrend",
@@ -4228,6 +4252,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
 
     if (!state.running) {
+      await flushSupertrendFlipSignalHistoryIfNeeded();
       const rowTs = Number(row.ts);
       state.pendingSupertrendAction = {
         side: allowBuy ? "BUY" : "SELL",
@@ -4248,13 +4273,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           action: "pending",
           reason: "queued — runs when bot starts",
           supertrendStrength01: supertrendStrength01 ?? undefined,
+          pendingDedupeKey: barCloseKey,
         });
       }
       return;
     }
 
     const hub = wsHubRef;
-    if (!hub) return;
+    if (!hub) {
+      await flushSupertrendFlipSignalHistoryIfNeeded();
+      return;
+    }
 
     const symTrade = String(state.symbol || "").trim().toUpperCase();
     if (idxC > 0 && symTrade) {
@@ -4276,6 +4305,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           barTs: cTs,
         });
         state.supertrendStHandledCloseKey = barCloseKey;
+        await flushSupertrendFlipSignalHistoryIfNeeded();
         emitSignalActionActivity(hub, {
           kind: "supertrend",
           strategyKey: "SUPERTREND",
@@ -4292,7 +4322,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
     /**
      * `rawCandles` was captured at handler entry (with the closed bar as tail). After `await` work (AI gates,
-     * history, disk), `feed.getCandles()` would advance to the next bar — pass this snapshot into
+     * position checks, etc.), `feed.getCandles()` can advance to the next bar — pass this snapshot into
      * `trySupertrend*Order` so `last.close` / indicators match the signal bar, not the live tail.
      * Deep-clone bars so in-buffer updates to the forming next candle cannot mutate objects in this snapshot.
      */
@@ -4316,19 +4346,15 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         tsMatch: snapL != null && liveL != null ? Number(snapL.ts) === Number(liveL.ts) : null,
       };
       log.info("debug_supertrend_h1", { sessionId: "b66075", hypothesisId: "H1", ...h1Data });
-      fetch("http://127.0.0.1:7607/ingest/19a148df-af4d-4baa-8f12-56d6d537b33c", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b66075" },
-        body: JSON.stringify({
-          sessionId: "b66075",
-          runId: "pre",
-          hypothesisId: "H1",
-          location: "bot.js:processSupertrendCandleClose",
-          message: "bar_close_snapshot_vs_live_feed_tail",
-          data: h1Data,
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
+      postSupertrendLocalAgentIngestIfEnabled({
+        sessionId: "b66075",
+        runId: "pre",
+        hypothesisId: "H1",
+        location: "bot.js:processSupertrendCandleClose",
+        message: "bar_close_snapshot_vs_live_feed_tail",
+        data: h1Data,
+        timestamp: Date.now(),
+      });
     }
     // #endregion
 
@@ -4355,6 +4381,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           decisionSnapshot: decisionSnapshotBar,
           candlesOverride: barCloseCandlesSnapshot,
           anchorBarTs: cTs,
+          barCloseAiGates: { aiGateBuy, aiGateSell },
         });
       }
       emitSupertrendSignalFeedback(hub, { ...buyRes, signalStrength: supertrendStrength01 ?? undefined });
@@ -4383,11 +4410,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           decisionSnapshot: decisionSnapshotBar,
           candlesOverride: barCloseCandlesSnapshot,
           anchorBarTs: cTs,
+          barCloseAiGates: { aiGateBuy, aiGateSell },
         });
       }
       emitSupertrendSignalFeedback(hub, { ...sellRes, signalStrength: supertrendStrength01 ?? undefined });
       if (sellRes?.action === "placed") await pushImmediateState(hub);
     }
+
+    await flushSupertrendFlipSignalHistoryIfNeeded();
   }
 
   hydrateTradingConfigFromDisk();
@@ -5662,15 +5692,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           runtimeTradingMode(),
           mergeTradesById(readTradeWsEvents(400), recentTrades || [])
         );
-        if (mergedTrades.length) {
-          wsHub.broadcast("trades_snapshot", {
-            replace: true,
-            trades: mergedTrades.slice(-80),
-            mode: runtimeTradingMode(),
-          });
-        } else if (strict) {
-          wsHub.broadcast("trades_snapshot", { replace: true, trades: [], mode: runtimeTradingMode() });
-        }
+        const cap = Math.min(500, TRADE_HISTORY_SNAPSHOT_MAX);
+        wsHub.broadcast("trades_snapshot", {
+          replace: true,
+          trades: mergedTrades.slice(-cap),
+          mode: runtimeTradingMode(),
+        });
       }
     } catch {
       /* ignore */

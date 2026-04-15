@@ -162,7 +162,8 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
       ts: new Date().toISOString(),
       type: "CLOSE",
       symbol: p.symbol,
-      side: p.side,
+      /** Reduce-only order side (SELL closes long, BUY closes short) — matches Binance futures CLOSE rows. */
+      side: exitSide,
       qty: p.qty,
       price: Number(filled),
       entryPrice: p.entryPrice,
@@ -177,6 +178,8 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
       reason: reasonNorm,
       meta: {
         ...(p.meta || {}),
+        closeSide: exitSide,
+        positionSideAtClose: p.side,
         closeReason: reason,
         openFee,
         exitFee,
