@@ -119,7 +119,8 @@ if (apiRateLimitOff) {
   }
 } else {
   const apiRateWindowMs = Math.max(60_000, Number(process.env.API_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000));
-  const apiRateMax = Math.max(20, Number(process.env.API_RATE_LIMIT_MAX || 400));
+  /** Default high enough for WS-down polling (/api/state + /api/ai/health every 4s) plus charts without false 429s. */
+  const apiRateMax = Math.max(20, Number(process.env.API_RATE_LIMIT_MAX || 2000));
   app.use(
     "/api",
     rateLimit({

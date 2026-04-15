@@ -741,7 +741,10 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
               autoTradeTrailing: true,
               trailStep: Number(trail.trailStep) || 0,
               extremePx: trail.extremePx,
+              trailTierLabel: trail.trailTierLabel ?? null,
+              ...(trail.slTrailConfirm ? { trailSlConfirm: { ...trail.slTrailConfirm } } : {}),
             };
+            row.trailTierLabel = trail.trailTierLabel ?? null;
           }
           out.push(row);
         }

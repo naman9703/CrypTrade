@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAuthActions } from "../authContext";
 import { useAppStore, type LogPayload } from "../ws/store";
 
 type ToastTone = "success" | "failure";
@@ -15,9 +16,10 @@ type ToastRow = {
 };
 
 const AUTO_DISMISS_MS = 5000;
-const MAX_TOASTS = 4;
-const SEED_RECENT_ON_MOUNT = 4;
-const MAX_PROCESS_PER_TICK = 20;
+/** Max activity popups visible at once (newest kept). */
+const MAX_VISIBLE_TOASTS = 5;
+/** Cap how many brand-new log lines we enqueue in one WS tick (burst guard). */
+const MAX_NEW_TOASTS_PER_TICK = 12;
 
 function logId(l: { ts?: unknown; msg?: unknown; reason?: unknown; symbol?: unknown; category?: unknown }): string {
   const ts = typeof l.ts === "string" ? l.ts : "";
@@ -173,30 +175,47 @@ function buildToastViewModel(l: LogPayload & Record<string, unknown>): ToastView
 }
 
 export function ActivityToasts() {
+  const auth = useAuthActions();
+  const authUiUserTag = useAppStore((s) => s.authUiUserTag ?? null);
+  /** UI auth off → always show; UI auth on → only after `/api/auth/me` authenticated (tag set). */
+  const activityToastsAllowed = !auth?.gated || authUiUserTag != null;
+
   const logs = useAppStore((s) => s.logs);
   const seenRef = useRef(new Set<string>());
-  const seededRef = useRef(false);
+  /** After login / first allow: mark existing `logs` as seen without showing (real-time only, no replay pool). */
+  const sessionLogsHydratedRef = useRef(false);
   const [toasts, setToasts] = useState<ToastRow[]>([]);
 
   useEffect(() => {
+    if (!activityToastsAllowed) {
+      setToasts([]);
+      seenRef.current.clear();
+      sessionLogsHydratedRef.current = false;
+    }
+  }, [activityToastsAllowed]);
+
+  useEffect(() => {
+    if (!activityToastsAllowed) return;
     if (!Array.isArray(logs) || logs.length === 0) return;
 
+    if (!sessionLogsHydratedRef.current) {
+      for (const raw of logs) {
+        if (!raw || typeof raw !== "object") continue;
+        const id = logId(raw as LogPayload & Record<string, unknown>);
+        if (id) seenRef.current.add(id);
+      }
+      sessionLogsHydratedRef.current = true;
+      return;
+    }
+
+    // `logs` is newest-first. Walk from the front until we hit an id already seen (older tail).
     const now = Date.now();
-    const batch = logs.slice(0, Math.min(logs.length, MAX_PROCESS_PER_TICK));
-
-    // On mount: seed with a few recent activity rows.
-    const seedLimit = seededRef.current ? 0 : SEED_RECENT_ON_MOUNT;
-    const seed = seedLimit ? batch.slice(0, seedLimit).reverse() : [];
-    if (seedLimit) seededRef.current = true;
-
-    // Always process newest-first batch; add unseen in chronological order.
-    const candidates = [...seed, ...batch.slice(0, batch.length).reverse()];
     const adds: ToastRow[] = [];
-    for (const raw of candidates) {
+    for (const raw of logs) {
       if (!raw || typeof raw !== "object") continue;
-      const id = logId(raw as any);
+      const id = logId(raw as LogPayload & Record<string, unknown>);
       if (!id) continue;
-      if (seenRef.current.has(id)) continue;
+      if (seenRef.current.has(id)) break;
       seenRef.current.add(id);
       const l = raw as LogPayload & Record<string, unknown>;
       adds.push({
@@ -209,19 +228,19 @@ export function ActivityToasts() {
         tone: toneFromLog(l),
         log: l,
       });
+      if (adds.length >= MAX_NEW_TOASTS_PER_TICK) break;
     }
     if (!adds.length) return;
 
     setToasts((prev) => {
       const merged = [...adds.reverse(), ...prev];
-      return merged.slice(0, MAX_TOASTS);
+      return merged.slice(0, MAX_VISIBLE_TOASTS);
     });
 
-    // Flip entering → false so slide-in animation runs.
     window.setTimeout(() => {
       setToasts((prev) => prev.map((t) => (t.entering ? { ...t, entering: false } : t)));
     }, 20);
-  }, [logs]);
+  }, [logs, activityToastsAllowed]);
 
   useEffect(() => {
     if (!toasts.length) return;

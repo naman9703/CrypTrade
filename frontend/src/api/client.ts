@@ -25,14 +25,23 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 export const api = {
+  /** Retries on 429 so UI auth bootstrap is not mistaken for logout when the global /api bucket is hot. */
   async authMe() {
-    return json<{
-      ok?: boolean;
-      enabled?: boolean;
-      authenticated?: boolean;
-      uiUserTag?: string | null;
-      uiTradingMode?: string | null;
-    }>(await apiFetch(`${HTTP}/api/auth/me`));
+    const maxAttempts = 6;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const res = await apiFetch(`${HTTP}/api/auth/me`);
+      if (res.status === 429 && attempt < maxAttempts - 1) {
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        continue;
+      }
+      return json<{
+        ok?: boolean;
+        enabled?: boolean;
+        authenticated?: boolean;
+        uiUserTag?: string | null;
+        uiTradingMode?: string | null;
+      }>(res);
+    }
   },
   async login(email: string, password: string) {
     return json<{ ok?: boolean }>(

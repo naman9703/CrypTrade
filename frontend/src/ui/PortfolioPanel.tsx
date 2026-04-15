@@ -1607,9 +1607,13 @@ export function PortfolioPanel() {
                     </td>
                   </tr>
                 ) : (
-                  positions.map((p: any) => {
+                  positions.flatMap((p: any) => {
                     const upnlPct = positionUnrealizedPnlPct(p);
-                    return (
+                    const trailSlSt = (p.meta as Record<string, unknown> | undefined)?.trailSlConfirm as
+                      | { status?: string }
+                      | undefined;
+                    const trailSlPending = trailSlSt?.status === "REQUESTED";
+                    const mainRow = (
                     <tr key={p.id} className="border-t border-slate-200 dark:border-slate-900">
                       <td className="w-3 min-w-[12px] max-w-[14px] border-0 px-0 py-2 align-middle">
                         {positionRowTrailedStrict(p, trailingStopLossAuto) ? (
@@ -1735,6 +1739,21 @@ export function PortfolioPanel() {
                       </td>
                     </tr>
                     );
+                    if (!trailSlPending) return [mainRow];
+                    return [
+                      <tr key={`${p.id}-trail-pending`} className="border-0 bg-amber-500/[0.07] dark:bg-amber-950/25">
+                        <td colSpan={14} className="px-3 py-1">
+                          <div className="flex items-center gap-2 text-[10px] font-medium text-amber-800 dark:text-amber-200">
+                            <span
+                              className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-amber-600 border-t-transparent dark:border-amber-400"
+                              aria-hidden
+                            />
+                            Confirming SL trail on the exchange…
+                          </div>
+                        </td>
+                      </tr>,
+                      mainRow,
+                    ];
                   })
                 )}
               </tbody>

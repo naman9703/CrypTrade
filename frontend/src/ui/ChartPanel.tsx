@@ -206,7 +206,13 @@ type ChartStTrailPreviewLine = {
 };
 
 /** Live “mark past activation” vs server-persisted trail step (≥1 SL trail update). */
-type ChartTrailingBadge = { trailing: boolean; trailed: boolean; tierLabel?: string | null };
+type ChartTrailingBadge = {
+  trailing: boolean;
+  trailed: boolean;
+  tierLabel?: string | null;
+  /** SL replace sent; exchange not yet verified — show waiting UI, do not treat as trailed. */
+  trailExchangePending?: boolean;
+};
 
 type ChartTrailHud = {
   currentSl: number | null;
@@ -1151,7 +1157,16 @@ export function ChartPanel() {
     if (!Number.isFinite(q) || Math.abs(q) <= 1e-8) return none("trail-flat");
     const isLong = futuresPositionIsLong(pos as Record<string, unknown>);
     const { trailed: trailedPersist, tierLabel: trailedTierLabel } = metaTrailTrailedFromPosition(pos);
-    const mkBadge = (trailing: boolean): ChartTrailingBadge => ({ trailing, trailed: trailedPersist, tierLabel: trailedTierLabel });
+    const trailSlConfirm = (pos.meta as Record<string, unknown> | undefined)?.trailSlConfirm as
+      | { status?: string }
+      | undefined;
+    const trailExchangePending = trailSlConfirm?.status === "REQUESTED";
+    const mkBadge = (trailing: boolean): ChartTrailingBadge => ({
+      trailing,
+      trailed: trailedPersist && !trailExchangePending,
+      tierLabel: trailedTierLabel,
+      trailExchangePending,
+    });
     const entry = Number(pos.entryPrice);
     if (!Number.isFinite(entry) || entry <= 0) return none("trail-noentry", mkBadge(false));
     const levRaw = Number(pos.leverage);
@@ -1584,6 +1599,7 @@ export function ChartPanel() {
 
   const trailingChipTrailedHighlight =
     chartTrailingPreview.badge?.trailed === true ||
+    chartTrailingPreview.badge?.trailExchangePending === true ||
     Boolean(symKey && chartTrailedSessionBySymbol[symKey]);
 
   /**
@@ -1594,7 +1610,7 @@ export function ChartPanel() {
    */
   const chartBracketPriceLayerKey = useMemo(
     () =>
-      `${futuresBracket.key}|${chartTrailingPreview.key}|${chartTheme}|${chartInstanceKey}|${chartTrailingPreview.badge?.trailing ? 1 : 0}${chartTrailingPreview.badge?.trailed ? 1 : 0}`,
+      `${futuresBracket.key}|${chartTrailingPreview.key}|${chartTheme}|${chartInstanceKey}|${chartTrailingPreview.badge?.trailing ? 1 : 0}${chartTrailingPreview.badge?.trailed ? 1 : 0}${chartTrailingPreview.badge?.trailExchangePending ? 1 : 0}`,
     [
       futuresBracket.key,
       chartTrailingPreview.key,
@@ -1602,6 +1618,7 @@ export function ChartPanel() {
       chartInstanceKey,
       chartTrailingPreview.badge?.trailing,
       chartTrailingPreview.badge?.trailed,
+      chartTrailingPreview.badge?.trailExchangePending,
     ],
   );
 
@@ -2238,29 +2255,38 @@ export function ChartPanel() {
           ) : null}
           {trailingStatusChipsVisible ? (
             <div
-              className="pointer-events-none absolute left-2 top-2 z-10 flex flex-row items-center gap-1.5"
+              className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col items-start gap-0.5"
               aria-label="Futures trailing status"
             >
-              <span
-                className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm ${
-                  chartTrailingPreview.badge?.trailing
-                    ? "bg-amber-500 text-slate-950 dark:bg-amber-400 dark:text-slate-950"
-                    : "border border-slate-400/60 bg-slate-900/55 text-slate-400 dark:border-slate-600 dark:bg-slate-950/70 dark:text-slate-500"
-                }`}
-              >
-                Trailing
-              </span>
-              <span
-                className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm ${
-                  trailingChipTrailedHighlight
-                    ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950"
-                    : "border border-slate-400/60 bg-slate-900/55 text-slate-400 dark:border-slate-600 dark:bg-slate-950/70 dark:text-slate-500"
-                }`}
-              >
-                {trailingChipTrailedHighlight && chartTrailingPreview.badge?.tierLabel
-                  ? `Trailed · ${chartTrailingPreview.badge.tierLabel}`
-                  : "Trailed"}
-              </span>
+              <div className="flex flex-row items-center gap-1.5">
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm ${
+                    chartTrailingPreview.badge?.trailing
+                      ? "bg-amber-500 text-slate-950 dark:bg-amber-400 dark:text-slate-950"
+                      : "border border-slate-400/60 bg-slate-900/55 text-slate-400 dark:border-slate-600 dark:bg-slate-950/70 dark:text-slate-500"
+                  }`}
+                >
+                  Trailing
+                </span>
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm ${
+                    trailingChipTrailedHighlight
+                      ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950"
+                      : "border border-slate-400/60 bg-slate-900/55 text-slate-400 dark:border-slate-600 dark:bg-slate-950/70 dark:text-slate-500"
+                  }`}
+                >
+                  {chartTrailingPreview.badge?.trailExchangePending
+                    ? "Confirming…"
+                    : trailingChipTrailedHighlight && chartTrailingPreview.badge?.tierLabel
+                      ? `Trailed · ${chartTrailingPreview.badge.tierLabel}`
+                      : "Trailed"}
+                </span>
+              </div>
+              {chartTrailingPreview.badge?.trailExchangePending ? (
+                <div className="max-w-[14rem] rounded border border-amber-600/40 bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-medium text-amber-100/95 shadow-sm">
+                  Waiting for exchange to confirm the new stop…
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>

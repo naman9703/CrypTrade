@@ -202,7 +202,7 @@ const loginHttpRateLimitOff =
   String(process.env.LOGIN_HTTP_RATE_LIMIT_MAX ?? "").trim() === "0";
 const loginRouteLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: Math.max(6, Math.min(120, Number(process.env.LOGIN_HTTP_RATE_LIMIT_MAX || 24))),
+  max: Math.max(6, Math.min(120, Number(process.env.LOGIN_HTTP_RATE_LIMIT_MAX || 60))),
   standardHeaders: true,
   legacyHeaders: false,
   message: { ok: false, error: "rate_limited" },
