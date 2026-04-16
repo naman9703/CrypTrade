@@ -376,6 +376,18 @@ export function applyTrailingStopBinanceMemory(opts) {
   let activationPriceForEvt = null;
   let breakevenForEvt = null;
 
+  /** Exchange-verified tier floor — `trailStep` must never sit below this once set. */
+  const getConfirmedStep = () => Math.max(0, Math.floor(Number(tr.confirmedTrailStep) || 0));
+  function enforceMonotonicTrailStep() {
+    const c = getConfirmedStep();
+    const cur = Math.max(0, Math.floor(Number(tr.trailStep) || 0));
+    if (cur < c) {
+      tr.trailStep = c;
+      tr.trailTierLabel = trailStepToTierLabel(tr.trailStep);
+    }
+  }
+  enforceMonotonicTrailStep();
+
   if (mode === "FEE_LADDER") {
     const adv = advanceTrailingStopState({
       entryPx: tr.entryPrice,
@@ -388,7 +400,7 @@ export function applyTrailingStopBinanceMemory(opts) {
       feeBeMultiplier,
       extraScalpingPctsOfEntry: trailingOpts.extraScalpingPcts ?? [],
     });
-    tr.trailStep = adv.trailStep;
+    tr.trailStep = Math.max(Math.max(0, Math.floor(Number(adv.trailStep) || 0)), getConfirmedStep());
     tr.extremePx = adv.extremePx;
     if (!adv.advanced || adv.proposedSl == null) return false;
     proposedTrailSl = adv.proposedSl;
@@ -432,7 +444,9 @@ export function applyTrailingStopBinanceMemory(opts) {
       : tr.entryPrice * (1 - (useFeeBeTrail ? feeBe : 0) - buf);
 
     const bumpTrailMetaSupertrendInner = () => {
-      tr.trailStep = (Number(tr.trailStep) || 0) + 1;
+      const c = getConfirmedStep();
+      const cur = Math.max(0, Math.floor(Number(tr.trailStep) || 0));
+      tr.trailStep = Math.max(cur + 1, c + 1);
       tr.extremePx = isLong
         ? Math.max(Number(tr.extremePx) || markPx, markPx)
         : Math.min(Number(tr.extremePx) || markPx, markPx);
@@ -458,6 +472,7 @@ export function applyTrailingStopBinanceMemory(opts) {
     let advancedAny = false;
 
     for (let catchUp = 0; catchUp < maxCatchUpIters; catchUp++) {
+      enforceMonotonicTrailStep();
       const bCur = localBrackets[sym];
       const tgtCur = placedBracketTargets?.[sym];
       const prevRawCur = bCur ? bCur.stopLoss : tgtCur?.stopLoss;
@@ -741,7 +756,9 @@ export function applyTrailingStopBinanceMemory(opts) {
     : tr.entryPrice;
 
   const bumpTrailMetaSupertrend = () => {
-    tr.trailStep = (Number(tr.trailStep) || 0) + 1;
+    const c = getConfirmedStep();
+    const cur = Math.max(0, Math.floor(Number(tr.trailStep) || 0));
+    tr.trailStep = Math.max(cur + 1, c + 1);
     tr.extremePx = isLong ? Math.max(Number(tr.extremePx) || markPx, markPx) : Math.min(Number(tr.extremePx) || markPx, markPx);
     /** Tier label for SUPERTREND mode: T0 = first advance (BE), T1 = second, etc. */
     tr.trailTierLabel = trailStepToTierLabel(tr.trailStep);

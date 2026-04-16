@@ -44,8 +44,8 @@ async function snapshotHelloForView(appState, viewMode, extraHelloFields = {}) {
     chart = null;
   }
   const activityLog = readActivityLogRecent(500, tradingModeToPersistenceSlug(m));
-  const strictEmpty = strictAcc && account == null;
-  const mergedTrades = strictEmpty ? [] : mergePersistedTradesWithExchange(m, trades || []);
+  /** Even when strict mode cannot fetch account/exchange trades, merge persisted audit file so history is visible. */
+  const mergedTrades = mergePersistedTradesWithExchange(m, trades || []);
   const hello = {
     serverTs: new Date().toISOString(),
     state: bot.getPublicState(),
@@ -281,7 +281,7 @@ export function attachWs({ wss, appState }) {
             }),
           );
           try {
-            const snap = strictFallback ? [] : mergePersistedTradesWithExchange(m, []);
+            const snap = mergePersistedTradesWithExchange(m, []);
             ws.send(
               JSON.stringify({
                 type: "trades_snapshot",

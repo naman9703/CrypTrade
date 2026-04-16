@@ -213,6 +213,15 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
           const entryPx = Number(pos.entryPrice);
           const isLong = pos.side === "BUY";
           const prevSl = Number(o.stopPx);
+          const confirmedPaper = () => Math.max(0, Math.floor(Number(pos.meta.confirmedTrailStep) || 0));
+          {
+            const c0 = confirmedPaper();
+            const ts0 = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
+            if (ts0 < c0) {
+              pos.meta.trailStep = c0;
+              pos.meta.trailTierLabel = trailStepToTierLabel(pos.meta.trailStep);
+            }
+          }
           const lev = Number(pos.leverage ?? pos.meta?.leverage ?? defaultLeverage);
           const feeR = clampFeeRate(trailingStopLoss.feeRate);
           const buf = Number.isFinite(Number(trailingStopLoss.bufferRate)) ? Number(trailingStopLoss.bufferRate) : 0.0005;
@@ -249,7 +258,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                 feeBeMultiplier: feeBeMultiplierFL,
                 extraScalpingPctsOfEntry: trailingStopLoss.extraScalpingPcts ?? [],
               });
-              pos.meta.trailStep = adv.trailStep;
+              pos.meta.trailStep = Math.max(Math.max(0, Math.floor(Number(adv.trailStep) || 0)), confirmedPaper());
               pos.meta.extremePx = adv.extremePx;
               if (adv.advanced && adv.proposedSl != null) {
                 pos.meta.trailTierLabel = adv.tierLabel;
@@ -353,12 +362,17 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
               const nextSl = roundTo(merged, 8);
               if (nextSl !== prevSl) {
                 if (mode === "SUPERTREND") {
-                  pos.meta.trailStep = (Number(pos.meta.trailStep) || 0) + 1;
+                  const c = confirmedPaper();
+                  const cur = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
+                  pos.meta.trailStep = Math.max(cur + 1, c + 1);
+                  pos.meta.confirmedTrailStep = pos.meta.trailStep;
                   /** T0 = first advance (fee-BE), T1 = second, etc. */
                   pos.meta.trailTierLabel = trailStepToTierLabel(pos.meta.trailStep);
                   pos.meta.extremePx = isLong
                     ? Math.max(Number(pos.meta.extremePx) || px, px)
                     : Math.min(Number(pos.meta.extremePx) || px, px);
+                } else if (mode === "FEE_LADDER") {
+                  pos.meta.confirmedTrailStep = pos.meta.trailStep;
                 }
                 o.stopPx = nextSl;
                 pos.stopLoss = nextSl;
@@ -464,7 +478,12 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
           openFee: fee,
           fee,
           ...(meta?.autoTradeTrailing
-            ? { trailStep: 0, extremePx: Number(filledPrice), autoTradeTrailing: true }
+            ? {
+                trailStep: 0,
+                confirmedTrailStep: 0,
+                extremePx: Number(filledPrice),
+                autoTradeTrailing: true,
+              }
             : {}),
         },
       };

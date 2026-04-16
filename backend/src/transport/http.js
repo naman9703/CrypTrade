@@ -9,6 +9,7 @@ import {
   TRADE_HISTORY_SNAPSHOT_MAX,
 } from "../lib/activityPersistence.js";
 import { isStrictBinanceAccountMode, tradingModeToPersistenceSlug } from "../lib/tradingModePersistence.js";
+import { computeMqTuningPatch, readMqTradeOutcomeRows } from "../lib/mqTuneFromOutcomes.js";
 import { uiAuthEnabled } from "../auth/uiGate.js";
 import { normalizeTradingMode } from "../state/appState.js";
 
@@ -475,6 +476,84 @@ export function createRouter({ appState }) {
         appState.wsHub?.broadcast("state", { mode: m, ...bot, account: null, positions: [] });
       });
     res.json({ ok: true, bot, targetMode: configTargetMode ?? resolveViewTradingMode(req, undefined) });
+  });
+
+  /**
+   * Analyze `mq-trade-outcomes.jsonl` for this trading mode and suggest / apply Move Quality thresholds
+   * from winning-trade percentiles (see `mqTuneFromOutcomes.js`).
+   */
+  r.post("/bot/tune-move-quality", (req, res) => {
+    const schema = z.object({
+      mode: BOT_TARGET_MODES.optional(),
+      apply: z.boolean().optional(),
+      minTrades: z.number().int().min(3).max(500).optional(),
+      winPercentileFloor: z.number().min(5).max(50).optional(),
+    });
+    const parsed = schema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const row = getEngineForBotRequest(req, parsed.data.mode);
+      const viewM = resolveViewTradingMode(req, parsed.data.mode);
+      const slug = tradingModeToPersistenceSlug(viewM);
+      const { path: logPath, rows } = readMqTradeOutcomeRows(slug);
+      const tuned = computeMqTuningPatch(rows, {
+        minTrades: parsed.data.minTrades,
+        winPercentileFloor: parsed.data.winPercentileFloor,
+      });
+      if (!tuned.ok) {
+        return res.status(400).json({
+          ok: false,
+          ...tuned,
+          logPath,
+        });
+      }
+      const apply = parsed.data.apply !== false;
+      if (apply) {
+        row.bot.updateConfig(tuned.patch);
+        broadcastActivity(
+          appState.wsHub,
+          {
+            level: "info",
+            msg: "Move quality tuned from your logged Supertrend trade outcomes",
+            category: "config",
+            reason: "mq_tune",
+            detail: { patch: tuned.patch, n: tuned.n, nWins: tuned.nWins },
+            tradingMode: viewM,
+          },
+          { persistenceSlug: slug },
+        );
+        const ex = row.exchange;
+        Promise.all([ex.getAccount().catch(() => null), ex.getPositions().catch(() => [])])
+          .then(([account, positions]) => {
+            const m = String(viewM).toUpperCase();
+            appState.wsHub?.broadcast("state", {
+              mode: m,
+              ...row.bot.getPublicState(),
+              account,
+              positions,
+            });
+          })
+          .catch(() => {
+            const m = String(viewM).toUpperCase();
+            appState.wsHub?.broadcast("state", {
+              mode: m,
+              ...row.bot.getPublicState(),
+              account: null,
+              positions: [],
+            });
+          });
+      }
+      res.json({
+        ok: true,
+        apply,
+        logPath,
+        ...tuned,
+        bot: row.bot.getPublicState(),
+        targetMode: viewM,
+      });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: String(e?.message || e) });
+    }
   });
 
   // Scan and rank coins (Binance only). Returns ranked list + selected top symbols.

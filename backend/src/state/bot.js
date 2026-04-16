@@ -24,13 +24,16 @@ import {
   sanitizeCandlesForSt,
   chartMarkerVisibleForBar,
   computeSupertrendSignalStrength01,
+  binanceIntervalMs,
 } from "../lib/supertrendChartAlign.js";
 import { broadcastActivity } from "../lib/activityLog.js";
 import {
+  mergePersistedTradesWithExchange,
   mergeTradesById,
   readTradeWsEvents,
   TRADE_HISTORY_SNAPSHOT_MAX,
 } from "../lib/activityPersistence.js";
+import { fetchUsdMBookTicker } from "../lib/binanceUsdMBookTicker.js";
 import { filterStrictPortfolioTradesAfterMerge } from "../lib/tradeLedgerClassification.js";
 import { readBotTradingConfig, writeBotTradingConfig } from "../lib/botTradingConfigStore.js";
 import {
@@ -38,9 +41,14 @@ import {
   maybeMigrateLegacySupertrendSignalHistory,
   readSupertrendSignalHistory,
 } from "../lib/supertrendSignalHistoryPersistence.js";
+import { appendMqTradeOutcomeRow } from "../lib/mqTradeOutcomeLog.js";
 import { isStrictBinanceAccountMode, tradingModeToPersistenceSlug } from "../lib/tradingModePersistence.js";
 import { fetchBinanceKlinesRows, fetchBinanceKlinesRange } from "../lib/binanceKlinesRest.js";
 import { computeSupertrendSignalVerdictsBackend, closeBySecFromKlines } from "../lib/supertrendSignalVerdict.js";
+import {
+  evaluateSupertrendMoveQuality,
+  estimateSlDistancePctForMoveQualityGate,
+} from "../strategy/supertrendMoveQuality.js";
 import { learnSmartSignalStrengthThreshold } from "../lib/signalStrengthSmartThreshold.js";
 import { extractSurfPulseFeatures } from "../strategy/surfPulseMl.js";
 import { maxTrailStepsForConfig } from "../lib/trailingStopLoss.js";
@@ -198,6 +206,17 @@ function enrichCloseTradeForHistory(t) {
     if (m.closeReason == null || String(m.closeReason).trim() === "") {
       m.closeReason = String(next.reason);
     }
+    next.meta = m;
+  }
+  const pnlN = Number(next.pnl);
+  const entryPx = Number(next.entryPrice ?? m.entryPrice);
+  const qn = Number(next.qty);
+  if (Number.isFinite(pnlN) && Number.isFinite(entryPx) && entryPx > 0 && Number.isFinite(qn) && qn > 0) {
+    const notional = entryPx * qn;
+    m.pnlPct = Math.round((pnlN / notional) * 100 * 10000) / 10000;
+    if (pnlN > 1e-12) m.outcome = "WIN";
+    else if (pnlN < -1e-12) m.outcome = "LOSS";
+    else m.outcome = "BREAKEVEN";
     next.meta = m;
   }
   return next;
@@ -561,6 +580,36 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       100,
     ),
     /**
+     * When true, Supertrend spot/futures **opening** legs must pass move-quality (ATR vs SL, ADX, body, expansion, composite score).
+     * Default off so behavior matches legacy.
+     */
+    supertrendMoveQualityGate: false,
+    /** Min composite move-quality score (0–1) when gate is on. */
+    supertrendMoveQualityMinScore: clamp(Number(process.env.SUPERTREND_MOVE_QUALITY_MIN_SCORE ?? 0.6), 0, 1),
+    /** Min ADX (14) at signal bar. */
+    supertrendMoveQualityMinAdx: clamp(Number(process.env.SUPERTREND_MOVE_QUALITY_MIN_ADX ?? 23), 0, 100),
+    /** Require expected move (ATR% × mult) ≥ SL% × this ratio. */
+    supertrendMoveQualityMinMoveSlRatio: Math.max(1, Number(process.env.SUPERTREND_MOVE_QUALITY_MIN_MOVE_SL_RATIO ?? 1.5)),
+    /** Multiplier on ATR% for “expected favorable move” estimate (1 = raw ATR% vs SL%). */
+    supertrendMoveQualityExpectedMoveAtrMult: Math.max(0.1, Number(process.env.SUPERTREND_MOVE_QUALITY_ATR_EXPECT_MULT ?? 1.0)),
+    /** Min ATR/avgATR expansion; 0 = disable this hard check. */
+    supertrendMoveQualityMinAtrExpansion: Math.max(0, Number(process.env.SUPERTREND_MOVE_QUALITY_MIN_ATR_EXPANSION ?? 1.08)),
+    /** Skip if signal bar body vs avg body ratio is below this (noise filter). */
+    supertrendMoveQualityMinBodyVsAvg: clamp(Number(process.env.SUPERTREND_MOVE_QUALITY_MIN_BODY_VS_AVG ?? 0.62), 0.15, 1),
+    /** 0 = off. Else require signed (close−open)/range vs direction (stronger than abs body ratio). */
+    supertrendMoveQualityMinDirectionalBody: clamp(Number(process.env.SUPERTREND_MOVE_QUALITY_MIN_DIRECTIONAL_BODY ?? 0), 0, 1),
+    /** 0 = off. Else last vol must be ≥ SMA(vol)×this (e.g. 1.2). */
+    supertrendMoveQualityMinVolumeVsAvg: Math.max(0, Number(process.env.SUPERTREND_MOVE_QUALITY_MIN_VOLUME_VS_AVG ?? 0)),
+    /**
+     * When true, defer entry until a later bar **closes** beyond signal candle high (BUY) or low (SELL).
+     * Single-chart `processSupertrendCandleClose` only; AUTO multi sweep still uses immediate entry.
+     */
+    supertrendBreakoutConfirm: ["1", "true", "yes"].includes(
+      String(process.env.SUPERTREND_BREAKOUT_CONFIRM ?? "0").toLowerCase(),
+    ),
+    /** Max closed bars to wait after signal before dropping a pending breakout. */
+    supertrendBreakoutMaxBars: Math.max(1, Math.min(20, Math.floor(Number(process.env.SUPERTREND_BREAKOUT_MAX_BARS ?? 5)))),
+    /**
      * Suggested min SS (0–100) from historical list outcomes vs composite strength; blended with prior on restart.
      * @type {number | null}
      */
@@ -608,7 +657,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
      * Round-trip fee = openFee + closeFee (e.g. 0.04% + 0.04% = 0.08%).
      *
      * SUPERTREND-specific:
-     * `trailFeeBeMultiplier` — safety margin ×N applied on top of round-trip fee for T0 SL (1.0 = exact; default 1.0).
+     * `trailFeeBeMultiplier` — safety margin ×N applied on top of round-trip fee for T0 SL (1.0 = exact; default 1.25).
      * `trailBufferRate`      — extra buffer past breakeven before T0 activation fires (fraction; default 0.0005 = 0.05%).
      * `trailMinSlDistFrac`   — minimum fractional improvement the new SL must make (default 0.002 = 0.2%).
      * `trailMaintMarginRate` — liquidation guard rate for open-rejection check (default 0.005 = 0.5%).
@@ -617,7 +666,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       Number(process.env.TRADE_OPEN_FEE_RATE ?? process.env.TRADE_CLOSE_FEE_RATE ?? 0.0004), 0, 0.01,
     ),
     trailCloseFeeRate: clamp(Number(process.env.TRADE_CLOSE_FEE_RATE ?? 0.0004), 0, 0.01),
-    trailFeeBeMultiplier: clamp(Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.0), 1, 2),
+    trailFeeBeMultiplier: clamp(Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25), 1, 2),
     trailBufferRate: clamp(Number(process.env.SUPERTREND_TRAIL_BUFFER_RATE ?? 0.0005), 0, 0.05),
     trailMinSlDistFrac: clamp(Number(process.env.SUPERTREND_TRAIL_MIN_SL_DISTANCE_FRAC ?? 0.002), 0, 0.1),
     trailMaintMarginRate: clamp(Number(process.env.SUPERTREND_TRAIL_MAINTENANCE_MARGIN_RATE ?? 0.005), 0, 0.1),
@@ -650,6 +699,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
      * (first tick with candles) so e.g. SELL can close an open leg; skipped if position already flat.
      */
     pendingSupertrendAction: null,
+    /**
+     * Primary-chart breakout confirmation: after a Supertrend flip, wait until close breaks signal high/low.
+     * @type {{ symbol: string, side: "BUY"|"SELL", signalBarTs: number, signalHigh: number, signalLow: number, stSpot: boolean, stFut: boolean, barsWaited: number, maxBars: number } | null}
+     */
+    pendingSupertrendBreakout: null,
     /** Set in `start()` when `pendingSupertrendAction` exists; cleared after first successful flush attempt. */
     _pendingSupertrendFlushOnNextTick: false,
     /** Throttle repeated “free USDT below min order” warns (ms timestamp). */
@@ -1179,6 +1233,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           supertrendFuturesAuto: state.supertrendFuturesAuto,
           supertrendFuturesAiConfidenceFilter: state.supertrendFuturesAiConfidenceFilter,
           signalStrengthGatesTrades: state.signalStrengthGatesTrades,
+          supertrendMoveQualityGate: state.supertrendMoveQualityGate === true,
+          supertrendMoveQualityMinScore: state.supertrendMoveQualityMinScore,
+          supertrendMoveQualityMinAdx: state.supertrendMoveQualityMinAdx,
+          supertrendMoveQualityMinMoveSlRatio: state.supertrendMoveQualityMinMoveSlRatio,
+          supertrendMoveQualityExpectedMoveAtrMult: state.supertrendMoveQualityExpectedMoveAtrMult,
+          supertrendMoveQualityMinAtrExpansion: state.supertrendMoveQualityMinAtrExpansion,
+          supertrendMoveQualityMinBodyVsAvg: state.supertrendMoveQualityMinBodyVsAvg,
+          supertrendMoveQualityMinDirectionalBody: state.supertrendMoveQualityMinDirectionalBody,
+          supertrendMoveQualityMinVolumeVsAvg: state.supertrendMoveQualityMinVolumeVsAvg,
+          supertrendBreakoutConfirm: state.supertrendBreakoutConfirm === true,
+          supertrendBreakoutMaxBars: state.supertrendBreakoutMaxBars,
           signalStrengthOpenMin: state.signalStrengthOpenMin,
           smartSignalStrengthThreshold:
             state.smartSignalStrengthThreshold != null && Number.isFinite(Number(state.smartSignalStrengthThreshold))
@@ -1373,6 +1438,35 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       }
       if (typeof b.signalStrengthGatesTrades === "boolean") {
         state.signalStrengthGatesTrades = b.signalStrengthGatesTrades;
+      }
+      if (typeof b.supertrendMoveQualityGate === "boolean") state.supertrendMoveQualityGate = b.supertrendMoveQualityGate;
+      if (b.supertrendMoveQualityMinScore != null && Number.isFinite(Number(b.supertrendMoveQualityMinScore))) {
+        state.supertrendMoveQualityMinScore = clamp(Number(b.supertrendMoveQualityMinScore), 0, 1);
+      }
+      if (b.supertrendMoveQualityMinAdx != null && Number.isFinite(Number(b.supertrendMoveQualityMinAdx))) {
+        state.supertrendMoveQualityMinAdx = clamp(Math.round(Number(b.supertrendMoveQualityMinAdx)), 0, 100);
+      }
+      if (b.supertrendMoveQualityMinMoveSlRatio != null && Number.isFinite(Number(b.supertrendMoveQualityMinMoveSlRatio))) {
+        state.supertrendMoveQualityMinMoveSlRatio = Math.max(1, Number(b.supertrendMoveQualityMinMoveSlRatio));
+      }
+      if (b.supertrendMoveQualityExpectedMoveAtrMult != null && Number.isFinite(Number(b.supertrendMoveQualityExpectedMoveAtrMult))) {
+        state.supertrendMoveQualityExpectedMoveAtrMult = Math.max(0.1, Number(b.supertrendMoveQualityExpectedMoveAtrMult));
+      }
+      if (b.supertrendMoveQualityMinAtrExpansion != null && Number.isFinite(Number(b.supertrendMoveQualityMinAtrExpansion))) {
+        state.supertrendMoveQualityMinAtrExpansion = Math.max(0, Number(b.supertrendMoveQualityMinAtrExpansion));
+      }
+      if (b.supertrendMoveQualityMinBodyVsAvg != null && Number.isFinite(Number(b.supertrendMoveQualityMinBodyVsAvg))) {
+        state.supertrendMoveQualityMinBodyVsAvg = clamp(Number(b.supertrendMoveQualityMinBodyVsAvg), 0.15, 1);
+      }
+      if (b.supertrendMoveQualityMinDirectionalBody != null && Number.isFinite(Number(b.supertrendMoveQualityMinDirectionalBody))) {
+        state.supertrendMoveQualityMinDirectionalBody = clamp(Number(b.supertrendMoveQualityMinDirectionalBody), 0, 1);
+      }
+      if (b.supertrendMoveQualityMinVolumeVsAvg != null && Number.isFinite(Number(b.supertrendMoveQualityMinVolumeVsAvg))) {
+        state.supertrendMoveQualityMinVolumeVsAvg = Math.max(0, Number(b.supertrendMoveQualityMinVolumeVsAvg));
+      }
+      if (typeof b.supertrendBreakoutConfirm === "boolean") state.supertrendBreakoutConfirm = b.supertrendBreakoutConfirm;
+      if (b.supertrendBreakoutMaxBars != null && Number.isFinite(Number(b.supertrendBreakoutMaxBars))) {
+        state.supertrendBreakoutMaxBars = Math.max(1, Math.min(20, Math.floor(Number(b.supertrendBreakoutMaxBars))));
       }
       if (b.signalStrengthOpenMin != null && Number.isFinite(Number(b.signalStrengthOpenMin))) {
         state.signalStrengthOpenMin = clamp(Math.round(Number(b.signalStrengthOpenMin)), 0, 100);
@@ -1569,6 +1663,79 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       };
     }
     return null;
+  }
+
+  /** When `supertrendMoveQualityGate` is on, require ATR/ADX/body/expansion + composite score (futures/spot opens). */
+  function moveQualityBlocksOpen({ openingSide, candles, latest, venue }) {
+    if (!state.supertrendMoveQualityGate) return null;
+    if (openingSide !== "BUY" && openingSide !== "SELL") return null;
+    const slEst = estimateSlDistancePctForMoveQualityGate(state, latest, venue);
+    const mqEval = evaluateSupertrendMoveQuality({
+      candles,
+      latest,
+      openingSide,
+      slDistancePct: slEst,
+      options: supertrendMoveQualityEvalOptions(),
+    });
+    if (mqEval.pass) return null;
+    return {
+      reason: "move_quality_gate",
+      detail: { mq: mqEval, slEst },
+    };
+  }
+
+  function supertrendMoveQualityEvalOptions() {
+    return {
+      minScore: state.supertrendMoveQualityMinScore,
+      minAdx: state.supertrendMoveQualityMinAdx,
+      minMoveToSlRatio: state.supertrendMoveQualityMinMoveSlRatio,
+      expectedMoveAtrMult: state.supertrendMoveQualityExpectedMoveAtrMult,
+      minAtrExpansion: state.supertrendMoveQualityMinAtrExpansion,
+      minBodyVsAvg: state.supertrendMoveQualityMinBodyVsAvg,
+      minDirectionalBody: clamp(Number(state.supertrendMoveQualityMinDirectionalBody ?? 0), 0, 1),
+      minVolumeVsAvgRatio: Math.max(0, Number(state.supertrendMoveQualityMinVolumeVsAvg ?? 0)),
+    };
+  }
+
+  /**
+   * Compact MQ feature vector at entry (stored on position meta → joined on close for tuning analysis).
+   * @param {"BUY"|"SELL"} openingSide
+   * @param {"SPOT"|"FUTURES"} venue
+   */
+  function buildMqAtEntrySnapshot(openingSide, candles, latest, venue) {
+    try {
+      const slEst = estimateSlDistancePctForMoveQualityGate(state, latest, venue);
+      const mq = evaluateSupertrendMoveQuality({
+        candles,
+        latest,
+        openingSide,
+        slDistancePct: slEst,
+        options: supertrendMoveQualityEvalOptions(),
+      });
+      const d = mq.detail || {};
+      return {
+        mqScore: Number.isFinite(Number(mq.score)) ? Number(mq.score) : null,
+        mqVerdict: mq.verdict != null ? String(mq.verdict) : null,
+        adx: d.adx != null && Number.isFinite(Number(d.adx)) ? Number(d.adx) : null,
+        atrPct: d.atrPct != null && Number.isFinite(Number(d.atrPct)) ? Number(d.atrPct) : null,
+        atrExpand: d.atrExpansion != null && Number.isFinite(Number(d.atrExpansion)) ? Number(d.atrExpansion) : null,
+        bodyRatio: d.bodyRatio != null && Number.isFinite(Number(d.bodyRatio)) ? Number(d.bodyRatio) : null,
+        moveVsSL: d.moveToSlRatio != null && Number.isFinite(Number(d.moveToSlRatio)) ? Number(d.moveToSlRatio) : null,
+        expectedMovePct:
+          d.expectedMovePct != null && Number.isFinite(Number(d.expectedMovePct)) ? Number(d.expectedMovePct) : null,
+        slDistancePct:
+          d.slDistancePct != null && Number.isFinite(Number(d.slDistancePct)) ? Number(d.slDistancePct) : null,
+        directionalBody:
+          d.directionalBody != null && Number.isFinite(Number(d.directionalBody)) ? Number(d.directionalBody) : null,
+        volumeVsAvgRatio:
+          d.volumeVsAvgRatio != null && Number.isFinite(Number(d.volumeVsAvgRatio))
+            ? Number(d.volumeVsAvgRatio)
+            : null,
+      };
+    } catch (e) {
+      log?.warn?.("mq_at_entry_snapshot_failed", { error: String(e?.message || e) });
+      return null;
+    }
   }
 
   async function getCachedFunding(symbol) {
@@ -2047,6 +2214,27 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           expectedMoveShort: decisionSnapSpot?.expectedMoveShort ?? null,
         };
       }
+      const mqSpot = moveQualityBlocksOpen({
+        openingSide: "BUY",
+        candles,
+        latest: indicators.latest,
+        venue: "SPOT",
+      });
+      if (mqSpot) {
+        const mq = mqSpot.detail?.mq;
+        wsHub?.broadcast?.("log", {
+          level: "info",
+          msg: `Supertrend spot BUY skipped: move-quality gate — score ${mq?.score ?? "—"} verdict ${mq?.verdict ?? "—"}`,
+          symbol: orderSymbol,
+        });
+        return {
+          venue: "SPOT",
+          side,
+          action: "skipped",
+          reason: mqSpot.reason,
+          moveQuality: mq,
+        };
+      }
     }
 
     const { stopLoss, takeProfit } = spotBracketFromAtr({
@@ -2225,6 +2413,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         Number.isFinite(Number(state._supertrendLastBuySpendUsdt))
           ? Number(state._supertrendLastBuySpendUsdt)
           : undefined;
+      const mqAtEntrySpot = side === "BUY" ? buildMqAtEntrySnapshot("BUY", candles, indicators.latest, "SPOT") : null;
       const order = await spot.placeOrder({
         symbol: orderSymbol,
         side,
@@ -2240,6 +2429,13 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           indicatorFullCapital: Boolean(indicatorFullCapital),
           autoMultiUnpinned: Boolean(multiUnpinnedOrder),
           spendQuoteUsdt: spendMeta,
+          /** Candle open time (ms) for the Supertrend signal bar used to place this order. */
+          signalBarTs: Number.isFinite(Number(last?.ts)) ? Number(last.ts) : undefined,
+          signalBarCloseTs:
+            Number.isFinite(Number(last?.ts)) && String(state.timeframe || "").trim()
+              ? Number(last.ts) + binanceIntervalMs(state.timeframe)
+              : undefined,
+          ...(mqAtEntrySpot ? { mqAtEntry: mqAtEntrySpot } : {}),
         },
       });
       wsHub?.broadcast?.("log", {
@@ -2682,6 +2878,30 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       };
     }
 
+    if (openingSide === "BUY" || (openingSide === "SELL" && twoWay)) {
+      const mqFut = moveQualityBlocksOpen({
+        openingSide,
+        candles,
+        latest: indicators.latest,
+        venue: "FUTURES",
+      });
+      if (mqFut) {
+        const mq = mqFut.detail?.mq;
+        wsHub?.broadcast?.("log", {
+          level: "info",
+          msg: `Supertrend futures ${openingSide} skipped: move-quality gate — score ${mq?.score ?? "—"} verdict ${mq?.verdict ?? "—"} hard=${(mq?.hardFails || []).join(",") || "—"}`,
+          symbol: orderSymbol,
+        });
+        return {
+          venue: "FUTURES",
+          side,
+          action: "skipped",
+          reason: mqFut.reason,
+          moveQuality: mq,
+        };
+      }
+    }
+
     const aiMinCandles = Math.max(30, Number(process.env.AI_PREDICT_MIN_CANDLES || 30));
     let gateProb = NaN;
     if (barCloseAiGates && typeof barCloseAiGates === "object") {
@@ -3039,6 +3259,102 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           symbol: orderSymbol,
         });
       }
+
+      const tfMs = binanceIntervalMs(state.timeframe);
+      const barOpenMs = Number(last?.ts);
+      const expectedCloseWallMs =
+        Number.isFinite(barOpenMs) && barOpenMs > 0 && Number.isFinite(tfMs) && tfMs > 0
+          ? barOpenMs + tfMs
+          : NaN;
+      const signalLagMs = Number.isFinite(expectedCloseWallMs) ? Date.now() - expectedCloseWallMs : NaN;
+
+      const maxLagMs = Number(process.env.SUPERTREND_FUTURES_MAX_SIGNAL_LAG_MS ?? 0);
+      if (Number.isFinite(maxLagMs) && maxLagMs > 0 && Number.isFinite(signalLagMs) && signalLagMs > maxLagMs) {
+        wsHub?.broadcast?.("log", {
+          level: "warn",
+          msg: `Supertrend futures ${openingSide} skipped: bar-close→order delay ${Math.round(signalLagMs)} ms > SUPERTREND_FUTURES_MAX_SIGNAL_LAG_MS=${maxLagMs} (slow AI /predict or network; raise limit or fix AI service).`,
+          symbol: orderSymbol,
+        });
+        return { venue: "FUTURES", side, action: "skipped", reason: "stale_signal_lag", signalLagMs };
+      }
+
+      const slipPctRaw = Number(process.env.SUPERTREND_FUTURES_MAX_ENTRY_SLIPPAGE_PCT ?? 0);
+      const slipFrac = Number.isFinite(slipPctRaw) && slipPctRaw > 0 ? slipPctRaw / 100 : 0;
+      let openStyle = String(process.env.SUPERTREND_FUTURES_OPEN_STYLE || "MARKET").toUpperCase();
+      if (openStyle !== "MARKET" && openStyle !== "LIMIT_IOC") openStyle = "MARKET";
+
+      let bookTicker = null;
+      if (slipFrac > 0 || openStyle === "LIMIT_IOC") {
+        bookTicker = await fetchUsdMBookTicker(orderSymbol, runtimeTradingMode());
+      }
+
+      const requireBook = String(process.env.SUPERTREND_FUTURES_REQUIRE_BOOK_TICKER ?? "0") === "1";
+      if (requireBook && slipFrac > 0 && !bookTicker) {
+        wsHub?.broadcast?.("log", {
+          level: "warn",
+          msg: `Supertrend futures ${openingSide} skipped: public book ticker unavailable (SUPERTREND_FUTURES_REQUIRE_BOOK_TICKER=1)`,
+          symbol: orderSymbol,
+        });
+        return { venue: "FUTURES", side, action: "skipped", reason: "book_ticker_unavailable" };
+      }
+
+      if (bookTicker) {
+        log.info("supertrend_entry_microstructure", {
+          symbol: orderSymbol,
+          side: openingSide,
+          signalBarClose: pxEntryOpen,
+          bestBid: bookTicker.bidPrice,
+          bestAsk: bookTicker.askPrice,
+          signalLagMs: Number.isFinite(signalLagMs) ? Math.round(signalLagMs) : null,
+        });
+      } else if (slipFrac > 0 || openStyle === "LIMIT_IOC") {
+        log.warn("supertrend_book_ticker_unavailable", { symbol: orderSymbol });
+      }
+
+      if (slipFrac > 0 && bookTicker && Number.isFinite(pxEntryOpen) && pxEntryOpen > 0) {
+        const ref = pxEntryOpen;
+        if (openingSide === "BUY") {
+          const ask = Number(bookTicker.askPrice);
+          if (Number.isFinite(ask) && ask > ref * (1 + slipFrac)) {
+            wsHub?.broadcast?.("log", {
+              level: "warn",
+              msg: `Supertrend futures BUY skipped: best ask ${ask.toFixed(6)} > signal close ${ref.toFixed(6)} + ${slipPctRaw}% (would exceed slippage cap; widen SUPERTREND_FUTURES_MAX_ENTRY_SLIPPAGE_PCT or wait)`,
+              symbol: orderSymbol,
+            });
+            return { venue: "FUTURES", side, action: "skipped", reason: "entry_slippage_guard" };
+          }
+        } else {
+          const bid = Number(bookTicker.bidPrice);
+          if (Number.isFinite(bid) && bid < ref * (1 - slipFrac)) {
+            wsHub?.broadcast?.("log", {
+              level: "warn",
+              msg: `Supertrend futures SELL skipped: best bid ${bid.toFixed(6)} < signal close ${ref.toFixed(6)} − ${slipPctRaw}%`,
+              symbol: orderSymbol,
+            });
+            return { venue: "FUTURES", side, action: "skipped", reason: "entry_slippage_guard" };
+          }
+        }
+      }
+
+      let entryMetaExtra = {};
+      if (openStyle === "LIMIT_IOC") {
+        if (slipFrac <= 0) {
+          wsHub?.broadcast?.("log", {
+            level: "warn",
+            msg: "SUPERTREND_FUTURES_OPEN_STYLE=LIMIT_IOC requires SUPERTREND_FUTURES_MAX_ENTRY_SLIPPAGE_PCT > 0 — using MARKET",
+            symbol: orderSymbol,
+          });
+          openStyle = "MARKET";
+        } else if (Number.isFinite(pxEntryOpen) && pxEntryOpen > 0) {
+          entryMetaExtra =
+            openingSide === "BUY"
+              ? { entryOrderStyle: "LIMIT_IOC", entryLimitPrice: pxEntryOpen * (1 + slipFrac) }
+              : { entryOrderStyle: "LIMIT_IOC", entryLimitPrice: pxEntryOpen * (1 - slipFrac) };
+        }
+      }
+
+      const mqAtEntryFutures = buildMqAtEntrySnapshot(openingSide, candles, indicators.latest, "FUTURES");
+
       const order = await futuresEx.placeOrder({
         symbol: orderSymbol,
         side: openingSide,
@@ -3057,6 +3373,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           leverage: lev,
           autoMultiUnpinned: Boolean(multiUnpinnedOrder),
           autoTradeTrailing: Boolean(state.trailingStopLossAuto),
+          signalLagMs: Number.isFinite(signalLagMs) ? signalLagMs : undefined,
+          entryBookBestBid: bookTicker?.bidPrice,
+          entryBookBestAsk: bookTicker?.askPrice,
+          signalBarCloseForEntry: Number.isFinite(pxEntryOpen) && pxEntryOpen > 0 ? pxEntryOpen : undefined,
+          ...(mqAtEntryFutures ? { mqAtEntry: mqAtEntryFutures } : {}),
+          ...entryMetaExtra,
         },
       });
       const tpSlNote = !aiFilterOn ? "fixed SL/TP (no AI filter)" : "ATR+regime+AI";
@@ -3110,9 +3432,22 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           venue: "FUTURES",
           stopLoss,
           takeProfit,
+          /** Candle open time (ms) for the Supertrend signal bar used to place this order. */
+          signalBarTs: Number.isFinite(Number(last?.ts)) ? Number(last.ts) : undefined,
+          /** Candle close time (ms) ≈ when bar-close fires + order window; aligns UI with fill time on 1m+TF. */
+          signalBarCloseTs:
+            Number.isFinite(Number(last?.ts)) && String(state.timeframe || "").trim()
+              ? Number(last.ts) + binanceIntervalMs(state.timeframe)
+              : undefined,
           /** Closed-bar close used for sizing / SL-TP anchor (matches chart signal list “@” when WS is aligned). */
           signalBarClose: Number.isFinite(signalBarClose) && signalBarClose > 0 ? signalBarClose : undefined,
           avgFillPrice: Number.isFinite(fillPx) && fillPx > 0 ? fillPx : undefined,
+          signalLagMs: Number.isFinite(signalLagMs) ? signalLagMs : undefined,
+          entryBookBestBid: bookTicker?.bidPrice,
+          entryBookBestAsk: bookTicker?.askPrice,
+          entryOrderStyle: entryMetaExtra.entryOrderStyle,
+          entryLimitPrice: entryMetaExtra.entryLimitPrice,
+          ...(mqAtEntryFutures ? { mqAtEntry: mqAtEntryFutures } : {}),
         },
         source: "SUPERTREND",
       });
@@ -3308,10 +3643,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       strength: entry.strength,
       stAction: entry.stAction,
       surfPulse: entry.surfPulse != null && Number.isFinite(Number(entry.surfPulse)) ? Number(entry.surfPulse) : null,
+      ...(entry.mqScore != null && Number.isFinite(Number(entry.mqScore)) ? { mqScore: Number(entry.mqScore) } : {}),
+      ...(entry.mqVerdict != null && String(entry.mqVerdict).trim() ? { mqVerdict: String(entry.mqVerdict).trim() } : {}),
       ...(entry.signalBarClose != null &&
       Number.isFinite(Number(entry.signalBarClose)) &&
       Number(entry.signalBarClose) > 0
         ? { signalBarClose: Number(entry.signalBarClose) }
+        : {}),
+      ...(entry.signalBarCloseTs != null &&
+      Number.isFinite(Number(entry.signalBarCloseTs)) &&
+      Number(entry.signalBarCloseTs) > 0
+        ? { signalBarCloseTs: Number(entry.signalBarCloseTs) }
         : {}),
     });
     filt.sort((a, b) => Number(a.ts) - Number(b.ts));
@@ -3826,6 +4168,25 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       } catch {
         /* ignore */
       }
+      let moveQualityMulti = null;
+      try {
+        const sideMq = allowBuy ? "BUY" : "SELL";
+        const vEnMq = stFut ? "FUTURES" : "SPOT";
+        const indMq = computeIndicators(cr);
+        const slMq = estimateSlDistancePctForMoveQualityGate(state, indMq.latest, vEnMq);
+        moveQualityMulti = evaluateSupertrendMoveQuality({
+          candles: cr,
+          latest: indMq.latest,
+          openingSide: sideMq,
+          slDistancePct: slMq,
+          options: supertrendMoveQualityEvalOptions(),
+        });
+      } catch (e) {
+        log?.warn?.("supertrend_move_quality_auto_multi_history_failed", {
+          symbol: symU,
+          error: String(e?.message || e),
+        });
+      }
       const histSide = allowBuy ? "BUY" : "SELL";
       const ssHist = decisionSnapshotBar.signalStrength;
       const barAtFlip = Array.isArray(cr) ? cr.find((b) => Number(b?.ts) === Number(cTs)) : null;
@@ -3850,7 +4211,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
             ssHist?.strength != null && Number.isFinite(Number(ssHist.strength)) ? Number(ssHist.strength) : null,
           stAction: ssHist?.action != null ? String(ssHist.action) : null,
           surfPulse: surfPulseSweep,
+          ...(moveQualityMulti != null && Number.isFinite(Number(moveQualityMulti.score))
+            ? {
+                mqScore: Number(moveQualityMulti.score),
+                mqVerdict: moveQualityMulti.verdict != null ? String(moveQualityMulti.verdict) : null,
+              }
+            : {}),
           ...(signalBarCloseMulti != null ? { signalBarClose: signalBarCloseMulti } : {}),
+          signalBarCloseTs:
+            Number.isFinite(Number(cTs)) && String(state.timeframe || "").trim()
+              ? Number(cTs) + binanceIntervalMs(state.timeframe)
+              : undefined,
         },
         hubLocal,
       );
@@ -4112,6 +4483,22 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       },
     });
 
+    let moveQualityAtBar = null;
+    try {
+      const sidePv = allowBuy ? "BUY" : allowSell ? "SELL" : "BUY";
+      const vEn = stFut ? "FUTURES" : "SPOT";
+      const slP = estimateSlDistancePctForMoveQualityGate(state, indicatorsBarClose.latest, vEn);
+      moveQualityAtBar = evaluateSupertrendMoveQuality({
+        candles: rawCandles,
+        latest: indicatorsBarClose.latest,
+        openingSide: sidePv,
+        slDistancePct: slP,
+        options: supertrendMoveQualityEvalOptions(),
+      });
+    } catch (e) {
+      log?.warn?.("supertrend_move_quality_preview_failed", { error: String(e?.message || e) });
+    }
+
     const { aiGateBuy, aiGateSell } = await resolveSupertrendBarCloseAiGates(rawCandles);
 
     state.supertrendLastBarClose = {
@@ -4133,6 +4520,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       aiGateSell,
       expectedMoveLong: decisionSnapshotBar.expectedMoveLong ?? null,
       expectedMoveShort: decisionSnapshotBar.expectedMoveShort ?? null,
+      /** ATR/ADX/body/expansion composite — always computed for UI; gate uses `supertrendMoveQualityGate`. */
+      moveQuality: moveQualityAtBar,
     };
 
     if (wsHubRef) {
@@ -4154,6 +4543,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           : idxC >= 0 && clean[idxC] && Number.isFinite(Number(clean[idxC].close)) && Number(clean[idxC].close) > 0
             ? Number(clean[idxC].close)
             : null;
+      const signalBarCloseTs =
+        Number.isFinite(Number(row.ts)) && String(state.timeframe || "").trim()
+          ? Number(row.ts) + binanceIntervalMs(state.timeframe)
+          : null;
       const entry = {
         ts: Number(row.ts),
         side,
@@ -4169,7 +4562,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         strength: ss?.strength != null && Number.isFinite(Number(ss.strength)) ? Number(ss.strength) : null,
         stAction: ss?.action != null ? String(ss.action) : null,
         surfPulse: surfPulseHist,
+        ...(moveQualityAtBar != null && Number.isFinite(Number(moveQualityAtBar.score))
+          ? {
+              mqScore: Number(moveQualityAtBar.score),
+              mqVerdict: moveQualityAtBar.verdict != null ? String(moveQualityAtBar.verdict) : null,
+            }
+          : {}),
         ...(signalBarClose != null ? { signalBarClose } : {}),
+        ...(signalBarCloseTs != null ? { signalBarCloseTs } : {}),
       };
       appendSupertrendSignalHistoryEntry(entry, cfgPersistenceSlug);
       const prev = Array.isArray(state.supertrendSignalHistory) ? state.supertrendSignalHistory : [];
@@ -4193,10 +4593,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         strength: entry.strength,
         stAction: entry.stAction,
         surfPulse: entry.surfPulse != null && Number.isFinite(Number(entry.surfPulse)) ? Number(entry.surfPulse) : null,
+        ...(entry.mqScore != null && Number.isFinite(Number(entry.mqScore)) ? { mqScore: Number(entry.mqScore) } : {}),
+        ...(entry.mqVerdict != null && String(entry.mqVerdict).trim() ? { mqVerdict: String(entry.mqVerdict).trim() } : {}),
         ...(entry.signalBarClose != null &&
         Number.isFinite(Number(entry.signalBarClose)) &&
         Number(entry.signalBarClose) > 0
           ? { signalBarClose: Number(entry.signalBarClose) }
+          : {}),
+        ...(entry.signalBarCloseTs != null &&
+        Number.isFinite(Number(entry.signalBarCloseTs)) &&
+        Number(entry.signalBarCloseTs) > 0
+          ? { signalBarCloseTs: Number(entry.signalBarCloseTs) }
           : {}),
       });
       filt.sort((a, b) => Number(a.ts) - Number(b.ts));
@@ -4209,6 +4616,147 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           ...getPublicState(),
         });
       }
+    }
+
+    /** Next-bar breakout: close beyond signal candle high (BUY) or low (SELL). Primary chart only. */
+    async function tryConsumeSupertrendBreakoutFromPending() {
+      const pend = state.pendingSupertrendBreakout;
+      if (!pend) return { handled: false };
+      if (String(pend.symbol || "").toUpperCase() !== String(state.symbol).toUpperCase()) {
+        state.pendingSupertrendBreakout = null;
+        return { handled: false };
+      }
+      if (pend.stSpot !== stSpot || pend.stFut !== stFut) {
+        state.pendingSupertrendBreakout = null;
+        return { handled: false };
+      }
+      if (!Number.isFinite(cTs) || cTs <= Number(pend.signalBarTs)) return { handled: false };
+      if (!state.running) {
+        state.pendingSupertrendBreakout = null;
+        return { handled: false };
+      }
+      if (state.feedExecutionPause) return { handled: false };
+      const hub = wsHubRef;
+      if (!hub) return { handled: false };
+
+      const confCl = Number(strengthBar?.close);
+      const sigHi = Number(pend.signalHigh);
+      const sigLo = Number(pend.signalLow);
+      let crossed = false;
+      if (pend.side === "BUY" && Number.isFinite(confCl) && Number.isFinite(sigHi) && confCl > sigHi) crossed = true;
+      if (pend.side === "SELL" && Number.isFinite(confCl) && Number.isFinite(sigLo) && confCl < sigLo) crossed = true;
+
+      if (!crossed) {
+        pend.barsWaited = (pend.barsWaited || 0) + 1;
+        if (pend.barsWaited >= pend.maxBars) {
+          state.pendingSupertrendBreakout = null;
+          emitSignalActionActivity(hub, {
+            kind: "supertrend",
+            strategyKey: "SUPERTREND",
+            venue: pend.stSpot ? "SPOT" : pend.stFut ? "FUTURES" : "—",
+            side: pend.side,
+            action: "skipped",
+            reason: "breakout_confirm_timeout",
+            supertrendStrength01: supertrendStrength01 ?? undefined,
+          });
+        }
+        return { handled: false };
+      }
+
+      state.pendingSupertrendBreakout = null;
+
+      const symT = String(state.symbol || "").trim().toUpperCase();
+      if (idxC > 0 && symT) {
+        const prevB = clean[idxC - 1];
+        const curB = clean[idxC];
+        const prevC = Number(prevB?.close);
+        const clb = Number(curB?.close);
+        const lo = Number(curB?.low);
+        if (
+          Number.isFinite(prevC) &&
+          prevC > 0 &&
+          Number.isFinite(clb) &&
+          !isPlausibleCandleClose(symT, clb, lo, prevC)
+        ) {
+          emitSignalActionActivity(hub, {
+            kind: "supertrend",
+            strategyKey: "SUPERTREND",
+            venue: pend.stSpot ? "SPOT" : pend.stFut ? "FUTURES" : "—",
+            side: pend.side,
+            action: "skipped",
+            reason: "implausible_close_step_vs_prior_sanitized_bar",
+            supertrendStrength01: supertrendStrength01 ?? undefined,
+          });
+          return { handled: true };
+        }
+      }
+
+      const barCloseCandlesSnapshot = rawCandles.map((c) => (c && typeof c === "object" ? { ...c } : c));
+      const anchorTs = Number(pend.signalBarTs);
+
+      if (pend.side === "BUY" && pend.stSpot) {
+        const buyRes = await trySupertrendSpotOrder({
+          side: "BUY",
+          strategyKey: "SUPERTREND",
+          wsHub: hub,
+          indicatorFullCapital: true,
+          dedupeKey: `${anchorTs}:BUY`,
+          decisionSnapshot: decisionSnapshotBar,
+          candlesOverride: barCloseCandlesSnapshot,
+          anchorBarTs: anchorTs,
+        });
+        emitSupertrendSignalFeedback(hub, { ...buyRes, signalStrength: supertrendStrength01 ?? undefined });
+        if (buyRes?.action === "placed") await pushImmediateState(hub);
+      } else if (pend.side === "BUY" && pend.stFut) {
+        const buyRes = await trySupertrendFuturesOrder({
+          side: "BUY",
+          strategyKey: "SUPERTREND",
+          wsHub: hub,
+          dedupeKey: `${anchorTs}:FUT:BUY`,
+          signalStrength: supertrendStrength01,
+          decisionSnapshot: decisionSnapshotBar,
+          candlesOverride: barCloseCandlesSnapshot,
+          anchorBarTs: anchorTs,
+          barCloseAiGates: { aiGateBuy, aiGateSell },
+        });
+        emitSupertrendSignalFeedback(hub, { ...buyRes, signalStrength: supertrendStrength01 ?? undefined });
+        if (buyRes?.action === "placed") await pushImmediateState(hub);
+      } else if (pend.side === "SELL" && pend.stSpot) {
+        const sellRes = await trySupertrendSpotOrder({
+          side: "SELL",
+          strategyKey: "SUPERTREND",
+          wsHub: hub,
+          indicatorFullCapital: true,
+          dedupeKey: `${anchorTs}:SELL`,
+          decisionSnapshot: decisionSnapshotBar,
+          candlesOverride: barCloseCandlesSnapshot,
+          anchorBarTs: anchorTs,
+        });
+        emitSupertrendSignalFeedback(hub, { ...sellRes, signalStrength: supertrendStrength01 ?? undefined });
+        if (sellRes?.action === "placed") await pushImmediateState(hub);
+      } else if (pend.side === "SELL" && pend.stFut) {
+        const sellRes = await trySupertrendFuturesOrder({
+          side: "SELL",
+          strategyKey: "SUPERTREND",
+          wsHub: hub,
+          dedupeKey: `${anchorTs}:FUT:SELL`,
+          signalStrength: supertrendStrength01,
+          decisionSnapshot: decisionSnapshotBar,
+          candlesOverride: barCloseCandlesSnapshot,
+          anchorBarTs: anchorTs,
+          barCloseAiGates: { aiGateBuy, aiGateSell },
+        });
+        emitSupertrendSignalFeedback(hub, { ...sellRes, signalStrength: supertrendStrength01 ?? undefined });
+        if (sellRes?.action === "placed") await pushImmediateState(hub);
+      }
+
+      return { handled: true };
+    }
+
+    const breakoutBar = await tryConsumeSupertrendBreakoutFromPending();
+    if (breakoutBar?.handled) {
+      state.supertrendStHandledCloseKey = barCloseKey;
+      return;
     }
 
     if (!(row.buySignal || row.sellSignal)) return;
@@ -4319,6 +4867,35 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
 
     state.supertrendStHandledCloseKey = barCloseKey;
+
+    if (!state.supertrendBreakoutConfirm) {
+      state.pendingSupertrendBreakout = null;
+    } else if (allowBuy || allowSell) {
+      state.pendingSupertrendBreakout = {
+        symbol: String(state.symbol).toUpperCase(),
+        side: allowBuy ? "BUY" : "SELL",
+        signalBarTs: cTs,
+        signalHigh: Number(strengthBar?.high),
+        signalLow: Number(strengthBar?.low),
+        stSpot,
+        stFut,
+        barsWaited: 0,
+        maxBars: Math.max(1, Math.min(20, Math.floor(Number(state.supertrendBreakoutMaxBars ?? 5)))),
+      };
+      await flushSupertrendFlipSignalHistoryIfNeeded();
+      if (wsHubRef) {
+        emitSignalActionActivity(wsHubRef, {
+          kind: "supertrend",
+          strategyKey: "SUPERTREND",
+          venue: stSpot ? "SPOT" : stFut ? "FUTURES" : "—",
+          side: allowBuy ? "BUY" : "SELL",
+          action: "pending",
+          reason: "breakout_confirm_wait_next_close",
+          supertrendStrength01: supertrendStrength01 ?? undefined,
+        });
+      }
+      return;
+    }
 
     /**
      * `rawCandles` was captured at handler entry (with the closed bar as tail). After `await` work (AI gates,
@@ -5380,6 +5957,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       supertrendFuturesAuto: state.supertrendFuturesAuto,
       supertrendFuturesAiConfidenceFilter: state.supertrendFuturesAiConfidenceFilter,
       signalStrengthGatesTrades: state.signalStrengthGatesTrades === true,
+      supertrendMoveQualityGate: state.supertrendMoveQualityGate === true,
+      supertrendMoveQualityMinScore: clamp(Number(state.supertrendMoveQualityMinScore ?? 0.6), 0, 1),
+      supertrendMoveQualityMinAdx: clamp(Math.round(Number(state.supertrendMoveQualityMinAdx ?? 23)), 0, 100),
+      supertrendMoveQualityMinMoveSlRatio: Math.max(1, Number(state.supertrendMoveQualityMinMoveSlRatio ?? 1.5)),
+      supertrendMoveQualityExpectedMoveAtrMult: Math.max(0.1, Number(state.supertrendMoveQualityExpectedMoveAtrMult ?? 1.0)),
+      supertrendMoveQualityMinAtrExpansion: Math.max(0, Number(state.supertrendMoveQualityMinAtrExpansion ?? 1.08)),
+      supertrendMoveQualityMinBodyVsAvg: clamp(Number(state.supertrendMoveQualityMinBodyVsAvg ?? 0.62), 0.15, 1),
+      supertrendMoveQualityMinDirectionalBody: clamp(Number(state.supertrendMoveQualityMinDirectionalBody ?? 0), 0, 1),
+      supertrendMoveQualityMinVolumeVsAvg: Math.max(0, Number(state.supertrendMoveQualityMinVolumeVsAvg ?? 0)),
+      supertrendBreakoutConfirm: state.supertrendBreakoutConfirm === true,
+      supertrendBreakoutMaxBars: Math.max(1, Math.min(20, Math.floor(Number(state.supertrendBreakoutMaxBars ?? 5)))),
       signalStrengthOpenMin: clamp(Math.round(Number(state.signalStrengthOpenMin ?? 65)), 0, 100),
       smartSignalStrengthThreshold:
         state.smartSignalStrengthThreshold != null && Number.isFinite(Number(state.smartSignalStrengthThreshold))
@@ -5416,6 +6004,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         : [],
       decisionEngine: state.decisionEngine,
       pendingSupertrendAction: state.pendingSupertrendAction,
+      pendingSupertrendBreakout: state.pendingSupertrendBreakout,
       pendingAutoRestartAfterFeedStale: state.pendingAutoRestartAfterFeedStale,
       feedExecutionPause: state.feedExecutionPause,
       lastStopReason: state.lastStopReason,
@@ -5471,10 +6060,40 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       if (ingestedCloseBroadcastKeys.size > 12_000) {
         ingestedCloseBroadcastKeys = new Set([...ingestedCloseBroadcastKeys].slice(-6000));
       }
-      broadcastTrade(wsHub, enrichCloseTradeForHistory({ ...t }));
+      const enrichedClose = enrichCloseTradeForHistory({ ...t });
+      broadcastTrade(wsHub, enrichedClose);
 
       if (isIncomeLedgerClose(t)) {
         continue;
+      }
+
+      if (
+        enrichedClose?.meta?.mqAtEntry &&
+        typeof enrichedClose.meta.mqAtEntry === "object" &&
+        String(enrichedClose.strategy || "").toUpperCase() === "SUPERTREND"
+      ) {
+        try {
+          const mq = enrichedClose.meta.mqAtEntry;
+          appendMqTradeOutcomeRow(
+            {
+              symbol: enrichedClose.symbol,
+              venue: enrichedClose.meta?.venue ?? null,
+              openSide: enrichedClose.meta?.positionSideAtClose ?? null,
+              entryBarTs: enrichedClose.meta?.signalBarTs ?? null,
+              closeTs: enrichedClose.ts,
+              ...mq,
+              outcome: enrichedClose.meta?.outcome ?? null,
+              pnlPct: enrichedClose.meta?.pnlPct ?? null,
+              pnl: Number(enrichedClose.pnl),
+              mfe: null,
+              mae: null,
+              closeReason: enrichedClose.reason ?? enrichedClose.meta?.closeReason ?? null,
+            },
+            cfgPersistenceSlug,
+          );
+        } catch (e) {
+          log?.warn?.("mq_trade_outcome_log_failed", { error: String(e?.message || e) });
+        }
       }
 
       closedSinceRetrain += 1;
@@ -5684,21 +6303,22 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         positions: positionsMtM,
       });
 
+      let mergedTrades;
       if (strict && account == null) {
-        wsHub.broadcast("trades_snapshot", { replace: true, trades: [], mode: runtimeTradingMode() });
+        mergedTrades = mergePersistedTradesWithExchange(runtimeTradingMode(), []);
       } else {
         const recentTrades = await exch.getTrades().catch(() => []);
-        const mergedTrades = filterStrictPortfolioTradesAfterMerge(
+        mergedTrades = filterStrictPortfolioTradesAfterMerge(
           runtimeTradingMode(),
           mergeTradesById(readTradeWsEvents(400), recentTrades || [])
         );
-        const cap = Math.min(500, TRADE_HISTORY_SNAPSHOT_MAX);
-        wsHub.broadcast("trades_snapshot", {
-          replace: true,
-          trades: mergedTrades.slice(-cap),
-          mode: runtimeTradingMode(),
-        });
       }
+      const cap = Math.min(500, TRADE_HISTORY_SNAPSHOT_MAX);
+      wsHub.broadcast("trades_snapshot", {
+        replace: true,
+        trades: mergedTrades.slice(-cap),
+        mode: runtimeTradingMode(),
+      });
     } catch {
       /* ignore */
     }
@@ -7251,6 +7871,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       state.supertrendLastFlipBarClose = null;
       state.supertrendSignalHistory = [];
       state.pendingSupertrendAction = null;
+      state.pendingSupertrendBreakout = null;
       state._pendingSupertrendFlushOnNextTick = false;
       state.pendingAutoRestartAfterFeedStale = false;
       try {
@@ -7317,6 +7938,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         state.supertrendLastFlipBarClose = null;
         state.supertrendSignalHistory = [];
         state.pendingSupertrendAction = null;
+        state.pendingSupertrendBreakout = null;
         state._pendingSupertrendFlushOnNextTick = false;
         state.pendingAutoRestartAfterFeedStale = false;
         try {
@@ -7347,6 +7969,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           state.supertrendLastFlipBarClose = null;
           state.supertrendSignalHistory = [];
           state.pendingSupertrendAction = null;
+          state.pendingSupertrendBreakout = null;
           state._pendingSupertrendFlushOnNextTick = false;
           state.pendingAutoRestartAfterFeedStale = false;
           try {
@@ -7366,6 +7989,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       state.supertrendLastFlipBarClose = null;
       state.supertrendSignalHistory = [];
       state.pendingSupertrendAction = null;
+      state.pendingSupertrendBreakout = null;
       state._pendingSupertrendFlushOnNextTick = false;
       state.pendingAutoRestartAfterFeedStale = false;
     }
@@ -7458,6 +8082,38 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
     if (patch.signalStrengthGatesTrades != null) {
       state.signalStrengthGatesTrades = Boolean(patch.signalStrengthGatesTrades);
+    }
+    if (patch.supertrendMoveQualityGate != null) state.supertrendMoveQualityGate = Boolean(patch.supertrendMoveQualityGate);
+    if (patch.supertrendMoveQualityMinScore != null && Number.isFinite(Number(patch.supertrendMoveQualityMinScore))) {
+      state.supertrendMoveQualityMinScore = clamp(Number(patch.supertrendMoveQualityMinScore), 0, 1);
+    }
+    if (patch.supertrendMoveQualityMinAdx != null && Number.isFinite(Number(patch.supertrendMoveQualityMinAdx))) {
+      state.supertrendMoveQualityMinAdx = clamp(Math.round(Number(patch.supertrendMoveQualityMinAdx)), 0, 100);
+    }
+    if (patch.supertrendMoveQualityMinMoveSlRatio != null && Number.isFinite(Number(patch.supertrendMoveQualityMinMoveSlRatio))) {
+      state.supertrendMoveQualityMinMoveSlRatio = Math.max(1, Number(patch.supertrendMoveQualityMinMoveSlRatio));
+    }
+    if (patch.supertrendMoveQualityExpectedMoveAtrMult != null && Number.isFinite(Number(patch.supertrendMoveQualityExpectedMoveAtrMult))) {
+      state.supertrendMoveQualityExpectedMoveAtrMult = Math.max(0.1, Number(patch.supertrendMoveQualityExpectedMoveAtrMult));
+    }
+    if (patch.supertrendMoveQualityMinAtrExpansion != null && Number.isFinite(Number(patch.supertrendMoveQualityMinAtrExpansion))) {
+      state.supertrendMoveQualityMinAtrExpansion = Math.max(0, Number(patch.supertrendMoveQualityMinAtrExpansion));
+    }
+    if (patch.supertrendMoveQualityMinBodyVsAvg != null && Number.isFinite(Number(patch.supertrendMoveQualityMinBodyVsAvg))) {
+      state.supertrendMoveQualityMinBodyVsAvg = clamp(Number(patch.supertrendMoveQualityMinBodyVsAvg), 0.15, 1);
+    }
+    if (patch.supertrendMoveQualityMinDirectionalBody != null && Number.isFinite(Number(patch.supertrendMoveQualityMinDirectionalBody))) {
+      state.supertrendMoveQualityMinDirectionalBody = clamp(Number(patch.supertrendMoveQualityMinDirectionalBody), 0, 1);
+    }
+    if (patch.supertrendMoveQualityMinVolumeVsAvg != null && Number.isFinite(Number(patch.supertrendMoveQualityMinVolumeVsAvg))) {
+      state.supertrendMoveQualityMinVolumeVsAvg = Math.max(0, Number(patch.supertrendMoveQualityMinVolumeVsAvg));
+    }
+    if (patch.supertrendBreakoutConfirm != null) {
+      state.supertrendBreakoutConfirm = Boolean(patch.supertrendBreakoutConfirm);
+      if (!state.supertrendBreakoutConfirm) state.pendingSupertrendBreakout = null;
+    }
+    if (patch.supertrendBreakoutMaxBars != null && Number.isFinite(Number(patch.supertrendBreakoutMaxBars))) {
+      state.supertrendBreakoutMaxBars = Math.max(1, Math.min(20, Math.floor(Number(patch.supertrendBreakoutMaxBars))));
     }
     if (patch.signalStrengthOpenMin != null && Number.isFinite(Number(patch.signalStrengthOpenMin))) {
       state.signalStrengthOpenMin = clamp(Math.round(Number(patch.signalStrengthOpenMin)), 0, 100);

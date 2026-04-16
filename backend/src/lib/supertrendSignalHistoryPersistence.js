@@ -59,6 +59,12 @@ function cleanRow(e) {
     e.signalBarClose != null && Number.isFinite(Number(e.signalBarClose)) && Number(e.signalBarClose) > 0
       ? Number(e.signalBarClose)
       : null;
+  const sbct =
+    e.signalBarCloseTs != null && Number.isFinite(Number(e.signalBarCloseTs)) && Number(e.signalBarCloseTs) > 0
+      ? Number(e.signalBarCloseTs)
+      : null;
+  const mqS = e.mqScore != null && Number.isFinite(Number(e.mqScore)) ? Number(e.mqScore) : null;
+  const mqV = e.mqVerdict != null && String(e.mqVerdict).trim() ? String(e.mqVerdict).trim() : null;
   return {
     ts: Number(e.ts),
     side: e.side,
@@ -68,7 +74,10 @@ function cleanRow(e) {
     strength: e.strength != null && Number.isFinite(Number(e.strength)) ? Number(e.strength) : null,
     stAction: e.stAction != null ? String(e.stAction) : null,
     surfPulse: surf,
+    ...(mqS != null ? { mqScore: mqS } : {}),
+    ...(mqV != null ? { mqVerdict: mqV } : {}),
     ...(sbc != null ? { signalBarClose: sbc } : {}),
+    ...(sbct != null ? { signalBarCloseTs: sbct } : {}),
   };
 }
 

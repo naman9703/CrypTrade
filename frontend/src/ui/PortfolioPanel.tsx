@@ -35,6 +35,22 @@ function isLedgerClose(t: any): boolean {
 }
 
 function tradeTsMs(t: any): number {
+  // Prefer bar *close* time for Supertrend OPEN rows so portfolio time matches the bar-close order window
+  // (signalBarTs is candle *open*; fills happen after close + network/exchange delay).
+  if (t?.type === "OPEN") {
+    const sbClose = Number(
+      t?.meta?.signalBarCloseTs ?? t?.meta?.signalBarCloseTsMs ?? t?.meta?.signalBarCloseTsSec,
+    );
+    if (Number.isFinite(sbClose) && sbClose > 0) {
+      const msClose = sbClose > 1e12 ? sbClose : sbClose > 1e9 ? sbClose * 1000 : sbClose;
+      if (Number.isFinite(msClose) && msClose > 0) return msClose;
+    }
+    const sb = Number(t?.meta?.signalBarTs ?? t?.meta?.signalBarTsMs ?? t?.meta?.signalBarTsSec);
+    if (Number.isFinite(sb) && sb > 0) {
+      const ms = sb > 1e12 ? sb : sb > 1e9 ? sb * 1000 : sb; // ms vs sec (defensive)
+      if (Number.isFinite(ms) && ms > 0) return ms;
+    }
+  }
   const ts = t?.ts;
   if (ts == null) return 0;
   const ms = new Date(String(ts)).getTime();
@@ -978,11 +994,11 @@ export function PortfolioPanel() {
 
   const strictAccountMissing =
     (mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET") && account === null;
-  /** Testnet/mainnet: do not show local/audit trade rows until Binance account snapshot loads. */
+  /** Server merges persisted audit + exchange; show rows even while account snapshot is loading. */
   const portfolioTrades = useMemo(() => {
-    const raw = strictAccountMissing ? [] : trades || [];
+    const raw = trades || [];
     return mergeTradesByOrderIdAndType(raw);
-  }, [strictAccountMissing, trades]);
+  }, [trades]);
 
   const [tradeHistoryView, setTradeHistoryView] = useState<"ALL" | "OPEN_ONLY" | "CLOSED_ONLY">("ALL");
   const [tradeHistorySort, setTradeHistorySort] = useState<TradeHistorySort>("RECENT");

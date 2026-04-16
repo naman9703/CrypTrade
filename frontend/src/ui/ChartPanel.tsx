@@ -10,8 +10,9 @@ import {
 import { api } from "../api/client";
 import { buildOhlc, isOhlcBarRenderable, ohlcBarsToMsCandles, type OhlcBar } from "../lib/chartOhlc";
 import { isPlausibleCandleClose } from "../lib/symbolPriceSanity";
+import { CLIENT_SUPERTREND_CHIME_EVENT, type ClientSupertrendChimeDetail } from "../lib/clientActivityEvents";
 import { playSupertrendBuySound, playSupertrendSellSound } from "../lib/uiSounds";
-import { buildChartSupertrend } from "../lib/supertrend";
+import { binanceIntervalMs, buildChartSupertrend } from "../lib/supertrend";
 import {
   advanceTrailingStopState,
   buildTrailLockPrices,
@@ -43,8 +44,17 @@ const CHART_MARKER_DISPLAY_CAP = 40;
 /** Max rows in the “signals” list under the chart (newest first). */
 const SUPERTREND_SIGNAL_LIST_MAX = 50;
 
-/** Background REST sync for candles (does not remount chart; restores visible range). */
-const CHART_BACKGROUND_SYNC_MS = 60_000;
+/**
+ * REST reconcile for candles (does not remount chart; restores visible range).
+ * Primary pair is driven by WS `market` pushes — this only backfills if WS lags and refreshes
+ * alt-symbol tiles that poll `/api/market/candles`. Default 15s (was 60s) to cut visible 1–2m drift;
+ * set `VITE_CHART_REST_RECONCILE_MS` (ms), clamped 5000–120000.
+ */
+const CHART_BACKGROUND_SYNC_MS = (() => {
+  const raw = Number(import.meta.env.VITE_CHART_REST_RECONCILE_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return 15_000;
+  return Math.min(120_000, Math.max(5_000, Math.floor(raw)));
+})();
 
 function normalizeSymTf(s: string | undefined) {
   return String(s ?? "").trim();
@@ -135,6 +145,11 @@ type SupertrendSignalHistRow = {
   surfPulse?: number | null;
   /** Server: closed-bar OHLC close at signal (preferred over chart OHLC lookup). */
   signalBarClose?: number | null;
+  /** Server: ms when the signal candle closes (open + interval); aligns list time with order/fill window. */
+  signalBarCloseTs?: number | null;
+  /** Move-quality composite score (0–1) and PASS | BORDER | WEAK. */
+  mqScore?: number | null;
+  mqVerdict?: string | null;
 };
 
 /** On-chart marker (compact; full text also in list under chart). */
@@ -152,12 +167,14 @@ function formatSupertrendSignalMarkerText(
     const ss = h.strength != null && Number.isFinite(Number(h.strength)) ? String(Math.round(Number(h.strength))) : "—";
     const sp =
       h.surfPulse != null && Number.isFinite(Number(h.surfPulse)) ? Number(h.surfPulse).toFixed(2) : "—";
+    const mq =
+      h.mqScore != null && Number.isFinite(Number(h.mqScore)) ? Number(h.mqScore).toFixed(2) : "—";
     let act = "·";
     if (h.stAction === "TRADE") act = "T";
     else if (h.stAction === "WAIT") act = "W";
     else if (h.stAction === "SKIP") act = "K";
     const tag = m.side === "buy" ? "BUY" : "SELL";
-    return `${m.side === "buy" ? "▲" : "▼"}${pair}${tag} AI${ai} SS${ss} SP${sp} ${act}`;
+    return `${m.side === "buy" ? "▲" : "▼"}${pair}${tag} AI${ai} SS${ss} SP${sp} MQ${mq} ${act}`;
   }
   return m.side === "buy" ? "ST buy" : "ST sell";
 }
@@ -878,7 +895,16 @@ export function ChartPanel() {
     stSigSoundPrevKeyRef.current = key;
     if (last.side === "buy") playSupertrendBuySound();
     else playSupertrendSellSound();
-  }, [safeMarkers, supertrendSoundCtx]);
+    const symCh = normalizeSymTf(effectiveSym) || "";
+    const tfCh = normalizeSymTf(bot?.timeframe) || "";
+    const detail: ClientSupertrendChimeDetail = {
+      side: last.side,
+      barTimeSec: Number(last.time),
+      symbol: symCh,
+      timeframe: tfCh,
+    };
+    window.dispatchEvent(new CustomEvent(CLIENT_SUPERTREND_CHIME_EVENT, { detail }));
+  }, [safeMarkers, supertrendSoundCtx, effectiveSym, bot?.timeframe]);
 
   const alignedStLine = useMemo((): { time: UTCTimestamp; value: number }[] => {
     return chartSupertrend.linePoints.map((p) => ({
@@ -2382,7 +2408,7 @@ export function ChartPanel() {
                   ? `Last ${SUPERTREND_SIGNAL_LIST_MAX} of ${supertrendSignalHistoryNewestFirst.length} signals`
                   : `${supertrendSignalHistoryListRows.length} signal${supertrendSignalHistoryListRows.length === 1 ? "" : "s"}`}{" "}
                 <span className="normal-case text-slate-500">
-                  ({normalizeSymTf(effectiveSym) || "—"} · newest first · scores match markers, times {CHART_TIMEZONE})
+                  ({normalizeSymTf(effectiveSym) || "—"} · newest first · AI/SS/SP/MQ = gates & move-quality; times {CHART_TIMEZONE})
                 </span>
               </div>
               <div
@@ -2411,11 +2437,19 @@ export function ChartPanel() {
                   h.strength != null && Number.isFinite(Number(h.strength)) ? String(Math.round(Number(h.strength))) : "—";
                 const sp =
                   h.surfPulse != null && Number.isFinite(Number(h.surfPulse)) ? Number(h.surfPulse).toFixed(2) : "—";
+                const mq =
+                  h.mqScore != null && Number.isFinite(Number(h.mqScore)) ? Number(h.mqScore).toFixed(2) : "—";
+                const mqV = h.mqVerdict != null && String(h.mqVerdict).trim() ? String(h.mqVerdict).trim() : "—";
                 const act = h.stAction != null ? String(h.stAction) : "—";
                 const nAll = supertrendSignalHistoryNewestFirst.length;
                 const chronoIdx = nAll - 1 - i;
                 const verdict = supertrendSignalVerdictsChrono[chronoIdx];
                 const sec = Math.floor(Number(h.ts) / 1000);
+                const displayTs =
+                  h.signalBarCloseTs != null && Number.isFinite(Number(h.signalBarCloseTs)) && Number(h.signalBarCloseTs) > 0
+                    ? Number(h.signalBarCloseTs)
+                    : Number(h.ts) +
+                      binanceIntervalMs(String(h.timeframe || bot?.timeframe || "1m"));
                 const fromServer =
                   h.signalBarClose != null &&
                   Number.isFinite(Number(h.signalBarClose)) &&
@@ -2449,13 +2483,25 @@ export function ChartPanel() {
                         : "border-l-2 border-rose-500/60 pl-2 text-rose-100/95"
                     }
                   >
-                    <span className="text-slate-600 dark:text-slate-500">{formatHistTimeIst(h.ts)}</span>{" "}
+                    <span
+                      className="text-slate-600 dark:text-slate-500"
+                      title="Bar close (order window); was bar open — aligns with execution on 1m+ TF"
+                    >
+                      {formatHistTimeIst(displayTs)}
+                    </span>{" "}
                     <span className="font-mono text-[10px] font-semibold text-slate-700 dark:text-slate-300">{pair}</span>{" "}
                     <span className="font-semibold">{h.side}</span>
                     <span className="text-slate-600 dark:text-slate-400"> · @ {entryStr}</span>
                     <span className="text-slate-600 dark:text-slate-400"> · AI {ai}</span>
                     <span className="text-slate-600 dark:text-slate-400"> · SS {ss}</span>
                     <span className="text-slate-600 dark:text-slate-400"> · SP {sp}</span>
+                    <span
+                      className="text-slate-600 dark:text-slate-400"
+                      title="Move quality: ATR vs SL, ADX, body vs avg, ATR expansion — composite 0–1 + PASS/BORDER/WEAK"
+                    >
+                      {" "}
+                      · MQ {mq} {mqV !== "—" ? `(${mqV})` : ""}
+                    </span>
                     <span className="text-slate-600 dark:text-slate-500"> · {act}</span>
                     <span className={`font-medium ${vCls}`}> · {vLabel}</span>
                   </li>

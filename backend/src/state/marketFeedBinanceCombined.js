@@ -265,6 +265,7 @@ export function createBinanceCombinedMarketFeed({
       if (!inner) return;
       const k = inner?.k;
       if (!k) return;
+      /** Binance kline `k.x === true` means the interval is final; Supertrend / bar-close logic must not run on partial bars. */
       const closed = Boolean(k.x);
       const candleRaw = {
         ts: Number(k.t),

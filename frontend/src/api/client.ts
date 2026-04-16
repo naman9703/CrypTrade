@@ -164,6 +164,49 @@ export const api = {
     }
     return data;
   },
+  /** Suggest / apply Move Quality thresholds from `mq-trade-outcomes.jsonl` for the current mode. */
+  async botTuneMoveQuality(opts?: {
+    mode?: string;
+    apply?: boolean;
+    minTrades?: number;
+    winPercentileFloor?: number;
+  }) {
+    const res = await apiFetch(`${HTTP}/api/bot/tune-move-quality`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(opts ?? {}),
+    });
+    const txt = await res.text();
+    let data: any = null;
+    try {
+      data = txt ? JSON.parse(txt) : null;
+    } catch {
+      data = null;
+    }
+    if (res.ok && data?.ok && data.bot && typeof data.bot === "object") {
+      const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
+      const { useAppStore } = await import("../ws/store");
+      tradingUiPersistBotSnapshot(
+        useAppStore.getState().mode,
+        data.bot as Record<string, unknown>,
+        useAppStore.getState().authUiUserTag ?? null,
+      );
+      useAppStore.setState((s) => ({
+        bot:
+          s.bot && typeof s.bot === "object"
+            ? { ...s.bot, ...data.bot }
+            : data.bot,
+      }));
+    }
+    if (!res.ok) {
+      const msg =
+        (typeof data?.message === "string" && data.message) ||
+        (typeof data?.error === "string" && data.error) ||
+        `http_${res.status}`;
+      throw new Error(String(msg));
+    }
+    return data ?? {};
+  },
   async manualTrade(payload: { side: "BUY" | "SELL"; amountUsd: number; stopLossPct: number; takeProfitPct: number }) {
     return json<any>(
       await apiFetch(`${HTTP}/api/trade/manual`, {

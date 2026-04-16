@@ -110,7 +110,7 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
         const msg = JSON.parse(String(raw));
         const k = msg?.k;
         if (!k) return;
-        // kline payload
+        /** `k.x` = finalized bar; `onCandleClose` runs only here (production bar-close signals). */
         const closed = Boolean(k.x);
         const candleRaw = {
           ts: Number(k.t),

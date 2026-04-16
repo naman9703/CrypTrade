@@ -383,9 +383,6 @@ export const useAppStore = create<AppState>((set, get) => ({
                       : new Date().toISOString();
                 return { ...(r as LogPayload), ts: tsIso };
               });
-            const strictAcc =
-              p.mode === "BINANCE_LIVE" || p.mode === "BINANCE_TESTNET";
-            const accMissing = strictAcc && (p as any).account === null;
             const tagNext =
               typeof (p as HelloPayload & { uiUserTag?: string }).uiUserTag === "string" &&
               String((p as HelloPayload & { uiUserTag?: string }).uiUserTag).trim()
@@ -415,7 +412,6 @@ export const useAppStore = create<AppState>((set, get) => ({
                 (p as any).positions !== undefined ? (p as any).positions : s.positions,
               logs: logsFromServer,
               activityLogBulkGeneration: prevBulk + 1,
-              ...(accMissing ? { trades: [] } : {}),
             };
             if (chart?.candles?.length) {
               const chartSym = String(chart.symbol ?? p.state?.symbol ?? "");
@@ -454,13 +450,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           const replace = raw && typeof raw === "object" && !Array.isArray(raw) && raw.replace === true;
           const arr: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.trades) ? raw.trades : [];
           set((s) => {
-            const m = s.mode;
-            const strict = m === "BINANCE_LIVE" || m === "BINANCE_TESTNET";
             if (replace) {
               return { trades: arr.slice(0, TRADE_HISTORY_UI_MAX) };
             }
-            if (arr.length === 0 && strict) {
-              return { trades: [] };
+            if (arr.length === 0) {
+              return {};
             }
             const existingIds = new Set(s.trades.map((t: any) => t?.id).filter(Boolean));
             const deduped = arr.filter((t: any) => !existingIds.has(t?.id));

@@ -1073,6 +1073,7 @@ export function TradingPanel() {
   const [slPctStr, setSlPctStr] = useState("0.2");
   const [tpPctStr, setTpPctStr] = useState("1.5");
   const [manualOrderBusy, setManualOrderBusy] = useState(false);
+  const [mqTuneBusy, setMqTuneBusy] = useState(false);
   const manualFormHydratedRef = useRef(false);
   const skipManualFormPersistRef = useRef(true);
   /** Live % label while dragging allowed-budget wallet slider (API commits on release only). */
@@ -1131,6 +1132,17 @@ export function TradingPanel() {
       supertrendWilderAtr: bot?.supertrendWilderAtr !== false,
       supertrendFuturesAiConfidenceFilter: bot?.supertrendFuturesAiConfidenceFilter !== false,
       signalStrengthGatesTrades: bot?.signalStrengthGatesTrades === true,
+      supertrendMoveQualityGate: bot?.supertrendMoveQualityGate === true,
+      supertrendMoveQualityMinScore: clampNum(Number(bot?.supertrendMoveQualityMinScore ?? 0.6), 0, 1),
+      supertrendMoveQualityMinAdx: clampNum(Math.round(Number(bot?.supertrendMoveQualityMinAdx ?? 23)), 0, 100),
+      supertrendMoveQualityMinMoveSlRatio: Math.max(1, Number(bot?.supertrendMoveQualityMinMoveSlRatio ?? 1.5)),
+      supertrendMoveQualityExpectedMoveAtrMult: Math.max(0.1, Number(bot?.supertrendMoveQualityExpectedMoveAtrMult ?? 1.0)),
+      supertrendMoveQualityMinAtrExpansion: Math.max(0, Number(bot?.supertrendMoveQualityMinAtrExpansion ?? 1.08)),
+      supertrendMoveQualityMinBodyVsAvg: clampNum(Number(bot?.supertrendMoveQualityMinBodyVsAvg ?? 0.62), 0.15, 1),
+      supertrendMoveQualityMinDirectionalBody: clampNum(Number(bot?.supertrendMoveQualityMinDirectionalBody ?? 0), 0, 1),
+      supertrendMoveQualityMinVolumeVsAvg: Math.max(0, Number(bot?.supertrendMoveQualityMinVolumeVsAvg ?? 0)),
+      supertrendBreakoutConfirm: bot?.supertrendBreakoutConfirm === true,
+      supertrendBreakoutMaxBars: Math.max(1, Math.min(20, Math.floor(Number(bot?.supertrendBreakoutMaxBars ?? 5)))),
       signalStrengthOpenMin: clampNum(Math.round(Number(bot?.signalStrengthOpenMin ?? 65)), 0, 100),
       supertrendFuturesMinAiProb: clampNum(Number(bot?.supertrendFuturesMinAiProb ?? 0.55), 0, 1),
       surfPulseMlThreshold: clampNum(Number(bot?.surfPulseMlThreshold ?? 0.6), 0, 1),
@@ -3240,6 +3252,254 @@ export function TradingPanel() {
                       onDebouncedCommit={(u) => {
                         void api.botConfig({ signalStrengthOpenMin: Math.round(clampNum(u, 0, 100)) }).catch(() => {
                           pushLog({ level: "error", msg: "Failed to set min signal strength" });
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 space-y-2 rounded-lg border border-cyan-800/25 bg-white/85 p-2 dark:border-cyan-400/20 dark:bg-slate-950/50">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[11px] font-semibold text-cyan-900 dark:text-cyan-100">
+                      Move quality (ATR · ADX · body)
+                    </div>
+                    <button
+                      type="button"
+                      disabled={mqTuneBusy}
+                      className="shrink-0 rounded-md border border-cyan-700/40 bg-cyan-50/90 px-2 py-1 text-[11px] font-semibold text-cyan-900 hover:bg-cyan-100/90 disabled:opacity-50 dark:border-cyan-500/35 dark:bg-cyan-950/40 dark:text-cyan-100 dark:hover:bg-cyan-900/50"
+                      title="Suggest thresholds from logged Supertrend outcomes (mq-trade-outcomes.jsonl) and apply"
+                      onClick={() => {
+                        deferTask(() => {
+                          void (async () => {
+                            setMqTuneBusy(true);
+                            try {
+                              const data = await api.botTuneMoveQuality({ apply: true });
+                              if (data?.ok) {
+                                pushLog({ level: "info", msg: data.message || "Move quality tuned" });
+                                const p = data.patch as Record<string, unknown> | undefined;
+                                if (p) {
+                                  pushLog({
+                                    level: "info",
+                                    msg: `Applied: score≥${Number(p.supertrendMoveQualityMinScore).toFixed(3)} ADX≥${String(p.supertrendMoveQualityMinAdx)} move/SL≥${Number(p.supertrendMoveQualityMinMoveSlRatio).toFixed(2)} ATR exp≥${Number(p.supertrendMoveQualityMinAtrExpansion).toFixed(3)} body≥${Number(p.supertrendMoveQualityMinBodyVsAvg).toFixed(3)} (${data.n} trades, ${data.nWins} wins)`,
+                                  });
+                                }
+                              } else {
+                                pushLog({
+                                  level: "warn",
+                                  msg: (data as { message?: string })?.message || "Tune failed",
+                                });
+                              }
+                            } catch (e) {
+                              pushLog({ level: "warn", msg: String((e as Error)?.message || e) });
+                            } finally {
+                              setMqTuneBusy(false);
+                            }
+                          })();
+                        });
+                      }}
+                    >
+                      {mqTuneBusy ? "Tuning…" : "Tune"}
+                    </button>
+                  </div>
+                  <label className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={cfg.supertrendMoveQualityGate}
+                      onChange={(e) => {
+                        const on = e.currentTarget.checked;
+                        deferTask(() => {
+                          void (async () => {
+                            try {
+                              await api.botConfig({ supertrendMoveQualityGate: on });
+                              pushLog({
+                                level: "info",
+                                msg: on
+                                  ? "Move quality gate ON — opens require composite score + ATR/SL ratio + ADX/body checks (see thresholds below)"
+                                  : "Move quality gate OFF — scores still appear in chart signal list for analysis",
+                              });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to update move quality gate" });
+                            }
+                          })();
+                        });
+                      }}
+                    />
+                    <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        Gate Supertrend opens on move quality
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                        Uses ATR-based expected move vs estimated SL%, ADX, body vs average, optional ATR expansion, optional directional body and volume vs average.
+                        When off, MQ is still computed and shown in the chart signal list (MQ score · verdict).
+                      </span>
+                    </span>
+                  </label>
+                  <div className="grid gap-2 pl-6 sm:grid-cols-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min score (0–1)</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Minimum move quality composite score"
+                        serverSliderUnits={Math.round(cfg.supertrendMoveQualityMinScore * 100)}
+                        formatDisplay={(u) => `${(u / 100).toFixed(2)}`}
+                        accentClassName="accent-cyan-600"
+                        onDebouncedCommit={(u) => {
+                          const p = clampNum(u / 100, 0, 1);
+                          void api.botConfig({ supertrendMoveQualityMinScore: Number(p.toFixed(3)) }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set min move quality score" });
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min ADX</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Minimum ADX at signal bar"
+                        serverSliderUnits={cfg.supertrendMoveQualityMinAdx}
+                        formatDisplay={(u) => `${u}`}
+                        accentClassName="accent-cyan-600"
+                        onDebouncedCommit={(u) => {
+                          void api.botConfig({ supertrendMoveQualityMinAdx: Math.round(clampNum(u, 0, 100)) }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set min ADX" });
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Move vs SL ×</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Expected move must exceed SL% times this ratio"
+                        serverSliderUnits={Math.round((cfg.supertrendMoveQualityMinMoveSlRatio - 1) * 20)}
+                        formatDisplay={(u) => `${(1 + u / 20).toFixed(2)}×`}
+                        accentClassName="accent-cyan-600"
+                        onDebouncedCommit={(u) => {
+                          const r = Math.max(1, 1 + u / 20);
+                          void api.botConfig({ supertrendMoveQualityMinMoveSlRatio: Number(r.toFixed(2)) }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set move/SL ratio" });
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">ATR expect mult</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Expected move = ATR% × this; 1.0 = raw ATR% vs SL (no inflation)"
+                        serverSliderUnits={Math.round(cfg.supertrendMoveQualityExpectedMoveAtrMult * 20)}
+                        formatDisplay={(u) => `${(u / 20).toFixed(2)}×`}
+                        accentClassName="accent-cyan-600"
+                        onDebouncedCommit={(u) => {
+                          const m = Math.max(0.1, u / 20);
+                          void api.botConfig({ supertrendMoveQualityExpectedMoveAtrMult: Number(m.toFixed(2)) }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set ATR expect mult" });
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min ATR expand</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="0 = off; else ATR/avgATR must exceed"
+                        serverSliderUnits={cfg.supertrendMoveQualityMinAtrExpansion >= 1 ? Math.round((cfg.supertrendMoveQualityMinAtrExpansion - 1) * 100) : 0}
+                        formatDisplay={(u) => (u <= 0 ? "off" : `${(1 + u / 100).toFixed(2)}×`)}
+                        accentClassName="accent-cyan-600"
+                        onDebouncedCommit={(u) => {
+                          const v = u <= 0 ? 0 : 1 + u / 100;
+                          void api.botConfig({ supertrendMoveQualityMinAtrExpansion: Number(v.toFixed(3)) }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set min ATR expansion" });
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min body vs avg</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Signal bar body / avg body"
+                        serverSliderUnits={Math.round(cfg.supertrendMoveQualityMinBodyVsAvg * 100)}
+                        formatDisplay={(u) => `${(u / 100).toFixed(2)}`}
+                        accentClassName="accent-cyan-600"
+                        onDebouncedCommit={(u) => {
+                          const p = clampNum(u / 100, 0.15, 1);
+                          void api.botConfig({ supertrendMoveQualityMinBodyVsAvg: Number(p.toFixed(3)) }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set min body ratio" });
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Dir. body (0=off)</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Signed candle body vs range; 0 disables"
+                        serverSliderUnits={Math.round(cfg.supertrendMoveQualityMinDirectionalBody * 100)}
+                        formatDisplay={(u) => (u <= 0 ? "off" : `${(u / 100).toFixed(2)}`)}
+                        accentClassName="accent-cyan-600"
+                        onDebouncedCommit={(u) => {
+                          const p = clampNum(u / 100, 0, 1);
+                          void api
+                            .botConfig({ supertrendMoveQualityMinDirectionalBody: Number(p.toFixed(3)) })
+                            .catch(() => {
+                              pushLog({ level: "error", msg: "Failed to set directional body min" });
+                            });
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Vol vs avg (0=off)</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Last vol ≥ SMA×this; 0 disables"
+                        serverSliderUnits={Math.round(Math.max(0, cfg.supertrendMoveQualityMinVolumeVsAvg - 1) * 100)}
+                        formatDisplay={(u) => (u <= 0 ? "off" : `${(1 + u / 100).toFixed(2)}×`)}
+                        accentClassName="accent-cyan-600"
+                        onDebouncedCommit={(u) => {
+                          const v = u <= 0 ? 0 : 1 + u / 100;
+                          void api.botConfig({ supertrendMoveQualityMinVolumeVsAvg: Number(v.toFixed(3)) }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set volume vs avg min" });
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <label className="mt-2 flex cursor-pointer items-start gap-2 pl-6">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={cfg.supertrendBreakoutConfirm}
+                      onChange={(e) => {
+                        const on = e.currentTarget.checked;
+                        deferTask(() => {
+                          void (async () => {
+                            try {
+                              await api.botConfig({ supertrendBreakoutConfirm: on });
+                              pushLog({
+                                level: "info",
+                                msg: on
+                                  ? "Breakout confirm ON — entry only after a later bar closes past signal high (BUY) or low (SELL); primary chart only"
+                                  : "Breakout confirm OFF — immediate bar-close entry (clears pending breakout)",
+                              });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to set breakout confirm" });
+                            }
+                          })();
+                        });
+                      }}
+                    />
+                    <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Breakout confirmation (next close)</span>
+                      <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                        Defers market entry until close breaks the signal candle&apos;s high (long) or low (short). Does not apply to AUTO multi sweep.
+                      </span>
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-2 pl-6">
+                    <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Breakout max bars</span>
+                    <ThresholdSliderWithLock
+                      ariaLabel="Drop pending breakout after this many closed bars"
+                      serverSliderUnits={cfg.supertrendBreakoutMaxBars}
+                      formatDisplay={(u) => `${u}`}
+                      accentClassName="accent-cyan-600"
+                      onDebouncedCommit={(u) => {
+                        const n = Math.max(1, Math.min(20, Math.round(u)));
+                        void api.botConfig({ supertrendBreakoutMaxBars: n }).catch(() => {
+                          pushLog({ level: "error", msg: "Failed to set breakout max bars" });
                         });
                       }}
                     />

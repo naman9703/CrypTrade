@@ -14,6 +14,19 @@ function sleepMs(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * Best-effort global throttling for trailing SL ops (per-process / per-mem).
+ * This reduces burstiness when many symbols advance on the same tick.
+ */
+async function throttleGlobalTrailingOps(mem, minGapMs) {
+  const gap = Math.max(0, Math.floor(Number(minGapMs) || 0));
+  if (!mem || gap <= 0) return;
+  const now = Date.now();
+  const nextAt = Number(mem._trailSlGlobalNextAt) || 0;
+  if (nextAt > now) await sleepMs(nextAt - now);
+  mem._trailSlGlobalNextAt = Date.now() + gap;
+}
+
 /** Compare exchange-reported SL to our target using tick grid when available. */
 export function exchangeSlMatchesTargetPrice(verifiedSl, targetSl, tickSize) {
   const v = Number(verifiedSl);
@@ -396,7 +409,14 @@ export async function evalTrailingForSymbolUsdM(ctx) {
     replaceSlOnExchange,
   } = ctx;
 
-  if (trailSymLock.has(s)) return;
+  const depth = Math.max(0, Math.floor(Number(ctx?._trailQueueDepth) || 0));
+  // Per-symbol single-slot queue: when an update is already in-flight for this symbol,
+  // keep only the latest markPx and run one more pass after unlock.
+  const q = (mem._trailSlQueueBySymbol = mem._trailSlQueueBySymbol || {});
+  if (trailSymLock.has(s)) {
+    q[s] = { markPx, at: Date.now() };
+    return;
+  }
   const trailMode = String(trailingStopLoss?.mode || "SUPERTREND").toUpperCase();
   const stBySym =
     trailingStopLoss?.supertrendBySymbol && typeof trailingStopLoss.supertrendBySymbol === "object"
@@ -454,10 +474,15 @@ export async function evalTrailingForSymbolUsdM(ctx) {
     function rollbackTrailState() {
       const tr = mem.trailingBySymbol[s];
       if (!tr || !snapTrail) return;
-      tr.trailStep = snapTrail.trailStep;
+      const confirmed = Math.max(0, Math.floor(Number(tr.confirmedTrailStep) || 0));
+      tr.trailStep = Math.max(Math.max(0, Math.floor(Number(snapTrail.trailStep) || 0)), confirmed);
       tr.extremePx = snapTrail.extremePx;
       if (snapTrail.trailTierLabel != null) tr.trailTierLabel = snapTrail.trailTierLabel;
       else delete tr.trailTierLabel;
+      if (confirmed > 0) {
+        // Safety net: never roll back below the last exchange-verified tier.
+        tr.trailTierLabel = `T${Math.max(0, tr.trailStep - 1)}`;
+      }
       if (snapTrail._trailingActivationLoggedTier !== undefined) {
         tr._trailingActivationLoggedTier = snapTrail._trailingActivationLoggedTier;
       } else {
@@ -499,6 +524,20 @@ export async function evalTrailingForSymbolUsdM(ctx) {
     const newSlPx = pb.stopLoss;
     if (!Number.isFinite(newSlPx) || newSlPx <= 0) return;
 
+    // Monotonic trailing safety: never allow a backward tier request (e.g. T4 → T3).
+    const trAfter = mem.trailingBySymbol[s];
+    const pendingStep = Math.max(0, Math.floor(Number(trAfter?.trailStep) || 0));
+    const confirmedStep = Math.max(0, Math.floor(Number(trAfter?.confirmedTrailStep) || 0));
+    if (pendingStep <= confirmedStep && confirmedStep > 0) {
+      // Restore the confirmed tier locally; skip any downgrade attempt.
+      if (trAfter) {
+        trAfter.trailStep = confirmedStep;
+        trAfter.trailTierLabel = `T${Math.max(0, confirmedStep - 1)}`;
+      }
+      flushQueuedAdvances();
+      return;
+    }
+
     const trailEntry = mem.trailingBySymbol[s];
     const TRAIL_GRACE_MS = 30_000;
     if (trailEntry?._openedAt && Date.now() - trailEntry._openedAt < TRAIL_GRACE_MS) {
@@ -539,7 +578,11 @@ export async function evalTrailingForSymbolUsdM(ctx) {
     }
 
     const trail = mem.trailingBySymbol[s];
-    const tierLabel = trail?.trailTierLabel || `T${Math.max(0, (Number(trail?.trailStep) || 1) - 1)}`;
+    const tierLabel =
+      trail?.trailTierLabel ||
+      (Number.isFinite(Number(trail?.trailStep)) && Number(trail.trailStep) >= 1
+        ? `T${Math.max(0, Math.floor(Number(trail.trailStep)) - 1)}`
+        : "T0");
     const prevSl = slPriorToTrailAdvance ?? pb.stopLoss;
 
     const doReplace =
@@ -583,6 +626,7 @@ export async function evalTrailingForSymbolUsdM(ctx) {
         }
       }
 
+      await throttleGlobalTrailingOps(mem, 120);
       lastRep = await doReplace(s, newSlPx, markPx, prevForReplace).catch((e) => ({
         ok: false,
         code: null,
@@ -743,6 +787,15 @@ export async function evalTrailingForSymbolUsdM(ctx) {
     if (verifiedOk) {
       flushQueuedAdvances();
       if (mem.trailingBySymbol[s]) delete mem.trailingBySymbol[s].slTrailConfirm;
+      if (mem.trailingBySymbol[s]) {
+        const curStep = Math.max(0, Math.floor(Number(mem.trailingBySymbol[s].trailStep) || 0));
+        const priorConfirmed = Math.max(0, Math.floor(Number(mem.trailingBySymbol[s].confirmedTrailStep) || 0));
+        if (curStep > priorConfirmed) {
+          mem.trailingBySymbol[s].confirmedTrailStep = curStep;
+          mem.trailingBySymbol[s].confirmedTrailTierLabel = curStep >= 1 ? `T${curStep - 1}` : null;
+          mem.trailingBySymbol[s].confirmedAt = Date.now();
+        }
+      }
       try {
         notifyActivity?.({
           level: "info",
@@ -794,5 +847,19 @@ export async function evalTrailingForSymbolUsdM(ctx) {
     /* ignore */
   } finally {
     trailSymLock.delete(s);
+    const pending = q[s];
+    // latest-job replacement: if any mark arrived while we were processing, run one more pass.
+    // Guard to prevent infinite recursion on pathological callers.
+    if (pending && depth < 8) {
+      delete q[s];
+      const mp = Number(pending.markPx);
+      if (Number.isFinite(mp) && mp > 0) {
+        try {
+          await evalTrailingForSymbolUsdM({ ...ctx, markPx: mp, _trailQueueDepth: depth + 1 });
+        } catch {
+          /* ignore */
+        }
+      }
+    }
   }
 }

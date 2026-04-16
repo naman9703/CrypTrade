@@ -154,6 +154,50 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
     return Number(s) > 0 ? s : null;
   }
 
+  function formatToTickFloor(px, meta) {
+    const tickStr = meta?.tickSize;
+    const p = Number(px);
+    const tickNum = Number(tickStr);
+    if (!Number.isFinite(p) || p <= 0 || !Number.isFinite(tickNum) || tickNum <= 0) return null;
+    const dec = filterFractionalDigits(tickStr);
+    const scaleExp = Math.min(dec, 15);
+    const scale = 10 ** scaleExp;
+    const tickUnits = Math.round(tickNum * scale);
+    if (tickUnits <= 0) return null;
+    const pUnits = Math.floor((p * scale) / tickUnits + 1e-12) * tickUnits;
+    if (pUnits <= 0) return null;
+    const aligned = pUnits / scale;
+    const tickEffective = effectivePrecision(tickStr);
+    const prec = Math.min(
+      tickEffective,
+      meta.pricePrecision != null ? meta.pricePrecision : tickEffective,
+    );
+    const s = aligned.toFixed(prec);
+    return Number(s) > 0 ? s : null;
+  }
+
+  function formatToTickCeil(px, meta) {
+    const tickStr = meta?.tickSize;
+    const p = Number(px);
+    const tickNum = Number(tickStr);
+    if (!Number.isFinite(p) || p <= 0 || !Number.isFinite(tickNum) || tickNum <= 0) return null;
+    const dec = filterFractionalDigits(tickStr);
+    const scaleExp = Math.min(dec, 15);
+    const scale = 10 ** scaleExp;
+    const tickUnits = Math.round(tickNum * scale);
+    if (tickUnits <= 0) return null;
+    const pUnits = Math.ceil((p * scale) / tickUnits - 1e-12) * tickUnits;
+    if (pUnits <= 0) return null;
+    const aligned = pUnits / scale;
+    const tickEffective = effectivePrecision(tickStr);
+    const prec = Math.min(
+      tickEffective,
+      meta.pricePrecision != null ? meta.pricePrecision : tickEffective,
+    );
+    const s = aligned.toFixed(prec);
+    return Number(s) > 0 ? s : null;
+  }
+
   async function ensureLeverage(symbol, lev) {
     const leverage = Math.max(1, Math.min(100, Number(lev || defaultLeverage)));
     try {
@@ -357,15 +401,35 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       const leverage = await ensureLeverage(symbol, meta?.leverage || meta?.futuresLeverage || defaultLeverage);
       const hedgeExtras = await hedgePositionSideExtras(isLong);
 
-      // 1) MARKET entry
-      const out = await signed("POST", "/fapi/v1/order", {
-        symbol,
-        side,
-        type: "MARKET",
-        quantity: qtyStr,
-        newClientOrderId: `ai_${Date.now()}`,
-        ...hedgeExtras,
-      });
+      const entryStyle = String(meta?.entryOrderStyle || "MARKET").toUpperCase();
+      let out;
+      if (entryStyle === "LIMIT_IOC") {
+        const limRaw = Number(meta?.entryLimitPrice);
+        if (!Number.isFinite(limRaw) || limRaw <= 0) throw new Error("limit_ioc_requires_meta.entryLimitPrice");
+        const priceStr = isLong ? formatToTickFloor(limRaw, m) : formatToTickCeil(limRaw, m);
+        if (!priceStr) throw new Error("limit_ioc_bad_price_tick");
+        out = await signed("POST", "/fapi/v1/order", {
+          symbol,
+          side,
+          type: "LIMIT",
+          timeInForce: "IOC",
+          quantity: qtyStr,
+          price: priceStr,
+          newClientOrderId: `ai_ioc_${Date.now()}`,
+          ...hedgeExtras,
+        });
+        const exQ = Number(out?.executedQty ?? 0);
+        if (!Number.isFinite(exQ) || exQ <= 0) throw new Error("limit_ioc_no_fill");
+      } else {
+        out = await signed("POST", "/fapi/v1/order", {
+          symbol,
+          side,
+          type: "MARKET",
+          quantity: qtyStr,
+          newClientOrderId: `ai_${Date.now()}`,
+          ...hedgeExtras,
+        });
+      }
 
       const orderId = String(out?.orderId || Date.now());
       const filledPrice = Number(out?.avgPrice || out?.price || price || 0) || Number(price || 0);
@@ -475,6 +539,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
           entryPrice: filledPrice,
           isLong,
           trailStep: 0,
+          confirmedTrailStep: 0,
           extremePx: filledPrice,
           leverage: Math.max(1, Math.min(100, Number(leverage) || 1)),
         };

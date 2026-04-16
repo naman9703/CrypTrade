@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CLIENT_SUPERTREND_CHIME_EVENT, type ClientSupertrendChimeDetail } from "../lib/clientActivityEvents";
 import { useAuthActions } from "../authContext";
 import { useAppStore, type LogPayload } from "../ws/store";
 
@@ -159,6 +160,38 @@ function buildToastViewModel(l: LogPayload & Record<string, unknown>): ToastView
     };
   }
 
+  // Chart Supertrend chime (client-only — matches buy/sell ring when a new marker appears)
+  if (reason === "supertrend_chart_chime") {
+    const d =
+      detail && typeof detail === "object" && !Array.isArray(detail) ? (detail as Record<string, unknown>) : null;
+    const sideU = String(d?.side ?? "").toUpperCase();
+    const barSec = d?.barTimeSec != null ? Number(d.barTimeSec) : NaN;
+    const tf = d?.timeframe != null ? String(d.timeframe) : "";
+    const symU = sym ?? (d?.symbol != null ? String(d.symbol).toUpperCase() : "");
+    const barLine =
+      Number.isFinite(barSec) && barSec > 0
+        ? `Chart bar (open): ${new Date(barSec * 1000).toLocaleString()}`
+        : "";
+    return {
+      title: "Supertrend · chart chime",
+      headline:
+        sideU === "BUY"
+          ? "Buy tone — new BUY marker on chart"
+          : sideU === "SELL"
+            ? "Sell tone — new SELL marker on chart"
+            : "Signal tone — new marker on chart",
+      sublines: [
+        `${symU || "—"}${tf ? ` · ${tf}` : ""}`,
+        "This sound follows the chart’s Supertrend marker (bar-close logic). Activity may not show a trade if autotrade is off, gates skip, or the server has not logged yet.",
+        barLine,
+      ].filter(Boolean),
+      chips: [
+        ...(symU ? [{ k: "Symbol", v: symU }] : []),
+        ...(tf ? [{ k: "TF", v: tf }] : []),
+      ],
+    };
+  }
+
   // FEED
   if (cat === "feed") {
     return {
@@ -255,6 +288,52 @@ export function ActivityToasts() {
     blockedToastDedupeKeysRef.current.clear();
     sessionLogsHydratedRef.current = false;
   }, [activityLogBulkGeneration, activityToastsAllowed]);
+
+  /** Chart panel buy/sell chime — same moment as the ring sound; explains why there may be no server Activity line yet. */
+  useEffect(() => {
+    if (!activityToastsAllowed) return;
+    const onChime = (ev: Event) => {
+      const e = ev as CustomEvent<ClientSupertrendChimeDetail>;
+      const d = e.detail;
+      if (!d || (d.side !== "buy" && d.side !== "sell")) return;
+      const now = Date.now();
+      const log: LogPayload & Record<string, unknown> = {
+        level: "info",
+        category: "chart",
+        reason: "supertrend_chart_chime",
+        msg: `Supertrend chart ${d.side === "buy" ? "buy" : "sell"} chime`,
+        symbol: d.symbol || undefined,
+        detail: {
+          side: d.side === "buy" ? "BUY" : "SELL",
+          barTimeSec: d.barTimeSec,
+          timeframe: d.timeframe,
+        },
+        ts: new Date().toISOString(),
+      };
+      const id = `client-chime:${d.barTimeSec}:${d.side}:${d.symbol}:${d.timeframe}`;
+      if (seenRef.current.has(id)) return;
+      seenRef.current.add(id);
+      setToasts((prev) => {
+        const row: ToastRow = {
+          id,
+          createdAt: now,
+          expiresAt: now + AUTO_DISMISS_MS,
+          hovering: false,
+          remainingMs: null,
+          entering: true,
+          tone: toneFromLog(log),
+          log,
+        };
+        const merged = [row, ...prev];
+        return merged.slice(0, MAX_VISIBLE_TOASTS);
+      });
+      window.setTimeout(() => {
+        setToasts((prev) => prev.map((t) => (t.id === id && t.entering ? { ...t, entering: false } : t)));
+      }, 20);
+    };
+    window.addEventListener(CLIENT_SUPERTREND_CHIME_EVENT, onChime);
+    return () => window.removeEventListener(CLIENT_SUPERTREND_CHIME_EVENT, onChime);
+  }, [activityToastsAllowed]);
 
   useEffect(() => {
     if (!activityToastsAllowed) return;

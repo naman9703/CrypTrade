@@ -38,7 +38,7 @@ function rsi(values, period = 14) {
   return out;
 }
 
-function atr(candles, period = 14) {
+export function atr(candles, period = 14) {
   const tr = [];
   for (let i = 0; i < candles.length; i++) {
     const c = candles[i];
@@ -209,10 +209,14 @@ export function computeIndicators(candles) {
 
   const last = closes.length - 1;
   const lastClose = closes[last] || 1;
+  const rsiLast = rsi14.at(-1) ?? 50;
+  const rsiPrev = rsi14.length >= 2 ? rsi14[rsi14.length - 2] : null;
   const latest = {
     ema_fast: emaFast.at(-1) ?? 0,
     ema_slow: emaSlow.at(-1) ?? 0,
-    rsi_14: rsi14.at(-1) ?? 50,
+    rsi_14: rsiLast,
+    /** Prior bar RSI (for slope / momentum at signal bar). */
+    rsi_14_prev: rsiPrev != null && Number.isFinite(rsiPrev) ? rsiPrev : null,
     atr_14: atr14.at(-1) ?? 0,
     adx_14: adx14.at(-1) ?? 0,
     volume_spike: volumeSpike.at(-1) ?? 1,

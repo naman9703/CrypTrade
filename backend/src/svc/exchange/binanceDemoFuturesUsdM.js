@@ -28,6 +28,24 @@ function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
 }
 
+/** Best-effort tier seed after restart from last OPEN row meta (if persisted). */
+function trailingSeedFromLastOpenTrade(trades, symU) {
+  const U = String(symU || "").toUpperCase();
+  if (!Array.isArray(trades)) return { trailStep: 0, confirmedTrailStep: 0 };
+  for (let i = trades.length - 1; i >= 0; i--) {
+    const t = trades[i];
+    if (t?.type !== "OPEN" || String(t.symbol || "").toUpperCase() !== U) continue;
+    const m = t.meta || {};
+    const confirmed = Math.max(0, Math.floor(Number(m.confirmedTrailStep) || 0));
+    const step = Math.max(0, Math.floor(Number(m.trailStep) || 0));
+    return {
+      trailStep: Math.max(step, confirmed),
+      confirmedTrailStep: confirmed,
+    };
+  }
+  return { trailStep: 0, confirmedTrailStep: 0 };
+}
+
 /** Latest OPEN for symbol carrying Binance `orderId` on `meta` (USD-M market entry). */
 function lastOpenBinanceEntryMetaForSymbol(trades, symU) {
   const U = String(symU || "").toUpperCase();
@@ -261,6 +279,50 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     const tickUnits = Math.round(tickNum * scale);
     if (tickUnits <= 0) return null;
     const pUnits = Math.round((p * scale) / tickUnits) * tickUnits;
+    if (pUnits <= 0) return null;
+    const aligned = pUnits / scale;
+    const tickEffective = effectivePrecision(tickStr);
+    const prec = Math.min(
+      tickEffective,
+      meta.pricePrecision != null ? meta.pricePrecision : tickEffective,
+    );
+    const s = aligned.toFixed(prec);
+    return Number(s) > 0 ? s : null;
+  }
+
+  function formatToTickFloor(px, meta) {
+    const tickStr = meta?.tickSize;
+    const p = Number(px);
+    const tickNum = Number(tickStr);
+    if (!Number.isFinite(p) || p <= 0 || !Number.isFinite(tickNum) || tickNum <= 0) return null;
+    const dec = filterFractionalDigits(tickStr);
+    const scaleExp = Math.min(dec, 15);
+    const scale = 10 ** scaleExp;
+    const tickUnits = Math.round(tickNum * scale);
+    if (tickUnits <= 0) return null;
+    const pUnits = Math.floor((p * scale) / tickUnits + 1e-12) * tickUnits;
+    if (pUnits <= 0) return null;
+    const aligned = pUnits / scale;
+    const tickEffective = effectivePrecision(tickStr);
+    const prec = Math.min(
+      tickEffective,
+      meta.pricePrecision != null ? meta.pricePrecision : tickEffective,
+    );
+    const s = aligned.toFixed(prec);
+    return Number(s) > 0 ? s : null;
+  }
+
+  function formatToTickCeil(px, meta) {
+    const tickStr = meta?.tickSize;
+    const p = Number(px);
+    const tickNum = Number(tickStr);
+    if (!Number.isFinite(p) || p <= 0 || !Number.isFinite(tickNum) || tickNum <= 0) return null;
+    const dec = filterFractionalDigits(tickStr);
+    const scaleExp = Math.min(dec, 15);
+    const scale = 10 ** scaleExp;
+    const tickUnits = Math.round(tickNum * scale);
+    if (tickUnits <= 0) return null;
+    const pUnits = Math.ceil((p * scale) / tickUnits - 1e-12) * tickUnits;
     if (pUnits <= 0) return null;
     const aligned = pUnits / scale;
     const tickEffective = effectivePrecision(tickStr);
@@ -1257,6 +1319,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
               ...entryMeta,
               autoTradeTrailing: true,
               trailStep: Number(trail.trailStep) || 0,
+              confirmedTrailStep: Math.max(0, Math.floor(Number(trail.confirmedTrailStep) || 0)),
               extremePx: trail.extremePx,
               trailTierLabel: trail.trailTierLabel ?? null,
               ...(trail.slTrailConfirm ? { trailSlConfirm: { ...trail.slTrailConfirm } } : {}),
@@ -1305,52 +1368,75 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
       const leverage = await ensureLeverage(symbol, meta?.futuresLeverage || meta?.leverage || defaultLeverage);
       const hedgeExtras = await hedgePositionSideExtras(isLong);
 
+      const entryStyle = String(meta?.entryOrderStyle || "MARKET").toUpperCase();
+
       let out;
-      try {
+      if (entryStyle === "LIMIT_IOC") {
+        const limRaw = Number(meta?.entryLimitPrice);
+        if (!Number.isFinite(limRaw) || limRaw <= 0) throw new Error("limit_ioc_requires_meta.entryLimitPrice");
+        const priceStr = isLong ? formatToTickFloor(limRaw, m) : formatToTickCeil(limRaw, m);
+        if (!priceStr) throw new Error("limit_ioc_bad_price_tick");
         out = await signed("POST", "/fapi/v1/order", {
           symbol,
           side,
-          type: "MARKET",
+          type: "LIMIT",
+          timeInForce: "IOC",
           quantity: qtyStr,
-          newClientOrderId: `ai_${Date.now()}`,
+          price: priceStr,
+          newClientOrderId: `ai_ioc_${Date.now()}`,
           ...hedgeExtras,
         });
-      } catch (e) {
-        if (!isBinanceMaxPositionAtLevError(e)) throw e;
-        const cap = await maxPositionNotionalCapForLeverage(symbol, leverage);
-        const curNotional = await currentPositionNotionalUsd(symbol);
-        let pxUse = Number.isFinite(markPx) && markPx > 0 ? markPx : null;
-        if (!pxUse) {
-          const pi = await publicGet("/fapi/v1/premiumIndex", { symbol }).catch(() => null);
-          const mp = Number(pi?.markPrice);
-          if (Number.isFinite(mp) && mp > 0) pxUse = mp;
+        const exQ = Number(out?.executedQty ?? 0);
+        if (!Number.isFinite(exQ) || exQ <= 0) {
+          throw new Error("limit_ioc_no_fill");
         }
-        const desiredNotional = pxUse != null ? Number(qtyStr) * pxUse : null;
-        const remaining = cap != null ? Math.max(0, cap - curNotional) : 0;
-        if (!pxUse || !(remaining > 0)) throw e;
-        const qty2 = remaining / pxUse;
-        const qtyStr2 = formatToStep(qty2, m);
-        if (!qtyStr2 || Number(qtyStr2) <= 0) throw e;
-        if (m.minNotional && Number(qtyStr2) * pxUse + 1e-8 < Number(m.minNotional)) throw e;
-        log?.warn?.("binance_demo_futures_downsize_max_position", {
-          symbol,
-          leverage,
-          capNotional: cap,
-          currentNotional: curNotional,
-          desiredNotional,
-          remainingNotional: remaining,
-          qtyRequested: Number(qtyStr),
-          qtyUsed: Number(qtyStr2),
-        });
-        out = await signed("POST", "/fapi/v1/order", {
-          symbol,
-          side,
-          type: "MARKET",
-          quantity: qtyStr2,
-          newClientOrderId: `ai_cap_${Date.now()}`,
-          ...hedgeExtras,
-        });
-        qtyStr = qtyStr2;
+      } else {
+        try {
+          out = await signed("POST", "/fapi/v1/order", {
+            symbol,
+            side,
+            type: "MARKET",
+            quantity: qtyStr,
+            newClientOrderId: `ai_${Date.now()}`,
+            ...hedgeExtras,
+          });
+        } catch (e) {
+          if (!isBinanceMaxPositionAtLevError(e)) throw e;
+          const cap = await maxPositionNotionalCapForLeverage(symbol, leverage);
+          const curNotional = await currentPositionNotionalUsd(symbol);
+          let pxUse = Number.isFinite(markPx) && markPx > 0 ? markPx : null;
+          if (!pxUse) {
+            const pi = await publicGet("/fapi/v1/premiumIndex", { symbol }).catch(() => null);
+            const mp = Number(pi?.markPrice);
+            if (Number.isFinite(mp) && mp > 0) pxUse = mp;
+          }
+          const desiredNotional = pxUse != null ? Number(qtyStr) * pxUse : null;
+          const remaining = cap != null ? Math.max(0, cap - curNotional) : 0;
+          if (!pxUse || !(remaining > 0)) throw e;
+          const qty2 = remaining / pxUse;
+          const qtyStr2 = formatToStep(qty2, m);
+          if (!qtyStr2 || Number(qtyStr2) <= 0) throw e;
+          if (m.minNotional && Number(qtyStr2) * pxUse + 1e-8 < Number(m.minNotional)) throw e;
+          log?.warn?.("binance_demo_futures_downsize_max_position", {
+            symbol,
+            leverage,
+            capNotional: cap,
+            currentNotional: curNotional,
+            desiredNotional,
+            remainingNotional: remaining,
+            qtyRequested: Number(qtyStr),
+            qtyUsed: Number(qtyStr2),
+          });
+          out = await signed("POST", "/fapi/v1/order", {
+            symbol,
+            side,
+            type: "MARKET",
+            quantity: qtyStr2,
+            newClientOrderId: `ai_cap_${Date.now()}`,
+            ...hedgeExtras,
+          });
+          qtyStr = qtyStr2;
+        }
       }
 
       const orderId = String(out?.orderId || Date.now());
@@ -1479,6 +1565,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
           entryPrice: filledPrice,
           isLong,
           trailStep: 0,
+          confirmedTrailStep: 0,
           extremePx: filledPrice,
           leverage: Math.max(1, Math.min(100, Number(leverage) || 1)),
           _openedAt: Date.now(),
@@ -1615,10 +1702,12 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
             if (!entryPx) continue;
             const posIsLong = qty > 0;
             const lev = Number(p.leverage || defaultLeverage);
+            const seed = trailingSeedFromLastOpenTrade(mem.trades, symU);
             mem.trailingBySymbol[symU] = {
               entryPrice: entryPx,
               isLong: posIsLong,
-              trailStep: 0,
+              trailStep: seed.trailStep,
+              confirmedTrailStep: seed.confirmedTrailStep,
               extremePx: entryPx,
               leverage: Math.max(1, Math.min(100, Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage)),
               _reconstructed: true,
