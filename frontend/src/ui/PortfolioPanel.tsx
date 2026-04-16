@@ -254,12 +254,23 @@ function mergeTradeHistoryGroup(group: any[]): any {
   return out;
 }
 
+/**
+ * Legacy Supertrend futures path broadcast a synthetic CLOSE (`fut_close_*`) before exchange income
+ * landed — wrong price/pnl and duplicate rows. Drop these; truth is the exchange-backed CLOSE.
+ */
+function isSyntheticSupertrendFuturesCloseRow(t: any): boolean {
+  if (String(t?.type ?? "").toUpperCase() !== "CLOSE") return false;
+  const id = String(t?.id ?? "");
+  return id.startsWith("fut_close_");
+}
+
 /** Merge rows that share the same logical exchange order (or income tran) and the same OPEN/CLOSE type. */
 function mergeTradesByOrderIdAndType(rows: any[]): any[] {
   if (!rows.length) return rows;
+  const rowsIn = (rows || []).filter((t) => !isSyntheticSupertrendFuturesCloseRow(t));
   const passthrough: any[] = [];
   const buckets = new Map<string, any[]>();
-  for (const t of rows) {
+  for (const t of rowsIn) {
     const ty = String(t?.type ?? "");
     if (ty !== "OPEN" && ty !== "CLOSE") {
       passthrough.push(t);
@@ -2041,6 +2052,18 @@ export function PortfolioPanel() {
                   </div>
                 ) : pnlHistoryRange === "custom" && historyRangeFilter.kind === "invalid" ? (
                   <div className="mt-0.5 text-[10px] text-amber-700 dark:text-amber-300">Invalid range — showing all rows.</div>
+                ) : null}
+                {isFuturesVenue ? (
+                  <div
+                    className="mt-1.5 rounded-md border border-amber-500/50 bg-amber-100/90 px-2 py-1.5 text-[10px] leading-snug text-amber-950 dark:border-amber-400/35 dark:bg-amber-950/50 dark:text-amber-50"
+                    role="note"
+                  >
+                    <span className="font-semibold">USD-M realized row: </span>
+                    Gross / Net / PnL% on closes use Binance{" "}
+                    <span className="font-mono">REALIZED_PNL</span> (Binance ID = income tran id) plus a modeled close
+                    fee when commission is not on the row. OPEN PnL% is live unrealized vs margin, not the closed trade.
+                    Refresh after a signal exit if rows look stale.
+                  </div>
                 ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-1">

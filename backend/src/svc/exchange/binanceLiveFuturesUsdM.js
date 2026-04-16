@@ -958,13 +958,13 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       } else {
         try {
           out = await signed("POST", "/fapi/v1/order", {
-            symbol,
-            side,
-            type: "MARKET",
-            quantity: qtyStr,
-            newClientOrderId: `ai_${Date.now()}`,
-            ...hedgeExtras,
-          });
+        symbol,
+        side,
+        type: "MARKET",
+        quantity: qtyStr,
+        newClientOrderId: `ai_${Date.now()}`,
+        ...hedgeExtras,
+      });
         } catch (e) {
           if (!isBinanceMaxPositionAtLevError(e)) throw e;
           const cap = await maxPositionNotionalCapForLeverage(symbol, leverage);

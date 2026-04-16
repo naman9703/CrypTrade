@@ -2700,7 +2700,6 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       const markPx = Number(last?.close);
       for (const pos of poses) {
         const closeId = pos.id || pos.symbol;
-        const closeRowId = `fut_close_${Date.now()}_${String(orderSymbol).replace(/[^A-Z0-9_]/g, "_")}_${Math.random().toString(36).slice(2, 10)}`;
         try {
           const notifyActivity = (partial) =>
             emitActivity(wsHub, {
@@ -2722,13 +2721,6 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
             });
             return { ok: false, error: String(r?.error || "close_failed") };
           }
-          const exitSide = pos.side === "BUY" ? "SELL" : "BUY";
-          const feePxClose =
-            Number.isFinite(markPx) && markPx > 0
-              ? markPx
-              : Number(pos.entryPrice) > 0
-                ? Number(pos.entryPrice)
-                : NaN;
           wsHub?.broadcast?.("log", {
             level: "info",
             msg:
@@ -2738,36 +2730,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
             symbol: orderSymbol,
             strategyKey,
           });
-          broadcastTrade(wsHub, {
-            type: "CLOSE",
-            id: closeRowId,
-            ts: new Date().toISOString(),
-            symbol: orderSymbol,
-            side: exitSide,
-            qty: pos.qty,
-            price:
-              Number.isFinite(markPx) && markPx > 0
-                ? markPx
-                : Number(pos.entryPrice) > 0
-                  ? Number(pos.entryPrice)
-                  : null,
-            pnl: r?.pnl != null && Number.isFinite(Number(r.pnl)) ? Number(r.pnl) : null,
-            fee: tradeCloseFeeUsdtFromNotional(pos.qty, feePxClose) ?? undefined,
-            stopLoss: pos.stopLoss != null ? Number(pos.stopLoss) : null,
-            takeProfit: pos.takeProfit != null ? Number(pos.takeProfit) : null,
-            strategy: strategyKey,
-            strategyKey,
-            venue: "FUTURES",
-            reason: reasonLabel,
-            source: "SUPERTREND",
-            leverage: pos.leverage,
-            meta: {
-              leverage: pos.leverage,
-              entryPrice: Number(pos.entryPrice) > 0 ? Number(pos.entryPrice) : undefined,
-              openPositionId: String(closeId),
-              closeReason: reasonLabel,
-            },
-          });
+          // Do not broadcastTrade here: USD-M adapters record the real CLOSE via income / getTrades
+          // (pnl + fill). A synthetic WS row used last.close as "exit", closePosition() often returns no
+          // pnl → UI inferred bogus negative gross next to the true Binance row (duplicate "Signal" line).
           state.stats[strategyKey].trades += 1;
           state.lastTradeOpenedAt = Date.now();
           if (!multiUnpinnedOrder) state.tradeOpenTimestamps.push(Date.now());
