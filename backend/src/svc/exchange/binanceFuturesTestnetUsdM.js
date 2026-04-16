@@ -559,11 +559,10 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
     },
     async markToMarket({ symbol, price, trailingStopLoss, onTrailingSlAdvance, notifyActivity } = {}) {
       const primarySymU = String(symbol || "").toUpperCase();
-      const primaryMark = Number(price);
 
       async function markPxForSymbol(sym) {
         const u = String(sym || "").toUpperCase();
-        if (u === primarySymU && Number.isFinite(primaryMark) && primaryMark > 0) return primaryMark;
+        // Always prefer exchange mark price for trailing (candle close can drift from mark).
         try {
           const d = await publicGet("/fapi/v1/premiumIndex", { symbol: u });
           const m = Number(d?.markPrice);

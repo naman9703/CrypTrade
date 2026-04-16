@@ -1232,11 +1232,12 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       await syncRealizedIncomeFromExchange();
 
       const primarySymU = String(symbol || "").toUpperCase();
-      const primaryMark = Number(price);
 
       async function markPxForSymbol(sym) {
         const u = String(sym || "").toUpperCase();
-        if (u === primarySymU && Number.isFinite(primaryMark) && primaryMark > 0) return primaryMark;
+        // Always use exchange mark price for trailing decisions.
+        // The bot passes candle close as `price`; that can differ from mark and causes missed tier advances
+        // (UI shows mark crossing activation but server compares against close).
         try {
           const d = await publicGet("/fapi/v1/premiumIndex", { symbol: u });
           const m = Number(d?.markPrice);

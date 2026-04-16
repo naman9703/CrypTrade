@@ -58,6 +58,29 @@ import { postOpenStableProbeMs } from "../lib/binanceUsdmPositionVerify.js";
 /** Must match /api/bot/config timeframe allowlist. */
 const PERSISTED_TF = new Set(["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"]);
 
+function truthyEnv(v) {
+  const s = String(v ?? "").toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
+
+async function withTimeout(p, ms) {
+  const t = Math.max(0, Math.floor(Number(ms) || 0));
+  if (!t) return await p;
+  return await Promise.race([
+    p,
+    new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), t)),
+  ]);
+}
+
+const AI_PREDICT_TIMEOUT_MS = Math.max(0, Math.floor(Number(process.env.AI_PREDICT_TIMEOUT_MS ?? 450)));
+/** When true, AI timeout blocks (skip trade). Default false: fall back to last AI / configured fallback prob. */
+const AI_TIMEOUT_IS_HARD_FAIL = truthyEnv(process.env.AI_PREDICT_TIMEOUT_HARD_FAIL);
+/** How long bar-close is allowed to wait for AI gates before using cached gates (ms). */
+const SUPERTREND_BAR_CLOSE_AI_BUDGET_MS = Math.max(
+  0,
+  Math.floor(Number(process.env.SUPERTREND_BAR_CLOSE_AI_BUDGET_MS ?? 120)),
+);
+
 /** Fraction of `(allowed − open margin)` kept as strategy “usable” margin (default 90%). */
 function usableCapitalBufferPctFromEnv() {
   return clamp(Number(process.env.USABLE_CAPITAL_BUFFER_PCT || 90), 1, 100);
@@ -734,7 +757,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     const tm = runtimeTradingMode();
     const g = String(process.env.MARKET_FEED || "SYNTH").toUpperCase();
     if (tm !== "PAPER") {
-      return g === "BINANCE" || g === "BINANCE_FUTURES" ? g : "SYNTH";
+      // Production guard: futures trading should not use spot klines. When user sets MARKET_FEED=BINANCE
+      // but the bot is trading futures (marketMode FUTURES/AUTO with futures), prefer the futures feed.
+      if (g === "BINANCE_FUTURES") return "BINANCE_FUTURES";
+      if (g === "BINANCE") {
+        const mm = String(state.marketMode || "AUTO").toUpperCase();
+        const futOn = Boolean(state.supertrendFuturesAuto);
+        const spotOn = Boolean(state.supertrendSpotAuto);
+        const wantsFutures = mm === "FUTURES" || (mm === "AUTO" && futOn && !spotOn);
+        return wantsFutures ? "BINANCE_FUTURES" : "BINANCE";
+      }
+      return "SYNTH";
     }
     const paperExplicit = String(process.env.PAPER_MARKET_FEED || "").trim().toUpperCase();
     if (paperExplicit === "SYNTH" || paperExplicit === "BINANCE" || paperExplicit === "BINANCE_FUTURES") {
@@ -2915,7 +2948,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
     if (!Number.isFinite(gateProb) && candles.length >= aiMinCandles) {
       try {
-        const aiResp = await ai.predict({ symbol: orderSymbol, timeframe: state.timeframe, candles });
+        const aiResp = await withTimeout(
+          ai.predict({ symbol: orderSymbol, timeframe: state.timeframe, candles }),
+          AI_PREDICT_TIMEOUT_MS,
+        );
         if (!aiPredictNoLastAi) {
           state.lastAi = {
             probability: aiResp.probability,
@@ -2933,6 +2969,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         log.info("supertrend_futures_ai", { symbol: orderSymbol, gateProb, calibrated: Boolean(aiResp?.calibrated) });
       } catch (e) {
         const errMsg = formatAiServiceError(e);
+        if (String(errMsg).includes("timeout") && AI_TIMEOUT_IS_HARD_FAIL) {
+          wsHub?.broadcast?.("log", {
+            level: "warn",
+            msg: `Supertrend futures: AI predict timed out (${AI_PREDICT_TIMEOUT_MS}ms) — skipping this signal (hard fail)`,
+            symbol: orderSymbol,
+          });
+          return { venue: "FUTURES", side, action: "skipped", reason: "ai_timeout" };
+        }
         wsHub?.broadcast?.("log", {
           level: "warn",
           msg: "Supertrend futures: AI predict failed; trying last score",
@@ -3522,11 +3566,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     let aiGateSell = null;
     if (rawCandles.length >= aiMinCandles) {
       try {
-        const aiResp = await ai.predict({
-          symbol: state.symbol,
-          timeframe: state.timeframe,
-          candles: rawCandles,
-        });
+        const aiResp = await withTimeout(
+          ai.predict({
+            symbol: state.symbol,
+            timeframe: state.timeframe,
+            candles: rawCandles,
+          }),
+          AI_PREDICT_TIMEOUT_MS,
+        );
         state.lastAi = {
           probability: aiResp.probability,
           rawProbability: aiResp.raw_probability ?? aiResp.rawProbability,
@@ -3545,10 +3592,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           aiGateSell = aiGateProbability(shortProb, shortRaw);
         }
       } catch (e) {
+        const errMsg = formatAiServiceError(e);
+        if (String(errMsg).includes("timeout") && AI_TIMEOUT_IS_HARD_FAIL) {
+          // Hard-fail mode: leave gates null; caller may skip or fall back depending on config.
+          log.warn("supertrend_bar_close_ai_predict_timeout", { symbol: state.symbol, timeoutMs: AI_PREDICT_TIMEOUT_MS });
+        } else {
         log.warn("supertrend_bar_close_ai_predict_failed", {
           symbol: state.symbol,
-          error: formatAiServiceError(e),
+          error: errMsg,
         });
+        }
       }
     }
     if (!Number.isFinite(aiGateBuy)) {
@@ -3574,32 +3627,82 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   async function resolveSupertrendBarCloseAiGatesNoLastAi(rawCandles, predictSymbol) {
     const sym = String(predictSymbol || "").toUpperCase();
     const aiMinCandles = Math.max(30, Number(process.env.AI_PREDICT_MIN_CANDLES || 30));
-    let aiGateBuy = null;
-    let aiGateSell = null;
     if (!sym || rawCandles.length < aiMinCandles) {
       return { aiGateBuy: null, aiGateSell: null };
     }
-    try {
-      const aiResp = await ai.predict({
-        symbol: sym,
-        timeframe: state.timeframe,
-        candles: rawCandles,
-      });
+
+    // Cache AI gates per symbol + bar-close ts so AUTO multi does not stall order placement when /predict is slow.
+    // `rawCandles` in the multi path are closed-bar arrays; the tail open time is the bar we are acting on.
+    const cTs = rawCandles.length ? Number(rawCandles[rawCandles.length - 1]?.ts) : NaN;
+    if (!state._stAiGateCache || typeof state._stAiGateCache !== "object") state._stAiGateCache = Object.create(null);
+    const cacheRow = state._stAiGateCache[sym];
+
+    const cachedForThisBar =
+      cacheRow && Number.isFinite(cTs) && Number(cacheRow.cTs) === cTs
+        ? { aiGateBuy: cacheRow.aiGateBuy, aiGateSell: cacheRow.aiGateSell }
+        : null;
+    const cachedLast =
+      cacheRow && (cacheRow.aiGateBuy != null || cacheRow.aiGateSell != null)
+        ? { aiGateBuy: cacheRow.aiGateBuy, aiGateSell: cacheRow.aiGateSell }
+        : { aiGateBuy: null, aiGateSell: null };
+
+    if (cachedForThisBar) return cachedForThisBar;
+
+    let aiGateBuy = cachedLast.aiGateBuy;
+    let aiGateSell = cachedLast.aiGateSell;
+
+    const startedAt = Date.now();
+    const p = (async () => {
+      const aiResp = await withTimeout(
+        ai.predict({
+          symbol: sym,
+          timeframe: state.timeframe,
+          candles: rawCandles,
+        }),
+        AI_PREDICT_TIMEOUT_MS,
+      );
       const calProb = Number(aiResp?.probability ?? 0);
       const rawProb = Number(aiResp?.raw_probability ?? aiResp?.rawProbability ?? NaN);
-      aiGateBuy = aiGateProbability(calProb, rawProb);
+      const outBuy = aiGateProbability(calProb, rawProb);
       const shortProb = Number(aiResp?.short_probability ?? aiResp?.shortProbability ?? NaN);
       const shortRaw = Number(aiResp?.short_raw_probability ?? aiResp?.shortRawProbability ?? NaN);
-      if (Number.isFinite(shortProb) && shortProb > 0) {
-        aiGateSell = aiGateProbability(shortProb, shortRaw);
+      const outSell = Number.isFinite(shortProb) && shortProb > 0 ? aiGateProbability(shortProb, shortRaw) : null;
+      return { aiGateBuy: Number.isFinite(outBuy) ? outBuy : null, aiGateSell: Number.isFinite(outSell) ? outSell : null };
+    })()
+      .then((g) => {
+        try {
+          state._stAiGateCache[sym] = {
+            cTs: Number.isFinite(cTs) ? cTs : null,
+            aiGateBuy: g.aiGateBuy ?? null,
+            aiGateSell: g.aiGateSell ?? null,
+            computedAt: Date.now(),
+            ms: Date.now() - startedAt,
+          };
+        } catch {
+          /* ignore */
+        }
+        return g;
+      })
+      .catch((e) => {
+        const errMsg = formatAiServiceError(e);
+        if (String(errMsg).includes("timeout") && AI_TIMEOUT_IS_HARD_FAIL) {
+          log.warn("supertrend_auto_multi_ai_gates_timeout", { symbol: sym, timeoutMs: AI_PREDICT_TIMEOUT_MS });
+        } else {
+          log.warn("supertrend_auto_multi_ai_gates_failed", { symbol: sym, error: errMsg });
+        }
+        return null;
+      });
+
+    const budget = SUPERTREND_BAR_CLOSE_AI_BUDGET_MS;
+    if (budget > 0) {
+      const got = await withTimeout(p, budget).catch(() => null);
+      if (got && typeof got === "object") {
+        aiGateBuy = got.aiGateBuy ?? aiGateBuy;
+        aiGateSell = got.aiGateSell ?? aiGateSell;
       }
-    } catch (e) {
-      log.warn("supertrend_auto_multi_ai_gates_failed", { symbol: sym, error: formatAiServiceError(e) });
     }
-    return {
-      aiGateBuy: Number.isFinite(aiGateBuy) ? aiGateBuy : null,
-      aiGateSell: Number.isFinite(aiGateSell) ? aiGateSell : null,
-    };
+
+    return { aiGateBuy, aiGateSell };
   }
 
   /** SurfPulse ML win probability for chart signal list (same 8 features as /predict/surfpulse). */
@@ -4499,7 +4602,49 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       log?.warn?.("supertrend_move_quality_preview_failed", { error: String(e?.message || e) });
     }
 
-    const { aiGateBuy, aiGateSell } = await resolveSupertrendBarCloseAiGates(rawCandles);
+    // --- AI gates: never allow slow /predict to stall bar-close execution for multiple seconds.
+    // Use cached gates for this bar when available; otherwise give the predictor a small time budget
+    // and fall back to the last known values.
+    const symU = String(state.symbol || "").toUpperCase();
+    if (!state._stAiGateCache || typeof state._stAiGateCache !== "object") state._stAiGateCache = Object.create(null);
+    const cacheRow = state._stAiGateCache[symU];
+    const cachedForThisBar =
+      cacheRow && Number(cacheRow.cTs) === Number(cTs) ? { aiGateBuy: cacheRow.aiGateBuy, aiGateSell: cacheRow.aiGateSell } : null;
+    const cachedLast =
+      cacheRow && (cacheRow.aiGateBuy != null || cacheRow.aiGateSell != null)
+        ? { aiGateBuy: cacheRow.aiGateBuy, aiGateSell: cacheRow.aiGateSell }
+        : { aiGateBuy: null, aiGateSell: null };
+    let aiGateBuy = cachedForThisBar ? cachedForThisBar.aiGateBuy : cachedLast.aiGateBuy;
+    let aiGateSell = cachedForThisBar ? cachedForThisBar.aiGateSell : cachedLast.aiGateSell;
+
+    if (!cachedForThisBar) {
+      const startedAt = Date.now();
+      const p = resolveSupertrendBarCloseAiGates(rawCandles)
+        .then((g) => {
+          try {
+            state._stAiGateCache[symU] = {
+              cTs,
+              aiGateBuy: g.aiGateBuy ?? null,
+              aiGateSell: g.aiGateSell ?? null,
+              computedAt: Date.now(),
+              ms: Date.now() - startedAt,
+            };
+          } catch {
+            /* ignore */
+          }
+          return g;
+        })
+        .catch(() => null);
+
+      const budget = SUPERTREND_BAR_CLOSE_AI_BUDGET_MS;
+      if (budget > 0) {
+        const got = await withTimeout(p, budget).catch(() => null);
+        if (got && typeof got === "object") {
+          aiGateBuy = got.aiGateBuy ?? aiGateBuy;
+          aiGateSell = got.aiGateSell ?? aiGateSell;
+        }
+      }
+    }
 
     state.supertrendLastBarClose = {
       ts: Number(row.ts),
@@ -5046,8 +5191,48 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   function computeFeedWatchSymbols() {
     if (!marketFeedUsesLiveBinance()) return [];
     const mm = String(state.marketMode || "AUTO").toUpperCase();
-    if (!parallelSupertrendWatchGate(mm)) return [];
-    return computeAutoMultiWatchSymbolList();
+    const ttlMs = Math.max(10_000, Math.min(60 * 60 * 1000, Number(process.env.UI_CHART_WATCH_TTL_MS ?? 10 * 60_000)));
+    const uiMax = Math.max(0, Math.min(20, Math.floor(Number(process.env.UI_CHART_WATCH_MAX ?? 6))));
+    const primary = String(state.symbol || "").toUpperCase();
+
+    // UI-driven chart symbols (MRU + TTL): keep `/api/market/candles?symbol=...` near-real-time via WS buffers.
+    const now = Date.now();
+    if (!state._uiChartWatch || typeof state._uiChartWatch !== "object") state._uiChartWatch = Object.create(null);
+    for (const k of Object.keys(state._uiChartWatch)) {
+      if (!state._uiChartWatch[k] || Number(state._uiChartWatch[k]) <= now) delete state._uiChartWatch[k];
+    }
+    const uiSyms = Object.entries(state._uiChartWatch)
+      .filter(([s, exp]) => s && s !== primary && Number(exp) > now)
+      .sort((a, b) => Number(b[1]) - Number(a[1]))
+      .map(([s]) => s)
+      .slice(0, uiMax);
+
+    const autoSyms = parallelSupertrendWatchGate(mm) ? computeAutoMultiWatchSymbolList() : [];
+
+    // Union + cap to combined WS stream budget.
+    const maxStreams = Math.max(1, Math.min(80, Math.floor(Number(process.env.BINANCE_COMBINED_MAX_STREAMS ?? 12))));
+    const out = [];
+    const seen = new Set();
+    for (const s of [...autoSyms, ...uiSyms]) {
+      const u = String(s || "").toUpperCase();
+      if (!u || seen.has(u)) continue;
+      seen.add(u);
+      out.push(u);
+      if (out.length >= maxStreams) break;
+    }
+    return out;
+  }
+
+  function noteUiChartWatchSymbol(symU) {
+    if (!marketFeedUsesLiveBinance()) return;
+    const u = String(symU || "").trim().toUpperCase();
+    const primary = String(state.symbol || "").toUpperCase();
+    if (!u || u === primary) return;
+    const ttlMs = Math.max(10_000, Math.min(60 * 60 * 1000, Number(process.env.UI_CHART_WATCH_TTL_MS ?? 10 * 60_000)));
+    if (!state._uiChartWatch || typeof state._uiChartWatch !== "object") state._uiChartWatch = Object.create(null);
+    state._uiChartWatch[u] = Date.now() + ttlMs;
+    // Debounce WS resubscribe so quick chart clicks don’t thrash.
+    try { syncFeedWatchSymbols(); } catch { /* ignore */ }
   }
 
   async function buildAutoMultiCtx(mm) {
@@ -5188,13 +5373,19 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     if (typeof feed?.setWatchSymbols !== "function") return;
     const mm = String(state.marketMode || "AUTO").toUpperCase();
     if (!parallelSupertrendWatchGate(mm)) {
-      feed.setWatchSymbols([]);
+      // Even when parallel watch mode is off, keep a small WS watchlist for UI chart symbols
+      // so `/api/market/candles?symbol=...` can use feed buffers instead of REST polling.
+      const primary = String(state.symbol || "").toUpperCase();
+      const syms = computeFeedWatchSymbols().filter((s) => s && s !== primary);
+      feed.setWatchSymbols(syms);
       state.multiSymbolWatchSignals = Object.create(null);
+      void warmSymbolMetaForWatchlist([primary, ...syms].filter(Boolean));
       return;
     }
     const primary = String(state.symbol || "").toUpperCase();
     const syms = computeFeedWatchSymbols().filter((s) => s && s !== primary);
     feed.setWatchSymbols(syms);
+    void warmSymbolMetaForWatchlist([primary, ...syms].filter(Boolean));
     const allowed = new Set([primary, ...computeFeedWatchSymbols()].filter(Boolean));
     const prev = state.multiSymbolWatchSignals && typeof state.multiSymbolWatchSignals === "object" ? state.multiSymbolWatchSignals : {};
     const next = { ...prev };
@@ -5202,6 +5393,35 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       if (!allowed.has(k)) delete next[k];
     }
     state.multiSymbolWatchSignals = next;
+  }
+
+  /** Background warmup so first trade on a symbol doesn't block on exchangeInfo/meta. */
+  let warmMetaTimer = null;
+  async function warmSymbolMetaForWatchlist(symbols) {
+    if (!symbols || !Array.isArray(symbols) || typeof exch?.getSymbolOrderConstraints !== "function") return;
+    if (!state._warmedSymbolMeta || typeof state._warmedSymbolMeta !== "object") state._warmedSymbolMeta = Object.create(null);
+    const uniq = [...new Set(symbols.map((s) => String(s || "").toUpperCase()).filter(Boolean))].slice(0, 20);
+    if (!uniq.length) return;
+    if (warmMetaTimer) clearTimeout(warmMetaTimer);
+    warmMetaTimer = setTimeout(async () => {
+      warmMetaTimer = null;
+      // Concurrency limit = 2 to avoid hammering REST.
+      const queue = uniq.filter((s) => !state._warmedSymbolMeta[s]);
+      if (!queue.length) return;
+      let idx = 0;
+      const worker = async () => {
+        while (idx < queue.length) {
+          const s = queue[idx++];
+          try {
+            await withTimeout(exch.getSymbolOrderConstraints({ symbol: s, venue: "BOTH" }), 1500);
+            state._warmedSymbolMeta[s] = Date.now();
+          } catch {
+            // keep retrying on future sync cycles
+          }
+        }
+      };
+      await Promise.all([worker(), worker()]);
+    }, 300);
   }
 
   maybeAutoMultiBarClose = async function maybeAutoMultiBarCloseInner(candle) {
@@ -5784,6 +6004,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     const hours = Math.max(0.25, Math.min(168, Number(opts.hours ?? 24)));
     const symU = String(sym || "").trim().toUpperCase();
     if (!SYM_RE.test(symU)) return null;
+    noteUiChartWatchSymbol(symU);
     const n = maxBarsForHistory(state.timeframe, hours);
     const minBars = Math.max(30, state.supertrendPeriod + 2);
     if (typeof feed.getCandlesForSymbol === "function" && marketFeedUsesLiveBinance()) {
@@ -6254,21 +6475,20 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       }
       _lastAccountFetchAt = Date.now();
 
-      const lastC = feed.getCandles()?.at(-1);
-      const markPrice = Number(lastC?.close ?? 0);
+      // Do not overwrite exchange-reported `markPrice` with the last kline close — they are different concepts.
+      // The UI compares to Binance "Mark" for futures; overwriting it here makes the chart/portfolio disagree.
       const positionsMtM = _cachedPositions.map((p) => {
-        if (p.venue === "FUTURES" && p.syncSource === "fapi_v2_account") {
-          const apiUpnl = Number(p.unrealizedPnl ?? p.unrealizedProfit ?? 0);
-          return { ...p, markPrice, unrealizedPnl: Number.isFinite(apiUpnl) ? apiUpnl : null };
-        }
-        const isLong = p.side === "BUY";
-        if (p?.symbol !== state.symbol) {
-          return { ...p, markPrice, unrealizedPnl: null };
-        }
-        const uPnl = isLong
-          ? (markPrice - Number(p.entryPrice)) * Number(p.qty)
-          : (Number(p.entryPrice) - markPrice) * Number(p.qty);
-        return { ...p, markPrice, unrealizedPnl: uPnl };
+        if (String(p?.venue || "").toUpperCase() !== "FUTURES") return p;
+        const mp = Number(p?.markPrice ?? p?.markPx ?? NaN);
+        const up = Number(p?.unrealizedPnl ?? p?.unrealizedProfit ?? NaN);
+        const hasUp = Number.isFinite(up);
+        const hasMp = Number.isFinite(mp) && mp > 0;
+        // Keep markPrice from exchange snapshot; keep uPnL if provided.
+        return {
+          ...p,
+          ...(hasMp ? { markPrice: mp } : {}),
+          ...(hasUp ? { unrealizedPnl: up } : {}),
+        };
       });
       const unrealizedPnl = positionsMtM.reduce((a, p) => a + Number(p.unrealizedPnl || 0), 0);
       const wBase = walletBaseFromAccount(account);
@@ -6289,7 +6509,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           ? null
           : {
               ...account,
-              markPrice,
+              // Keep account markPrice if the exchange provides one; do not overwrite from candles.
               unrealizedPnl,
               equityWithUnrealized,
               dailyPnlPct: dailyPnlPctEff,
@@ -7045,7 +7265,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         try {
           state._predictWarmupLogged = false;
           const tPred = Date.now();
-          aiResp = await ai.predict({ symbol: state.symbol, timeframe: state.timeframe, candles });
+          aiResp = await withTimeout(
+            ai.predict({ symbol: state.symbol, timeframe: state.timeframe, candles }),
+            AI_PREDICT_TIMEOUT_MS,
+          );
           state.metrics.lastPredictLatencyMs = Date.now() - tPred;
           state.lastAi = {
             probability: aiResp.probability,
@@ -7060,6 +7283,21 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           didPredict = true;
         } catch (e) {
           const errMsg = formatAiServiceError(e);
+          if (String(errMsg).includes("timeout")) {
+            emitActivity(wsHub, {
+              level: AI_TIMEOUT_IS_HARD_FAIL ? "error" : "warn",
+              msg: `AI predict timed out (${AI_PREDICT_TIMEOUT_MS}ms)${AI_TIMEOUT_IS_HARD_FAIL ? "; skipping trade" : "; using last AI if present"}`,
+              category: "ai",
+              reason: "predict_timeout",
+              detail: { timeoutMs: AI_PREDICT_TIMEOUT_MS, symbol: state.symbol },
+            });
+            log.warn("ai_predict_timeout", { symbol: state.symbol, timeoutMs: AI_PREDICT_TIMEOUT_MS });
+            if (AI_TIMEOUT_IS_HARD_FAIL) {
+              noteTradeBlock({ reason: "ai_predict_timeout", detail: String(AI_PREDICT_TIMEOUT_MS), symbol: state.symbol });
+              return;
+            }
+            // Soft timeout: fall through; the gate uses `state.lastAi` below.
+          } else {
           emitActivity(wsHub, {
             level: "error",
             msg: "AI predict failed; skipping trade",
@@ -7070,6 +7308,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           log.warn("ai_predict_failed", { symbol: state.symbol, error: errMsg });
           noteTradeBlock({ reason: "ai_predict_failed", detail: errMsg, symbol: state.symbol });
           return;
+          }
         }
       }
     }

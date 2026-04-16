@@ -1669,11 +1669,13 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
       await syncRealizedIncomeFromExchange();
 
       const primarySymU = String(symbol || "").toUpperCase();
-      const primaryMark = Number(price);
 
       async function markPxForSymbol(sym) {
         const u = String(sym || "").toUpperCase();
-        if (u === primarySymU && Number.isFinite(primaryMark) && primaryMark > 0) return primaryMark;
+        // Prefer mark-price WS cache when available (sub-second), otherwise use premiumIndex REST.
+        // Do not use the bot-provided candle close as "mark" — that causes missed trailing activations.
+        const cached = _getMarkPxFromCache(u);
+        if (cached != null && Number.isFinite(cached) && cached > 0) return cached;
         try {
           const d = await publicGet("/fapi/v1/premiumIndex", { symbol: u });
           const m = Number(d?.markPrice);
@@ -1752,7 +1754,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
 
         const trailSyms = [...new Set(Object.keys(mem.trailingBySymbol).map((k) => String(k || "").toUpperCase()))];
 
-        // Fetch all mark prices in parallel (primary symbol uses candle close, others use premiumIndex)
+        // Fetch all mark prices in parallel (all symbols use mark price: WS cache or premiumIndex)
         const markPxResults = await Promise.allSettled(trailSyms.map((s) => markPxForSymbol(s)));
         const markPxBySymbol = new Map();
         trailSyms.forEach((s, i) => {
