@@ -33,7 +33,7 @@ import {
   readTradeWsEvents,
   TRADE_HISTORY_SNAPSHOT_MAX,
 } from "../lib/activityPersistence.js";
-import { fetchUsdMBookTicker } from "../lib/binanceUsdMBookTicker.js";
+import { fetchUsdMBookTicker, fetchUsdMPremiumMark } from "../lib/binanceUsdMBookTicker.js";
 import { filterStrictPortfolioTradesAfterMerge } from "../lib/tradeLedgerClassification.js";
 import { readBotTradingConfig, writeBotTradingConfig } from "../lib/botTradingConfigStore.js";
 import {
@@ -671,6 +671,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     trailingStopExtraScalpingPcts: [],
     /**
      * Configurable trailing metrics (all modes). Env vars supply the default values shown here.
+     * UI: TradingPanel → "Supertrend-based" / "Fee ladder" (`TrailMetricGroup`). See also
+     * `frontend/src/lib/trailingFeeLadder.ts` file header for field → engine mapping.
      *
      * Fee inputs (used by both SUPERTREND and FEE_LADDER):
      * `trailOpenFeeRate`  — taker/maker fee for opening the position (fraction; e.g. 0.0004 = 0.04%).
@@ -680,9 +682,13 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
      * Round-trip fee = openFee + closeFee (e.g. 0.04% + 0.04% = 0.08%).
      *
      * SUPERTREND-specific:
-     * `trailFeeBeMultiplier` — safety margin ×N applied on top of round-trip fee for T0 SL (1.0 = exact; default 1.25).
-     * `trailBufferRate`      — extra buffer past breakeven before T0 activation fires (fraction; default 0.0005 = 0.05%).
+     * `trailFeeBeMultiplier` — safety margin ×N on round-trip fee for the padded fee-BE lock (tiered ST: T02 SL / T02 activation = padded fee + this buffer).
+     * `trailBufferRate`      — activation buffer (fraction; default 0.0005): tiered ST uses it for T01 (entry + buffer) and for T02 together with padded fee.
+     * `trailActivationSlippageFrac` — added to padded fee rate for Supertrend tiered gates only (execution cushion; cap 1%).
+     * `trailBufferMode`      — `PERCENT` = use `trailBufferRate` only; `ATR` = buffer = min(5%, atrPct × trailBufferAtrMult) when regime ATR exists, else `trailBufferRate`.
+     * `trailBufferAtrMult`   — multiplier on `lastRegime.atrPct` when `trailBufferMode` is `ATR`.
      * `trailMinSlDistFrac`   — minimum fractional improvement the new SL must make (default 0.002 = 0.2%).
+     * `trailMinGapFromMarkFrac` — min |mark−SL|/mark when trailing (0 = off); loosens SL vs mark so small pullbacks do not stop (e.g. 0.005 = 0.5%).
      * `trailMaintMarginRate` — liquidation guard rate for open-rejection check (default 0.005 = 0.5%).
      */
     trailOpenFeeRate: clamp(
@@ -691,13 +697,57 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     trailCloseFeeRate: clamp(Number(process.env.TRADE_CLOSE_FEE_RATE ?? 0.0004), 0, 0.01),
     trailFeeBeMultiplier: clamp(Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25), 1, 2),
     trailBufferRate: clamp(Number(process.env.SUPERTREND_TRAIL_BUFFER_RATE ?? 0.0005), 0, 0.05),
+    /** Additive fraction on padded BE rate for Supertrend tiered gates (execution vs theoretical fees). */
+    trailActivationSlippageFrac: clamp(Number(process.env.FUTURES_TRAIL_ACTIVATION_SLIPPAGE_FRAC ?? 0), 0, 0.01),
+    /** With `trailBufferMode: "ATR"`: buffer = min(5%, atrPct × this). Ignored in PERCENT mode. */
+    trailBufferAtrMult: clamp(Number(process.env.FUTURES_TRAIL_BUFFER_ATR_MULT ?? 0), 0, 1),
+    /** `"PERCENT"` = fixed `trailBufferRate`; `"ATR"` = scale buffer from regime ATR (see `trailBufferAtrMult`). */
+    trailBufferMode: (() => {
+      const u = String(process.env.FUTURES_TRAIL_BUFFER_MODE ?? "PERCENT").toUpperCase();
+      return u === "ATR" ? "ATR" : "PERCENT";
+    })(),
     trailMinSlDistFrac: clamp(Number(process.env.SUPERTREND_TRAIL_MIN_SL_DISTANCE_FRAC ?? 0.002), 0, 0.1),
+    trailMinGapFromMarkFrac: clamp(Number(process.env.SUPERTREND_TRAIL_MIN_GAP_FROM_MARK_FRAC ?? 0), 0, 0.2),
     trailMaintMarginRate: clamp(Number(process.env.SUPERTREND_TRAIL_MAINTENANCE_MARGIN_RATE ?? 0.005), 0, 0.1),
+    /**
+     * Tiered ST post‑T02: spacing between successive lock rungs as a fraction of entry (e.g. 0.001 = 0.1% of entry).
+     * `null` = engine default `min(2%, max(2×roundTrip, 0.04%))`.
+     */
+    trailPostT02SpacingFrac: (() => {
+      const x = Number(process.env.TRAIL_POST_T02_SPACING_FRAC);
+      return Number.isFinite(x) && x > 0 ? clamp(x, 0.00001, 0.05) : null;
+    })(),
+    /** Max post‑T02 tiers (T1…); total trail steps cap ≈ 3 + this (with floor/ceiling in `maxTrailStepsForConfig`). */
+    trailPostT02MaxExtraTiers: Math.max(
+      10,
+      Math.min(500, Math.floor(Number(process.env.TRAIL_POST_T02_MAX_EXTRA_TIERS ?? 150))),
+    ),
     /**
      * Futures Supertrend: false = 1-way (BUY opens long; SELL closes long only).
      * true = 2-way (BUY closes short then opens long; SELL closes long then opens short).
      */
     supertrendFuturesTwoWay: false,
+    /**
+     * USD-M Supertrend entry execution (mirrors env `SUPERTREND_FUTURES_*`; persisted in bot-trading-config.json).
+     * `supertrendFuturesEntryOpenStyle` AUTO = LIMIT_IOC when slippage % > 0 else MARKET.
+     */
+    supertrendFuturesMaxEntrySlippagePct: (() => {
+      const e = process.env.SUPERTREND_FUTURES_MAX_ENTRY_SLIPPAGE_PCT;
+      const n = e === undefined || e === "" ? 0.15 : Number(e);
+      return Number.isFinite(n) ? clamp(n, 0, 5) : 0.15;
+    })(),
+    supertrendFuturesEntryOpenStyle: (() => {
+      const e = process.env.SUPERTREND_FUTURES_OPEN_STYLE;
+      if (e === undefined || e === null || String(e).trim() === "") return "AUTO";
+      const u = String(e).trim().toUpperCase();
+      if (u === "MARKET" || u === "LIMIT_IOC") return u;
+      return "AUTO";
+    })(),
+    supertrendFuturesEntryRecheckMs: Math.max(0, Math.floor(Number(process.env.SUPERTREND_FUTURES_ENTRY_RECHECK_MS ?? 0))),
+    supertrendFuturesIocFallbackMarket: truthyEnv(process.env.SUPERTREND_FUTURES_IOC_FALLBACK_MARKET ?? "0"),
+    supertrendFuturesRequireMarkPrice: truthyEnv(process.env.SUPERTREND_FUTURES_REQUIRE_MARK_PRICE ?? "0"),
+    supertrendFuturesRequireBookTicker: truthyEnv(process.env.SUPERTREND_FUTURES_REQUIRE_BOOK_TICKER ?? "0"),
+    supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(Number(process.env.SUPERTREND_FUTURES_MAX_SIGNAL_LAG_MS ?? 0))),
     supertrendPeriod: 10,
     supertrendMultiplier: 3,
     supertrendWilderAtr: true,
@@ -804,6 +854,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   function normalizeFuturesTrailingStopMode(v) {
     const u = String(v ?? "SUPERTREND").toUpperCase();
     return u === "FEE_LADDER" ? "FEE_LADDER" : "SUPERTREND";
+  }
+
+  function normalizeTrailBufferMode(v) {
+    const u = String(v ?? "PERCENT").toUpperCase();
+    return u === "ATR" ? "ATR" : "PERCENT";
   }
 
   function universeManualPinningOn() {
@@ -1297,11 +1352,27 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           trailCloseFeeRate: state.trailCloseFeeRate,
           trailFeeBeMultiplier: state.trailFeeBeMultiplier,
           trailBufferRate: state.trailBufferRate,
+          trailActivationSlippageFrac: state.trailActivationSlippageFrac,
+          trailBufferAtrMult: state.trailBufferAtrMult,
+          trailBufferMode: normalizeTrailBufferMode(state.trailBufferMode),
           trailMinSlDistFrac: state.trailMinSlDistFrac,
+          trailMinGapFromMarkFrac: state.trailMinGapFromMarkFrac,
           trailMaintMarginRate: state.trailMaintMarginRate,
+          trailPostT02SpacingFrac: state.trailPostT02SpacingFrac,
+          trailPostT02MaxExtraTiers: state.trailPostT02MaxExtraTiers,
           supertrendFuturesFixedSlPct: state.supertrendFuturesFixedSlPct,
           supertrendFuturesFixedTpPct: state.supertrendFuturesFixedTpPct,
           supertrendFuturesTwoWay: state.supertrendFuturesTwoWay,
+          supertrendFuturesMaxEntrySlippagePct: clamp(Number(state.supertrendFuturesMaxEntrySlippagePct ?? 0.15), 0, 5),
+          supertrendFuturesEntryOpenStyle: (() => {
+            const s = String(state.supertrendFuturesEntryOpenStyle || "AUTO").toUpperCase();
+            return s === "MARKET" || s === "LIMIT_IOC" ? s : "AUTO";
+          })(),
+          supertrendFuturesEntryRecheckMs: Math.max(0, Math.floor(Number(state.supertrendFuturesEntryRecheckMs ?? 0))),
+          supertrendFuturesIocFallbackMarket: state.supertrendFuturesIocFallbackMarket === true,
+          supertrendFuturesRequireMarkPrice: state.supertrendFuturesRequireMarkPrice === true,
+          supertrendFuturesRequireBookTicker: state.supertrendFuturesRequireBookTicker === true,
+          supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(Number(state.supertrendFuturesMaxSignalLagMs ?? 0))),
           supertrendPeriod: state.supertrendPeriod,
           supertrendMultiplier: state.supertrendMultiplier,
           supertrendWilderAtr: state.supertrendWilderAtr,
@@ -1530,11 +1601,52 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       }
       if (b.trailOpenFeeRate != null) state.trailOpenFeeRate = clamp(Number(b.trailOpenFeeRate) || 0.0004, 0, 0.01);
       if (b.trailCloseFeeRate != null) state.trailCloseFeeRate = clamp(Number(b.trailCloseFeeRate) || 0.0004, 0, 0.01);
-      if (b.trailFeeBeMultiplier != null) state.trailFeeBeMultiplier = clamp(Number(b.trailFeeBeMultiplier) || 1.0, 1, 2);
+      if (b.trailFeeBeMultiplier != null) {
+        state.trailFeeBeMultiplier = clamp(
+          Number(b.trailFeeBeMultiplier) || Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25),
+          1,
+          2,
+        );
+      }
       if (b.trailBufferRate != null) state.trailBufferRate = clamp(Number(b.trailBufferRate) || 0.0005, 0, 0.05);
+      if (b.trailActivationSlippageFrac != null) {
+        state.trailActivationSlippageFrac = clamp(Number(b.trailActivationSlippageFrac) || 0, 0, 0.01);
+      }
+      if (b.trailBufferAtrMult != null) state.trailBufferAtrMult = clamp(Number(b.trailBufferAtrMult) || 0, 0, 1);
+      if (b.trailBufferMode != null) state.trailBufferMode = normalizeTrailBufferMode(b.trailBufferMode);
       if (b.trailMinSlDistFrac != null) state.trailMinSlDistFrac = clamp(Number(b.trailMinSlDistFrac) || 0.002, 0, 0.1);
+      if (b.trailMinGapFromMarkFrac != null) state.trailMinGapFromMarkFrac = clamp(Number(b.trailMinGapFromMarkFrac) || 0, 0, 0.2);
       if (b.trailMaintMarginRate != null) state.trailMaintMarginRate = clamp(Number(b.trailMaintMarginRate) || 0.005, 0, 0.1);
+      if (b.trailPostT02SpacingFrac === null) {
+        state.trailPostT02SpacingFrac = null;
+      } else if (b.trailPostT02SpacingFrac != null && Number.isFinite(Number(b.trailPostT02SpacingFrac))) {
+        state.trailPostT02SpacingFrac = clamp(Number(b.trailPostT02SpacingFrac), 0.00001, 0.05);
+      }
+      if (b.trailPostT02MaxExtraTiers != null && Number.isFinite(Number(b.trailPostT02MaxExtraTiers))) {
+        state.trailPostT02MaxExtraTiers = Math.max(10, Math.min(500, Math.floor(Number(b.trailPostT02MaxExtraTiers))));
+      }
       if (typeof b.supertrendFuturesTwoWay === "boolean") state.supertrendFuturesTwoWay = b.supertrendFuturesTwoWay;
+      if (b.supertrendFuturesMaxEntrySlippagePct != null && Number.isFinite(Number(b.supertrendFuturesMaxEntrySlippagePct))) {
+        state.supertrendFuturesMaxEntrySlippagePct = clamp(Number(b.supertrendFuturesMaxEntrySlippagePct), 0, 5);
+      }
+      if (b.supertrendFuturesEntryOpenStyle === "MARKET" || b.supertrendFuturesEntryOpenStyle === "LIMIT_IOC" || b.supertrendFuturesEntryOpenStyle === "AUTO") {
+        state.supertrendFuturesEntryOpenStyle = b.supertrendFuturesEntryOpenStyle;
+      }
+      if (b.supertrendFuturesEntryRecheckMs != null && Number.isFinite(Number(b.supertrendFuturesEntryRecheckMs))) {
+        state.supertrendFuturesEntryRecheckMs = Math.max(0, Math.floor(Number(b.supertrendFuturesEntryRecheckMs)));
+      }
+      if (typeof b.supertrendFuturesIocFallbackMarket === "boolean") {
+        state.supertrendFuturesIocFallbackMarket = b.supertrendFuturesIocFallbackMarket;
+      }
+      if (typeof b.supertrendFuturesRequireMarkPrice === "boolean") {
+        state.supertrendFuturesRequireMarkPrice = b.supertrendFuturesRequireMarkPrice;
+      }
+      if (typeof b.supertrendFuturesRequireBookTicker === "boolean") {
+        state.supertrendFuturesRequireBookTicker = b.supertrendFuturesRequireBookTicker;
+      }
+      if (b.supertrendFuturesMaxSignalLagMs != null && Number.isFinite(Number(b.supertrendFuturesMaxSignalLagMs))) {
+        state.supertrendFuturesMaxSignalLagMs = Math.max(0, Math.floor(Number(b.supertrendFuturesMaxSignalLagMs)));
+      }
       if (b.supertrendFuturesFixedSlPct != null && Number.isFinite(Number(b.supertrendFuturesFixedSlPct))) {
         state.supertrendFuturesFixedSlPct = clamp(Number(b.supertrendFuturesFixedSlPct), 0.00005, 0.2);
       }
@@ -3277,7 +3389,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           : NaN;
       const signalLagMs = Number.isFinite(expectedCloseWallMs) ? Date.now() - expectedCloseWallMs : NaN;
 
-      const maxLagMs = Number(process.env.SUPERTREND_FUTURES_MAX_SIGNAL_LAG_MS ?? 0);
+      const maxLagMs = Math.max(0, Math.floor(Number(state.supertrendFuturesMaxSignalLagMs ?? 0)));
       if (Number.isFinite(maxLagMs) && maxLagMs > 0 && Number.isFinite(signalLagMs) && signalLagMs > maxLagMs) {
         wsHub?.broadcast?.("log", {
           level: "warn",
@@ -3287,17 +3399,116 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         return { venue: "FUTURES", side, action: "skipped", reason: "stale_signal_lag", signalLagMs };
       }
 
-      const slipPctRaw = Number(process.env.SUPERTREND_FUTURES_MAX_ENTRY_SLIPPAGE_PCT ?? 0);
+      const slipPctRaw = clamp(Number(state.supertrendFuturesMaxEntrySlippagePct ?? 0.15), 0, 5);
       const slipFrac = Number.isFinite(slipPctRaw) && slipPctRaw > 0 ? slipPctRaw / 100 : 0;
-      let openStyle = String(process.env.SUPERTREND_FUTURES_OPEN_STYLE || "MARKET").toUpperCase();
-      if (openStyle !== "MARKET" && openStyle !== "LIMIT_IOC") openStyle = "MARKET";
+
+      const openStyleFromState = String(state.supertrendFuturesEntryOpenStyle || "AUTO").toUpperCase();
+      const openStyleUnset = !openStyleFromState || openStyleFromState === "AUTO";
+      let openStyle = openStyleUnset
+        ? slipFrac > 0
+          ? "LIMIT_IOC"
+          : "MARKET"
+        : openStyleFromState;
+      if (openStyle !== "MARKET" && openStyle !== "LIMIT_IOC") openStyle = slipFrac > 0 ? "LIMIT_IOC" : "MARKET";
+
+      const requireBook =
+        state.supertrendFuturesRequireBookTicker === true ||
+        String(process.env.SUPERTREND_FUTURES_REQUIRE_BOOK_TICKER ?? "0") === "1";
+      const requireMark =
+        state.supertrendFuturesRequireMarkPrice === true ||
+        String(process.env.SUPERTREND_FUTURES_REQUIRE_MARK_PRICE ?? "0") === "1";
+      const recheckMs = Math.max(0, Math.floor(Number(state.supertrendFuturesEntryRecheckMs ?? 0)));
 
       let bookTicker = null;
-      if (slipFrac > 0 || openStyle === "LIMIT_IOC") {
-        bookTicker = await fetchUsdMBookTicker(orderSymbol, runtimeTradingMode());
+      let markPxEntry = null;
+      let midPxEntry = null;
+
+      async function loadEntryMicrostructure() {
+        const mode = runtimeTradingMode();
+        const needBook = slipFrac > 0 || openStyle === "LIMIT_IOC" || requireBook;
+        const b = needBook ? await fetchUsdMBookTicker(orderSymbol, mode) : null;
+        const mk = slipFrac > 0 || requireMark ? await fetchUsdMPremiumMark(orderSymbol, mode) : null;
+        const markPx = mk?.markPrice != null ? Number(mk.markPrice) : null;
+        let midPx = null;
+        if (b && Number.isFinite(Number(b.bidPrice)) && Number.isFinite(Number(b.askPrice))) {
+          midPx = (Number(b.bidPrice) + Number(b.askPrice)) / 2;
+        }
+        return { bookTicker: b, markPx, midPx };
       }
 
-      const requireBook = String(process.env.SUPERTREND_FUTURES_REQUIRE_BOOK_TICKER ?? "0") === "1";
+      function entryDriftFails(bt, markPx, midPx) {
+        if (!(slipFrac > 0 && Number.isFinite(pxEntryOpen) && pxEntryOpen > 0)) return { fail: false };
+        const ref = pxEntryOpen;
+        if (bt) {
+          if (openingSide === "BUY") {
+            const ask = Number(bt.askPrice);
+            if (Number.isFinite(ask) && ask > ref * (1 + slipFrac)) {
+              return {
+                fail: true,
+                msg: `Supertrend futures BUY skipped: best ask ${ask.toFixed(6)} > signal close ${ref.toFixed(6)} + ${slipPctRaw}% (slippage cap; widen SUPERTREND_FUTURES_MAX_ENTRY_SLIPPAGE_PCT or wait)`,
+              };
+            }
+          } else {
+            const bid = Number(bt.bidPrice);
+            if (Number.isFinite(bid) && bid < ref * (1 - slipFrac)) {
+              return {
+                fail: true,
+                msg: `Supertrend futures SELL skipped: best bid ${bid.toFixed(6)} < signal close ${ref.toFixed(6)} − ${slipPctRaw}%`,
+              };
+            }
+          }
+        }
+        if (markPx != null && Number.isFinite(markPx) && markPx > 0) {
+          if (openingSide === "BUY") {
+            if (markPx > ref * (1 + slipFrac)) {
+              return {
+                fail: true,
+                msg: `Supertrend futures BUY skipped: mark ${markPx.toFixed(6)} > signal close ${ref.toFixed(6)} + ${slipPctRaw}% (mark drift vs signal)`,
+              };
+            }
+          } else if (markPx < ref * (1 - slipFrac)) {
+            return {
+              fail: true,
+              msg: `Supertrend futures SELL skipped: mark ${markPx.toFixed(6)} < signal close ${ref.toFixed(6)} − ${slipPctRaw}% (mark drift vs signal)`,
+            };
+          }
+        }
+        if (midPx != null && Number.isFinite(midPx) && midPx > 0 && bt) {
+          if (openingSide === "BUY") {
+            if (midPx > ref * (1 + slipFrac)) {
+              return {
+                fail: true,
+                msg: `Supertrend futures BUY skipped: mid ${midPx.toFixed(6)} > signal close ${ref.toFixed(6)} + ${slipPctRaw}% (book mid drift vs signal)`,
+              };
+            }
+          } else if (midPx < ref * (1 - slipFrac)) {
+            return {
+              fail: true,
+              msg: `Supertrend futures SELL skipped: mid ${midPx.toFixed(6)} < signal close ${ref.toFixed(6)} − ${slipPctRaw}% (book mid drift vs signal)`,
+            };
+          }
+        }
+        return { fail: false };
+      }
+
+      let micro = await loadEntryMicrostructure();
+      bookTicker = micro.bookTicker;
+      markPxEntry = micro.markPx;
+      midPxEntry = micro.midPx;
+
+      if (
+        slipFrac > 0 &&
+        !bookTicker &&
+        !(Number.isFinite(markPxEntry) && markPxEntry > 0)
+      ) {
+        wsHub?.broadcast?.("log", {
+          level: "warn",
+          msg: `Supertrend futures ${openingSide} skipped: book ticker and mark price both unavailable — cannot enforce SUPERTREND_FUTURES_MAX_ENTRY_SLIPPAGE_PCT`,
+          symbol: orderSymbol,
+        });
+        return { venue: "FUTURES", side, action: "skipped", reason: "entry_quote_unavailable" };
+      }
+
       if (requireBook && slipFrac > 0 && !bookTicker) {
         wsHub?.broadcast?.("log", {
           level: "warn",
@@ -3305,6 +3516,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           symbol: orderSymbol,
         });
         return { venue: "FUTURES", side, action: "skipped", reason: "book_ticker_unavailable" };
+      }
+      if (requireMark && !(Number.isFinite(markPxEntry) && markPxEntry > 0)) {
+        wsHub?.broadcast?.("log", {
+          level: "warn",
+          msg: `Supertrend futures ${openingSide} skipped: mark price unavailable (SUPERTREND_FUTURES_REQUIRE_MARK_PRICE=1)`,
+          symbol: orderSymbol,
+        });
+        return { venue: "FUTURES", side, action: "skipped", reason: "mark_price_unavailable" };
       }
 
       if (bookTicker) {
@@ -3314,34 +3533,46 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           signalBarClose: pxEntryOpen,
           bestBid: bookTicker.bidPrice,
           bestAsk: bookTicker.askPrice,
+          midPx: midPxEntry,
+          markPx: markPxEntry,
           signalLagMs: Number.isFinite(signalLagMs) ? Math.round(signalLagMs) : null,
         });
       } else if (slipFrac > 0 || openStyle === "LIMIT_IOC") {
         log.warn("supertrend_book_ticker_unavailable", { symbol: orderSymbol });
       }
 
-      if (slipFrac > 0 && bookTicker && Number.isFinite(pxEntryOpen) && pxEntryOpen > 0) {
-        const ref = pxEntryOpen;
-        if (openingSide === "BUY") {
-          const ask = Number(bookTicker.askPrice);
-          if (Number.isFinite(ask) && ask > ref * (1 + slipFrac)) {
-            wsHub?.broadcast?.("log", {
-              level: "warn",
-              msg: `Supertrend futures BUY skipped: best ask ${ask.toFixed(6)} > signal close ${ref.toFixed(6)} + ${slipPctRaw}% (would exceed slippage cap; widen SUPERTREND_FUTURES_MAX_ENTRY_SLIPPAGE_PCT or wait)`,
-              symbol: orderSymbol,
-            });
-            return { venue: "FUTURES", side, action: "skipped", reason: "entry_slippage_guard" };
-          }
-        } else {
-          const bid = Number(bookTicker.bidPrice);
-          if (Number.isFinite(bid) && bid < ref * (1 - slipFrac)) {
-            wsHub?.broadcast?.("log", {
-              level: "warn",
-              msg: `Supertrend futures SELL skipped: best bid ${bid.toFixed(6)} < signal close ${ref.toFixed(6)} − ${slipPctRaw}%`,
-              symbol: orderSymbol,
-            });
-            return { venue: "FUTURES", side, action: "skipped", reason: "entry_slippage_guard" };
-          }
+      let drift = entryDriftFails(bookTicker, markPxEntry, midPxEntry);
+      if (drift.fail) {
+        wsHub?.broadcast?.("log", { level: "warn", msg: drift.msg, symbol: orderSymbol });
+        return { venue: "FUTURES", side, action: "skipped", reason: "entry_slippage_guard" };
+      }
+
+      if (recheckMs > 0) {
+        await new Promise((r) => setTimeout(r, recheckMs));
+        micro = await loadEntryMicrostructure();
+        bookTicker = micro.bookTicker;
+        markPxEntry = micro.markPx;
+        midPxEntry = micro.midPx;
+        if (
+          slipFrac > 0 &&
+          !bookTicker &&
+          !(Number.isFinite(markPxEntry) && markPxEntry > 0)
+        ) {
+          wsHub?.broadcast?.("log", {
+            level: "warn",
+            msg: `Supertrend futures ${openingSide} skipped: book + mark unavailable after recheck (SUPERTREND_FUTURES_ENTRY_RECHECK_MS=${recheckMs})`,
+            symbol: orderSymbol,
+          });
+          return { venue: "FUTURES", side, action: "skipped", reason: "entry_quote_unavailable_recheck" };
+        }
+        drift = entryDriftFails(bookTicker, markPxEntry, midPxEntry);
+        if (drift.fail) {
+          wsHub?.broadcast?.("log", {
+            level: "warn",
+            msg: `${drift.msg} (after SUPERTREND_FUTURES_ENTRY_RECHECK_MS=${recheckMs})`,
+            symbol: orderSymbol,
+          });
+          return { venue: "FUTURES", side, action: "skipped", reason: "entry_slippage_guard_recheck" };
         }
       }
 
@@ -3364,32 +3595,95 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
       const mqAtEntryFutures = buildMqAtEntrySnapshot(openingSide, candles, indicators.latest, "FUTURES");
 
-      const order = await futuresEx.placeOrder({
-        symbol: orderSymbol,
-        side: openingSide,
-        qty,
-        price: last.close,
-        stopLoss,
-        takeProfit,
-        strategy: strategyKey,
-        meta: {
-          supertrend: true,
-          aiProbability: gateProb,
-          marketMode: "FUTURES",
-          supertrendFuturesAiSized: true,
-          supertrendFuturesTwoWay: twoWay,
-          futuresLeverage: lev,
-          leverage: lev,
-          autoMultiUnpinned: Boolean(multiUnpinnedOrder),
-          autoTradeTrailing: Boolean(state.trailingStopLossAuto),
-          signalLagMs: Number.isFinite(signalLagMs) ? signalLagMs : undefined,
-          entryBookBestBid: bookTicker?.bidPrice,
-          entryBookBestAsk: bookTicker?.askPrice,
-          signalBarCloseForEntry: Number.isFinite(pxEntryOpen) && pxEntryOpen > 0 ? pxEntryOpen : undefined,
-          ...(mqAtEntryFutures ? { mqAtEntry: mqAtEntryFutures } : {}),
-          ...entryMetaExtra,
-        },
-      });
+      const openMetaBase = {
+        supertrend: true,
+        aiProbability: gateProb,
+        marketMode: "FUTURES",
+        supertrendFuturesAiSized: true,
+        supertrendFuturesTwoWay: twoWay,
+        futuresLeverage: lev,
+        leverage: lev,
+        autoMultiUnpinned: Boolean(multiUnpinnedOrder),
+        autoTradeTrailing: Boolean(state.trailingStopLossAuto),
+        signalLagMs: Number.isFinite(signalLagMs) ? signalLagMs : undefined,
+        entryBookBestBid: bookTicker?.bidPrice,
+        entryBookBestAsk: bookTicker?.askPrice,
+        entryBookMidPx: Number.isFinite(midPxEntry) ? midPxEntry : undefined,
+        entryMarkPx: Number.isFinite(markPxEntry) ? markPxEntry : undefined,
+        signalBarCloseForEntry: Number.isFinite(pxEntryOpen) && pxEntryOpen > 0 ? pxEntryOpen : undefined,
+        ...(mqAtEntryFutures ? { mqAtEntry: mqAtEntryFutures } : {}),
+        ...entryMetaExtra,
+      };
+
+      let order;
+      let entryStyleUsed = openStyle;
+      try {
+        order = await futuresEx.placeOrder({
+          symbol: orderSymbol,
+          side: openingSide,
+          qty,
+          price: last.close,
+          stopLoss,
+          takeProfit,
+          strategy: strategyKey,
+          meta: openMetaBase,
+        });
+      } catch (e) {
+        const errMsg = String(e?.message || e);
+        const iocFallback =
+          state.supertrendFuturesIocFallbackMarket === true ||
+          truthyEnv(process.env.SUPERTREND_FUTURES_IOC_FALLBACK_MARKET);
+        if (openStyle === "LIMIT_IOC" && errMsg.includes("limit_ioc_no_fill") && iocFallback) {
+          const again = await loadEntryMicrostructure();
+          bookTicker = again.bookTicker;
+          markPxEntry = again.markPx;
+          midPxEntry = again.midPx;
+          if (
+            slipFrac > 0 &&
+            !bookTicker &&
+            !(Number.isFinite(markPxEntry) && markPxEntry > 0)
+          ) {
+            emitActivity(wsHub, {
+              level: "warn",
+              category: "signal",
+              reason: "ioc_fallback_no_quote",
+              symbol: orderSymbol,
+              msg: `Supertrend futures ${openingSide}: IOC no fill — cannot verify slippage for MARKET fallback (book + mark unavailable)`,
+              detail: { priorError: errMsg },
+            });
+            return { venue: "FUTURES", side, action: "skipped", reason: "ioc_fallback_quote_unavailable" };
+          }
+          const drift2 = entryDriftFails(bookTicker, markPxEntry, midPxEntry);
+          if (drift2.fail) {
+            emitActivity(wsHub, {
+              level: "warn",
+              category: "signal",
+              reason: "ioc_no_fill_skip_market",
+              symbol: orderSymbol,
+              msg: `Supertrend futures ${openingSide}: LIMIT IOC did not fill and price moved beyond cap — skipped`,
+              detail: { priorError: errMsg, driftMsg: drift2.msg },
+            });
+            return { venue: "FUTURES", side, action: "skipped", reason: "ioc_no_fill_price_moved" };
+          }
+          entryStyleUsed = "MARKET";
+          order = await futuresEx.placeOrder({
+            symbol: orderSymbol,
+            side: openingSide,
+            qty,
+            price: last.close,
+            stopLoss,
+            takeProfit,
+            strategy: strategyKey,
+            meta: {
+              ...openMetaBase,
+              entryOrderStyle: "MARKET",
+              entryLimitPrice: undefined,
+              entryIocFallback: true,
+              priorIocNoFillError: errMsg,
+            },
+          });
+        } else throw e;
+      }
       const tpSlNote = !aiFilterOn ? "fixed SL/TP (no AI filter)" : "ATR+regime+AI";
       wsHub?.broadcast?.("log", {
         level: "info",
@@ -3420,6 +3714,26 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         });
       }
       // #endregion
+      if (Number.isFinite(signalBarClose) && signalBarClose > 0 && Number.isFinite(fillPx) && fillPx > 0) {
+        const adverseBps =
+          openingSide === "BUY"
+            ? ((fillPx - signalBarClose) / signalBarClose) * 10000
+            : ((signalBarClose - fillPx) / signalBarClose) * 10000;
+        emitActivity(wsHub, {
+          level: "info",
+          category: "trading",
+          reason: "futures_entry_fill_vs_signal",
+          symbol: orderSymbol,
+          msg: `${orderSymbol} · entry vs signal bar close · ${signalBarClose.toFixed(6)} → fill ${fillPx.toFixed(6)} · ${adverseBps >= 0 ? "+" : ""}${adverseBps.toFixed(1)} bps adverse · ${entryStyleUsed}`,
+          detail: {
+            signalBarClose,
+            fillPx,
+            adverseBps,
+            entryStyle: entryStyleUsed,
+            slipPctConfigured: slipPctRaw,
+          },
+        });
+      }
       broadcastTrade(wsHub, {
         type: "OPEN",
         id: order.id,
@@ -3454,8 +3768,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           signalLagMs: Number.isFinite(signalLagMs) ? signalLagMs : undefined,
           entryBookBestBid: bookTicker?.bidPrice,
           entryBookBestAsk: bookTicker?.askPrice,
-          entryOrderStyle: entryMetaExtra.entryOrderStyle,
-          entryLimitPrice: entryMetaExtra.entryLimitPrice,
+          entryBookMidPx: Number.isFinite(midPxEntry) ? midPxEntry : undefined,
+          entryMarkPx: Number.isFinite(markPxEntry) ? markPxEntry : undefined,
+          entryOrderStyle: entryStyleUsed,
+          entryLimitPrice:
+            entryStyleUsed === "LIMIT_IOC" && Number.isFinite(entryMetaExtra.entryLimitPrice)
+              ? entryMetaExtra.entryLimitPrice
+              : undefined,
+          entryIocFallback: openStyle === "LIMIT_IOC" && entryStyleUsed === "MARKET",
           ...(mqAtEntryFutures ? { mqAtEntry: mqAtEntryFutures } : {}),
         },
         source: "SUPERTREND",
@@ -6172,13 +6492,39 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       trailingStopExtraScalpingPcts: normalizeTrailingExtraPcts(state.trailingStopExtraScalpingPcts),
       trailOpenFeeRate: clamp(Number(state.trailOpenFeeRate ?? 0.0004), 0, 0.01),
       trailCloseFeeRate: clamp(Number(state.trailCloseFeeRate ?? 0.0004), 0, 0.01),
-      trailFeeBeMultiplier: clamp(Number(state.trailFeeBeMultiplier ?? 1.0), 1, 2),
+      trailFeeBeMultiplier: clamp(
+        Number(state.trailFeeBeMultiplier ?? process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25),
+        1,
+        2,
+      ),
       trailBufferRate: clamp(Number(state.trailBufferRate ?? 0.0005), 0, 0.05),
+      trailActivationSlippageFrac: clamp(Number(state.trailActivationSlippageFrac ?? 0), 0, 0.01),
+      trailBufferAtrMult: clamp(Number(state.trailBufferAtrMult ?? 0), 0, 1),
+      trailBufferMode: normalizeTrailBufferMode(state.trailBufferMode),
       trailMinSlDistFrac: clamp(Number(state.trailMinSlDistFrac ?? 0.002), 0, 0.1),
+      trailMinGapFromMarkFrac: clamp(Number(state.trailMinGapFromMarkFrac ?? 0), 0, 0.2),
       trailMaintMarginRate: clamp(Number(state.trailMaintMarginRate ?? 0.005), 0, 0.1),
+      trailPostT02SpacingFrac:
+        state.trailPostT02SpacingFrac != null && Number.isFinite(Number(state.trailPostT02SpacingFrac))
+          ? clamp(Number(state.trailPostT02SpacingFrac), 0.00001, 0.05)
+          : null,
+      trailPostT02MaxExtraTiers: Math.max(
+        10,
+        Math.min(500, Math.floor(Number(state.trailPostT02MaxExtraTiers ?? 150))),
+      ),
       supertrendFuturesFixedSlPct: clamp(Number(state.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2),
       supertrendFuturesFixedTpPct: clamp(Number(state.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5),
       supertrendFuturesTwoWay: state.supertrendFuturesTwoWay === true,
+      supertrendFuturesMaxEntrySlippagePct: clamp(Number(state.supertrendFuturesMaxEntrySlippagePct ?? 0.15), 0, 5),
+      supertrendFuturesEntryOpenStyle: (() => {
+        const s = String(state.supertrendFuturesEntryOpenStyle || "AUTO").toUpperCase();
+        return s === "MARKET" || s === "LIMIT_IOC" ? s : "AUTO";
+      })(),
+      supertrendFuturesEntryRecheckMs: Math.max(0, Math.floor(Number(state.supertrendFuturesEntryRecheckMs ?? 0))),
+      supertrendFuturesIocFallbackMarket: state.supertrendFuturesIocFallbackMarket === true,
+      supertrendFuturesRequireMarkPrice: state.supertrendFuturesRequireMarkPrice === true,
+      supertrendFuturesRequireBookTicker: state.supertrendFuturesRequireBookTicker === true,
+      supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(Number(state.supertrendFuturesMaxSignalLagMs ?? 0))),
       supertrendPeriod: state.supertrendPeriod,
       supertrendMultiplier: state.supertrendMultiplier,
       supertrendWilderAtr: state.supertrendWilderAtr,
@@ -6650,9 +6996,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           supertrendTrailPx = null;
         }
       }
+      const trailSlip = clamp(Number(state.trailActivationSlippageFrac ?? process.env.FUTURES_TRAIL_ACTIVATION_SLIPPAGE_FRAC ?? 0), 0, 0.01);
+      const trailBufAtrMult = clamp(Number(state.trailBufferAtrMult ?? process.env.FUTURES_TRAIL_BUFFER_ATR_MULT ?? 0), 0, 1);
+      const trailBufMode = normalizeTrailBufferMode(state.trailBufferMode);
       const trailBuf = clamp(Number(state.trailBufferRate ?? process.env.SUPERTREND_TRAIL_BUFFER_RATE ?? 0.0005), 0, 0.05);
       const trailMm = clamp(Number(state.trailMaintMarginRate ?? process.env.SUPERTREND_TRAIL_MAINTENANCE_MARGIN_RATE ?? 0.005), 0, 0.1);
       const trailMinSlFrac = clamp(Number(state.trailMinSlDistFrac ?? process.env.SUPERTREND_TRAIL_MIN_SL_DISTANCE_FRAC ?? 0.002), 0, 0.1);
+      const trailMinGapMarkFrac = clamp(
+        Number(state.trailMinGapFromMarkFrac ?? process.env.SUPERTREND_TRAIL_MIN_GAP_FROM_MARK_FRAC ?? 0),
+        0,
+        0.2,
+      );
       const trailFeeBeMultiplier = clamp(Number(state.trailFeeBeMultiplier ?? process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25), 1, 2);
       /** Per-symbol last ST line for USD-M trailing when multiple futures legs are open (not only `state.symbol`). */
       const supertrendBySymbol = {};
@@ -6730,6 +7084,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           supertrendBySymbol[primaryU] = supertrendTrailPx;
         }
       }
+      const postT02MaxExtraTiers = Math.max(
+        10,
+        Math.min(500, Math.floor(Number(state.trailPostT02MaxExtraTiers ?? 150))),
+      );
       const trailingStopLoss = state.trailingStopLossAuto
         ? {
             enabled: true,
@@ -6740,12 +7098,22 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
             closeFeeRate: clamp(Number(state.trailCloseFeeRate ?? 0.0004), 0, 0.01),
             feeBeMultiplier: trailFeeBeMultiplier,
             extraScalpingPcts: extraTrailPcts,
-            maxTrailSteps: maxTrailStepsForConfig(extraTrailPcts),
+            maxTrailSteps: maxTrailStepsForConfig(extraTrailPcts, postT02MaxExtraTiers),
+            trailPostT02SpacingFrac:
+              state.trailPostT02SpacingFrac != null && Number.isFinite(Number(state.trailPostT02SpacingFrac))
+                ? clamp(Number(state.trailPostT02SpacingFrac), 0.00001, 0.05)
+                : null,
+            trailPostT02MaxExtraTiers: postT02MaxExtraTiers,
             supertrendPx: supertrendTrailPx,
             supertrendBySymbol: Object.keys(supertrendBySymbol).length ? supertrendBySymbol : undefined,
             bufferRate: trailBuf,
+            activationSlippageFrac: trailSlip,
+            atrPct: state.lastRegime?.atrPct,
+            trailBufferAtrMult: trailBufAtrMult,
+            trailBufferMode: trailBufMode,
             maintenanceMarginRate: trailMm,
             minSlDistanceFrac: trailMinSlFrac,
+            minTrailGapFromMarkFrac: trailMinGapMarkFrac,
             supertrendUseFeeBreakeven: state.futuresTrailingStFeeBreakeven !== false,
             supertrendUseAdvancedTrail: state.futuresTrailingStAdvanced !== false,
           }
@@ -8351,6 +8719,28 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       state.supertrendFuturesFixedTpPct = clamp(Number(patch.supertrendFuturesFixedTpPct), 0.00005, 0.5);
     }
     if (patch.supertrendFuturesTwoWay != null) state.supertrendFuturesTwoWay = Boolean(patch.supertrendFuturesTwoWay);
+    if (patch.supertrendFuturesMaxEntrySlippagePct != null && Number.isFinite(Number(patch.supertrendFuturesMaxEntrySlippagePct))) {
+      state.supertrendFuturesMaxEntrySlippagePct = clamp(Number(patch.supertrendFuturesMaxEntrySlippagePct), 0, 5);
+    }
+    if (patch.supertrendFuturesEntryOpenStyle != null) {
+      const s = String(patch.supertrendFuturesEntryOpenStyle).toUpperCase();
+      if (s === "AUTO" || s === "MARKET" || s === "LIMIT_IOC") state.supertrendFuturesEntryOpenStyle = s;
+    }
+    if (patch.supertrendFuturesEntryRecheckMs != null && Number.isFinite(Number(patch.supertrendFuturesEntryRecheckMs))) {
+      state.supertrendFuturesEntryRecheckMs = Math.max(0, Math.floor(Number(patch.supertrendFuturesEntryRecheckMs)));
+    }
+    if (patch.supertrendFuturesIocFallbackMarket != null) {
+      state.supertrendFuturesIocFallbackMarket = Boolean(patch.supertrendFuturesIocFallbackMarket);
+    }
+    if (patch.supertrendFuturesRequireMarkPrice != null) {
+      state.supertrendFuturesRequireMarkPrice = Boolean(patch.supertrendFuturesRequireMarkPrice);
+    }
+    if (patch.supertrendFuturesRequireBookTicker != null) {
+      state.supertrendFuturesRequireBookTicker = Boolean(patch.supertrendFuturesRequireBookTicker);
+    }
+    if (patch.supertrendFuturesMaxSignalLagMs != null && Number.isFinite(Number(patch.supertrendFuturesMaxSignalLagMs))) {
+      state.supertrendFuturesMaxSignalLagMs = Math.max(0, Math.floor(Number(patch.supertrendFuturesMaxSignalLagMs)));
+    }
     if (patch.supertrendPeriod != null) {
       state.supertrendPeriod = clamp(Math.floor(Number(patch.supertrendPeriod)), 2, 100);
     }
@@ -8358,6 +8748,45 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       state.supertrendMultiplier = clamp(Number(patch.supertrendMultiplier), 0.5, 20);
     }
     if (patch.supertrendWilderAtr != null) state.supertrendWilderAtr = Boolean(patch.supertrendWilderAtr);
+
+    if (patch.trailOpenFeeRate != null && Number.isFinite(Number(patch.trailOpenFeeRate))) {
+      state.trailOpenFeeRate = clamp(Number(patch.trailOpenFeeRate), 0, 0.01);
+    }
+    if (patch.trailCloseFeeRate != null && Number.isFinite(Number(patch.trailCloseFeeRate))) {
+      state.trailCloseFeeRate = clamp(Number(patch.trailCloseFeeRate), 0, 0.01);
+    }
+    if (patch.trailFeeBeMultiplier != null && Number.isFinite(Number(patch.trailFeeBeMultiplier))) {
+      state.trailFeeBeMultiplier = clamp(Number(patch.trailFeeBeMultiplier), 1, 2);
+    }
+    if (patch.trailBufferRate != null && Number.isFinite(Number(patch.trailBufferRate))) {
+      state.trailBufferRate = clamp(Number(patch.trailBufferRate), 0, 0.05);
+    }
+    if (patch.trailActivationSlippageFrac != null && Number.isFinite(Number(patch.trailActivationSlippageFrac))) {
+      state.trailActivationSlippageFrac = clamp(Number(patch.trailActivationSlippageFrac), 0, 0.01);
+    }
+    if (patch.trailBufferAtrMult != null && Number.isFinite(Number(patch.trailBufferAtrMult))) {
+      state.trailBufferAtrMult = clamp(Number(patch.trailBufferAtrMult), 0, 1);
+    }
+    if (patch.trailBufferMode != null) {
+      state.trailBufferMode = normalizeTrailBufferMode(patch.trailBufferMode);
+    }
+    if (patch.trailMinSlDistFrac != null && Number.isFinite(Number(patch.trailMinSlDistFrac))) {
+      state.trailMinSlDistFrac = clamp(Number(patch.trailMinSlDistFrac), 0, 0.1);
+    }
+    if (patch.trailMinGapFromMarkFrac != null && Number.isFinite(Number(patch.trailMinGapFromMarkFrac))) {
+      state.trailMinGapFromMarkFrac = clamp(Number(patch.trailMinGapFromMarkFrac), 0, 0.2);
+    }
+    if (patch.trailMaintMarginRate != null && Number.isFinite(Number(patch.trailMaintMarginRate))) {
+      state.trailMaintMarginRate = clamp(Number(patch.trailMaintMarginRate), 0, 0.1);
+    }
+    if (patch.trailPostT02SpacingFrac === null) {
+      state.trailPostT02SpacingFrac = null;
+    } else if (patch.trailPostT02SpacingFrac != null && Number.isFinite(Number(patch.trailPostT02SpacingFrac))) {
+      state.trailPostT02SpacingFrac = clamp(Number(patch.trailPostT02SpacingFrac), 0.00001, 0.05);
+    }
+    if (patch.trailPostT02MaxExtraTiers != null && Number.isFinite(Number(patch.trailPostT02MaxExtraTiers))) {
+      state.trailPostT02MaxExtraTiers = Math.max(10, Math.min(500, Math.floor(Number(patch.trailPostT02MaxExtraTiers))));
+    }
 
     if (patch.tradingFormDefaults && typeof patch.tradingFormDefaults === "object") {
       const t = patch.tradingFormDefaults;

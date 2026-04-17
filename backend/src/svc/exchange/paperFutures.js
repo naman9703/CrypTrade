@@ -1,6 +1,21 @@
 import { roundTo } from "../../lib/math.js";
-import { mergeStopWithTrail, clampFeeRate, advanceTrailingStopState, buildTrailLockPrices } from "../../lib/trailingStopLoss.js";
-import { computeSupertrendTrailingSlUpdate, feeRateBreakevenPadded, trailStepToTierLabel } from "../../lib/supertrendTrailingSl.js";
+import {
+  mergeStopWithTrail,
+  clampFeeRate,
+  advanceTrailingStopState,
+  buildTrailLockPrices,
+  computeSupertrendTieredMaxTrailStepFromExtreme,
+  resolveSupertrendTieredActivationGate,
+  maxTrailStepsForConfig,
+  computeEffectiveTrailBuffer,
+} from "../../lib/trailingStopLoss.js";
+import {
+  computeSupertrendTrailingSlUpdate,
+  feeRateBreakevenPadded,
+  migrateTieredTrailLegacySchema,
+  trailStepToTierLabel,
+  TRAIL_TIER_SCHEMA_VERSION,
+} from "../../lib/supertrendTrailingSl.js";
 import { resolveDefaultPaperFuturesStoreDir } from "../../lib/tradingModePersistence.js";
 import { createPaperStore } from "./paperStore.js";
 
@@ -135,18 +150,39 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     const netPnl = roundTo(gross - totalFee, 4);
     state.equity = roundTo(state.equity + gross - exitFee, 2);
     const rU = String(reason || "").toUpperCase();
-    const trailStepAtClose = Number(p?.meta?.trailStep) || 0;
-    const trailTierAtClose = p?.meta?.trailTierLabel ?? (trailStepAtClose > 0 ? trailStepToTierLabel(trailStepAtClose) : null);
+    const trailStepAtClose = Math.max(
+      Number(p?.meta?.trailStep) || 0,
+      Number(p?.meta?.confirmedTrailStep) || 0,
+    );
+    const trailTierAtClose =
+      p?.meta?.trailTierLabel ??
+      p?.meta?.confirmedTrailTierLabel ??
+      (trailStepAtClose > 0
+        ? trailStepToTierLabel(trailStepAtClose, p?.meta?.trailStepLabelStyle || "classic")
+        : null);
     const exitViaTrailedStop = (rU === "STOP" || rU === "STOP_LOSS") && trailStepAtClose > 0;
+    const tieredStFeeEntry = String(p?.meta?.trailStepLabelStyle || "") === "tiered_st_fee_entry";
+    const tierTok =
+      trailTierAtClose != null && String(trailTierAtClose).trim() !== ""
+        ? String(trailTierAtClose)
+            .trim()
+            .toUpperCase()
+            .replace(/\s+/g, "_")
+            .replace(/[^A-Z0-9_]/g, "")
+        : null;
     let bracketType = null;
     let reasonNorm = rU;
     if (rU === "STOP" || rU === "STOP_LOSS") {
       bracketType = "SL";
-      /** e.g. "TRAILED_STOP_LOSS_T0", "TRAILED_STOP_LOSS_T1" — or plain TRAILED_STOP_LOSS if no tier info */
+      /** Tiered Supertrend: `TRAILED_SUPERTREND_T*`; fee ladder / classic: `TRAILED_STOP_LOSS_*` */
       reasonNorm = exitViaTrailedStop
-        ? trailTierAtClose
-          ? `TRAILED_STOP_LOSS_${trailTierAtClose}`
-          : "TRAILED_STOP_LOSS"
+        ? tierTok
+          ? tieredStFeeEntry
+            ? `TRAILED_SUPERTREND_${tierTok}`
+            : `TRAILED_STOP_LOSS_${tierTok}`
+          : tieredStFeeEntry
+            ? "TRAILED_SUPERTREND"
+            : "TRAILED_STOP_LOSS"
         : "STOP_LOSS_DEFAULT";
     } else if (rU === "TAKE_PROFIT") {
       bracketType = "TP";
@@ -219,12 +255,15 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
             const ts0 = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
             if (ts0 < c0) {
               pos.meta.trailStep = c0;
-              pos.meta.trailTierLabel = trailStepToTierLabel(pos.meta.trailStep);
+              pos.meta.trailTierLabel = trailStepToTierLabel(
+                pos.meta.trailStep,
+                pos.meta.trailStepLabelStyle || "classic",
+              );
             }
           }
           const lev = Number(pos.leverage ?? pos.meta?.leverage ?? defaultLeverage);
           const feeR = clampFeeRate(trailingStopLoss.feeRate);
-          const buf = Number.isFinite(Number(trailingStopLoss.bufferRate)) ? Number(trailingStopLoss.bufferRate) : 0.0005;
+          const buf = computeEffectiveTrailBuffer(trailingStopLoss);
           const mm = Number.isFinite(Number(trailingStopLoss.maintenanceMarginRate))
             ? Number(trailingStopLoss.maintenanceMarginRate)
             : 0.005;
@@ -233,6 +272,11 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
             Number.isFinite(Number(trailingStopLoss.minSlDistanceFrac))
               ? Number(trailingStopLoss.minSlDistanceFrac)
               : 0.002;
+          const minGapMark =
+            trailingStopLoss.minTrailGapFromMarkFrac != null &&
+            Number.isFinite(Number(trailingStopLoss.minTrailGapFromMarkFrac))
+              ? Number(trailingStopLoss.minTrailGapFromMarkFrac)
+              : 0;
           const mode =
             String(trailingStopLoss.mode || "SUPERTREND").toUpperCase() === "FEE_LADDER" ? "FEE_LADDER" : "SUPERTREND";
 
@@ -241,6 +285,8 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
             let trailStatus = "OK";
             let stPx = NaN;
             let trailKind = "supertrend_trailing_sl";
+            /** Tiered ST: `trailStep` is set from ladder/HWM before merge — skip +1 bump on fill. */
+            let tieredTrailStepPremerged = false;
 
             if (mode === "FEE_LADDER") {
               const feeBeMultiplierFL = trailingStopLoss.feeBeMultiplier != null ? Number(trailingStopLoss.feeBeMultiplier) : undefined;
@@ -253,6 +299,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                 trailStep: pos.meta.trailStep,
                 extremePx: pos.meta.extremePx,
                 markPx: px,
+                activationBufferRate: buf,
                 feeRate: feeR,
                 roundTripFeeRate: rtRateFL ?? undefined,
                 feeBeMultiplier: feeBeMultiplierFL,
@@ -312,48 +359,156 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                       extraScalpingPctsOfEntry: trailingStopLoss.extraScalpingPcts ?? [],
                     })
                   : [];
-                const stepNow = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
                 const ext0 = Number.isFinite(Number(pos.meta.extremePx)) ? Number(pos.meta.extremePx) : px;
                 const hwm = isLong ? Math.max(ext0, px) : Math.min(ext0, px);
                 pos.meta.extremePx = hwm;
-                const nextLevel = stLevels.length ? stLevels[Math.min(stepNow, stLevels.length - 1)] : null;
-                const activationTierPx = nextLevel?.lockPx != null ? Number(nextLevel.lockPx) : null;
-                const crossedTier =
-                  activationTierPx == null ? true : isLong ? hwm >= activationTierPx : hwm <= activationTierPx;
-                if (!crossedTier) {
-                  // Keep existing SL unchanged; hit-check still runs below on this tick.
-                } else {
-                const pxForCompute = activationTierPx == null ? px : (isLong ? Math.max(px, activationTierPx) : Math.min(px, activationTierPx));
+                const defaultActivationPx = isLong
+                  ? entryPx * (1 + (useFeeBeTrail ? feeBe : 0) + buf)
+                  : entryPx * (1 - (useFeeBeTrail ? feeBe : 0) - buf);
                 const bePx = useFeeBeTrail
                   ? isLong
                     ? entryPx * (1 + feeBe)
                     : entryPx * (1 - feeBe)
                   : entryPx;
-                const r = computeSupertrendTrailingSlUpdate({
-                  entryPrice: entryPx,
-                  currentPrice: pxForCompute,
-                  supertrend: stForCompute,
-                  previousSl: prevSl,
-                  isLong,
-                  leverage: lev,
-                  feeRate: feeBe,
-                  bufferRate: buf,
-                  maintenanceMarginRate: mm,
-                  minSlDistanceFrac: minDist,
-                  useFeeBreakeven: useFeeBeTrail,
-                  useAdvancedTrail: effectiveUseAdv,
-                  activationPrice: activationTierPx ?? undefined,
-                  breakevenPrice: bePx,
-                });
-                if (
-                  r.status !== "REJECT_TRADE" &&
-                  r.status !== "INVALID" &&
-                  r.status !== "NO_SUPERTREND" &&
-                  r.status !== "NO_TRAIL"
-                ) {
-                  merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: r.newSl });
-                  trailStatus = r.status;
-                }
+                const maxStepCfg = trailingStopLoss.maxTrailSteps;
+                const maxStepCap =
+                  maxStepCfg != null && Number.isFinite(Number(maxStepCfg)) && Number(maxStepCfg) > 0
+                    ? Math.floor(Number(maxStepCfg))
+                    : null;
+                const postT02SpacingUser =
+                  trailingStopLoss.trailPostT02SpacingFrac != null &&
+                  Number.isFinite(Number(trailingStopLoss.trailPostT02SpacingFrac))
+                    ? Number(trailingStopLoss.trailPostT02SpacingFrac)
+                    : null;
+                const postT02MaxExtraTiers =
+                  trailingStopLoss.trailPostT02MaxExtraTiers != null &&
+                  Number.isFinite(Number(trailingStopLoss.trailPostT02MaxExtraTiers))
+                    ? Math.max(10, Math.min(500, Math.floor(Number(trailingStopLoss.trailPostT02MaxExtraTiers))))
+                    : 150;
+                const maxTieredActivationSteps =
+                  maxStepCap != null ? Math.max(3, maxStepCap) : maxTrailStepsForConfig(trailingStopLoss.extraScalpingPcts ?? [], postT02MaxExtraTiers);
+                const gateRtSpacing = {
+                  roundTripFeeRate: rtRateST,
+                  postT02SpacingFrac: postT02SpacingUser,
+                };
+
+                if (tieredStMode) {
+                  migrateTieredTrailLegacySchema(pos.meta);
+                  const t01ActivationPx = isLong ? entryPx * (1 + buf) : entryPx * (1 - buf);
+                  const t02ActivationPx = defaultActivationPx;
+                  const entryLockBreakevenPx = entryPx;
+                  const c = confirmedPaper();
+                  const prevTrailStep = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
+                  const rawPriceStep = computeSupertrendTieredMaxTrailStepFromExtreme({
+                    hwm,
+                    entryPx,
+                    isLong,
+                    feeBe,
+                    bufferRate: buf,
+                    useFeeBeTrail,
+                    stLevels,
+                    maxActivationSteps: maxTieredActivationSteps,
+                    ...gateRtSpacing,
+                  });
+                  const maxStepCapTiered =
+                    maxStepCap != null ? Math.max(maxStepCap, 3) : null;
+                  const priceStep = maxStepCapTiered != null ? Math.min(rawPriceStep, maxStepCapTiered) : rawPriceStep;
+                  const nextTrailStep = Math.max(prevTrailStep, priceStep, c);
+                  if (nextTrailStep >= 1) {
+                    const useAdvCompute = nextTrailStep >= 3 && effectiveUseAdv;
+                    if (useAdvCompute && !hasValidStPx) {
+                      pos.meta.trailStep = nextTrailStep;
+                      pos.meta.trailTierLabel = trailStepToTierLabel(pos.meta.trailStep, "tiered_st_fee_entry");
+                      tieredTrailStepPremerged = true;
+                    } else {
+                      const gateForGeometry =
+                        nextTrailStep <= 1
+                          ? t01ActivationPx
+                          : nextTrailStep === 2
+                            ? t02ActivationPx
+                            : resolveSupertrendTieredActivationGate({
+                                stepNow: nextTrailStep - 1,
+                                isLong,
+                                entryPx,
+                                feeBe,
+                                bufferRate: buf,
+                                useFeeBeTrail,
+                                stLevels,
+                                ...gateRtSpacing,
+                              }).activationPx;
+                      const pxForCompute = isLong ? Math.max(px, gateForGeometry) : Math.min(px, gateForGeometry);
+                      const computeBreakevenPx = nextTrailStep === 1 ? entryLockBreakevenPx : bePx;
+                      const computeActivationPx = gateForGeometry;
+                      const r = computeSupertrendTrailingSlUpdate({
+                        entryPrice: entryPx,
+                        currentPrice: pxForCompute,
+                        supertrend: useAdvCompute && stForCompute != null ? Number(stForCompute) : NaN,
+                        previousSl: prevSl,
+                        isLong,
+                        leverage: lev,
+                        feeRate: feeBe,
+                        bufferRate: buf,
+                        maintenanceMarginRate: mm,
+                        minSlDistanceFrac: minDist,
+                        minTrailGapFromMarkFrac: minGapMark,
+                        useFeeBreakeven: useFeeBeTrail,
+                        useAdvancedTrail: useAdvCompute,
+                        activationPrice: computeActivationPx,
+                        breakevenPrice: computeBreakevenPx,
+                      });
+                      if (
+                        r.status !== "REJECT_TRADE" &&
+                        r.status !== "INVALID" &&
+                        r.status !== "NO_SUPERTREND" &&
+                        r.status !== "NO_TRAIL"
+                      ) {
+                        pos.meta.trailStep = nextTrailStep;
+                        pos.meta.trailTierLabel = trailStepToTierLabel(pos.meta.trailStep, "tiered_st_fee_entry");
+                        tieredTrailStepPremerged = true;
+                        merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: r.newSl });
+                        trailStatus = r.status;
+                      }
+                    }
+                  }
+                } else {
+                  const stepNow = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
+                  const nextLevel = stLevels.length ? stLevels[Math.min(stepNow, stLevels.length - 1)] : null;
+                  const activationTierPx = nextLevel?.lockPx != null ? Number(nextLevel.lockPx) : null;
+                  const crossedTier =
+                    activationTierPx == null ? true : isLong ? hwm >= activationTierPx : hwm <= activationTierPx;
+                  if (crossedTier) {
+                    const pxForCompute =
+                      activationTierPx == null ? px : isLong ? Math.max(px, activationTierPx) : Math.min(px, activationTierPx);
+                    const feeEntryTierOnlyPaper = tieredStMode && stLevels.length > 0 && useFeeBeTrail && stepNow < 2;
+                    const useAdvThisIterPaper = feeEntryTierOnlyPaper ? false : effectiveUseAdv;
+                    const r = computeSupertrendTrailingSlUpdate({
+                      entryPrice: entryPx,
+                      currentPrice: pxForCompute,
+                      supertrend: useAdvThisIterPaper && stForCompute != null ? Number(stForCompute) : NaN,
+                      previousSl: prevSl,
+                      isLong,
+                      leverage: lev,
+                      feeRate: feeBe,
+                      bufferRate: buf,
+                      maintenanceMarginRate: mm,
+                      minSlDistanceFrac: minDist,
+                      minTrailGapFromMarkFrac: minGapMark,
+                      useFeeBreakeven: useFeeBeTrail,
+                      useAdvancedTrail: useAdvThisIterPaper,
+                      activationPrice: activationTierPx ?? undefined,
+                      breakevenPrice:
+                        tieredStMode && stLevels.length > 0 && useFeeBeTrail && stepNow === 0 ? entryPx : bePx,
+                    });
+                    if (
+                      r.status !== "REJECT_TRADE" &&
+                      r.status !== "INVALID" &&
+                      r.status !== "NO_SUPERTREND" &&
+                      r.status !== "NO_TRAIL"
+                    ) {
+                      merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: r.newSl });
+                      trailStatus = r.status;
+                    }
+                  }
                 }
               }
             }
@@ -363,11 +518,15 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
               if (nextSl !== prevSl) {
                 if (mode === "SUPERTREND") {
                   const c = confirmedPaper();
-                  const cur = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
-                  pos.meta.trailStep = Math.max(cur + 1, c + 1);
+                  if (!tieredTrailStepPremerged) {
+                    const cur = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
+                    pos.meta.trailStep = Math.max(cur + 1, c + 1);
+                    pos.meta.trailTierLabel = trailStepToTierLabel(
+                      pos.meta.trailStep,
+                      pos.meta.trailStepLabelStyle || "classic",
+                    );
+                  }
                   pos.meta.confirmedTrailStep = pos.meta.trailStep;
-                  /** T0 = first advance (fee-BE), T1 = second, etc. */
-                  pos.meta.trailTierLabel = trailStepToTierLabel(pos.meta.trailStep);
                   pos.meta.extremePx = isLong
                     ? Math.max(Number(pos.meta.extremePx) || px, px)
                     : Math.min(Number(pos.meta.extremePx) || px, px);
@@ -453,7 +612,20 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
       const leverage = Math.max(1, Math.min(100, Number(meta?.futuresLeverage || meta?.leverage || defaultLeverage)));
       const id = `pfut_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
       const markPx = Number(price);
-      const filledPrice = fillPrice({ side, px: markPx });
+      const entryStyle = String(meta?.entryOrderStyle || "MARKET").toUpperCase();
+      let anchorPx = markPx;
+      if (entryStyle === "LIMIT_IOC") {
+        const lim = Number(meta?.entryLimitPrice);
+        if (!Number.isFinite(lim) || lim <= 0) throw new Error("limit_ioc_requires_meta.entryLimitPrice");
+        if (side === "BUY") {
+          if (markPx > lim * (1 + 1e-12)) throw new Error("limit_ioc_no_fill");
+          anchorPx = Math.min(markPx, lim);
+        } else {
+          if (markPx < lim * (1 - 1e-12)) throw new Error("limit_ioc_no_fill");
+          anchorPx = Math.max(markPx, lim);
+        }
+      }
+      const filledPrice = fillPrice({ side, px: anchorPx });
       const notional = Number(filledPrice) * Number(qty);
       const fee = feeForNotional(notional);
       // Futures: we don't reserve margin precisely; we just apply fees now and PnL on close.
@@ -481,6 +653,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
             ? {
                 trailStep: 0,
                 confirmedTrailStep: 0,
+                trailTierSchemaVersion: TRAIL_TIER_SCHEMA_VERSION,
                 extremePx: Number(filledPrice),
                 autoTradeTrailing: true,
               }

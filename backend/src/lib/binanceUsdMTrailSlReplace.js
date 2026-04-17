@@ -4,7 +4,9 @@
  */
 
 import { usdmBracketPriceStrings } from "./binanceFuturesBracketPrices.js";
+import { trailStepToTierLabel } from "./supertrendTrailingSl.js";
 import { futuresOrderIs4120 } from "./binanceFuturesSlTpBracket.js";
+import { submitLatestTrailingSlJob } from "./trailSlLatestJobQueue.js";
 
 function futuresOrderErrCode(e) {
   return e?.cause?.response?.data?.code ?? e?.response?.data?.code;
@@ -457,6 +459,7 @@ export async function evalTrailingForSymbolUsdM(ctx) {
           trailStep: Number(trSnap0.trailStep) || 0,
           extremePx: trSnap0.extremePx,
           trailTierLabel: trSnap0.trailTierLabel,
+          trailStepLabelStyle: trSnap0.trailStepLabelStyle,
           _trailingActivationLoggedTier: trSnap0._trailingActivationLoggedTier,
         }
       : null;
@@ -479,9 +482,14 @@ export async function evalTrailingForSymbolUsdM(ctx) {
       tr.extremePx = snapTrail.extremePx;
       if (snapTrail.trailTierLabel != null) tr.trailTierLabel = snapTrail.trailTierLabel;
       else delete tr.trailTierLabel;
+      if (snapTrail.trailStepLabelStyle != null) tr.trailStepLabelStyle = snapTrail.trailStepLabelStyle;
+      else delete tr.trailStepLabelStyle;
       if (confirmed > 0) {
         // Safety net: never roll back below the last exchange-verified tier.
-        tr.trailTierLabel = `T${Math.max(0, tr.trailStep - 1)}`;
+        tr.trailTierLabel = trailStepToTierLabel(
+          tr.trailStep,
+          tr.trailStepLabelStyle || snapTrail.trailStepLabelStyle || "classic",
+        );
       }
       if (snapTrail._trailingActivationLoggedTier !== undefined) {
         tr._trailingActivationLoggedTier = snapTrail._trailingActivationLoggedTier;
@@ -504,10 +512,17 @@ export async function evalTrailingForSymbolUsdM(ctx) {
         feeBeMultiplier: trailingStopLoss.feeBeMultiplier,
         extraScalpingPcts: trailingStopLoss.extraScalpingPcts ?? [],
         maxTrailSteps: trailingStopLoss.maxTrailSteps,
+        trailPostT02SpacingFrac: trailingStopLoss.trailPostT02SpacingFrac,
+        trailPostT02MaxExtraTiers: trailingStopLoss.trailPostT02MaxExtraTiers,
         supertrendPx: trailMode === "FEE_LADDER" ? trailingStopLoss.supertrendPx : stPx,
         bufferRate: trailingStopLoss.bufferRate,
+        activationSlippageFrac: trailingStopLoss.activationSlippageFrac,
+        atrPct: trailingStopLoss.atrPct,
+        trailBufferAtrMult: trailingStopLoss.trailBufferAtrMult,
+        trailBufferMode: trailingStopLoss.trailBufferMode,
         maintenanceMarginRate: trailingStopLoss.maintenanceMarginRate,
         minSlDistanceFrac: trailingStopLoss.minSlDistanceFrac,
+        minTrailGapFromMarkFrac: trailingStopLoss.minTrailGapFromMarkFrac,
         supertrendUseFeeBreakeven: trailingStopLoss.supertrendUseFeeBreakeven !== false,
         supertrendUseAdvancedTrail: trailingStopLoss.supertrendUseAdvancedTrail !== false,
       },
@@ -532,15 +547,37 @@ export async function evalTrailingForSymbolUsdM(ctx) {
       // Restore the confirmed tier locally; skip any downgrade attempt.
       if (trAfter) {
         trAfter.trailStep = confirmedStep;
-        trAfter.trailTierLabel = `T${Math.max(0, confirmedStep - 1)}`;
+        trAfter.trailTierLabel = trailStepToTierLabel(
+          confirmedStep,
+          trAfter.trailStepLabelStyle || "classic",
+        );
       }
       flushQueuedAdvances();
       return;
     }
 
     const trailEntry = mem.trailingBySymbol[s];
-    const TRAIL_GRACE_MS = 30_000;
-    if (trailEntry?._openedAt && Date.now() - trailEntry._openedAt < TRAIL_GRACE_MS) {
+    /**
+     * Post-open grace: avoids racing Binance SL placement right after entry fill.
+     * Fee-ladder trailing is discrete (activation gates) — delaying 30s after open made
+     * "mark reached activation" look broken (no exchange SL move until grace elapsed).
+     */
+    const TRAIL_GRACE_MS = Math.max(
+      0,
+      Math.min(60_000, Number(process.env.FUTURES_TRAIL_POST_OPEN_GRACE_MS ?? 30_000)),
+    );
+    /** Tiered Supertrend (fee BE + advanced): discrete T0 gate — same “don’t block first trail on open” rationale as fee ladder. */
+    const skipGraceTieredSupertrend =
+      trailMode === "SUPERTREND" &&
+      trailingStopLoss?.supertrendUseFeeBreakeven !== false &&
+      trailingStopLoss?.supertrendUseAdvancedTrail !== false;
+    const skipGraceForDiscreteTrail = trailMode === "FEE_LADDER" || skipGraceTieredSupertrend;
+    if (
+      !skipGraceForDiscreteTrail &&
+      TRAIL_GRACE_MS > 0 &&
+      trailEntry?._openedAt &&
+      Date.now() - trailEntry._openedAt < TRAIL_GRACE_MS
+    ) {
       flushQueuedAdvances();
       return;
     }
@@ -577,272 +614,317 @@ export async function evalTrailingForSymbolUsdM(ctx) {
       return;
     }
 
-    const trail = mem.trailingBySymbol[s];
-    const tierLabel =
-      trail?.trailTierLabel ||
-      (Number.isFinite(Number(trail?.trailStep)) && Number(trail.trailStep) >= 1
-        ? `T${Math.max(0, Math.floor(Number(trail.trailStep)) - 1)}`
-        : "T0");
-    const prevSl = slPriorToTrailAdvance ?? pb.stopLoss;
+    const stepAtSubmit = Math.max(0, Math.floor(Number(mem.trailingBySymbol[s]?.trailStep) || 0));
 
-    const doReplace =
-      typeof replaceSlOnExchange === "function"
-        ? (symU, px, markH, prev) => replaceSlOnExchange(symU, px, markH, prev)
-        : (symU, px, markH, prev) =>
-            replaceExchangeSlOrderUsdM({
-              ...replaceCtxBase,
-              symU,
-              newSlPx: px,
-              markPxHint: markH,
-              previousExchangeSlPx: prev,
-            });
-
-    if (mem.trailingBySymbol[s]) {
-      mem.trailingBySymbol[s].slTrailConfirm = {
-        status: "REQUESTED",
-        requestedSl: newSlPx,
-        exchangeSlBefore: slPriorToTrailAdvance,
-        tierLabel,
-        at: Date.now(),
-      };
+    /** Roll back in-memory trail only if no newer trailing generation overwrote `trailStep` since this job was queued. */
+    function guardedRollbackTrailState() {
+      const tr = mem.trailingBySymbol[s];
+      const cur = Math.max(0, Math.floor(Number(tr?.trailStep) || 0));
+      if (cur < stepAtSubmit) return;
+      if (cur !== stepAtSubmit) return;
+      rollbackTrailState();
     }
 
-    const SETTLE_MS = 320;
-    const RETRY_GAP_MS = 280;
-    const MAX_ATTEMPTS = 3;
-    let lastRep = null;
-    let lastVerified = null;
-    let verifiedOk = false;
+    /** Release before scheduling async replace so the worker can take the same per-symbol lock (Set.add is a no-op if we forgot). */
+    trailSymLock.delete(s);
+    submitLatestTrailingSlJob(mem, s, async () => {
+      trailSymLock.add(s);
+      try {
+        const trW = mem.trailingBySymbol[s];
+        const pbW = mem.placedBracketTargets[s];
+        const targetSl = Number(pbW?.stopLoss);
+        if (!Number.isFinite(targetSl) || targetSl <= 0) return;
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      let prevForReplace = slPriorToTrailAdvance;
-      if (attempt > 1) {
-        replaceCtxBase?.clearSlTpOpenOrdersCache?.(s);
-        try {
-          const oo = await stopTakeFromExchangeOpenOrders(s);
-          if (oo?.sl != null && Number.isFinite(Number(oo.sl))) prevForReplace = Number(oo.sl);
-        } catch {
-          /* keep prior */
+        const stepLive = Math.max(0, Math.floor(Number(trW?.trailStep) || 0));
+        if (stepLive < stepAtSubmit) return;
+
+        const newSlPx = targetSl;
+        const trail = trW;
+        const tierLabel =
+          trail?.trailTierLabel ||
+          (Number.isFinite(Number(trail?.trailStep)) && Number(trail.trailStep) >= 1
+            ? trailStepToTierLabel(Number(trail.trailStep), trail?.trailStepLabelStyle || "classic")
+            : "T0");
+        const prevSl = slPriorToTrailAdvance ?? newSlPx;
+
+        const doReplace =
+          typeof replaceSlOnExchange === "function"
+            ? (symU, px, markH, prev) => replaceSlOnExchange(symU, px, markH, prev)
+            : (symU, px, markH, prev) =>
+                replaceExchangeSlOrderUsdM({
+                  ...replaceCtxBase,
+                  symU,
+                  newSlPx: px,
+                  markPxHint: markH,
+                  previousExchangeSlPx: prev,
+                });
+
+        if (mem.trailingBySymbol[s]) {
+          mem.trailingBySymbol[s].slTrailConfirm = {
+            status: "REQUESTED",
+            requestedSl: newSlPx,
+            exchangeSlBefore: slPriorToTrailAdvance,
+            tierLabel,
+            at: Date.now(),
+          };
         }
-      }
 
-      await throttleGlobalTrailingOps(mem, 120);
-      lastRep = await doReplace(s, newSlPx, markPx, prevForReplace).catch((e) => ({
-        ok: false,
-        code: null,
-        msg: String(e?.message || e),
-      }));
+        const SETTLE_MS = 320;
+        const RETRY_GAP_MS = 280;
+        const MAX_ATTEMPTS = 3;
+        let lastRep = null;
+        let lastVerified = null;
+        let verifiedOk = false;
 
-      if (lastRep?.msg === "skip_would_trigger_precheck") {
-        rollbackTrailState();
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          let prevForReplace = slPriorToTrailAdvance;
+          if (attempt > 1) {
+            replaceCtxBase?.clearSlTpOpenOrdersCache?.(s);
+            try {
+              const oo = await stopTakeFromExchangeOpenOrders(s);
+              if (oo?.sl != null && Number.isFinite(Number(oo.sl))) prevForReplace = Number(oo.sl);
+            } catch {
+              /* keep prior */
+            }
+          }
+
+          await throttleGlobalTrailingOps(mem, 120);
+          lastRep = await doReplace(s, newSlPx, markPx, prevForReplace).catch((e) => ({
+            ok: false,
+            code: null,
+            msg: String(e?.message || e),
+          }));
+
+          if (lastRep?.msg === "skip_would_trigger_precheck") {
+            guardedRollbackTrailState();
+            if (mem.trailingBySymbol[s]) {
+              mem.trailingBySymbol[s].slTrailConfirm = {
+                status: "FAILED",
+                reason: "skip_would_trigger_precheck",
+                requestedSl: newSlPx,
+                attempts: attempt,
+                at: Date.now(),
+              };
+            }
+            try {
+              notifyActivity?.({
+                level: "info",
+                category: "trailing",
+                reason: "trail_sl_replace_skipped_precheck",
+                msg: `${s} trailing SL → ${tierLabel} skipped (new SL ${Number(newSlPx).toFixed(8)} would trigger vs mark); exchange SL unchanged — in-memory trail rolled back`,
+                detail: { symbol: s, tier: tierLabel, newSlPx, prevSl, markPx },
+              });
+            } catch {
+              /* ignore */
+            }
+            return;
+          }
+
+          if (!lastRep?.ok && lastRep?.localBracketInstalled) {
+            flushQueuedAdvances();
+            if (mem.trailingBySymbol[s]) delete mem.trailingBySymbol[s].slTrailConfirm;
+            try {
+              notifyActivity?.({
+                level: "info",
+                category: "trailing",
+                reason: "trail_sl_breached_local_close",
+                msg: `${s} ${tierLabel} — mark crossed trailing SL ${newSlPx}, local bracket for immediate close`,
+                detail: { symbol: s, tier: tierLabel, newSlPx, prevSl },
+              });
+            } catch {
+              /* ignore */
+            }
+            return;
+          }
+
+          if (lastRep?.rolledBack && lastRep?.rollbackSl != null) {
+            guardedRollbackTrailState();
+            if (mem.trailingBySymbol[s]) {
+              mem.trailingBySymbol[s].slTrailConfirm = {
+                status: "FAILED",
+                reason: "replace_rolled_back",
+                requestedSl: newSlPx,
+                rollbackSl: lastRep.rollbackSl,
+                code: lastRep?.code ?? null,
+                msg: lastRep?.msg ?? null,
+                attempts: attempt,
+                at: Date.now(),
+              };
+            }
+            replaceCtxBase?.clearSlTpOpenOrdersCache?.(s);
+            let verifiedSl = null;
+            try {
+              const oo = await stopTakeFromExchangeOpenOrders(s);
+              verifiedSl = oo?.sl != null ? Number(oo.sl) : null;
+            } catch {
+              /* ignore */
+            }
+            const rb = Number(lastRep.rollbackSl);
+            const slMatch = exchangeSlMatchesTargetPrice(verifiedSl, rb, tick);
+            try {
+              notifyActivity?.({
+                level: slMatch ? "info" : "warn",
+                category: "trailing",
+                reason: slMatch ? "trail_sl_rollback_restored_ok" : "trail_sl_rollback_restored_verify_mismatch",
+                msg: slMatch
+                  ? `${s} ${tierLabel} — new SL ${newSlPx} failed to place; prior SL ${rb} restored on exchange (verified); trail state rolled back`
+                  : `${s} ${tierLabel} — new SL failed; rollback to ${rb} requested but exchange shows SL=${verifiedSl ?? "EMPTY"}; trail state rolled back`,
+                detail: {
+                  symbol: s,
+                  tier: tierLabel,
+                  prevSl,
+                  attemptedNewSl: newSlPx,
+                  rollbackSl: rb,
+                  verifiedSl,
+                  code: lastRep?.code ?? null,
+                  msg: lastRep?.msg ?? null,
+                },
+              });
+            } catch {
+              /* ignore */
+            }
+            return;
+          }
+
+          if (!lastRep?.ok) {
+            try {
+              notifyActivity?.({
+                level: "warn",
+                category: "trailing",
+                reason: "trail_sl_replace_attempt_failed",
+                msg: `${s} trailing SL → ${tierLabel} replace attempt ${attempt}/${MAX_ATTEMPTS} failed${lastRep?.code != null ? ` (code ${lastRep.code})` : ""}${lastRep?.msg ? `: ${String(lastRep.msg).slice(0, 200)}` : ""}`,
+                detail: {
+                  symbol: s,
+                  tier: tierLabel,
+                  prevSl: prevForReplace,
+                  newSlPx,
+                  attempt,
+                  maxAttempts: MAX_ATTEMPTS,
+                  code: lastRep?.code ?? null,
+                  msg: lastRep?.msg ?? null,
+                },
+              });
+            } catch {
+              /* ignore */
+            }
+            if (attempt < MAX_ATTEMPTS) await sleepMs(RETRY_GAP_MS);
+            continue;
+          }
+
+          await sleepMs(SETTLE_MS);
+          replaceCtxBase?.clearSlTpOpenOrdersCache?.(s);
+          try {
+            const oo = await stopTakeFromExchangeOpenOrders(s);
+            lastVerified = oo?.sl != null ? Number(oo.sl) : null;
+          } catch {
+            lastVerified = null;
+          }
+
+          if (exchangeSlMatchesTargetPrice(lastVerified, newSlPx, tick)) {
+            verifiedOk = true;
+            break;
+          }
+
+          try {
+            notifyActivity?.({
+              level: "warn",
+              category: "trailing",
+              reason: "trail_sl_verify_mismatch_retry",
+              msg: `${s} trailing SL verify attempt ${attempt}/${MAX_ATTEMPTS}: exchange SL=${lastVerified ?? "EMPTY"} expected≈${newSlPx} (tick ${tick || "—"})`,
+              detail: {
+                symbol: s,
+                tier: tierLabel,
+                requestedSl: newSlPx,
+                verifiedSl: lastVerified,
+                attempt,
+                tickSize: tick || null,
+              },
+            });
+          } catch {
+            /* ignore */
+          }
+          if (attempt < MAX_ATTEMPTS) await sleepMs(RETRY_GAP_MS);
+        }
+
+        if (verifiedOk) {
+          flushQueuedAdvances();
+          if (mem.trailingBySymbol[s]) delete mem.trailingBySymbol[s].slTrailConfirm;
+          if (mem.trailingBySymbol[s]) {
+            const curStep = Math.max(0, Math.floor(Number(mem.trailingBySymbol[s].trailStep) || 0));
+            const priorConfirmed = Math.max(0, Math.floor(Number(mem.trailingBySymbol[s].confirmedTrailStep) || 0));
+            if (curStep > priorConfirmed) {
+              mem.trailingBySymbol[s].confirmedTrailStep = curStep;
+              mem.trailingBySymbol[s].confirmedTrailTierLabel =
+                curStep >= 1
+                  ? trailStepToTierLabel(curStep, mem.trailingBySymbol[s].trailStepLabelStyle || "classic")
+                  : null;
+              mem.trailingBySymbol[s].confirmedAt = Date.now();
+            }
+          }
+          try {
+            notifyActivity?.({
+              level: "info",
+              category: "trailing",
+              reason: "trail_sl_replace_success",
+              msg: `${s} trailing SL → ${tierLabel} SUCCESS · SL ${prevSl != null ? `${prevSl} → ` : ""}${newSlPx} (verified on exchange)`,
+              detail: { symbol: s, tier: tierLabel, prevSl, newSlPx, verifiedSl: lastVerified },
+            });
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
+
+        guardedRollbackTrailState();
         if (mem.trailingBySymbol[s]) {
           mem.trailingBySymbol[s].slTrailConfirm = {
             status: "FAILED",
-            reason: "skip_would_trigger_precheck",
+            reason: lastRep?.ok ? "verify_mismatch_after_retries" : "replace_failed_after_retries",
             requestedSl: newSlPx,
-            attempts: attempt,
+            verifiedSl: lastVerified,
+            lastCode: lastRep?.code ?? null,
+            lastMsg: lastRep?.msg ?? null,
+            attempts: MAX_ATTEMPTS,
             at: Date.now(),
           };
         }
         try {
           notifyActivity?.({
-            level: "info",
+            level: "error",
             category: "trailing",
-            reason: "trail_sl_replace_skipped_precheck",
-            msg: `${s} trailing SL → ${tierLabel} skipped (new SL ${Number(newSlPx).toFixed(8)} would trigger vs mark); exchange SL unchanged — in-memory trail rolled back`,
-            detail: { symbol: s, tier: tierLabel, newSlPx, prevSl, markPx },
-          });
-        } catch {
-          /* ignore */
-        }
-        return;
-      }
-
-      if (!lastRep?.ok && lastRep?.localBracketInstalled) {
-        flushQueuedAdvances();
-        if (mem.trailingBySymbol[s]) delete mem.trailingBySymbol[s].slTrailConfirm;
-        try {
-          notifyActivity?.({
-            level: "info",
-            category: "trailing",
-            reason: "trail_sl_breached_local_close",
-            msg: `${s} ${tierLabel} — mark crossed trailing SL ${newSlPx}, local bracket for immediate close`,
-            detail: { symbol: s, tier: tierLabel, newSlPx, prevSl },
-          });
-        } catch {
-          /* ignore */
-        }
-        return;
-      }
-
-      if (lastRep?.rolledBack && lastRep?.rollbackSl != null) {
-        rollbackTrailState();
-        if (mem.trailingBySymbol[s]) {
-          mem.trailingBySymbol[s].slTrailConfirm = {
-            status: "FAILED",
-            reason: "replace_rolled_back",
-            requestedSl: newSlPx,
-            rollbackSl: lastRep.rollbackSl,
-            code: lastRep?.code ?? null,
-            msg: lastRep?.msg ?? null,
-            attempts: attempt,
-            at: Date.now(),
-          };
-        }
-        replaceCtxBase?.clearSlTpOpenOrdersCache?.(s);
-        let verifiedSl = null;
-        try {
-          const oo = await stopTakeFromExchangeOpenOrders(s);
-          verifiedSl = oo?.sl != null ? Number(oo.sl) : null;
-        } catch {
-          /* ignore */
-        }
-        const rb = Number(lastRep.rollbackSl);
-        const slMatch = exchangeSlMatchesTargetPrice(verifiedSl, rb, tick);
-        try {
-          notifyActivity?.({
-            level: slMatch ? "info" : "warn",
-            category: "trailing",
-            reason: slMatch ? "trail_sl_rollback_restored_ok" : "trail_sl_rollback_restored_verify_mismatch",
-            msg: slMatch
-              ? `${s} ${tierLabel} — new SL ${newSlPx} failed to place; prior SL ${rb} restored on exchange (verified); trail state rolled back`
-              : `${s} ${tierLabel} — new SL failed; rollback to ${rb} requested but exchange shows SL=${verifiedSl ?? "EMPTY"}; trail state rolled back`,
+            reason: "trail_sl_exchange_confirm_failed",
+            msg: `${s} trailing SL → ${tierLabel} NOT confirmed after ${MAX_ATTEMPTS} attempts — trail state rolled back to pre-advance (exchange SL=${lastVerified ?? "EMPTY"}, target ${newSlPx})`,
             detail: {
               symbol: s,
               tier: tierLabel,
               prevSl,
-              attemptedNewSl: newSlPx,
-              rollbackSl: rb,
-              verifiedSl,
-              code: lastRep?.code ?? null,
-              msg: lastRep?.msg ?? null,
+              requestedSl: newSlPx,
+              verifiedSl: lastVerified,
+              lastCode: lastRep?.code ?? null,
+              lastMsg: lastRep?.msg ?? null,
+              attempts: MAX_ATTEMPTS,
             },
           });
         } catch {
           /* ignore */
         }
-        return;
-      }
-
-      if (!lastRep?.ok) {
-        try {
-          notifyActivity?.({
-            level: "warn",
-            category: "trailing",
-            reason: "trail_sl_replace_attempt_failed",
-            msg: `${s} trailing SL → ${tierLabel} replace attempt ${attempt}/${MAX_ATTEMPTS} failed${lastRep?.code != null ? ` (code ${lastRep.code})` : ""}${lastRep?.msg ? `: ${String(lastRep.msg).slice(0, 200)}` : ""}`,
-            detail: {
-              symbol: s,
-              tier: tierLabel,
-              prevSl: prevForReplace,
-              newSlPx,
-              attempt,
-              maxAttempts: MAX_ATTEMPTS,
-              code: lastRep?.code ?? null,
-              msg: lastRep?.msg ?? null,
-            },
-          });
-        } catch {
-          /* ignore */
-        }
-        if (attempt < MAX_ATTEMPTS) await sleepMs(RETRY_GAP_MS);
-        continue;
-      }
-
-      await sleepMs(SETTLE_MS);
-      replaceCtxBase?.clearSlTpOpenOrdersCache?.(s);
-      try {
-        const oo = await stopTakeFromExchangeOpenOrders(s);
-        lastVerified = oo?.sl != null ? Number(oo.sl) : null;
-      } catch {
-        lastVerified = null;
-      }
-
-      if (exchangeSlMatchesTargetPrice(lastVerified, newSlPx, tick)) {
-        verifiedOk = true;
-        break;
-      }
-
-      try {
-        notifyActivity?.({
-          level: "warn",
-          category: "trailing",
-          reason: "trail_sl_verify_mismatch_retry",
-          msg: `${s} trailing SL verify attempt ${attempt}/${MAX_ATTEMPTS}: exchange SL=${lastVerified ?? "EMPTY"} expected≈${newSlPx} (tick ${tick || "—"})`,
-          detail: {
-            symbol: s,
-            tier: tierLabel,
-            requestedSl: newSlPx,
-            verifiedSl: lastVerified,
-            attempt,
-            tickSize: tick || null,
-          },
-        });
-      } catch {
-        /* ignore */
-      }
-      if (attempt < MAX_ATTEMPTS) await sleepMs(RETRY_GAP_MS);
-    }
-
-    if (verifiedOk) {
-      flushQueuedAdvances();
-      if (mem.trailingBySymbol[s]) delete mem.trailingBySymbol[s].slTrailConfirm;
-      if (mem.trailingBySymbol[s]) {
-        const curStep = Math.max(0, Math.floor(Number(mem.trailingBySymbol[s].trailStep) || 0));
-        const priorConfirmed = Math.max(0, Math.floor(Number(mem.trailingBySymbol[s].confirmedTrailStep) || 0));
-        if (curStep > priorConfirmed) {
-          mem.trailingBySymbol[s].confirmedTrailStep = curStep;
-          mem.trailingBySymbol[s].confirmedTrailTierLabel = curStep >= 1 ? `T${curStep - 1}` : null;
-          mem.trailingBySymbol[s].confirmedAt = Date.now();
+      } finally {
+        trailSymLock.delete(s);
+        const pending = q[s];
+        if (pending && depth < 8) {
+          delete q[s];
+          const mp = Number(pending.markPx);
+          if (Number.isFinite(mp) && mp > 0) {
+            try {
+              await evalTrailingForSymbolUsdM({ ...ctx, markPx: mp, _trailQueueDepth: depth + 1 });
+            } catch {
+              /* ignore */
+            }
+          }
         }
       }
-      try {
-        notifyActivity?.({
-          level: "info",
-          category: "trailing",
-          reason: "trail_sl_replace_success",
-          msg: `${s} trailing SL → ${tierLabel} SUCCESS · SL ${prevSl != null ? `${prevSl} → ` : ""}${newSlPx} (verified on exchange)`,
-          detail: { symbol: s, tier: tierLabel, prevSl, newSlPx, verifiedSl: lastVerified },
-        });
-      } catch {
-        /* ignore */
-      }
-      return;
-    }
-
-    rollbackTrailState();
-    if (mem.trailingBySymbol[s]) {
-      mem.trailingBySymbol[s].slTrailConfirm = {
-        status: "FAILED",
-        reason: lastRep?.ok ? "verify_mismatch_after_retries" : "replace_failed_after_retries",
-        requestedSl: newSlPx,
-        verifiedSl: lastVerified,
-        lastCode: lastRep?.code ?? null,
-        lastMsg: lastRep?.msg ?? null,
-        attempts: MAX_ATTEMPTS,
-        at: Date.now(),
-      };
-    }
-    try {
-      notifyActivity?.({
-        level: "error",
-        category: "trailing",
-        reason: "trail_sl_exchange_confirm_failed",
-        msg: `${s} trailing SL → ${tierLabel} NOT confirmed after ${MAX_ATTEMPTS} attempts — trail state rolled back to pre-advance (exchange SL=${lastVerified ?? "EMPTY"}, target ${newSlPx})`,
-        detail: {
-          symbol: s,
-          tier: tierLabel,
-          prevSl,
-          requestedSl: newSlPx,
-          verifiedSl: lastVerified,
-          lastCode: lastRep?.code ?? null,
-          lastMsg: lastRep?.msg ?? null,
-          attempts: MAX_ATTEMPTS,
-        },
-      });
-    } catch {
-      /* ignore */
-    }
+    });
+    return;
   } catch {
     /* ignore */
   } finally {

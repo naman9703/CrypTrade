@@ -149,6 +149,41 @@ function buildToastViewModel(l: LogPayload & Record<string, unknown>): ToastView
     };
   }
 
+  if (reason === "trailing_activation_engaged" && detail) {
+    const tier = detail.tierLabel != null ? String(detail.tierLabel) : "";
+    const ap = detail.activationPrice;
+    const mk = detail.markPx;
+    const head = tier ? `Tier ${tier} · mark crossed activation` : "Trailing activation";
+    const sub: string[] = [];
+    if (mk != null) sub.push(`Mark ${fmtPx(mk)}`);
+    if (ap != null) sub.push(`Activation ${fmtPx(ap)}`);
+    return {
+      title: sym ? `${sym} · Trail activation` : "Trail activation",
+      headline: head,
+      sublines: sub,
+      chips,
+    };
+  }
+
+  if (reason === "trail_sl_replace_success" && detail) {
+    const tier = detail.tier != null ? String(detail.tier) : "";
+    const prev = detail.prevSl;
+    const next = detail.newSlPx ?? detail.requestedSl;
+    const ver = detail.verifiedSl;
+    const head =
+      prev != null && next != null
+        ? `SL ${fmtPx(prev)} → ${fmtPx(next)} (verified)`
+        : `Trailing SL updated${tier ? ` · ${tier}` : ""}`;
+    const sub: string[] = [];
+    if (ver != null) sub.push(`Exchange SL ${fmtPx(ver)}`);
+    return {
+      title: sym ? `${sym} · Trail verified` : "Trail verified",
+      headline: head,
+      sublines: sub,
+      chips,
+    };
+  }
+
   // MODE SWITCH
   if (cat === "trading_mode" && reason && String(reason).startsWith("mode_changed")) {
     const mode = detail?.mode != null ? String(detail.mode) : undefined;

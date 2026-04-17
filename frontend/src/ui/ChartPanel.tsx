@@ -16,14 +16,18 @@ import { binanceIntervalMs, buildChartSupertrend } from "../lib/supertrend";
 import {
   advanceTrailingStopState,
   buildTrailLockPrices,
+  DEFAULT_TRAIL_FEE_BE_MULTIPLIER,
   extrapolateTrailTierLockPx,
   feeRateBreakevenPadded,
   mergeStopWithTrail,
   supertrendTieredActivationGate,
   tierLabelForTrailIndex,
   trailLadderConsecutiveLocksReached,
+  computeSupertrendTieredMaxTrailStepFromExtreme,
+  maxTrailStepsForConfig,
+  computeEffectiveTrailBuffer,
 } from "../lib/trailingFeeLadder";
-import { computeSupertrendTrailingSlUpdate } from "../lib/supertrendTrailingSl";
+import { computeSupertrendTrailingSlUpdate, trailStepToTierLabel } from "../lib/supertrendTrailingSl";
 import { clampTradeCloseFeeRate } from "../lib/tradeCloseFee";
 import {
   computeSupertrendSignalVerdicts,
@@ -237,6 +241,10 @@ type ChartTrailHud = {
   nextActivationPx: number | null;
   nextTierLabel: string | null;
   liveTrailSlPx: number | null;
+  /** When present (fee ladder), show the current trailed tier and the next two lock points. */
+  currentTrailedTierLabel?: string | null;
+  /** Next two upcoming tiers: discrete lock (SL level) and activation (mark must cross to arm that tier). */
+  nextTwoTierLocks?: { tierLabel: string; lockPx: number; activationPx: number }[];
 };
 
 type ChartTrailingPreview = {
@@ -517,8 +525,14 @@ function metaTrailTrailedFromPosition(pos: Record<string, unknown>): { trailed: 
   const ts = Number(meta.trailStep);
   const trailed = Number.isFinite(ts) && Math.floor(ts) >= 1;
   /** Prefer server-side label; fall back to computing T{trailStep-1}. */
+  const labelStyle =
+    meta.trailStepLabelStyle === "tiered_st_fee_entry" || Number(meta.trailTierSchemaVersion) >= 2
+      ? ("tiered_st_fee_entry" as const)
+      : ("classic" as const);
   const rawLabel =
-    pos.trailTierLabel ?? meta.trailTierLabel ?? (trailed ? `T${Math.max(0, Math.floor(ts) - 1)}` : null);
+    pos.trailTierLabel ??
+    meta.trailTierLabel ??
+    (trailed ? trailStepToTierLabel(Math.floor(ts), labelStyle) : null);
   const tierLabel = rawLabel != null ? String(rawLabel) : null;
   return { trailed, tierLabel };
 }
@@ -1289,9 +1303,23 @@ export function ChartPanel() {
     const closeFeeR = Number.isFinite(Number(bot?.trailCloseFeeRate)) && Number(bot?.trailCloseFeeRate) > 0
       ? Number(bot.trailCloseFeeRate) : feeR;
     const feeBeMultiplierChart = Number.isFinite(Number(bot?.trailFeeBeMultiplier)) && Number(bot?.trailFeeBeMultiplier) >= 1
-      ? Number(bot.trailFeeBeMultiplier) : 1.0;
+      ? Number(bot.trailFeeBeMultiplier)
+      : DEFAULT_TRAIL_FEE_BE_MULTIPLIER;
     const bufferRate = Number.isFinite(Number(bot?.trailBufferRate)) && Number(bot?.trailBufferRate) >= 0
       ? Number(bot.trailBufferRate) : 0.0005;
+    const slipFracChart = Math.max(0, Math.min(0.01, Number(bot?.trailActivationSlippageFrac ?? 0)));
+    const atrPctChart = Number(
+      bot && typeof bot === "object" && (bot as { lastRegime?: { atrPct?: number } }).lastRegime?.atrPct,
+    );
+    const bufEffective = computeEffectiveTrailBuffer({
+      bufferRate,
+      trailBufferMode:
+        bot && typeof bot === "object"
+          ? (bot as { trailBufferMode?: string }).trailBufferMode
+          : undefined,
+      trailBufferAtrMult: bot?.trailBufferAtrMult,
+      atrPct: atrPctChart,
+    });
     const maintenanceMarginRate = Number.isFinite(Number(bot?.trailMaintMarginRate)) && Number(bot?.trailMaintMarginRate) >= 0
       ? Number(bot.trailMaintMarginRate) : 0.005;
 
@@ -1316,6 +1344,7 @@ export function ChartPanel() {
         trailStep: step0,
         extremePx,
         markPx: cur,
+        activationBufferRate: bufEffective,
         feeRate: feeR,
         openFeeRate: openFeeR,
         closeFeeRate: closeFeeR,
@@ -1424,12 +1453,53 @@ export function ChartPanel() {
         ? tierLines
         : [...tierLines, primaryLine];
 
+      // Fee ladder HUD: show current trailed tier, next activation, and the next two tier locks.
+      const locksReachedBySl =
+        allLevels.length > 0 && Number.isFinite(prevSlForCompute) && prevSlForCompute > 0
+          ? trailLadderConsecutiveLocksReached(allLevels, prevSlForCompute, isLong)
+          : 0;
+      const uiTrailedStep = Math.min(step0, locksReachedBySl);
+      const currentTrailedTierLabel = uiTrailedStep >= 1 ? `T${uiTrailedStep - 1}` : null;
+      const nextIdx = Math.max(0, uiTrailedStep);
+      const nextLockPx = extrapolateTrailTierLockPx(allLevels, nextIdx, isLong, entry);
+      const nextActivationPx =
+        nextLockPx != null && Number.isFinite(nextLockPx)
+          ? isLong
+            ? nextLockPx * (1 + bufEffective)
+            : nextLockPx * (1 - bufEffective)
+          : null;
+      const nextTierLabel = tierLabelForTrailIndex(allLevels, nextIdx);
+      const nextTwoTierLocks: { tierLabel: string; lockPx: number; activationPx: number }[] = [];
+      for (let j = 1; j <= 2; j++) {
+        const idx = nextIdx + j;
+        const lockPx = extrapolateTrailTierLockPx(allLevels, idx, isLong, entry);
+        if (lockPx != null && Number.isFinite(lockPx) && lockPx > 0) {
+          const activationPx = isLong ? lockPx * (1 + bufEffective) : lockPx * (1 - bufEffective);
+          nextTwoTierLocks.push({
+            tierLabel: tierLabelForTrailIndex(allLevels, idx),
+            lockPx,
+            activationPx,
+          });
+        }
+      }
+
+      const tpHud = Number(pos.takeProfit);
+      const trailHud: ChartTrailHud = {
+        currentSl: Number.isFinite(prevSlChart) && prevSlChart > 0 ? prevSlChart : null,
+        takeProfit: Number.isFinite(tpHud) && tpHud > 0 ? tpHud : null,
+        nextActivationPx: nextActivationPx != null && Number.isFinite(nextActivationPx) && nextActivationPx > 0 ? nextActivationPx : null,
+        nextTierLabel,
+        liveTrailSlPx: displayPx,
+        currentTrailedTierLabel,
+        nextTwoTierLocks,
+      };
+
       return {
         /** Omit mark `cur` from key — it changes every tick and was retriggering price-line workarounds. */
         key: `trail-FEE-${displayPx.toFixed(6)}|${symKey}`,
         lines: allTierLines,
         badge: mkBadge(feeTrailingLive),
-        trailHud: null,
+        trailHud,
       };
     }
 
@@ -1444,7 +1514,9 @@ export function ChartPanel() {
 
     /** Round-trip fee for SUPERTREND mode: openFee + closeFee × optional multiplier */
     const rtFeeChart = openFeeR + closeFeeR;
-    const paddedFeeST = feeRateBreakevenPadded(rtFeeChart, feeBeMultiplierChart);
+    const paddedFeeBeBase = feeRateBreakevenPadded(rtFeeChart, feeBeMultiplierChart);
+    /** Matches `applyTrailingStopBinanceMemory`: padded fee + optional activation slippage (Supertrend only). */
+    const paddedFeeSt = Math.min(0.02, paddedFeeBeBase + slipFracChart);
     const useFeeBeTrail = bot?.futuresTrailingStFeeBreakeven !== false;
     const useAdvancedTrail = bot?.futuresTrailingStAdvanced !== false;
     const tieredStMode = useFeeBeTrail && useAdvancedTrail;
@@ -1458,49 +1530,141 @@ export function ChartPanel() {
           feeBeMultiplier: feeBeMultiplierChart,
         })
       : [];
+    const postT02SpacingUser =
+      bot?.trailPostT02SpacingFrac != null && Number.isFinite(Number(bot.trailPostT02SpacingFrac))
+        ? Number(bot.trailPostT02SpacingFrac)
+        : null;
+    const postT02MaxExtraTiers = Math.max(
+      10,
+      Math.min(500, Math.floor(Number(bot?.trailPostT02MaxExtraTiers ?? 150))),
+    );
+    const tieredGateOpts = { roundTripFeeRate: rtFeeChart, postT02SpacingFrac: postT02SpacingUser };
+    const maxTieredActivationSteps = maxTrailStepsForConfig(extrasSt, postT02MaxExtraTiers);
     const tsMeta = Number((pos.meta as Record<string, unknown> | undefined)?.trailStep);
     const stepNow = Number.isFinite(tsMeta) && tsMeta >= 0 ? Math.floor(tsMeta) : 0;
     const locksReachedBySl =
       tieredStMode && stLevels.length > 0 && Number.isFinite(prevSlForCompute) && prevSlForCompute > 0
         ? trailLadderConsecutiveLocksReached(stLevels, prevSlForCompute, isLong)
         : 0;
-    /** Cap "(trailed)" labels so they match the real stop; `trailStep` can run ahead of the exchange SL. */
-    const uiTrailedStep = Math.min(stepNow, locksReachedBySl);
-    const serverStepAheadOfSl = stepNow > locksReachedBySl;
+    /**
+     * Post‑T02 spacing is equidistant from the T02 lock (not the old fee-ladder interval); do not infer
+     * trailed tier from SL vs T0/T1 locks. Use server `trailStep` for tiered preview.
+     */
+    const uiTrailedStep = tieredStMode ? stepNow : Math.min(stepNow, locksReachedBySl);
 
     let breakeven: number;
     let activation: number;
     let liquidation: number;
     if (isLong) {
-      breakeven = entry * (1 + paddedFeeST);
-      activation = entry * (1 + paddedFeeST + bufferRate);
+      breakeven = entry * (1 + paddedFeeSt);
+      activation = entry * (1 + paddedFeeSt + bufEffective);
       liquidation = entry * (1 - 1 / lev + maintenanceMarginRate);
       if (liquidation >= breakeven) return none("trail-reject", mkBadge(false));
     } else {
-      breakeven = entry * (1 - paddedFeeST);
-      activation = entry * (1 - paddedFeeST - bufferRate);
+      breakeven = entry * (1 - paddedFeeSt);
+      activation = entry * (1 - paddedFeeSt - bufEffective);
       liquidation = entry * (1 + 1 / lev - maintenanceMarginRate);
       if (liquidation <= breakeven) return none("trail-reject", mkBadge(false));
     }
-    const tierAct = tieredStMode
-      ? supertrendTieredActivationGate(entry, isLong, paddedFeeST, bufferRate, useFeeBeTrail, stepNow, stLevels)
-      : { activationPx: activation, activationTierLabel: null as string | null, nextRow: null };
+    const tierAct = supertrendTieredActivationGate(
+      entry,
+      isLong,
+      paddedFeeSt,
+      bufEffective,
+      useFeeBeTrail,
+      stepNow,
+      stLevels,
+      tieredStMode ? tieredGateOpts : undefined,
+    );
     activation = tierAct.activationPx;
     const nextActivationTier = tierAct.nextRow;
 
     const minSlDist = Number.isFinite(Number(bot?.trailMinSlDistFrac)) ? Number(bot?.trailMinSlDistFrac) : 0.002;
-    const r = computeSupertrendTrailingSlUpdate({
-      entryPrice: entry,
-      currentPrice: cur,
-      supertrend: stPx,
-      previousSl: prevSlForCompute,
-      isLong,
-      leverage: lev,
-      feeRate: paddedFeeST,
-      bufferRate,
-      maintenanceMarginRate,
-      minSlDistanceFrac: minSlDist,
-    });
+    const minGapMark = Number.isFinite(Number(bot?.trailMinGapFromMarkFrac)) ? Number(bot?.trailMinGapFromMarkFrac) : 0;
+    const metaRec = (pos.meta || {}) as Record<string, unknown>;
+    const extremeHint = Number(metaRec.extremePx);
+    let r: ReturnType<typeof computeSupertrendTrailingSlUpdate>;
+    if (tieredStMode) {
+      const hwm = isLong
+        ? Math.max(Number.isFinite(extremeHint) ? extremeHint : cur, cur)
+        : Math.min(Number.isFinite(extremeHint) ? extremeHint : cur, cur);
+      const rawPriceStep = computeSupertrendTieredMaxTrailStepFromExtreme({
+        hwm,
+        entryPx: entry,
+        isLong,
+        feeBe: paddedFeeSt,
+        bufferRate: bufEffective,
+        useFeeBeTrail,
+        stLevels,
+        maxActivationSteps: maxTieredActivationSteps,
+        roundTripFeeRate: rtFeeChart,
+        postT02SpacingFrac: postT02SpacingUser,
+      });
+      const maxCap = Math.max(maxTieredActivationSteps, 3);
+      const priceStep = Math.min(rawPriceStep, maxCap);
+      const nextTrailStep = Math.max(stepNow, priceStep);
+      const t01ActivationPx = isLong ? entry * (1 + bufEffective) : entry * (1 - bufEffective);
+      const t02ActivationPx = isLong ? entry * (1 + paddedFeeSt + bufEffective) : entry * (1 - paddedFeeSt - bufEffective);
+      const entryLockBreakevenPx = entry;
+      const beEvtBase = isLong ? entry * (1 + paddedFeeSt) : entry * (1 - paddedFeeSt);
+      if (nextTrailStep < 1) {
+        r = { newSl: prevSlForCompute, status: "NO_TRAIL" };
+      } else {
+        const useAdvCompute = nextTrailStep >= 3 && Number.isFinite(stPx) && stPx > 0;
+        const gateForGeometry =
+          nextTrailStep <= 1
+            ? t01ActivationPx
+            : nextTrailStep === 2
+              ? t02ActivationPx
+              : supertrendTieredActivationGate(
+                  entry,
+                  isLong,
+                  paddedFeeSt,
+                  bufEffective,
+                  useFeeBeTrail,
+                  nextTrailStep - 1,
+                  stLevels,
+                  tieredGateOpts,
+                ).activationPx;
+        const pxForCompute = isLong ? Math.max(cur, gateForGeometry) : Math.min(cur, gateForGeometry);
+        const computeBreakevenPx = nextTrailStep === 1 ? entryLockBreakevenPx : beEvtBase;
+        r = computeSupertrendTrailingSlUpdate({
+          entryPrice: entry,
+          currentPrice: pxForCompute,
+          supertrend: useAdvCompute ? stPx : Number.NaN,
+          previousSl: prevSlForCompute,
+          isLong,
+          leverage: lev,
+          feeRate: paddedFeeSt,
+          bufferRate: bufEffective,
+          maintenanceMarginRate,
+          minSlDistanceFrac: minSlDist,
+          minTrailGapFromMarkFrac: minGapMark,
+          useFeeBreakeven: useFeeBeTrail,
+          useAdvancedTrail: useAdvCompute,
+          activationPrice: gateForGeometry,
+          breakevenPrice: computeBreakevenPx,
+        });
+      }
+    } else {
+      r = computeSupertrendTrailingSlUpdate({
+        entryPrice: entry,
+        currentPrice: cur,
+        supertrend: stPx,
+        previousSl: prevSlForCompute,
+        isLong,
+        leverage: lev,
+        feeRate: paddedFeeSt,
+        bufferRate: bufEffective,
+        maintenanceMarginRate,
+        minSlDistanceFrac: minSlDist,
+        minTrailGapFromMarkFrac: minGapMark,
+        useFeeBreakeven: useFeeBeTrail,
+        useAdvancedTrail: useAdvancedTrail,
+        activationPrice: tierAct.activationPx,
+        breakevenPrice: breakeven,
+      });
+    }
 
     if (r.status === "NO_SUPERTREND" || r.status === "INVALID" || r.status === "REJECT_TRADE") {
       return none(`trail-${r.status}`, mkBadge(false));
@@ -1524,42 +1688,32 @@ export function ChartPanel() {
       lines.push({ px, title, kind, tierLabel });
     };
 
-    if (tieredStMode && stLevels.length > 0) {
-      const feeBeAct = isLong ? entry * (1 + paddedFeeST + bufferRate) : entry * (1 - paddedFeeST - bufferRate);
-      const t0Lock = extrapolateTrailTierLockPx(stLevels, 0, isLong, entry);
-      if (t0Lock != null) {
-        const t0Lab = tierLabelForTrailIndex(stLevels, 0);
-        if (uiTrailedStep > 0) {
-          pushTierRef(t0Lock, `${t0Lab} lock (trailed)`, "trail_tier_activated", t0Lab);
-        } else {
-          pushTierRef(t0Lock, `${t0Lab} lock`, "trail_tier_lock", t0Lab);
-        }
-        if (!nearlySameTrailPx(feeBeAct, t0Lock)) {
-          pushTierRef(
-            feeBeAct,
-            isLong ? "ST trail T0 activation (mark ≥)" : "ST trail T0 activation (mark ≤)",
-            "st_tier_activation",
-            undefined,
-          );
-        }
-      }
-      const maxIdx = Math.min(14, Math.max(stLevels.length + 1, stepNow + 2));
-      for (let j = 1; j <= maxIdx; j++) {
-        const lockPx = extrapolateTrailTierLockPx(stLevels, j, isLong, entry);
-        if (lockPx == null) continue;
-        const tl = tierLabelForTrailIndex(stLevels, j);
-        if (j < uiTrailedStep) {
-          pushTierRef(lockPx, `${tl} lock (trailed)`, "trail_tier_activated", tl);
-        } else if (!serverStepAheadOfSl && j === stepNow) {
-          pushTierRef(
-            lockPx,
-            isLong ? `ST trail opens ${tl} (mark ≥) · ${tl} lock` : `ST trail opens ${tl} (mark ≤) · ${tl} lock`,
-            "st_tier_activation",
-            tl,
-          );
-        } else {
-          pushTierRef(lockPx, `Next ${tl} lock / ST gate`, "trail_tier_next", tl);
-        }
+    if (tieredStMode) {
+      for (let gi = 0; gi < 2; gi++) {
+        const gateIdx = stepNow + gi;
+        if (gateIdx > maxTieredActivationSteps) break;
+        const g = supertrendTieredActivationGate(
+          entry,
+          isLong,
+          paddedFeeSt,
+          bufEffective,
+          useFeeBeTrail,
+          gateIdx,
+          stLevels,
+          tieredGateOpts,
+        );
+        const ap = g.activationPx;
+        const lab = g.activationTierLabel ?? `G${gateIdx}`;
+        if (!Number.isFinite(ap) || ap <= 0) break;
+        const title =
+          gi === 0
+            ? isLong
+              ? `Next ${lab} activation (mark ≥)`
+              : `Next ${lab} activation (mark ≤)`
+            : isLong
+              ? `Then ${lab} activation (mark ≥)`
+              : `Then ${lab} activation (mark ≤)`;
+        pushTierRef(ap, title, "st_tier_activation", lab);
       }
     } else {
       if (nextActivationTier && futuresBracketLevelSane(symPlausible, activation, ohlcLastClose) && !slDup(activation)) {
@@ -1591,12 +1745,52 @@ export function ChartPanel() {
     }
 
     const tpHud = Number(pos.takeProfit);
+    const tierLabelStyleHud =
+      ((pos.meta || {}) as Record<string, unknown>).trailStepLabelStyle === "tiered_st_fee_entry" ||
+      Number(((pos.meta || {}) as Record<string, unknown>).trailTierSchemaVersion) >= 2 ||
+      tieredStMode
+        ? ("tiered_st_fee_entry" as const)
+        : ("classic" as const);
+    const currentTrailedTierLabel =
+      uiTrailedStep >= 1 ? trailStepToTierLabel(uiTrailedStep, tierLabelStyleHud) : null;
+    const nextTwoTierLocks: { tierLabel: string; lockPx: number; activationPx: number }[] = [];
+    if (tieredStMode) {
+      const buf = bufEffective;
+      for (let gi = 0; gi < 2; gi++) {
+        const gateIdx = stepNow + gi;
+        if (gateIdx > maxTieredActivationSteps) break;
+        const g = supertrendTieredActivationGate(
+          entry,
+          isLong,
+          paddedFeeSt,
+          bufEffective,
+          useFeeBeTrail,
+          gateIdx,
+          stLevels,
+          tieredGateOpts,
+        );
+        const ap = g.activationPx;
+        const lab = g.activationTierLabel ?? `G${gateIdx}`;
+        if (Number.isFinite(ap) && ap > 0) {
+          let lockPx = Number.NaN;
+          if (g.nextRow != null && Number.isFinite(Number(g.nextRow.lockPx)) && Number(g.nextRow.lockPx) > 0) {
+            lockPx = Number(g.nextRow.lockPx);
+          } else if (Number.isFinite(buf) && buf > 0) {
+            lockPx = isLong ? ap / (1 + buf) : ap / (1 - buf);
+          } else {
+            lockPx = ap;
+          }
+          if (!Number.isFinite(lockPx) || lockPx <= 0) lockPx = ap;
+          nextTwoTierLocks.push({ tierLabel: lab, lockPx, activationPx: ap });
+        }
+      }
+    }
     const trailHud: ChartTrailHud = {
       currentSl: Number.isFinite(prevSlChart) && prevSlChart > 0 ? prevSlChart : null,
       takeProfit: Number.isFinite(tpHud) && tpHud > 0 ? tpHud : null,
       nextActivationPx: Number.isFinite(activation) && activation > 0 ? activation : null,
       nextTierLabel:
-        tieredStMode && stLevels.length > 0
+        tieredStMode
           ? tierAct.activationTierLabel != null
             ? String(tierAct.activationTierLabel)
             : `T${stepNow}`
@@ -1604,6 +1798,8 @@ export function ChartPanel() {
             ? String(nextActivationTier.tierLabel)
             : `T${stepNow}`,
       liveTrailSlPx: trailPx != null && Number.isFinite(trailPx) && trailPx > 0 ? trailPx : null,
+      currentTrailedTierLabel,
+      nextTwoTierLocks,
     };
 
     if (!lines.length) {
@@ -1621,6 +1817,21 @@ export function ChartPanel() {
     bot?.trailingStopLossAuto,
     bot?.futuresTrailingStopMode,
     bot?.trailingStopExtraScalpingPcts,
+    bot?.trailBufferRate,
+    bot?.trailActivationSlippageFrac,
+    bot?.trailBufferAtrMult,
+    bot?.trailBufferMode,
+    bot?.lastRegime,
+    bot?.trailOpenFeeRate,
+    bot?.trailCloseFeeRate,
+    bot?.trailFeeBeMultiplier,
+    bot?.futuresTrailingStFeeBreakeven,
+    bot?.futuresTrailingStAdvanced,
+    bot?.trailMinSlDistFrac,
+    bot?.trailMinGapFromMarkFrac,
+    bot?.trailMaintMarginRate,
+    bot?.trailPostT02SpacingFrac,
+    bot?.trailPostT02MaxExtraTiers,
     bot?.marketMode,
     bot?.supertrendFuturesAuto,
     bot?.supertrendSpotAuto,
@@ -2339,19 +2550,38 @@ export function ChartPanel() {
               ) : (
                 <div className="text-slate-400">TP: —</div>
               )}
-              {chartTrailingPreview.trailHud.nextActivationPx != null && chartTrailingPreview.trailHud.nextTierLabel ? (
+              {chartTrailingPreview.trailHud.currentTrailedTierLabel ? (
+                <div className="font-mono text-emerald-200/90">
+                  Trailed at: {chartTrailingPreview.trailHud.currentTrailedTierLabel}
+                </div>
+              ) : null}
+              {chartTrailingPreview.trailHud.nextActivationPx != null &&
+              chartTrailingPreview.trailHud.nextTierLabel &&
+              !(Array.isArray(chartTrailingPreview.trailHud.nextTwoTierLocks) && chartTrailingPreview.trailHud.nextTwoTierLocks.length) ? (
                 <div className="font-mono text-amber-100/90">
-                  Next ST {chartTrailingPreview.trailHud.nextTierLabel} activation:{" "}
+                  Next {chartTrailingPreview.trailHud.nextTierLabel} activation:{" "}
                   {chartTrailingPreview.trailHud.nextActivationPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : null}
+              {Array.isArray(chartTrailingPreview.trailHud.nextTwoTierLocks) && chartTrailingPreview.trailHud.nextTwoTierLocks.length ? (
+                <div className="space-y-0.5">
+                  {chartTrailingPreview.trailHud.nextTwoTierLocks.slice(0, 2).map((r, i) => {
+                    const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 6 });
+                    return (
+                      <div key={`${r.tierLabel}-${i}`} className="font-mono text-slate-100/95">
+                        {i === 0 ? "Next" : "Then"} {r.tierLabel}: lock {fmt(r.lockPx)} · activation {fmt(r.activationPx)}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : null}
               {chartTrailingPreview.trailHud.liveTrailSlPx != null ? (
                 <div className="font-mono text-emerald-200/90">
-                  Live ST trail SL:{" "}
+                  Live trail SL:{" "}
                   {chartTrailingPreview.trailHud.liveTrailSlPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
                 </div>
               ) : (
-                <div className="text-slate-500">Live ST trail SL: (not in trail zone)</div>
+                <div className="text-slate-500">Live trail SL: (not in trail zone)</div>
               )}
             </div>
           ) : null}
@@ -2460,7 +2690,7 @@ export function ChartPanel() {
                   fromServer ??
                   (Number.isFinite(sec) ? signalListCloseBySec.get(sec) : undefined);
                 const entryStr =
-                  entryPx != null && Number.isFinite(entryPx) && entryPx > 0 ? entryPx.toFixed(2) : "—";
+                  entryPx != null && Number.isFinite(entryPx) && entryPx > 0 ? entryPx.toFixed(5) : "—";
                 const vLabel = formatSupertrendSignalVerdict(verdict);
                 const vCls =
                   verdict === true

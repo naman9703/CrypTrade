@@ -15,6 +15,14 @@ import { normalizeTradingMode } from "../state/appState.js";
 
 const BOT_TARGET_MODES = z.enum(["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"]);
 
+/** Accept true/false and common JSON/proxy coercions so toggles never 400 on edge clients. */
+const optionalBoolLoose = z.preprocess((v) => {
+  if (v === undefined || v === null) return undefined;
+  if (v === true || v === 1 || v === "1" || v === "true") return true;
+  if (v === false || v === 0 || v === "0" || v === "false") return false;
+  return v;
+}, z.boolean().optional());
+
 export function createRouter({ appState }) {
   const r = express.Router();
 
@@ -417,9 +425,36 @@ export function createRouter({ appState }) {
       supertrendFuturesFixedTpPct: z.number().min(0.00005).max(0.5).optional(),
       /** When true, Supertrend futures SELL opens short after closing long; BUY closes short then opens long. */
       supertrendFuturesTwoWay: z.boolean().optional(),
+      /** Max adverse move vs signal candle close (percent points, e.g. 0.15 = 0.15%). 0 = off. */
+      supertrendFuturesMaxEntrySlippagePct: z.number().min(0).max(5).optional(),
+      /** AUTO = default (LIMIT_IOC if slippage > 0), else MARKET or LIMIT_IOC. */
+      supertrendFuturesEntryOpenStyle: z.enum(["AUTO", "MARKET", "LIMIT_IOC"]).optional(),
+      /** Delay before re-fetching book/mark and re-checking slippage (ms). */
+      supertrendFuturesEntryRecheckMs: z.number().int().min(0).max(60_000).optional(),
+      /** After IOC no-fill, optionally retry as MARKET if still within cap. */
+      supertrendFuturesIocFallbackMarket: z.boolean().optional(),
+      supertrendFuturesRequireMarkPrice: optionalBoolLoose,
+      supertrendFuturesRequireBookTicker: optionalBoolLoose,
+      /** Skip stale signals if bar-close→order delay exceeds this (ms). 0 = off. */
+      supertrendFuturesMaxSignalLagMs: z.number().int().min(0).max(3_600_000).optional(),
       supertrendPeriod: z.number().int().min(2).max(100).optional(),
       supertrendMultiplier: z.number().min(0.5).max(20).optional(),
       supertrendWilderAtr: z.boolean().optional(),
+      /** Futures trailing fee / buffer / distance (fractions; UI advanced trailing + fee ladder). */
+      trailOpenFeeRate: z.number().min(0).max(0.01).optional(),
+      trailCloseFeeRate: z.number().min(0).max(0.01).optional(),
+      trailFeeBeMultiplier: z.number().min(1).max(2).optional(),
+      trailBufferRate: z.number().min(0).max(0.05).optional(),
+      trailActivationSlippageFrac: z.number().min(0).max(0.01).optional(),
+      trailBufferAtrMult: z.number().min(0).max(1).optional(),
+      trailBufferMode: z.enum(["PERCENT", "ATR"]).optional(),
+      trailMinSlDistFrac: z.number().min(0).max(0.1).optional(),
+      /** Min |mark−SL|/mark for Supertrend trail (0 = off; e.g. 0.005 = 0.5%). */
+      trailMinGapFromMarkFrac: z.number().min(0).max(0.2).optional(),
+      trailMaintMarginRate: z.number().min(0).max(0.1).optional(),
+      /** Tiered ST: spacing between post‑T02 lock rungs as fraction of entry; `null` clears to engine default. */
+      trailPostT02SpacingFrac: z.union([z.number().min(0.00001).max(0.05), z.null()]).optional(),
+      trailPostT02MaxExtraTiers: z.number().int().min(10).max(500).optional(),
       /** Lock AUTO universe to one symbol (table stays open in UI); null clears. */
       universePinnedSymbol: z.union([z.string().regex(symbolRe), z.null()]).optional(),
       /** Broad Binance universe + AI top-N vs custom watchlist (max 10 symbols). */
@@ -451,19 +486,28 @@ export function createRouter({ appState }) {
     } catch (e) {
       return res.status(400).json({ ok: false, error: String(e?.message || e) });
     }
-    const bot = row.bot.updateConfig(patch);
-    broadcastActivity(
-      appState.wsHub,
-      {
-        level: "info",
-        msg: "Bot configuration updated",
-        category: "config",
-        reason: "api_patch",
-        detail: { ...patch, targetMode: configTargetMode ?? resolveViewTradingMode(req, undefined) },
-        tradingMode: configTargetMode ?? resolveViewTradingMode(req, undefined),
-      },
-      { persistenceSlug: tradingModeToPersistenceSlug(String(configTargetMode ?? resolveViewTradingMode(req, undefined))) },
-    );
+    let bot;
+    try {
+      bot = row.bot.updateConfig(patch);
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+    try {
+      broadcastActivity(
+        appState.wsHub,
+        {
+          level: "info",
+          msg: "Bot configuration updated",
+          category: "config",
+          reason: "api_patch",
+          detail: { ...patch, targetMode: configTargetMode ?? resolveViewTradingMode(req, undefined) },
+          tradingMode: configTargetMode ?? resolveViewTradingMode(req, undefined),
+        },
+        { persistenceSlug: tradingModeToPersistenceSlug(String(configTargetMode ?? resolveViewTradingMode(req, undefined))) },
+      );
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
     // Match WS `state` shape so the UI doesn't drop account/positions until the next heartbeat.
     const ex = row.exchange;
     Promise.all([ex.getAccount().catch(() => null), ex.getPositions().catch(() => [])])

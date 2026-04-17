@@ -10,6 +10,7 @@ import { isIncomeLedgerClose } from "../lib/tradeClassification";
 import { clampTradeCloseFeeRate, estimatedCloseFeeUsdt } from "../lib/tradeCloseFee";
 import {
   buildTrailLockPrices,
+  DEFAULT_TRAIL_FEE_BE_MULTIPLIER,
   extrapolateTrailTierLockPx,
   tierLabelForTrailIndex,
 } from "../lib/trailingFeeLadder";
@@ -80,7 +81,10 @@ function futuresTrailLadderSummaryTitle(p: any, bot: any): string | undefined {
   const feeR = clampTradeCloseFeeRate();
   const openR = Number.isFinite(Number(bot?.trailOpenFeeRate)) && Number(bot.trailOpenFeeRate) > 0 ? Number(bot.trailOpenFeeRate) : feeR;
   const closeR = Number.isFinite(Number(bot?.trailCloseFeeRate)) && Number(bot.trailCloseFeeRate) > 0 ? Number(bot.trailCloseFeeRate) : feeR;
-  const mult = Number.isFinite(Number(bot?.trailFeeBeMultiplier)) && Number(bot.trailFeeBeMultiplier) >= 1 ? Number(bot.trailFeeBeMultiplier) : 1;
+  const mult =
+    Number.isFinite(Number(bot?.trailFeeBeMultiplier)) && Number(bot.trailFeeBeMultiplier) >= 1
+      ? Number(bot.trailFeeBeMultiplier)
+      : DEFAULT_TRAIL_FEE_BE_MULTIPLIER;
   const extras = Array.isArray(bot?.trailingStopExtraScalpingPcts)
     ? (bot.trailingStopExtraScalpingPcts as unknown[]).map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
     : [];
@@ -806,7 +810,12 @@ function tradeHistoryReasonLabel(t: any): string {
   }
 
   const m = t?.meta || {};
-  const trailStepClose = Number(m.trailStepAtClose);
+  const trailStepRaw = Number(m.trailStepAtClose);
+  const trailConf = Number(m.confirmedTrailStepAtClose);
+  const trailStepClose = Math.max(
+    Number.isFinite(trailStepRaw) ? trailStepRaw : 0,
+    Number.isFinite(trailConf) ? trailConf : 0,
+  );
   const trailTierClose: string | null =
     m.trailTierAtClose != null
       ? String(m.trailTierAtClose)
@@ -814,7 +823,8 @@ function tradeHistoryReasonLabel(t: any): string {
         ? `T${Math.max(0, Math.floor(trailStepClose) - 1)}`
         : null;
   const trailedExit =
-    m.exitViaTrailedStop === true || (Number.isFinite(trailStepClose) && trailStepClose > 0 && String(m.bracketType || "").toUpperCase() === "SL");
+    m.exitViaTrailedStop === true ||
+    (Number.isFinite(trailStepClose) && trailStepClose > 0 && String(m.bracketType || "").toUpperCase() === "SL");
   const trailMode = String(m.trailingMode || m.trailMode || "").toUpperCase();
 
   const r0 = String(t?.reason || "").toUpperCase().replace(/-/g, "_");
@@ -829,7 +839,18 @@ function tradeHistoryReasonLabel(t: any): string {
   }
   if (r0 === "TRAILED_SUPERTREND") return trailTierClose ? `SL trail ${trailTierClose}` : "Trailed ST";
   if (r0 === "TRAILED_STOP_LOSS") return trailTierClose ? `SL trail ${trailTierClose}` : "Trailed SL";
-  if (r0 === "STOP_LOSS_DEFAULT") return "Default SL";
+  if (r0 === "STOP_LOSS_DEFAULT") {
+    const tri = m.trailTierAtClose != null ? String(m.trailTierAtClose) : trailTierClose;
+    if (
+      m.exitViaTrailedStop === true ||
+      (Number.isFinite(trailStepClose) && trailStepClose > 0) ||
+      (tri != null && String(tri).trim() !== "")
+    ) {
+      if (tri != null && String(tri).trim() !== "") return `SL trail ${tri}`;
+      return trailMode === "SUPERTREND" || trailMode === "" ? "Trailed ST" : "Trailed SL";
+    }
+    return "Default SL";
+  }
   if (r0 === "IMMEDIATE_FLAT_AFTER_OPEN") return "Flat immediately (post-open)";
   if (r0 === "SUPERTREND_EXIT" || r0 === "SUPERTREND_FLIP") return "Signal";
   if (r0 === "STOP_LOSS" || r0 === "STOP") {

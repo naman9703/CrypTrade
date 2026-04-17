@@ -7,7 +7,12 @@ import { tradeCloseFeeUsdtFromNotional } from "../../lib/tradeCloseFee.js";
 import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
 import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
-import { inferSlTpFromMark, reconcileUsdMExternalClosesFromPositions } from "../../lib/binanceUsdmExternalCloseReconcile.js";
+import {
+  inferSlTpFromMark,
+  pickBracketTargets,
+  reconcileUsdMExternalClosesFromPositions,
+} from "../../lib/binanceUsdmExternalCloseReconcile.js";
+import { avgFillPriceFromUsdMNewOrder, slTpFromLastOpenTrade } from "../../lib/binanceUsdMOrderFill.js";
 import {
   buildSyntheticImmediateAfterOpenCloseRow,
   postOpenStableProbeMs,
@@ -21,7 +26,8 @@ import {
   slTpFromOpenOrdersList,
 } from "../../lib/binanceFuturesOpenOrdersSlTp.js";
 import { evalTrailingForSymbolUsdM } from "../../lib/binanceUsdMTrailSlReplace.js";
-import { trailStepToTierLabel } from "../../lib/supertrendTrailingSl.js";
+import { closeReasonFromLocalCloseHint, trailCloseFieldsFromMemory } from "../../lib/binanceUsdmCloseReasonHint.js";
+import { TRAIL_TIER_SCHEMA_VERSION } from "../../lib/supertrendTrailingSl.js";
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
@@ -532,25 +538,6 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     }
   }
 
-  function closeReasonFromLocalCloseHint(lc) {
-    const bt = String(lc?.bracketType || "").toUpperCase();
-    const tmode = String(lc?.trailingMode || "").toUpperCase();
-    const tierLc = lc?.trailTierAtClose != null ? String(lc.trailTierAtClose).toUpperCase() : null;
-    if (bt === "SL") {
-      if (lc?.exitViaTrailedStop === true) {
-        if (tmode === "SUPERTREND") {
-          return tierLc ? `TRAILED_SUPERTREND_${tierLc}` : "TRAILED_SUPERTREND";
-        }
-        return tierLc ? `TRAILED_STOP_LOSS_${tierLc}` : "TRAILED_STOP_LOSS";
-      }
-      return "STOP_LOSS_DEFAULT";
-    }
-    if (bt === "TP") return "TAKE_PROFIT";
-    const scr = String(lc?.strategyCloseReason || "").toUpperCase();
-    if (scr === "SUPERTREND_EXIT" || scr === "SUPERTREND_FLIP") return scr;
-    return "MANUAL_CLOSE";
-  }
-
   async function syncRealizedIncomeFromExchange() {
     if (!apiKey || !apiSecret) return;
     await refreshUsdMPositionSnapshotAndReconcile();
@@ -643,13 +630,25 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           mergeInto.pnl = Number(mergeInto.pnl || 0) + pnl;
           const reasonMissing =
             mergeInto.reason == null || String(mergeInto.reason).trim() === "";
-          if (reasonMissing && lc) {
-            mergeInto.reason = closeReasonFromLocalCloseHint(lc);
+          const oldReasonU = String(mergeInto.reason || "").trim().toUpperCase();
+          const hinted = lc ? closeReasonFromLocalCloseHint(lc) : "";
+          const staleReason =
+            oldReasonU === "" ||
+            oldReasonU === "STOP_LOSS_DEFAULT" ||
+            (hinted.startsWith("TRAILED_") && !oldReasonU.startsWith("TRAILED_"));
+          if (lc && (reasonMissing || staleReason) && hinted) {
+            mergeInto.reason = hinted;
           }
           if (lc && mergeInto.meta && typeof mergeInto.meta === "object") {
             mergeInto.meta.exitViaTrailedStop = lc.exitViaTrailedStop === true;
             mergeInto.meta.trailStepAtClose = lc.trailStepAtClose;
+            if (lc.confirmedTrailStepAtClose != null) {
+              mergeInto.meta.confirmedTrailStepAtClose = Number(lc.confirmedTrailStepAtClose);
+            }
             if (lc.trailTierAtClose != null) mergeInto.meta.trailTierAtClose = String(lc.trailTierAtClose);
+            if (lc.trailStepLabelStyleAtClose != null) {
+              mergeInto.meta.trailStepLabelStyleAtClose = String(lc.trailStepLabelStyleAtClose);
+            }
             if (lc.trailingMode != null) mergeInto.meta.trailingMode = String(lc.trailingMode);
             mergeInto.meta.supertrendSignalClose =
               lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP";
@@ -823,8 +822,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           .filter((p) => Math.abs(Number(p?.positionAmt || 0)) > 1e-8)
           .map((p) => {
             const sym = p.symbol;
-            const lb = mem.localBrackets[sym];
-            const pb = mem.placedBracketTargets[sym];
+            const lb = pickBracketTargets(mem.localBrackets, sym);
+            const pb = pickBracketTargets(mem.placedBracketTargets, sym);
             const lev = Number(p.leverage || defaultLeverage);
             return { sym, lb, pb, lev, p };
           });
@@ -832,8 +831,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         for (const { sym, lb, pb, lev, p } of rows) {
           const oo = await stopTakeFromExchangeOpenOrders(sym);
           const symU = String(sym || "").toUpperCase();
-          const trail = mem.trailingBySymbol[symU];
+          const trail = pickBracketTargets(mem.trailingBySymbol, sym);
           const entryEx = lastOpenBinanceEntryMetaForSymbol(mem.trades, symU);
+          const openSlTp = slTpFromLastOpenTrade(mem.trades, symU);
           const row = {
             id: `fut_${sym}`,
             symbol: sym,
@@ -841,8 +841,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             qty: Math.abs(Number(p.positionAmt)),
             entryPrice: Number(p.entryPrice || 0),
             unrealizedPnl: Number(p.unrealizedProfit || 0),
-            stopLoss: oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? null,
-            takeProfit: oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? null,
+            stopLoss: oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? openSlTp.sl ?? null,
+            takeProfit: oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? openSlTp.tp ?? null,
             leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
             venue: "FUTURES",
             syncSource: "fapi_v2_account",
@@ -898,7 +898,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       const isLong = side === "BUY";
       if (side !== "BUY" && side !== "SELL") throw new Error("bad_side");
 
-      const m = await getOrLoadSymbolMeta(symbol);
+      const symNorm = String(symbol || "").toUpperCase();
+      const m = await getOrLoadSymbolMeta(symNorm);
       let qtyStr = formatToStep(qty, m);
       if (!qtyStr && meta?.manual === true) {
         qtyStr = formatToStepCeil(qty, m);
@@ -909,7 +910,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         const pxh = Number(price);
         const approxMin = Number.isFinite(qn) && Number.isFinite(pxh) && pxh > 0 ? (Number(step) || 0) * pxh : null;
         throw new Error(
-          `invalid_qty: futures size ${qn} is below lot step ${step} for ${symbol}` +
+          `invalid_qty: futures size ${qn} is below lot step ${step} for ${symNorm}` +
             (approxMin != null && Number.isFinite(approxMin)
               ? ` — need roughly ≥ ${approxMin.toFixed(2)} USDT notional at this price (increase Amount USD), or use a smaller-priced symbol`
               : " — increase Amount (USD)")
@@ -930,7 +931,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       let tpPx = Number(takeProfit);
       if (!stopPx || !tpPx) throw new Error("stoploss_takeprofit_required");
 
-      const leverage = await ensureLeverage(symbol, meta?.futuresLeverage || meta?.leverage || defaultLeverage);
+      const leverage = await ensureLeverage(symNorm, meta?.futuresLeverage || meta?.leverage || defaultLeverage);
       const hedgeExtras = await hedgePositionSideExtras(isLong);
 
       const entryStyle = String(meta?.entryOrderStyle || "MARKET").toUpperCase();
@@ -942,36 +943,38 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         const priceStr = isLong ? formatToTickFloor(limRaw, m) : formatToTickCeil(limRaw, m);
         if (!priceStr) throw new Error("limit_ioc_bad_price_tick");
         out = await signed("POST", "/fapi/v1/order", {
-          symbol,
+          symbol: symNorm,
           side,
           type: "LIMIT",
           timeInForce: "IOC",
           quantity: qtyStr,
           price: priceStr,
+          /** Default ACK can return executedQty 0 before fill is finalized; RESULT returns FILLED/EXPIRED with correct qty. */
+          newOrderRespType: "RESULT",
           newClientOrderId: `ai_ioc_${Date.now()}`,
           ...hedgeExtras,
         });
-        const exQ = Number(out?.executedQty ?? 0);
+        const exQ = Math.max(Number(out?.executedQty ?? 0), Number(out?.cumQty ?? 0));
         if (!Number.isFinite(exQ) || exQ <= 0) {
           throw new Error("limit_ioc_no_fill");
         }
       } else {
         try {
           out = await signed("POST", "/fapi/v1/order", {
-        symbol,
-        side,
-        type: "MARKET",
-        quantity: qtyStr,
-        newClientOrderId: `ai_${Date.now()}`,
-        ...hedgeExtras,
-      });
+            symbol: symNorm,
+            side,
+            type: "MARKET",
+            quantity: qtyStr,
+            newClientOrderId: `ai_${Date.now()}`,
+            ...hedgeExtras,
+          });
         } catch (e) {
           if (!isBinanceMaxPositionAtLevError(e)) throw e;
-          const cap = await maxPositionNotionalCapForLeverage(symbol, leverage);
-          const curNotional = await currentPositionNotionalUsd(symbol);
+          const cap = await maxPositionNotionalCapForLeverage(symNorm, leverage);
+          const curNotional = await currentPositionNotionalUsd(symNorm);
           let pxUse = Number.isFinite(markPx) && markPx > 0 ? markPx : null;
           if (!pxUse) {
-            const pi = await publicGet("/fapi/v1/premiumIndex", { symbol }).catch(() => null);
+            const pi = await publicGet("/fapi/v1/premiumIndex", { symbol: symNorm }).catch(() => null);
             const mp = Number(pi?.markPrice);
             if (Number.isFinite(mp) && mp > 0) pxUse = mp;
           }
@@ -984,7 +987,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           if (!qtyStr2 || Number(qtyStr2) <= 0) throw e;
           if (m.minNotional && Number(qtyStr2) * pxUse + 1e-8 < Number(m.minNotional)) throw e;
           log?.warn?.("binance_live_futures_downsize_max_position", {
-            symbol,
+            symbol: symNorm,
             leverage,
             capNotional: cap,
             currentNotional: curNotional,
@@ -994,7 +997,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             qtyUsed: Number(qtyStr2),
           });
           out = await signed("POST", "/fapi/v1/order", {
-            symbol,
+            symbol: symNorm,
             side,
             type: "MARKET",
             quantity: qtyStr2,
@@ -1006,10 +1009,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       }
 
       const orderId = String(out?.orderId || Date.now());
-      const filledPrice =
-        Number(out?.avgPrice || out?.price || price || 0) || Number(price || 0);
+      const filledPrice = avgFillPriceFromUsdMNewOrder(out, markPx);
       /** Match `getPositions()` id (`fut_${symbol}`) so UI open trades ↔ positions links for indicator/AI fills. */
-      const posId = `fut_${symbol}`;
+      const posId = `fut_${symNorm}`;
 
       // Use executed qty for bracket legs (handles partial fills)
       const executedQty = formatToStep(Number(out?.executedQty || out?.origQty || qty), m) || qtyStr;
@@ -1022,7 +1024,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       const closeSide = isLong ? "SELL" : "BUY";
       let markRef = filledPrice;
       try {
-        const pi = await publicGet("/fapi/v1/premiumIndex", { symbol });
+        const pi = await publicGet("/fapi/v1/premiumIndex", { symbol: symNorm });
         const mp = Number(pi?.markPrice);
         if (Number.isFinite(mp) && mp > 0) markRef = mp;
       } catch {
@@ -1031,7 +1033,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       const refined = refineUsdMTriggersVsMark({ isLong, stopPx, tpPx, markPrice: markRef, meta: m });
       if (refined.adjusted) {
         log?.info?.("binance_live_futures_sltp_refined_vs_mark", {
-          symbol,
+          symbol: symNorm,
           markPrice: markRef,
           beforeStop: stopPx,
           beforeTp: tpPx,
@@ -1054,7 +1056,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       try {
         await placeUsdMSlTpAfterMarketEntry({
           signed,
-          symbol,
+          symbol: symNorm,
           closeSide,
           stopStr,
           tpStr,
@@ -1066,7 +1068,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           logPrefix: "binance_live_futures",
         });
         bracketsPlaced = true;
-        mem.placedBracketTargets[symbol] = {
+        mem.placedBracketTargets[symNorm] = {
           stopLoss: stopPx,
           takeProfit: tpPx,
           closeSide,
@@ -1077,11 +1079,11 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         const is4120 = futuresOrderIs4120(e);
         if (is4120) {
           log?.warn?.("binance_live_futures_brackets_unsupported_using_local", {
-            symbol,
+            symbol: symNorm,
             stopLoss: stopPx,
             takeProfit: tpPx,
           });
-          mem.localBrackets[symbol] = {
+          mem.localBrackets[symNorm] = {
             posId,
             isLong,
             entryPrice: filledPrice,
@@ -1095,9 +1097,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             positionSide: hedgeExtras.positionSide,
           };
         } else {
-          log?.warn?.("binance_live_futures_bracket_failed_flatten", { symbol, error: String(e?.message || e) });
+          log?.warn?.("binance_live_futures_bracket_failed_flatten", { symbol: symNorm, error: String(e?.message || e) });
           await signed("POST", "/fapi/v1/order", {
-            symbol,
+            symbol: symNorm,
             side: closeSide,
             type: "MARKET",
             quantity: executedQty,
@@ -1114,7 +1116,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         type: "OPEN",
         id: posId,
         ts: new Date().toISOString(),
-        symbol,
+        symbol: symNorm,
         side,
         qty: Number(qtyStr),
         price: filledPrice,
@@ -1133,19 +1135,19 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       if (mem.trades.length > MAX_MEM_TRADES) mem.trades = mem.trades.slice(-MAX_MEM_TRADES);
 
       if (meta?.autoTradeTrailing) {
-        mem.trailingBySymbol[symbol] = {
+        mem.trailingBySymbol[symNorm] = {
           entryPrice: filledPrice,
           isLong,
           trailStep: 0,
           confirmedTrailStep: 0,
+          trailTierSchemaVersion: TRAIL_TIER_SCHEMA_VERSION,
           extremePx: filledPrice,
           leverage: Math.max(1, Math.min(100, Number(leverage) || 1)),
           _openedAt: Date.now(),
         };
       }
 
-      const symU = String(symbol || "").toUpperCase();
-      const posCheck = await verifyUsdMPositionAfterOpen({ signed, symbol: symU });
+      const posCheck = await verifyUsdMPositionAfterOpen({ signed, symbol: symNorm });
       if (!posCheck.ok) {
         for (let i = mem.trades.length - 1; i >= 0; i--) {
           const t = mem.trades[i];
@@ -1155,21 +1157,21 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           }
         }
         for (const k of Object.keys(mem.trailingBySymbol || {})) {
-          if (String(k).toUpperCase() === symU) delete mem.trailingBySymbol[k];
+          if (String(k).toUpperCase() === symNorm) delete mem.trailingBySymbol[k];
         }
         for (const k of Object.keys(mem.placedBracketTargets || {})) {
-          if (String(k).toUpperCase() === symU) delete mem.placedBracketTargets[k];
+          if (String(k).toUpperCase() === symNorm) delete mem.placedBracketTargets[k];
         }
         for (const k of Object.keys(mem.localBrackets || {})) {
-          if (String(k).toUpperCase() === symU) delete mem.localBrackets[k];
+          if (String(k).toUpperCase() === symNorm) delete mem.localBrackets[k];
         }
         log?.warn?.("binance_live_futures_post_open_verify_flat", {
-          symbol: symU,
+          symbol: symNorm,
           posId,
           absAmt: posCheck.absAmt,
         });
         throw new Error(
-          `binance_live_futures_post_open_flat:${symU} — market reported a fill but /fapi/v2/account shows no open position (e.g. SL/TP triggered instantly, or exchange lag). Check Binance order history.`,
+          `binance_live_futures_post_open_flat:${symNorm} — market reported a fill but /fapi/v2/account shows no open position (e.g. SL/TP triggered instantly, or exchange lag). Check Binance order history.`,
         );
       }
 
@@ -1177,14 +1179,14 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       const stableMs = postOpenStableProbeMs();
       if (stableMs > 0) {
         await new Promise((r) => setTimeout(r, stableMs));
-        const stableChk = await verifyUsdMPositionAfterOpen({ signed, symbol: symU, retries: 2, delayMs: 120 });
+        const stableChk = await verifyUsdMPositionAfterOpen({ signed, symbol: symNorm, retries: 2, delayMs: 120 });
         if (!stableChk.ok) {
           const exitPx =
             Number.isFinite(markRef) && markRef > 0 ? markRef : Number.isFinite(filledPrice) && filledPrice > 0 ? filledPrice : NaN;
           const qtyNum = Number(executedQty) || Number(qtyStr);
           immediateCloseTrade = buildSyntheticImmediateAfterOpenCloseRow({
-            symbol,
-            symU,
+            symbol: symNorm,
+            symU: symNorm,
             posId,
             closeSide,
             qtyNum,
@@ -1197,16 +1199,16 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           mem.trades.push(immediateCloseTrade);
           if (mem.trades.length > MAX_MEM_TRADES) mem.trades = mem.trades.slice(-MAX_MEM_TRADES);
           for (const k of Object.keys(mem.trailingBySymbol || {})) {
-            if (String(k).toUpperCase() === symU) delete mem.trailingBySymbol[k];
+            if (String(k).toUpperCase() === symNorm) delete mem.trailingBySymbol[k];
           }
           for (const k of Object.keys(mem.placedBracketTargets || {})) {
-            if (String(k).toUpperCase() === symU) delete mem.placedBracketTargets[k];
+            if (String(k).toUpperCase() === symNorm) delete mem.placedBracketTargets[k];
           }
           for (const k of Object.keys(mem.localBrackets || {})) {
-            if (String(k).toUpperCase() === symU) delete mem.localBrackets[k];
+            if (String(k).toUpperCase() === symNorm) delete mem.localBrackets[k];
           }
           log?.warn?.("binance_live_futures_post_open_immediate_flat", {
-            symbol: symU,
+            symbol: symNorm,
             posId,
             stableMs,
             exitPx: immediateCloseTrade.price,
@@ -1408,13 +1410,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           );
           const symU = String(lbSym || "").toUpperCase();
           const trailMeta = mem.trailingBySymbol[symU];
-          const exitViaTrailedStop = hit === "SL" && trailMeta && Number(trailMeta.trailStep) > 0;
-          const trailTierAtClose =
-            trailMeta?.trailTierLabel != null
-              ? String(trailMeta.trailTierLabel)
-              : exitViaTrailedStop && trailMeta && Number(trailMeta.trailStep) > 0
-                ? trailStepToTierLabel(Number(trailMeta.trailStep))
-                : null;
+          const tf = trailCloseFieldsFromMemory(trailMeta, hit);
             mem.recentLocalCloses.push({
             symbol: lbSym,
               closedAt: Date.now(),
@@ -1428,10 +1424,12 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
               takeProfit: b.takeProfit,
               leverage: b.leverage,
               markPx: Number(markPx),
-            exitViaTrailedStop,
-            trailStepAtClose: Number(trailMeta?.trailStep) || 0,
-            trailTierAtClose,
-            trailingMode: trailMeta?.trailingMode != null ? String(trailMeta.trailingMode) : undefined,
+            exitViaTrailedStop: tf.exitViaTrailedStop,
+            trailStepAtClose: tf.trailStepAtClose,
+            confirmedTrailStepAtClose: trailMeta ? Math.floor(Number(trailMeta.confirmedTrailStep) || 0) : 0,
+            trailTierAtClose: tf.trailTierAtClose,
+            trailStepLabelStyleAtClose: trailMeta?.trailStepLabelStyle,
+            trailingMode: tf.trailingMode,
             });
           delete mem.localBrackets[lbSym];
           delete mem.placedBracketTargets[lbSym];

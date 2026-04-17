@@ -6,9 +6,9 @@
  * memory is cleared on the next mark-to-market pass.
  */
 
-import { trailStepToTierLabel } from "./supertrendTrailingSl.js";
+import { trailCloseFieldsFromMemory } from "./binanceUsdmCloseReasonHint.js";
 
-function pickBracketTargets(map, symU) {
+export function pickBracketTargets(map, symU) {
   const U = String(symU || "").toUpperCase();
   if (!map || typeof map !== "object") return null;
   for (const k of Object.keys(map)) {
@@ -75,8 +75,9 @@ export async function reconcileUsdMExternalClosesFromPositions(ctx, rawPositions
     if (cur[symU] > 1e-8) continue;
 
     const trMeta = mem.trailingBySymbol?.[symU];
-    const trailStep = Number(trMeta?.trailStep) || 0;
-    const exitViaTrailedStop = trailStep > 0;
+    const tf = trailCloseFieldsFromMemory(trMeta, "SL");
+    const exitViaTrailedStop = tf.exitViaTrailedStop;
+    const trailStep = tf.trailStepAtClose;
 
     const openLeg = findLastOpenTrade(mem.trades, symU);
     const symDisplay = String(openLeg?.symbol || symU).toUpperCase();
@@ -87,26 +88,27 @@ export async function reconcileUsdMExternalClosesFromPositions(ctx, rawPositions
     let bracketType = "SL";
     let markPx = NaN;
 
-    if (!exitViaTrailedStop && typeof publicGet === "function") {
-      const pb = pickBracketTargets(mem.placedBracketTargets, symU);
-      const sl = pb?.stopLoss ?? openLeg?.stopLoss;
-      const tp = pb?.takeProfit ?? openLeg?.takeProfit;
+    const pb = pickBracketTargets(mem.placedBracketTargets, symU);
+    const sl = pb?.stopLoss ?? openLeg?.stopLoss;
+    const tp = pb?.takeProfit ?? openLeg?.takeProfit;
+
+    if (typeof publicGet === "function") {
       try {
         const d = await publicGet("/fapi/v1/premiumIndex", { symbol: symDisplay });
         markPx = Number(d?.markPrice);
       } catch {
         /* ignore */
       }
+    }
+    if (!exitViaTrailedStop) {
       bracketType = inferSlTpFromMark(isLong, markPx, sl, tp);
+    } else if (!Number.isFinite(markPx) || markPx <= 0) {
+      /** Trailing exits skip SL/TP inference; still need a px for ledger CLOSE rows + fee hint. */
+      const slN = Number(sl);
+      if (Number.isFinite(slN) && slN > 0) markPx = slN;
     }
 
     mem.recentLocalCloses = Array.isArray(mem.recentLocalCloses) ? mem.recentLocalCloses : [];
-    const trailTierAtClose =
-      exitViaTrailedStop && trailStep > 0
-        ? trMeta?.trailTierLabel != null
-          ? String(trMeta.trailTierLabel)
-          : trailStepToTierLabel(trailStep)
-        : undefined;
 
     mem.recentLocalCloses.push({
       symbol: symDisplay,
@@ -122,9 +124,11 @@ export async function reconcileUsdMExternalClosesFromPositions(ctx, rawPositions
       leverage: openLeg?.meta?.leverage ?? openLeg?.leverage,
       markPx: Number.isFinite(markPx) ? markPx : undefined,
       exitViaTrailedStop,
-      trailStepAtClose: trailStep,
-      trailTierAtClose,
-      trailingMode: trMeta?.trailingMode != null ? String(trMeta.trailingMode) : undefined,
+      trailStepAtClose: tf.trailStepAtClose,
+      confirmedTrailStepAtClose: trMeta ? Math.floor(Number(trMeta.confirmedTrailStep) || 0) : 0,
+      trailTierAtClose: tf.trailTierAtClose,
+      trailStepLabelStyleAtClose: trMeta?.trailStepLabelStyle,
+      trailingMode: tf.trailingMode,
       exchangeNativeClose: true,
     });
 
@@ -134,7 +138,7 @@ export async function reconcileUsdMExternalClosesFromPositions(ctx, rawPositions
       symbol: symDisplay,
       bracketType,
       exitViaTrailedStop,
-      trailStep,
+      trailStepAtClose: tf.trailStepAtClose,
     });
   }
   mem.prevFuturesQtyBySymbol = cur;

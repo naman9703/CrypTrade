@@ -1,6 +1,22 @@
 /**
  * Fee-ladder trailing locks — mirrors `backend/src/lib/trailingStopLoss.js`.
  *
+ * **Supertrend-based settings (TradingPanel) → runtime**
+ * These bot fields are passed into `trailingStopLoss` / `applyTrailingStopBinanceMemory` (see `backend/src/state/bot.js`):
+ * - `trailOpenFeeRate` + `trailCloseFeeRate` → round-trip fee; with `trailFeeBeMultiplier` → padded rate for T02 lock / activation (tiered) and fee-ladder T0.
+ * - `trailBufferRate` → `bufferRate`: fixed activation buffer (fraction) when `trailBufferMode` is `PERCENT`, or fallback when ATR is missing in `ATR` mode.
+ * - `trailBufferMode` → `PERCENT` | `ATR`: whether buffer is fixed % or `min(5%, atrPct × trailBufferAtrMult)`.
+ * - `trailActivationSlippageFrac` → added to padded fee for Supertrend tiered gates (`feeBeSt` in engine); fee ladder unchanged.
+ * - `trailBufferAtrMult` + `lastRegime.atrPct` → used when `trailBufferMode` is `ATR` (see `computeEffectiveTrailBuffer`).
+ * - `trailFeeBeMultiplier` → `feeBeMultiplier`: safety padding on round-trip for padded breakeven (T02 SL, fee-ladder T0, `feeRateBreakevenPadded`).
+ * - `trailMinSlDistFrac` → `minSlDistanceFrac`: min |mark − newSL|/mark before accepting a tighten (noise filter).
+ * - `trailMinGapFromMarkFrac` → `minTrailGapFromMarkFrac`: keeps SL at least this fraction away from mark (pullback room).
+ * - `trailMaintMarginRate` → `maintenanceMarginRate`: liquidation vs breakeven geometry in `computeSupertrendTrailingSlUpdate` / open rejection.
+ * Toggles: `futuresTrailingStFeeBreakeven`, `futuresTrailingStAdvanced` → `supertrendUseFeeBreakeven` / `supertrendUseAdvancedTrail`.
+ * Tiered ST post‑T02: `trailPostT02SpacingFrac` (fraction of entry between T1/T2/… locks; `null` = auto) and `trailPostT02MaxExtraTiers` (depth cap).
+ * Fee ladder extras: `trailingStopExtraScalpingPcts` (not shown in the Supertrend block).
+ * Internal (no UI): `trailTierSchemaVersion` on position meta for tiered T01/T02 migration.
+ *
  * Round-trip fee = openFeeRate + closeFeeRate (what you need to recover to break even).
  *
  * Lock levels (LONG example with openFee=0.04%, closeFee=0.04%, roundTrip=0.08%):
@@ -17,12 +33,39 @@ export function clampFeeRate(r: number): number {
   return Math.min(0.01, Math.max(0, x));
 }
 
+/** Mirrors `backend/src/lib/trailingStopLoss.js` `computeEffectiveTrailBuffer`. */
+export function computeEffectiveTrailBuffer(trailingOpts: {
+  bufferRate?: number;
+  trailBufferMode?: string;
+  trailBufferAtrMult?: number;
+  atrPct?: number | null;
+}): number {
+  const fixedBuf = Number.isFinite(Number(trailingOpts.bufferRate)) ? Number(trailingOpts.bufferRate) : 0.0005;
+  const atrMultRaw =
+    trailingOpts.trailBufferAtrMult != null && Number.isFinite(Number(trailingOpts.trailBufferAtrMult))
+      ? Number(trailingOpts.trailBufferAtrMult)
+      : 0;
+  const atrMult = Math.max(0, Math.min(1, atrMultRaw));
+  const atrPct = Number(trailingOpts.atrPct);
+  const bufMode = String(trailingOpts.trailBufferMode ?? "PERCENT").toUpperCase() === "ATR" ? "ATR" : "PERCENT";
+  if (bufMode === "ATR" && atrMult > 0 && Number.isFinite(atrPct) && atrPct > 0) {
+    return Math.min(0.05, atrPct * atrMult);
+  }
+  return fixedBuf;
+}
+
+/** Matches `backend/src/state/bot.js` default and `FUTURES_TRAIL_FEE_BE_MULT` (1.25). */
+export const DEFAULT_TRAIL_FEE_BE_MULTIPLIER = 1.25;
+
 /**
  * Apply optional safety multiplier on top of the round-trip fee.
- * If multiplier = 1.0 (default): exact breakeven.
- * If multiplier = 1.25: 25% safety margin above round-trip.
+ * If multiplier = 1.0: exact breakeven (no extra padding).
+ * If multiplier = 1.25: 25% safety margin above round-trip (app default when unset).
  */
-export function feeRateBreakevenPadded(roundTripFeeRate: number, multiplier = 1.0): number {
+export function feeRateBreakevenPadded(
+  roundTripFeeRate: number,
+  multiplier: number = DEFAULT_TRAIL_FEE_BE_MULTIPLIER,
+): number {
   const r = clampFeeRate(roundTripFeeRate);
   const m = Number.isFinite(multiplier) && multiplier >= 1 ? Math.min(2, multiplier) : 1.0;
   return Math.min(0.02, r * m);
@@ -87,10 +130,12 @@ export function buildTrailLockPrices(
     roundTripRT = 2 * clampFeeRate(feeRate);
   }
 
-  const mult = opts.feeBeMultiplier ?? 1.0;
+  const mult = opts.feeBeMultiplier ?? DEFAULT_TRAIL_FEE_BE_MULTIPLIER;
   const extras = (Array.isArray(extraScalpingPctsOfEntry) ? extraScalpingPctsOfEntry : [])
     .map((x) => Number(x))
-    .filter((x) => Number.isFinite(x) && x > 0);
+    .filter((x) => Number.isFinite(x) && x > 0)
+    // Keep tiers monotonic in favorable excursion (matches backend).
+    .sort((a, b) => a - b);
 
   const out: TrailLockRow[] = [];
 
@@ -120,6 +165,45 @@ export function buildTrailLockPrices(
   return dedup; // canonical T0 → T1 → T2+; do not sort by px (breaks tier index vs fee-buffer activation on server)
 }
 
+/** Fraction of entry between post‑T02 rung locks when spacing is unset (matches backend). */
+export function defaultTieredPostT02SpacingFrac(roundTripFeeRate: number): number {
+  const rt = clampFeeRate(roundTripFeeRate);
+  return Math.min(0.02, Math.max(rt > 0 ? 2 * rt : 0, 0.0004));
+}
+
+/**
+ * Synthetic lock ladder: T01 entry, T02 padded BE lock, then equidistant rungs (preview / reference only).
+ */
+export function buildTieredStEquidistantLockRows(
+  entryPx: number,
+  isLong: boolean,
+  paddedFeeBe: number,
+  spacingFrac: number,
+  maxRungs = 64,
+): TrailLockRow[] {
+  const E = Number(entryPx);
+  const fb = Number(paddedFeeBe);
+  const sp = Number(spacingFrac);
+  if (!Number.isFinite(E) || E <= 0 || !Number.isFinite(fb) || !Number.isFinite(sp) || sp <= 0) return [];
+  const t02Lock = isLong ? E * (1 + fb) : E * (1 - fb);
+  const out: TrailLockRow[] = [
+    { kind: "tiered_t01", lockPx: E, tierLabel: "T01" },
+    { kind: "tiered_t02", lockPx: t02Lock, tierLabel: "T02" },
+  ];
+  const n = Math.max(0, Math.min(500, Math.floor(Number(maxRungs) || 64)));
+  for (let k = 1; k <= n; k++) {
+    const px = isLong ? t02Lock + k * E * sp : t02Lock - k * E * sp;
+    if (!Number.isFinite(px) || px <= 0) break;
+    out.push({ kind: "tiered_st_rung", lockPx: px, tierLabel: `T${k}` });
+  }
+  return out;
+}
+
+export type SupertrendTieredGateOpts = {
+  roundTripFeeRate?: number;
+  postT02SpacingFrac?: number | null;
+};
+
 export function supertrendTieredActivationGate(
   entryPx: number,
   isLong: boolean,
@@ -128,6 +212,7 @@ export function supertrendTieredActivationGate(
   useFeeBeTrail: boolean,
   stepNow: number,
   levels: TrailLockRow[],
+  opts?: SupertrendTieredGateOpts,
 ): { activationPx: number; activationTierLabel: string | null; nextRow: TrailLockRow | null } {
   const E = Number(entryPx);
   const buf = Number(bufferRate);
@@ -135,20 +220,49 @@ export function supertrendTieredActivationGate(
   const defaultActivationPx = isLong
     ? E * (1 + (useFeeBeTrail ? fb : 0) + buf)
     : E * (1 - (useFeeBeTrail ? fb : 0) - buf);
-  const nLv = levels.length;
-  if (!Number.isFinite(E) || E <= 0 || !nLv) {
-    return { activationPx: defaultActivationPx, activationTierLabel: null, nextRow: null };
+  if (!Number.isFinite(E) || E <= 0) {
+    return { activationPx: Number.NaN, activationTierLabel: null, nextRow: null };
   }
   if (stepNow <= 0) {
-    return { activationPx: defaultActivationPx, activationTierLabel: "T0", nextRow: null };
+    const t01 = isLong ? E * (1 + buf) : E * (1 - buf);
+    const activationPx = useFeeBeTrail ? t01 : defaultActivationPx;
+    return { activationPx, activationTierLabel: useFeeBeTrail ? "T01" : "T0", nextRow: null };
   }
-  if (stepNow < nLv) {
-    const L = levels[stepNow]!;
+  if (stepNow === 1) {
+    const t02 = isLong ? E * (1 + fb + buf) : E * (1 - fb - buf);
+    return { activationPx: useFeeBeTrail ? t02 : defaultActivationPx, activationTierLabel: useFeeBeTrail ? "T02" : null, nextRow: null };
+  }
+  if (useFeeBeTrail && stepNow >= 2) {
+    const rt = opts?.roundTripFeeRate != null ? Number(opts.roundTripFeeRate) : Number.NaN;
+    const spUser = opts?.postT02SpacingFrac != null ? Number(opts.postT02SpacingFrac) : Number.NaN;
+    const spacingAbs = E * (Number.isFinite(spUser) && spUser > 0 ? Math.min(0.05, spUser) : defaultTieredPostT02SpacingFrac(rt));
+    const k = stepNow - 1;
+    const t02Lock = isLong ? E * (1 + fb) : E * (1 - fb);
+    const lockPx = isLong ? t02Lock + k * spacingAbs : t02Lock - k * spacingAbs;
+    if (!Number.isFinite(lockPx) || lockPx <= 0) {
+      return { activationPx: defaultActivationPx, activationTierLabel: `T${stepNow - 1}`, nextRow: null };
+    }
+    const gatePx =
+      Number.isFinite(buf) && buf > 0 ? (isLong ? lockPx * (1 + buf) : lockPx * (1 - buf)) : lockPx;
+    return { activationPx: gatePx, activationTierLabel: `T${stepNow - 1}`, nextRow: null };
+  }
+
+  const nLv = levels.length;
+  if (!nLv) {
+    return { activationPx: defaultActivationPx, activationTierLabel: null, nextRow: null };
+  }
+  if (stepNow >= 2 && stepNow <= nLv) {
+    const L = levels[stepNow - 1]!;
     const lockPx = Number(L.lockPx);
     const good = Number.isFinite(lockPx) && lockPx > 0;
+    const gatePx = good
+      ? (Number.isFinite(buf) && buf > 0
+          ? (isLong ? lockPx * (1 + buf) : lockPx * (1 - buf))
+          : lockPx)
+      : defaultActivationPx;
     return {
-      activationPx: good ? lockPx : defaultActivationPx,
-      activationTierLabel: L.tierLabel != null ? String(L.tierLabel) : `T${stepNow}`,
+      activationPx: gatePx,
+      activationTierLabel: L.tierLabel != null ? String(L.tierLabel) : `T${Math.max(1, stepNow - 1)}`,
       nextRow: L,
     };
   }
@@ -158,11 +272,57 @@ export function supertrendTieredActivationGate(
     nLv >= 2 && prevDef && Number.isFinite(Number(prevDef.lockPx))
       ? Math.abs(Number(lastDef.lockPx) - Number(prevDef.lockPx))
       : Math.max(Math.abs(Number(lastDef.lockPx)) * 0.001, Math.abs(Number(lastDef.lockPx) - E));
-  const off = stepNow - (nLv - 1);
+  const off = stepNow - nLv;
   const activationPx = isLong
     ? Number(lastDef.lockPx) + off * interval
     : Number(lastDef.lockPx) - off * interval;
-  return { activationPx, activationTierLabel: `T${stepNow}`, nextRow: null };
+  return { activationPx, activationTierLabel: `T${stepNow - 1}`, nextRow: null };
+}
+
+/** Mirrors `backend/src/lib/trailingStopLoss.js` — price-derived tier index for tiered Supertrend. */
+export function computeSupertrendTieredMaxTrailStepFromExtreme(p: {
+  hwm: number;
+  entryPx: number;
+  isLong: boolean;
+  feeBe: number;
+  bufferRate: number;
+  useFeeBeTrail: boolean;
+  stLevels: TrailLockRow[];
+  roundTripFeeRate?: number;
+  postT02SpacingFrac?: number | null;
+  maxActivationSteps?: number;
+}): number {
+  const h = Number(p.hwm);
+  const E = Number(p.entryPx);
+  const fb = Number(p.feeBe);
+  const buf = Number(p.bufferRate);
+  if (!Number.isFinite(h) || !Number.isFinite(E) || E <= 0) return 0;
+  const levels = Array.isArray(p.stLevels) ? p.stLevels : [];
+  const gateOpts: SupertrendTieredGateOpts = {
+    roundTripFeeRate: p.roundTripFeeRate,
+    postT02SpacingFrac: p.postT02SpacingFrac,
+  };
+  const cap = Math.max(3, Math.min(600, Math.floor(Number(p.maxActivationSteps) || 200)));
+  let step = 0;
+  for (let i = 0; i < cap; i++) {
+    const { activationPx } = supertrendTieredActivationGate(E, p.isLong, fb, buf, p.useFeeBeTrail, step, levels, gateOpts);
+    const ap = Number(activationPx);
+    if (!Number.isFinite(ap) || ap <= 0) break;
+    const crossed = p.isLong ? h >= ap : h <= ap;
+    if (!crossed) break;
+    step += 1;
+  }
+  return step;
+}
+
+/** Tiered ST: T01 + T02 + post‑T02 rungs; `extraScalpingPctsOfEntry` ignored (compat); depth from `trailPostT02MaxExtraTiers`. */
+export function maxTrailStepsForConfig(
+  extraScalpingPctsOfEntry: number[] = [],
+  trailPostT02MaxExtraTiers: number = 150,
+): number {
+  void extraScalpingPctsOfEntry;
+  const n = Math.max(10, Math.min(500, Math.floor(Number(trailPostT02MaxExtraTiers) || 150)));
+  return 3 + n;
 }
 
 /**
@@ -234,13 +394,15 @@ export function advanceTrailingStopState(p: {
   trailStep: number | null | undefined;
   extremePx: number | null | undefined;
   markPx: number;
+  /** Fixed activation margin from each tier lock (fraction). If 0/undefined, activation == lock. */
+  activationBufferRate?: number;
   feeRate: number;
   extraScalpingPctsOfEntry: number[];
   openFeeRate?: number;
   closeFeeRate?: number;
   roundTripFeeRate?: number;
   feeBeMultiplier?: number;
-}): { trailStep: number; extremePx: number; proposedSl: number | null; advanced: boolean; tierLabel?: string } {
+}): { trailStep: number; extremePx: number; proposedSl: number | null; activationPx: number | null; advanced: boolean; tierLabel?: string } {
   const E = Number(p.entryPx);
   const mark = Number(p.markPx);
   if (!Number.isFinite(E) || E <= 0 || !Number.isFinite(mark)) {
@@ -256,18 +418,27 @@ export function advanceTrailingStopState(p: {
     feeBeMultiplier: p.feeBeMultiplier,
   });
   const n = levels.length;
-  if (!n) return { trailStep: Math.floor(Number(p.trailStep)) || 0, extremePx: hwm, proposedSl: null, advanced: false };
+  if (!n) return { trailStep: Math.floor(Number(p.trailStep)) || 0, extremePx: hwm, proposedSl: null, activationPx: null, advanced: false };
 
   // Do not clamp step to n — continuation logic needs the real step count
   let step = Math.max(0, Math.floor(Number(p.trailStep) || 0));
   let proposedSl: number | null = null;
   let advanced = false;
   let tierLabel: string | undefined;
+  const buf = Number(p.activationBufferRate);
+  const bufOk = Number.isFinite(buf) && buf > 0;
+  const activationForLock = (lockPx: number) => {
+    const L = Number(lockPx);
+    if (!Number.isFinite(L) || L <= 0) return L;
+    if (!bufOk) return L;
+    return p.isLong ? L * (1 + buf) : L * (1 - buf);
+  };
 
   // Phase 1: advance through explicitly defined tiers
   for (let k = step; k < n; k++) {
     const L = levels[k]!;
-    const crossed = p.isLong ? hwm >= L.lockPx : hwm <= L.lockPx;
+    const actPx = activationForLock(L.lockPx);
+    const crossed = p.isLong ? hwm >= actPx : hwm <= actPx;
     if (!crossed) break;
     step = k + 1;
     proposedSl = L.lockPx;
@@ -289,7 +460,8 @@ export function advanceTrailingStopState(p: {
           ? lastDef.lockPx + contStepsFromLast * interval
           : lastDef.lockPx - contStepsFromLast * interval;
         if (contLockPx <= 0) break;
-        const crossed = p.isLong ? hwm >= contLockPx : hwm <= contLockPx;
+        const actPx = activationForLock(contLockPx);
+        const crossed = p.isLong ? hwm >= actPx : hwm <= actPx;
         if (!crossed) break;
         step++;
         proposedSl = contLockPx;
@@ -299,7 +471,8 @@ export function advanceTrailingStopState(p: {
     }
   }
 
-  return { trailStep: step, extremePx: hwm, proposedSl, advanced, tierLabel };
+  const activationPx = proposedSl != null ? activationForLock(proposedSl) : null;
+  return { trailStep: step, extremePx: hwm, proposedSl, activationPx, advanced, tierLabel };
 }
 
 export function mergeStopWithTrail(isLong: boolean, currentStopPx: number, trailSlPx: number): number | null {

@@ -28,10 +28,65 @@ export function feeRateBreakevenPadded(roundTripFeeRate, multiplier) {
   return Math.min(0.02, r * m);
 }
 
-/** Convert a trail step (1-based) to a tier label string: step 1 → "T0", step 2 → "T1", etc. */
-export function trailStepToTierLabel(trailStep) {
+/**
+ * Convert trail step (1-based) to a tier label.
+ * @param {number} trailStep
+ * @param {"classic" | "tiered_st_fee_entry"} [labelStyle] classic: T0,T1,… (fee ladder / simple ST). tiered_st_fee_entry: T01,T02,T1,… (dual entry + fee gates before Supertrend locks).
+ */
+export function trailStepToTierLabel(trailStep, labelStyle = "classic") {
   const s = Math.floor(Number(trailStep) || 0);
-  return s >= 1 ? `T${s - 1}` : null;
+  if (s < 1) return null;
+  if (labelStyle === "tiered_st_fee_entry") {
+    if (s === 1) return "T01";
+    if (s === 2) return "T02";
+    return `T${s - 2}`;
+  }
+  return `T${s - 1}`;
+}
+
+/** Tiered T01/T02 + ST schema; bump when trailStep semantics change (see `migrateTieredTrailLegacySchema`). */
+export const TRAIL_TIER_SCHEMA_VERSION = 2;
+
+/**
+ * One-time migration for in-memory trail rows opened before T01/T02 split.
+ * Legacy: trailStep 1 meant "past single fee-BE gate". New: 1 = T01, 2 = T02, 3+ = ST ladder.
+ * Only call when fee-BE + advanced tiered mode is active for this symbol.
+ * @param {Record<string, unknown>} tr trailingBySymbol row or paper `pos.meta`-shaped object
+ */
+export function migrateTieredTrailLegacySchema(tr) {
+  if (!tr || typeof tr !== "object") return;
+  if (Number(tr.trailTierSchemaVersion) === TRAIL_TIER_SCHEMA_VERSION) return;
+  const step = Math.max(0, Math.floor(Number(tr.trailStep) || 0));
+  const conf = Math.max(0, Math.floor(Number(tr.confirmedTrailStep) || 0));
+  if (step >= 1) tr.trailStep = step + 1;
+  if (conf >= 1) tr.confirmedTrailStep = conf + 1;
+  tr.trailTierSchemaVersion = TRAIL_TIER_SCHEMA_VERSION;
+  tr.trailStepLabelStyle = "tiered_st_fee_entry";
+  const sAfter = Math.max(0, Math.floor(Number(tr.trailStep) || 0));
+  if (sAfter >= 1) tr.trailTierLabel = trailStepToTierLabel(sAfter, "tiered_st_fee_entry");
+}
+
+/**
+ * Cap how tight the SL may sit vs current mark: requires |mark − SL| / mark ≥ gapFrac (fraction, e.g. 0.005 = 0.5%).
+ * LONG: SL ≤ mark × (1 − gap). SHORT: SL ≥ mark × (1 + gap). Respects fee-BE floor/ceiling when `useFeeBe`.
+ */
+export function applyMinTrailGapFromMark({ isLong, cur, prevSl, newSl, breakeven, useFeeBe, gapFrac }) {
+  const g = Number(gapFrac);
+  const sl = Number(newSl);
+  const ps = Number(prevSl);
+  const c = Number(cur);
+  const be = Number(breakeven);
+  if (!Number.isFinite(g) || g <= 0 || !Number.isFinite(c) || c <= 0 || !Number.isFinite(sl)) return newSl;
+  if (isLong) {
+    const cap = c * (1 - g);
+    let x = Math.max(ps, Math.min(sl, cap));
+    if (useFeeBe && Number.isFinite(be) && be > 0) x = Math.max(x, be);
+    return x;
+  }
+  const floorPx = c * (1 + g);
+  let x = Math.min(ps, Math.max(sl, floorPx));
+  if (useFeeBe && Number.isFinite(be) && be > 0) x = Math.min(x, be);
+  return x;
 }
 
 /**
@@ -48,6 +103,7 @@ export function trailStepToTierLabel(trailStep) {
  * @param {number} [p.breakevenPrice] optional breakeven override
  * @param {number} [p.maintenanceMarginRate]
  * @param {number} [p.minSlDistanceFrac] if set and >0, avoid tightening SL when too close to price (noise)
+ * @param {number} [p.minTrailGapFromMarkFrac] if set and >0, SL vs mark must be at least this fraction apart (pullback buffer)
  * @param {boolean} [p.useFeeBreakeven] default true — fee-aware BE floor + activation using `feeRate`
  * @param {boolean} [p.useAdvancedTrail] default true — follow Supertrend line (with BE floor when both on)
  * @returns {{ newSl: number, status: "OK" | "REJECT_TRADE" | "NO_TRAIL" | "NO_SUPERTREND" | "INVALID" }}
@@ -61,6 +117,7 @@ export function computeSupertrendTrailingSlUpdate(p) {
   const bufferRate = Number(p.bufferRate ?? 0.0005);
   const maintenanceMarginRate = Number(p.maintenanceMarginRate ?? 0.005);
   const minDist = p.minSlDistanceFrac != null ? Number(p.minSlDistanceFrac) : 0;
+  const gapFromMark = p.minTrailGapFromMarkFrac != null ? Number(p.minTrailGapFromMarkFrac) : 0;
   const isLong = Boolean(p.isLong);
   const stRaw = p.supertrend;
   const st = stRaw != null && Number.isFinite(Number(stRaw)) ? Number(stRaw) : null;
@@ -123,6 +180,15 @@ export function computeSupertrendTrailingSlUpdate(p) {
       return { newSl: prevSl, status: "NO_TRAIL" };
     }
     let newSlOnlyBe = isLong ? Math.max(prevSl, breakeven) : Math.min(prevSl, breakeven);
+    newSlOnlyBe = applyMinTrailGapFromMark({
+      isLong,
+      cur,
+      prevSl,
+      newSl: newSlOnlyBe,
+      breakeven,
+      useFeeBe: true,
+      gapFrac: gapFromMark,
+    });
     if (Number.isFinite(minDist) && minDist > 0 && cur > 0) {
       const dist = Math.abs(cur - newSlOnlyBe) / cur;
       const tightening = isLong ? newSlOnlyBe > prevSl : newSlOnlyBe < prevSl;
@@ -160,6 +226,16 @@ export function computeSupertrendTrailingSlUpdate(p) {
     }
     newSl = Math.min(prevSl, trailAnchor);
   }
+
+  newSl = applyMinTrailGapFromMark({
+    isLong,
+    cur,
+    prevSl,
+    newSl,
+    breakeven,
+    useFeeBe,
+    gapFrac: gapFromMark,
+  });
 
   if (Number.isFinite(minDist) && minDist > 0 && cur > 0) {
     const dist = Math.abs(cur - newSl) / cur;

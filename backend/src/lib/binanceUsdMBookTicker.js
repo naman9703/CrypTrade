@@ -33,3 +33,23 @@ export async function fetchUsdMBookTicker(symbol, tradingMode) {
     return null;
   }
 }
+
+/**
+ * USD-M mark price from premium index (public, no API key). Complements book bid/ask for entry drift checks.
+ *
+ * @returns {Promise<{ markPrice: number, symbol: string } | null>}
+ */
+export async function fetchUsdMPremiumMark(symbol, tradingMode) {
+  const sym = String(symbol || "").toUpperCase();
+  if (!sym) return null;
+  const base = usdMFapiPublicBaseForTradingMode(tradingMode).replace(/\/$/, "");
+  const url = `${base}/fapi/v1/premiumIndex`;
+  try {
+    const { data } = await axios.get(url, { params: { symbol: sym }, timeout: 6000 });
+    const mp = Number(data?.markPrice);
+    if (!Number.isFinite(mp) || mp <= 0) return null;
+    return { markPrice: mp, symbol: sym };
+  } catch {
+    return null;
+  }
+}

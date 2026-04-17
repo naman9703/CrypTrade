@@ -3,6 +3,9 @@ import axios from "axios";
 import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
 import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
+import { TRAIL_TIER_SCHEMA_VERSION } from "../../lib/supertrendTrailingSl.js";
+import { pickBracketTargets } from "../../lib/binanceUsdmExternalCloseReconcile.js";
+import { avgFillPriceFromUsdMNewOrder } from "../../lib/binanceUsdMOrderFill.js";
 import { buildRiskSlTpTriggerActivity } from "../../lib/activityLog.js";
 import {
   mergeSlTpSymbolMaps,
@@ -319,8 +322,8 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
           .filter((p) => Math.abs(Number(p?.positionAmt || 0)) > 1e-8)
           .map((p) => {
             const sym = p.symbol;
-            const lb = localBrackets[sym];
-            const pb = placedBracketTargets[sym];
+            const lb = pickBracketTargets(localBrackets, sym);
+            const pb = pickBracketTargets(placedBracketTargets, sym);
             const lev = Number(p.leverage || defaultLeverage);
             return { sym, lb, pb, lev, p };
           });
@@ -380,7 +383,8 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       const isLong = side === "BUY";
       if (side !== "BUY" && side !== "SELL") throw new Error("bad_side");
 
-      const m = await getOrLoadSymbolMeta(symbol);
+      const symNorm = String(symbol || "").toUpperCase();
+      const m = await getOrLoadSymbolMeta(symNorm);
       const qtyStr = formatToStep(qty, m);
       if (!qtyStr) throw new Error("invalid_qty");
 
@@ -398,7 +402,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       const tpPx = Number(takeProfit);
       if (!stopPx || !tpPx) throw new Error("stoploss_takeprofit_required");
 
-      const leverage = await ensureLeverage(symbol, meta?.leverage || meta?.futuresLeverage || defaultLeverage);
+      const leverage = await ensureLeverage(symNorm, meta?.leverage || meta?.futuresLeverage || defaultLeverage);
       const hedgeExtras = await hedgePositionSideExtras(isLong);
 
       const entryStyle = String(meta?.entryOrderStyle || "MARKET").toUpperCase();
@@ -409,20 +413,21 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
         const priceStr = isLong ? formatToTickFloor(limRaw, m) : formatToTickCeil(limRaw, m);
         if (!priceStr) throw new Error("limit_ioc_bad_price_tick");
         out = await signed("POST", "/fapi/v1/order", {
-          symbol,
+          symbol: symNorm,
           side,
           type: "LIMIT",
           timeInForce: "IOC",
           quantity: qtyStr,
           price: priceStr,
+          newOrderRespType: "RESULT",
           newClientOrderId: `ai_ioc_${Date.now()}`,
           ...hedgeExtras,
         });
-        const exQ = Number(out?.executedQty ?? 0);
+        const exQ = Math.max(Number(out?.executedQty ?? 0), Number(out?.cumQty ?? 0));
         if (!Number.isFinite(exQ) || exQ <= 0) throw new Error("limit_ioc_no_fill");
       } else {
         out = await signed("POST", "/fapi/v1/order", {
-          symbol,
+          symbol: symNorm,
           side,
           type: "MARKET",
           quantity: qtyStr,
@@ -432,7 +437,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       }
 
       const orderId = String(out?.orderId || Date.now());
-      const filledPrice = Number(out?.avgPrice || out?.price || price || 0) || Number(price || 0);
+      const filledPrice = avgFillPriceFromUsdMNewOrder(out, markPx);
       const posId = `fut_${orderId}`;
 
       const executedQty = formatToStep(Number(out?.executedQty || out?.origQty || qty), m) || qtyStr;
@@ -447,7 +452,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       const closeSide = isLong ? "SELL" : "BUY";
       let markRef = filledPrice;
       try {
-        const pi = await publicGet("/fapi/v1/premiumIndex", { symbol });
+        const pi = await publicGet("/fapi/v1/premiumIndex", { symbol: symNorm });
         const mp = Number(pi?.markPrice);
         if (Number.isFinite(mp) && mp > 0) markRef = mp;
       } catch {
@@ -462,7 +467,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       });
       if (refined.adjusted) {
         log?.info?.("binance_futures_testnet_sltp_refined_vs_mark", {
-          symbol,
+          symbol: symNorm,
           markPrice: markRef,
           beforeStop: adjStop,
           beforeTp: adjTp,
@@ -485,7 +490,7 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       try {
         await placeUsdMSlTpAfterMarketEntry({
           signed,
-          symbol,
+          symbol: symNorm,
           closeSide,
           stopStr,
           tpStr,
@@ -497,16 +502,16 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
           logPrefix: "binance_futures_testnet",
         });
         bracketsPlaced = true;
-        placedBracketTargets[symbol] = { stopLoss: adjStop, takeProfit: adjTp };
+        placedBracketTargets[symNorm] = { stopLoss: adjStop, takeProfit: adjTp };
       } catch (e) {
         const is4120 = futuresOrderIs4120(e);
         if (is4120) {
           log?.warn?.("binance_futures_brackets_unsupported_using_local", {
-            symbol,
+            symbol: symNorm,
             stopLoss: adjStop,
             takeProfit: adjTp,
           });
-          localBrackets[symbol] = {
+          localBrackets[symNorm] = {
             posId,
             isLong,
             entryPrice: filledPrice,
@@ -520,9 +525,9 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
             positionSide: hedgeExtras.positionSide,
           };
         } else {
-          log?.warn?.("binance_futures_bracket_failed_flatten", { symbol, error: String(e?.message || e) });
+          log?.warn?.("binance_futures_bracket_failed_flatten", { symbol: symNorm, error: String(e?.message || e) });
           await signed("POST", "/fapi/v1/order", {
-            symbol,
+            symbol: symNorm,
             side: closeSide,
             type: "MARKET",
             quantity: executedQty,
@@ -535,11 +540,12 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       }
 
       if (meta?.autoTradeTrailing) {
-        trailingBySymbol[symbol] = {
+        trailingBySymbol[symNorm] = {
           entryPrice: filledPrice,
           isLong,
           trailStep: 0,
           confirmedTrailStep: 0,
+          trailTierSchemaVersion: TRAIL_TIER_SCHEMA_VERSION,
           extremePx: filledPrice,
           leverage: Math.max(1, Math.min(100, Number(leverage) || 1)),
         };
@@ -632,8 +638,12 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
                   maxTrailSteps: trailingStopLoss.maxTrailSteps,
                   supertrendPx: trailMode === "FEE_LADDER" ? trailingStopLoss.supertrendPx : stPx,
                   bufferRate: trailingStopLoss.bufferRate,
+                  atrPct: trailingStopLoss.atrPct,
+                  trailBufferAtrMult: trailingStopLoss.trailBufferAtrMult,
+                  trailBufferMode: trailingStopLoss.trailBufferMode,
                   maintenanceMarginRate: trailingStopLoss.maintenanceMarginRate,
                   minSlDistanceFrac: trailingStopLoss.minSlDistanceFrac,
+                  minTrailGapFromMarkFrac: trailingStopLoss.minTrailGapFromMarkFrac,
                   supertrendUseFeeBreakeven: trailingStopLoss.supertrendUseFeeBreakeven !== false,
                   supertrendUseAdvancedTrail: trailingStopLoss.supertrendUseAdvancedTrail !== false,
                 },

@@ -3,6 +3,8 @@ import { api } from "../api/client";
 import { deferTask } from "../lib/deferTask";
 import { useAppStore } from "../ws/store";
 import { UniverseCustomCoinsModal } from "./UniverseCustomCoinsModal";
+import { TrailPreviewModal, type TrailPreviewCfg } from "./TrailPreviewModal";
+import { ChartErrorBoundary } from "./ChartErrorBoundary";
 import { RangeSliderReleaseCommit } from "./RangeSliderReleaseCommit";
 import {
   buildAutotradeLongLiquidationPreview,
@@ -10,6 +12,7 @@ import {
   manualMarketLiquidationPreview,
   riskTierMultPreview,
 } from "../lib/futuresLiquidation";
+import { DEFAULT_TRAIL_FEE_BE_MULTIPLIER } from "../lib/trailingFeeLadder";
 
 const numericInputClass =
   "w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100 tabular-nums";
@@ -215,8 +218,13 @@ type TrailMetricKey =
   | "trailCloseFeeRate"
   | "trailFeeBeMultiplier"
   | "trailBufferRate"
+  | "trailActivationSlippageFrac"
+  | "trailBufferAtrMult"
   | "trailMinSlDistFrac"
-  | "trailMaintMarginRate";
+  | "trailMinGapFromMarkFrac"
+  | "trailMaintMarginRate"
+  | "trailPostT02SpacingFrac"
+  | "trailPostT02MaxExtraTiers";
 
 interface TrailMetricItem {
   key: TrailMetricKey;
@@ -1062,10 +1070,24 @@ export function TradingPanel() {
   const positions = useAppStore((s) => s.positions);
   const trades = useAppStore((s) => s.trades);
   const pushLog = useAppStore((s) => s.pushLog);
+  const chartCandles = useAppStore((s) => s.candles);
+  const marketSym = useAppStore((s) => String(s.market?.symbol || "").toUpperCase().trim() || null);
+  const marketTf = useAppStore((s) => String(s.market?.timeframe || "").trim() || null);
+  const marketAtrPct = useAppStore((s) => {
+    const x = Number(s.market?.regime?.atrPct);
+    return Number.isFinite(x) && x > 0 ? x : null;
+  });
   const [top, setTop] = useState<any[]>([]);
   const [btLoading, setBtLoading] = useState(false);
   const [coinBusy, setCoinBusy] = useState(false);
   const [customUniverseOpen, setCustomUniverseOpen] = useState(false);
+  const [trailPreviewOpen, setTrailPreviewOpen] = useState(false);
+  const [trailPreviewSnap, setTrailPreviewSnap] = useState<{
+    symbol: string;
+    timeframe: string;
+    candles: any[];
+    atrPct: number | null;
+  } | null>(null);
   // Bot configuration is always visible; this toggle only controls manual orders visibility below it.
   const [showManualOrders, setShowManualOrders] = useState(false);
 
@@ -1154,13 +1176,36 @@ export function TradingPanel() {
       trailingStopExtraScalpingPcts: parseTrailingExtraPcts(bot),
       trailOpenFeeRate: clampNum(Number(bot?.trailOpenFeeRate ?? 0.0004), 0, 0.01),
       trailCloseFeeRate: clampNum(Number(bot?.trailCloseFeeRate ?? 0.0004), 0, 0.01),
-      trailFeeBeMultiplier: clampNum(Number(bot?.trailFeeBeMultiplier ?? 1.0), 1, 2),
+      trailFeeBeMultiplier: clampNum(Number(bot?.trailFeeBeMultiplier ?? DEFAULT_TRAIL_FEE_BE_MULTIPLIER), 1, 2),
       trailBufferRate: clampNum(Number(bot?.trailBufferRate ?? 0.0005), 0, 0.05),
+      trailActivationSlippageFrac: clampNum(Number(bot?.trailActivationSlippageFrac ?? 0), 0, 0.01),
+      trailBufferAtrMult: clampNum(Number(bot?.trailBufferAtrMult ?? 0), 0, 1),
+      trailBufferMode: String(bot?.trailBufferMode || "PERCENT").toUpperCase() === "ATR" ? "ATR" : "PERCENT",
       trailMinSlDistFrac: clampNum(Number(bot?.trailMinSlDistFrac ?? 0.002), 0, 0.1),
+      trailMinGapFromMarkFrac: clampNum(Number(bot?.trailMinGapFromMarkFrac ?? 0), 0, 0.2),
       trailMaintMarginRate: clampNum(Number(bot?.trailMaintMarginRate ?? 0.005), 0, 0.1),
+      trailPostT02SpacingFrac:
+        bot?.trailPostT02SpacingFrac != null && Number.isFinite(Number(bot.trailPostT02SpacingFrac))
+          ? clampNum(Number(bot.trailPostT02SpacingFrac), 0, 0.05)
+          : 0,
+      trailPostT02MaxExtraTiers: Math.max(
+        10,
+        Math.min(500, Math.floor(Number(bot?.trailPostT02MaxExtraTiers ?? 150))),
+      ),
       supertrendFuturesFixedSlPct: clampNum(Number(bot?.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2),
       supertrendFuturesFixedTpPct: clampNum(Number(bot?.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5),
       supertrendFuturesTwoWay: bot?.supertrendFuturesTwoWay === true,
+      supertrendFuturesMaxEntrySlippagePct: clampNum(Number(bot?.supertrendFuturesMaxEntrySlippagePct ?? 0.15), 0, 5),
+      supertrendFuturesEntryOpenStyle: (() => {
+        const s = String(bot?.supertrendFuturesEntryOpenStyle || "AUTO").toUpperCase();
+        if (s === "MARKET" || s === "LIMIT_IOC") return s;
+        return "AUTO" as const;
+      })(),
+      supertrendFuturesEntryRecheckMs: Math.max(0, Math.floor(Number(bot?.supertrendFuturesEntryRecheckMs ?? 0))),
+      supertrendFuturesIocFallbackMarket: bot?.supertrendFuturesIocFallbackMarket === true,
+      supertrendFuturesRequireMarkPrice: bot?.supertrendFuturesRequireMarkPrice === true,
+      supertrendFuturesRequireBookTicker: bot?.supertrendFuturesRequireBookTicker === true,
+      supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(Number(bot?.supertrendFuturesMaxSignalLagMs ?? 0))),
       universeCoinBase: bot?.universeCoinBase === "CUSTOM" ? ("CUSTOM" as const) : ("ALL" as const),
       universeCoinSelectMode: bot?.universeCoinSelectMode === "MULTIPLE" ? ("MULTIPLE" as const) : ("SINGLE" as const),
       universePinControl: bot?.universePinControl === "MANUAL" ? ("MANUAL" as const) : ("AUTO" as const),
@@ -1196,6 +1241,50 @@ export function TradingPanel() {
     const s = String(bot?.symbol || "").toUpperCase().trim();
     return s || "BTCUSDT";
   }, [bot?.symbol]);
+
+  const trailPreviewSymbol = marketSym || activeSymbol;
+  const trailPreviewTimeframe = marketTf || String(bot?.timeframe || "1h");
+  const trailPostT02SpacingFracRaw =
+    bot?.trailPostT02SpacingFrac != null && Number.isFinite(Number(bot.trailPostT02SpacingFrac))
+      ? Number(bot.trailPostT02SpacingFrac)
+      : null;
+  const trailPreviewCfg: TrailPreviewCfg = useMemo(() => {
+    return {
+      futuresTrailingStopMode: cfg.futuresTrailingStopMode,
+      futuresTrailingStFeeBreakeven: cfg.futuresTrailingStFeeBreakeven,
+      futuresTrailingStAdvanced: cfg.futuresTrailingStAdvanced,
+      trailOpenFeeRate: cfg.trailOpenFeeRate,
+      trailCloseFeeRate: cfg.trailCloseFeeRate,
+      trailFeeBeMultiplier: cfg.trailFeeBeMultiplier,
+      trailActivationSlippageFrac: cfg.trailActivationSlippageFrac,
+      trailBufferMode: cfg.trailBufferMode,
+      trailBufferRate: cfg.trailBufferRate,
+      trailBufferAtrMult: cfg.trailBufferAtrMult,
+      trailMaintMarginRate: cfg.trailMaintMarginRate,
+      trailMinSlDistFrac: cfg.trailMinSlDistFrac,
+      trailMinGapFromMarkFrac: cfg.trailMinGapFromMarkFrac,
+      trailPostT02SpacingFrac: trailPostT02SpacingFracRaw,
+      trailPostT02MaxExtraTiers: cfg.trailPostT02MaxExtraTiers,
+      trailingStopExtraScalpingPcts: cfg.trailingStopExtraScalpingPcts,
+    };
+  }, [
+    cfg.futuresTrailingStopMode,
+    cfg.futuresTrailingStFeeBreakeven,
+    cfg.futuresTrailingStAdvanced,
+    cfg.trailOpenFeeRate,
+    cfg.trailCloseFeeRate,
+    cfg.trailFeeBeMultiplier,
+    cfg.trailActivationSlippageFrac,
+    cfg.trailBufferMode,
+    cfg.trailBufferRate,
+    cfg.trailBufferAtrMult,
+    cfg.trailMaintMarginRate,
+    cfg.trailMinSlDistFrac,
+    cfg.trailMinGapFromMarkFrac,
+    trailPostT02SpacingFracRaw,
+    cfg.trailPostT02MaxExtraTiers,
+    cfg.trailingStopExtraScalpingPcts,
+  ]);
 
   const marketClose = useAppStore((s) => {
     const c = s.market?.candle?.close;
@@ -2063,6 +2152,189 @@ export function TradingPanel() {
               </div>
             )}
 
+            {cfg.marketMode === "FUTURES" && (
+              <div className="space-y-2 rounded-lg border border-sky-800/50 bg-sky-950/25 p-2">
+                <div className="text-[11px] font-semibold text-sky-200/95">Futures entry (Supertrend signal → order)</div>
+                <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                  Flow: bar-close signal uses the candle <span className="text-slate-600 dark:text-slate-300">close</span> as the
+                  reference price → server fetches <span className="text-slate-600 dark:text-slate-300">live bid/ask, mark, mid</span> →
+                  if any price is worse than your max slippage vs that close, the open is <span className="text-slate-600 dark:text-slate-300">skipped</span>{" "}
+                  (better than a bad MARKET fill). With <span className="text-slate-600 dark:text-slate-300">AUTO</span> open style and slippage
+                  &gt; 0, the first attempt is typically <span className="text-slate-600 dark:text-slate-300">LIMIT IOC</span> at close × (1±slippage).
+                  Activity logs fill vs signal as bps. Values below are saved with bot config (server{" "}
+                  <code className="text-slate-600 dark:text-slate-400">bot-trading-config.json</code>).
+                </p>
+                <div className="grid grid-cols-[118px_1fr] items-center gap-2 text-xs">
+                  <span className="text-slate-600 dark:text-slate-400" title="Percent points vs signal candle close (0 = disable guard).">
+                    Max slippage %
+                  </span>
+                  <NumericTextInput
+                    value={Number(cfg.supertrendFuturesMaxEntrySlippagePct.toFixed(4))}
+                    inputMode="decimal"
+                    min={0}
+                    max={5}
+                    parse={(raw) => parseFloat(raw)}
+                    onCommit={async (v) => {
+                      try {
+                        await api.botConfig({ supertrendFuturesMaxEntrySlippagePct: clampNum(v, 0, 5) });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set max entry slippage" });
+                      }
+                    }}
+                  />
+                </div>
+                <label className="grid grid-cols-[118px_1fr] items-center gap-2 text-xs">
+                  <span className="text-slate-600 dark:text-slate-400">Open style</span>
+                  <select
+                    className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
+                    value={cfg.supertrendFuturesEntryOpenStyle}
+                    onChange={(e) => {
+                      const v = e.target.value as "AUTO" | "MARKET" | "LIMIT_IOC";
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ supertrendFuturesEntryOpenStyle: v });
+                            pushLog({ level: "info", msg: `Futures entry open style: ${v}` });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set open style" });
+                          }
+                        })();
+                      });
+                    }}
+                  >
+                    <option value="AUTO">AUTO (LIMIT IOC if slippage &gt; 0)</option>
+                    <option value="LIMIT_IOC">LIMIT IOC</option>
+                    <option value="MARKET">MARKET</option>
+                  </select>
+                </label>
+                <div className="grid grid-cols-[118px_1fr] items-center gap-2 text-xs">
+                  <span className="text-slate-600 dark:text-slate-400" title="Wait, then re-fetch book/mark before placing.">
+                    Recheck ms
+                  </span>
+                  <NumericTextInput
+                    value={cfg.supertrendFuturesEntryRecheckMs}
+                    inputMode="numeric"
+                    min={0}
+                    max={60000}
+                    parse={(raw) => parseInt(raw, 10)}
+                    onCommit={async (v) => {
+                      try {
+                        await api.botConfig({ supertrendFuturesEntryRecheckMs: Math.max(0, Math.min(60000, Math.floor(v))) });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set entry recheck ms" });
+                      }
+                    }}
+                  />
+                </div>
+                <div className="grid grid-cols-[118px_1fr] items-center gap-2 text-xs">
+                  <span className="text-slate-600 dark:text-slate-400" title="Skip if bar-close to order is too slow (AI/network).">
+                    Max signal lag ms
+                  </span>
+                  <NumericTextInput
+                    value={cfg.supertrendFuturesMaxSignalLagMs}
+                    inputMode="numeric"
+                    min={0}
+                    max={3600000}
+                    parse={(raw) => parseInt(raw, 10)}
+                    onCommit={async (v) => {
+                      try {
+                        await api.botConfig({ supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(v)) });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set max signal lag" });
+                      }
+                    }}
+                  />
+                </div>
+                <label className="flex cursor-pointer items-start gap-2 text-[11px]">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={cfg.supertrendFuturesIocFallbackMarket}
+                    onChange={(e) => {
+                      const on = e.currentTarget.checked;
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ supertrendFuturesIocFallbackMarket: on });
+                            pushLog({
+                              level: "info",
+                              msg: on
+                                ? "IOC no-fill → may retry MARKET if still within slippage cap"
+                                : "IOC no-fill → no MARKET fallback",
+                            });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to update IOC fallback" });
+                          }
+                        })();
+                      });
+                    }}
+                  />
+                  <span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">IOC → MARKET fallback</span>
+                    <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
+                      If LIMIT IOC does not fill, re-quote once; place MARKET only if still inside the slippage band (off = safer).
+                    </span>
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-2 text-[11px]">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={cfg.supertrendFuturesRequireMarkPrice}
+                    onChange={(e) => {
+                      const next = e.currentTarget.checked;
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ supertrendFuturesRequireMarkPrice: next });
+                          } catch (err) {
+                            pushLog({
+                              level: "error",
+                              msg: `Failed to update require mark: ${err instanceof Error ? err.message : String(err)}`,
+                            });
+                          }
+                        })();
+                      });
+                    }}
+                  />
+                  <span>
+                    Require mark price
+                    <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
+                      Skip open if premium-index mark cannot be fetched (stricter).
+                    </span>
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-2 text-[11px]">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={cfg.supertrendFuturesRequireBookTicker}
+                    onChange={(e) => {
+                      const next = e.currentTarget.checked;
+                      deferTask(() => {
+                        void (async () => {
+                          try {
+                            await api.botConfig({ supertrendFuturesRequireBookTicker: next });
+                          } catch (err) {
+                            pushLog({
+                              level: "error",
+                              msg: `Failed to update require book: ${err instanceof Error ? err.message : String(err)}`,
+                            });
+                          }
+                        })();
+                      });
+                    }}
+                  />
+                  <span>
+                    Require book ticker
+                    <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
+                      Skip open if best bid/ask snapshot fails while slippage guard is active.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            )}
+
             {(cfg.marketMode === "SPOT" || cfg.marketMode === "FUTURES") && (
               <div
                 className={
@@ -2859,7 +3131,27 @@ export function TradingPanel() {
                   </div>
                 </div>
                 <div className="mt-3 space-y-2 rounded-lg border border-sky-800/25 bg-white/85 p-2 dark:border-sky-400/20 dark:bg-slate-950/50">
-                  <div className="text-[11px] font-semibold text-sky-900 dark:text-sky-100">Trailing stop (futures autotrade)</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[11px] font-semibold text-sky-900 dark:text-sky-100">Trailing stop (futures autotrade)</div>
+                    <button
+                      className="rounded border border-sky-200 bg-white px-2 py-1 text-[10px] font-semibold text-sky-900 hover:bg-sky-50 dark:border-sky-800 dark:bg-slate-900 dark:text-sky-100 dark:hover:bg-slate-800"
+                      onClick={() => {
+                        const sym = String(trailPreviewSymbol || activeSymbol).toUpperCase();
+                        const tf = String(trailPreviewTimeframe || bot?.timeframe || "1h");
+                        setTrailPreviewSnap({
+                          symbol: sym,
+                          timeframe: tf,
+                          candles: Array.isArray(chartCandles) ? chartCandles : [],
+                          atrPct: marketAtrPct,
+                        });
+                        setTrailPreviewOpen(true);
+                      }}
+                      title="Preview trail gates and locks on a mini chart (cached candles only)."
+                      type="button"
+                    >
+                      Preview
+                    </button>
+                  </div>
                   <label className="flex cursor-pointer items-start gap-2">
                     <input
                       type="checkbox"
@@ -2944,45 +3236,127 @@ export function TradingPanel() {
                             }}
                           />
                           <span>
-                            <span className="font-semibold text-slate-800 dark:text-slate-200">Fee breakeven (T0)</span>
-                            {" — "}When mark price crosses the T0 activation price, the SL is locked at the T0 floor
-                            (round-trip breakeven). No Supertrend line needed.
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">Fee breakeven (T01 / T02)</span>
+                            {" — "}
+                            {cfg.futuresTrailingStAdvanced ? (
+                              <>
+                                With Advanced on: <span className="font-mono text-sky-800 dark:text-sky-200">T01</span> locks SL
+                                to entry after mark passes entry × (1 + buffer). Then{" "}
+                                <span className="font-mono text-sky-800 dark:text-sky-200">T02</span> locks at padded
+                                round-trip breakeven after mark passes entry × (1 + padded fee + buffer). Supertrend tiers
+                                continue as T1, T2…
+                              </>
+                            ) : (
+                              <>
+                                When mark crosses activation (padded round-trip fee + buffer), SL locks at the padded
+                                breakeven level. No Supertrend line needed.
+                              </>
+                            )}
                           </span>
                         </label>
                         {cfg.futuresTrailingStFeeBreakeven && (
-                          <TrailMetricGroup
-                            title="Fee breakeven parameters"
-                            items={[
-                              {
-                                key: "trailOpenFeeRate",
-                                label: "Open fee rate (%)",
-                                tip: `Taker/maker fee paid when opening the position.\nUsed in: T0 SL = entry × (1 + openFee + closeFee) × multiplier\nDefault: ${(cfg.trailOpenFeeRate * 100).toFixed(4)}%`,
-                                min: 0, max: 1, step: 0.01, decimals: 4, pct: true,
-                              },
-                              {
-                                key: "trailCloseFeeRate",
-                                label: "Close fee rate (%)",
-                                tip: `Taker fee paid when the SL exit fires.\nRound-trip = openFee + closeFee.\nT0 SL = entry × (1 + round-trip × multiplier)\nDefault: ${(cfg.trailCloseFeeRate * 100).toFixed(4)}%`,
-                                min: 0, max: 1, step: 0.01, decimals: 4, pct: true,
-                              },
-                              {
-                                key: "trailFeeBeMultiplier",
-                                label: "Safety multiplier ×",
-                                tip: `Optional safety margin applied on top of the round-trip fee.\nFormula: T0_SL = entry × (1 + (openFee + closeFee) × multiplier)\nT0_activation = entry × (1 + (openFee + closeFee) × multiplier + bufferRate)\n1.0 = exact breakeven, 1.25 = 25% extra padding.\nDefault: ${cfg.trailFeeBeMultiplier.toFixed(2)}`,
-                                min: 1, max: 2, step: 0.05, decimals: 2, pct: false,
-                              },
-                              {
-                                key: "trailBufferRate",
-                                label: "Activation buffer (%)",
-                                tip: `Extra gap ABOVE the T0 floor required before trailing activates.\nFormula: activation = entry × (1 + paddedFee + bufferRate)\nPurpose: prevent activation on micro-noise immediately after entry.\nDefault: ${(cfg.trailBufferRate * 100).toFixed(3)}%`,
-                                min: 0, max: 5, step: 0.01, decimals: 3, pct: true,
-                              },
-                            ]}
-                            cfg={cfg}
-                            onChange={(k, v) => void api.botConfig({ [k]: v }).catch(() =>
-                              pushLog({ level: "error", msg: `Failed to update ${k}` }),
-                            )}
-                          />
+                          <>
+                            <TrailMetricGroup
+                              title="Fee breakeven parameters"
+                              items={[
+                                {
+                                  key: "trailOpenFeeRate",
+                                  label: "Open fee rate (%)",
+                                  tip: `Taker/maker fee paid when opening the position.\nUsed in: T0 SL = entry × (1 + openFee + closeFee) × multiplier\nDefault: ${(cfg.trailOpenFeeRate * 100).toFixed(4)}%`,
+                                  min: 0, max: 1, step: 0.01, decimals: 4, pct: true,
+                                },
+                                {
+                                  key: "trailCloseFeeRate",
+                                  label: "Close fee rate (%)",
+                                  tip: `Taker fee paid when the SL exit fires.\nRound-trip = openFee + closeFee.\nT0 SL = entry × (1 + round-trip × multiplier)\nDefault: ${(cfg.trailCloseFeeRate * 100).toFixed(4)}%`,
+                                  min: 0, max: 1, step: 0.01, decimals: 4, pct: true,
+                                },
+                                {
+                                  key: "trailFeeBeMultiplier",
+                                  label: "Safety multiplier ×",
+                                  tip: `Optional safety margin on top of the round-trip fee (padded fee rate).\nT02 SL (tiered) = entry × (1 + paddedRoundTrip).\nT02 activation = entry × (1 + paddedRoundTrip + effective buffer).\n1.0 = exact breakeven, 1.25 = 25% extra padding.\nDefault: ${cfg.trailFeeBeMultiplier.toFixed(2)}`,
+                                  min: 1, max: 2, step: 0.05, decimals: 2, pct: false,
+                                },
+                                {
+                                  key: "trailActivationSlippageFrac",
+                                  label: "BE slippage add-on (%)",
+                                  tip: `Added to the padded round-trip fee for Supertrend tiered gates only (T02 lock/activation and later); caps at 2% combined.\nUse a small value (e.g. 0.01–0.03%) to approximate execution vs theoretical fees.\nDefault: ${(cfg.trailActivationSlippageFrac * 100).toFixed(3)}%`,
+                                  min: 0, max: 1, step: 0.01, decimals: 3, pct: true,
+                                },
+                              ]}
+                              cfg={cfg}
+                              onChange={(k, v) => void api.botConfig({ [k]: v }).catch(() =>
+                                pushLog({ level: "error", msg: `Failed to update ${k}` }),
+                              )}
+                            />
+                            <div className="ml-4 mt-1 space-y-1.5 rounded border border-sky-200/50 bg-white/60 px-2 py-1.5 dark:border-sky-800/30 dark:bg-slate-950/50">
+                              <div className="text-[9px] font-semibold uppercase tracking-wide text-sky-800/70 dark:text-sky-300/50">
+                                Activation buffer
+                              </div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-700 dark:text-slate-300">
+                                <label className="flex cursor-pointer items-center gap-1.5">
+                                  <input
+                                    type="radio"
+                                    name="trailBufferMode"
+                                    className="mt-0.5"
+                                    checked={cfg.trailBufferMode === "PERCENT"}
+                                    onChange={() =>
+                                      void api.botConfig({ trailBufferMode: "PERCENT" }).catch(() =>
+                                        pushLog({ level: "error", msg: "Failed to update buffer mode" }),
+                                      )
+                                    }
+                                  />
+                                  Fixed %
+                                </label>
+                                <label className="flex cursor-pointer items-center gap-1.5">
+                                  <input
+                                    type="radio"
+                                    name="trailBufferMode"
+                                    className="mt-0.5"
+                                    checked={cfg.trailBufferMode === "ATR"}
+                                    onChange={() =>
+                                      void api.botConfig({ trailBufferMode: "ATR" }).catch(() =>
+                                        pushLog({ level: "error", msg: "Failed to update buffer mode" }),
+                                      )
+                                    }
+                                  />
+                                  ATR × multiplier
+                                </label>
+                              </div>
+                              <TrailMetricGroup
+                                title="Buffer settings"
+                                items={
+                                  cfg.trailBufferMode === "ATR"
+                                    ? [
+                                        {
+                                          key: "trailBufferAtrMult",
+                                          label: "ATR multiplier",
+                                          tip: `Used when regime publishes atrPct: buffer = min(5%, atrPct × this).\nIf ATR is missing, the fallback % below is used.\nDefault: ${cfg.trailBufferAtrMult.toFixed(2)}`,
+                                          min: 0, max: 1, step: 0.05, decimals: 2, pct: false,
+                                        },
+                                        {
+                                          key: "trailBufferRate",
+                                          label: "Fallback buffer (%)",
+                                          tip: `Used when lastRegime.atrPct is not available or multiplier is 0.\nDefault: ${(cfg.trailBufferRate * 100).toFixed(3)}%`,
+                                          min: 0, max: 5, step: 0.01, decimals: 3, pct: true,
+                                        },
+                                      ]
+                                    : [
+                                        {
+                                          key: "trailBufferRate",
+                                          label: "Activation buffer (%)",
+                                          tip: `With Advanced + Fee BE: T01 activation = entry × (1 + buffer) only; T02 adds padded fee on top.\nFee BE only (no Advanced): single activation = entry × (1 + paddedFee + buffer).\nDefault: ${(cfg.trailBufferRate * 100).toFixed(3)}%`,
+                                          min: 0, max: 5, step: 0.01, decimals: 3, pct: true,
+                                        },
+                                      ]
+                                }
+                                cfg={cfg}
+                                onChange={(k, v) => void api.botConfig({ [k]: v }).catch(() =>
+                                  pushLog({ level: "error", msg: `Failed to update ${k}` }),
+                                )}
+                              />
+                            </div>
+                          </>
                         )}
 
                         {/* ── Advanced trailing toggle + its metrics ── */}
@@ -3007,9 +3381,10 @@ export function TradingPanel() {
                           />
                           <span>
                             <span className="font-semibold text-slate-800 dark:text-slate-200">Advanced trailing (T1, T2…)</span>
-                            {" — "}Continuously ratchets SL to the live Supertrend line (with T0 floor when Fee breakeven is also
-                            on). Each ST advance creates a new tier:{" "}
-                            <span className="font-mono text-sky-700 dark:text-sky-300">T0 → T1 → T2…</span>
+                            {" — "}Continuously ratchets SL to the live Supertrend line (with T02 padded fee floor when Fee
+                            breakeven is also on). With both on, discrete gates run first:{" "}
+                            <span className="font-mono text-sky-700 dark:text-sky-300">T01 → T02 → T1 → T2…</span>
+                            {" "}Post‑T02 tiers use equal spacing from the T02 lock (not the fee ladder’s T0/T1 interval).
                           </span>
                         </label>
                         {cfg.futuresTrailingStAdvanced && (
@@ -3023,16 +3398,42 @@ export function TradingPanel() {
                                 min: 0, max: 10, step: 0.01, decimals: 3, pct: true,
                               },
                               {
+                                key: "trailMinGapFromMarkFrac",
+                                label: "Min gap from mark (%)",
+                                tip: `Minimum distance between mark and trailing SL (fraction of mark).\nLONG: SL ≤ mark × (1 − gap). SHORT: SL ≥ mark × (1 + gap).\n0 = off. Gives room for pullbacks so a tight ST line does not stop you immediately.\nExample: 0.5% at mark 100 → long SL capped at 99.5 or below.`,
+                                min: 0, max: 20, step: 0.05, decimals: 3, pct: true,
+                              },
+                              {
                                 key: "trailMaintMarginRate",
                                 label: "Maint margin rate (%)",
                                 tip: `Liquidation zone guard used at order-open time.\nFormula: liqPrice = entry × (1 − 1/leverage + maintMarginRate)  [LONG]\nOpen is rejected if liqPrice ≥ T0_breakeven (money lost to fees before liq).\nDefault: ${(cfg.trailMaintMarginRate * 100).toFixed(3)}%`,
                                 min: 0, max: 10, step: 0.05, decimals: 3, pct: true,
                               },
+                              {
+                                key: "trailPostT02SpacingFrac",
+                                label: "Post‑T02 step (% entry)",
+                                tip: `Spacing between successive post‑T02 lock prices (T1, T2, …) as a percent of entry.\n0 = automatic: min(2%, max(2× round-trip fee, 0.04%)) per entry.\nEach tier’s activation is still that lock × (1 ± buffer).`,
+                                min: 0, max: 5, step: 0.01, decimals: 3, pct: true,
+                              },
+                              {
+                                key: "trailPostT02MaxExtraTiers",
+                                label: "Max post‑T02 tiers",
+                                tip: `How many equidistant rungs after T02 the engine may model (T1 … Tn). Total trail steps cap ≈ 3 + this (floored/clamped server-side).`,
+                                min: 10, max: 500, step: 1, decimals: 0, pct: false,
+                              },
                             ]}
                             cfg={cfg}
-                            onChange={(k, v) => void api.botConfig({ [k]: v }).catch(() =>
-                              pushLog({ level: "error", msg: `Failed to update ${k}` }),
-                            )}
+                            onChange={(k, v) => {
+                              if (k === "trailPostT02SpacingFrac") {
+                                void api
+                                  .botConfig({ trailPostT02SpacingFrac: v <= 0 ? null : v })
+                                  .catch(() => pushLog({ level: "error", msg: `Failed to update ${k}` }));
+                                return;
+                              }
+                              void api.botConfig({ [k]: v }).catch(() =>
+                                pushLog({ level: "error", msg: `Failed to update ${k}` }),
+                              );
+                            }}
                           />
                         )}
                       </div>
@@ -4708,6 +5109,26 @@ export function TradingPanel() {
           await api.universeScan(true);
         }}
       />
+
+      <ChartErrorBoundary>
+        <TrailPreviewModal
+          open={trailPreviewOpen}
+          onClose={() => setTrailPreviewOpen(false)}
+          initialCfg={trailPreviewCfg}
+          initialSymbol={trailPreviewSnap?.symbol || trailPreviewSymbol}
+          initialTimeframe={trailPreviewSnap?.timeframe || trailPreviewTimeframe}
+          cachedCandlesBySymbol={{
+            [(trailPreviewSnap?.symbol || trailPreviewSymbol) as string]: Array.isArray(trailPreviewSnap?.candles)
+              ? trailPreviewSnap!.candles
+              : Array.isArray(chartCandles)
+                ? chartCandles
+                : [],
+          }}
+          cachedAtrPctBySymbol={{
+            [(trailPreviewSnap?.symbol || trailPreviewSymbol) as string]: trailPreviewSnap?.atrPct ?? marketAtrPct,
+          }}
+        />
+      </ChartErrorBoundary>
     </div>
   );
 }
