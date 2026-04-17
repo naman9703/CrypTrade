@@ -8,7 +8,11 @@ import { tradeCloseFeeUsdtFromNotional } from "../../lib/tradeCloseFee.js";
 import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
 import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
-import { closeReasonFromLocalCloseHint, trailCloseFieldsFromMemory } from "../../lib/binanceUsdmCloseReasonHint.js";
+import {
+  closeReasonFromLocalCloseHint,
+  positionSideAtOpenFromCloseSide,
+  trailCloseFieldsFromMemory,
+} from "../../lib/binanceUsdmCloseReasonHint.js";
 import { TRAIL_TIER_SCHEMA_VERSION } from "../../lib/supertrendTrailingSl.js";
 import {
   inferSlTpFromMark,
@@ -627,6 +631,9 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
               mergeInto.meta.trailStepLabelStyleAtClose = String(lc.trailStepLabelStyleAtClose);
             }
             if (lc.trailingMode != null) mergeInto.meta.trailingMode = String(lc.trailingMode);
+            if (lc.positionSideAtOpen != null && String(lc.positionSideAtOpen).trim() !== "") {
+              mergeInto.meta.positionSideAtOpen = String(lc.positionSideAtOpen).trim();
+            }
             mergeInto.meta.supertrendSignalClose =
               lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP";
             if (mergeInto.reason != null && String(mergeInto.reason).trim() !== "") {
@@ -703,6 +710,9 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
               trailTierAtClose: lc.trailTierAtClose != null ? String(lc.trailTierAtClose) : undefined,
               supertrendSignalClose:
                 lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP",
+              ...(lc.positionSideAtOpen != null && String(lc.positionSideAtOpen).trim() !== ""
+                ? { positionSideAtOpen: String(lc.positionSideAtOpen).trim() }
+                : {}),
             },
           });
         }
@@ -1860,6 +1870,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
             trailTierAtClose: tf.trailTierAtClose,
             trailStepLabelStyleAtClose: trailMeta?.trailStepLabelStyle,
             trailingMode: tf.trailingMode,
+            positionSideAtOpen: positionSideAtOpenFromCloseSide(b.closeSide),
           });
           delete mem.localBrackets[lbSym];
           delete mem.placedBracketTargets[lbSym];
@@ -1945,6 +1956,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         stopLoss: openLeg?.stopLoss != null ? Number(openLeg.stopLoss) : undefined,
         takeProfit: openLeg?.takeProfit != null ? Number(openLeg.takeProfit) : undefined,
         leverage: lev,
+        positionSideAtOpen: p.side != null ? String(p.side) : undefined,
       });
       delete mem.localBrackets[p.symbol];
       delete mem.placedBracketTargets[p.symbol];

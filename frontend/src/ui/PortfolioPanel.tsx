@@ -517,10 +517,12 @@ function openTradeRowTrailedStrict(t: any, positions: any[], trailingStopLossAut
 function closeTradeRowTrailedStrict(t: any): boolean {
   if (String(t?.type ?? "") !== "CLOSE") return false;
   const m = t?.meta || {};
-  const trailStepClose = Number(m.trailStepAtClose);
+  const p = Number(m.trailStepAtClose);
+  const c = Number(m.confirmedTrailStepAtClose);
+  const step = Math.max(Number.isFinite(p) ? p : 0, Number.isFinite(c) ? c : 0);
   return (
     m.exitViaTrailedStop === true ||
-    (Number.isFinite(trailStepClose) && trailStepClose > 0 && String(m.bracketType || "").toUpperCase() === "SL")
+    (step > 0 && String(m.bracketType || "").toUpperCase() === "SL")
   );
 }
 
@@ -686,6 +688,17 @@ function tradeHistoryDisplayFields(t: any, openRef: any | undefined) {
     t?.entryPrice ?? t?.meta?.entryPrice ?? openRef?.price ?? openRef?.meta?.entryPx,
   );
   const pnlHint = numFinite(t?.pnl);
+  const mClose = t?.meta || {};
+  const grossHint = numFinite(t?.grossPnl ?? mClose.grossPnl);
+  /** Infer exit from price move: use gross when possible — net PnL wrongly implied profitable “default SL” exits. */
+  let moveUsdForPx: number | undefined = pnlHint;
+  if (t?.type === "CLOSE" && pnlHint != null) {
+    if (grossHint != null) moveUsdForPx = grossHint;
+    else {
+      const feeDirect = tradeFeeUsd(t);
+      if (feeDirect != null && feeDirect > 0) moveUsdForPx = pnlHint + feeDirect;
+    }
+  }
   // Exit price hint: linear unwind from entry when only PnL + qty known (spot-style; futures approx for display).
   if (
     (price == null || price <= 0) &&
@@ -693,13 +706,13 @@ function tradeHistoryDisplayFields(t: any, openRef: any | undefined) {
     entryHint > 0 &&
     qty != null &&
     qty > 0 &&
-    pnlHint != null &&
+    moveUsdForPx != null &&
     t?.type === "CLOSE"
   ) {
     const sx = String(t?.side ?? "").toUpperCase();
     if (sx === "SELL" || sx === "BUY") {
       const dir = sx === "SELL" ? 1 : -1;
-      const est = entryHint + (dir * pnlHint) / qty;
+      const est = entryHint + (dir * moveUsdForPx) / qty;
       if (Number.isFinite(est) && est > 0) price = est;
     }
   }
@@ -732,6 +745,111 @@ function closeOrderSideFromOpenLeg(open: any | undefined): string | null {
   return null;
 }
 
+/** One-way position side at open (BUY=long, SELL=short) from reduce-only close order side. */
+function openPositionSideFromCloseSide(closeSide: string | null | undefined): "BUY" | "SELL" | null {
+  const c = String(closeSide || "").toUpperCase();
+  if (c === "BUY") return "SELL";
+  if (c === "SELL") return "BUY";
+  return null;
+}
+
+function resolveCloseSideForConsistency(t: any, openRef: any | undefined): "BUY" | "SELL" | null {
+  const m = t?.meta || {};
+  const cs = String(m.closeSide ?? "").toUpperCase();
+  if (cs === "BUY" || cs === "SELL") return cs;
+  const fromOpen = closeOrderSideFromOpenLeg(openRef);
+  if (fromOpen === "BUY" || fromOpen === "SELL") return fromOpen;
+  const row = String(t?.side ?? "").toUpperCase();
+  if (row === "BUY" || row === "SELL") return row;
+  return null;
+}
+
+function resolveOpenPositionSideForConsistency(t: any, openRef: any | undefined): "BUY" | "SELL" | null {
+  const os0 = String(openRef?.side ?? "").toUpperCase();
+  if (os0 === "BUY" || os0 === "SELL") return os0;
+  const m = t?.meta || {};
+  const ps = String(m.positionSideAtOpen ?? m.positionSideAtClose ?? "").toUpperCase();
+  if (ps === "LONG") return "BUY";
+  if (ps === "SHORT") return "SELL";
+  if (ps === "BUY" || ps === "SELL") return ps;
+  return null;
+}
+
+/**
+ * Detects OPEN↔CLOSE linkage mismatches (wrong OPEN for symbol, or stored gross vs price–qty move).
+ * Shown as ⚠ on the symbol cell and in tooltips.
+ */
+function tradeCloseConsistencyWarnings(t: any, openRef: any | undefined): string[] {
+  if (String(t?.type ?? "").toUpperCase() !== "CLOSE") return [];
+  const warnings: string[] = [];
+  const closeSide = resolveCloseSideForConsistency(t, openRef);
+  const inferredOpen = openPositionSideFromCloseSide(closeSide);
+  const openFromRef = resolveOpenPositionSideForConsistency(t, openRef);
+
+  if (closeSide && inferredOpen && openFromRef && inferredOpen !== openFromRef) {
+    if (openRef) {
+      warnings.push(
+        `Close order is ${closeSide} (implies ${inferredOpen === "BUY" ? "long" : "short"} at open) but matched OPEN leg is ${openFromRef === "BUY" ? "BUY (long)" : "SELL (short)"} — possible wrong OPEN for this CLOSE.`,
+      );
+    } else {
+      warnings.push(
+        `Close order is ${closeSide} (implies ${inferredOpen === "BUY" ? "long" : "short"}) but meta.positionSideAtOpen is ${openFromRef === "BUY" ? "BUY" : "SELL"} — inconsistent hints.`,
+      );
+    }
+  }
+
+  if (!openRef && String(t?.symbol ?? "").trim() !== "") {
+    warnings.push(
+      `No OPEN trade found before this CLOSE for this symbol — entry and leg checks are approximate.`,
+    );
+  }
+
+  const { price, qty } = tradeHistoryDisplayFields(t, openRef);
+  const implied = inferCloseGrossFromPrices(t, openRef, qty, price);
+  const m = t?.meta || {};
+  let stored: number | null = null;
+  if (t?.grossPnl != null && Number.isFinite(Number(t.grossPnl))) stored = Number(t.grossPnl);
+  else if (m.grossPnl != null && Number.isFinite(Number(m.grossPnl))) stored = Number(m.grossPnl);
+  else {
+    const net = Number(t?.pnl ?? m.pnl ?? m.realizedPnl);
+    if (Number.isFinite(net)) {
+      const fee = tradeFeeUsdForCloseRow(t, qty, price);
+      stored = fee != null && fee > 0 ? net + fee : net;
+    }
+  }
+  if (implied != null && stored != null && Number.isFinite(implied) && Number.isFinite(stored)) {
+    const a = Math.abs(implied);
+    const b = Math.abs(stored);
+    if (a > 1e-7 && b > 1e-7) {
+      if (Math.sign(implied) !== Math.sign(stored)) {
+        warnings.push(
+          `Stored gross (${stored.toFixed(4)} USDT) vs entry/exit/qty move (${implied.toFixed(4)} USDT) have opposite signs — OPEN row may not belong to this CLOSE.`,
+        );
+      } else {
+        const denom = Math.max(a, b);
+        if (denom > 0 && Math.abs(implied - stored) / denom > 0.5) {
+          warnings.push(
+            `Stored gross vs price-implied gross differ by >50% — verify qty, fill price, and OPEN link.`,
+          );
+        }
+      }
+    }
+  }
+
+  const eClose = numFinite(t?.entryPrice ?? m.entryPrice);
+  const eOpen = numFinite(openRef?.price ?? openRef?.entryPrice ?? openRef?.meta?.entryPx);
+  if (eClose != null && eOpen != null && eOpen > 0 && openRef) {
+    const rel = Math.abs(eClose - eOpen) / eOpen;
+    if (rel > 0.015) {
+      warnings.push(
+        `CLOSE entry (${eClose}) vs matched OPEN entry (${eOpen}) differ by ${(rel * 100).toFixed(2)}% — possible wrong round-trip.`,
+      );
+    }
+  }
+
+  return warnings;
+}
+
 function shortenBinanceId(raw: string, maxLen = 16): string {
   const s = String(raw || "").trim();
   if (!s) return "";
@@ -748,8 +866,8 @@ function portfolioBinanceRefForPosition(p: any): { label: string; title: string 
   if (!s) return { label: "—", title: "" };
   const title =
     cid != null && String(cid).trim() !== ""
-      ? `Binance order id: ${s}\nClient order id: ${String(cid)}`
-      : `Binance order id: ${s}`;
+      ? `Order #: ${s}\nClient order id: ${String(cid)}`
+      : `Order #: ${s}`;
   return { label: shortenBinanceId(s, 18), title };
 }
 
@@ -768,15 +886,15 @@ function portfolioBinanceRefForTradeRow(t: any): { label: string; title: string 
     if (!o) return { label: "—", title: t?.id != null ? `App id: ${t.id}` : "" };
     const title =
       cid != null && String(cid).trim() !== ""
-        ? `Binance order id: ${o}\nClient order id: ${String(cid)}`
-        : `Binance order id: ${o}`;
+        ? `Order #: ${o}\nClient order id: ${String(cid)}`
+        : `Order #: ${o}`;
     return { label: shortenBinanceId(o, 18), title };
   }
   if (typ === "CLOSE") {
     const tr = tranId != null ? String(tranId).trim() : "";
     const o = orderId != null ? String(orderId).trim() : "";
     if (tr) {
-      const parts = [`Binance income tran id: ${tr}`];
+      const parts = [`Income tran id: ${tr}`];
       if (o) parts.unshift(`Order id: ${o}`);
       if (cid != null && String(cid).trim() !== "") parts.push(`Client order id: ${String(cid)}`);
       return { label: shortenBinanceId(tr, 18), title: parts.join("\n") };
@@ -784,12 +902,63 @@ function portfolioBinanceRefForTradeRow(t: any): { label: string; title: string 
     if (o) {
       const title =
         cid != null && String(cid).trim() !== ""
-          ? `Binance order id: ${o}\nClient order id: ${String(cid)}`
-          : `Binance order id: ${o}`;
+          ? `Order #: ${o}\nClient order id: ${String(cid)}`
+          : `Order #: ${o}`;
       return { label: shortenBinanceId(o, 18), title };
     }
   }
   return { label: "—", title: t?.id != null ? `App id: ${t.id}` : "" };
+}
+
+/** Same rule as backend `trailTierStepForCloseAudit` — UI tier text tracks exchange-acked trail only. */
+function trailTierStepForCloseAudit(pendingRaw: unknown, confirmedRaw: unknown): number {
+  const pending = Math.max(0, Math.floor(Number(pendingRaw) || 0));
+  const confirmed = Math.max(0, Math.floor(Number(confirmedRaw) || 0));
+  if (confirmed > 0) return Math.min(pending || confirmed, confirmed);
+  return 0;
+}
+
+function trailTierLabelForAuditStep(step: number, labelStyle: string): string | null {
+  const s = Math.floor(Number(step) || 0);
+  if (s < 1) return null;
+  const ls = String(labelStyle || "classic");
+  if (ls === "tiered_st_fee_entry") {
+    if (s === 1) return "T01";
+    if (s === 2) return "T02";
+    return `T${s - 2}`;
+  }
+  return `T${s - 1}`;
+}
+
+/** CLOSE rows: raw audit fields for tooltips (reason vs trail vs income id). */
+function tradeCloseAuditTooltipTitle(t: any): string {
+  if (String(t?.type || "").toUpperCase() !== "CLOSE") return "";
+  const m = (t?.meta || {}) as Record<string, unknown>;
+  const lines: string[] = [];
+  if (t?.reason != null && String(t.reason).trim() !== "") lines.push(`reason: ${String(t.reason)}`);
+  if (m.closeReason != null && String(m.closeReason).trim() !== "")
+    lines.push(`meta.closeReason: ${String(m.closeReason)}`);
+  if (m.bracketType != null && String(m.bracketType).trim() !== "")
+    lines.push(`bracketType: ${String(m.bracketType)}`);
+  if (m.source != null && String(m.source).trim() !== "") lines.push(`meta.source: ${String(m.source)}`);
+  if (m.closeSide != null && String(m.closeSide).trim() !== "") lines.push(`closeSide: ${String(m.closeSide)}`);
+  if (m.positionSideAtOpen != null && String(m.positionSideAtOpen).trim() !== "")
+    lines.push(`positionSideAtOpen: ${String(m.positionSideAtOpen)}`);
+  if (m.trailStepAtClose != null && String(m.trailStepAtClose) !== "")
+    lines.push(`trailStepAtClose (pending): ${String(m.trailStepAtClose)}`);
+  if (m.confirmedTrailStepAtClose != null && String(m.confirmedTrailStepAtClose) !== "")
+    lines.push(`confirmedTrailStepAtClose: ${String(m.confirmedTrailStepAtClose)}`);
+  if (m.exitViaTrailedStop != null) lines.push(`exitViaTrailedStop: ${String(m.exitViaTrailedStop)}`);
+  if (m.trailTierAtClose != null && String(m.trailTierAtClose).trim() !== "")
+    lines.push(`trailTierAtClose (stored): ${String(m.trailTierAtClose)}`);
+  if (m.trailingMode != null && String(m.trailingMode).trim() !== "")
+    lines.push(`trailingMode: ${String(m.trailingMode)}`);
+  const tid =
+    m.tranId ?? (Array.isArray(m.tranIds) && m.tranIds.length ? m.tranIds[m.tranIds.length - 1] : null);
+  if (tid != null && String(tid).trim() !== "") lines.push(`income tranId: ${String(tid)}`);
+  const audit = trailTierStepForCloseAudit(m.trailStepAtClose, m.confirmedTrailStepAtClose);
+  lines.push(`tierStepAudit (for label): ${audit}`);
+  return lines.join("\n");
 }
 
 function tradeHistoryReasonLabel(t: any): string {
@@ -812,40 +981,35 @@ function tradeHistoryReasonLabel(t: any): string {
   const m = t?.meta || {};
   const trailStepRaw = Number(m.trailStepAtClose);
   const trailConf = Number(m.confirmedTrailStepAtClose);
-  const trailStepClose = Math.max(
-    Number.isFinite(trailStepRaw) ? trailStepRaw : 0,
-    Number.isFinite(trailConf) ? trailConf : 0,
-  );
-  const trailTierClose: string | null =
-    m.trailTierAtClose != null
-      ? String(m.trailTierAtClose)
-      : trailStepClose >= 1
-        ? `T${Math.max(0, Math.floor(trailStepClose) - 1)}`
-        : null;
+  const pendingInt = Number.isFinite(trailStepRaw) ? Math.floor(trailStepRaw) : 0;
+  const confInt = Number.isFinite(trailConf) ? Math.floor(trailConf) : 0;
+  const trailEngagedStep = Math.max(pendingInt, confInt);
+  const auditStep = trailTierStepForCloseAudit(pendingInt, confInt);
+  const styleHint = String(m.trailStepLabelStyleAtClose || m.trailStepLabelStyle || "classic");
+  const metaTierLabel = auditStep > 0 ? trailTierLabelForAuditStep(auditStep, styleHint) : null;
+  const trailTierClose: string | null = metaTierLabel;
   const trailedExit =
     m.exitViaTrailedStop === true ||
-    (Number.isFinite(trailStepClose) && trailStepClose > 0 && String(m.bracketType || "").toUpperCase() === "SL");
+    (trailEngagedStep > 0 && String(m.bracketType || "").toUpperCase() === "SL");
   const trailMode = String(m.trailingMode || m.trailMode || "").toUpperCase();
 
   const r0 = String(t?.reason || "").toUpperCase().replace(/-/g, "_");
   /** e.g. TRAILED_STOP_LOSS_T0 / TRAILED_STOP_LOSS_T1 — extract tier label from reason itself. */
   if (r0.startsWith("TRAILED_STOP_LOSS_T")) {
+    if (metaTierLabel) return `SL trail ${metaTierLabel}`;
     const tier = r0.replace("TRAILED_STOP_LOSS_", "");
     return `SL trail ${tier}`;
   }
   if (r0.startsWith("TRAILED_SUPERTREND_T")) {
+    if (metaTierLabel) return `SL trail ${metaTierLabel}`;
     const tier = r0.replace("TRAILED_SUPERTREND_", "");
     return `SL trail ${tier}`;
   }
   if (r0 === "TRAILED_SUPERTREND") return trailTierClose ? `SL trail ${trailTierClose}` : "Trailed ST";
   if (r0 === "TRAILED_STOP_LOSS") return trailTierClose ? `SL trail ${trailTierClose}` : "Trailed SL";
   if (r0 === "STOP_LOSS_DEFAULT") {
-    const tri = m.trailTierAtClose != null ? String(m.trailTierAtClose) : trailTierClose;
-    if (
-      m.exitViaTrailedStop === true ||
-      (Number.isFinite(trailStepClose) && trailStepClose > 0) ||
-      (tri != null && String(tri).trim() !== "")
-    ) {
+    const tri = trailTierClose;
+    if (m.exitViaTrailedStop === true || trailEngagedStep > 0 || (tri != null && String(tri).trim() !== "")) {
       if (tri != null && String(tri).trim() !== "") return `SL trail ${tri}`;
       return trailMode === "SUPERTREND" || trailMode === "" ? "Trailed ST" : "Trailed SL";
     }
@@ -1789,10 +1953,10 @@ export function PortfolioPanel() {
                   <th className="px-3 py-2">Time</th>
                   <th className="px-3 py-2">Symbol</th>
                   <th
-                    className="max-w-[5.5rem] px-3 py-2"
-                    title="Binance USD-M market entry order id (from the bot OPEN fill for this symbol)"
+                    className="max-w-[6.5rem] px-3 py-2"
+                    title="Binance USD-M market entry order number (from the bot OPEN fill for this symbol)"
                   >
-                    Binance ID
+                    Order #
                   </th>
                   <th className="px-3 py-2">Venue</th>
                   <th className="px-3 py-2">Side</th>
@@ -2193,16 +2357,27 @@ export function PortfolioPanel() {
                   <th className="w-3 min-w-[12px] max-w-[14px] border-0 p-0" aria-hidden />
                   <th className="px-3 py-2">Time</th>
                   <th className="px-3 py-2">Type</th>
-                  <th className="px-3 py-2">Symbol</th>
                   <th
-                    className="max-w-[5.5rem] px-3 py-2"
-                    title="Binance: order id on OPEN (market entry); income tran id on CLOSE (REALIZED_PNL)"
+                    className="px-3 py-2"
+                    title="CLOSE: amber ! = OPEN↔close side or gross vs entry/exit/qty mismatch (hover row or Reason)"
                   >
-                    Binance ID
+                    Symbol
+                  </th>
+                  <th
+                    className="max-w-[6.5rem] px-3 py-2"
+                    title="OPEN: exchange order number. CLOSE: income tran id (REALIZED_PNL) when present; otherwise order number."
+                  >
+                    Order #
                   </th>
                   <th className="px-3 py-2">Side</th>
                   <th className="px-3 py-2">Lev</th>
-                  <th className="px-3 py-2">Price</th>
+                  <th className="px-3 py-2">Entry</th>
+                  <th
+                    className="px-3 py-2"
+                    title="CLOSE: exit price (avg fill or best available from trade / meta). OPEN: opening fill price."
+                  >
+                    Exit
+                  </th>
                   <th className="px-3 py-2">Qty</th>
                   <th className="px-3 py-2">Margin</th>
                   <th className="px-3 py-2">SL/TP</th>
@@ -2219,7 +2394,7 @@ export function PortfolioPanel() {
               <tbody>
                 {displayedTrades.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={17}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={18}>
                       No trades yet
                     </td>
                   </tr>
@@ -2230,6 +2405,10 @@ export function PortfolioPanel() {
                         ? resolveOpenRefForClose(t, portfolioTrades || [], openTradeById)
                         : undefined;
                     const { lev, price, qty, sl, tp } = tradeHistoryDisplayFields(t, openRef);
+                    const entryPx =
+                      numFinite(
+                        t?.entryPrice ?? t?.meta?.entryPrice ?? openRef?.entryPrice ?? openRef?.price ?? openRef?.meta?.entryPx,
+                      ) ?? null;
                     const fee = tradeFeeUsdForCloseRow(t, qty, price);
                     const gross = t?.type === "CLOSE" ? tradeGrossPnlClose(t, qty, price, openRef) : null;
                     const net = t?.type === "CLOSE"
@@ -2246,16 +2425,22 @@ export function PortfolioPanel() {
                     const pnlPct = tradeHistoryPnlPct(t, openRef, positions, { price, qty, lev });
                     const reasonDisp = tradeHistoryReasonLabel(t);
                     const binRefTrade = portfolioBinanceRefForTradeRow(t);
-                    const reasonTitle = [t.reason, t?.meta?.closeReason, t?.meta?.bracketType]
+                    const reasonAuditTip = t?.type === "CLOSE" ? tradeCloseAuditTooltipTitle(t) : "";
+                    const legWarnings = t?.type === "CLOSE" ? tradeCloseConsistencyWarnings(t, openRef) : [];
+                    const legWarnTitle = legWarnings.length ? `Leg check:\n${legWarnings.join("\n")}` : "";
+                    const reasonTitle = [legWarnTitle, reasonAuditTip, t.reason, t?.meta?.closeReason, t?.meta?.bracketType]
                       .filter((x) => x != null && String(x).trim() !== "")
-                      .join(" · ");
+                      .join("\n");
                     const trailLead = openTradeRowTrailedStrict(t, positions, trailingStopLossAuto);
                     const beLead = !trailLead && openTradeRowBreakevenStopIndicator(t, positions, trailingStopLossAuto);
                     const closeTrailLead = t?.type === "CLOSE" && closeTradeRowTrailedStrict(t);
                     return (
                       <tr
                         key={`${t?.type}-${String(t?.id ?? "")}-${tradeTsMs(t)}-${idx}`}
-                        className="border-t border-slate-200 dark:border-slate-900"
+                        className={`border-t border-slate-200 dark:border-slate-900${
+                          legWarnings.length ? " bg-amber-500/[0.06] dark:bg-amber-500/10" : ""
+                        }`}
+                        title={legWarnings.length ? legWarnTitle : undefined}
                       >
                         <td className="w-3 min-w-[12px] max-w-[14px] border-0 px-0 py-2 align-middle">
                           {trailLead || closeTrailLead ? (
@@ -2271,7 +2456,19 @@ export function PortfolioPanel() {
                           {fmtTimestamp(tradeTsMs(t))}
                         </td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.type ?? t.reason ?? "—"}</td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.symbol ?? "n/a"}</td>
+                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                          <span className="inline-flex items-center gap-1">
+                            {t.symbol ?? "n/a"}
+                            {legWarnings.length > 0 ? (
+                              <span
+                                className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded bg-amber-500/25 px-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-100"
+                                title={legWarnTitle}
+                              >
+                                !
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
                         <td
                           className="max-w-[5.5rem] px-3 py-2 font-mono text-[10px] text-slate-600 dark:text-slate-400"
                           title={binRefTrade.title || undefined}
@@ -2281,6 +2478,9 @@ export function PortfolioPanel() {
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{sideDisp}</td>
                         <td className="px-3 py-2 text-amber-300/80">
                           {lev != null && lev > 0 ? `${lev}x` : "n/a"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                          {entryPx != null && entryPx > 0 ? fmtInstrumentPx(entryPx) : "n/a"}
                         </td>
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
                           {price != null && price > 0 ? fmtInstrumentPx(price) : "n/a"}

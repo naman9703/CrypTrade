@@ -17,6 +17,7 @@ import {
   TRAIL_TIER_SCHEMA_VERSION,
 } from "../../lib/supertrendTrailingSl.js";
 import { resolveDefaultPaperFuturesStoreDir } from "../../lib/tradingModePersistence.js";
+import { trailTierStepForCloseAudit } from "../../lib/binanceUsdmCloseReasonHint.js";
 import { createPaperStore } from "./paperStore.js";
 
 export function createPaperFuturesExchange({ log, name = "paper_futures", baseDir } = {}) {
@@ -150,17 +151,14 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     const netPnl = roundTo(gross - totalFee, 4);
     state.equity = roundTo(state.equity + gross - exitFee, 2);
     const rU = String(reason || "").toUpperCase();
-    const trailStepAtClose = Math.max(
-      Number(p?.meta?.trailStep) || 0,
-      Number(p?.meta?.confirmedTrailStep) || 0,
-    );
+    const pendingTrail = Math.max(0, Math.floor(Number(p?.meta?.trailStep) || 0));
+    const confirmedTrail = Math.max(0, Math.floor(Number(p?.meta?.confirmedTrailStep) || 0));
+    const trailStepAtClose = pendingTrail;
+    const stepForTier = trailTierStepForCloseAudit(pendingTrail, confirmedTrail);
     const trailTierAtClose =
-      p?.meta?.trailTierLabel ??
-      p?.meta?.confirmedTrailTierLabel ??
-      (trailStepAtClose > 0
-        ? trailStepToTierLabel(trailStepAtClose, p?.meta?.trailStepLabelStyle || "classic")
-        : null);
-    const exitViaTrailedStop = (rU === "STOP" || rU === "STOP_LOSS") && trailStepAtClose > 0;
+      stepForTier > 0 ? trailStepToTierLabel(stepForTier, p?.meta?.trailStepLabelStyle || "classic") : null;
+    const exitViaTrailedStop =
+      (rU === "STOP" || rU === "STOP_LOSS") && (pendingTrail > 0 || confirmedTrail > 0);
     const tieredStFeeEntry = String(p?.meta?.trailStepLabelStyle || "") === "tiered_st_fee_entry";
     const tierTok =
       trailTierAtClose != null && String(trailTierAtClose).trim() !== ""
@@ -180,9 +178,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
           ? tieredStFeeEntry
             ? `TRAILED_SUPERTREND_${tierTok}`
             : `TRAILED_STOP_LOSS_${tierTok}`
-          : tieredStFeeEntry
-            ? "TRAILED_SUPERTREND"
-            : "TRAILED_STOP_LOSS"
+          : "STOP_LOSS_DEFAULT"
         : "STOP_LOSS_DEFAULT";
     } else if (rU === "TAKE_PROFIT") {
       bracketType = "TP";
@@ -216,6 +212,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         ...(p.meta || {}),
         closeSide: exitSide,
         positionSideAtClose: p.side,
+        positionSideAtOpen: p.side,
         closeReason: reason,
         openFee,
         exitFee,
@@ -223,6 +220,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         ...(bracketType ? { bracketType } : {}),
         exitViaTrailedStop,
         trailStepAtClose,
+        confirmedTrailStepAtClose: confirmedTrail,
         trailTierAtClose,
         ...(rU === "SUPERTREND_EXIT" || rU === "SUPERTREND_FLIP" ? { supertrendSignalClose: true } : {}),
       },

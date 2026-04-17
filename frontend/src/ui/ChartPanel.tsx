@@ -221,9 +221,12 @@ type ChartStTrailPreviewLine = {
     | "trail_tier_activated"
     | "trail_tier_next"
     | "trail_tier_lock"
+    | "trail_tier_activation"
     | "st_tier_activation";
   /** T0, T1, T2 … label for left-side overlay */
   tierLabel?: string;
+  /** Optional per-line color override (e.g. next tier palette). */
+  color?: string;
 };
 
 /** Live “mark past activation” vs server-persisted trail step (≥1 SL trail update). */
@@ -330,7 +333,7 @@ function nearlySameTrailPx(a: number, b: number, rel = 1e-5): boolean {
   return Math.abs(a - b) / a < rel;
 }
 
-type HorzBracketLineSpec = { px: number; title: string; color: string };
+type HorzBracketLineSpec = { px: number; title: string; color: string; lineStyle?: number };
 
 /**
  * Collapse specs that sit at (almost) the same price so lightweight-charts only draws **one** price line
@@ -345,8 +348,11 @@ function mergeBracketLineSpecsByPrice(lines: HorzBracketLineSpec[]): HorzBracket
       const parts = hit.title.split(" · ").map((s) => s.trim());
       const t = L.title.trim();
       if (!parts.includes(t)) hit.title = `${hit.title} · ${t}`;
+      // Prefer solid if any merged spec wants solid.
+      if (hit.lineStyle == null) hit.lineStyle = L.lineStyle;
+      if (hit.lineStyle === LineStyle.Dashed && L.lineStyle != null && L.lineStyle !== LineStyle.Dashed) hit.lineStyle = L.lineStyle;
     } else {
-      out.push({ px: L.px, title: L.title.trim(), color: L.color });
+      out.push({ px: L.px, title: L.title.trim(), color: L.color, lineStyle: L.lineStyle });
     }
   }
   return out;
@@ -383,15 +389,18 @@ function buildMergedFuturesBracketPriceSpecs(
           : "SL (default)";
   const bracketSpecs: HorzBracketLineSpec[] = [];
   if (slPx != null) {
-    bracketSpecs.push({ px: slPx, title: slTitle, color: slLineCol });
+    bracketSpecs.push({ px: slPx, title: slTitle, color: slLineCol, lineStyle: LineStyle.Dashed });
   }
   if (tpPx != null) {
-    bracketSpecs.push({ px: tpPx, title: "TP", color: tpCol });
+    bracketSpecs.push({ px: tpPx, title: "TP", color: tpCol, lineStyle: LineStyle.Dashed });
   }
   for (const ln of trailLines) {
     if (!Number.isFinite(ln.px) || ln.px <= 0) continue;
+    const colOverride = ln.color != null && String(ln.color).trim() ? String(ln.color) : null;
     let col: string;
-    if (ln.kind === "st_activation" || ln.kind === "st_tier_activation") {
+    if (colOverride) {
+      col = colOverride;
+    } else if (ln.kind === "st_activation" || ln.kind === "st_tier_activation") {
       col = amberTrailSoft;
     } else if (ln.kind === "trail_tier_activated" || ln.kind === "trail_tier_lock") {
       // Already-crossed tiers — show as muted green to distinguish from active SL
@@ -402,7 +411,13 @@ function buildMergedFuturesBracketPriceSpecs(
     } else {
       col = amberTrail;
     }
-    bracketSpecs.push({ px: ln.px, title: ln.title, color: col });
+    const ls =
+      ln.kind === "st_activation" ||
+      ln.kind === "st_tier_activation" ||
+      ln.kind === "trail_tier_activation"
+        ? LineStyle.Dashed
+        : LineStyle.Solid;
+    bracketSpecs.push({ px: ln.px, title: ln.title, color: col, lineStyle: ls });
   }
   return mergeBracketLineSpecsByPrice(bracketSpecs);
 }
@@ -1371,6 +1386,9 @@ export function ChartPanel() {
         closeFeeRate: closeFeeR,
         feeBeMultiplier: feeBeMultiplierChart,
       });
+      const nextPalette = chartTheme === "dark"
+        ? ["#fbbf24", "#a78bfa", "#34d399"]
+        : ["#f59e0b", "#7c3aed", "#059669"];
 
       const tierLines: ChartStTrailPreviewLine[] = [];
       const currentStep = adv.trailStep;
@@ -1480,6 +1498,22 @@ export function ChartPanel() {
             lockPx,
             activationPx,
           });
+        }
+      }
+
+      // Also render the next 3 upcoming lock+activation pairs directly on the chart.
+      for (let j = 0; j < 3; j++) {
+        const idx = nextIdx + j;
+        const lockPx = extrapolateTrailTierLockPx(allLevels, idx, isLong, entry);
+        if (lockPx == null || !Number.isFinite(lockPx) || lockPx <= 0) continue;
+        const lab = tierLabelForTrailIndex(allLevels, idx);
+        const col = nextPalette[j] ?? (chartTheme === "dark" ? "#fbbf24" : "#f59e0b");
+        const actPx = isLong ? lockPx * (1 + bufEffective) : lockPx * (1 - bufEffective);
+        if (futuresBracketLevelSane(symPlausible, lockPx, ohlcLastClose) && !slDup(lockPx)) {
+          tierLines.push({ px: lockPx, title: `${lab} lock`, kind: "trail_tier_lock", tierLabel: lab, color: col });
+        }
+        if (Number.isFinite(actPx) && actPx > 0 && futuresBracketLevelSane(symPlausible, actPx, ohlcLastClose) && !slDup(actPx)) {
+          tierLines.push({ px: actPx, title: `${lab} activation`, kind: "trail_tier_activation", tierLabel: lab, color: col });
         }
       }
 
@@ -1689,6 +1723,9 @@ export function ChartPanel() {
     };
 
     if (tieredStMode) {
+      const nextPalette = chartTheme === "dark"
+        ? ["#fbbf24", "#a78bfa", "#34d399"]
+        : ["#f59e0b", "#7c3aed", "#059669"];
       for (let gi = 0; gi < 2; gi++) {
         const gateIdx = stepNow + gi;
         if (gateIdx > maxTieredActivationSteps) break;
@@ -1714,6 +1751,40 @@ export function ChartPanel() {
               ? `Then ${lab} activation (mark ≥)`
               : `Then ${lab} activation (mark ≤)`;
         pushTierRef(ap, title, "st_tier_activation", lab);
+      }
+
+      // Next 3 post‑gate lock+activation pairs (T01/T02/T1…): show lock (solid) + activation (dashed) in same color.
+      for (let gi = 0; gi < 3; gi++) {
+        const gateIdx = stepNow + gi;
+        if (gateIdx > maxTieredActivationSteps) break;
+        const g = supertrendTieredActivationGate(
+          entry,
+          isLong,
+          paddedFeeSt,
+          bufEffective,
+          useFeeBeTrail,
+          gateIdx,
+          stLevels,
+          tieredGateOpts,
+        );
+        const ap = Number(g.activationPx);
+        const lab = g.activationTierLabel ?? `T${Math.max(0, gateIdx)}`;
+        if (!Number.isFinite(ap) || ap <= 0) continue;
+        let lockPx = Number.NaN;
+        if (g.nextRow != null && Number.isFinite(Number(g.nextRow.lockPx)) && Number(g.nextRow.lockPx) > 0) {
+          lockPx = Number(g.nextRow.lockPx);
+        } else if (Number.isFinite(bufEffective) && bufEffective > 0) {
+          lockPx = isLong ? ap / (1 + bufEffective) : ap / (1 - bufEffective);
+        } else {
+          lockPx = ap;
+        }
+        const col = nextPalette[gi] ?? (chartTheme === "dark" ? "#fbbf24" : "#f59e0b");
+        if (Number.isFinite(lockPx) && lockPx > 0) {
+          pushTierRef(lockPx, `${lab} lock`, "trail_tier_lock", lab);
+          lines[lines.length - 1]!.color = col;
+        }
+        pushTierRef(ap, `${lab} activation`, "trail_tier_activation", lab);
+        lines[lines.length - 1]!.color = col;
       }
     } else {
       if (nextActivationTier && futuresBracketLevelSane(symPlausible, activation, ohlcLastClose) && !slDup(activation)) {
@@ -2000,11 +2071,11 @@ export function ChartPanel() {
     removeAllBracketPriceLines();
 
     /** `axisLabelVisible: false` — lightweight-charts stacks multiple axis badges for price lines at/near the same level. */
-    const lineOpts = (price: number, title: string, color: string) => ({
+    const lineOpts = (price: number, title: string, color: string, lineStyle: number = LineStyle.Dashed) => ({
       price,
       color,
       lineWidth: 1,
-      lineStyle: 2 as const,
+      lineStyle: lineStyle as 0 | 1 | 2 | 3,
       axisLabelVisible: false,
       title,
     });
@@ -2024,7 +2095,7 @@ export function ChartPanel() {
 
     try {
       for (const m of mergedBracketLines) {
-        bracketPriceLinesRef.current.push(series.createPriceLine(lineOpts(m.px, m.title, m.color)));
+        bracketPriceLinesRef.current.push(series.createPriceLine(lineOpts(m.px, m.title, m.color, m.lineStyle ?? LineStyle.Dashed)));
       }
       // Draw entry price as a solid, distinct line (not dashed) so it's clearly the position anchor
       if (Number.isFinite(entryPx) && entryPx > 0 && lastClose != null) {
@@ -2505,86 +2576,7 @@ export function ChartPanel() {
               )}
             </div>
           ) : null}
-              {shouldShowFuturesBracketLegend ? (
-            <div
-              className="pointer-events-none absolute bottom-2 right-2 z-10 flex h-[6rem] w-[17rem] max-w-[92%] flex-col rounded-md border border-slate-600/50 bg-slate-950/85 px-2 py-1.5 text-[10px] leading-tight shadow-lg backdrop-blur-sm dark:border-slate-500/40 dark:bg-slate-950/90"
-              aria-label="Next SL tier lock levels"
-            >
-              <div className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Next SL · Tn lock</div>
-              <div className="mt-1 flex min-h-0 flex-1 flex-col justify-between gap-0.5">
-                {chartNextSlLockLegendRows.map((row, idx) => (
-                  <div
-                    key={idx}
-                    className="flex min-h-0 flex-nowrap items-baseline justify-between gap-2"
-                  >
-                    <span className="min-w-0 flex-1 truncate font-medium" style={{ color: row.color }}>
-                      {row.title}
-                    </span>
-                    <span className="shrink-0 font-mono tabular-nums text-slate-100">
-                      {Number.isFinite(row.px) && row.px > 0
-                        ? row.px.toLocaleString("en-US", { maximumFractionDigits: 6 })
-                        : "—"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          {chartTrailingPreview.trailHud && inferFuturesBracketLinesActive(bot) ? (
-            <div
-              className="pointer-events-none absolute bottom-2 left-2 z-10 max-w-[min(18rem,88%)] space-y-0.5 rounded-md border border-amber-700/40 bg-slate-950/88 px-2 py-1.5 text-[10px] leading-tight text-amber-100/95 shadow-lg backdrop-blur-sm dark:border-amber-600/35 dark:bg-slate-950/90"
-              aria-label="Trail summary"
-            >
-              <div className="text-[9px] font-semibold uppercase tracking-wide text-amber-200/90">Trail</div>
-              {chartTrailingPreview.trailHud.currentSl != null ? (
-                <div className="font-mono text-slate-100">
-                  SL now: {chartTrailingPreview.trailHud.currentSl.toLocaleString("en-US", { maximumFractionDigits: 6 })}
-                </div>
-              ) : (
-                <div className="text-slate-400">SL now: —</div>
-              )}
-              {chartTrailingPreview.trailHud.takeProfit != null ? (
-                <div className="font-mono text-slate-100">
-                  TP: {chartTrailingPreview.trailHud.takeProfit.toLocaleString("en-US", { maximumFractionDigits: 6 })}
-                </div>
-              ) : (
-                <div className="text-slate-400">TP: —</div>
-              )}
-              {chartTrailingPreview.trailHud.currentTrailedTierLabel ? (
-                <div className="font-mono text-emerald-200/90">
-                  Trailed at: {chartTrailingPreview.trailHud.currentTrailedTierLabel}
-                </div>
-              ) : null}
-              {chartTrailingPreview.trailHud.nextActivationPx != null &&
-              chartTrailingPreview.trailHud.nextTierLabel &&
-              !(Array.isArray(chartTrailingPreview.trailHud.nextTwoTierLocks) && chartTrailingPreview.trailHud.nextTwoTierLocks.length) ? (
-                <div className="font-mono text-amber-100/90">
-                  Next {chartTrailingPreview.trailHud.nextTierLabel} activation:{" "}
-                  {chartTrailingPreview.trailHud.nextActivationPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
-                </div>
-              ) : null}
-              {Array.isArray(chartTrailingPreview.trailHud.nextTwoTierLocks) && chartTrailingPreview.trailHud.nextTwoTierLocks.length ? (
-                <div className="space-y-0.5">
-                  {chartTrailingPreview.trailHud.nextTwoTierLocks.slice(0, 2).map((r, i) => {
-                    const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 6 });
-                    return (
-                      <div key={`${r.tierLabel}-${i}`} className="font-mono text-slate-100/95">
-                        {i === 0 ? "Next" : "Then"} {r.tierLabel}: lock {fmt(r.lockPx)} · activation {fmt(r.activationPx)}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-              {chartTrailingPreview.trailHud.liveTrailSlPx != null ? (
-                <div className="font-mono text-emerald-200/90">
-                  Live trail SL:{" "}
-                  {chartTrailingPreview.trailHud.liveTrailSlPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
-                </div>
-              ) : (
-                <div className="text-slate-500">Live trail SL: (not in trail zone)</div>
-              )}
-            </div>
-          ) : null}
+          {/* Trail summary + next locks moved below the chart (prevents overlap on small screens). */}
           {trailingStatusChipsVisible ? (
             <div
               className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col items-start gap-0.5"
@@ -2622,6 +2614,91 @@ export function ChartPanel() {
             </div>
           ) : null}
         </div>
+        {shouldShowFuturesBracketLegend || (chartTrailingPreview.trailHud && inferFuturesBracketLinesActive(bot)) ? (
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {chartTrailingPreview.trailHud && inferFuturesBracketLinesActive(bot) ? (
+              <div
+                className="max-w-full space-y-0.5 rounded-md border border-amber-700/40 bg-slate-950/88 px-2 py-1.5 text-[10px] leading-tight text-amber-100/95 shadow-lg backdrop-blur-sm dark:border-amber-600/35 dark:bg-slate-950/90"
+                aria-label="Trail summary"
+              >
+                <div className="text-[9px] font-semibold uppercase tracking-wide text-amber-200/90">Trail</div>
+                {chartTrailingPreview.trailHud.currentSl != null ? (
+                  <div className="font-mono text-slate-100">
+                    SL now: {chartTrailingPreview.trailHud.currentSl.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                  </div>
+                ) : (
+                  <div className="text-slate-400">SL now: —</div>
+                )}
+                {chartTrailingPreview.trailHud.takeProfit != null ? (
+                  <div className="font-mono text-slate-100">
+                    TP: {chartTrailingPreview.trailHud.takeProfit.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                  </div>
+                ) : (
+                  <div className="text-slate-400">TP: —</div>
+                )}
+                {chartTrailingPreview.trailHud.currentTrailedTierLabel ? (
+                  <div className="font-mono text-emerald-200/90">
+                    Trailed at: {chartTrailingPreview.trailHud.currentTrailedTierLabel}
+                  </div>
+                ) : null}
+                {chartTrailingPreview.trailHud.nextActivationPx != null &&
+                chartTrailingPreview.trailHud.nextTierLabel &&
+                !(Array.isArray(chartTrailingPreview.trailHud.nextTwoTierLocks) && chartTrailingPreview.trailHud.nextTwoTierLocks.length) ? (
+                  <div className="font-mono text-amber-100/90">
+                    Next {chartTrailingPreview.trailHud.nextTierLabel} activation:{" "}
+                    {chartTrailingPreview.trailHud.nextActivationPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                  </div>
+                ) : null}
+                {Array.isArray(chartTrailingPreview.trailHud.nextTwoTierLocks) && chartTrailingPreview.trailHud.nextTwoTierLocks.length ? (
+                  <div className="space-y-0.5">
+                    {chartTrailingPreview.trailHud.nextTwoTierLocks.slice(0, 2).map((r, i) => {
+                      const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 6 });
+                      return (
+                        <div key={`${r.tierLabel}-${i}`} className="font-mono text-slate-100/95">
+                          {i === 0 ? "Next" : "Then"} {r.tierLabel}: lock {fmt(r.lockPx)} · activation {fmt(r.activationPx)}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {chartTrailingPreview.trailHud.liveTrailSlPx != null ? (
+                  <div className="font-mono text-emerald-200/90">
+                    Live trail SL:{" "}
+                    {chartTrailingPreview.trailHud.liveTrailSlPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                  </div>
+                ) : (
+                  <div className="text-slate-500">Live trail SL: (not in trail zone)</div>
+                )}
+              </div>
+            ) : (
+              <div />
+            )}
+            {shouldShowFuturesBracketLegend ? (
+              <div
+                className="flex max-w-full flex-col rounded-md border border-slate-600/50 bg-slate-950/85 px-2 py-1.5 text-[10px] leading-tight shadow-lg backdrop-blur-sm dark:border-slate-500/40 dark:bg-slate-950/90"
+                aria-label="Next SL tier lock levels"
+              >
+                <div className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Next SL · Tn lock</div>
+                <div className="mt-1 flex min-h-0 flex-1 flex-col justify-between gap-0.5">
+                  {chartNextSlLockLegendRows.map((row, idx) => (
+                    <div key={idx} className="flex min-h-0 flex-nowrap items-baseline justify-between gap-2">
+                      <span className="min-w-0 flex-1 truncate font-medium" style={{ color: row.color }}>
+                        {row.title}
+                      </span>
+                      <span className="shrink-0 font-mono tabular-nums text-slate-100">
+                        {Number.isFinite(row.px) && row.px > 0
+                          ? row.px.toLocaleString("en-US", { maximumFractionDigits: 6 })
+                          : "—"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div />
+            )}
+          </div>
+        ) : null}
         {isMultiCoinMode && Array.isArray(positions) && positions.length > 0 ? (
           <PositionMiniChartsRow
             positions={positions}

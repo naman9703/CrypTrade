@@ -130,6 +130,7 @@ export async function reconcileUsdMExternalClosesFromPositions(ctx, rawPositions
       trailStepLabelStyleAtClose: trMeta?.trailStepLabelStyle,
       trailingMode: tf.trailingMode,
       exchangeNativeClose: true,
+      positionSideAtOpen: openLeg?.side != null ? String(openLeg.side) : undefined,
     });
 
     clearMemBracketTrailForSymbol?.(symU);
