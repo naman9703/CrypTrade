@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { deferTask } from "../lib/deferTask";
 import {
   loadPortfolioPnlRangeForMode,
@@ -961,6 +961,110 @@ function tradeCloseAuditTooltipTitle(t: any): string {
   return lines.join("\n");
 }
 
+function tradeHistoryRowKey(t: any, idx: number): string {
+  return `${String(t?.type ?? "")}|${String(t?.id ?? "")}|${tradeTsMs(t)}|${idx}`;
+}
+
+/** Expanded accordion panel under a trade history row (audit, leg check, raw fields). */
+function TradeHistoryExpandedDetails({
+  t,
+  openRef,
+  qty,
+  price,
+  gross,
+  legWarnings,
+  binRefTitle,
+}: {
+  t: any;
+  openRef: any | undefined;
+  qty: number | undefined;
+  price: number | undefined;
+  gross: number | null;
+  legWarnings: string[];
+  binRefTitle: string;
+}) {
+  const isClose = String(t?.type ?? "").toUpperCase() === "CLOSE";
+  const audit = isClose ? tradeCloseAuditTooltipTitle(t) : "";
+  const implied = isClose ? inferCloseGrossFromPrices(t, openRef, qty, price) : null;
+  const m = t?.meta || {};
+  return (
+    <div className="space-y-3 border-t border-slate-200 bg-slate-50/95 px-4 py-3 text-left dark:border-slate-800 dark:bg-slate-950/90">
+      {isClose && legWarnings.length > 0 ? (
+        <div>
+          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+            Leg check
+          </div>
+          <ul className="list-disc space-y-1.5 pl-4 text-[11px] leading-snug text-slate-700 dark:text-slate-300">
+            {legWarnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {isClose && audit ? (
+        <div>
+          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+            Close audit
+          </div>
+          <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-white/80 p-2 font-mono text-[10px] text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+            {audit}
+          </pre>
+        </div>
+      ) : null}
+      {isClose && implied != null && Number.isFinite(implied) && gross != null && Number.isFinite(gross) ? (
+        <div className="text-[11px] text-slate-700 dark:text-slate-300">
+          <span className="font-semibold text-slate-600 dark:text-slate-400">Gross vs entry/exit/qty: </span>
+          implied {implied.toFixed(4)} USDT · stored {gross.toFixed(4)} USDT
+          {Math.abs(implied - gross) > 0.01 && Math.max(Math.abs(implied), Math.abs(gross)) > 0
+            ? ` · Δ ${(implied - gross).toFixed(4)}`
+            : null}
+        </div>
+      ) : null}
+      <div>
+        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+          Record
+        </div>
+        <dl className="grid max-w-2xl grid-cols-[minmax(6rem,auto)_1fr] gap-x-3 gap-y-1.5 text-[11px] text-slate-700 dark:text-slate-300">
+          <dt className="text-slate-500 dark:text-slate-500">App id</dt>
+          <dd className="break-all font-mono">{t?.id != null ? String(t.id) : "—"}</dd>
+          <dt className="text-slate-500 dark:text-slate-500">Order / income</dt>
+          <dd className="break-all font-mono" title={binRefTitle || undefined}>
+            {binRefTitle || "—"}
+          </dd>
+          {t?.reason != null && String(t.reason).trim() !== "" ? (
+            <>
+              <dt className="text-slate-500 dark:text-slate-500">reason</dt>
+              <dd className="break-all font-mono">{String(t.reason)}</dd>
+            </>
+          ) : null}
+          {m.closeReason != null && String(m.closeReason).trim() !== "" ? (
+            <>
+              <dt className="text-slate-500 dark:text-slate-500">meta.closeReason</dt>
+              <dd className="break-all font-mono">{String(m.closeReason)}</dd>
+            </>
+          ) : null}
+          {m.bracketType != null && String(m.bracketType).trim() !== "" ? (
+            <>
+              <dt className="text-slate-500 dark:text-slate-500">bracketType</dt>
+              <dd>{String(m.bracketType)}</dd>
+            </>
+          ) : null}
+          {t?.strategy != null && String(t.strategy).trim() !== "" ? (
+            <>
+              <dt className="text-slate-500 dark:text-slate-500">strategy</dt>
+              <dd>{String(t.strategy)}</dd>
+            </>
+          ) : null}
+        </dl>
+      </div>
+      <p className="text-[10px] text-slate-500 dark:text-slate-500">
+        Click the row again to collapse. Net / gross from the server are authoritative when they disagree with implied
+        math from displayed fields.
+      </p>
+    </div>
+  );
+}
+
 function tradeHistoryReasonLabel(t: any): string {
   if (t?.type === "OPEN") return "—";
   if (isLedgerClose(t)) {
@@ -1198,6 +1302,8 @@ export function PortfolioPanel() {
 
   const [tradeHistoryView, setTradeHistoryView] = useState<"ALL" | "OPEN_ONLY" | "CLOSED_ONLY">("ALL");
   const [tradeHistorySort, setTradeHistorySort] = useState<TradeHistorySort>("RECENT");
+  /** Which trade history row is expanded (accordion details). */
+  const [tradeHistoryExpandedKey, setTradeHistoryExpandedKey] = useState<string | null>(null);
   const [tradeRefreshing, setTradeRefreshing] = useState(false);
   // Default "Strategy" (APP): futures demo emits many unmatched income shards; hide unless debugging.
   const [closeSourceFilter, setCloseSourceFilter] = useState<"ALL" | "APP" | "LEDGER">("APP");
@@ -1206,6 +1312,10 @@ export function PortfolioPanel() {
   const [customRangeStart, setCustomRangeStart] = useState("");
   const [customRangeEnd, setCustomRangeEnd] = useState("");
   const skipPortfolioPnlPersist = useRef(true);
+
+  useEffect(() => {
+    setTradeHistoryExpandedKey(null);
+  }, [tradeHistoryView, tradeHistorySort, closeSourceFilter, pnlHistoryRange, customRangeStart, customRangeEnd]);
 
   useEffect(() => {
     skipPortfolioPnlPersist.current = true;
@@ -2357,12 +2467,7 @@ export function PortfolioPanel() {
                   <th className="w-3 min-w-[12px] max-w-[14px] border-0 p-0" aria-hidden />
                   <th className="px-3 py-2">Time</th>
                   <th className="px-3 py-2">Type</th>
-                  <th
-                    className="px-3 py-2"
-                    title="CLOSE: amber ! = OPEN↔close side or gross vs entry/exit/qty mismatch (hover row or Reason)"
-                  >
-                    Symbol
-                  </th>
+                  <th className="px-3 py-2">Symbol</th>
                   <th
                     className="max-w-[6.5rem] px-3 py-2"
                     title="OPEN: exchange order number. CLOSE: income tran id (REALIZED_PNL) when present; otherwise order number."
@@ -2425,106 +2530,122 @@ export function PortfolioPanel() {
                     const pnlPct = tradeHistoryPnlPct(t, openRef, positions, { price, qty, lev });
                     const reasonDisp = tradeHistoryReasonLabel(t);
                     const binRefTrade = portfolioBinanceRefForTradeRow(t);
-                    const reasonAuditTip = t?.type === "CLOSE" ? tradeCloseAuditTooltipTitle(t) : "";
                     const legWarnings = t?.type === "CLOSE" ? tradeCloseConsistencyWarnings(t, openRef) : [];
-                    const legWarnTitle = legWarnings.length ? `Leg check:\n${legWarnings.join("\n")}` : "";
-                    const reasonTitle = [legWarnTitle, reasonAuditTip, t.reason, t?.meta?.closeReason, t?.meta?.bracketType]
-                      .filter((x) => x != null && String(x).trim() !== "")
-                      .join("\n");
                     const trailLead = openTradeRowTrailedStrict(t, positions, trailingStopLossAuto);
                     const beLead = !trailLead && openTradeRowBreakevenStopIndicator(t, positions, trailingStopLossAuto);
                     const closeTrailLead = t?.type === "CLOSE" && closeTradeRowTrailedStrict(t);
+                    const rowKey = tradeHistoryRowKey(t, idx);
+                    const expanded = tradeHistoryExpandedKey === rowKey;
+                    const toggleExpanded = () => {
+                      setTradeHistoryExpandedKey((k) => (k === rowKey ? null : rowKey));
+                    };
                     return (
-                      <tr
-                        key={`${t?.type}-${String(t?.id ?? "")}-${tradeTsMs(t)}-${idx}`}
-                        className={`border-t border-slate-200 dark:border-slate-900${
-                          legWarnings.length ? " bg-amber-500/[0.06] dark:bg-amber-500/10" : ""
-                        }`}
-                        title={legWarnings.length ? legWarnTitle : undefined}
-                      >
-                        <td className="w-3 min-w-[12px] max-w-[14px] border-0 px-0 py-2 align-middle">
-                          {trailLead || closeTrailLead ? (
-                            <TrailedStopLead />
-                          ) : beLead ? (
-                            <BreakevenStopLead />
-                          ) : null}
-                        </td>
-                        <td
-                          className="px-3 py-2 text-[10px] tabular-nums text-slate-500 dark:text-slate-400"
-                          title={fmtTimestampFull(tradeTsMs(t))}
+                      <Fragment key={rowKey}>
+                        <tr
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={expanded}
+                          aria-label={`${t?.type ?? "Trade"} ${t?.symbol ?? ""}: ${expanded ? "collapse" : "expand"} details`}
+                          onClick={toggleExpanded}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              toggleExpanded();
+                            }
+                          }}
+                          className={`border-t border-slate-200 dark:border-slate-900${
+                            expanded ? " bg-slate-100/60 dark:bg-slate-900/50" : ""
+                          } cursor-pointer hover:bg-slate-50/90 dark:hover:bg-slate-900/35`}
                         >
-                          {fmtTimestamp(tradeTsMs(t))}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.type ?? t.reason ?? "—"}</td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
-                          <span className="inline-flex items-center gap-1">
-                            {t.symbol ?? "n/a"}
-                            {legWarnings.length > 0 ? (
-                              <span
-                                className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded bg-amber-500/25 px-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-100"
-                                title={legWarnTitle}
-                              >
-                                !
-                              </span>
+                          <td className="w-3 min-w-[12px] max-w-[14px] border-0 px-0 py-2 align-middle">
+                            {trailLead || closeTrailLead ? (
+                              <TrailedStopLead />
+                            ) : beLead ? (
+                              <BreakevenStopLead />
                             ) : null}
-                          </span>
-                        </td>
-                        <td
-                          className="max-w-[5.5rem] px-3 py-2 font-mono text-[10px] text-slate-600 dark:text-slate-400"
-                          title={binRefTrade.title || undefined}
-                        >
-                          {binRefTrade.label}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{sideDisp}</td>
-                        <td className="px-3 py-2 text-amber-300/80">
-                          {lev != null && lev > 0 ? `${lev}x` : "n/a"}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
-                          {entryPx != null && entryPx > 0 ? fmtInstrumentPx(entryPx) : "n/a"}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
-                          {price != null && price > 0 ? fmtInstrumentPx(price) : "n/a"}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
-                          {qty != null && qty > 0 ? qty.toFixed(6) : "n/a"}
-                        </td>
-                        <td
-                          className="px-3 py-2 text-slate-700 dark:text-slate-300"
-                          title="Initial margin ≈ entry×qty / leverage when leverage is known (futures)"
-                        >
-                          {marginDisp}
-                        </td>
-                        <td className="px-3 py-2 text-[10px] text-slate-600 dark:text-slate-400">{slTpDisp}</td>
-                        <td
-                          className="max-w-[7rem] px-3 py-2 text-[10px] text-slate-700 dark:text-slate-300"
-                          title={reasonTitle || undefined}
-                        >
-                          {reasonDisp}
-                        </td>
-                        <td className="px-3 py-2 text-[10px] uppercase text-slate-600 dark:text-slate-500">
-                          {t.type === "CLOSE" ? (isLedgerClose(t) ? "ledger" : "strat") : t.type === "OPEN" ? "strat" : "—"}
-                        </td>
-                        <td
-                          className={`px-3 py-2 ${gross != null && gross >= 0 ? "text-emerald-400" : gross != null ? "text-rose-400" : "text-slate-600 dark:text-slate-400"}`}
-                        >
-                          {gross != null ? fmtUsd(gross) : t?.type === "CLOSE" ? "n/a" : "—"}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
-                          {fee != null ? fmtUsd(fee, 4) : "n/a"}
-                        </td>
-                        <td
-                          className={`px-3 py-2 ${net != null && net >= 0 ? "text-emerald-400" : net != null ? "text-rose-400" : "text-slate-600 dark:text-slate-400"}`}
-                        >
-                          {net != null ? fmtUsd(net) : "—"}
-                        </td>
-                        <td
-                          className={`px-3 py-2 tabular-nums ${
-                            pnlPct != null && pnlPct >= 0 ? "text-emerald-400" : pnlPct != null ? "text-rose-400" : "text-slate-600 dark:text-slate-400"
-                          }`}
-                        >
-                          {fmtPnlPct(pnlPct)}
-                        </td>
-                      </tr>
+                          </td>
+                          <td
+                            className="px-3 py-2 text-[10px] tabular-nums text-slate-500 dark:text-slate-400"
+                            title={fmtTimestampFull(tradeTsMs(t))}
+                          >
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="w-3 shrink-0 text-[9px] leading-none text-slate-500 dark:text-slate-500" aria-hidden>
+                                {expanded ? "▼" : "▶"}
+                              </span>
+                              {fmtTimestamp(tradeTsMs(t))}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.type ?? t.reason ?? "—"}</td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.symbol ?? "n/a"}</td>
+                          <td
+                            className="max-w-[5.5rem] px-3 py-2 font-mono text-[10px] text-slate-600 dark:text-slate-400"
+                            title={binRefTrade.title || undefined}
+                          >
+                            {binRefTrade.label}
+                          </td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{sideDisp}</td>
+                          <td className="px-3 py-2 text-amber-300/80">
+                            {lev != null && lev > 0 ? `${lev}x` : "n/a"}
+                          </td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                            {entryPx != null && entryPx > 0 ? fmtInstrumentPx(entryPx) : "n/a"}
+                          </td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                            {price != null && price > 0 ? fmtInstrumentPx(price) : "n/a"}
+                          </td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                            {qty != null && qty > 0 ? qty.toFixed(6) : "n/a"}
+                          </td>
+                          <td
+                            className="px-3 py-2 text-slate-700 dark:text-slate-300"
+                            title="Initial margin ≈ entry×qty / leverage when leverage is known (futures)"
+                          >
+                            {marginDisp}
+                          </td>
+                          <td className="px-3 py-2 text-[10px] text-slate-600 dark:text-slate-400">{slTpDisp}</td>
+                          <td className="max-w-[7rem] px-3 py-2 text-[10px] text-slate-700 dark:text-slate-300">
+                            {reasonDisp}
+                          </td>
+                          <td className="px-3 py-2 text-[10px] uppercase text-slate-600 dark:text-slate-500">
+                            {t.type === "CLOSE" ? (isLedgerClose(t) ? "ledger" : "strat") : t.type === "OPEN" ? "strat" : "—"}
+                          </td>
+                          <td
+                            className={`px-3 py-2 ${gross != null && gross >= 0 ? "text-emerald-400" : gross != null ? "text-rose-400" : "text-slate-600 dark:text-slate-400"}`}
+                          >
+                            {gross != null ? fmtUsd(gross) : t?.type === "CLOSE" ? "n/a" : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                            {fee != null ? fmtUsd(fee, 4) : "n/a"}
+                          </td>
+                          <td
+                            className={`px-3 py-2 ${net != null && net >= 0 ? "text-emerald-400" : net != null ? "text-rose-400" : "text-slate-600 dark:text-slate-400"}`}
+                          >
+                            {net != null ? fmtUsd(net) : "—"}
+                          </td>
+                          <td
+                            className={`px-3 py-2 tabular-nums ${
+                              pnlPct != null && pnlPct >= 0 ? "text-emerald-400" : pnlPct != null ? "text-rose-400" : "text-slate-600 dark:text-slate-400"
+                            }`}
+                          >
+                            {fmtPnlPct(pnlPct)}
+                          </td>
+                        </tr>
+                        {expanded ? (
+                          <tr className="border-t border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-950/30">
+                            <td colSpan={18} className="p-0">
+                              <TradeHistoryExpandedDetails
+                                t={t}
+                                openRef={openRef}
+                                qty={qty}
+                                price={price}
+                                gross={gross}
+                                legWarnings={legWarnings}
+                                binRefTitle={binRefTrade.title}
+                              />
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
                     );
                   })
                 )}
