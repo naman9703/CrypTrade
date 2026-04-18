@@ -7,7 +7,12 @@ import {
 import { useAppStore } from "../ws/store";
 import { api } from "../api/client";
 import { isIncomeLedgerClose } from "../lib/tradeClassification";
-import { clampTradeCloseFeeRate, estimatedCloseFeeUsdt } from "../lib/tradeCloseFee";
+import {
+  clampTradeCloseFeeRate,
+  estimatedCloseFeeUsdt,
+  estimatedOpenFeeUsdt,
+  TRADE_CLOSE_FEE_RATE,
+} from "../lib/tradeCloseFee";
 import {
   buildTrailLockPrices,
   DEFAULT_TRAIL_FEE_BE_MULTIPLIER,
@@ -292,12 +297,191 @@ function mergeTradesByOrderIdAndType(rows: any[]): any[] {
   return out;
 }
 
-/** Fee for display: same as tradeFeeUsd, else modeled close fee from qty×price×0.0004 when possible. */
-function tradeFeeUsdForCloseRow(t: any, displayQty: number | undefined, displayPrice: number | undefined): number | null {
+function clampHistFeeFrac(x: number): number {
+  if (!Number.isFinite(x)) return 0;
+  return Math.min(0.01, Math.max(0, x));
+}
+
+type HistLiq = "MAKER" | "TAKER";
+
+function inferOpenLegLiquidityForHistory(openRow: any): HistLiq {
+  const m = openRow?.meta ?? {};
+  if (m.entryAllMaker === true || m.entryLiquidity === "MAKER") return "MAKER";
+  if (m.entryAllMaker === false || m.entryLiquidity === "TAKER") return "TAKER";
+  if (m.entryMaker === true) return "MAKER";
+  if (m.entryMaker === false) return "TAKER";
+  const ot = String(m.orderType ?? m.origType ?? "").toUpperCase();
+  if (ot.includes("MARKET")) return "TAKER";
+  if (ot.includes("LIMIT")) {
+    if (ot.includes("IOC") || ot.includes("FOK")) return "TAKER";
+    return "MAKER";
+  }
+  return "TAKER";
+}
+
+function inferCloseLegLiquidityForHistory(closeRow: any): HistLiq {
+  const m = closeRow?.meta ?? {};
+  if (m.exitAllMaker === true || m.exitLiquidity === "MAKER") return "MAKER";
+  if (m.exitAllMaker === false || m.exitLiquidity === "TAKER") return "TAKER";
+  if (m.exitMaker === true) return "MAKER";
+  if (m.exitMaker === false) return "TAKER";
+  const ot = String(m.orderType ?? m.origType ?? "").toUpperCase();
+  if (ot.includes("MARKET")) return "TAKER";
+  if (ot.includes("LIMIT")) {
+    if (ot.includes("IOC") || ot.includes("FOK")) return "TAKER";
+    return "MAKER";
+  }
+  return "TAKER";
+}
+
+/** Modeled open-leg fee rate from bot “trade history” maker/taker table (fallback: trail open fee). */
+function tradeHistoryOpenFeeRateForRow(bot: any, openRow: any): number {
+  const feeR = clampTradeCloseFeeRate();
+  const trailO =
+    Number.isFinite(Number(bot?.trailOpenFeeRate)) && Number(bot.trailOpenFeeRate) > 0
+      ? Number(bot.trailOpenFeeRate)
+      : feeR;
+  const mk = clampHistFeeFrac(Number(bot?.tradeHistoryMakerOpenFeeRate ?? 0.0002));
+  const tk = clampHistFeeFrac(Number(bot?.tradeHistoryTakerOpenFeeRate ?? 0.0005));
+  const mkU = mk > 0 ? mk : trailO;
+  const tkU = tk > 0 ? tk : trailO;
+  return inferOpenLegLiquidityForHistory(openRow) === "MAKER" ? mkU : tkU;
+}
+
+/** Modeled close-leg fee rate from bot table (fallback: trail close fee). */
+function tradeHistoryCloseFeeRateForRow(bot: any, closeRow: any): number {
+  const feeR = clampTradeCloseFeeRate();
+  const trailC =
+    Number.isFinite(Number(bot?.trailCloseFeeRate)) && Number(bot.trailCloseFeeRate) > 0
+      ? Number(bot.trailCloseFeeRate)
+      : feeR;
+  const mk = clampHistFeeFrac(Number(bot?.tradeHistoryMakerCloseFeeRate ?? 0.0002));
+  const tk = clampHistFeeFrac(Number(bot?.tradeHistoryTakerCloseFeeRate ?? 0.0005));
+  const mkU = mk > 0 ? mk : trailC;
+  const tkU = tk > 0 ? tk : trailC;
+  return inferCloseLegLiquidityForHistory(closeRow) === "MAKER" ? mkU : tkU;
+}
+
+/** Fee for display: same as tradeFeeUsd, else modeled close fee from qty×price×custom taker/maker rate when possible. */
+function tradeFeeUsdForCloseRow(
+  t: any,
+  displayQty: number | undefined,
+  displayPrice: number | undefined,
+  bot?: any,
+): number | null {
   const direct = tradeFeeUsd(t);
   if (direct != null) return direct;
   if (t?.type !== "CLOSE") return null;
-  return estimatedCloseFeeUsdt(displayQty, displayPrice);
+  const r = bot ? tradeHistoryCloseFeeRateForRow(bot, t) : TRADE_CLOSE_FEE_RATE;
+  return estimatedCloseFeeUsdt(displayQty, displayPrice, r);
+}
+
+/**
+ * Round-trip commissions for a CLOSE (open leg + close leg), aligned with Binance “two fee rows” per round-trip.
+ * Prefers `meta.totalFee`, then `meta.openFee`+`meta.exitFee` on the close row, else sum of fees on matched OPEN + CLOSE.
+ */
+function tradeRoundTripFeeUsdForCloseRow(
+  t: any,
+  openRef: any | undefined,
+  displayQty?: number,
+  displayPrice?: number,
+  bot?: any,
+): number | null {
+  if (String(t?.type ?? "").toUpperCase() !== "CLOSE") {
+    return tradeFeeUsd(t);
+  }
+  const m = t?.meta || {};
+  if (m.totalFee != null && Number.isFinite(Number(m.totalFee)) && Number(m.totalFee) >= 0) {
+    return Number(m.totalFee);
+  }
+  const op = Number(m.openFee);
+  const ex = Number(m.exitFee);
+  if (Number.isFinite(op) && Number.isFinite(ex) && op >= 0 && ex >= 0) {
+    return op + ex;
+  }
+  const closeFee = tradeFeeUsdForCloseRow(t, displayQty, displayPrice, bot);
+  let openFee = openRef ? tradeFeeUsd(openRef) : null;
+  if (openFee == null && openRef && bot) {
+    const q = numFinite(openRef.qty ?? displayQty);
+    const px = numFinite(openRef.price ?? openRef.meta?.entryPx ?? displayPrice ?? t?.entryPrice);
+    openFee = estimatedOpenFeeUsdt(q, px, tradeHistoryOpenFeeRateForRow(bot, openRef));
+  }
+  if (closeFee != null && openFee != null) return closeFee + openFee;
+  if (closeFee != null) return closeFee;
+  if (openFee != null) return openFee;
+  return null;
+}
+
+/**
+ * When the exchange never patched OPEN `fee` / `meta.openFee`, infer the same per-leg fee **rate** as the
+ * paired CLOSE (exit commission ÷ close notional) so OPEN matches Binance tier even if `trailOpenFeeRate` is stale/low.
+ */
+function inferPerLegFeeRateFromPairedClose(closeRow: any): number | null {
+  if (String(closeRow?.type ?? "").toUpperCase() !== "CLOSE") return null;
+  const m = closeRow.meta || {};
+  let feeUsd: number | null = null;
+  if (Number.isFinite(Number(m.exitFee)) && Number(m.exitFee) >= 0) feeUsd = Number(m.exitFee);
+  else if (closeRow?.fee != null && Number.isFinite(Number(closeRow.fee)) && Number(closeRow.fee) >= 0) {
+    feeUsd = Number(closeRow.fee);
+  } else {
+    const tf = tradeFeeUsd(closeRow);
+    if (tf != null && tf >= 0) feeUsd = tf;
+  }
+  const q = numFinite(closeRow?.qty);
+  const px = numFinite(
+    closeRow?.price ?? m.exitPrice ?? m.closePrice ?? m.markPx ?? closeRow?.entryPrice,
+  );
+  if (feeUsd == null || q == null || px == null || q <= 0 || px <= 0) return null;
+  const r = feeUsd / (q * px);
+  if (!Number.isFinite(r) || r <= 0 || r > 0.02) return null;
+  return r;
+}
+
+/** Opening commission: stored `meta.openFee`, row `fee`, else qty×fill×rate (exchange infer from paired CLOSE, else bot `trailOpenFeeRate`). */
+function tradeOpenLegFeeUsd(
+  openRow: any,
+  qty: number | undefined,
+  fillPx: number | undefined,
+  openFeeRate: number,
+  pairedCloseRow?: any,
+): number | null {
+  if (!openRow) return null;
+  const m = openRow.meta || {};
+  if (Number.isFinite(Number(m.openFee)) && Number(m.openFee) >= 0) return Number(m.openFee);
+  const td = tradeFeeUsd(openRow);
+  if (td != null && td >= 0) return td;
+  const inferred = pairedCloseRow != null ? inferPerLegFeeRateFromPairedClose(pairedCloseRow) : null;
+  const rate = inferred != null && inferred > 0 ? inferred : openFeeRate;
+  return estimatedOpenFeeUsdt(qty, fillPx, rate);
+}
+
+/** Closing commission only: `meta.exitFee`, else total−open when `meta.totalFee` + matched OPEN, else modeled close fee. */
+function tradeCloseLegFeeUsd(
+  closeRow: any,
+  openRef: any | undefined,
+  qty: number | undefined,
+  exitPx: number | undefined,
+  openFeeRate: number,
+  closeFeeRate: number,
+): number | null {
+  const m = closeRow?.meta || {};
+  if (Number.isFinite(Number(m.exitFee)) && Number(m.exitFee) >= 0) return Number(m.exitFee);
+  const total = Number.isFinite(Number(m.totalFee)) && Number(m.totalFee) >= 0 ? Number(m.totalFee) : null;
+  if (total != null && openRef) {
+    const qo = numFinite(openRef.qty ?? qty);
+    const eo = numFinite(openRef.price ?? openRef.meta?.entryPx ?? closeRow?.entryPrice);
+    const openPart = tradeOpenLegFeeUsd(openRef, qo, eo, openFeeRate, closeRow);
+    if (openPart != null && total + 1e-9 >= openPart) return Math.round((total - openPart) * 1e6) / 1e6;
+  }
+  const tf = tradeFeeUsd(closeRow);
+  if (
+    tf != null &&
+    tf >= 0 &&
+    total == null &&
+    !(Number.isFinite(Number(m.openFee)) && Number.isFinite(Number(m.exitFee)))
+  )
+    return tf;
+  return estimatedCloseFeeUsdt(qty, exitPx, closeFeeRate);
 }
 
 /**
@@ -329,14 +513,22 @@ function inferCloseGrossFromPrices(t: any, openRef: any | undefined, displayQty?
   return null;
 }
 
-function tradeGrossPnlClose(t: any, displayQty?: number, displayPrice?: number, openRef?: any): number | null {
+function tradeGrossPnlClose(
+  t: any,
+  displayQty?: number,
+  displayPrice?: number,
+  openRef?: any,
+  bot?: any,
+): number | null {
   if (t?.type !== "CLOSE") return null;
   const m = t?.meta || {};
   if (t?.grossPnl != null && Number.isFinite(Number(t.grossPnl))) return Number(t.grossPnl);
   if (m.grossPnl != null && Number.isFinite(Number(m.grossPnl))) return Number(m.grossPnl);
   const net = Number(t?.pnl ?? m.pnl ?? m.realizedPnl ?? m.realized_pnl);
   if (Number.isFinite(net)) {
-    const fee = tradeFeeUsdForCloseRow(t, displayQty, displayPrice);
+    const fee =
+      tradeRoundTripFeeUsdForCloseRow(t, openRef, displayQty, displayPrice, bot) ??
+      tradeFeeUsdForCloseRow(t, displayQty, displayPrice, bot);
     if (fee != null && fee > 0) return net + fee;
     return net;
   }
@@ -351,10 +543,10 @@ function tradeNetPnlClose(t: any): number | null {
 }
 
 /** Net for a close = gross − fees (fees 0 when unknown); falls back to stored net PnL. */
-function closeTradeNetUsd(t: any, openRef: any | undefined): number {
-  const { price, qty } = tradeHistoryDisplayFields(t, openRef);
-  const g = tradeGrossPnlClose(t, qty, price, openRef);
-  const f = tradeFeeUsdForCloseRow(t, qty, price);
+function closeTradeNetUsd(t: any, openRef: any | undefined, bot?: any): number {
+  const { price, qty } = tradeHistoryDisplayFields(t, openRef, bot);
+  const g = tradeGrossPnlClose(t, qty, price, openRef, bot);
+  const f = tradeRoundTripFeeUsdForCloseRow(t, openRef, qty, price, bot);
   if (g != null && Number.isFinite(g)) {
     const feePart = f != null && Number.isFinite(f) ? f : 0;
     return g - feePart;
@@ -644,11 +836,13 @@ function tradeHistoryPnlPct(
   openRef: any | undefined,
   positions: readonly any[],
   disp: { price?: number; qty?: number; lev?: number },
+  bot?: any,
 ): number | null {
   const pos = positionRowMatchingOpenTrade(t, positions);
   if (t?.type === "OPEN" && pos) return positionUnrealizedPnlPct(pos);
   if (t?.type === "CLOSE") {
-    const net = closeTradeNetUsd(t, openRef);
+    const stored = tradeNetPnlClose(t);
+    const net = Number.isFinite(stored ?? NaN) ? Number(stored) : closeTradeNetUsd(t, openRef, bot);
     if (!Number.isFinite(net)) return null;
     let m = tradeInitialMarginUsdNumber(t, openRef, disp);
     if (m == null || !(m > 0)) {
@@ -667,7 +861,7 @@ function tradeHistoryPnlPct(
 }
 
 /** CLOSE rows often omit fields; fill from matching OPEN (same id) and common aliases. */
-function tradeHistoryDisplayFields(t: any, openRef: any | undefined) {
+function tradeHistoryDisplayFields(t: any, openRef: any | undefined, bot?: any) {
   const lev = numFinite(
     t?.meta?.leverage ?? t?.leverage ?? t?.meta?.futuresLeverage ?? openRef?.meta?.leverage ?? openRef?.leverage,
   );
@@ -695,8 +889,10 @@ function tradeHistoryDisplayFields(t: any, openRef: any | undefined) {
   if (t?.type === "CLOSE" && pnlHint != null) {
     if (grossHint != null) moveUsdForPx = grossHint;
     else {
-      const feeDirect = tradeFeeUsd(t);
-      if (feeDirect != null && feeDirect > 0) moveUsdForPx = pnlHint + feeDirect;
+      const feeRt =
+        tradeRoundTripFeeUsdForCloseRow(t, openRef, qty, price, bot) ??
+        tradeFeeUsdForCloseRow(t, qty, price, bot);
+      if (feeRt != null && feeRt > 0) moveUsdForPx = pnlHint + feeRt;
     }
   }
   // Exit price hint: linear unwind from entry when only PnL + qty known (spot-style; futures approx for display).
@@ -779,7 +975,7 @@ function resolveOpenPositionSideForConsistency(t: any, openRef: any | undefined)
  * Detects OPEN↔CLOSE linkage mismatches (wrong OPEN for symbol, or stored gross vs price–qty move).
  * Shown as ⚠ on the symbol cell and in tooltips.
  */
-function tradeCloseConsistencyWarnings(t: any, openRef: any | undefined): string[] {
+function tradeCloseConsistencyWarnings(t: any, openRef: any | undefined, bot?: any): string[] {
   if (String(t?.type ?? "").toUpperCase() !== "CLOSE") return [];
   const warnings: string[] = [];
   const closeSide = resolveCloseSideForConsistency(t, openRef);
@@ -804,7 +1000,7 @@ function tradeCloseConsistencyWarnings(t: any, openRef: any | undefined): string
     );
   }
 
-  const { price, qty } = tradeHistoryDisplayFields(t, openRef);
+  const { price, qty } = tradeHistoryDisplayFields(t, openRef, bot);
   const implied = inferCloseGrossFromPrices(t, openRef, qty, price);
   const m = t?.meta || {};
   let stored: number | null = null;
@@ -813,7 +1009,9 @@ function tradeCloseConsistencyWarnings(t: any, openRef: any | undefined): string
   else {
     const net = Number(t?.pnl ?? m.pnl ?? m.realizedPnl);
     if (Number.isFinite(net)) {
-      const fee = tradeFeeUsdForCloseRow(t, qty, price);
+      const fee =
+        tradeRoundTripFeeUsdForCloseRow(t, openRef, qty, price, bot) ??
+        tradeFeeUsdForCloseRow(t, qty, price, bot);
       stored = fee != null && fee > 0 ? net + fee : net;
     }
   }
@@ -850,6 +1048,51 @@ function tradeCloseConsistencyWarnings(t: any, openRef: any | undefined): string
   return warnings;
 }
 
+/** OPEN leg with no later CLOSE in history while the snapshot shows flat — ledger / merge gap. */
+function tradeOpenMissingCloseWarnings(
+  openRow: any,
+  allTrades: any[],
+  positions: any[] | undefined,
+  isFuturesVenue: boolean,
+): string[] {
+  if (!isFuturesVenue || String(openRow?.type ?? "").toUpperCase() !== "OPEN") return [];
+  const warnings: string[] = [];
+  const symU = String(openRow?.symbol ?? "").toUpperCase().trim();
+  if (!symU) return warnings;
+  const openMs = tradeTsMs(openRow);
+  let hasLaterClose = false;
+  if (Number.isFinite(openMs)) {
+    for (const x of allTrades) {
+      if (String(x?.type ?? "").toUpperCase() !== "CLOSE") continue;
+      if (String(x?.symbol ?? "").toUpperCase() !== symU) continue;
+      const cm = tradeTsMs(x);
+      if (Number.isFinite(cm) && cm >= openMs - 750) {
+        hasLaterClose = true;
+        break;
+      }
+    }
+  }
+  let posOpen = false;
+  if (Array.isArray(positions)) {
+    for (const p of positions) {
+      if (String(p?.venue ?? "").toUpperCase() !== "FUTURES") continue;
+      const psym = String(p?.symbol ?? p?.sym ?? "").toUpperCase().trim();
+      if (!psym || psym !== symU) continue;
+      const q = Number(p?.qty ?? p?.positionAmt ?? p?.positionQty ?? p?.contracts ?? p?.amt ?? 0);
+      if (Math.abs(q) > 1e-10) {
+        posOpen = true;
+        break;
+      }
+    }
+  }
+  if (!hasLaterClose && !posOpen) {
+    warnings.push(
+      "No CLOSE row appears after this OPEN while the snapshot shows no open futures position — fees and realized PnL may be incomplete until ledger sync catches up.",
+    );
+  }
+  return warnings;
+}
+
 function shortenBinanceId(raw: string, maxLen = 16): string {
   const s = String(raw || "").trim();
   if (!s) return "";
@@ -869,6 +1112,40 @@ function portfolioBinanceRefForPosition(p: any): { label: string; title: string 
       ? `Order #: ${s}\nClient order id: ${String(cid)}`
       : `Order #: ${s}`;
   return { label: shortenBinanceId(s, 18), title };
+}
+
+/** Exchange execution style for this row (USD-M); unknown leaves "—". */
+function tradeHistoryExchangeOrderKindLabel(t: any): string {
+  const m = (t?.meta ?? {}) as Record<string, unknown>;
+  const leg = String(t?.type ?? "").toUpperCase();
+  if (leg === "OPEN") {
+    const style = String(m.entryOrderStyle ?? "").toUpperCase();
+    if (style === "LIMIT_IOC") return "Limit IOC";
+    if (style === "MARKET") return "Market";
+    const bt = String(m.entryBinanceOrderType ?? m.orderType ?? "").toUpperCase();
+    const tif = String(m.entryTimeInForce ?? "").toUpperCase();
+    if (bt === "MARKET") return "Market";
+    if (bt === "LIMIT") {
+      if (tif === "IOC") return "Limit IOC";
+      if (tif === "FOK") return "Limit FOK";
+      if (tif === "GTC") return "Limit GTC";
+      return "Limit";
+    }
+    return "—";
+  }
+  if (leg === "CLOSE") {
+    const bt = String(m.closeBinanceOrderType ?? m.exitOrderType ?? m.orderType ?? "").toUpperCase();
+    const tif = String(m.closeTimeInForce ?? "").toUpperCase();
+    if (bt === "MARKET") return "Market";
+    if (bt === "LIMIT") {
+      if (tif === "IOC") return "Limit IOC";
+      if (tif === "FOK") return "Limit FOK";
+      if (tif === "GTC") return "Limit GTC";
+      return "Limit";
+    }
+    return "—";
+  }
+  return "—";
 }
 
 /** Trade history: OPEN = Binance order id; CLOSE = income tran id (REALIZED_PNL) when present. */
@@ -944,6 +1221,10 @@ function tradeCloseAuditTooltipTitle(t: any): string {
   if (m.closeSide != null && String(m.closeSide).trim() !== "") lines.push(`closeSide: ${String(m.closeSide)}`);
   if (m.positionSideAtOpen != null && String(m.positionSideAtOpen).trim() !== "")
     lines.push(`positionSideAtOpen: ${String(m.positionSideAtOpen)}`);
+  if (m.openRefId != null && String(m.openRefId).trim() !== "")
+    lines.push(`openRefId (OPEN leg): ${String(m.openRefId)}`);
+  if (m.openPositionId != null && String(m.openPositionId).trim() !== "")
+    lines.push(`openPositionId: ${String(m.openPositionId)}`);
   if (m.trailStepAtClose != null && String(m.trailStepAtClose) !== "")
     lines.push(`trailStepAtClose (pending): ${String(m.trailStepAtClose)}`);
   if (m.confirmedTrailStepAtClose != null && String(m.confirmedTrailStepAtClose) !== "")
@@ -989,7 +1270,7 @@ function TradeHistoryExpandedDetails({
   const m = t?.meta || {};
   return (
     <div className="space-y-3 border-t border-slate-200 bg-slate-50/95 px-4 py-3 text-left dark:border-slate-800 dark:bg-slate-950/90">
-      {isClose && legWarnings.length > 0 ? (
+      {legWarnings.length > 0 ? (
         <div>
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
             Leg check
@@ -1053,6 +1334,12 @@ function TradeHistoryExpandedDetails({
             <>
               <dt className="text-slate-500 dark:text-slate-500">strategy</dt>
               <dd>{String(t.strategy)}</dd>
+            </>
+          ) : null}
+          {m.openRefId != null && String(m.openRefId).trim() !== "" ? (
+            <>
+              <dt className="text-slate-500 dark:text-slate-500">openRefId</dt>
+              <dd className="break-all font-mono">{String(m.openRefId)}</dd>
             </>
           ) : null}
         </dl>
@@ -1180,6 +1467,20 @@ function resolveOpenRefForClose(t: any, allTrades: any[], byId: Map<string, any>
   const id = String(t?.id ?? "");
   const direct = id ? byId.get(id) : undefined;
   if (direct) return direct;
+
+  const m = t?.meta || {};
+  const tryOpenId = (raw: unknown) => {
+    const s = raw != null ? String(raw).trim() : "";
+    if (!s) return undefined;
+    const hit = byId.get(s);
+    return hit?.type === "OPEN" ? hit : undefined;
+  };
+  const linked =
+    tryOpenId(m.openRefId) ??
+    tryOpenId(m.openPositionId) ??
+    tryOpenId(m.posId);
+  if (linked) return linked;
+
   const sym = String(t?.symbol ?? "").toUpperCase();
   if (!sym) return undefined;
   const closeMs = tradeTsMs(t);
@@ -1192,6 +1493,36 @@ function resolveOpenRefForClose(t: any, allTrades: any[], byId: Map<string, any>
     if (!Number.isFinite(oms) || oms > closeMs) continue;
     if (oms >= bestTs) {
       bestTs = oms;
+      best = row;
+    }
+  }
+  return best;
+}
+
+/** CLOSE leg that completes this OPEN (prefer explicit OPEN↔CLOSE resolution; else earliest CLOSE after OPEN per symbol). */
+function findPairedCloseForOpen(openRow: any, allTrades: any[], openTradeById: Map<string, any>): any | undefined {
+  if (!openRow || String(openRow?.type ?? "").toUpperCase() !== "OPEN") return undefined;
+  const oid = openRow?.id != null ? String(openRow.id) : "";
+  const sym = String(openRow?.symbol ?? "").toUpperCase();
+  const openMs = tradeTsMs(openRow);
+  if (sym && oid) {
+    for (const row of allTrades) {
+      if (String(row?.type ?? "").toUpperCase() !== "CLOSE") continue;
+      if (String(row?.symbol ?? "").toUpperCase() !== sym) continue;
+      const ref = resolveOpenRefForClose(row, allTrades, openTradeById);
+      if (ref && String(ref.id) === oid) return row;
+    }
+  }
+  if (!sym || !Number.isFinite(openMs)) return undefined;
+  let best: any;
+  let bestTs = Infinity;
+  for (const row of allTrades) {
+    if (String(row?.type ?? "").toUpperCase() !== "CLOSE") continue;
+    if (String(row?.symbol ?? "").toUpperCase() !== sym) continue;
+    const cm = tradeTsMs(row);
+    if (!Number.isFinite(cm) || cm < openMs - 750) continue;
+    if (cm < bestTs) {
+      bestTs = cm;
       best = row;
     }
   }
@@ -1214,6 +1545,7 @@ function sortTradeHistoryRows(
   sort: TradeHistorySort,
   allTrades: any[],
   openTradeById: Map<string, any>,
+  bot?: any,
 ): any[] {
   const out = [...rows];
   const symKey = (t: any) => String(t?.symbol ?? "").toUpperCase();
@@ -1221,13 +1553,13 @@ function sortTradeHistoryRows(
   const closeNet = (t: any) => {
     if (t?.type !== "CLOSE") return null;
     const ref = resolveOpenRefForClose(t, allTrades, openTradeById);
-    return closeTradeNetUsd(t, ref);
+    return closeTradeNetUsd(t, ref, bot);
   };
   const closeGross = (t: any) => {
     if (t?.type !== "CLOSE") return null;
     const ref = resolveOpenRefForClose(t, allTrades, openTradeById);
-    const { price, qty } = tradeHistoryDisplayFields(t, ref);
-    return tradeGrossPnlClose(t, qty, price, ref);
+    const { price, qty } = tradeHistoryDisplayFields(t, ref, bot);
+    return tradeGrossPnlClose(t, qty, price, ref, bot);
   };
 
   out.sort((a, b) => {
@@ -1383,12 +1715,12 @@ export function PortfolioPanel() {
     const rows = portfolioTrades || [];
     for (const t of closeTradesAppInRange) {
       const openRef = resolveOpenRefForClose(t, rows, openTradeById);
-      const { price, qty } = tradeHistoryDisplayFields(t, openRef);
-      const g = tradeGrossPnlClose(t, qty, price, openRef);
-      const fee = tradeFeeUsdForCloseRow(t, qty, price);
+      const { price, qty } = tradeHistoryDisplayFields(t, openRef, bot);
+      const g = tradeGrossPnlClose(t, qty, price, openRef, bot);
+      const fee = tradeRoundTripFeeUsdForCloseRow(t, openRef, qty, price, bot);
       if (g != null && Number.isFinite(g)) stratGross += g;
       if (fee != null && Number.isFinite(fee) && fee > 0) stratFees += fee;
-      const netRow = closeTradeNetUsd(t, openRef);
+      const netRow = closeTradeNetUsd(t, openRef, bot);
       if (netRow > 0) w += 1;
       else if (netRow < 0) l += 1;
     }
@@ -1396,9 +1728,9 @@ export function PortfolioPanel() {
     let ledFees = 0;
     for (const t of closeTradesLedgerInRange) {
       const openRef = resolveOpenRefForClose(t, rows, openTradeById);
-      const { price, qty } = tradeHistoryDisplayFields(t, openRef);
-      const g = tradeGrossPnlClose(t, qty, price, openRef);
-      const fee = tradeFeeUsdForCloseRow(t, qty, price);
+      const { price, qty } = tradeHistoryDisplayFields(t, openRef, bot);
+      const g = tradeGrossPnlClose(t, qty, price, openRef, bot);
+      const fee = tradeRoundTripFeeUsdForCloseRow(t, openRef, qty, price, bot);
       if (g != null && Number.isFinite(g)) ledGross += g;
       if (fee != null && Number.isFinite(fee) && fee > 0) ledFees += fee;
     }
@@ -1408,7 +1740,7 @@ export function PortfolioPanel() {
       netRealizedPnlStrategy: stratGross - stratFees,
       netRealizedPnlLedger: ledGross - ledFees,
     };
-  }, [closeTradesAppInRange, closeTradesLedgerInRange, portfolioTrades, openTradeById]);
+  }, [closeTradesAppInRange, closeTradesLedgerInRange, portfolioTrades, openTradeById, bot]);
 
   const netRealizedPnlAll = netRealizedPnlStrategy + netRealizedPnlLedger;
   /**
@@ -1424,15 +1756,28 @@ export function PortfolioPanel() {
     let withFee = 0;
     for (const t of closeTradesAppInRange) {
       const openRef = resolveOpenRefForClose(t, rowList, openTradeById);
-      const { price, qty } = tradeHistoryDisplayFields(t, openRef);
-      const f = tradeFeeUsdForCloseRow(t, qty, price);
-      if (f != null) {
-        total += f;
+      const { price, qty } = tradeHistoryDisplayFields(t, openRef, bot);
+      const openR = openRef ? tradeHistoryOpenFeeRateForRow(bot, openRef) : clampTradeCloseFeeRate();
+      const closeR = tradeHistoryCloseFeeRateForRow(bot, t);
+      const cf = tradeCloseLegFeeUsd(t, openRef, qty, price, openR, closeR);
+      const of = openRef
+        ? tradeOpenLegFeeUsd(
+            openRef,
+            numFinite(openRef.qty ?? qty),
+            numFinite(openRef.price ?? openRef.meta?.entryPx ?? t?.entryPrice),
+            openR,
+            t,
+          )
+        : null;
+      const rt =
+        cf != null && of != null ? cf + of : tradeRoundTripFeeUsdForCloseRow(t, openRef, qty, price, bot);
+      if (rt != null && rt > 0) {
+        total += rt;
         withFee += 1;
       }
     }
     return { strategyFeeTotal: total, strategyClosesWithFee: withFee };
-  }, [closeTradesAppInRange, portfolioTrades, openTradeById]);
+  }, [closeTradesAppInRange, portfolioTrades, openTradeById, bot]);
   const winrate = wins + losses > 0 ? wins / (wins + losses) : null;
 
   const last10Min = useMemo(() => {
@@ -1446,7 +1791,7 @@ export function PortfolioPanel() {
       if (t?.type !== "CLOSE") continue;
       if (tradeTsMs(t) < cutoff) continue;
       const openRef = resolveOpenRefForClose(t, rows, openTradeById);
-      const p = closeTradeNetUsd(t, openRef);
+      const p = closeTradeNetUsd(t, openRef, bot);
       if (isLedgerClose(t)) {
         ledN += 1;
         ledPnl += p;
@@ -1456,7 +1801,7 @@ export function PortfolioPanel() {
       }
     }
     return { appN, appPnl, ledN, ledPnl };
-  }, [portfolioTrades, openTradeById]);
+  }, [portfolioTrades, openTradeById, bot]);
 
   /** When a custom range is active, show per-bucket net/count (strategy vs ledger) inside that window. */
   const customRangeCloseRollup = useMemo(() => {
@@ -1471,12 +1816,12 @@ export function PortfolioPanel() {
     for (const t of closeTradesAppInRange) {
       const openRef = resolveOpenRefForClose(t, rows, openTradeById);
       appN += 1;
-      appPnl += closeTradeNetUsd(t, openRef);
+      appPnl += closeTradeNetUsd(t, openRef, bot);
     }
     for (const t of closeTradesLedgerInRange) {
       const openRef = resolveOpenRefForClose(t, rows, openTradeById);
       ledN += 1;
-      ledPnl += closeTradeNetUsd(t, openRef);
+      ledPnl += closeTradeNetUsd(t, openRef, bot);
     }
     return { appN, appPnl, ledN, ledPnl };
   }, [
@@ -1485,6 +1830,7 @@ export function PortfolioPanel() {
     closeTradesLedgerInRange,
     portfolioTrades,
     openTradeById,
+    bot,
   ]);
 
   const openPositionIdTokens = useMemo(() => {
@@ -1525,7 +1871,7 @@ export function PortfolioPanel() {
     else if (closeSourceFilter === "ALL") out = rows;
     else out = rows.filter((t: any) => (t?.type === "OPEN" ? true : keepClose(t)));
     const filtered = out.filter((t) => tradeMatchesHistoryTime(t, historyRangeFilter));
-    return sortTradeHistoryRows(filtered, tradeHistorySort, rows, openTradeById);
+    return sortTradeHistoryRows(filtered, tradeHistorySort, rows, openTradeById, bot);
   }, [
     tradeHistoryView,
     openTrades,
@@ -1535,7 +1881,63 @@ export function PortfolioPanel() {
     historyRangeFilter,
     tradeHistorySort,
     openTradeById,
+    bot,
   ]);
+
+  /** OPEN row ids currently visible — used to split CLOSE net only when the opening leg is on-screen. */
+  const displayedOpenRowIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of displayedTrades) {
+      if (String(r?.type ?? "").toUpperCase() === "OPEN" && r?.id != null) s.add(String(r.id));
+    }
+    return s;
+  }, [displayedTrades]);
+
+  /** Sum of Net column for visible OPEN + CLOSE rows (split OPEN fee vs CLOSE realized when both legs are visible). */
+  const netSumDisplayedTradeHistoryRows = useMemo(() => {
+    let s = 0;
+    const rows = portfolioTrades || [];
+    for (const t of displayedTrades) {
+      const openRef = t?.type === "CLOSE" ? resolveOpenRefForClose(t, rows, openTradeById) : undefined;
+      const { price, qty } = tradeHistoryDisplayFields(t, openRef, bot);
+      const entryPx =
+        numFinite(t?.entryPrice ?? t?.meta?.entryPrice ?? openRef?.price ?? openRef?.meta?.entryPx) ?? null;
+      const openInView = openRef?.id != null && displayedOpenRowIds.has(String(openRef.id));
+
+      if (String(t?.type ?? "").toUpperCase() === "OPEN") {
+        const paired = findPairedCloseForOpen(t, rows, openTradeById);
+        const orate = tradeHistoryOpenFeeRateForRow(bot, t);
+        const of = tradeOpenLegFeeUsd(t, qty, price ?? entryPx, orate, paired);
+        if (of != null) s -= of;
+        continue;
+      }
+      if (String(t?.type ?? "").toUpperCase() === "CLOSE") {
+        const sn = tradeNetPnlClose(t);
+        const openFeeAmt =
+          openRef != null
+            ? tradeOpenLegFeeUsd(
+                openRef,
+                numFinite(openRef.qty ?? qty),
+                numFinite(openRef.price ?? openRef.meta?.entryPx ?? entryPx),
+                tradeHistoryOpenFeeRateForRow(bot, openRef),
+                t,
+              )
+            : null;
+        if (sn != null && Number.isFinite(sn)) {
+          if (openRef && openFeeAmt != null && openInView) s += sn + openFeeAmt;
+          else s += sn;
+        }
+      }
+    }
+    return s;
+  }, [displayedTrades, displayedOpenRowIds, portfolioTrades, openTradeById, bot]);
+
+  const headlineRealizedUsd =
+    displayedTrades.length > 0
+      ? netSumDisplayedTradeHistoryRows
+      : mode === "PAPER"
+        ? netRealizedPnlAll
+        : netRealizedHeadline;
 
   /** Legacy standalone local futures (former BINANCE_DEMO_FUTURES without keys); hybrid demo uses name "hybrid". */
   const isPaperFuturesLocal = exchName === "binance_demo_futures";
@@ -1827,16 +2229,17 @@ export function PortfolioPanel() {
             </div>
           ) : null}
           <div
-            className={`mt-1 text-lg font-semibold ${netRealizedHeadline >= 0 ? "text-emerald-400" : "text-rose-400"}`}
+            className={`mt-1 text-lg font-semibold ${headlineRealizedUsd >= 0 ? "text-emerald-400" : "text-rose-400"}`}
           >
-            {Number.isFinite(netRealizedHeadline) ? `$${netRealizedHeadline.toFixed(2)}` : "—"}
+            {Number.isFinite(headlineRealizedUsd) ? `$${headlineRealizedUsd.toFixed(2)}` : "—"}
           </div>
           <div className="mt-1 text-slate-600 dark:text-slate-500">
             {mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET" || mode === "BINANCE_DEMO_API" ? (
               <>
-                <span className="font-semibold text-slate-700 dark:text-slate-300">Headline</span> = strategy /
-                bracket-attributed net in this range. Unmatched <span className="font-mono">REALIZED_PNL</span> ledger
-                totals stay in the breakdown only.
+                <span className="font-semibold text-slate-700 dark:text-slate-300">Headline</span> = sum of{" "}
+                <span className="font-mono">Net</span> on visible trade rows (OPEN shows −open fee; CLOSE shows exchange net,
+                or net + open fee when the OPEN row is visible). Matches realized when OPEN+CLOSE pairs are shown together.
+                Unmatched <span className="font-mono">REALIZED_PNL</span> ledger totals stay in the breakdown only.
                 {mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET" ? (
                   <>
                     {" "}
@@ -2466,7 +2869,15 @@ export function PortfolioPanel() {
                 <tr className="text-left text-slate-600 dark:text-slate-400">
                   <th className="w-3 min-w-[12px] max-w-[14px] border-0 p-0" aria-hidden />
                   <th className="px-3 py-2">Time</th>
-                  <th className="px-3 py-2">Type</th>
+                  <th className="px-3 py-2" title="Whether this row is an opening fill or a closing fill.">
+                    Leg
+                  </th>
+                  <th
+                    className="px-3 py-2"
+                    title="Execution style: market vs limit (and time-in-force when known)."
+                  >
+                    Style
+                  </th>
                   <th className="px-3 py-2">Symbol</th>
                   <th
                     className="max-w-[6.5rem] px-3 py-2"
@@ -2489,7 +2900,12 @@ export function PortfolioPanel() {
                   <th className="px-3 py-2">Reason</th>
                   <th className="px-3 py-2">Src</th>
                   <th className="px-3 py-2">Gross</th>
-                  <th className="px-3 py-2">Fee</th>
+                  <th
+                    className="px-3 py-2"
+                    title="OPEN: opening commission (stored or qty×price×open fee rate). CLOSE: closing commission only (stored, total−open, or modeled)."
+                  >
+                    Fee
+                  </th>
                   <th className="px-3 py-2">Net</th>
                   <th className="px-3 py-2" title="OPEN: live uPnL% vs margin when position matches. CLOSE: net / initial margin at entry (futures).">
                     PnL%
@@ -2499,7 +2915,7 @@ export function PortfolioPanel() {
               <tbody>
                 {displayedTrades.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={18}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={19}>
                       No trades yet
                     </td>
                   </tr>
@@ -2509,16 +2925,51 @@ export function PortfolioPanel() {
                       t?.type === "CLOSE"
                         ? resolveOpenRefForClose(t, portfolioTrades || [], openTradeById)
                         : undefined;
-                    const { lev, price, qty, sl, tp } = tradeHistoryDisplayFields(t, openRef);
+                    const { lev, price, qty, sl, tp } = tradeHistoryDisplayFields(t, openRef, bot);
                     const entryPx =
                       numFinite(
                         t?.entryPrice ?? t?.meta?.entryPrice ?? openRef?.entryPrice ?? openRef?.price ?? openRef?.meta?.entryPx,
                       ) ?? null;
-                    const fee = tradeFeeUsdForCloseRow(t, qty, price);
-                    const gross = t?.type === "CLOSE" ? tradeGrossPnlClose(t, qty, price, openRef) : null;
-                    const net = t?.type === "CLOSE"
-                      ? (tradeNetPnlClose(t) ?? (gross != null ? gross - (fee ?? 0) : null))
-                      : null;
+                    const rowTyp = String(t?.type ?? "").toUpperCase();
+                    const openInView =
+                      rowTyp === "CLOSE" && openRef?.id != null && displayedOpenRowIds.has(String(openRef.id));
+                    const openR = openRef ? tradeHistoryOpenFeeRateForRow(bot, openRef) : tradeHistoryOpenFeeRateForRow(bot, t);
+                    const closeR = tradeHistoryCloseFeeRateForRow(bot, t);
+
+                    let fee: number | null = null;
+                    let gross: number | null = null;
+                    let net: number | null = null;
+                    const pairedCloseForOpen =
+                      rowTyp === "OPEN"
+                        ? findPairedCloseForOpen(t, portfolioTrades || [], openTradeById)
+                        : undefined;
+                    if (rowTyp === "OPEN") {
+                      fee = tradeOpenLegFeeUsd(t, qty, price ?? entryPx, openR, pairedCloseForOpen);
+                      gross = null;
+                      net = fee != null ? -fee : null;
+                    } else if (rowTyp === "CLOSE") {
+                      fee = tradeCloseLegFeeUsd(t, openRef, qty, price, openR, closeR);
+                      const storedCloseNet = tradeNetPnlClose(t);
+                      const openFeeAmt =
+                        openRef != null
+                          ? tradeOpenLegFeeUsd(
+                              openRef,
+                              numFinite(openRef.qty ?? qty),
+                              numFinite(openRef.price ?? openRef.meta?.entryPx ?? entryPx),
+                              tradeHistoryOpenFeeRateForRow(bot, openRef),
+                              t,
+                            )
+                          : null;
+                      if (storedCloseNet != null && Number.isFinite(storedCloseNet)) {
+                        net =
+                          openRef && openFeeAmt != null && openInView ? storedCloseNet + openFeeAmt : storedCloseNet;
+                      } else {
+                        const g0 = tradeGrossPnlClose(t, qty, price, openRef, bot);
+                        net = g0 != null && fee != null ? g0 - fee : tradeNetPnlClose(t);
+                      }
+                      gross =
+                        net != null && fee != null ? net + fee : tradeGrossPnlClose(t, qty, price, openRef, bot);
+                    }
                     const sideDisp =
                       t?.type === "CLOSE"
                         ? (t?.meta?.closeSide != null
@@ -2527,10 +2978,15 @@ export function PortfolioPanel() {
                         : (t.side != null ? String(t.side) : "n/a");
                     const slTpDisp = `${sl != null && Number.isFinite(sl) ? fmtInstrumentPx(sl) : "n/a"} / ${tp != null && Number.isFinite(tp) ? fmtInstrumentPx(tp) : "n/a"}`;
                     const marginDisp = tradeInitialMarginUsd(t, openRef, { price, qty, lev });
-                    const pnlPct = tradeHistoryPnlPct(t, openRef, positions, { price, qty, lev });
+                    const pnlPct = tradeHistoryPnlPct(t, openRef, positions, { price, qty, lev }, bot);
                     const reasonDisp = tradeHistoryReasonLabel(t);
                     const binRefTrade = portfolioBinanceRefForTradeRow(t);
-                    const legWarnings = t?.type === "CLOSE" ? tradeCloseConsistencyWarnings(t, openRef) : [];
+                    const legWarnings =
+                      rowTyp === "CLOSE"
+                        ? tradeCloseConsistencyWarnings(t, openRef, bot)
+                        : rowTyp === "OPEN"
+                          ? tradeOpenMissingCloseWarnings(t, portfolioTrades || [], positions, isFuturesVenue)
+                          : [];
                     const trailLead = openTradeRowTrailedStrict(t, positions, trailingStopLossAuto);
                     const beLead = !trailLead && openTradeRowBreakevenStopIndicator(t, positions, trailingStopLossAuto);
                     const closeTrailLead = t?.type === "CLOSE" && closeTradeRowTrailedStrict(t);
@@ -2545,7 +3001,7 @@ export function PortfolioPanel() {
                           role="button"
                           tabIndex={0}
                           aria-expanded={expanded}
-                          aria-label={`${t?.type ?? "Trade"} ${t?.symbol ?? ""}: ${expanded ? "collapse" : "expand"} details`}
+                          aria-label={`${t?.type ?? "Trade"} leg ${t?.symbol ?? ""}: ${expanded ? "collapse" : "expand"} details`}
                           onClick={toggleExpanded}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
@@ -2575,7 +3031,13 @@ export function PortfolioPanel() {
                               {fmtTimestamp(tradeTsMs(t))}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.type ?? t.reason ?? "—"}</td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t?.type ?? "—"}</td>
+                          <td
+                            className="px-3 py-2 text-[10px] text-slate-600 dark:text-slate-400"
+                            title={tradeHistoryExchangeOrderKindLabel(t) === "—" ? "Order type not recorded for this row" : undefined}
+                          >
+                            {tradeHistoryExchangeOrderKindLabel(t)}
+                          </td>
                           <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t.symbol ?? "n/a"}</td>
                           <td
                             className="max-w-[5.5rem] px-3 py-2 font-mono text-[10px] text-slate-600 dark:text-slate-400"
@@ -2632,7 +3094,7 @@ export function PortfolioPanel() {
                         </tr>
                         {expanded ? (
                           <tr className="border-t border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-950/30">
-                            <td colSpan={18} className="p-0">
+                            <td colSpan={19} className="p-0">
                               <TradeHistoryExpandedDetails
                                 t={t}
                                 openRef={openRef}

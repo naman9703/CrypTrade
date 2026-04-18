@@ -32,6 +32,7 @@ import {
   trailCloseFieldsFromMemory,
 } from "../../lib/binanceUsdmCloseReasonHint.js";
 import { TRAIL_TIER_SCHEMA_VERSION } from "../../lib/supertrendTrailingSl.js";
+import { fetchUsdMOrderCommissionDetailsWithRetry } from "../../lib/binanceUsdMUserTradeCommission.js";
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
@@ -443,9 +444,19 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
   }
 
   const incomeSyncPath = resolveDefaultLiveFuturesIncomeSyncPath();
-  /** When false (default), REALIZED_PNL rows that don’t match an app/session close are not added as trade rows — same “strategy-first” view as typical demo UX; income still updates matched closes. Set BINANCE_LIVE_INCOME_INCLUDE_UNMATCHED=1 to debug / see full ledger in history. */
-  const includeUnmatchedIncomeLedger =
-    String(process.env.BINANCE_LIVE_INCOME_INCLUDE_UNMATCHED || "0") === "1";
+  /**
+   * When true, REALIZED_PNL that doesn’t match `recentLocalCloses` is omitted from trade rows (Binance-first
+   * history off). Default false: materialize unmatched REALIZED_PNL as CLOSE rows so round-trip fees/PnL match the exchange.
+   * Set `BINANCE_LIVE_INCOME_STRATEGY_ONLY=1` for the old “strategy-first” view.
+   * Legacy: explicit `BINANCE_LIVE_INCOME_INCLUDE_UNMATCHED=0` still implies strategy-only; `=1` implies full ledger.
+   */
+  const rawIncomeIncludeUnmatched = process.env.BINANCE_LIVE_INCOME_INCLUDE_UNMATCHED;
+  const legacyIncomeStrategyOnly =
+    rawIncomeIncludeUnmatched != null &&
+    String(rawIncomeIncludeUnmatched).trim() !== "" &&
+    String(rawIncomeIncludeUnmatched) !== "1";
+  const strategyOnlyIncomeLedger =
+    String(process.env.BINANCE_LIVE_INCOME_STRATEGY_ONLY || "0") === "1" || legacyIncomeStrategyOnly;
   const bootIncomeLookbackMs = Math.max(
     60_000,
     Math.min(24 * 3600 * 1000, Number(process.env.BINANCE_LIVE_FUT_INCOME_BOOT_LOOKBACK_MS || 600_000))
@@ -657,6 +668,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             if (lc.positionSideAtOpen != null && String(lc.positionSideAtOpen).trim() !== "") {
               mergeInto.meta.positionSideAtOpen = String(lc.positionSideAtOpen).trim();
             }
+            if (lc.posId != null && String(lc.posId).trim() !== "" && mergeInto.meta.openRefId == null) {
+              mergeInto.meta.openRefId = String(lc.posId).trim();
+            }
             mergeInto.meta.supertrendSignalClose =
               lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP";
             if (mergeInto.reason != null && String(mergeInto.reason).trim() !== "") {
@@ -685,7 +699,31 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           if (mergeInto.meta && mergeInto.meta.leverage == null && lc.leverage != null) {
             mergeInto.meta.leverage = Number(lc.leverage);
           }
-          {
+          let exitFeeMerge = null;
+          let exitDetail = null;
+          if (lc.closeOrderId) {
+            exitDetail = await fetchUsdMOrderCommissionDetailsWithRetry({
+              signed,
+              publicGet,
+              symbol: sym,
+              orderId: lc.closeOrderId,
+              log,
+            });
+            exitFeeMerge = exitDetail?.usdt ?? null;
+          }
+          if (exitFeeMerge != null) {
+            mergeInto.fee = exitFeeMerge;
+            mergeInto.meta = {
+              ...(mergeInto.meta || {}),
+              exitFee: exitFeeMerge,
+              commissionSourceClose: "fapi_userTrades",
+              ...(exitDetail?.allMaker === true
+                ? { exitAllMaker: true }
+                : exitDetail?.allMaker === false
+                  ? { exitAllMaker: false }
+                  : {}),
+            };
+          } else {
             const feePx =
               mergeInto.price ??
               mergeInto.meta?.exitPrice ??
@@ -698,6 +736,19 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           const closePxN =
             lc.markPx != null && Number.isFinite(Number(lc.markPx)) ? Number(lc.markPx) : NaN;
           const reasonNorm = closeReasonFromLocalCloseHint(lc);
+          let exitFeeNew = null;
+          let exitDetailNew = null;
+          if (lc.closeOrderId) {
+            exitDetailNew = await fetchUsdMOrderCommissionDetailsWithRetry({
+              signed,
+              publicGet,
+              symbol: sym,
+              orderId: lc.closeOrderId,
+              log,
+            });
+            exitFeeNew = exitDetailNew?.usdt ?? null;
+          }
+          const feeFallback = tradeCloseFeeUsdtFromNotional(closeQtyN, closePxN);
           mem.trades.push({
             type: "CLOSE",
             id: `finc_${tid}`,
@@ -711,7 +762,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             takeProfit: lc.takeProfit != null ? Number(lc.takeProfit) : undefined,
             leverage: lc.leverage != null ? Number(lc.leverage) : undefined,
             pnl,
-            fee: tradeCloseFeeUsdtFromNotional(closeQtyN, closePxN) ?? undefined,
+            fee: (exitFeeNew ?? feeFallback) ?? undefined,
             strategy: lc.strategy || "AUTO",
             reason: reasonNorm,
             meta: {
@@ -732,13 +783,27 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
               trailTierAtClose: lc.trailTierAtClose != null ? String(lc.trailTierAtClose) : undefined,
               supertrendSignalClose:
                 lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP",
+              ...(exitFeeNew != null
+                ? {
+                    exitFee: exitFeeNew,
+                    commissionSourceClose: "fapi_userTrades",
+                    ...(exitDetailNew?.allMaker === true
+                      ? { exitAllMaker: true }
+                      : exitDetailNew?.allMaker === false
+                        ? { exitAllMaker: false }
+                        : {}),
+                  }
+                : {}),
               ...(lc.positionSideAtOpen != null && String(lc.positionSideAtOpen).trim() !== ""
                 ? { positionSideAtOpen: String(lc.positionSideAtOpen).trim() }
+                : {}),
+              ...(lc.posId != null && String(lc.posId).trim() !== ""
+                ? { openRefId: String(lc.posId).trim() }
                 : {}),
             },
           });
         }
-      } else if (includeUnmatchedIncomeLedger) {
+      } else if (!strategyOnlyIncomeLedger) {
         let openRef = null;
         for (let j = mem.trades.length - 1; j >= 0; j--) {
           const tr = mem.trades[j];
@@ -810,6 +875,52 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       mem.seenIncomeIds = new Set([...mem.seenIncomeIds].slice(-10_000));
     }
     if (mem.trades.length > MAX_MEM_TRADES) mem.trades = mem.trades.slice(-MAX_MEM_TRADES);
+  }
+
+  let lastOpenCommissionBackfillAt = 0;
+
+  /** OPEN rows sometimes miss the async userTrades patch; retry periodically so UI fees match Binance. */
+  async function backfillMissingOpenCommissionsUsdM() {
+    if (!apiKey || !apiSecret) return;
+    const now = Date.now();
+    if (now - lastOpenCommissionBackfillAt < 2800) return;
+    lastOpenCommissionBackfillAt = now;
+    const candidates = [];
+    for (let i = mem.trades.length - 1; i >= 0 && candidates.length < 14; i--) {
+      const tr = mem.trades[i];
+      if (tr?.type !== "OPEN") continue;
+      const oid = tr?.meta?.orderId;
+      if (oid == null || String(oid).trim() === "") continue;
+      if (tr.meta?.commissionSource === "fapi_userTrades" && Number(tr.fee) > 0) continue;
+      candidates.push(tr);
+    }
+    for (const tr of candidates.slice(0, 8)) {
+      const sym = String(tr.symbol || "").toUpperCase();
+      try {
+        const det = await fetchUsdMOrderCommissionDetailsWithRetry({
+          signed,
+          publicGet,
+          symbol: sym,
+          orderId: tr.meta.orderId,
+          log,
+        });
+        if (det != null && det.usdt > 0) {
+          tr.fee = det.usdt;
+          tr.meta = {
+            ...(tr.meta || {}),
+            openFee: det.usdt,
+            commissionSource: "fapi_userTrades",
+            ...(det.allMaker === true
+              ? { entryAllMaker: true }
+              : det.allMaker === false
+                ? { entryAllMaker: false }
+                : {}),
+          };
+        }
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   return {
@@ -890,8 +1001,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     async getTrades() {
       await refreshUsdMPositionSnapshotAndReconcile();
       await syncRealizedIncomeFromExchange();
+      await backfillMissingOpenCommissionsUsdM();
       let rows = mem.trades.slice(-MAX_MEM_TRADES);
-      if (!includeUnmatchedIncomeLedger) {
+      if (strategyOnlyIncomeLedger) {
         rows = rows.filter(
           (t) =>
             !(
@@ -1139,10 +1251,46 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           leverage,
           venue: "FUTURES",
           orderId,
+          ...(out?.type ? { entryBinanceOrderType: String(out.type) } : {}),
+          ...(out?.timeInForce ? { entryTimeInForce: String(out.timeInForce) } : {}),
           ...(clientOid ? { clientOrderId: clientOid } : {}),
         },
       });
       if (mem.trades.length > MAX_MEM_TRADES) mem.trades = mem.trades.slice(-MAX_MEM_TRADES);
+
+      /** Don’t await userTrades before SL/TP — extra REST hop would delay bracket protection. */
+      void (async () => {
+        try {
+          const det = await fetchUsdMOrderCommissionDetailsWithRetry({
+            signed,
+            publicGet,
+            symbol: symNorm,
+            orderId,
+            log,
+          });
+          if (det == null || !(det.usdt > 0)) return;
+          const f = det.usdt;
+          for (let i = mem.trades.length - 1; i >= 0; i--) {
+            const tr = mem.trades[i];
+            if (tr?.type === "OPEN" && String(tr.id) === String(posId)) {
+              tr.fee = f;
+              tr.meta = {
+                ...(tr.meta || {}),
+                openFee: f,
+                commissionSource: "fapi_userTrades",
+                ...(det.allMaker === true
+                  ? { entryAllMaker: true }
+                  : det.allMaker === false
+                    ? { entryAllMaker: false }
+                    : {}),
+              };
+              break;
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      })();
 
       if (meta?.autoTradeTrailing) {
         mem.trailingBySymbol[symNorm] = {
@@ -1242,6 +1390,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     async markToMarket({ symbol, price, trailingStopLoss, onTrailingSlAdvance, notifyActivity } = {}) {
       await refreshUsdMPositionSnapshotAndReconcile();
       await syncRealizedIncomeFromExchange();
+      await backfillMissingOpenCommissionsUsdM();
 
       const primarySymU = String(symbol || "").toUpperCase();
 
@@ -1391,7 +1540,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         }
         if (!hit) continue;
           try {
-            await signed("POST", "/fapi/v1/order", {
+            const bracketCloseOut = await signed("POST", "/fapi/v1/order", {
             symbol: lbSym,
               side: b.closeSide,
               type: "MARKET",
@@ -1434,6 +1583,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
               takeProfit: b.takeProfit,
               leverage: b.leverage,
               markPx: Number(markPx),
+              closeOrderId:
+                bracketCloseOut?.orderId != null ? String(bracketCloseOut.orderId) : undefined,
             exitViaTrailedStop: tf.exitViaTrailedStop,
             trailStepAtClose: tf.trailStepAtClose,
             confirmedTrailStepAtClose: trailMeta ? Math.floor(Number(trailMeta.confirmedTrailStep) || 0) : 0,
@@ -1482,8 +1633,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       const closeSide = p.side === "BUY" ? "SELL" : "BUY";
       /** Same as `placeOrder`: dual-side accounts require `positionSide` on reduce-only closes (-2022 if omitted). */
       const hedgeCloseExtras = await hedgePositionSideExtras(p.side === "BUY");
+      let manualCloseOut;
       try {
-        await signed("POST", "/fapi/v1/order", {
+        manualCloseOut = await signed("POST", "/fapi/v1/order", {
           symbol: p.symbol,
           side: closeSide,
           type: "MARKET",
@@ -1528,6 +1680,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         takeProfit: openLeg?.takeProfit != null ? Number(openLeg.takeProfit) : undefined,
         leverage: lev,
         positionSideAtOpen: p.side != null ? String(p.side) : undefined,
+        closeOrderId:
+          manualCloseOut?.orderId != null ? String(manualCloseOut.orderId) : undefined,
       });
       delete mem.localBrackets[p.symbol];
       delete mem.placedBracketTargets[p.symbol];

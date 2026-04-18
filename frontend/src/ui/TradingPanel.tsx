@@ -1176,6 +1176,10 @@ export function TradingPanel() {
       trailingStopExtraScalpingPcts: parseTrailingExtraPcts(bot),
       trailOpenFeeRate: clampNum(Number(bot?.trailOpenFeeRate ?? 0.0004), 0, 0.01),
       trailCloseFeeRate: clampNum(Number(bot?.trailCloseFeeRate ?? 0.0004), 0, 0.01),
+      tradeHistoryMakerOpenFeeRate: clampNum(Number(bot?.tradeHistoryMakerOpenFeeRate ?? 0.0002), 0, 0.01),
+      tradeHistoryMakerCloseFeeRate: clampNum(Number(bot?.tradeHistoryMakerCloseFeeRate ?? 0.0002), 0, 0.01),
+      tradeHistoryTakerOpenFeeRate: clampNum(Number(bot?.tradeHistoryTakerOpenFeeRate ?? 0.0005), 0, 0.01),
+      tradeHistoryTakerCloseFeeRate: clampNum(Number(bot?.tradeHistoryTakerCloseFeeRate ?? 0.0005), 0, 0.01),
       trailFeeBeMultiplier: clampNum(Number(bot?.trailFeeBeMultiplier ?? DEFAULT_TRAIL_FEE_BE_MULTIPLIER), 1, 2),
       trailBufferRate: clampNum(Number(bot?.trailBufferRate ?? 0.0005), 0, 0.05),
       trailActivationSlippageFrac: clampNum(Number(bot?.trailActivationSlippageFrac ?? 0), 0, 0.01),
@@ -2153,6 +2157,96 @@ export function TradingPanel() {
             )}
 
             {cfg.marketMode === "FUTURES" && (
+              <>
+              <div className="space-y-2 rounded-lg border border-emerald-900/45 bg-emerald-950/20 p-2">
+                <div className="text-[11px] font-semibold text-emerald-200/95">Trade history fees (USD‑M · modeled)</div>
+                <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+                  Custom maker vs taker fee rates as <span className="text-slate-700 dark:text-slate-300">percent of notional</span>{" "}
+                  (e.g. 0.05 = 0.05%). Used for Portfolio <span className="font-medium text-slate-700 dark:text-slate-300">trade history</span>{" "}
+                  when the exchange did not attach commission on a row; fills from Binance still override when present. Liquidity class comes from{" "}
+                  fill data when available, else order type / stop vs limit heuristics (defaults to taker).
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="rounded-md border border-emerald-800/40 bg-white/40 px-2 py-1.5 dark:bg-slate-950/40">
+                    <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-emerald-800/80 dark:text-emerald-300/70">
+                      Maker (limit adds liquidity)
+                    </div>
+                    <div className="grid grid-cols-[108px_1fr] items-center gap-2 text-xs">
+                      <span className="text-slate-600 dark:text-slate-400">Entry %</span>
+                      <NumericTextInput
+                        value={+(cfg.tradeHistoryMakerOpenFeeRate * 100).toFixed(4)}
+                        inputMode="decimal"
+                        min={0}
+                        max={1}
+                        parse={(raw) => parseFloat(raw)}
+                        onCommit={async (v) => {
+                          try {
+                            await api.botConfig({ tradeHistoryMakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set maker entry fee %" });
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="mt-1 grid grid-cols-[108px_1fr] items-center gap-2 text-xs">
+                      <span className="text-slate-600 dark:text-slate-400">Exit %</span>
+                      <NumericTextInput
+                        value={+(cfg.tradeHistoryMakerCloseFeeRate * 100).toFixed(4)}
+                        inputMode="decimal"
+                        min={0}
+                        max={1}
+                        parse={(raw) => parseFloat(raw)}
+                        onCommit={async (v) => {
+                          try {
+                            await api.botConfig({ tradeHistoryMakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set maker exit fee %" });
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-emerald-800/40 bg-white/40 px-2 py-1.5 dark:bg-slate-950/40">
+                    <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-emerald-800/80 dark:text-emerald-300/70">
+                      Taker (market / takes liquidity)
+                    </div>
+                    <div className="grid grid-cols-[108px_1fr] items-center gap-2 text-xs">
+                      <span className="text-slate-600 dark:text-slate-400">Entry %</span>
+                      <NumericTextInput
+                        value={+(cfg.tradeHistoryTakerOpenFeeRate * 100).toFixed(4)}
+                        inputMode="decimal"
+                        min={0}
+                        max={1}
+                        parse={(raw) => parseFloat(raw)}
+                        onCommit={async (v) => {
+                          try {
+                            await api.botConfig({ tradeHistoryTakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set taker entry fee %" });
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="mt-1 grid grid-cols-[108px_1fr] items-center gap-2 text-xs">
+                      <span className="text-slate-600 dark:text-slate-400">Exit %</span>
+                      <NumericTextInput
+                        value={+(cfg.tradeHistoryTakerCloseFeeRate * 100).toFixed(4)}
+                        inputMode="decimal"
+                        min={0}
+                        max={1}
+                        parse={(raw) => parseFloat(raw)}
+                        onCommit={async (v) => {
+                          try {
+                            await api.botConfig({ tradeHistoryTakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set taker exit fee %" });
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div className="space-y-2 rounded-lg border border-sky-800/50 bg-sky-950/25 p-2">
                 <div className="text-[11px] font-semibold text-sky-200/95">Futures entry (Supertrend signal → order)</div>
                 <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
@@ -2333,6 +2427,7 @@ export function TradingPanel() {
                   </span>
                 </label>
               </div>
+              </>
             )}
 
             {(cfg.marketMode === "SPOT" || cfg.marketMode === "FUTURES") && (

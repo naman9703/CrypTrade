@@ -695,6 +695,27 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       Number(process.env.TRADE_OPEN_FEE_RATE ?? process.env.TRADE_CLOSE_FEE_RATE ?? 0.0004), 0, 0.01,
     ),
     trailCloseFeeRate: clamp(Number(process.env.TRADE_CLOSE_FEE_RATE ?? 0.0004), 0, 0.01),
+    /** Portfolio trade-history modeled fees (fraction of notional); maker vs taker entry/exit. */
+    tradeHistoryMakerOpenFeeRate: clamp(
+      Number(process.env.TRADE_HISTORY_MAKER_OPEN_FRAC ?? 0.0002),
+      0,
+      0.01,
+    ),
+    tradeHistoryMakerCloseFeeRate: clamp(
+      Number(process.env.TRADE_HISTORY_MAKER_CLOSE_FRAC ?? 0.0002),
+      0,
+      0.01,
+    ),
+    tradeHistoryTakerOpenFeeRate: clamp(
+      Number(process.env.TRADE_HISTORY_TAKER_OPEN_FRAC ?? 0.0005),
+      0,
+      0.01,
+    ),
+    tradeHistoryTakerCloseFeeRate: clamp(
+      Number(process.env.TRADE_HISTORY_TAKER_CLOSE_FRAC ?? 0.0005),
+      0,
+      0.01,
+    ),
     trailFeeBeMultiplier: clamp(Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25), 1, 2),
     trailBufferRate: clamp(Number(process.env.SUPERTREND_TRAIL_BUFFER_RATE ?? 0.0005), 0, 0.05),
     /** Additive fraction on padded BE rate for Supertrend tiered gates (execution vs theoretical fees). */
@@ -1350,6 +1371,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           trailingStopExtraScalpingPcts: normalizeTrailingExtraPcts(state.trailingStopExtraScalpingPcts),
           trailOpenFeeRate: state.trailOpenFeeRate,
           trailCloseFeeRate: state.trailCloseFeeRate,
+          tradeHistoryMakerOpenFeeRate: state.tradeHistoryMakerOpenFeeRate,
+          tradeHistoryMakerCloseFeeRate: state.tradeHistoryMakerCloseFeeRate,
+          tradeHistoryTakerOpenFeeRate: state.tradeHistoryTakerOpenFeeRate,
+          tradeHistoryTakerCloseFeeRate: state.tradeHistoryTakerCloseFeeRate,
           trailFeeBeMultiplier: state.trailFeeBeMultiplier,
           trailBufferRate: state.trailBufferRate,
           trailActivationSlippageFrac: state.trailActivationSlippageFrac,
@@ -1601,6 +1626,18 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       }
       if (b.trailOpenFeeRate != null) state.trailOpenFeeRate = clamp(Number(b.trailOpenFeeRate) || 0.0004, 0, 0.01);
       if (b.trailCloseFeeRate != null) state.trailCloseFeeRate = clamp(Number(b.trailCloseFeeRate) || 0.0004, 0, 0.01);
+      if (b.tradeHistoryMakerOpenFeeRate != null && Number.isFinite(Number(b.tradeHistoryMakerOpenFeeRate))) {
+        state.tradeHistoryMakerOpenFeeRate = clamp(Number(b.tradeHistoryMakerOpenFeeRate), 0, 0.01);
+      }
+      if (b.tradeHistoryMakerCloseFeeRate != null && Number.isFinite(Number(b.tradeHistoryMakerCloseFeeRate))) {
+        state.tradeHistoryMakerCloseFeeRate = clamp(Number(b.tradeHistoryMakerCloseFeeRate), 0, 0.01);
+      }
+      if (b.tradeHistoryTakerOpenFeeRate != null && Number.isFinite(Number(b.tradeHistoryTakerOpenFeeRate))) {
+        state.tradeHistoryTakerOpenFeeRate = clamp(Number(b.tradeHistoryTakerOpenFeeRate), 0, 0.01);
+      }
+      if (b.tradeHistoryTakerCloseFeeRate != null && Number.isFinite(Number(b.tradeHistoryTakerCloseFeeRate))) {
+        state.tradeHistoryTakerCloseFeeRate = clamp(Number(b.tradeHistoryTakerCloseFeeRate), 0, 0.01);
+      }
       if (b.trailFeeBeMultiplier != null) {
         state.trailFeeBeMultiplier = clamp(
           Number(b.trailFeeBeMultiplier) || Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25),
@@ -6492,6 +6529,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       trailingStopExtraScalpingPcts: normalizeTrailingExtraPcts(state.trailingStopExtraScalpingPcts),
       trailOpenFeeRate: clamp(Number(state.trailOpenFeeRate ?? 0.0004), 0, 0.01),
       trailCloseFeeRate: clamp(Number(state.trailCloseFeeRate ?? 0.0004), 0, 0.01),
+      tradeHistoryMakerOpenFeeRate: clamp(Number(state.tradeHistoryMakerOpenFeeRate ?? 0.0002), 0, 0.01),
+      tradeHistoryMakerCloseFeeRate: clamp(Number(state.tradeHistoryMakerCloseFeeRate ?? 0.0002), 0, 0.01),
+      tradeHistoryTakerOpenFeeRate: clamp(Number(state.tradeHistoryTakerOpenFeeRate ?? 0.0005), 0, 0.01),
+      tradeHistoryTakerCloseFeeRate: clamp(Number(state.tradeHistoryTakerCloseFeeRate ?? 0.0005), 0, 0.01),
       trailFeeBeMultiplier: clamp(
         Number(state.trailFeeBeMultiplier ?? process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25),
         1,
@@ -8754,6 +8795,18 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
     if (patch.trailCloseFeeRate != null && Number.isFinite(Number(patch.trailCloseFeeRate))) {
       state.trailCloseFeeRate = clamp(Number(patch.trailCloseFeeRate), 0, 0.01);
+    }
+    if (patch.tradeHistoryMakerOpenFeeRate != null && Number.isFinite(Number(patch.tradeHistoryMakerOpenFeeRate))) {
+      state.tradeHistoryMakerOpenFeeRate = clamp(Number(patch.tradeHistoryMakerOpenFeeRate), 0, 0.01);
+    }
+    if (patch.tradeHistoryMakerCloseFeeRate != null && Number.isFinite(Number(patch.tradeHistoryMakerCloseFeeRate))) {
+      state.tradeHistoryMakerCloseFeeRate = clamp(Number(patch.tradeHistoryMakerCloseFeeRate), 0, 0.01);
+    }
+    if (patch.tradeHistoryTakerOpenFeeRate != null && Number.isFinite(Number(patch.tradeHistoryTakerOpenFeeRate))) {
+      state.tradeHistoryTakerOpenFeeRate = clamp(Number(patch.tradeHistoryTakerOpenFeeRate), 0, 0.01);
+    }
+    if (patch.tradeHistoryTakerCloseFeeRate != null && Number.isFinite(Number(patch.tradeHistoryTakerCloseFeeRate))) {
+      state.tradeHistoryTakerCloseFeeRate = clamp(Number(patch.tradeHistoryTakerCloseFeeRate), 0, 0.01);
     }
     if (patch.trailFeeBeMultiplier != null && Number.isFinite(Number(patch.trailFeeBeMultiplier))) {
       state.trailFeeBeMultiplier = clamp(Number(patch.trailFeeBeMultiplier), 1, 2);

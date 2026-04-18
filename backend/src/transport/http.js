@@ -443,6 +443,10 @@ export function createRouter({ appState }) {
       /** Futures trailing fee / buffer / distance (fractions; UI advanced trailing + fee ladder). */
       trailOpenFeeRate: z.number().min(0).max(0.01).optional(),
       trailCloseFeeRate: z.number().min(0).max(0.01).optional(),
+      tradeHistoryMakerOpenFeeRate: z.number().min(0).max(0.01).optional(),
+      tradeHistoryMakerCloseFeeRate: z.number().min(0).max(0.01).optional(),
+      tradeHistoryTakerOpenFeeRate: z.number().min(0).max(0.01).optional(),
+      tradeHistoryTakerCloseFeeRate: z.number().min(0).max(0.01).optional(),
       trailFeeBeMultiplier: z.number().min(1).max(2).optional(),
       trailBufferRate: z.number().min(0).max(0.05).optional(),
       trailActivationSlippageFrac: z.number().min(0).max(0.01).optional(),

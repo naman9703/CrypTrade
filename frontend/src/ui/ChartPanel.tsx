@@ -552,21 +552,42 @@ function metaTrailTrailedFromPosition(pos: Record<string, unknown>): { trailed: 
   return { trailed, tierLabel };
 }
 
+/** Initial horizontal zoom window (seconds of bar time). */
+const INITIAL_VISIBLE_RANGE_SEC = 3600;
+/**
+ * Right-side gap before the price scale: empty logical bar slots ≈ this fraction of one hour’s bar count
+ * (matches TradingView-style padding; see `timeScale.rightOffset`).
+ */
+const INITIAL_RIGHT_MARGIN_BAR_FRAC = 0.3;
+
+function initialRightOffsetBars(tf: string | undefined | null): number {
+  const ms = binanceIntervalMs(tf ?? "1m");
+  const sec = Math.max(1, Math.round(ms / 1000));
+  const barsInHour = Math.max(1, Math.round(INITIAL_VISIBLE_RANGE_SEC / sec));
+  return Math.max(1, Math.round(INITIAL_RIGHT_MARGIN_BAR_FRAC * barsInHour));
+}
+
 function tryApplyAutoFit(
   chart: IChartApi | null,
   ohlcLen: number,
   pendingAutoFit: { current: boolean },
   fitAfterRest: { current: boolean },
   skipUntilBulk: { current: boolean },
+  lastBarTimeSec?: number | null,
+  timeframe?: string | null,
 ) {
   const canFit = !skipUntilBulk.current || fitAfterRest.current || ohlcLen >= 20;
   const shouldFit = pendingAutoFit.current && canFit && ohlcLen > 0;
   if (!shouldFit || !chart) return;
   try {
-    // Zoom to the last 2 hours on initial load so the most recent price action fills the view
-    const nowSec = Math.floor(Date.now() / 1000) as Time;
-    const twoHoursAgo = (Math.floor(Date.now() / 1000) - 2 * 3600) as Time;
-    chart.timeScale().setVisibleRange({ from: twoHoursAgo, to: nowSec });
+    const anchorSec =
+      lastBarTimeSec != null && Number.isFinite(Number(lastBarTimeSec)) && Number(lastBarTimeSec) > 0
+        ? Math.floor(Number(lastBarTimeSec))
+        : Math.floor(Date.now() / 1000);
+    const fromSec = anchorSec - INITIAL_VISIBLE_RANGE_SEC;
+    const toSec = anchorSec;
+    chart.timeScale().applyOptions({ rightOffset: initialRightOffsetBars(timeframe) });
+    chart.timeScale().setVisibleRange({ from: fromSec as Time, to: toSec as Time });
   } catch {
     // Fall back to full fit if the time range is not available in the loaded data
     try {
@@ -1104,7 +1125,18 @@ export function ChartPanel() {
         if (filtered.length) {
           series.setData(filtered);
           chartOhlcAppliedRef.current = filtered.slice();
-          tryApplyAutoFit(chart, filtered.length, pendingAutoFitRef, fitAfterRestSnapshotRef, skipFitUntilBulkRef);
+          const lastSec =
+            filtered.length > 0 ? Number(filtered[filtered.length - 1]!.time) : undefined;
+          const tfInit = normalizeSymTf(useAppStore.getState().bot?.timeframe);
+          tryApplyAutoFit(
+            chart,
+            filtered.length,
+            pendingAutoFitRef,
+            fitAfterRestSnapshotRef,
+            skipFitUntilBulkRef,
+            lastSec,
+            tfInit || null,
+          );
         }
       } catch {
         /* ignore */
@@ -2205,12 +2237,19 @@ export function ChartPanel() {
           }
         }
       }
+      const appliedFit = chartOhlcAppliedRef.current;
+      const lastBarSec =
+        appliedFit?.length && appliedFit[appliedFit.length - 1]
+          ? Number(appliedFit[appliedFit.length - 1]!.time)
+          : Number(last.time);
       tryApplyAutoFit(
         chart,
         chartOhlcAppliedRef.current?.length ?? ohlc.length,
         pendingAutoFitRef,
         fitAfterRestSnapshotRef,
         skipFitUntilBulkRef,
+        Number.isFinite(lastBarSec) ? lastBarSec : undefined,
+        normalizeSymTf(bot?.timeframe) || null,
       );
       if (logicalRangeRestore) {
         const r = logicalRangeRestore;
@@ -2236,7 +2275,7 @@ export function ChartPanel() {
         /* ignore */
       }
     }
-  }, [ohlc, effectiveSym]);
+  }, [ohlc, effectiveSym, bot?.timeframe]);
 
   useEffect(() => {
     const sym = effectiveSym;
@@ -2259,15 +2298,25 @@ export function ChartPanel() {
       skipFitUntilBulkRef.current = false;
       pendingAutoFitRef.current = true;
       const chart = chartRef.current;
-      const len = ohlcRef.current.length;
+      const appliedBulk = chartOhlcAppliedRef.current;
+      const rawBulk = ohlcRef.current;
+      const len = appliedBulk?.length ?? rawBulk.length;
+      let lastBulkSec: number | undefined;
+      if (appliedBulk?.length) {
+        lastBulkSec = Number(appliedBulk[appliedBulk.length - 1]!.time);
+      } else if (rawBulk.length) {
+        lastBulkSec = Number(rawBulk[rawBulk.length - 1]!.time);
+      }
       if (chartOkRef.current && chart && len > 0) {
-        try {
-          chart.timeScale().fitContent();
-          pendingAutoFitRef.current = false;
-          fitAfterRestSnapshotRef.current = false;
-        } catch {
-          /* ignore */
-        }
+        tryApplyAutoFit(
+          chart,
+          len,
+          pendingAutoFitRef,
+          fitAfterRestSnapshotRef,
+          skipFitUntilBulkRef,
+          Number.isFinite(lastBulkSec) ? lastBulkSec : undefined,
+          tf,
+        );
       }
     }, 2800);
   }, [effectiveSym, bot?.timeframe]);

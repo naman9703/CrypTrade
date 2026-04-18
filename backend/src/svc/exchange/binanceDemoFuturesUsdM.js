@@ -634,6 +634,9 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
             if (lc.positionSideAtOpen != null && String(lc.positionSideAtOpen).trim() !== "") {
               mergeInto.meta.positionSideAtOpen = String(lc.positionSideAtOpen).trim();
             }
+            if (lc.posId != null && String(lc.posId).trim() !== "" && mergeInto.meta.openRefId == null) {
+              mergeInto.meta.openRefId = String(lc.posId).trim();
+            }
             mergeInto.meta.supertrendSignalClose =
               lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP";
             if (mergeInto.reason != null && String(mergeInto.reason).trim() !== "") {
@@ -712,6 +715,9 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
                 lc.strategyCloseReason === "SUPERTREND_EXIT" || lc.strategyCloseReason === "SUPERTREND_FLIP",
               ...(lc.positionSideAtOpen != null && String(lc.positionSideAtOpen).trim() !== ""
                 ? { positionSideAtOpen: String(lc.positionSideAtOpen).trim() }
+                : {}),
+              ...(lc.posId != null && String(lc.posId).trim() !== ""
+                ? { openRefId: String(lc.posId).trim() }
                 : {}),
             },
           });

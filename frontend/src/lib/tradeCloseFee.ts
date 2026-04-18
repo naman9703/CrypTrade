@@ -18,3 +18,12 @@ export function estimatedCloseFeeUsdt(
   if (!Number.isFinite(q) || !Number.isFinite(px) || q <= 0 || px <= 0) return null;
   return Math.round(q * px * rate * 1e6) / 1e6;
 }
+
+/** Opening leg: same notional × rate shape as close; pass `trailOpenFeeRate` for the rate. */
+export function estimatedOpenFeeUsdt(
+  qty: number | null | undefined,
+  priceUsdt: number | null | undefined,
+  rate = TRADE_CLOSE_FEE_RATE,
+): number | null {
+  return estimatedCloseFeeUsdt(qty, priceUsdt, rate);
+}
