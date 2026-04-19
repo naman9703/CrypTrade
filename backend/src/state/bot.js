@@ -1030,6 +1030,27 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     resetCapitalCycleFromAllowedBase();
   }
 
+  /**
+   * EQUAL-split divisor list: frozen `capitalCycleSymbols` when capital cycle is active, else live
+   * ranked/pins (`symbolsForMultiBudgetList`). Must stay in sync with the UI and with
+   * `pctPolicyCapForRiskPlan` (PCT cap / nDiv).
+   */
+  function multiBudgetEqualDivisorSymbolList() {
+    const mode = derivedMultiBudgetSplitMode();
+    const isMultiple = String(state.universeCoinSelectMode || "").toUpperCase() === "MULTIPLE";
+    const splitModeNow = derivedMultiBudgetSplitMode();
+    const multiSizingImplied =
+      splitModeNow === "EQUAL" || splitModeNow === "CUSTOM_USDT" || splitModeNow === "CUSTOM_PCT_ALLOWED";
+    const multiSizing = isMultiple && (state.multiCoinCapitalSizingActive === true || multiSizingImplied);
+    const cycleMode = capitalCycleModeActive() && multiSizing;
+    if (cycleMode) ensureCapitalCycleInitialized();
+    const cycleList =
+      cycleMode && mode === "EQUAL" && Array.isArray(state.capitalCycleSymbols) && state.capitalCycleSymbols.length > 0
+        ? state.capitalCycleSymbols
+        : null;
+    return cycleList ?? symbolsForMultiBudgetList();
+  }
+
   async function maybeRebalanceCapitalCycleOnFlat({ wsHub, source } = {}) {
     if (!capitalCycleModeActive()) return;
     ensureCapitalCycleInitialized();
@@ -1169,11 +1190,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
 
     const mode = derivedMultiBudgetSplitMode();
-    const cycleList =
-      cycleMode && mode === "EQUAL" && Array.isArray(state.capitalCycleSymbols) && state.capitalCycleSymbols.length > 0
-        ? state.capitalCycleSymbols
-        : null;
-    const list = cycleList ?? symbolsForMultiBudgetList();
+    const list = multiBudgetEqualDivisorSymbolList();
     const listSet = new Set((Array.isArray(list) ? list : []).map((s) => String(s || "").toUpperCase()));
     const modeUsesSymbolList = mode === "EQUAL" || mode === "CUSTOM_USDT" || mode === "CUSTOM_PCT_ALLOWED";
     if (modeUsesSymbolList && listSet.size === 0) {
@@ -1318,7 +1335,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         splitMode === "EQUAL" || splitMode === "CUSTOM_USDT" || splitMode === "CUSTOM_PCT_ALLOWED"
       );
       if (multiActive && splitMode === "EQUAL") {
-        const list = symbolsForMultiBudgetList();
+        const list = multiBudgetEqualDivisorSymbolList();
         const nDiv = Math.max(1, list.length);
         if (nDiv > 1) return p / nDiv;
       }

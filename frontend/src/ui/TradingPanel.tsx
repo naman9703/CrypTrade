@@ -361,13 +361,29 @@ function effectiveSpotOrderNotionalUsdt(riskUsdt: number, freeBalance: number | 
   return Math.min(riskUsdt, freeBalance * 0.9);
 }
 
-/** Ranked top-table symbols used for multi budget UI / EQUAL divisor (matches backend `symbolsForMultiBudgetList`). */
+/** True when backend `capitalCycleModeActive()` — frozen cycle list applies (matches server). */
+function capitalCycleModeActiveFromBot(bot: any): boolean {
+  if (String(bot?.universeCoinSelectMode || "").toUpperCase() !== "MULTIPLE") return false;
+  const m = String(bot?.multiBudgetSplitMode || "").toUpperCase();
+  const splitModeNow =
+    m === "FULL" || m === "EQUAL" || m === "CUSTOM_USDT" || m === "CUSTOM_PCT_ALLOWED"
+      ? m
+      : bot?.capitalSplitAcrossCoins === true
+        ? "EQUAL"
+        : "FULL";
+  const multiSizingImplied =
+    splitModeNow === "EQUAL" || splitModeNow === "CUSTOM_USDT" || splitModeNow === "CUSTOM_PCT_ALLOWED";
+  const multiSizing = bot?.multiCoinCapitalSizingActive === true || multiSizingImplied;
+  return multiSizing && multiSizingImplied;
+}
+
+/** Ranked top-table symbols used for multi budget UI / EQUAL divisor (matches backend list used for sizing). */
 function multiBudgetSymbolsForUi(bot: any): string[] {
   if (String(bot?.universeCoinSelectMode || "").toUpperCase() !== "MULTIPLE") return [];
   const cycleSyms = Array.isArray(bot?.capitalCycleSymbols)
     ? [...new Set((bot.capitalCycleSymbols as unknown[]).map((s) => String(s || "").trim().toUpperCase()).filter(Boolean))]
     : [];
-  if (cycleSyms.length > 0) return cycleSyms.slice(0, 10);
+  if (capitalCycleModeActiveFromBot(bot) && cycleSyms.length > 0) return cycleSyms.slice(0, 10);
   const ranked = Array.isArray(bot?.universe?.ranked) ? (bot.universe.ranked as any[]) : [];
   const rankedSyms = ranked
     .slice(0, 12)
