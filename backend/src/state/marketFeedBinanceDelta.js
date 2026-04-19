@@ -15,6 +15,9 @@ export function createBinanceDeltaAggregator({ log, symbol, timeframe, wsBase, o
   symbol = normalizeSymbol(symbol);
   let ws = null;
   let status = { ok: false, source: "BINANCE_TRADES", lastMsgAt: null, stream: null, error: null };
+  let reconnectAttempt = 0;
+  const reconnectMinMs = Math.max(500, Number(process.env.BINANCE_WS_RECONNECT_MIN_MS ?? 1500));
+  const reconnectMaxMs = Math.max(reconnectMinMs, Number(process.env.BINANCE_WS_RECONNECT_MAX_MS ?? 60_000));
 
   function tfMs() {
     const tf = String(timeframe || "1m");
@@ -45,6 +48,7 @@ export function createBinanceDeltaAggregator({ log, symbol, timeframe, wsBase, o
     ws = new WebSocket(url);
 
     ws.on("open", () => {
+      reconnectAttempt = 0;
       status = { ...status, ok: true, error: null };
       log.info("binance_trades_ws_open", { stream });
     });
@@ -79,14 +83,18 @@ export function createBinanceDeltaAggregator({ log, symbol, timeframe, wsBase, o
 
     ws.on("close", () => {
       status = { ...status, ok: false };
-      log.warn("binance_trades_ws_close", { stream });
+      const exp = Math.min(reconnectMaxMs, reconnectMinMs * Math.pow(2, Math.min(8, reconnectAttempt)));
+      const jitter = Math.floor(Math.random() * 400);
+      const delay = exp + jitter;
+      reconnectAttempt += 1;
+      log.warn("binance_trades_ws_close", { stream, attempt: reconnectAttempt, delay });
       setTimeout(() => {
         try {
           connect();
         } catch (e) {
           status = { ...status, ok: false, error: String(e?.message || e) };
         }
-      }, 1500);
+      }, delay);
     });
   }
 

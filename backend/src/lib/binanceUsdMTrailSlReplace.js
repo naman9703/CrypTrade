@@ -517,6 +517,7 @@ export async function evalTrailingForSymbolUsdM(ctx) {
         supertrendPx: trailMode === "FEE_LADDER" ? trailingStopLoss.supertrendPx : stPx,
         bufferRate: trailingStopLoss.bufferRate,
         activationSlippageFrac: trailingStopLoss.activationSlippageFrac,
+        trailT01LockSlippageFrac: trailingStopLoss.trailT01LockSlippageFrac,
         atrPct: trailingStopLoss.atrPct,
         trailBufferAtrMult: trailingStopLoss.trailBufferAtrMult,
         trailBufferMode: trailingStopLoss.trailBufferMode,

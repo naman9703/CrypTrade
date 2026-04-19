@@ -97,6 +97,14 @@ export function attachWs({ wss, appState }) {
   }
 
   const hub = {
+    /** @returns {number} live client count — callers can skip expensive broadcasts when 0. */
+    clientCount() {
+      let n = 0;
+      for (const ws of clients) {
+        if (ws.readyState === ws.OPEN) n += 1;
+      }
+      return n;
+    },
     broadcast(type, payload) {
       const active = String(appState.mode || "PAPER").toUpperCase();
       const originRaw =

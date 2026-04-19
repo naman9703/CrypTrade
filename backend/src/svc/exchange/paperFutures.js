@@ -385,16 +385,31 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                     : 150;
                 const maxTieredActivationSteps =
                   maxStepCap != null ? Math.max(3, maxStepCap) : maxTrailStepsForConfig(trailingStopLoss.extraScalpingPcts ?? [], postT02MaxExtraTiers);
+                /**
+                 * Post-T02 activation buffer — independent from the T01/T02 `buf`. Null/unset means
+                 * "same as buf" (backward-compat); any non-negative value decouples the profit-rung
+                 * cushion from the fee-recovery cushion, matching the live engine semantics.
+                 */
+                const postT02BufRawPf = Number(trailingStopLoss.postT02ActivationBufferRate);
+                const postT02BufPf =
+                  Number.isFinite(postT02BufRawPf) && postT02BufRawPf >= 0
+                    ? Math.min(0.05, postT02BufRawPf)
+                    : null;
                 const gateRtSpacing = {
                   roundTripFeeRate: rtRateST,
                   postT02SpacingFrac: postT02SpacingUser,
+                  postT02BufferRate: postT02BufPf,
                 };
 
                 if (tieredStMode) {
                   migrateTieredTrailLegacySchema(pos.meta);
                   const t01ActivationPx = isLong ? entryPx * (1 + buf) : entryPx * (1 - buf);
                   const t02ActivationPx = defaultActivationPx;
-                  const entryLockBreakevenPx = entryPx;
+                  const t01LockSlip = Math.max(
+                    0,
+                    Math.min(0.01, Number(trailingStopLoss.trailT01LockSlippageFrac ?? 0)),
+                  );
+                  const entryLockBreakevenPx = isLong ? entryPx * (1 + t01LockSlip) : entryPx * (1 - t01LockSlip);
                   const c = confirmedPaper();
                   const prevTrailStep = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
                   const rawPriceStep = computeSupertrendTieredMaxTrailStepFromExtreme({

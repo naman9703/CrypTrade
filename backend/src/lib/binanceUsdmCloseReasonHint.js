@@ -119,5 +119,97 @@ export function closeReasonFromLocalCloseHint(lc) {
   if (bt === "TP") return "TAKE_PROFIT";
   const scr = String(lc?.strategyCloseReason || "").toUpperCase();
   if (scr === "SUPERTREND_EXIT" || scr === "SUPERTREND_FLIP") return scr;
+  /**
+   * `bracketType` was left null by the reconcile path because mark wasn't near SL or TP — we genuinely
+   * don't know what triggered the exchange-side close. Return `EXCHANGE_REALIZED` rather than
+   * `MANUAL_CLOSE` so the UI distinguishes "user clicked close" vs "exchange closed the position".
+   */
+  if (lc?.exchangeNativeClose === true && (bt == null || bt === "")) return "EXCHANGE_REALIZED";
   return "MANUAL_CLOSE";
+}
+
+/**
+ * Close-reason tolerance: how close the **actual exit avg fill** must be to SL/TP (as a fraction of
+ * price) to label the row as `STOP_LOSS` / `TAKE_PROFIT`. 0.0035 ≈ 0.35%, which comfortably covers
+ * stop slippage (a few ticks past trigger) plus a small buffer without tagging unrelated signal /
+ * manual / trailing exits as SL/TP.
+ */
+const CLOSE_REASON_FILL_BAND = 0.0035;
+
+/**
+ * Re-derive the CLOSE `reason` after the **actual exit avg fill price** is known (from `userTrades`).
+ *
+ * The original reason often lands as `EXCHANGE_REALIZED` or `MANUAL_CLOSE` — either because the
+ * reconciler ran before a mark price was available, or because the mark moved past SL/TP before we
+ * snapshotted. Once we have the true fill price, we can tell whether the close actually hit a bracket
+ * and upgrade the label to `STOP_LOSS` / `TRAILED_SUPERTREND_Tnn` / `TAKE_PROFIT`.
+ *
+ * Only *upgrades* unknown/generic reasons. Never overrides an already-specific reason
+ * (`TRAILED_STOP_LOSS_*`, `TAKE_PROFIT`, `SUPERTREND_FLIP`, …) to avoid demoting a correct label.
+ *
+ * @param {{
+ *   existingReason?: string | null;
+ *   exitAvgFillPrice: number | null | undefined;
+ *   stopLoss: number | null | undefined;
+ *   takeProfit: number | null | undefined;
+ *   positionSideAtOpen?: string | null;
+ *   trailStepAtClose?: number | null;
+ *   confirmedTrailStepAtClose?: number | null;
+ *   trailStepLabelStyleAtClose?: string | null;
+ *   trailingMode?: string | null;
+ *   exitViaTrailedStop?: boolean;
+ * }} p
+ * @returns {string | null} Upgraded reason, or original `existingReason` if we can't confidently upgrade.
+ */
+export function refineCloseReasonFromExitFill(p) {
+  const existing = String(p.existingReason || "").trim().toUpperCase();
+  const upgradable =
+    existing === "" ||
+    existing === "EXCHANGE_REALIZED" ||
+    existing === "MANUAL_CLOSE" ||
+    existing === "STOP_LOSS_DEFAULT";
+  if (!upgradable) return p.existingReason ?? null;
+
+  const px = Number(p.exitAvgFillPrice);
+  if (!Number.isFinite(px) || px <= 0) return p.existingReason ?? null;
+  const sl = Number(p.stopLoss);
+  const tp = Number(p.takeProfit);
+
+  const posSide = String(p.positionSideAtOpen || "").toUpperCase();
+  /** Default to long when we don't know — same as existing helpers — but only for orientation in
+   * `nearSl`/`nearTp` sign checks below, which use absolute distance anyway. */
+  const isLong = posSide === "BUY" || posSide === "LONG" || posSide === "";
+
+  const nearSl =
+    Number.isFinite(sl) && sl > 0 && Math.abs(px - sl) / sl <= CLOSE_REASON_FILL_BAND;
+  const nearTp =
+    Number.isFinite(tp) && tp > 0 && Math.abs(px - tp) / tp <= CLOSE_REASON_FILL_BAND;
+
+  /** If both brackets look close (unusual — e.g. very tight TP), pick the closer one. */
+  let pickSl = nearSl && !nearTp;
+  let pickTp = nearTp && !nearSl;
+  if (nearSl && nearTp) {
+    const dSl = Math.abs(px - sl);
+    const dTp = Math.abs(px - tp);
+    if (dSl <= dTp) pickSl = true;
+    else pickTp = true;
+  }
+
+  /** Additional directional sanity: long SL below entry/px, long TP above; short inverted.
+   * Without a trustworthy `isLong` we skip this and rely on the band check. */
+  void isLong;
+
+  if (pickTp) return "TAKE_PROFIT";
+  if (pickSl) {
+    return closeReasonFromLocalCloseHint({
+      bracketType: "SL",
+      exitViaTrailedStop: p.exitViaTrailedStop === true,
+      trailStepAtClose: p.trailStepAtClose,
+      confirmedTrailStepAtClose: p.confirmedTrailStepAtClose,
+      trailStepLabelStyleAtClose: p.trailStepLabelStyleAtClose,
+      trailingMode: p.trailingMode,
+    });
+  }
+
+  return p.existingReason ?? null;
 }

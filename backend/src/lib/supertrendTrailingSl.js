@@ -16,13 +16,17 @@ function clampFeeRateLocal(r) {
  * Formula: paddedRate = roundTripFeeRate × multiplier
  *          where roundTripFeeRate = openFeeRate + closeFeeRate (caller's responsibility)
  *
+ * Used by the T02 lock: T02 SL = entry × (1 ± paddedRate).
+ *
  * @param {number} roundTripFeeRate  Full round-trip fee (openFeeRate + closeFeeRate), e.g. 0.0008 = 0.08%
- * @param {number} [multiplier]      Safety margin ×N; 1.0 = exact breakeven, 1.25 = 25% padding.
- *                                   Defaults to env `FUTURES_TRAIL_FEE_BE_MULT` (default 1.25).
+ * @param {number} [multiplier]      Safety margin ×N; 1.0 = exact break-even (gross = fees, net ≈ 0).
+ *                                   Raising above 1.0 (e.g. 1.25) over-covers fees to absorb stop-market
+ *                                   slippage, at the cost of T02 firing later and T02 gross > fees.
+ *                                   Defaults to env `FUTURES_TRAIL_FEE_BE_MULT` (default 1.0 = exact BE per spec).
  */
 export function feeRateBreakevenPadded(roundTripFeeRate, multiplier) {
   const r = clampFeeRateLocal(roundTripFeeRate);
-  const envMult = Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25);
+  const envMult = Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.0);
   const raw = multiplier != null && Number.isFinite(Number(multiplier)) ? Number(multiplier) : envMult;
   const m = Number.isFinite(raw) && raw >= 1 ? Math.min(2, raw) : 1.0;
   return Math.min(0.02, r * m);

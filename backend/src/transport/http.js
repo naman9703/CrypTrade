@@ -450,8 +450,16 @@ export function createRouter({ appState }) {
       trailFeeBeMultiplier: z.number().min(1).max(2).optional(),
       trailBufferRate: z.number().min(0).max(0.05).optional(),
       trailActivationSlippageFrac: z.number().min(0).max(0.01).optional(),
+      /** Tiered T01: SL lock offset from entry (fraction); LONG locks above entry. */
+      trailT01LockSlippageFrac: z.number().min(0).max(0.01).optional(),
       trailBufferAtrMult: z.number().min(0).max(1).optional(),
       trailBufferMode: z.enum(["PERCENT", "ATR"]).optional(),
+      /**
+       * Independent activation buffer for post-T02 profit rungs (T1, T2, T3…). Fraction of price.
+       * `null` clears to the T01/T02 buffer value (`trailBufferRate`). Decouples profit-rung pull-back
+       * cushion from the fee-recovery (T01/T02) cushion.
+       */
+      trailPostT02ActivationBufferRate: z.union([z.number().min(0).max(0.05), z.null()]).optional(),
       trailMinSlDistFrac: z.number().min(0).max(0.1).optional(),
       /** Min |mark−SL|/mark for Supertrend trail (0 = off; e.g. 0.005 = 0.5%). */
       trailMinGapFromMarkFrac: z.number().min(0).max(0.2).optional(),

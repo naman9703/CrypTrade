@@ -27,9 +27,16 @@ function findLastOpenTrade(trades, symU) {
   return null;
 }
 
-/** Infer whether exit was nearer to SL or TP from mark vs bracket prices (used for income rows without a local close hint). */
+/**
+ * Infer whether exit was nearer to SL or TP from mark vs bracket prices.
+ * Returns `null` when neither bracket is close to mark (manual close, signal flip, liquidation, etc.) —
+ * previously we defaulted to `"SL"` which mislabels any non-bracket close as a stop-loss and causes
+ * history rows like "Default SL / gross profit" when the real exit had nothing to do with the stop.
+ *
+ * @returns {"SL" | "TP" | null}
+ */
 export function inferSlTpFromMark(isLong, markPx, sl, tp) {
-  if (!Number.isFinite(markPx) || markPx <= 0) return "SL";
+  if (!Number.isFinite(markPx) || markPx <= 0) return null;
   const eps = Math.max(markPx * 2e-4, markPx * 1e-6);
   const S = Number(sl);
   const T = Number(tp);
@@ -50,7 +57,7 @@ export function inferSlTpFromMark(isLong, markPx, sl, tp) {
       return Math.abs(markPx - S) <= Math.abs(markPx - T) ? "SL" : "TP";
     }
   }
-  return "SL";
+  return null;
 }
 
 /**
@@ -85,7 +92,8 @@ export async function reconcileUsdMExternalClosesFromPositions(ctx, rawPositions
     const isLong = openLeg?.side === "BUY";
     const closeSide = isLong ? "SELL" : "BUY";
 
-    let bracketType = "SL";
+    /** Default: unknown external close — let income patch fill in real fill price from `userTrades`. */
+    let bracketType = exitViaTrailedStop ? "SL" : null;
     let markPx = NaN;
 
     const pb = pickBracketTargets(mem.placedBracketTargets, symU);
@@ -101,12 +109,14 @@ export async function reconcileUsdMExternalClosesFromPositions(ctx, rawPositions
       }
     }
     if (!exitViaTrailedStop) {
+      /** inferSlTpFromMark now returns null when neither bracket is near — keep bracketType unknown. */
       bracketType = inferSlTpFromMark(isLong, markPx, sl, tp);
-    } else if (!Number.isFinite(markPx) || markPx <= 0) {
-      /** Trailing exits skip SL/TP inference; still need a px for ledger CLOSE rows + fee hint. */
-      const slN = Number(sl);
-      if (Number.isFinite(slN) && slN > 0) markPx = slN;
     }
+    /**
+     * Do NOT synthesize `markPx` from the SL trigger for trailing exits. The income patch will replace
+     * this with the real `userTrades` avg fill; until then, leave markPx NaN so the UI shows "—" rather
+     * than the stop-trigger price (which caused rows like "gross profit at SL price below entry").
+     */
 
     mem.recentLocalCloses = Array.isArray(mem.recentLocalCloses) ? mem.recentLocalCloses : [];
 

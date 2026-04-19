@@ -1355,6 +1355,7 @@ export function ChartPanel() {
     const bufferRate = Number.isFinite(Number(bot?.trailBufferRate)) && Number(bot?.trailBufferRate) >= 0
       ? Number(bot.trailBufferRate) : 0.0005;
     const slipFracChart = Math.max(0, Math.min(0.01, Number(bot?.trailActivationSlippageFrac ?? 0)));
+    const t01LockSlipChart = Math.max(0, Math.min(0.01, Number(bot?.trailT01LockSlippageFrac ?? 0)));
     const atrPctChart = Number(
       bot && typeof bot === "object" && (bot as { lastRegime?: { atrPct?: number } }).lastRegime?.atrPct,
     );
@@ -1671,7 +1672,7 @@ export function ChartPanel() {
       const nextTrailStep = Math.max(stepNow, priceStep);
       const t01ActivationPx = isLong ? entry * (1 + bufEffective) : entry * (1 - bufEffective);
       const t02ActivationPx = isLong ? entry * (1 + paddedFeeSt + bufEffective) : entry * (1 - paddedFeeSt - bufEffective);
-      const entryLockBreakevenPx = entry;
+      const entryLockBreakevenPx = isLong ? entry * (1 + t01LockSlipChart) : entry * (1 - t01LockSlipChart);
       const beEvtBase = isLong ? entry * (1 + paddedFeeSt) : entry * (1 - paddedFeeSt);
       if (nextTrailStep < 1) {
         r = { newSl: prevSlForCompute, status: "NO_TRAIL" };
@@ -1922,6 +1923,7 @@ export function ChartPanel() {
     bot?.trailingStopExtraScalpingPcts,
     bot?.trailBufferRate,
     bot?.trailActivationSlippageFrac,
+    bot?.trailT01LockSlippageFrac,
     bot?.trailBufferAtrMult,
     bot?.trailBufferMode,
     bot?.lastRegime,

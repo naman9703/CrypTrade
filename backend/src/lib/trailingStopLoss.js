@@ -139,14 +139,16 @@ export function defaultTieredPostT02SpacingFrac(roundTripFeeRate) {
 /**
  * Synthetic lock ladder for tiered ST preview / “locks reached” UI: T01 entry, T02 padded BE, then equidistant rungs.
  */
-export function buildTieredStEquidistantLockRows(entryPx, isLong, paddedFeeBe, spacingFrac, maxRungs = 64) {
+export function buildTieredStEquidistantLockRows(entryPx, isLong, paddedFeeBe, spacingFrac, maxRungs = 64, t01LockSlippageFrac = 0) {
   const E = Number(entryPx);
   const fb = Number(paddedFeeBe);
   const sp = Number(spacingFrac);
+  const slip = Math.max(0, Math.min(0.01, Number(t01LockSlippageFrac) || 0));
   if (!Number.isFinite(E) || E <= 0 || !Number.isFinite(fb) || !Number.isFinite(sp) || sp <= 0) return [];
+  const t01Lock = isLong ? E * (1 + slip) : E * (1 - slip);
   const t02Lock = isLong ? E * (1 + fb) : E * (1 - fb);
   const out = [
-    { kind: "tiered_t01", lockPx: E, tierLabel: "T01" },
+    { kind: "tiered_t01", lockPx: t01Lock, tierLabel: "T01" },
     { kind: "tiered_t02", lockPx: t02Lock, tierLabel: "T02" },
   ];
   const n = Math.max(0, Math.min(500, Math.floor(Number(maxRungs) || 64)));
@@ -161,7 +163,14 @@ export function buildTieredStEquidistantLockRows(entryPx, isLong, paddedFeeBe, s
 /**
  * Tiered SUPERTREND: activation threshold for the next SL advance at current `trailStep`.
  * T01 = entry ± buffer; T02 = entry ± (padded fee + buffer). Post‑T02: **equidistant** rungs from the T02 **lock**
- * (padded BE price), each activation = lock × (1 ± buffer). Optional `stLevels` kept for legacy non–fee-BE paths only.
+ * (padded BE price), each activation = lock × (1 ± postT02Buf), where `postT02Buf` is an
+ * independent knob (falls back to `bufferRate` when unset). Optional `stLevels` kept for legacy
+ * non–fee-BE paths only.
+ *
+ * `bufferRate`       — activation gap for the T01 / T02 **fee-recovery** tiers only.
+ * `postT02BufferRate`— activation gap for every post-T02 rung (T1, T2, T3, …). When null/undefined
+ *                     or non-finite, the engine falls back to `bufferRate` so legacy configs keep
+ *                     the old single-buffer behaviour.
  */
 export function resolveSupertrendTieredActivationGate({
   stepNow,
@@ -169,6 +178,7 @@ export function resolveSupertrendTieredActivationGate({
   entryPx,
   feeBe,
   bufferRate,
+  postT02BufferRate,
   useFeeBeTrail,
   stLevels,
   roundTripFeeRate,
@@ -176,6 +186,9 @@ export function resolveSupertrendTieredActivationGate({
 }) {
   const E = Number(entryPx);
   const buf = Number(bufferRate);
+  /** Post-T02 rungs use their own buffer; fall back to `buf` so legacy callers/configs keep working. */
+  const postBufRaw = Number(postT02BufferRate);
+  const postBuf = Number.isFinite(postBufRaw) && postBufRaw >= 0 ? postBufRaw : buf;
   const fb = Number(feeBe);
   const defaultActivationPx = isLong
     ? E * (1 + (useFeeBeTrail ? fb : 0) + buf)
@@ -203,7 +216,9 @@ export function resolveSupertrendTieredActivationGate({
       return { activationPx: defaultActivationPx, activationTierLabel: `T${stepNow - 1}` };
     }
     const gatePx =
-      Number.isFinite(buf) && buf > 0 ? (isLong ? lockPx * (1 + buf) : lockPx * (1 - buf)) : lockPx;
+      Number.isFinite(postBuf) && postBuf > 0
+        ? (isLong ? lockPx * (1 + postBuf) : lockPx * (1 - postBuf))
+        : lockPx;
     return { activationPx: gatePx, activationTierLabel: `T${stepNow - 1}` };
   }
 
@@ -217,8 +232,8 @@ export function resolveSupertrendTieredActivationGate({
     const lockPx = Number(L?.lockPx);
     const good = Number.isFinite(lockPx) && lockPx > 0;
     const gatePx = good
-      ? (Number.isFinite(buf) && buf > 0
-          ? (isLong ? lockPx * (1 + buf) : lockPx * (1 - buf))
+      ? (Number.isFinite(postBuf) && postBuf > 0
+          ? (isLong ? lockPx * (1 + postBuf) : lockPx * (1 - postBuf))
           : lockPx)
       : defaultActivationPx;
     return {
@@ -251,6 +266,7 @@ export function computeSupertrendTieredMaxTrailStepFromExtreme({
   isLong,
   feeBe,
   bufferRate,
+  postT02BufferRate,
   useFeeBeTrail,
   stLevels,
   roundTripFeeRate,
@@ -272,6 +288,7 @@ export function computeSupertrendTieredMaxTrailStepFromExtreme({
       entryPx: E,
       feeBe: fb,
       bufferRate: buf,
+      postT02BufferRate,
       useFeeBeTrail,
       stLevels: levels,
       roundTripFeeRate,
@@ -451,6 +468,7 @@ export function computeEffectiveTrailBuffer(trailingOpts) {
  *   supertrendPx?: number | null;
  *   bufferRate?: number;
  *   activationSlippageFrac?: number; // additive on padded BE for Supertrend tiered gates
+ *   trailT01LockSlippageFrac?: number; // tiered T01 only: offset SL lock from entry (LONG: above entry; SHORT: below)
  *   atrPct?: number | null; // regime ATR as fraction of price (e.g. lastRegime.atrPct)
  *   trailBufferMode?: "PERCENT" | "ATR"; // PERCENT = bufferRate only; ATR = min(5%, atrPct×mult), else bufferRate
  *   trailBufferAtrMult?: number; // used when trailBufferMode is ATR
@@ -513,8 +531,22 @@ export function applyTrailingStopBinanceMemory(opts) {
     0,
     Math.min(0.01, Number(trailingOpts.activationSlippageFrac != null ? Number(trailingOpts.activationSlippageFrac) : 0)),
   );
-  /** Supertrend tiered: padded fee + optional execution slippage (cap 2%). Fee ladder unchanged. */
+  /**
+   * T02 gate padding — `slipFrac` delays the **activation threshold** only (mark must travel
+   * entry ± (feeBe + slipFrac + buffer) before the tier engages). The SL **lock** must stay at
+   * exact fee break-even (`feeBe`) — inflating the lock by `slipFrac` silently changes T02 from
+   * "net ≈ 0" to "net = slipFrac × notional", which contradicts the T02 zero-loss spec and
+   * produces unexpected "profit on T02" rows in history.
+   * `feeBeSt`        — padded rate, used for ACTIVATION gates only (below).
+   * `feeBeLockRate`  — exact rate, used for SL LOCK placement (breakeven floor).
+   */
   const feeBeSt = Math.min(0.02, feeBe + slipFrac);
+  const feeBeLockRate = feeBe;
+  /** Tiered T01 SL lock: entry × (1 ± frac) so lock clears tick/display rounding vs flat entry (cap 1%). */
+  const t01LockSlipFrac = Math.max(
+    0,
+    Math.min(0.01, Number(trailingOpts.trailT01LockSlippageFrac != null ? Number(trailingOpts.trailT01LockSlippageFrac) : 0)),
+  );
   const mm = Number.isFinite(Number(trailingOpts.maintenanceMarginRate))
     ? Number(trailingOpts.maintenanceMarginRate)
     : 0.005;
@@ -627,17 +659,29 @@ export function applyTrailingStopBinanceMemory(opts) {
         : 150;
     const maxTieredActivationSteps =
       maxStepCap != null ? Math.max(3, maxStepCap) : maxTrailStepsForConfig(trailingOpts.extraScalpingPcts ?? [], postT02MaxExtraTiers);
+    /**
+     * Post-T02 buffer: independent from `buf` (the T01/T02 fee-recovery buffer). Users can now
+     * keep T01/T02 glued to entry (small `buf`, quick loss-protection activation) while giving
+     * every profit rung (T1, T2, T3…) a larger pull-back cushion to avoid noise stops. When the
+     * field is null/unset, the gate resolver falls back to `buf` (backward-compatible default).
+     */
+    const postT02BufRaw = Number(trailingOpts.postT02ActivationBufferRate);
+    const postT02Buf =
+      Number.isFinite(postT02BufRaw) && postT02BufRaw >= 0 ? Math.min(0.05, postT02BufRaw) : null;
     const gateRtSpacing = {
       roundTripFeeRate: roundTripFeeR,
       postT02SpacingFrac: postT02SpacingUser,
+      postT02BufferRate: postT02Buf,
     };
 
     const stFeeOnEvt = useFeeBeTrail;
+    /** LOCK at exact fee BE (not padded with slipFrac) — see `feeBeLockRate` comment above. */
     const evtBreakevenBase = stFeeOnEvt
       ? isLong
-        ? tr.entryPrice * (1 + feeBeSt)
-        : tr.entryPrice * (1 - feeBeSt)
+        ? tr.entryPrice * (1 + feeBeLockRate)
+        : tr.entryPrice * (1 - feeBeLockRate)
       : tr.entryPrice;
+    /** ACTIVATION fallback: padded rate (`feeBeSt`) is intentional — slipFrac delays activation only. */
     const evtActivationFallback = stFeeOnEvt
       ? isLong
         ? tr.entryPrice * (1 + feeBeSt + buf)
@@ -671,7 +715,9 @@ export function applyTrailingStopBinanceMemory(opts) {
       tr.trailStepLabelStyle = "tiered_st_fee_entry";
       const t01ActivationPx = isLong ? tr.entryPrice * (1 + buf) : tr.entryPrice * (1 - buf);
       const t02ActivationPx = defaultActivationPx;
-      const entryLockBreakevenPx = tr.entryPrice;
+      const entryLockBreakevenPx = isLong
+        ? tr.entryPrice * (1 + t01LockSlipFrac)
+        : tr.entryPrice * (1 - t01LockSlipFrac);
       const bCur = localBrackets[sym];
       const tgtCur = placedBracketTargets?.[sym];
       const prevRawCur = bCur ? bCur.stopLoss : tgtCur?.stopLoss;
@@ -1195,7 +1241,8 @@ export function applyTrailingStopBinanceMemory(opts) {
   if (!Number.isFinite(finalSl) || finalSl <= 0 || finalSl === prevEff) return false;
 
   const stFeeOn = mode !== "SUPERTREND" || trailingOpts.supertrendUseFeeBreakeven !== false;
-  const feeBeEvt = mode === "SUPERTREND" ? feeBeSt : feeBe;
+  /** Event/display BE reflects the actual LOCK price — both modes now use exact `feeBe` (no slipFrac). */
+  const feeBeEvt = feeBe;
   const breakeven = stFeeOn
     ? isLong
       ? tr.entryPrice * (1 + feeBeEvt)

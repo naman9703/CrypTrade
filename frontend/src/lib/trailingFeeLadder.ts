@@ -7,6 +7,7 @@
  * - `trailBufferRate` → `bufferRate`: fixed activation buffer (fraction) when `trailBufferMode` is `PERCENT`, or fallback when ATR is missing in `ATR` mode.
  * - `trailBufferMode` → `PERCENT` | `ATR`: whether buffer is fixed % or `min(5%, atrPct × trailBufferAtrMult)`.
  * - `trailActivationSlippageFrac` → added to padded fee for Supertrend tiered gates (`feeBeSt` in engine); fee ladder unchanged.
+ * - `trailT01LockSlippageFrac` → tiered T01 stop lock offset from entry (fraction of entry; LONG locks above entry).
  * - `trailBufferAtrMult` + `lastRegime.atrPct` → used when `trailBufferMode` is `ATR` (see `computeEffectiveTrailBuffer`).
  * - `trailFeeBeMultiplier` → `feeBeMultiplier`: safety padding on round-trip for padded breakeven (T02 SL, fee-ladder T0, `feeRateBreakevenPadded`).
  * - `trailMinSlDistFrac` → `minSlDistanceFrac`: min |mark − newSL|/mark before accepting a tighten (noise filter).
@@ -54,8 +55,11 @@ export function computeEffectiveTrailBuffer(trailingOpts: {
   return fixedBuf;
 }
 
-/** Matches `backend/src/state/bot.js` default and `FUTURES_TRAIL_FEE_BE_MULT` (1.25). */
-export const DEFAULT_TRAIL_FEE_BE_MULTIPLIER = 1.25;
+/**
+ * Matches `backend/src/state/bot.js` default and `FUTURES_TRAIL_FEE_BE_MULT` (1.0).
+ * 1.0 ⇒ T02 lock = entry × (1 ± round-trip fee) ⇒ gross = fees, net ≈ 0 (break-even per spec).
+ */
+export const DEFAULT_TRAIL_FEE_BE_MULTIPLIER = 1.0;
 
 /**
  * Apply optional safety multiplier on top of the round-trip fee.
@@ -180,14 +184,17 @@ export function buildTieredStEquidistantLockRows(
   paddedFeeBe: number,
   spacingFrac: number,
   maxRungs = 64,
+  t01LockSlippageFrac = 0,
 ): TrailLockRow[] {
   const E = Number(entryPx);
   const fb = Number(paddedFeeBe);
   const sp = Number(spacingFrac);
+  const slip = Math.max(0, Math.min(0.01, Number(t01LockSlippageFrac) || 0));
   if (!Number.isFinite(E) || E <= 0 || !Number.isFinite(fb) || !Number.isFinite(sp) || sp <= 0) return [];
+  const t01Lock = isLong ? E * (1 + slip) : E * (1 - slip);
   const t02Lock = isLong ? E * (1 + fb) : E * (1 - fb);
   const out: TrailLockRow[] = [
-    { kind: "tiered_t01", lockPx: E, tierLabel: "T01" },
+    { kind: "tiered_t01", lockPx: t01Lock, tierLabel: "T01" },
     { kind: "tiered_t02", lockPx: t02Lock, tierLabel: "T02" },
   ];
   const n = Math.max(0, Math.min(500, Math.floor(Number(maxRungs) || 64)));

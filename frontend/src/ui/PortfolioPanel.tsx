@@ -1,4 +1,13 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
 import { deferTask } from "../lib/deferTask";
 import {
   loadPortfolioPnlRangeForMode,
@@ -152,6 +161,12 @@ function tradeMatchesHistoryTime(t: any, f: HistoryRangeFilter): boolean {
   if (ms <= 0) return false;
   if (f.kind === "from_present") return ms >= f.startMs;
   return ms >= f.startMs && ms <= f.endMs;
+}
+
+/** OPEN leg lies in the same time filter as the CLOSE row — required for attributed window PnL. */
+function roundTripOpenLegInHistoryWindow(openRow: any | undefined, f: HistoryRangeFilter): boolean {
+  if (!openRow) return false;
+  return tradeMatchesHistoryTime(openRow, f);
 }
 
 /** Per-trade fees in USD where the app models them; ledger / some venues omit breakdown. */
@@ -542,6 +557,37 @@ function tradeNetPnlClose(t: any): number | null {
   return Number.isFinite(net) ? net : null;
 }
 
+/**
+ * Binance `/fapi/v1/income` REALIZED_PNL rows carry **price** PnL only; commissions are separate (and we show OPEN fee +
+ * CLOSE exit fee in columns). Paper/synthetic packed rows store **wallet net after fees** on `pnl` with `totalFee` etc.
+ * Only the latter should use the legacy OPEN+CLOSE split adjustment (`pnl + openFee` when both legs visible).
+ */
+function closeStoredPnlIsPackedWalletNet(closeRow: any): boolean {
+  const m = closeRow?.meta || {};
+  if (Number.isFinite(Number(m.walletNetUsd))) return true;
+  if (Number.isFinite(Number(m.totalFee)) && Number(m.totalFee) >= 0) return true;
+  if (m.source === "fapi_income") return false;
+  if (m.syntheticImmediateClose === true) return false;
+  return true;
+}
+
+/** CLOSE row Net column: reconciles Binance income shards vs split OPEN/CLOSE fee rows without double-counting open fee. */
+function closeDisplayedNetFromStored(
+  closeRow: any,
+  storedCloseNet: number,
+  openRef: any | undefined,
+  openFeeAmt: number | null,
+  openInView: boolean,
+  exitFeeUsd: number | null,
+): number {
+  if (!closeStoredPnlIsPackedWalletNet(closeRow)) {
+    const ex = exitFeeUsd != null && Number.isFinite(exitFeeUsd) ? exitFeeUsd : 0;
+    return storedCloseNet - ex;
+  }
+  if (openRef && openFeeAmt != null && openInView) return storedCloseNet + openFeeAmt;
+  return storedCloseNet;
+}
+
 /** Net for a close = gross − fees (fees 0 when unknown); falls back to stored net PnL. */
 function closeTradeNetUsd(t: any, openRef: any | undefined, bot?: any): number {
   const { price, qty } = tradeHistoryDisplayFields(t, openRef, bot);
@@ -554,9 +600,124 @@ function closeTradeNetUsd(t: any, openRef: any | undefined, bot?: any): number {
   return tradeNetPnlClose(t) ?? 0;
 }
 
+/**
+ * Round-trip “Trip” net = total gross − total fee as shown in Gross/Fee columns (close gross + OPEN/CLOSE fees).
+ * Falls back to {@link closeTradeNetUsd} when display gross or fees are incomplete.
+ */
+function tradeHistoryRoundTripNetUsd(c: any, o: any | undefined, bot?: any): number {
+  const openInViewRt = Boolean(o);
+  const dispO = o ? tradeHistoryDisplayFields(o, undefined, bot) : null;
+  const dispC = tradeHistoryDisplayFields(c, o, bot);
+  const entryPxMerge =
+    numFinite(c?.entryPrice ?? c?.meta?.entryPrice ?? o?.entryPrice ?? o?.price ?? o?.meta?.entryPx) ?? null;
+  let openFee: number | null = null;
+  let netC: number | null = null;
+  let feeC: number | null = null;
+  const openRo = o ? tradeHistoryOpenFeeRateForRow(bot, o) : tradeHistoryOpenFeeRateForRow(bot, c);
+  const closeR = tradeHistoryCloseFeeRateForRow(bot, c);
+  const priceC = dispC.price;
+  const qtyC = dispC.qty;
+  if (o) {
+    const qtyO = dispO!.qty;
+    const priceO = dispO!.price;
+    const entryPxO = numFinite(o.entryPrice ?? o.meta?.entryPrice ?? o.price ?? o.meta?.entryPx) ?? null;
+    openFee = tradeOpenLegFeeUsd(o, qtyO, priceO ?? entryPxO, openRo, c);
+  }
+  feeC = tradeCloseLegFeeUsd(c, o, qtyC, priceC, openRo, closeR);
+  const storedCloseNet = tradeNetPnlClose(c);
+  const openFeeAmt =
+    o != null
+      ? tradeOpenLegFeeUsd(
+          o,
+          numFinite(o.qty ?? qtyC),
+          numFinite(o.price ?? o.meta?.entryPx ?? entryPxMerge),
+          tradeHistoryOpenFeeRateForRow(bot, o),
+          c,
+        )
+      : null;
+  if (storedCloseNet != null && Number.isFinite(storedCloseNet)) {
+    netC = closeDisplayedNetFromStored(c, storedCloseNet, o, openFeeAmt, openInViewRt, feeC);
+  } else {
+    const g0 = tradeGrossPnlClose(c, qtyC, priceC, o, bot);
+    netC = g0 != null && feeC != null ? g0 - feeC : tradeNetPnlClose(c);
+  }
+  const grossC =
+    netC != null && feeC != null ? netC + feeC : tradeGrossPnlClose(c, qtyC, priceC, o, bot);
+  const feeTotalRt =
+    openFee != null && feeC != null ? openFee + feeC : tradeRoundTripFeeUsdForCloseRow(c, o, qtyC, priceC, bot);
+  const tripNetFromDisplay =
+    grossC != null &&
+    feeTotalRt != null &&
+    Number.isFinite(grossC) &&
+    Number.isFinite(feeTotalRt)
+      ? grossC - feeTotalRt
+      : null;
+  return tripNetFromDisplay ?? closeTradeNetUsd(c, o, bot);
+}
+
 function fmtUsd(x: number | null, digits = 2): string {
   if (x == null || !Number.isFinite(x)) return "—";
   return Number(x).toFixed(digits);
+}
+
+/**
+ * When formatted entry/exit match at table precision, fills can still differ by a tick — large qty ⇒ ~USDT move.
+ * (Low-price perps: Binance REALIZED_PNL can be ~$1 while Entry/Exit both show 0.2506.)
+ */
+function tradeHistoryEntryExitMicroMoveTitle(
+  entryPx: number | null,
+  exitPx: number | null,
+  qty: number | null,
+): string | undefined {
+  if (entryPx == null || exitPx == null || !Number.isFinite(entryPx) || !Number.isFinite(exitPx) || entryPx <= 0 || exitPx <= 0) {
+    return undefined;
+  }
+  if (fmtInstrumentPx(entryPx) !== fmtInstrumentPx(exitPx)) return undefined;
+  const d = Math.abs(exitPx - entryPx);
+  if (d < 1e-12) return undefined;
+  const q = qty != null && Number.isFinite(qty) && qty > 0 ? qty : 0;
+  const moveUsd = d * q;
+  if (!(moveUsd > 1e-8)) return undefined;
+  return [
+    "Displayed entry/exit use limited precision — raw average fills can differ slightly.",
+    `Raw entry: ${String(entryPx)}`,
+    `Raw exit:  ${String(exitPx)}`,
+    `|Δ|×qty ≈ ${moveUsd.toFixed(4)} USDT (same order as gross price PnL from Binance REALIZED_PNL).`,
+  ].join("\n");
+}
+
+/** Tooltip for CLOSE Net when Binance income-backed — avoids confusion vs exchange “PnL” UIs. */
+function tradeHistoryCloseNetColumnTitle(t: any): string | undefined {
+  if (String(t?.type ?? "").toUpperCase() !== "CLOSE") return undefined;
+  const m = t?.meta || {};
+  if (String(m.source ?? "") !== "fapi_income") return undefined;
+  return [
+    "Binance REALIZED_PNL (≈ Gross here) excludes commissions; COMMISSION income rows are separate.",
+    "Net column ≈ REALIZED_PNL − exit Fee shown — can be ~$0 when price PnL and exit commission are similar.",
+    "Open-leg commission hit the wallet when the position opened (see the OPEN row). Binance ROI% often uses gross / margin, not this net cell.",
+  ].join("\n");
+}
+
+/** Fee cell hover — shows funding/commission split when the backend attributed any FUNDING
+ *  income to this CLOSE. Funding is absorbed into fee as `fee += -fundingIncome`, so a
+ *  negative `fundingFeeUsd` means the trader paid funding (cost added to fee).
+ */
+function tradeHistoryFeeCellTitle(t: any, feeDisp: number | null): string | undefined {
+  const rowTyp = String(t?.type ?? "").toUpperCase();
+  if (rowTyp !== "CLOSE") return undefined;
+  const m = t?.meta || {};
+  const funding = Number(m.fundingFeeUsd);
+  if (!Number.isFinite(funding) || funding === 0) return undefined;
+  const fee = feeDisp != null && Number.isFinite(feeDisp) ? feeDisp : null;
+  const commission = fee != null ? fee - -funding : null;
+  const fmt = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(6)} USDT`;
+  const lines = [
+    funding < 0
+      ? `Funding paid: ${fmt(-funding)} (added to Fee)`
+      : `Funding received: ${fmt(funding)} (subtracted from Fee)`,
+  ];
+  if (commission != null) lines.unshift(`Commission: ${fmt(commission)}`);
+  return lines.join("\n");
 }
 
 /** Positions / trade history: at least this many digit characters in integer + fraction (decimal point not counted). */
@@ -781,6 +942,19 @@ function positionUnrealizedPnlPct(p: any): number | null {
   return (u / basis) * 100;
 }
 
+/** P&L if stop fills at the current SL price (gross, before exit fees). Negative ⇒ max loss locked; positive ⇒ min profit locked. */
+function lockedPnlUsdAtCurrentStop(p: any): number | null {
+  if (String(p?.venue || "").toUpperCase() !== "FUTURES") return null;
+  const e = numFinite(p.entryPrice);
+  const sl = numFinite(p.stopLoss);
+  const qRaw = numFinite(p.qty);
+  const q = qRaw != null ? Math.abs(qRaw) : 0;
+  if (e == null || sl == null || !(q > 0) || e <= 0) return null;
+  const isLong = positionIsLong(p?.side, p?.qty ?? p?.positionAmt);
+  if (isLong) return (sl - e) * q;
+  return (e - sl) * q;
+}
+
 function fmtPnlPct(pct: number | null | undefined): string {
   if (pct == null || !Number.isFinite(pct)) return "—";
   return `${pct.toFixed(2)}%`;
@@ -842,7 +1016,25 @@ function tradeHistoryPnlPct(
   if (t?.type === "OPEN" && pos) return positionUnrealizedPnlPct(pos);
   if (t?.type === "CLOSE") {
     const stored = tradeNetPnlClose(t);
-    const net = Number.isFinite(stored ?? NaN) ? Number(stored) : closeTradeNetUsd(t, openRef, bot);
+    let net: number | null = null;
+    if (stored != null && Number.isFinite(stored)) {
+      const { price, qty } = tradeHistoryDisplayFields(t, openRef, bot);
+      const openR = tradeHistoryOpenFeeRateForRow(bot, openRef ?? t);
+      const closeR = tradeHistoryCloseFeeRateForRow(bot, t);
+      const exitFee = tradeCloseLegFeeUsd(t, openRef, qty, price, openR, closeR);
+      const openFeeAmt =
+        openRef != null
+          ? tradeOpenLegFeeUsd(
+              openRef,
+              numFinite(openRef.qty ?? qty),
+              numFinite(openRef.price ?? openRef.meta?.entryPx ?? price),
+              tradeHistoryOpenFeeRateForRow(bot, openRef),
+              t,
+            )
+          : null;
+      net = closeDisplayedNetFromStored(t, stored, openRef, openFeeAmt, Boolean(openRef), exitFee);
+    }
+    if (net == null || !Number.isFinite(net)) net = closeTradeNetUsd(t, openRef, bot);
     if (!Number.isFinite(net)) return null;
     let m = tradeInitialMarginUsdNumber(t, openRef, disp);
     if (m == null || !(m > 0)) {
@@ -1246,6 +1438,35 @@ function tradeHistoryRowKey(t: any, idx: number): string {
   return `${String(t?.type ?? "")}|${String(t?.id ?? "")}|${tradeTsMs(t)}|${idx}`;
 }
 
+/** Stacked OPEN (O) / CLOSE (C) lines inside one table cell — round-trip view. */
+function TradeHistoryRtCell({
+  openLine,
+  closeLine,
+  mono,
+}: {
+  openLine: ReactNode;
+  closeLine: string;
+  mono?: boolean;
+}) {
+  const inner = mono ? "font-mono text-slate-600 dark:text-slate-400" : "text-slate-700 dark:text-slate-300";
+  return (
+    <div className="flex flex-col gap-0.5 leading-tight">
+      <div className="text-[9px]">
+        <span className="mr-1 font-semibold text-slate-500 dark:text-slate-500">O</span>
+        <span className={inner}>{openLine}</span>
+      </div>
+      <div className="text-[9px]">
+        <span className="mr-1 font-semibold text-slate-500 dark:text-slate-500">C</span>
+        <span className={mono ? inner : "text-slate-700 dark:text-slate-300"}>{closeLine}</span>
+      </div>
+    </div>
+  );
+}
+
+function tradeHistoryRoundTripRowKey(closeRow: any, openRow: any | undefined, idx: number): string {
+  return `RT|${String(closeRow?.id ?? "")}|${String(openRow?.id ?? "")}|${tradeTsMs(closeRow)}|${idx}`;
+}
+
 /** Expanded accordion panel under a trade history row (audit, leg check, raw fields). */
 function TradeHistoryExpandedDetails({
   t,
@@ -1352,6 +1573,307 @@ function TradeHistoryExpandedDetails({
   );
 }
 
+/** Round-trip rows: OPEN + CLOSE stacked per column; Net shows trip total (sorted by close time — parent list). */
+function TradeHistoryRoundTripRows({
+  pairs,
+  portfolioTrades,
+  bot,
+  positions,
+  trailingStopLossAuto,
+  isFuturesVenue,
+  tradeHistoryExpandedKey,
+  setTradeHistoryExpandedKey,
+  historyRangeFilter,
+}: {
+  pairs: { close: any; open: any | undefined }[];
+  portfolioTrades: any[];
+  bot: any;
+  positions: readonly any[];
+  trailingStopLossAuto: boolean;
+  isFuturesVenue: boolean;
+  tradeHistoryExpandedKey: string | null;
+  setTradeHistoryExpandedKey: Dispatch<SetStateAction<string | null>>;
+  historyRangeFilter: HistoryRangeFilter;
+}) {
+  const rows = portfolioTrades || [];
+  return (
+    <>
+      {pairs.map(({ close: c, open: o }, idx) => {
+        const openInViewRt = Boolean(o);
+        const dispO = o ? tradeHistoryDisplayFields(o, undefined, bot) : null;
+        const dispC = tradeHistoryDisplayFields(c, o, bot);
+        const entryPxMerge =
+          numFinite(
+            c?.entryPrice ?? c?.meta?.entryPrice ?? o?.entryPrice ?? o?.price ?? o?.meta?.entryPx,
+          ) ?? null;
+        let openFee: number | null = null;
+        let openNet: number | null = null;
+        let grossC: number | null = null;
+        let netC: number | null = null;
+        let feeC: number | null = null;
+        const openRo = o ? tradeHistoryOpenFeeRateForRow(bot, o) : tradeHistoryOpenFeeRateForRow(bot, c);
+        const closeR = tradeHistoryCloseFeeRateForRow(bot, c);
+        const priceC = dispC.price;
+        const qtyC = dispC.qty;
+        const levC = dispC.lev;
+        const slC = dispC.sl;
+        const tpC = dispC.tp;
+        if (o) {
+          const qtyO = dispO!.qty;
+          const priceO = dispO!.price;
+          const entryPxO = numFinite(o.entryPrice ?? o.meta?.entryPrice ?? o.price ?? o.meta?.entryPx) ?? null;
+          openFee = tradeOpenLegFeeUsd(o, qtyO, priceO ?? entryPxO, openRo, c);
+          openNet = openFee != null ? -openFee : null;
+        }
+        feeC = tradeCloseLegFeeUsd(c, o, qtyC, priceC, openRo, closeR);
+        const storedCloseNet = tradeNetPnlClose(c);
+        const openFeeAmt =
+          o != null
+            ? tradeOpenLegFeeUsd(
+                o,
+                numFinite(o.qty ?? qtyC),
+                numFinite(o.price ?? o.meta?.entryPx ?? entryPxMerge),
+                tradeHistoryOpenFeeRateForRow(bot, o),
+                c,
+              )
+            : null;
+        if (storedCloseNet != null && Number.isFinite(storedCloseNet)) {
+          netC = closeDisplayedNetFromStored(c, storedCloseNet, o, openFeeAmt, openInViewRt, feeC);
+        } else {
+          const g0 = tradeGrossPnlClose(c, qtyC, priceC, o, bot);
+          netC = g0 != null && feeC != null ? g0 - feeC : tradeNetPnlClose(c);
+        }
+        grossC =
+          netC != null && feeC != null ? netC + feeC : tradeGrossPnlClose(c, qtyC, priceC, o, bot);
+        const tripNet = tradeHistoryRoundTripNetUsd(c, o, bot);
+        const entryPxO = o ? numFinite(o.entryPrice ?? o.meta?.entryPrice ?? o.price ?? o.meta?.entryPx) ?? null : null;
+        const exitTxtO =
+          o && dispO!.price != null && dispO!.price > 0 ? fmtInstrumentPx(dispO!.price) : o ? "n/a" : "—";
+        const exitTxtC = priceC != null && priceC > 0 ? fmtInstrumentPx(priceC) : "n/a";
+        const qtyTxtO = o && dispO!.qty != null && dispO!.qty > 0 ? dispO!.qty.toFixed(6) : "—";
+        const qtyTxtC = qtyC != null && qtyC > 0 ? qtyC.toFixed(6) : "n/a";
+        const levTxtO = o && dispO!.lev != null && dispO!.lev > 0 ? `${dispO!.lev}x` : "—";
+        const levTxtC = levC != null && levC > 0 ? `${levC}x` : "n/a";
+        const marginTxtO = o
+          ? tradeInitialMarginUsd(o, undefined, {
+              price: dispO!.price,
+              qty: dispO!.qty,
+              lev: dispO!.lev,
+            })
+          : "—";
+        const marginTxtC = tradeInitialMarginUsd(c, o, { price: priceC, qty: qtyC, lev: levC });
+        const slTpO = o
+          ? `${dispO!.sl != null && Number.isFinite(dispO!.sl) ? fmtInstrumentPx(dispO!.sl) : "n/a"} / ${dispO!.tp != null && Number.isFinite(dispO!.tp) ? fmtInstrumentPx(dispO!.tp) : "n/a"}`
+          : "—";
+        const slTpC = `${slC != null && Number.isFinite(slC) ? fmtInstrumentPx(slC) : "n/a"} / ${tpC != null && Number.isFinite(tpC) ? fmtInstrumentPx(tpC) : "n/a"}`;
+        const sideDispO = o ? (o.side != null ? String(o.side) : "n/a") : "—";
+        const sideDispC =
+          c?.meta?.closeSide != null
+            ? String(c.meta.closeSide)
+            : closeOrderSideFromOpenLeg(o) ?? (c.side != null ? String(c.side) : null) ?? "n/a";
+        const pnlPctO = o
+          ? tradeHistoryPnlPct(o, undefined, positions, { price: dispO!.price, qty: dispO!.qty, lev: dispO!.lev }, bot)
+          : null;
+        const pnlPctC = tradeHistoryPnlPct(c, o, positions, { price: priceC, qty: qtyC, lev: levC }, bot);
+        const tripMarginN = tradeInitialMarginUsdNumber(c, o, { price: priceC, qty: qtyC, lev: levC });
+        const tripPct =
+          tripMarginN != null &&
+          tripMarginN > 0 &&
+          Number.isFinite(tripNet)
+            ? (tripNet / tripMarginN) * 100
+            : tradeHistoryPnlPct(c, o, positions, { price: priceC, qty: qtyC, lev: levC }, bot);
+        const binRefO = o ? portfolioBinanceRefForTradeRow(o) : { label: "—", title: "" };
+        const binRefC = portfolioBinanceRefForTradeRow(c);
+        const trailLeadRt = Boolean(o && openTradeRowTrailedStrict(o, positions, trailingStopLossAuto));
+        const beLeadRt = Boolean(
+          o && !trailLeadRt && openTradeRowBreakevenStopIndicator(o, positions, trailingStopLossAuto),
+        );
+        const closeTrailRt = closeTradeRowTrailedStrict(c);
+        const rowKeyRt = tradeHistoryRoundTripRowKey(c, o, idx);
+        const expandedRt = tradeHistoryExpandedKey === rowKeyRt;
+        const toggleRt = () => setTradeHistoryExpandedKey((k) => (k === rowKeyRt ? null : rowKeyRt));
+        const entryFmtO = entryPxO != null && entryPxO > 0 ? fmtInstrumentPx(entryPxO) : o ? "n/a" : "—";
+        const entryFmtC = entryPxMerge != null && entryPxMerge > 0 ? fmtInstrumentPx(entryPxMerge) : "n/a";
+        const pendingRecRow = !roundTripOpenLegInHistoryWindow(o, historyRangeFilter);
+        const tsTitle = `${pendingRecRow ? "OPEN leg outside selected time filter or missing — excluded from attributed window PnL.\n" : ""}${o ? `${fmtTimestampFull(tradeTsMs(o))}\n` : ""}${fmtTimestampFull(tradeTsMs(c))}`;
+        const sym = c.symbol ?? "n/a";
+
+        return (
+          <Fragment key={rowKeyRt}>
+            <tr
+              role="button"
+              tabIndex={0}
+              aria-expanded={expandedRt}
+              aria-label={`Round trip ${sym}: ${expandedRt ? "collapse" : "expand"} details`}
+              onClick={toggleRt}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleRt();
+                }
+              }}
+              title={pendingRecRow ? "CLOSE in range; OPEN missing or outside range — counted in pending reconciliation, not headline PnL." : undefined}
+              className={`border-t border-slate-200 dark:border-slate-900${
+                expandedRt ? " bg-slate-100/60 dark:bg-slate-900/50" : ""
+              } cursor-pointer hover:bg-slate-50/90 dark:hover:bg-slate-900/35${
+                pendingRecRow ? " border-l-2 border-l-amber-500/70 dark:border-l-amber-500/50" : ""
+              }`}
+            >
+              <td className="w-3 min-w-[12px] max-w-[14px] border-0 px-0 py-2 align-middle">
+                {trailLeadRt || closeTrailRt ? <TrailedStopLead /> : beLeadRt ? <BreakevenStopLead /> : null}
+              </td>
+              <td className="px-3 py-2 text-[10px] tabular-nums text-slate-500 dark:text-slate-400" title={tsTitle}>
+                <span className="inline-flex items-start gap-1.5">
+                  <span className="mt-0.5 w-3 shrink-0 text-[9px] leading-none text-slate-500 dark:text-slate-500" aria-hidden>
+                    {expandedRt ? "▼" : "▶"}
+                  </span>
+                  <TradeHistoryRtCell openLine={o ? fmtTimestamp(tradeTsMs(o)) : "—"} closeLine={fmtTimestamp(tradeTsMs(c))} />
+                </span>
+              </td>
+              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                <TradeHistoryRtCell
+                  openLine={
+                    o ? (
+                      <span className="inline-flex flex-wrap items-center gap-1">
+                        OPEN
+                        {findLivePositionForTradeId(positions, o?.id) ? (
+                          <span
+                            className="inline-flex items-center gap-0.5 rounded bg-emerald-600/20 px-1 py-0.5 text-[8px] font-semibold uppercase text-emerald-600 dark:text-emerald-400"
+                            title="Opening leg still matches a live position"
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+                            Live
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      "—"
+                    )
+                  }
+                  closeLine="CLOSE"
+                />
+              </td>
+              <td className="px-3 py-2 text-[10px] text-slate-600 dark:text-slate-400">
+                <TradeHistoryRtCell
+                  mono
+                  openLine={o ? tradeHistoryExchangeOrderKindLabel(o) : "—"}
+                  closeLine={tradeHistoryExchangeOrderKindLabel(c)}
+                />
+              </td>
+              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{sym}</td>
+              <td
+                className="max-w-[5.5rem] px-3 py-2 font-mono text-[10px] text-slate-600 dark:text-slate-400"
+                title={[binRefO.title, binRefC.title].filter(Boolean).join("\n---\n")}
+              >
+                <TradeHistoryRtCell mono openLine={binRefO.label} closeLine={binRefC.label} />
+              </td>
+              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                <TradeHistoryRtCell openLine={sideDispO} closeLine={sideDispC} />
+              </td>
+              <td className="px-3 py-2 text-amber-300/80">
+                <TradeHistoryRtCell openLine={levTxtO} closeLine={levTxtC} />
+              </td>
+              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                <TradeHistoryRtCell openLine={entryFmtO} closeLine={entryFmtC} />
+              </td>
+              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                <TradeHistoryRtCell openLine={exitTxtO} closeLine={exitTxtC} />
+              </td>
+              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                <TradeHistoryRtCell mono openLine={qtyTxtO} closeLine={qtyTxtC} />
+              </td>
+              <td
+                className="px-3 py-2 text-slate-700 dark:text-slate-300"
+                title="Initial margin ≈ entry×qty / leverage when leverage is known (futures)"
+              >
+                <TradeHistoryRtCell openLine={marginTxtO} closeLine={marginTxtC} />
+              </td>
+              <td className="px-3 py-2 text-[10px] text-slate-600 dark:text-slate-400">
+                <TradeHistoryRtCell openLine={slTpO} closeLine={slTpC} />
+              </td>
+              <td className="max-w-[7rem] px-3 py-2 text-[10px] text-slate-700 dark:text-slate-300">
+                <TradeHistoryRtCell openLine={o ? tradeHistoryReasonLabel(o) : "—"} closeLine={tradeHistoryReasonLabel(c)} />
+              </td>
+              <td className="px-3 py-2 text-[10px] uppercase text-slate-600 dark:text-slate-500">
+                <TradeHistoryRtCell
+                  openLine={o ? "strat" : "—"}
+                  closeLine={isLedgerClose(c) ? "ledger" : "strat"}
+                />
+              </td>
+              <td
+                className={`px-3 py-2 ${grossC != null && grossC >= 0 ? "text-emerald-400" : grossC != null ? "text-rose-400" : "text-slate-600 dark:text-slate-400"}`}
+              >
+                <TradeHistoryRtCell openLine="—" closeLine={grossC != null ? fmtUsd(grossC) : "n/a"} />
+              </td>
+              <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                <TradeHistoryRtCell
+                  openLine={openFee != null ? fmtUsd(openFee, 4) : "n/a"}
+                  closeLine={feeC != null ? fmtUsd(feeC, 4) : "n/a"}
+                />
+              </td>
+              <td className="px-3 py-2">
+                <div className="flex flex-col gap-0.5">
+                  <TradeHistoryRtCell
+                    openLine={openNet != null ? fmtUsd(openNet) : "—"}
+                    closeLine={netC != null ? fmtUsd(netC) : "—"}
+                  />
+                  <div
+                    className={`border-t border-slate-300/50 pt-0.5 text-[10px] font-semibold tabular-nums ${
+                      tripNet >= 0 ? "text-emerald-400" : "text-rose-400"
+                    }`}
+                  >
+                    Trip {fmtUsd(tripNet)}
+                  </div>
+                </div>
+              </td>
+              <td className="px-3 py-2">
+                <div className="flex flex-col gap-0.5">
+                  <TradeHistoryRtCell openLine={fmtPnlPct(pnlPctO)} closeLine={fmtPnlPct(pnlPctC)} />
+                  <div
+                    className={`border-t border-slate-300/50 pt-0.5 text-[10px] font-semibold tabular-nums ${
+                      tripPct != null && tripPct >= 0 ? "text-emerald-400" : tripPct != null ? "text-rose-400" : "text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    Trip {fmtPnlPct(tripPct)}
+                  </div>
+                </div>
+              </td>
+            </tr>
+            {expandedRt ? (
+              <tr className="border-t border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-950/30">
+                <td colSpan={19} className="p-0">
+                  <div className="space-y-2 border-t border-slate-200 bg-slate-50/95 dark:border-slate-800 dark:bg-slate-950/90">
+                    {o ? (
+                      <TradeHistoryExpandedDetails
+                        t={o}
+                        openRef={undefined}
+                        qty={dispO!.qty}
+                        price={dispO!.price}
+                        gross={null}
+                        legWarnings={tradeOpenMissingCloseWarnings(o, rows, positions, isFuturesVenue)}
+                        binRefTitle={binRefO.title}
+                      />
+                    ) : null}
+                    <TradeHistoryExpandedDetails
+                      t={c}
+                      openRef={o}
+                      qty={qtyC}
+                      price={priceC}
+                      gross={grossC}
+                      legWarnings={tradeCloseConsistencyWarnings(c, o, bot)}
+                      binRefTitle={binRefC.title}
+                    />
+                  </div>
+                </td>
+              </tr>
+            ) : null}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
 function tradeHistoryReasonLabel(t: any): string {
   if (t?.type === "OPEN") return "—";
   if (isLedgerClose(t)) {
@@ -1404,6 +1926,20 @@ function tradeHistoryReasonLabel(t: any): string {
       if (tri != null && String(tri).trim() !== "") return `SL trail ${tri}`;
       return trailMode === "SUPERTREND" || trailMode === "" ? "Trailed ST" : "Trailed SL";
     }
+    /**
+     * "Default SL" must only stick when the actual exit really is near the SL price.
+     * When `userTrades` avg fill is available (`exitAvgFillPrice`), require |exit − SL| ≤ 0.25%.
+     * Otherwise — especially when `exitInferredFromMark` — fall back to "Exchange" so rows like
+     * "entry ≈ exit, reason Default SL" don't keep lying about why the trade ended.
+     */
+    const exitAvg = Number(m.exitAvgFillPrice ?? m.exitPrice ?? t?.price);
+    const slN = Number(t?.stopLoss ?? m.stopLoss);
+    if (Number.isFinite(exitAvg) && exitAvg > 0 && Number.isFinite(slN) && slN > 0) {
+      const dist = Math.abs(exitAvg - slN) / slN;
+      if (dist > 0.0025) return "Exchange";
+    } else if (m.exitInferredFromMark === true) {
+      return "Exchange";
+    }
     return "Default SL";
   }
   if (r0 === "IMMEDIATE_FLAT_AFTER_OPEN") return "Flat immediately (post-open)";
@@ -1412,6 +1948,15 @@ function tradeHistoryReasonLabel(t: any): string {
     if (trailedExit) {
       if (trailTierClose) return `SL trail ${trailTierClose}`;
       return trailMode === "SUPERTREND" ? "Trailed ST" : "Trailed SL";
+    }
+    /** Same sanity as STOP_LOSS_DEFAULT — don't call it "SL" unless the fill really is near the stop. */
+    const exitAvg = Number(m.exitAvgFillPrice ?? m.exitPrice ?? t?.price);
+    const slN = Number(t?.stopLoss ?? m.stopLoss);
+    if (Number.isFinite(exitAvg) && exitAvg > 0 && Number.isFinite(slN) && slN > 0) {
+      const dist = Math.abs(exitAvg - slN) / slN;
+      if (dist > 0.0025) return "Exchange";
+    } else if (m.exitInferredFromMark === true) {
+      return "Exchange";
     }
     return "SL";
   }
@@ -1633,6 +2178,8 @@ export function PortfolioPanel() {
   }, [trades]);
 
   const [tradeHistoryView, setTradeHistoryView] = useState<"ALL" | "OPEN_ONLY" | "CLOSED_ONLY">("ALL");
+  /** One row per completed round-trip (OPEN+CLOSE), sorted by close time; not used in Open-only. */
+  const [tradeHistoryRoundTrip, setTradeHistoryRoundTrip] = useState(false);
   const [tradeHistorySort, setTradeHistorySort] = useState<TradeHistorySort>("RECENT");
   /** Which trade history row is expanded (accordion details). */
   const [tradeHistoryExpandedKey, setTradeHistoryExpandedKey] = useState<string | null>(null);
@@ -1647,7 +2194,19 @@ export function PortfolioPanel() {
 
   useEffect(() => {
     setTradeHistoryExpandedKey(null);
-  }, [tradeHistoryView, tradeHistorySort, closeSourceFilter, pnlHistoryRange, customRangeStart, customRangeEnd]);
+  }, [
+    tradeHistoryView,
+    tradeHistorySort,
+    tradeHistoryRoundTrip,
+    closeSourceFilter,
+    pnlHistoryRange,
+    customRangeStart,
+    customRangeEnd,
+  ]);
+
+  useEffect(() => {
+    if (tradeHistoryView === "OPEN_ONLY") setTradeHistoryRoundTrip(false);
+  }, [tradeHistoryView]);
 
   useEffect(() => {
     skipPortfolioPnlPersist.current = true;
@@ -1884,6 +2443,58 @@ export function PortfolioPanel() {
     bot,
   ]);
 
+  /** CLOSE rows only, merge filter + sort — paired with OPEN for round-trip table. */
+  const tradeHistoryRoundTrips = useMemo(() => {
+    if (!tradeHistoryRoundTrip || tradeHistoryView === "OPEN_ONLY") return null;
+    const rows = portfolioTrades || [];
+    const keepClose = (t: any) => {
+      if (t?.type !== "CLOSE") return false;
+      const led = isLedgerClose(t);
+      if (closeSourceFilter === "APP" && led) return false;
+      if (closeSourceFilter === "LEDGER" && !led) return false;
+      return true;
+    };
+    const closes = rows.filter(
+      (t: any) => t?.type === "CLOSE" && keepClose(t) && tradeMatchesHistoryTime(t, historyRangeFilter),
+    );
+    const sorted = sortTradeHistoryRows(closes, tradeHistorySort, rows, openTradeById, bot);
+    return sorted.map((close) => ({
+      close,
+      open: resolveOpenRefForClose(close, rows, openTradeById) as any,
+    }));
+  }, [
+    tradeHistoryRoundTrip,
+    tradeHistoryView,
+    portfolioTrades,
+    closeSourceFilter,
+    historyRangeFilter,
+    tradeHistorySort,
+    openTradeById,
+    bot,
+  ]);
+
+  /**
+   * Round-trip headline / window accounting: Σ trip net where both OPEN ts and CLOSE ts fall in the filter (attributed).
+   * Pending = CLOSE in filter but OPEN missing or OPEN ts outside filter (still listed in the round-trip table; excluded from attributed).
+   */
+  const tradeHistoryRoundTripWindowBreakdown = useMemo(() => {
+    if (!tradeHistoryRoundTrip || tradeHistoryView === "OPEN_ONLY") return null;
+    let attributed = 0;
+    let pending = 0;
+    for (const { close, open } of tradeHistoryRoundTrips ?? []) {
+      const n = tradeHistoryRoundTripNetUsd(close, open, bot);
+      if (roundTripOpenLegInHistoryWindow(open, historyRangeFilter)) attributed += n;
+      else pending += n;
+    }
+    return { attributed, pending, total: attributed + pending };
+  }, [
+    tradeHistoryRoundTrip,
+    tradeHistoryView,
+    tradeHistoryRoundTrips,
+    historyRangeFilter,
+    bot,
+  ]);
+
   /** OPEN row ids currently visible — used to split CLOSE net only when the opening leg is on-screen. */
   const displayedOpenRowIds = useMemo(() => {
     const s = new Set<string>();
@@ -1895,6 +2506,9 @@ export function PortfolioPanel() {
 
   /** Sum of Net column for visible OPEN + CLOSE rows (split OPEN fee vs CLOSE realized when both legs are visible). */
   const netSumDisplayedTradeHistoryRows = useMemo(() => {
+    if (tradeHistoryRoundTrip && tradeHistoryView !== "OPEN_ONLY") {
+      return tradeHistoryRoundTripWindowBreakdown?.attributed ?? 0;
+    }
     let s = 0;
     const rows = portfolioTrades || [];
     for (const t of displayedTrades) {
@@ -1913,6 +2527,8 @@ export function PortfolioPanel() {
       }
       if (String(t?.type ?? "").toUpperCase() === "CLOSE") {
         const sn = tradeNetPnlClose(t);
+        const openR = tradeHistoryOpenFeeRateForRow(bot, openRef ?? t);
+        const closeR = tradeHistoryCloseFeeRateForRow(bot, t);
         const openFeeAmt =
           openRef != null
             ? tradeOpenLegFeeUsd(
@@ -1923,21 +2539,39 @@ export function PortfolioPanel() {
                 t,
               )
             : null;
+        const exitOnly = tradeCloseLegFeeUsd(t, openRef, qty, price, openR, closeR);
         if (sn != null && Number.isFinite(sn)) {
-          if (openRef && openFeeAmt != null && openInView) s += sn + openFeeAmt;
-          else s += sn;
+          if (!closeStoredPnlIsPackedWalletNet(t)) {
+            const ex = exitOnly != null && Number.isFinite(exitOnly) ? exitOnly : 0;
+            s += sn - ex;
+          } else if (openRef && openFeeAmt != null && openInView) {
+            s += sn + openFeeAmt;
+          } else {
+            s += sn;
+          }
         }
       }
     }
     return s;
-  }, [displayedTrades, displayedOpenRowIds, portfolioTrades, openTradeById, bot]);
+  }, [
+    displayedTrades,
+    displayedOpenRowIds,
+    portfolioTrades,
+    openTradeById,
+    bot,
+    tradeHistoryRoundTrip,
+    tradeHistoryView,
+    tradeHistoryRoundTripWindowBreakdown,
+  ]);
 
   const headlineRealizedUsd =
-    displayedTrades.length > 0
+    tradeHistoryRoundTrip && tradeHistoryView !== "OPEN_ONLY"
       ? netSumDisplayedTradeHistoryRows
-      : mode === "PAPER"
-        ? netRealizedPnlAll
-        : netRealizedHeadline;
+      : displayedTrades.length > 0
+        ? netSumDisplayedTradeHistoryRows
+        : mode === "PAPER"
+          ? netRealizedPnlAll
+          : netRealizedHeadline;
 
   /** Legacy standalone local futures (former BINANCE_DEMO_FUTURES without keys); hybrid demo uses name "hybrid". */
   const isPaperFuturesLocal = exchName === "binance_demo_futures";
@@ -2154,7 +2788,20 @@ export function PortfolioPanel() {
 
         <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3 text-xs">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div className="text-slate-600 dark:text-slate-400">Net realised PnL</div>
+            <div>
+              <div className="text-slate-600 dark:text-slate-400">
+                {tradeHistoryRoundTrip && tradeHistoryView !== "OPEN_ONLY"
+                  ? "Net realised PnL (round-trip)"
+                  : "Net realised PnL"}
+              </div>
+              {tradeHistoryRoundTrip && tradeHistoryView !== "OPEN_ONLY" ? (
+                <div className="mt-0.5 max-w-md text-[10px] font-normal leading-snug text-slate-500 dark:text-slate-500">
+                  Headline uses Σ trip net (gross − fees per row). With a time filter, only trips whose OPEN and CLOSE
+                  timestamps both fall in the range count toward the headline; other closes stay in the table and roll into
+                  pending reconciliation.
+                </div>
+              ) : null}
+            </div>
             <div className="flex flex-wrap gap-1">
               <button
                 type="button"
@@ -2233,8 +2880,48 @@ export function PortfolioPanel() {
           >
             {Number.isFinite(headlineRealizedUsd) ? `$${headlineRealizedUsd.toFixed(2)}` : "—"}
           </div>
+          {tradeHistoryRoundTrip && tradeHistoryView !== "OPEN_ONLY" && tradeHistoryRoundTripWindowBreakdown ? (
+            <div
+              className={`mt-1 space-y-0.5 text-[11px] ${
+                tradeHistoryRoundTripWindowBreakdown.pending !== 0
+                  ? "text-amber-800 dark:text-amber-200"
+                  : "text-slate-500 dark:text-slate-500"
+              }`}
+            >
+              <div>
+                Pending reconciliation:{" "}
+                <span className="font-semibold tabular-nums">
+                  ${tradeHistoryRoundTripWindowBreakdown.pending.toFixed(2)}
+                </span>
+                <span className="font-normal">
+                  {" "}
+                  (trip net from closes in the filter whose OPEN leg is missing or its timestamp is outside the filter —
+                  e.g. exchange close arrived before the OPEN row is backfilled). Amber left border in the round-trip
+                  table.
+                </span>
+              </div>
+              {tradeHistoryRoundTripWindowBreakdown.pending === 0 ? (
+                <div className="font-normal text-slate-500 dark:text-slate-500">
+                  When pending is zero, the headline matches the sum of every Trip line in the table for this filter.
+                </div>
+              ) : (
+                <div className="font-normal text-slate-500 dark:text-slate-500">
+                  All closes in table (headline + pending):{" "}
+                  <span className="font-semibold tabular-nums text-slate-600 dark:text-slate-400">
+                    ${tradeHistoryRoundTripWindowBreakdown.total.toFixed(2)}
+                  </span>
+                  .
+                </div>
+              )}
+            </div>
+          ) : null}
           <div className="mt-1 text-slate-600 dark:text-slate-500">
-            {mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET" || mode === "BINANCE_DEMO_API" ? (
+            {tradeHistoryRoundTrip && tradeHistoryView !== "OPEN_ONLY" ? (
+              <span className="text-[10px] leading-snug text-slate-500 dark:text-slate-500">
+                Same trip economics as the round-trip table (per-row gross − OPEN and CLOSE fees). Flat list mode still
+                uses row Net split rules above.
+              </span>
+            ) : mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET" || mode === "BINANCE_DEMO_API" ? (
               <>
                 <span className="font-semibold text-slate-700 dark:text-slate-300">Headline</span> = sum of{" "}
                 <span className="font-mono">Net</span> on visible trade rows (OPEN shows −open fee; CLOSE shows exchange net,
@@ -2479,6 +3166,12 @@ export function PortfolioPanel() {
                   <th className="px-3 py-2">Margin</th>
                   <th className="px-3 py-2">SL</th>
                   <th className="px-3 py-2">TP</th>
+                  <th
+                    className="px-3 py-2 max-w-[5rem]"
+                    title="P&L if price hits the current stop now (gross, before exit fees). Negative = max loss locked; positive = minimum profit if stopped out."
+                  >
+                    mPnL@SL
+                  </th>
                   <th className="px-3 py-2" title="Unrealized P&L as % of initial margin (futures) or entry notional (spot)">
                     uPnL%
                   </th>
@@ -2489,7 +3182,7 @@ export function PortfolioPanel() {
               <tbody>
                 {positions.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={15}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={16}>
                       No open positions
                     </td>
                   </tr>
@@ -2560,6 +3253,21 @@ export function PortfolioPanel() {
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
                         {p.takeProfit != null ? fmtInstrumentPx(p.takeProfit) : "—"}
+                      </td>
+                      <td
+                        className={`px-3 py-2 tabular-nums text-[11px] ${
+                          (() => {
+                            const m = lockedPnlUsdAtCurrentStop(p);
+                            if (m == null) return "text-slate-600 dark:text-slate-400";
+                            return m >= 0 ? "text-emerald-400" : "text-rose-400";
+                          })()
+                        }`}
+                        title="Gross P&L if the current stop (incl. trail) fills at this price — before exit commission."
+                      >
+                        {(() => {
+                          const m = lockedPnlUsdAtCurrentStop(p);
+                          return m != null && Number.isFinite(m) ? fmtUsd(m, 2) : "—";
+                        })()}
                       </td>
                       <td
                         className={`px-3 py-2 tabular-nums ${
@@ -2641,7 +3349,7 @@ export function PortfolioPanel() {
                     if (!trailSlPending) return [mainRow];
                     return [
                       <tr key={`${p.id}-trail-pending`} className="border-0 bg-amber-500/[0.07] dark:bg-amber-950/25">
-                        <td colSpan={15} className="px-3 py-1">
+                        <td colSpan={16} className="px-3 py-1">
                           <div className="flex items-center gap-2 text-[10px] font-medium text-amber-800 dark:text-amber-200">
                             <span
                               className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-amber-600 border-t-transparent dark:border-amber-400"
@@ -2792,6 +3500,25 @@ export function PortfolioPanel() {
                 >
                   Closed
                 </button>
+                <button
+                  type="button"
+                  disabled={tradeHistoryView === "OPEN_ONLY"}
+                  title={
+                    tradeHistoryView === "OPEN_ONLY"
+                      ? "Switch to All or Closed — round-trip pairs OPEN+CLOSE per symbol"
+                      : "Merge each OPEN with its CLOSE into one row (sorted by close time)"
+                  }
+                  className={`rounded-md border px-2 py-1 text-[11px] font-semibold ${
+                    tradeHistoryView === "OPEN_ONLY"
+                      ? "cursor-not-allowed border-slate-200 dark:border-slate-800 text-slate-600"
+                      : tradeHistoryRoundTrip
+                        ? "border-violet-600/50 bg-violet-600/20 text-violet-100"
+                        : "border-slate-300 dark:border-slate-700 bg-slate-200/50 dark:bg-slate-100 dark:bg-slate-900/30 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900"
+                  }`}
+                  onClick={() => setTradeHistoryRoundTrip((v) => !v)}
+                >
+                  Round trip
+                </button>
                 <span className="mx-1 hidden text-slate-600 sm:inline">|</span>
                 <button
                   type="button"
@@ -2913,7 +3640,27 @@ export function PortfolioPanel() {
                 </tr>
               </thead>
               <tbody>
-                {displayedTrades.length === 0 ? (
+                {tradeHistoryRoundTrip && tradeHistoryView !== "OPEN_ONLY" ? (
+                  !(tradeHistoryRoundTrips ?? []).length ? (
+                    <tr>
+                      <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={19}>
+                        No closed trades in this filter
+                      </td>
+                    </tr>
+                  ) : (
+                    <TradeHistoryRoundTripRows
+                      pairs={tradeHistoryRoundTrips!}
+                      portfolioTrades={portfolioTrades || []}
+                      bot={bot}
+                      positions={positions}
+                      trailingStopLossAuto={trailingStopLossAuto}
+                      isFuturesVenue={isFuturesVenue}
+                      tradeHistoryExpandedKey={tradeHistoryExpandedKey}
+                      setTradeHistoryExpandedKey={setTradeHistoryExpandedKey}
+                      historyRangeFilter={historyRangeFilter}
+                    />
+                  )
+                ) : displayedTrades.length === 0 ? (
                   <tr>
                     <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={19}>
                       No trades yet
@@ -2961,8 +3708,14 @@ export function PortfolioPanel() {
                             )
                           : null;
                       if (storedCloseNet != null && Number.isFinite(storedCloseNet)) {
-                        net =
-                          openRef && openFeeAmt != null && openInView ? storedCloseNet + openFeeAmt : storedCloseNet;
+                        net = closeDisplayedNetFromStored(
+                          t,
+                          storedCloseNet,
+                          openRef,
+                          openFeeAmt,
+                          Boolean(openInView),
+                          fee,
+                        );
                       } else {
                         const g0 = tradeGrossPnlClose(t, qty, price, openRef, bot);
                         net = g0 != null && fee != null ? g0 - fee : tradeNetPnlClose(t);
@@ -2995,6 +3748,8 @@ export function PortfolioPanel() {
                     const toggleExpanded = () => {
                       setTradeHistoryExpandedKey((k) => (k === rowKey ? null : rowKey));
                     };
+                    const entryExitMicroTitle =
+                      rowTyp === "CLOSE" ? tradeHistoryEntryExitMicroMoveTitle(entryPx, price, qty) : undefined;
                     return (
                       <Fragment key={rowKey}>
                         <tr
@@ -3031,7 +3786,24 @@ export function PortfolioPanel() {
                               {fmtTimestamp(tradeTsMs(t))}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{t?.type ?? "—"}</td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                            {rowTyp === "OPEN" ? (
+                              <span className="inline-flex flex-wrap items-center gap-1.5">
+                                OPEN
+                                {findLivePositionForTradeId(positions, t?.id) ? (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 rounded bg-emerald-600/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400"
+                                    title="Opening leg still matches a live position"
+                                  >
+                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+                                    Live
+                                  </span>
+                                ) : null}
+                              </span>
+                            ) : (
+                              (t?.type ?? "—")
+                            )}
+                          </td>
                           <td
                             className="px-3 py-2 text-[10px] text-slate-600 dark:text-slate-400"
                             title={tradeHistoryExchangeOrderKindLabel(t) === "—" ? "Order type not recorded for this row" : undefined}
@@ -3049,10 +3821,10 @@ export function PortfolioPanel() {
                           <td className="px-3 py-2 text-amber-300/80">
                             {lev != null && lev > 0 ? `${lev}x` : "n/a"}
                           </td>
-                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300" title={entryExitMicroTitle}>
                             {entryPx != null && entryPx > 0 ? fmtInstrumentPx(entryPx) : "n/a"}
                           </td>
-                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300" title={entryExitMicroTitle}>
                             {price != null && price > 0 ? fmtInstrumentPx(price) : "n/a"}
                           </td>
                           <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
@@ -3076,11 +3848,15 @@ export function PortfolioPanel() {
                           >
                             {gross != null ? fmtUsd(gross) : t?.type === "CLOSE" ? "n/a" : "—"}
                           </td>
-                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                          <td
+                            className="px-3 py-2 text-slate-700 dark:text-slate-300"
+                            title={tradeHistoryFeeCellTitle(t, fee)}
+                          >
                             {fee != null ? fmtUsd(fee, 4) : "n/a"}
                           </td>
                           <td
                             className={`px-3 py-2 ${net != null && net >= 0 ? "text-emerald-400" : net != null ? "text-rose-400" : "text-slate-600 dark:text-slate-400"}`}
+                            title={tradeHistoryCloseNetColumnTitle(t)}
                           >
                             {net != null ? fmtUsd(net) : "—"}
                           </td>

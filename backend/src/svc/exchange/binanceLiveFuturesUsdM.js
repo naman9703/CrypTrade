@@ -2,6 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import axios from "axios";
+import WsModule from "ws";
 import { resolveDefaultLiveFuturesIncomeSyncPath } from "../../lib/tradingModePersistence.js";
 import { tradeCloseFeeUsdtFromNotional } from "../../lib/tradeCloseFee.js";
 import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
@@ -29,10 +30,16 @@ import { evalTrailingForSymbolUsdM } from "../../lib/binanceUsdMTrailSlReplace.j
 import {
   closeReasonFromLocalCloseHint,
   positionSideAtOpenFromCloseSide,
+  refineCloseReasonFromExitFill,
   trailCloseFieldsFromMemory,
 } from "../../lib/binanceUsdmCloseReasonHint.js";
 import { TRAIL_TIER_SCHEMA_VERSION } from "../../lib/supertrendTrailingSl.js";
-import { fetchUsdMOrderCommissionDetailsWithRetry } from "../../lib/binanceUsdMUserTradeCommission.js";
+import {
+  fetchUsdMOrderCommissionDetails,
+  fetchUsdMOrderCommissionDetailsWithRetry,
+  fetchUsdMTradeByTradeId,
+  synthesizeOpenLegUsdMFromIncomeClose,
+} from "../../lib/binanceUsdMUserTradeCommission.js";
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
@@ -117,6 +124,31 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     const qp = new URLSearchParams({ ...params });
     const url = qp.toString() ? `${path}?${qp.toString()}` : path;
     const { data } = await http.request({ method: "GET", url, headers: {} });
+    return data;
+  }
+
+  /**
+   * `getAccount()` + `getPositions()` both read `/fapi/v2/account`. The bot calls them back-to-back each
+   * refresh — without coalescing, REST lags roughly one extra RTT behind kline OHLC (WS ~1s ticks).
+   * Set `BINANCE_USDM_ACCOUNT_SNAPSHOT_COALESCE_MS=0` to disable (two GETs per refresh).
+   */
+  let _acctSnapCoalesce = { at: 0, data: null };
+  const ACCT_SNAP_COALESCE_MS = Math.max(
+    0,
+    Math.min(5000, Number(process.env.BINANCE_USDM_ACCOUNT_SNAPSHOT_COALESCE_MS ?? 700)),
+  );
+
+  async function getAccountSnapshotCoalesced() {
+    const now = Date.now();
+    if (
+      ACCT_SNAP_COALESCE_MS > 0 &&
+      _acctSnapCoalesce.data != null &&
+      now - _acctSnapCoalesce.at < ACCT_SNAP_COALESCE_MS
+    ) {
+      return _acctSnapCoalesce.data;
+    }
+    const data = await signed("GET", "/fapi/v2/account");
+    _acctSnapCoalesce = { at: Date.now(), data };
     return data;
   }
 
@@ -479,9 +511,132 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     lastPositionSnapshot: [],
     /** Last `/fapi/v2/account` position qty by symbol — detect exchange-native closes (SL/TP) for income + history sync */
     prevFuturesQtyBySymbol: {},
+    /** Funding income ledger: `[{ tranId, symbol, time, amt }]`. Late rows get retroactively
+     *  attributed to their owning round-trip CLOSE. Bounded for memory. */
+    fundingRows: [],
+    seenFundingIds: new Set(),
+    /** @type {number | null} */
+    fundingCursorMs: null,
+    lastFundingPollAt: 0,
+    /** CLOSE `orderId`s for which we already inserted a synthetic OPEN from `userTrades`. */
+    syntheticOpenCloseOrderIds: new Set(),
   };
 
   const trailSymLock = new Set();
+
+  // ─── Mark-price WebSocket (replaces per-tick REST `premiumIndex` polling) ───
+  // Subscribes to `<sym>@markPrice@1s` for every symbol we trail. Sub-second push
+  // avoids the REST round-trip cost (~150–300 ms) that was causing trailing logic
+  // to compare against stale mark values and miss tier activations. REST stays as
+  // a fallback when the cache is empty or stale (>5 s).
+  const _markPxCache = new Map();
+  let _markPxWs = null;
+  let _markPxWsReconnectTimer = null;
+  let _markPxWsSymbols = [];
+  let _markPxWsReconnectAttempt = 0;
+  const MARKPX_WS_RECONNECT_MIN_MS = Math.max(
+    500,
+    Number(process.env.BINANCE_LIVE_MARKPX_WS_RECONNECT_MIN_MS ?? 1500),
+  );
+  const MARKPX_WS_RECONNECT_MAX_MS = Math.max(
+    MARKPX_WS_RECONNECT_MIN_MS,
+    Number(process.env.BINANCE_LIVE_MARKPX_WS_RECONNECT_MAX_MS ?? 30_000),
+  );
+  const MARKPX_CACHE_STALENESS_MS = Math.max(
+    1000,
+    Number(process.env.BINANCE_LIVE_MARKPX_MAX_AGE_MS ?? 5000),
+  );
+
+  function _connectMarkPxWs() {
+    if (_markPxWs) {
+      try {
+        _markPxWs.removeAllListeners?.();
+        _markPxWs.terminate?.();
+      } catch {
+        /* ignore */
+      }
+      _markPxWs = null;
+    }
+    const syms = _markPxWsSymbols;
+    if (!syms.length) return;
+
+    const wsBaseUrl =
+      process.env.BINANCE_LIVE_FUTURES_WS_BASE ||
+      process.env.BINANCE_FUTURES_WS_BASE ||
+      "wss://fstream.binance.com/ws";
+    const streams = syms.map((s) => `${s.toLowerCase()}@markPrice@1s`);
+    const url =
+      streams.length === 1
+        ? `${wsBaseUrl.replace(/\/$/, "")}/${streams[0]}`
+        : `${wsBaseUrl.replace(/\/ws\/?$/, "/stream")}?streams=${streams.join("/")}`;
+
+    let ws;
+    try {
+      ws = new WsModule(url);
+    } catch (e) {
+      log?.warn?.("binance_live_futures_markpx_ws_construct_failed", {
+        error: String(e?.message || e),
+      });
+      return;
+    }
+    _markPxWs = ws;
+    ws.on?.("open", () => {
+      _markPxWsReconnectAttempt = 0;
+      log?.info?.("binance_live_futures_markpx_ws_open", {
+        count: syms.length,
+        symbols: syms.slice(0, 8),
+      });
+    });
+    ws.on?.("message", (raw) => {
+      try {
+        const msg = JSON.parse(String(raw));
+        const d = msg?.data ?? msg;
+        if (d?.e === "markPriceUpdate") {
+          const m = Number(d.p);
+          if (Number.isFinite(m) && m > 0) {
+            _markPxCache.set(String(d.s).toUpperCase(), { px: m, at: Date.now() });
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    });
+    ws.on?.("error", (err) => {
+      log?.warn?.("binance_live_futures_markpx_ws_error", {
+        error: String(err?.message || err),
+      });
+    });
+    ws.on?.("close", () => {
+      _markPxWs = null;
+      if (_markPxWsReconnectTimer) clearTimeout(_markPxWsReconnectTimer);
+      const exp = Math.min(
+        MARKPX_WS_RECONNECT_MAX_MS,
+        MARKPX_WS_RECONNECT_MIN_MS * Math.pow(2, Math.min(8, _markPxWsReconnectAttempt)),
+      );
+      const jitter = Math.floor(Math.random() * 400);
+      _markPxWsReconnectAttempt += 1;
+      _markPxWsReconnectTimer = setTimeout(() => {
+        _markPxWsReconnectTimer = null;
+        _connectMarkPxWs();
+      }, exp + jitter);
+    });
+  }
+
+  function _ensureMarkPxWs(symbols) {
+    const sorted = [...new Set((symbols || []).map((s) => String(s || "").toUpperCase()).filter(Boolean))].sort();
+    const prev = [..._markPxWsSymbols].sort();
+    if (sorted.length === 0) return;
+    if (sorted.join(",") === prev.join(",") && _markPxWs?.readyState === 1) return;
+    _markPxWsSymbols = sorted;
+    _connectMarkPxWs();
+  }
+
+  function _getMarkPxFromCache(symU, maxAgeMs = MARKPX_CACHE_STALENESS_MS) {
+    const entry = _markPxCache.get(String(symU || "").toUpperCase());
+    if (!entry) return null;
+    if (Date.now() - entry.at > maxAgeMs) return null;
+    return entry.px;
+  }
 
   /** Qty from last position snapshot — no extra API call per symbol during trailing. */
   function qtyAbsFromSnapshot(symU) {
@@ -511,6 +666,13 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       const raw = JSON.parse(fs.readFileSync(incomeSyncPath, "utf8"));
       if (raw.incomeCursorMs != null) mem.incomeCursorMs = Number(raw.incomeCursorMs);
       for (const id of (raw.seenTranIds || []).slice(-8000)) mem.seenIncomeIds.add(String(id));
+      if (raw.fundingCursorMs != null) mem.fundingCursorMs = Number(raw.fundingCursorMs);
+      for (const id of (raw.seenFundingIds || []).slice(-8000)) mem.seenFundingIds.add(String(id));
+      if (Array.isArray(raw.fundingRows)) {
+        mem.fundingRows = raw.fundingRows
+          .filter((r) => r && r.symbol && Number.isFinite(Number(r.amt)) && Number.isFinite(Number(r.time)))
+          .slice(-5000);
+      }
     } catch (e) {
       log?.warn?.("binance_live_futures_income_sync_load_failed", { error: String(e?.message || e) });
     }
@@ -525,6 +687,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           {
             incomeCursorMs: mem.incomeCursorMs,
             seenTranIds: [...mem.seenIncomeIds].slice(-8000),
+            fundingCursorMs: mem.fundingCursorMs,
+            seenFundingIds: [...mem.seenFundingIds].slice(-8000),
+            fundingRows: mem.fundingRows.slice(-5000),
             updatedAt: new Date().toISOString(),
           },
           null,
@@ -553,11 +718,459 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     }
   }
 
+  /** Pull new FUNDING income rows and persist them in `mem.fundingRows`. Actual attribution
+   *  to CLOSE rows is done by `applyFundingToCloseRows` — keeps this function idempotent. */
+  async function syncFundingIncomeFromExchange() {
+    if (!apiKey || !apiSecret) return;
+    const now = Date.now();
+    const fundingPollMinMs = Math.max(
+      2000,
+      Math.min(60_000, Number(process.env.BINANCE_FUNDING_POLL_MIN_MS ?? 5000)),
+    );
+    if (now - mem.lastFundingPollAt < fundingPollMinMs) return;
+    mem.lastFundingPollAt = now;
+    const start =
+      mem.fundingCursorMs != null
+        ? Math.max(0, mem.fundingCursorMs - 180_000)
+        : Math.max(0, Date.now() - bootIncomeLookbackMs);
+    let rows;
+    try {
+      rows = await signed("GET", "/fapi/v1/income", {
+        incomeType: "FUNDING",
+        startTime: String(start),
+        limit: "1000",
+      });
+    } catch (e) {
+      log?.warn?.("binance_live_futures_funding_poll_failed", { error: String(e?.message || e) });
+      return;
+    }
+    if (!Array.isArray(rows)) return;
+    if (!rows.length) {
+      if (mem.fundingCursorMs == null) {
+        mem.fundingCursorMs = Date.now();
+        saveIncomeSyncToDisk();
+      }
+      return;
+    }
+    let maxT = mem.fundingCursorMs != null ? mem.fundingCursorMs : start;
+    let added = 0;
+    for (const row of rows) {
+      const tid =
+        row.tranId != null
+          ? String(row.tranId)
+          : `f_${row.time || 0}_${row.symbol || ""}_${row.income || ""}`;
+      if (mem.seenFundingIds.has(tid)) continue;
+      mem.seenFundingIds.add(tid);
+      const amt = Number(row.income || 0);
+      const sym = String(row.symbol || "").toUpperCase();
+      const t = Number(row.time || 0);
+      if (!Number.isFinite(amt) || amt === 0 || !sym || !t) continue;
+      mem.fundingRows.push({ tranId: tid, symbol: sym, time: t, amt });
+      added += 1;
+      if (t > maxT) maxT = t;
+    }
+    mem.fundingCursorMs = maxT + 1;
+    if (mem.fundingRows.length > 5000) mem.fundingRows = mem.fundingRows.slice(-5000);
+    if (mem.seenFundingIds.size > 20_000) {
+      mem.seenFundingIds = new Set([...mem.seenFundingIds].slice(-10_000));
+    }
+    if (added > 0) saveIncomeSyncToDisk();
+  }
+
+  /** Attach every funding row whose time lies between an OPEN and its matching CLOSE on the same
+   *  symbol to that CLOSE row's fee. Idempotent: rows already attributed are skipped via
+   *  `meta.fundingTranIds`. Handles late-arriving funding rows for already-closed round-trips.
+   */
+  function applyFundingToCloseRows() {
+    if (!mem.fundingRows.length || !mem.trades.length) return;
+    /** Cheap OPEN lookup per symbol — scan back from CLOSE i until we hit an OPEN on same symbol. */
+    for (let i = 0; i < mem.trades.length; i++) {
+      const cr = mem.trades[i];
+      if (cr?.type !== "CLOSE") continue;
+      const sym = String(cr.symbol || "").toUpperCase();
+      if (!sym) continue;
+      const closeTs = Date.parse(cr.ts) || 0;
+      if (!closeTs) continue;
+      let openTs = 0;
+      for (let j = i - 1; j >= 0; j--) {
+        const tr2 = mem.trades[j];
+        if (tr2?.type === "CLOSE" && String(tr2.symbol || "").toUpperCase() === sym) break;
+        if (tr2?.type === "OPEN" && String(tr2.symbol || "").toUpperCase() === sym) {
+          openTs = Date.parse(tr2.ts) || 0;
+          break;
+        }
+      }
+      if (!openTs || openTs >= closeTs) continue;
+      const seen = new Set(
+        Array.isArray(cr.meta?.fundingTranIds) ? cr.meta.fundingTranIds.map(String) : [],
+      );
+      let newSumIncome = 0;
+      const newIds = [];
+      for (const fr of mem.fundingRows) {
+        if (fr.symbol !== sym) continue;
+        if (fr.time < openTs || fr.time > closeTs) continue;
+        if (seen.has(String(fr.tranId))) continue;
+        newSumIncome += fr.amt;
+        newIds.push(String(fr.tranId));
+      }
+      if (!newIds.length) continue;
+      // Negative income = trader PAID funding → add to fee (cost). Positive income = trader RECEIVED
+      // funding → fee goes down. Store signed funding on meta so UI can display breakdown.
+      const prevFunding = Number(cr.meta?.fundingFeeUsd || 0);
+      cr.meta = {
+        ...(cr.meta || {}),
+        fundingFeeUsd: prevFunding + newSumIncome,
+        fundingTranIds: [
+          ...(Array.isArray(cr.meta?.fundingTranIds) ? cr.meta.fundingTranIds : []),
+          ...newIds,
+        ],
+      };
+      cr.fee = Number(cr.fee || 0) + -newSumIncome;
+    }
+  }
+
+  /** Latest OPEN row for symbol — used as context for `refineCloseReasonFromExitFill`. */
+  function findLastOpenRefForSym(symU) {
+    for (let j = mem.trades.length - 1; j >= 0; j--) {
+      const tr = mem.trades[j];
+      if (tr?.type === "OPEN" && String(tr.symbol || "").toUpperCase() === symU) return tr;
+    }
+    return null;
+  }
+
+  /**
+   * Run reason re-inference on a CLOSE row once its `exitAvgFillPrice` is authoritative. Upgrades
+   * generic `EXCHANGE_REALIZED` / `MANUAL_CLOSE` / `STOP_LOSS_DEFAULT` labels to `STOP_LOSS` /
+   * `TAKE_PROFIT` / `TRAILED_SUPERTREND_Tnn` when the real fill landed within {@link CLOSE_REASON_FILL_BAND}
+   * of SL/TP. Never downgrades an already-specific reason.
+   */
+  function refineClosedRowReason(cr) {
+    if (!cr || cr.type !== "CLOSE") return;
+    const openRef = findLastOpenRefForSym(String(cr.symbol || "").toUpperCase());
+    const refined = refineCloseReasonFromExitFill({
+      existingReason: cr.reason,
+      exitAvgFillPrice: cr.meta?.exitAvgFillPrice ?? cr.meta?.exitPrice ?? cr.price,
+      stopLoss: cr.stopLoss ?? cr.meta?.stopLoss ?? openRef?.stopLoss,
+      takeProfit: cr.takeProfit ?? cr.meta?.takeProfit ?? openRef?.takeProfit,
+      positionSideAtOpen: cr.meta?.positionSideAtOpen ?? openRef?.side,
+      trailStepAtClose: cr.meta?.trailStepAtClose,
+      confirmedTrailStepAtClose: cr.meta?.confirmedTrailStepAtClose,
+      trailStepLabelStyleAtClose: cr.meta?.trailStepLabelStyleAtClose,
+      trailingMode: cr.meta?.trailingMode,
+      exitViaTrailedStop: cr.meta?.exitViaTrailedStop === true,
+    });
+    if (refined && refined !== cr.reason) {
+      cr.reason = refined;
+      cr.meta = { ...(cr.meta || {}), closeReason: refined };
+    }
+  }
+
+  function hasSyntheticOpenForClose(closeOrderId) {
+    const c = String(closeOrderId || "");
+    if (!c) return false;
+    return mem.trades.some(
+      (tr) => tr?.type === "OPEN" && String(tr?.meta?.incomeCloseOrderId || "") === c,
+    );
+  }
+
+  function openRefMatchesRoundTrip(openRef, symU, closeSide, eventMs, targetQty) {
+    if (!openRef || openRef.type !== "OPEN") return false;
+    if (String(openRef.symbol || "").toUpperCase() !== symU) return false;
+    const cs = String(closeSide || "").toUpperCase();
+    const exp = cs === "SELL" ? "BUY" : cs === "BUY" ? "SELL" : "";
+    if (!exp || String(openRef.side || "").toUpperCase() !== exp) return false;
+    const openMs = Date.parse(openRef.ts || "");
+    if (!Number.isFinite(openMs) || openMs >= eventMs) return false;
+    const qo = Number(openRef.qty);
+    const qt = Number(targetQty);
+    if (Number.isFinite(qo) && Number.isFinite(qt) && qt > 0) {
+      if (Math.abs(qo - qt) / qt > 0.08) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Insert a synthetic OPEN from `userTrades` when income created a CLOSE but no OPEN row exists
+   * (restart / external entry / eviction).
+   */
+  async function maybeInsertSyntheticOpenForIncomeClose(args) {
+    const { sym, closeOrderId, closeSide, eventMs, targetQty, lcHint, priorOpenRef } = args;
+    const symU = String(sym || "").toUpperCase();
+    const coid = String(closeOrderId || "");
+    if (!coid || !apiKey || !apiSecret) return;
+
+    if (hasSyntheticOpenForClose(coid)) return;
+    if (lcHint?.posId != null && priorOpenRef && String(priorOpenRef.id) === String(lcHint.posId)) return;
+    if (openRefMatchesRoundTrip(priorOpenRef, symU, closeSide, eventMs, targetQty)) return;
+
+    const tq = Number(targetQty);
+    if (!Number.isFinite(tq) || tq <= 0) return;
+
+    const syn = await synthesizeOpenLegUsdMFromIncomeClose({
+      signed,
+      publicGet,
+      symbol: symU,
+      closeOrderId: coid,
+      closeEventMs: eventMs,
+      closeSide,
+      closeQty: tq,
+      log,
+    });
+    if (!syn) return;
+
+    const dupOid = String(syn.meta?.orderId || "");
+    if (
+      dupOid &&
+      mem.trades.some(
+        (tr) =>
+          tr?.type === "OPEN" &&
+          String(tr?.symbol || "").toUpperCase() === symU &&
+          String(tr?.meta?.orderId || "") === dupOid,
+      )
+    ) {
+      return;
+    }
+
+    mem.syntheticOpenCloseOrderIds.add(coid);
+    mem.trades.push(syn);
+    if (mem.trades.length > MAX_MEM_TRADES) mem.trades = mem.trades.slice(-MAX_MEM_TRADES);
+  }
+
+  /**
+   * Aggregate one REALIZED_PNL fill into a single CLOSE row keyed by `closeOrderId`. Accumulates
+   * `pnl`, per-fill `qty`, fee, and recomputes the qty-weighted `price` so one reduce order's many
+   * fills show as ONE history row with true totals (matches Binance's PnL/commission for that order).
+   *
+   * @param {{
+   *   sym: string;
+   *   tid: string;
+   *   tradeId: string;
+   *   tradeDetail: { orderId: string|null; price: number; qty: number; commissionUsdt: number; side: string; } | null;
+   *   closeOrderId: string;
+   *   pnl: number;
+   *   eventMs: number;
+   *   tsIso: string;
+   *   rawRow: any;
+   *   lcHint: any | null;
+   * }} p
+   */
+  async function aggregateIncomeFillByOrderId(p) {
+    const { sym, tid, tradeId, tradeDetail, closeOrderId, pnl, eventMs, tsIso, rawRow, lcHint } = p;
+
+    let mergeInto = null;
+    for (let i = mem.trades.length - 1; i >= 0; i--) {
+      const tr = mem.trades[i];
+      if (
+        tr?.type === "CLOSE" &&
+        String(tr?.symbol || "").toUpperCase() === sym &&
+        String(tr?.meta?.closeOrderId || "") === closeOrderId
+      ) {
+        mergeInto = tr;
+        break;
+      }
+    }
+
+    const fillQty = Number(tradeDetail?.qty);
+    const fillPx = Number(tradeDetail?.price);
+    const fillFee = Number(tradeDetail?.commissionUsdt);
+    const hasFill = Number.isFinite(fillQty) && fillQty > 0 && Number.isFinite(fillPx) && fillPx > 0;
+
+    if (mergeInto) {
+      /** Accumulate per-fill shard into existing row. */
+      mergeInto.pnl = Number(mergeInto.pnl || 0) + pnl;
+      if (hasFill) {
+        const prevAcc = Number(mergeInto.meta?.fillQtyAcc || 0);
+        const prevPx = Number(mergeInto.price || 0);
+        const prevNotional = Number.isFinite(prevPx) && Number.isFinite(prevAcc) ? prevPx * prevAcc : 0;
+        const newAcc = prevAcc + fillQty;
+        const newNotional = prevNotional + fillQty * fillPx;
+        const newAvg = newAcc > 0 ? newNotional / newAcc : mergeInto.price;
+        mergeInto.qty = newAcc;
+        mergeInto.price = newAvg;
+        mergeInto.meta = {
+          ...(mergeInto.meta || {}),
+          fillQtyAcc: newAcc,
+          exitPrice: newAvg,
+          exitAvgFillPrice: newAvg,
+          exitPriceSource: "fapi_userTrades",
+        };
+      }
+      if (Number.isFinite(fillFee) && fillFee > 0) {
+        mergeInto.fee = Number(mergeInto.fee || 0) + fillFee;
+        mergeInto.meta = {
+          ...(mergeInto.meta || {}),
+          exitFee: Number(mergeInto.fee),
+          commissionSourceClose: "fapi_userTrades",
+        };
+      }
+      const tranIds = Array.isArray(mergeInto.meta?.tranIds) ? [...mergeInto.meta.tranIds] : [];
+      if (!tranIds.includes(tid)) tranIds.push(tid);
+      const tradeIds = Array.isArray(mergeInto.meta?.tradeIds) ? [...mergeInto.meta.tradeIds] : [];
+      if (tradeId && !tradeIds.includes(tradeId)) tradeIds.push(tradeId);
+      mergeInto.meta = {
+        ...(mergeInto.meta || {}),
+        tranIds,
+        tranId: tranIds[tranIds.length - 1],
+        tradeIds,
+        closeOrderId,
+        _incomeEventMs: Math.max(Number(mergeInto.meta?._incomeEventMs || 0), eventMs),
+      };
+      refineClosedRowReason(mergeInto);
+      const tqMerge = Number(mergeInto.meta?.fillQtyAcc || mergeInto.qty || tradeDetail?.qty || 0);
+      await maybeInsertSyntheticOpenForIncomeClose({
+        sym,
+        closeOrderId,
+        closeSide: mergeInto.side,
+        eventMs,
+        targetQty: tqMerge,
+        lcHint,
+        priorOpenRef: findLastOpenRefForSym(sym),
+      });
+      return;
+    }
+
+    /** First fill for this orderId → create a new CLOSE row. Prefer local close hint for trail state
+     * / bracket / strategy metadata, but per-fill figures come from `tradeDetail`. */
+    let openRef = findLastOpenRefForSym(sym);
+    const closeSide =
+      tradeDetail?.side ||
+      lcHint?.closeSide ||
+      (openRef?.side === "BUY" ? "SELL" : openRef?.side === "SELL" ? "BUY" : "—");
+
+    let targetQty = hasFill ? fillQty : lcHint?.qty != null ? Number(lcHint.qty) : Number(openRef?.qty || 0);
+    if (closeOrderId && apiKey && apiSecret) {
+      try {
+        const od = await fetchUsdMOrderCommissionDetails({
+          signed,
+          publicGet,
+          symbol: sym,
+          orderId: closeOrderId,
+          log,
+        });
+        if (od?.filledQty && Number(od.filledQty) > 0) targetQty = Number(od.filledQty);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    await maybeInsertSyntheticOpenForIncomeClose({
+      sym,
+      closeOrderId,
+      closeSide,
+      eventMs,
+      targetQty,
+      lcHint,
+      priorOpenRef: openRef,
+    });
+
+    openRef = findLastOpenRefForSym(sym);
+
+    const entryPxRef =
+      lcHint?.entryPrice != null
+        ? Number(lcHint.entryPrice)
+        : openRef?.price != null
+          ? Number(openRef.price)
+          : openRef?.entryPrice != null
+            ? Number(openRef.entryPrice)
+            : undefined;
+    const slRef = lcHint?.stopLoss ?? openRef?.stopLoss;
+    const tpRef = lcHint?.takeProfit ?? openRef?.takeProfit;
+    const levRef = lcHint?.leverage ?? openRef?.meta?.leverage ?? openRef?.leverage;
+
+    let reasonInit = lcHint ? closeReasonFromLocalCloseHint(lcHint) : "EXCHANGE_REALIZED";
+    if (!lcHint) {
+      // `exchangeNativeClose` flag mirrors reconciler semantics for consistent downstream filtering.
+      reasonInit = "EXCHANGE_REALIZED";
+    }
+
+    const row = {
+      type: "CLOSE",
+      id: `finc_${tid}`,
+      ts: tsIso,
+      symbol: sym,
+      side: closeSide,
+      qty: hasFill ? fillQty : lcHint?.qty != null ? Number(lcHint.qty) : openRef?.qty,
+      price: hasFill ? fillPx : undefined,
+      entryPrice: Number.isFinite(Number(entryPxRef)) ? Number(entryPxRef) : undefined,
+      stopLoss: slRef != null ? Number(slRef) : undefined,
+      takeProfit: tpRef != null ? Number(tpRef) : undefined,
+      leverage: levRef != null ? Number(levRef) : undefined,
+      pnl,
+      fee: Number.isFinite(fillFee) && fillFee > 0 ? fillFee : undefined,
+      strategy: lcHint?.strategy || openRef?.strategy || "AUTO",
+      reason: reasonInit,
+      ledgerEvent: !lcHint,
+      meta: {
+        source: "fapi_income",
+        incomeType: rawRow?.incomeType || "REALIZED_PNL",
+        tranId: tid,
+        tranIds: [tid],
+        tradeIds: tradeId ? [tradeId] : [],
+        closeOrderId,
+        closeReason: reasonInit,
+        _incomeEventMs: eventMs,
+        ...(hasFill
+          ? {
+              fillQtyAcc: fillQty,
+              exitPrice: fillPx,
+              exitAvgFillPrice: fillPx,
+              exitPriceSource: "fapi_userTrades",
+            }
+          : {}),
+        ...(Number.isFinite(fillFee) && fillFee > 0
+          ? { exitFee: fillFee, commissionSourceClose: "fapi_userTrades" }
+          : {}),
+        ...(lcHint?.bracketType ? { bracketType: lcHint.bracketType } : {}),
+        ...(lcHint?.trailingMode != null ? { trailingMode: String(lcHint.trailingMode) } : {}),
+        ...(lcHint?.exitViaTrailedStop === true ? { exitViaTrailedStop: true } : {}),
+        ...(lcHint?.trailStepAtClose != null ? { trailStepAtClose: lcHint.trailStepAtClose } : {}),
+        ...(lcHint?.confirmedTrailStepAtClose != null
+          ? { confirmedTrailStepAtClose: Number(lcHint.confirmedTrailStepAtClose) }
+          : {}),
+        ...(lcHint?.trailTierAtClose != null
+          ? { trailTierAtClose: String(lcHint.trailTierAtClose) }
+          : {}),
+        ...(lcHint?.trailStepLabelStyleAtClose != null
+          ? { trailStepLabelStyleAtClose: String(lcHint.trailStepLabelStyleAtClose) }
+          : {}),
+        ...(lcHint?.positionSideAtOpen != null && String(lcHint.positionSideAtOpen).trim() !== ""
+          ? { positionSideAtOpen: String(lcHint.positionSideAtOpen).trim() }
+          : openRef?.side
+            ? { positionSideAtOpen: String(openRef.side).toUpperCase() }
+            : {}),
+        ...(lcHint?.posId != null && String(lcHint.posId).trim() !== ""
+          ? { openRefId: String(lcHint.posId).trim() }
+          : openRef?.id
+            ? { openRefId: String(openRef.id) }
+            : {}),
+        ...(lcHint
+          ? {
+              localEnforcement: true,
+              localCloseKey: `${sym}_${lcHint.closedAt}`,
+            }
+          : {}),
+        supertrendSignalClose:
+          lcHint?.strategyCloseReason === "SUPERTREND_EXIT" || lcHint?.strategyCloseReason === "SUPERTREND_FLIP",
+      },
+    };
+    mem.trades.push(row);
+    if (mem.trades.length > MAX_MEM_TRADES) mem.trades = mem.trades.slice(-MAX_MEM_TRADES);
+    refineClosedRowReason(row);
+  }
+
   async function syncRealizedIncomeFromExchange() {
     if (!apiKey || !apiSecret) return;
     await refreshUsdMPositionSnapshotAndReconcile();
+    // Fire-and-forget funding pull — does not block close-row generation.
+    syncFundingIncomeFromExchange().catch((e) =>
+      log?.warn?.("binance_live_futures_funding_sync_failed", { error: String(e?.message || e) }),
+    );
     const now = Date.now();
-    if (now - mem.lastIncomePollAt < 2500) return;
+    const incomePollMinMs = Math.max(
+      800,
+      Math.min(10_000, Number(process.env.BINANCE_INCOME_POLL_MIN_MS ?? 1500)),
+    );
+    if (now - mem.lastIncomePollAt < incomePollMinMs) return;
     mem.lastIncomePollAt = now;
     // First run (no cursor file): only a short boot window — NOT 7d of historical REALIZED_PNL
     const start =
@@ -611,6 +1224,30 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       const eventMs = t > 0 ? t : Date.now();
       const tsIso = t ? new Date(t).toISOString() : new Date().toISOString();
 
+      /**
+       * Discover the canonical `closeOrderId` behind this income shard via `tradeId` — Binance splits one
+       * reduce-only close into many REALIZED_PNL rows (one per fill), each with its own tranId but the
+       * SAME underlying orderId. Without this lookup, every shard produced a duplicate CLOSE history row
+       * with the full OPEN leg qty re-applied, which massively inflated displayed fees (fallback
+       * computed as qty × exitPx × rate per shard) and decoupled Net PnL from Binance's true total.
+       */
+      const rowTradeId = row.tradeId != null ? String(row.tradeId).trim() : "";
+      let tradeDetail = null;
+      if (rowTradeId && apiKey && apiSecret) {
+        try {
+          tradeDetail = await fetchUsdMTradeByTradeId({
+            signed,
+            publicGet,
+            symbol: sym,
+            tradeId: rowTradeId,
+            log,
+          });
+        } catch {
+          /* best-effort; fall through to legacy paths below */
+        }
+      }
+      const closeOrderId = tradeDetail?.orderId ? String(tradeDetail.orderId) : null;
+
       // Match most recent pending close for this symbol (manual close or local SL/TP).
       // Use a one-sided window: income must land at/after (close − skew) and within TTL after close.
       // `abs(event - close) < TTL` wrongly bound REALIZED_PNL from *earlier* exits minutes before this close.
@@ -622,6 +1259,30 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         if (eventMs > c.closedAt + LOCAL_CLOSE_TTL_MS) continue;
         localMatch = i;
         break;
+      }
+      const lcHint = localMatch >= 0 ? mem.recentLocalCloses[localMatch] : null;
+
+      /**
+       * PRIMARY AGGREGATION PATH: when we know the `closeOrderId`, merge every fill for that order into
+       * a single CLOSE row with true qty / avg fill price / real commission — regardless of whether a
+       * local close hint exists. This collapses the 7-shards-per-close pattern that caused bogus
+       * duplicate rows and the corresponding fee inflation (e.g. 7 × $1.03 ≈ $7.20 of fake fee).
+       */
+      if (closeOrderId) {
+        await aggregateIncomeFillByOrderId({
+          sym,
+          tid,
+          tradeId: rowTradeId,
+          tradeDetail,
+          closeOrderId,
+          pnl,
+          eventMs,
+          tsIso,
+          rawRow: row,
+          lcHint,
+        });
+        if (t) maxT = Math.max(maxT, t);
+        continue;
       }
 
       if (localMatch >= 0) {
@@ -711,6 +1372,17 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             });
             exitFeeMerge = exitDetail?.usdt ?? null;
           }
+          /** Prefer the TRUE avg fill from `userTrades` over `lc.markPx` (which is mark price at trigger time). */
+          if (exitDetail?.avgPrice != null && Number.isFinite(Number(exitDetail.avgPrice)) && Number(exitDetail.avgPrice) > 0) {
+            const avg = Number(exitDetail.avgPrice);
+            mergeInto.price = avg;
+            mergeInto.meta = {
+              ...(mergeInto.meta || {}),
+              exitPrice: avg,
+              exitAvgFillPrice: avg,
+              exitPriceSource: "fapi_userTrades",
+            };
+          }
           if (exitFeeMerge != null) {
             mergeInto.fee = exitFeeMerge;
             mergeInto.meta = {
@@ -731,6 +1403,10 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             const f = tradeCloseFeeUsdtFromNotional(mergeInto.qty, feePx);
             if (f != null) mergeInto.fee = f;
           }
+          /** Exit avg fill may have just been populated — upgrade generic reasons (`EXCHANGE_REALIZED`
+           * / `MANUAL_CLOSE` / `STOP_LOSS_DEFAULT`) to `STOP_LOSS` / `TAKE_PROFIT` when fill lands
+           * within the bracket band. Never downgrades already-specific labels. */
+          refineClosedRowReason(mergeInto);
         } else {
           const closeQtyN = lc.qty != null ? Number(lc.qty) : NaN;
           const closePxN =
@@ -749,6 +1425,20 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             exitFeeNew = exitDetailNew?.usdt ?? null;
           }
           const feeFallback = tradeCloseFeeUsdtFromNotional(closeQtyN, closePxN);
+          /** Exit price priority: real fill avg (userTrades) > mark at trigger. `lc.markPx` is the old fallback. */
+          const exitAvg =
+            exitDetailNew?.avgPrice != null &&
+            Number.isFinite(Number(exitDetailNew.avgPrice)) &&
+            Number(exitDetailNew.avgPrice) > 0
+              ? Number(exitDetailNew.avgPrice)
+              : null;
+          const exitPxForRow =
+            exitAvg != null
+              ? exitAvg
+              : lc.markPx != null && Number.isFinite(Number(lc.markPx))
+                ? Number(lc.markPx)
+                : undefined;
+          const exitPxSource = exitAvg != null ? "fapi_userTrades" : exitPxForRow != null ? "markPx" : undefined;
           mem.trades.push({
             type: "CLOSE",
             id: `finc_${tid}`,
@@ -756,7 +1446,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             symbol: sym,
             side: lc.closeSide || "—",
             qty: lc.qty != null ? Number(lc.qty) : undefined,
-            price: lc.markPx != null && Number.isFinite(Number(lc.markPx)) ? Number(lc.markPx) : undefined,
+            price: exitPxForRow,
             entryPrice: lc.entryPrice != null ? Number(lc.entryPrice) : undefined,
             stopLoss: lc.stopLoss != null ? Number(lc.stopLoss) : undefined,
             takeProfit: lc.takeProfit != null ? Number(lc.takeProfit) : undefined,
@@ -777,7 +1467,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
               localCloseKey,
               _incomeEventMs: eventMs,
               leverage: lc.leverage != null ? Number(lc.leverage) : undefined,
-              exitPrice: lc.markPx != null ? Number(lc.markPx) : undefined,
+              exitPrice: exitPxForRow,
+              ...(exitAvg != null ? { exitAvgFillPrice: exitAvg } : {}),
+              ...(exitPxSource ? { exitPriceSource: exitPxSource } : {}),
               exitViaTrailedStop: lc.exitViaTrailedStop === true,
               trailStepAtClose: lc.trailStepAtClose,
               trailTierAtClose: lc.trailTierAtClose != null ? String(lc.trailTierAtClose) : undefined,
@@ -802,6 +1494,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
                 : {}),
             },
           });
+          refineClosedRowReason(mem.trades[mem.trades.length - 1]);
         }
       } else if (!strategyOnlyIncomeLedger) {
         let openRef = null;
@@ -866,6 +1559,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             ...(inferredBracket ? { bracketType: inferredBracket, exitInferredFromMark: true } : {}),
           },
         });
+        refineClosedRowReason(mem.trades[mem.trades.length - 1]);
       }
       if (t) maxT = Math.max(maxT, t);
     }
@@ -874,6 +1568,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     if (mem.seenIncomeIds.size > 20_000) {
       mem.seenIncomeIds = new Set([...mem.seenIncomeIds].slice(-10_000));
     }
+    // Attribute any funding rows that now have a matching CLOSE window. Runs after
+    // REALIZED_PNL because that's when new CLOSE rows land in `mem.trades`.
+    applyFundingToCloseRows();
     if (mem.trades.length > MAX_MEM_TRADES) mem.trades = mem.trades.slice(-MAX_MEM_TRADES);
   }
 
@@ -904,19 +1601,35 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           orderId: tr.meta.orderId,
           log,
         });
-        if (det != null && det.usdt > 0) {
+        if (det == null) continue;
+        const hasCommission = det.usdt > 0;
+        const hasFill =
+          det.avgPrice != null && Number.isFinite(Number(det.avgPrice)) && Number(det.avgPrice) > 0;
+        if (!hasCommission && !hasFill) continue;
+        const patchMeta = {};
+        if (hasCommission) {
           tr.fee = det.usdt;
-          tr.meta = {
-            ...(tr.meta || {}),
-            openFee: det.usdt,
-            commissionSource: "fapi_userTrades",
-            ...(det.allMaker === true
-              ? { entryAllMaker: true }
-              : det.allMaker === false
-                ? { entryAllMaker: false }
-                : {}),
-          };
+          patchMeta.openFee = det.usdt;
+          patchMeta.commissionSource = "fapi_userTrades";
+          if (det.allMaker === true) patchMeta.entryAllMaker = true;
+          else if (det.allMaker === false) patchMeta.entryAllMaker = false;
         }
+        if (hasFill && tr.meta?.entryPriceSource !== "fapi_userTrades") {
+          // Only overwrite if we haven't already applied a `userTrades`-sourced entry:
+          // avoids flapping between runs.
+          tr.price = Number(det.avgPrice);
+          patchMeta.entryAvgFillPrice = Number(det.avgPrice);
+          patchMeta.entryPriceSource = "fapi_userTrades";
+          if (
+            Number.isFinite(Number(det.filledQty)) &&
+            Number(det.filledQty) > 0 &&
+            Math.abs(Number(det.filledQty) - Number(tr.qty || 0)) > 1e-8
+          ) {
+            tr.qty = Number(det.filledQty);
+            patchMeta.entryFilledQty = Number(det.filledQty);
+          }
+        }
+        tr.meta = { ...(tr.meta || {}), ...patchMeta };
       } catch {
         /* ignore */
       }
@@ -929,14 +1642,14 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     storeInfo: { baseURL, note: "USD-M Futures (mainnet — real funds)" },
     async getAccount() {
       if (!apiKey || !apiSecret) throw new Error("binance_live_futures_missing_keys");
-      const a = await signed("GET", "/fapi/v2/account");
+      const a = await getAccountSnapshotCoalesced();
       const equity = Number(a?.totalWalletBalance || 0);
       const free = Number(a?.availableBalance || 0);
       return { equity, freeBalance: free, dailyStartEquity: null, dailyPnlPct: 0, leverage: defaultLeverage };
     },
     async getPositions() {
       try {
-        const a = await signed("GET", "/fapi/v2/account");
+        const a = await getAccountSnapshotCoalesced();
         const ps = Array.isArray(a?.positions) ? a.positions : [];
         await reconcileUsdMExternalClosesFromPositions({ mem, publicGet, clearMemBracketTrailForSymbol, log }, ps);
         const rows = ps
@@ -1268,22 +1981,42 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             orderId,
             log,
           });
-          if (det == null || !(det.usdt > 0)) return;
-          const f = det.usdt;
+          if (det == null) return;
+          const hasCommission = det.usdt > 0;
+          const hasFill =
+            det.avgPrice != null && Number.isFinite(Number(det.avgPrice)) && Number(det.avgPrice) > 0;
+          if (!hasCommission && !hasFill) return;
           for (let i = mem.trades.length - 1; i >= 0; i--) {
             const tr = mem.trades[i];
             if (tr?.type === "OPEN" && String(tr.id) === String(posId)) {
-              tr.fee = f;
-              tr.meta = {
-                ...(tr.meta || {}),
-                openFee: f,
-                commissionSource: "fapi_userTrades",
-                ...(det.allMaker === true
-                  ? { entryAllMaker: true }
-                  : det.allMaker === false
-                    ? { entryAllMaker: false }
-                    : {}),
-              };
+              const prevMeta = tr.meta || {};
+              const patchMeta = {};
+              if (hasCommission) {
+                tr.fee = det.usdt;
+                patchMeta.openFee = det.usdt;
+                patchMeta.commissionSource = "fapi_userTrades";
+                if (det.allMaker === true) patchMeta.entryAllMaker = true;
+                else if (det.allMaker === false) patchMeta.entryAllMaker = false;
+              }
+              if (hasFill) {
+                // `avgFillPriceFromUsdMNewOrder` uses the POST response `avgPrice`, which is often
+                // "0.00" before fills settle. `userTrades` is the authoritative qty-weighted mean.
+                // Updating `price` here feeds every downstream derivative — margin column
+                // (entry × qty / lev), PnL basis, restart trail reconstruction.
+                tr.price = Number(det.avgPrice);
+                patchMeta.entryAvgFillPrice = Number(det.avgPrice);
+                patchMeta.entryPriceSource = "fapi_userTrades";
+                if (
+                  Number.isFinite(Number(det.filledQty)) &&
+                  Number(det.filledQty) > 0 &&
+                  Math.abs(Number(det.filledQty) - Number(tr.qty || 0)) > 1e-8
+                ) {
+                  // Partial fill: authoritative filled qty from userTrades.
+                  tr.qty = Number(det.filledQty);
+                  patchMeta.entryFilledQty = Number(det.filledQty);
+                }
+              }
+              tr.meta = { ...prevMeta, ...patchMeta };
               break;
             }
           }
@@ -1399,13 +2132,36 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         // Always use exchange mark price for trailing decisions.
         // The bot passes candle close as `price`; that can differ from mark and causes missed tier advances
         // (UI shows mark crossing activation but server compares against close).
+        //
+        // Prefer the `@markPrice@1s` WS cache (push, sub-second). Fall back to REST
+        // `premiumIndex` only when the cache is empty or stale — keeps trailing
+        // decisions current without bombarding fapi on every trail symbol per tick.
+        const cached = _getMarkPxFromCache(u);
+        if (cached != null) return cached;
         try {
           const d = await publicGet("/fapi/v1/premiumIndex", { symbol: u });
           const m = Number(d?.markPrice);
-          return Number.isFinite(m) && m > 0 ? m : NaN;
+          if (Number.isFinite(m) && m > 0) {
+            _markPxCache.set(u, { px: m, at: Date.now() });
+            return m;
+          }
+          return NaN;
         } catch {
           return NaN;
         }
+      }
+
+      // Keep the mark-price WS subscribed to every symbol we'll read mark price for
+      // this tick (trailing + local-bracket + primary chart). Cheap if unchanged.
+      {
+        const wsSubs = [
+          ...new Set([
+            primarySymU,
+            ...Object.keys(mem.trailingBySymbol).map((k) => String(k || "").toUpperCase()),
+            ...Object.keys(mem.localBrackets).map((k) => String(k || "").toUpperCase()),
+          ]),
+        ].filter(Boolean);
+        _ensureMarkPxWs(wsSubs);
       }
 
       if (trailingStopLoss?.enabled) {

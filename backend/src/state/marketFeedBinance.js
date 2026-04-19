@@ -31,6 +31,9 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
   let ws = null;
   let delta = null;
   let status = { ok: false, source: sourceTag, lastMsgAt: null, stream: null, error: null };
+  let reconnectAttempt = 0;
+  const reconnectMinMs = Math.max(500, Number(process.env.BINANCE_WS_RECONNECT_MIN_MS ?? 1500));
+  const reconnectMaxMs = Math.max(reconnectMinMs, Number(process.env.BINANCE_WS_RECONNECT_MAX_MS ?? 60_000));
 
   const http = axios.create({
     baseURL: restBase || BINANCE_REST,
@@ -100,6 +103,7 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
     ws = new WebSocket(url);
 
     ws.on("open", () => {
+      reconnectAttempt = 0;
       status = { ...status, ok: true, error: null };
       log.info("binance_ws_open", { stream });
     });
@@ -146,15 +150,18 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
 
     ws.on("close", () => {
       status = { ...status, ok: false };
-      log.warn("binance_ws_close", { stream });
-      // reconnect with small backoff
+      const exp = Math.min(reconnectMaxMs, reconnectMinMs * Math.pow(2, Math.min(8, reconnectAttempt)));
+      const jitter = Math.floor(Math.random() * 400);
+      const delay = exp + jitter;
+      reconnectAttempt += 1;
+      log.warn("binance_ws_close", { stream, attempt: reconnectAttempt, delay });
       setTimeout(() => {
         try {
           connect();
         } catch (e) {
           status = { ...status, ok: false, error: String(e?.message || e) };
         }
-      }, 1500);
+      }, delay);
     });
   }
 

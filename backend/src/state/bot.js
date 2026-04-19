@@ -190,6 +190,8 @@ function aiGateProbability(calProb, rawProb) {
 function isIncomeLedgerClose(t) {
   if (!t) return false;
   if (t.meta?.localEnforcement === true) return false;
+  const openRefId = t.meta?.openRefId;
+  if (openRefId != null && String(openRefId).trim() !== "") return false;
   if (t.ledgerEvent === true || t.meta?.ledgerEvent === true) return true;
   if (String(t.strategy || "").toUpperCase() === "INCOME_LEDGER") return true;
   if (String(t.strategy || "") === "FUTURES_DEMO") return true;
@@ -442,6 +444,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   function requiresStrictBinanceAccount() {
     return isStrictBinanceAccountMode(runtimeTradingMode());
   }
+  /** Kline OHLC updates every BOT_TICK (~1s); wallet/positions come from REST. Defaults: 1500ms live/testnet, 5000ms paper/demo unless `ACCOUNT_FETCH_INTERVAL_MS` is set. */
+  function effectiveAccountFetchIntervalMs() {
+    const raw = Number(process.env.ACCOUNT_FETCH_INTERVAL_MS);
+    if (Number.isFinite(raw) && raw >= 250) return Math.min(120_000, raw);
+    const strictMs = Number(process.env.ACCOUNT_FETCH_INTERVAL_STRICT_MS ?? 1500);
+    const relaxedMs = Number(process.env.ACCOUNT_FETCH_INTERVAL_RELAXED_MS ?? 5000);
+    return requiresStrictBinanceAccount()
+      ? Math.max(250, Math.min(120_000, strictMs))
+      : Math.max(500, Math.min(120_000, relaxedMs));
+  }
   function walletBaseFromAccount(account) {
     if (account == null) return null;
     if (account.equity == null || !Number.isFinite(Number(account.equity))) return null;
@@ -681,10 +693,26 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
      *                       Defaults to `TRADE_CLOSE_FEE_RATE`.
      * Round-trip fee = openFee + closeFee (e.g. 0.04% + 0.04% = 0.08%).
      *
-     * SUPERTREND-specific:
-     * `trailFeeBeMultiplier` — safety margin ×N on round-trip fee for the padded fee-BE lock (tiered ST: T02 SL / T02 activation = padded fee + this buffer).
-     * `trailBufferRate`      — activation buffer (fraction; default 0.0005): tiered ST uses it for T01 (entry + buffer) and for T02 together with padded fee.
+     * SUPERTREND-specific (tiered T01 → T02 → ST ladder):
+     *
+     * Lock semantics (what price the SL is SET TO when each tier triggers):
+     *   T01 lock = entry                         (zero-loss point: gross = 0, net = -round-trip fee)
+     *   T02 lock = entry × (1 ± round-trip fee)  (break-even point: gross = fees, net ≈ 0)
+     *
+     * Activation prices (when mark must exceed before the lock moves):
+     *   T01 activation = entry × (1 ± trailBufferRate)                        (default buf 0.05%)
+     *   T02 activation = entry × (1 ± (paddedFee + trailBufferRate))          (default fee 0.08% + buf 0.05% = 0.13%)
+     *
+     * `trailFeeBeMultiplier` — safety × on round-trip fee for the T02 lock / activation. Default 1.0 (exact BE).
+     *                           Raising it (e.g. 1.25) covers stop-market slippage but delays T02 firing and means
+     *                           T02 lock gross > fees instead of equal to fees.
+     * `trailBufferRate`      — activation buffer (fraction; default 0.0005 = 0.05%): T01 needs +buf, T02 needs +(fee+buf).
      * `trailActivationSlippageFrac` — added to padded fee rate for Supertrend tiered gates only (execution cushion; cap 1%).
+     * `trailT01LockSlippageFrac` — tiered T01 only: SL lock offset from entry (LONG: above entry; SHORT: below); cap 1%.
+     *                               Default 0 (T01 locks AT entry per the "zero-loss" spec). Set a small positive value
+     *                               (e.g. 0.0002 = 2 bp) only if you want T01 to lock a tick or two past entry to clear
+     *                               sub-tick mark-price noise. NOTE: a value > trailFeeBeMultiplier × round-trip fee will
+     *                               make T01 lock above T02 lock and silently disable T02 (merge picks max for long).
      * `trailBufferMode`      — `PERCENT` = use `trailBufferRate` only; `ATR` = buffer = min(5%, atrPct × trailBufferAtrMult) when regime ATR exists, else `trailBufferRate`.
      * `trailBufferAtrMult`   — multiplier on `lastRegime.atrPct` when `trailBufferMode` is `ATR`.
      * `trailMinSlDistFrac`   — minimum fractional improvement the new SL must make (default 0.002 = 0.2%).
@@ -716,16 +744,28 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       0,
       0.01,
     ),
-    trailFeeBeMultiplier: clamp(Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25), 1, 2),
+    trailFeeBeMultiplier: clamp(Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.0), 1, 2),
     trailBufferRate: clamp(Number(process.env.SUPERTREND_TRAIL_BUFFER_RATE ?? 0.0005), 0, 0.05),
     /** Additive fraction on padded BE rate for Supertrend tiered gates (execution vs theoretical fees). */
     trailActivationSlippageFrac: clamp(Number(process.env.FUTURES_TRAIL_ACTIVATION_SLIPPAGE_FRAC ?? 0), 0, 0.01),
+    /** Tiered Supertrend T01: SL lock offset from entry. Default 0 — T01 lock = entry (zero-loss point per spec). */
+    trailT01LockSlippageFrac: clamp(Number(process.env.FUTURES_TRAIL_T01_LOCK_SLIPPAGE_FRAC ?? 0), 0, 0.01),
     /** With `trailBufferMode: "ATR"`: buffer = min(5%, atrPct × this). Ignored in PERCENT mode. */
     trailBufferAtrMult: clamp(Number(process.env.FUTURES_TRAIL_BUFFER_ATR_MULT ?? 0), 0, 1),
     /** `"PERCENT"` = fixed `trailBufferRate`; `"ATR"` = scale buffer from regime ATR (see `trailBufferAtrMult`). */
     trailBufferMode: (() => {
       const u = String(process.env.FUTURES_TRAIL_BUFFER_MODE ?? "PERCENT").toUpperCase();
       return u === "ATR" ? "ATR" : "PERCENT";
+    })(),
+    /**
+     * Activation buffer for **post-T02 profit rungs only** (T1, T2, T3…). Decoupled from
+     * `trailBufferRate` so users can keep T01/T02 glued to entry (fast loss-protection activation)
+     * while giving every advance profit tier a larger pull-back cushion. `null` = fall back to
+     * `trailBufferRate` (legacy single-buffer behaviour). Fraction of price (cap 5%).
+     */
+    trailPostT02ActivationBufferRate: (() => {
+      const x = Number(process.env.FUTURES_TRAIL_POST_T02_ACTIVATION_BUFFER_RATE);
+      return Number.isFinite(x) && x >= 0 ? clamp(x, 0, 0.05) : null;
     })(),
     trailMinSlDistFrac: clamp(Number(process.env.SUPERTREND_TRAIL_MIN_SL_DISTANCE_FRAC ?? 0.002), 0, 0.1),
     trailMinGapFromMarkFrac: clamp(Number(process.env.SUPERTREND_TRAIL_MIN_GAP_FROM_MARK_FRAC ?? 0), 0, 0.2),
@@ -1005,6 +1045,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     //   1. Resets the realized-PnL counter when all positions are flat (cycle boundary).
     //   2. Broadcasts state so the UI updates immediately.
     const posNow = await exch.getPositions().catch(() => []);
+    _cachedPositions = Array.isArray(posNow) ? posNow : [];
     const invested = sumOpenMarginUsedUsdt(posNow, state.marketMode);
     const isFlat = invested <= 1e-8;
 
@@ -1038,7 +1079,15 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
     // Broadcast immediately so the frontend "Allowed" display updates without waiting for the next tick.
     try {
-      wsHub?.broadcast?.("state", { mode: runtimeTradingMode(), ...getPublicState() });
+      const candles = feed.getCandles();
+      const lastCb = candles.length ? candles[candles.length - 1] : null;
+      const pf = portfolioMtmForWs(lastCb, candles, _cachedPositions, _cachedAccount, null);
+      wsHub?.broadcast?.("state", {
+        mode: runtimeTradingMode(),
+        ...getPublicState(),
+        account: pf.account,
+        positions: pf.positionsMtM,
+      });
     } catch {
       /* non-critical */
     }
@@ -1378,8 +1427,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           trailFeeBeMultiplier: state.trailFeeBeMultiplier,
           trailBufferRate: state.trailBufferRate,
           trailActivationSlippageFrac: state.trailActivationSlippageFrac,
+          trailT01LockSlippageFrac: state.trailT01LockSlippageFrac,
           trailBufferAtrMult: state.trailBufferAtrMult,
           trailBufferMode: normalizeTrailBufferMode(state.trailBufferMode),
+          trailPostT02ActivationBufferRate: state.trailPostT02ActivationBufferRate,
           trailMinSlDistFrac: state.trailMinSlDistFrac,
           trailMinGapFromMarkFrac: state.trailMinGapFromMarkFrac,
           trailMaintMarginRate: state.trailMaintMarginRate,
@@ -1649,8 +1700,19 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       if (b.trailActivationSlippageFrac != null) {
         state.trailActivationSlippageFrac = clamp(Number(b.trailActivationSlippageFrac) || 0, 0, 0.01);
       }
+      if (b.trailT01LockSlippageFrac != null && Number.isFinite(Number(b.trailT01LockSlippageFrac))) {
+        state.trailT01LockSlippageFrac = clamp(Number(b.trailT01LockSlippageFrac), 0, 0.01);
+      }
       if (b.trailBufferAtrMult != null) state.trailBufferAtrMult = clamp(Number(b.trailBufferAtrMult) || 0, 0, 1);
       if (b.trailBufferMode != null) state.trailBufferMode = normalizeTrailBufferMode(b.trailBufferMode);
+      if (b.trailPostT02ActivationBufferRate === null) {
+        state.trailPostT02ActivationBufferRate = null;
+      } else if (
+        b.trailPostT02ActivationBufferRate != null &&
+        Number.isFinite(Number(b.trailPostT02ActivationBufferRate))
+      ) {
+        state.trailPostT02ActivationBufferRate = clamp(Number(b.trailPostT02ActivationBufferRate), 0, 0.05);
+      }
       if (b.trailMinSlDistFrac != null) state.trailMinSlDistFrac = clamp(Number(b.trailMinSlDistFrac) || 0.002, 0, 0.1);
       if (b.trailMinGapFromMarkFrac != null) state.trailMinGapFromMarkFrac = clamp(Number(b.trailMinGapFromMarkFrac) || 0, 0, 0.2);
       if (b.trailMaintMarginRate != null) state.trailMaintMarginRate = clamp(Number(b.trailMaintMarginRate) || 0.005, 0, 0.1);
@@ -1769,7 +1831,15 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       };
       persistTradingConfigToDisk();
       try {
-        wsHubRef?.broadcast?.("state", { mode: runtimeTradingMode(), ...getPublicState() });
+        const candlesSs = feed.getCandles();
+        const lastSs = candlesSs.length ? candlesSs[candlesSs.length - 1] : null;
+        const pfSs = portfolioMtmForWs(lastSs, candlesSs, _cachedPositions, _cachedAccount, null);
+        wsHubRef?.broadcast?.("state", {
+          mode: runtimeTradingMode(),
+          ...getPublicState(),
+          account: pfSs.account,
+          positions: pfSs.positionsMtM,
+        });
       } catch {
         /* ignore */
       }
@@ -4084,7 +4154,15 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     filt.sort((a, b) => Number(a.ts) - Number(b.ts));
     state.supertrendSignalHistory = filt.slice(-SUPERTREND_SIGNAL_STATE_MAX);
     persistTradingConfigToDisk();
-    wsHub?.broadcast?.("state", { mode: runtimeTradingMode(), ...getPublicState() });
+    const candlesHm = feed.getCandles();
+    const lastHm = candlesHm.length ? candlesHm[candlesHm.length - 1] : null;
+    const pfHm = portfolioMtmForWs(lastHm, candlesHm, _cachedPositions, _cachedAccount, null);
+    wsHub?.broadcast?.("state", {
+      mode: runtimeTradingMode(),
+      ...getPublicState(),
+      account: pfHm.account,
+      positions: pfHm.positionsMtM,
+    });
     scheduleSmartSsRefresh(8000);
   }
 
@@ -4992,9 +5070,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     };
 
     if (wsHubRef) {
+      const candlesSt = rawCandles;
+      const lastSt = candlesSt.length ? candlesSt[candlesSt.length - 1] : null;
+      const pfSt = portfolioMtmForWs(lastSt, candlesSt, _cachedPositions, _cachedAccount, null);
       wsHubRef.broadcast("state", {
         mode: runtimeTradingMode(),
         ...getPublicState(),
+        account: pfSt.account,
+        positions: pfSt.positionsMtM,
       });
     }
 
@@ -5078,9 +5161,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       persistTradingConfigToDisk();
       scheduleSmartSsRefresh(8000);
       if (wsHubRef) {
+        const candlesFl = rawCandles;
+        const lastFl = candlesFl.length ? candlesFl[candlesFl.length - 1] : null;
+        const pfFl = portfolioMtmForWs(lastFl, candlesFl, _cachedPositions, _cachedAccount, null);
         wsHubRef.broadcast("state", {
           mode: runtimeTradingMode(),
           ...getPublicState(),
+          account: pfFl.account,
+          positions: pfFl.positionsMtM,
         });
       }
     }
@@ -5630,7 +5718,15 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     watchSigBroadcastTimer = setTimeout(() => {
       watchSigBroadcastTimer = null;
       try {
-        wsHubRef?.broadcast?.("state", { mode: runtimeTradingMode(), ...getPublicState() });
+        const candlesW = feed.getCandles();
+        const lastW = candlesW.length ? candlesW[candlesW.length - 1] : null;
+        const pfW = portfolioMtmForWs(lastW, candlesW, _cachedPositions, _cachedAccount, null);
+        wsHubRef?.broadcast?.("state", {
+          mode: runtimeTradingMode(),
+          ...getPublicState(),
+          account: pfW.account,
+          positions: pfW.positionsMtM,
+        });
       } catch {
         /* ignore */
       }
@@ -5809,7 +5905,124 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   const _trailingRecoveryDoneSyms = new Set();
   /** True once the real-time trailing poll has been started for the current exchange instance. */
   let _realtimeTrailingPollStarted = false;
-  const ACCOUNT_FETCH_INTERVAL_MS = Number(process.env.ACCOUNT_FETCH_INTERVAL_MS || 5000);
+
+  /**
+   * Build `account` + `positions` for every WS `state` message. If we omit either, the UI keeps the
+   * previous portfolio snapshot (see `applyWsStateSnapshot`) — stale open rows after exchange closes.
+   */
+  function portfolioMtmForWs(lastCandle, candlesArr, positionsIn, accountIn, accountError) {
+    const positions = Array.isArray(positionsIn) ? positionsIn : [];
+    const account = accountIn;
+    if (
+      !lastCandle ||
+      !Number.isFinite(Number(lastCandle.close)) ||
+      Number(lastCandle.close) <= 0
+    ) {
+      const unrealizedPnl = positions.reduce((a, p) => a + Number(p.unrealizedPnl || 0), 0);
+      const wBaseTick = walletBaseFromAccount(account);
+      const equityWithUnrealizedTick = wBaseTick != null ? wBaseTick + unrealizedPnl : null;
+      const dv =
+        account == null
+          ? { exceeded: false, dailyPnlPctWorst: undefined, dailyPnlPctByVenue: undefined }
+          : computeDailyVenueLoss(account, state.maxDailyLoss, state.maxDailyLossUnit);
+      const dailyPnlPct =
+        account == null
+          ? undefined
+          : account?.venues?.spot || account?.venues?.futures
+            ? dv.dailyPnlPctWorst
+            : account?.dailyPnlPct ?? 0;
+      const dailyPnlPctByVenue = account == null ? undefined : dv.dailyPnlPctByVenue;
+      const exceededDailyLoss = account == null ? false : dv.exceeded;
+      const acctBroadcast =
+        account == null
+          ? null
+          : {
+              ...account,
+              unrealizedPnl,
+              equityWithUnrealized: equityWithUnrealizedTick,
+              accountError: accountError || undefined,
+              dailyPnlPct,
+              dailyPnlPctByVenue: dailyPnlPctByVenue || undefined,
+            };
+      return {
+        positionsMtM: positions,
+        account: acctBroadcast,
+        exceededDailyLoss,
+        dailyPnlPct,
+        dailyPnlPctByVenue,
+      };
+    }
+    const markPrice = Number(lastCandle.close);
+    const symU = String(state.symbol || "").toUpperCase();
+    const prevK =
+      Array.isArray(candlesArr) && candlesArr.length >= 2 ? candlesArr[candlesArr.length - 2] : null;
+    const prevKClose = prevK ? Number(prevK.close) : null;
+    if (
+      Number.isFinite(markPrice) &&
+      markPrice > 0 &&
+      !isPlausibleCandleClose(symU, markPrice, Number(lastCandle.low), prevKClose)
+    ) {
+      log.warn("market_broadcast_implausible_price", {
+        symbol: state.symbol,
+        close: markPrice,
+        prevClose: prevKClose,
+        feed: feed.getStatus?.() ?? null,
+        tick: state.metrics?.tickCount,
+      });
+    }
+    const positionsMtM = positions.map((p) => {
+      if (p.venue === "FUTURES" && p.syncSource === "fapi_v2_account") {
+        const apiUpnl = Number(p.unrealizedPnl ?? p.unrealizedProfit ?? 0);
+        const rowSym = String(p?.symbol || "").toUpperCase();
+        const chartMark = Number.isFinite(markPrice) && markPrice > 0 && rowSym === symU ? markPrice : null;
+        const entryPx = Number(p.entryPrice) > 0 ? Number(p.entryPrice) : null;
+        const rowMark = chartMark ?? entryPx;
+        return { ...p, markPrice: rowMark, unrealizedPnl: Number.isFinite(apiUpnl) ? apiUpnl : null };
+      }
+      const isLong = p.side === "BUY";
+      if (p?.symbol !== state.symbol) {
+        return { ...p, markPrice, unrealizedPnl: null };
+      }
+      const uPnl = isLong
+        ? (markPrice - Number(p.entryPrice)) * Number(p.qty)
+        : (Number(p.entryPrice) - markPrice) * Number(p.qty);
+      return { ...p, markPrice, unrealizedPnl: uPnl };
+    });
+    const unrealizedPnl = positionsMtM.reduce((a, p) => a + Number(p.unrealizedPnl || 0), 0);
+    const wBaseTick = walletBaseFromAccount(account);
+    const equityWithUnrealizedTick = wBaseTick != null ? wBaseTick + unrealizedPnl : null;
+    const dv =
+      account == null
+        ? { exceeded: false, dailyPnlPctWorst: undefined, dailyPnlPctByVenue: undefined }
+        : computeDailyVenueLoss(account, state.maxDailyLoss, state.maxDailyLossUnit);
+    const dailyPnlPct =
+      account == null
+        ? undefined
+        : account?.venues?.spot || account?.venues?.futures
+          ? dv.dailyPnlPctWorst
+          : account?.dailyPnlPct ?? 0;
+    const dailyPnlPctByVenue = account == null ? undefined : dv.dailyPnlPctByVenue;
+    const exceededDailyLoss = account == null ? false : dv.exceeded;
+    const acctBroadcast =
+      account == null
+        ? null
+        : {
+            ...account,
+            markPrice,
+            unrealizedPnl,
+            equityWithUnrealized: equityWithUnrealizedTick,
+            accountError: accountError || undefined,
+            dailyPnlPct,
+            dailyPnlPctByVenue: dailyPnlPctByVenue || undefined,
+          };
+    return {
+      positionsMtM,
+      account: acctBroadcast,
+      exceededDailyLoss,
+      dailyPnlPct,
+      dailyPnlPctByVenue,
+    };
+  }
 
   /**
    * Persisted `allowedBudgetUsdt` must not exceed what the wallet can support.
@@ -5972,10 +6185,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       .catch((e) => log.warn("tick_error", { error: String(e?.message || e) }))
       .finally(() => { tickInFlight = false; });
   }, BOT_TICK_MS);
-  // Depth broadcast loop (UI order book)
+  // Depth broadcast loop (UI order book). Skip serialization when no client is
+  // subscribed — avoids burning CPU on the 500 ms cadence in headless runs.
   setInterval(() => {
     if (!wsHubRef) return;
     if (!depth) return;
+    if (typeof wsHubRef.clientCount === "function" && wsHubRef.clientCount() === 0) return;
     const b = depth.getBook();
     if (!b?.symbol) return;
     wsHubRef.broadcast("depth", { ...b, originTradingMode: runtimeTradingMode() });
@@ -6534,14 +6749,24 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       tradeHistoryTakerOpenFeeRate: clamp(Number(state.tradeHistoryTakerOpenFeeRate ?? 0.0005), 0, 0.01),
       tradeHistoryTakerCloseFeeRate: clamp(Number(state.tradeHistoryTakerCloseFeeRate ?? 0.0005), 0, 0.01),
       trailFeeBeMultiplier: clamp(
-        Number(state.trailFeeBeMultiplier ?? process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25),
+        Number(state.trailFeeBeMultiplier ?? process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.0),
         1,
         2,
       ),
       trailBufferRate: clamp(Number(state.trailBufferRate ?? 0.0005), 0, 0.05),
       trailActivationSlippageFrac: clamp(Number(state.trailActivationSlippageFrac ?? 0), 0, 0.01),
+      trailT01LockSlippageFrac: clamp(
+        Number(state.trailT01LockSlippageFrac ?? process.env.FUTURES_TRAIL_T01_LOCK_SLIPPAGE_FRAC ?? 0),
+        0,
+        0.01,
+      ),
       trailBufferAtrMult: clamp(Number(state.trailBufferAtrMult ?? 0), 0, 1),
       trailBufferMode: normalizeTrailBufferMode(state.trailBufferMode),
+      trailPostT02ActivationBufferRate:
+        state.trailPostT02ActivationBufferRate != null &&
+        Number.isFinite(Number(state.trailPostT02ActivationBufferRate))
+          ? clamp(Number(state.trailPostT02ActivationBufferRate), 0, 0.05)
+          : null,
       trailMinSlDistFrac: clamp(Number(state.trailMinSlDistFrac ?? 0.002), 0, 0.1),
       trailMinGapFromMarkFrac: clamp(Number(state.trailMinGapFromMarkFrac ?? 0), 0, 0.2),
       trailMaintMarginRate: clamp(Number(state.trailMaintMarginRate ?? 0.005), 0, 0.1),
@@ -7038,6 +7263,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         }
       }
       const trailSlip = clamp(Number(state.trailActivationSlippageFrac ?? process.env.FUTURES_TRAIL_ACTIVATION_SLIPPAGE_FRAC ?? 0), 0, 0.01);
+      const trailT01LockSlip = clamp(
+        Number(state.trailT01LockSlippageFrac ?? process.env.FUTURES_TRAIL_T01_LOCK_SLIPPAGE_FRAC ?? 0),
+        0,
+        0.01,
+      );
       const trailBufAtrMult = clamp(Number(state.trailBufferAtrMult ?? process.env.FUTURES_TRAIL_BUFFER_ATR_MULT ?? 0), 0, 1);
       const trailBufMode = normalizeTrailBufferMode(state.trailBufferMode);
       const trailBuf = clamp(Number(state.trailBufferRate ?? process.env.SUPERTREND_TRAIL_BUFFER_RATE ?? 0.0005), 0, 0.05);
@@ -7149,9 +7379,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
             supertrendBySymbol: Object.keys(supertrendBySymbol).length ? supertrendBySymbol : undefined,
             bufferRate: trailBuf,
             activationSlippageFrac: trailSlip,
+            trailT01LockSlippageFrac: trailT01LockSlip,
             atrPct: state.lastRegime?.atrPct,
             trailBufferAtrMult: trailBufAtrMult,
             trailBufferMode: trailBufMode,
+            /** Independent post-T02 (T1/T2/T3…) activation buffer. Null = inherit `bufferRate`. */
+            postT02ActivationBufferRate:
+              state.trailPostT02ActivationBufferRate != null &&
+              Number.isFinite(Number(state.trailPostT02ActivationBufferRate))
+                ? clamp(Number(state.trailPostT02ActivationBufferRate), 0, 0.05)
+                : null,
             maintenanceMarginRate: trailMm,
             minSlDistanceFrac: trailMinSlFrac,
             minTrailGapFromMarkFrac: trailMinGapMarkFrac,
@@ -7311,7 +7548,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     let accountError = null;
     const strictAcc = requiresStrictBinanceAccount();
     const nowMs = Date.now();
-    if (nowMs - _lastAccountFetchAt >= ACCOUNT_FETCH_INTERVAL_MS || !_cachedAccount) {
+    if (nowMs - _lastAccountFetchAt >= effectiveAccountFetchIntervalMs() || !_cachedAccount) {
       try {
         account = await exch.getAccount();
         if (account == null) {
@@ -7406,74 +7643,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       }
     }
 
-    const markPrice = Number(last.close);
-    const symU = String(state.symbol || "").toUpperCase();
-    const prevK = candles.length >= 2 ? candles[candles.length - 2] : null;
-    const prevKClose = prevK ? Number(prevK.close) : null;
-    if (
-      Number.isFinite(markPrice) &&
-      markPrice > 0 &&
-      !isPlausibleCandleClose(symU, markPrice, Number(last.low), prevKClose)
-    ) {
-      log.warn("market_broadcast_implausible_price", {
-        symbol: state.symbol,
-        close: markPrice,
-        prevClose: prevKClose,
-        feed: feed.getStatus?.() ?? null,
-        tick: state.metrics?.tickCount,
-      });
-    }
-    const positionsMtM = positions.map((p) => {
-      // USD-M on exchange: use Binance-reported unrealized PnL (do not conflate with local paper sim).
-      if (p.venue === "FUTURES" && p.syncSource === "fapi_v2_account") {
-        const apiUpnl = Number(p.unrealizedPnl ?? p.unrealizedProfit ?? 0);
-        // Never attach the *chart* symbol’s last close as mark for every row — that breaks other pairs’ MTM and “invested” math.
-        const rowSym = String(p?.symbol || "").toUpperCase();
-        const chartMark = Number.isFinite(markPrice) && markPrice > 0 && rowSym === symU ? markPrice : null;
-        const entryPx = Number(p.entryPrice) > 0 ? Number(p.entryPrice) : null;
-        const rowMark = chartMark ?? entryPx;
-        return { ...p, markPrice: rowMark, unrealizedPnl: Number.isFinite(apiUpnl) ? apiUpnl : null };
-      }
-      const isLong = p.side === "BUY";
-      // Use the live mark price only for the currently streamed symbol.
-      // In multi-coin AUTO, positions from other symbols must not use the wrong symbol's price.
-      if (p?.symbol !== state.symbol) {
-        return { ...p, markPrice, unrealizedPnl: null };
-      }
-      const uPnl = isLong
-        ? (markPrice - Number(p.entryPrice)) * Number(p.qty)
-        : (Number(p.entryPrice) - markPrice) * Number(p.qty);
-      return { ...p, markPrice, unrealizedPnl: uPnl };
-    });
-    const unrealizedPnl = positionsMtM.reduce((a, p) => a + Number(p.unrealizedPnl || 0), 0);
-    const wBaseTick = walletBaseFromAccount(account);
-    const equityWithUnrealizedTick = wBaseTick != null ? wBaseTick + unrealizedPnl : null;
-
-    const dv =
-      account == null
-        ? { exceeded: false, dailyPnlPctWorst: undefined, dailyPnlPctByVenue: undefined }
-        : computeDailyVenueLoss(account, state.maxDailyLoss, state.maxDailyLossUnit);
-    const dailyPnlPct =
-      account == null
-        ? undefined
-        : account?.venues?.spot || account?.venues?.futures
-          ? dv.dailyPnlPctWorst
-          : account?.dailyPnlPct ?? 0;
-    const dailyPnlPctByVenue = account == null ? undefined : dv.dailyPnlPctByVenue;
-    const exceededDailyLoss = account == null ? false : dv.exceeded;
-
-    const acctBroadcast =
-      account == null
-        ? null
-        : {
-            ...account,
-            markPrice,
-            unrealizedPnl,
-            equityWithUnrealized: equityWithUnrealizedTick,
-            accountError: accountError || undefined,
-            dailyPnlPct,
-            dailyPnlPctByVenue: dailyPnlPctByVenue || undefined,
-          };
+    const pfTick = portfolioMtmForWs(last, candles, positions, account, accountError);
+    const {
+      positionsMtM,
+      account: acctBroadcast,
+      exceededDailyLoss,
+      dailyPnlPct,
+      dailyPnlPctByVenue,
+    } = pfTick;
 
     if (exceededDailyLoss) {
       stop({
@@ -8400,9 +8577,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       });
     }
     try {
+      const candlesRun = feed.getCandles();
+      const lastRun = candlesRun.length ? candlesRun[candlesRun.length - 1] : null;
+      const pfRun = portfolioMtmForWs(lastRun, candlesRun, _cachedPositions, _cachedAccount, null);
       wsHub?.broadcast?.("state", {
         mode: runtimeTradingMode(),
         ...getPublicState(),
+        account: pfRun.account,
+        positions: pfRun.positionsMtM,
       });
     } catch {
       /* ignore */
@@ -8446,9 +8628,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       detail: det,
     });
     try {
+      const candlesStop = feed.getCandles();
+      const lastStop = candlesStop.length ? candlesStop[candlesStop.length - 1] : null;
+      const pfStop = portfolioMtmForWs(lastStop, candlesStop, _cachedPositions, _cachedAccount, null);
       wsHub?.broadcast?.("state", {
         mode: runtimeTradingMode(),
         ...getPublicState(),
+        account: pfStop.account,
+        positions: pfStop.positionsMtM,
       });
     } catch {
       /* ignore */
@@ -8817,11 +9004,22 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     if (patch.trailActivationSlippageFrac != null && Number.isFinite(Number(patch.trailActivationSlippageFrac))) {
       state.trailActivationSlippageFrac = clamp(Number(patch.trailActivationSlippageFrac), 0, 0.01);
     }
+    if (patch.trailT01LockSlippageFrac != null && Number.isFinite(Number(patch.trailT01LockSlippageFrac))) {
+      state.trailT01LockSlippageFrac = clamp(Number(patch.trailT01LockSlippageFrac), 0, 0.01);
+    }
     if (patch.trailBufferAtrMult != null && Number.isFinite(Number(patch.trailBufferAtrMult))) {
       state.trailBufferAtrMult = clamp(Number(patch.trailBufferAtrMult), 0, 1);
     }
     if (patch.trailBufferMode != null) {
       state.trailBufferMode = normalizeTrailBufferMode(patch.trailBufferMode);
+    }
+    if (patch.trailPostT02ActivationBufferRate === null) {
+      state.trailPostT02ActivationBufferRate = null;
+    } else if (
+      patch.trailPostT02ActivationBufferRate != null &&
+      Number.isFinite(Number(patch.trailPostT02ActivationBufferRate))
+    ) {
+      state.trailPostT02ActivationBufferRate = clamp(Number(patch.trailPostT02ActivationBufferRate), 0, 0.05);
     }
     if (patch.trailMinSlDistFrac != null && Number.isFinite(Number(patch.trailMinSlDistFrac))) {
       state.trailMinSlDistFrac = clamp(Number(patch.trailMinSlDistFrac), 0, 0.1);

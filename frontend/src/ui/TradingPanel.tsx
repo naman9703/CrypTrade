@@ -219,12 +219,14 @@ type TrailMetricKey =
   | "trailFeeBeMultiplier"
   | "trailBufferRate"
   | "trailActivationSlippageFrac"
+  | "trailT01LockSlippageFrac"
   | "trailBufferAtrMult"
   | "trailMinSlDistFrac"
   | "trailMinGapFromMarkFrac"
   | "trailMaintMarginRate"
   | "trailPostT02SpacingFrac"
-  | "trailPostT02MaxExtraTiers";
+  | "trailPostT02MaxExtraTiers"
+  | "trailPostT02ActivationBufferRate";
 
 interface TrailMetricItem {
   key: TrailMetricKey;
@@ -1183,6 +1185,7 @@ export function TradingPanel() {
       trailFeeBeMultiplier: clampNum(Number(bot?.trailFeeBeMultiplier ?? DEFAULT_TRAIL_FEE_BE_MULTIPLIER), 1, 2),
       trailBufferRate: clampNum(Number(bot?.trailBufferRate ?? 0.0005), 0, 0.05),
       trailActivationSlippageFrac: clampNum(Number(bot?.trailActivationSlippageFrac ?? 0), 0, 0.01),
+      trailT01LockSlippageFrac: clampNum(Number(bot?.trailT01LockSlippageFrac ?? 0), 0, 0.01),
       trailBufferAtrMult: clampNum(Number(bot?.trailBufferAtrMult ?? 0), 0, 1),
       trailBufferMode: String(bot?.trailBufferMode || "PERCENT").toUpperCase() === "ATR" ? "ATR" : "PERCENT",
       trailMinSlDistFrac: clampNum(Number(bot?.trailMinSlDistFrac ?? 0.002), 0, 0.1),
@@ -1196,6 +1199,15 @@ export function TradingPanel() {
         10,
         Math.min(500, Math.floor(Number(bot?.trailPostT02MaxExtraTiers ?? 150))),
       ),
+      /**
+       * Independent post-T02 activation buffer. 0 in the UI slider means "inherit T01/T02 buffer"
+       * (backend stores that as `null`). Any positive value decouples the profit-rung cushion.
+       */
+      trailPostT02ActivationBufferRate:
+        bot?.trailPostT02ActivationBufferRate != null &&
+        Number.isFinite(Number(bot.trailPostT02ActivationBufferRate))
+          ? clampNum(Number(bot.trailPostT02ActivationBufferRate), 0, 0.05)
+          : 0,
       supertrendFuturesFixedSlPct: clampNum(Number(bot?.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2),
       supertrendFuturesFixedTpPct: clampNum(Number(bot?.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5),
       supertrendFuturesTwoWay: bot?.supertrendFuturesTwoWay === true,
@@ -1261,6 +1273,7 @@ export function TradingPanel() {
       trailCloseFeeRate: cfg.trailCloseFeeRate,
       trailFeeBeMultiplier: cfg.trailFeeBeMultiplier,
       trailActivationSlippageFrac: cfg.trailActivationSlippageFrac,
+      trailT01LockSlippageFrac: cfg.trailT01LockSlippageFrac,
       trailBufferMode: cfg.trailBufferMode,
       trailBufferRate: cfg.trailBufferRate,
       trailBufferAtrMult: cfg.trailBufferAtrMult,
@@ -1269,6 +1282,14 @@ export function TradingPanel() {
       trailMinGapFromMarkFrac: cfg.trailMinGapFromMarkFrac,
       trailPostT02SpacingFrac: trailPostT02SpacingFracRaw,
       trailPostT02MaxExtraTiers: cfg.trailPostT02MaxExtraTiers,
+      /**
+       * Preview modal's "inherit" toggle corresponds to `null` in the backend. In the local cfg we
+       * keep a `0` sentinel (so the UI slider has a finite number), so translate here.
+       */
+      trailPostT02ActivationBufferRate:
+        Number(cfg.trailPostT02ActivationBufferRate) > 0
+          ? Number(cfg.trailPostT02ActivationBufferRate)
+          : null,
       trailingStopExtraScalpingPcts: cfg.trailingStopExtraScalpingPcts,
     };
   }, [
@@ -1279,6 +1300,7 @@ export function TradingPanel() {
     cfg.trailCloseFeeRate,
     cfg.trailFeeBeMultiplier,
     cfg.trailActivationSlippageFrac,
+    cfg.trailT01LockSlippageFrac,
     cfg.trailBufferMode,
     cfg.trailBufferRate,
     cfg.trailBufferAtrMult,
@@ -1287,6 +1309,7 @@ export function TradingPanel() {
     cfg.trailMinGapFromMarkFrac,
     trailPostT02SpacingFracRaw,
     cfg.trailPostT02MaxExtraTiers,
+    cfg.trailPostT02ActivationBufferRate,
     cfg.trailingStopExtraScalpingPcts,
   ]);
 
@@ -2640,7 +2663,14 @@ export function TradingPanel() {
                   </div>
                 )}
                 <div className="grid grid-cols-[110px_1fr] items-center gap-2">
-                  <span className="text-slate-600 dark:text-slate-400" title="Stop distance as % of price (e.g. 1 = 1%). Supertrend futures when AI filter is off.">
+                  <span
+                    className="text-slate-600 dark:text-slate-400"
+                    title={
+                      "Default stop distance for Supertrend futures when the AI confidence filter is OFF — maps to supertrendFuturesFixedSlPct (e.g. 0.2 = 0.2%). " +
+                      "When the AI filter is ON, the risk engine uses ATR/regime-based brackets instead, so displayed SL distance can differ from this field. " +
+                      "After entry, tick size rounding, mark vs fill, and trailing can move the working stop vs this nominal %."
+                    }
+                  >
                     ST %
                   </span>
                   <NumericTextInput
@@ -3369,13 +3399,19 @@ export function TradingPanel() {
                                 {
                                   key: "trailFeeBeMultiplier",
                                   label: "Safety multiplier ×",
-                                  tip: `Optional safety margin on top of the round-trip fee (padded fee rate).\nT02 SL (tiered) = entry × (1 + paddedRoundTrip).\nT02 activation = entry × (1 + paddedRoundTrip + effective buffer).\n1.0 = exact breakeven, 1.25 = 25% extra padding.\nDefault: ${cfg.trailFeeBeMultiplier.toFixed(2)}`,
+                                  tip: `Safety × on round-trip fee for the T02 lock.\nT02 SL = entry × (1 ± round-trip × multiplier).\nT02 activation = entry × (1 ± (padded fee + buffer)).\n1.0 = exact break-even (gross = fees, net ≈ 0 — matches spec).\n>1.0 (e.g. 1.25) over-covers fees to absorb stop-market slippage, but T02 fires later and gross > fees.\nCurrent: ${cfg.trailFeeBeMultiplier.toFixed(2)}`,
                                   min: 1, max: 2, step: 0.05, decimals: 2, pct: false,
                                 },
                                 {
                                   key: "trailActivationSlippageFrac",
                                   label: "BE slippage add-on (%)",
                                   tip: `Added to the padded round-trip fee for Supertrend tiered gates only (T02 lock/activation and later); caps at 2% combined.\nUse a small value (e.g. 0.01–0.03%) to approximate execution vs theoretical fees.\nDefault: ${(cfg.trailActivationSlippageFrac * 100).toFixed(3)}%`,
+                                  min: 0, max: 1, step: 0.01, decimals: 3, pct: true,
+                                },
+                                {
+                                  key: "trailT01LockSlippageFrac",
+                                  label: "T01 lock slippage (%)",
+                                  tip: `Tiered Supertrend **T01 lock** offset from entry.\nT01 SL = entry × (1 ± this).\nDefault **0** — T01 locks AT entry (zero-loss point per spec: gross 0, net = -fees).\nRaise slightly (e.g. 0.02 %) only if you want a tick or two past entry to avoid sub-tick mark noise.\nMust stay **below** T02 lock offset (paddedFee); otherwise T01 lock ≥ T02 and T02 never fires.\nCurrent: ${(cfg.trailT01LockSlippageFrac * 100).toFixed(3)} %`,
                                   min: 0, max: 1, step: 0.01, decimals: 3, pct: true,
                                 },
                               ]}
@@ -3425,22 +3461,22 @@ export function TradingPanel() {
                                     ? [
                                         {
                                           key: "trailBufferAtrMult",
-                                          label: "ATR multiplier",
-                                          tip: `Used when regime publishes atrPct: buffer = min(5%, atrPct × this).\nIf ATR is missing, the fallback % below is used.\nDefault: ${cfg.trailBufferAtrMult.toFixed(2)}`,
+                                          label: "ATR multiplier · T01 / T02",
+                                          tip: `T01/T02 activation buffer when atrPct is available: buffer = min(5%, atrPct × this).\nIf ATR is missing, the fallback % below is used.\nPost-T02 rungs use the separate "Post-T02 activation buffer" (Advanced panel).\nDefault: ${cfg.trailBufferAtrMult.toFixed(2)}`,
                                           min: 0, max: 1, step: 0.05, decimals: 2, pct: false,
                                         },
                                         {
                                           key: "trailBufferRate",
-                                          label: "Fallback buffer (%)",
-                                          tip: `Used when lastRegime.atrPct is not available or multiplier is 0.\nDefault: ${(cfg.trailBufferRate * 100).toFixed(3)}%`,
+                                          label: "Fallback buffer (%) · T01 / T02",
+                                          tip: `Used when lastRegime.atrPct is not available or multiplier is 0.\nApplies to T01 / T02 only; post-T02 rungs have their own buffer in Advanced.\nDefault: ${(cfg.trailBufferRate * 100).toFixed(3)}%`,
                                           min: 0, max: 5, step: 0.01, decimals: 3, pct: true,
                                         },
                                       ]
                                     : [
                                         {
                                           key: "trailBufferRate",
-                                          label: "Activation buffer (%)",
-                                          tip: `With Advanced + Fee BE: T01 activation = entry × (1 + buffer) only; T02 adds padded fee on top.\nFee BE only (no Advanced): single activation = entry × (1 + paddedFee + buffer).\nDefault: ${(cfg.trailBufferRate * 100).toFixed(3)}%`,
+                                          label: "Activation buffer (%) · T01 / T02",
+                                          tip: `Applies to the T01 (zero-loss) and T02 (fee break-even) tiers ONLY.\nWith Advanced + Fee BE: T01 activation = entry × (1 + buffer); T02 adds padded fee on top.\nFee BE only (no Advanced): single activation = entry × (1 + paddedFee + buffer).\nPost-T02 rungs (T1, T2, T3…) use the independent "Post-T02 activation buffer" in Advanced trailing parameters below.\nDefault: ${(cfg.trailBufferRate * 100).toFixed(3)}%`,
                                           min: 0, max: 5, step: 0.01, decimals: 3, pct: true,
                                         },
                                       ]
@@ -3487,6 +3523,12 @@ export function TradingPanel() {
                             title="Advanced trailing parameters"
                             items={[
                               {
+                                key: "trailPostT02ActivationBufferRate",
+                                label: "Post‑T02 activation buffer (%)",
+                                tip: `Independent activation buffer for every post-T02 profit rung (T1, T2, T3…).\nFormula: activation_k = lock_k × (1 ± postT02Buffer).\nSet to 0 to inherit the T01/T02 buffer value (legacy single-buffer behaviour); any value > 0 decouples the profit-rung pull-back cushion from the fee-recovery cushion.\nTypical split: keep T01/T02 tight (fast loss protection) while giving profit rungs a larger cushion to ride out noise.\nCurrent: ${cfg.trailPostT02ActivationBufferRate > 0 ? `${(cfg.trailPostT02ActivationBufferRate * 100).toFixed(3)}%` : `inheriting T01/T02 (${(cfg.trailBufferRate * 100).toFixed(3)}%)`}`,
+                                min: 0, max: 5, step: 0.01, decimals: 3, pct: true,
+                              },
+                              {
                                 key: "trailMinSlDistFrac",
                                 label: "Min SL distance (%)",
                                 tip: `Minimum fractional improvement from the current mark to move the SL.\nFormula: |mark − newSL| / mark ≥ minSlDistFrac\nPrevents ratchet spam on tiny ST fluctuations.\nDefault: ${(cfg.trailMinSlDistFrac * 100).toFixed(3)}%`,
@@ -3522,6 +3564,16 @@ export function TradingPanel() {
                               if (k === "trailPostT02SpacingFrac") {
                                 void api
                                   .botConfig({ trailPostT02SpacingFrac: v <= 0 ? null : v })
+                                  .catch(() => pushLog({ level: "error", msg: `Failed to update ${k}` }));
+                                return;
+                              }
+                              if (k === "trailPostT02ActivationBufferRate") {
+                                /**
+                                 * 0 in the UI = "inherit T01/T02 buffer" — backend uses `null` for that state.
+                                 * Any positive value decouples the post-T02 activation cushion from the main buffer.
+                                 */
+                                void api
+                                  .botConfig({ trailPostT02ActivationBufferRate: v <= 0 ? null : v })
                                   .catch(() => pushLog({ level: "error", msg: `Failed to update ${k}` }));
                                 return;
                               }
@@ -5209,6 +5261,36 @@ export function TradingPanel() {
         <TrailPreviewModal
           open={trailPreviewOpen}
           onClose={() => setTrailPreviewOpen(false)}
+          /**
+           * Preview → live bot config. The modal holds a local draft while open; only on Apply does it
+           * call back here with the final cfg, which we round-trip into the same `api.botConfig` patch
+           * the inline fields use. A single batched patch means server-side validation runs once and
+           * the WS state echo updates every bound field atomically (so the sliders / inputs don't jitter).
+           */
+          onApply={async (next) => {
+            await api.botConfig({
+              futuresTrailingStopMode: next.futuresTrailingStopMode,
+              futuresTrailingStFeeBreakeven: next.futuresTrailingStFeeBreakeven,
+              futuresTrailingStAdvanced: next.futuresTrailingStAdvanced,
+              trailOpenFeeRate: next.trailOpenFeeRate,
+              trailCloseFeeRate: next.trailCloseFeeRate,
+              trailFeeBeMultiplier: next.trailFeeBeMultiplier,
+              trailActivationSlippageFrac: next.trailActivationSlippageFrac,
+              trailT01LockSlippageFrac: next.trailT01LockSlippageFrac,
+              trailBufferMode: next.trailBufferMode,
+              trailBufferRate: next.trailBufferRate,
+              trailBufferAtrMult: next.trailBufferAtrMult,
+              trailMaintMarginRate: next.trailMaintMarginRate,
+              trailMinSlDistFrac: next.trailMinSlDistFrac,
+              trailMinGapFromMarkFrac: next.trailMinGapFromMarkFrac,
+              trailPostT02SpacingFrac: next.trailPostT02SpacingFrac,
+              trailPostT02MaxExtraTiers: next.trailPostT02MaxExtraTiers,
+              /** `null` = inherit T01/T02 buffer; any number = dedicated post-T02 buffer fraction. */
+              trailPostT02ActivationBufferRate: next.trailPostT02ActivationBufferRate,
+              trailingStopExtraScalpingPcts: next.trailingStopExtraScalpingPcts,
+            });
+            pushLog({ level: "info", msg: "Trailing preview applied to live config" });
+          }}
           initialCfg={trailPreviewCfg}
           initialSymbol={trailPreviewSnap?.symbol || trailPreviewSymbol}
           initialTimeframe={trailPreviewSnap?.timeframe || trailPreviewTimeframe}
