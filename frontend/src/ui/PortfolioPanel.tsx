@@ -3402,8 +3402,8 @@ export function PortfolioPanel() {
                     type="button"
                     disabled={tradeRefreshing}
                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 disabled:opacity-40"
-                    title="Reload trade history from the server (POST /api/trade/refresh — merges exchange + saved trades)"
-                    aria-label="Refresh trade history from server"
+                    title="Force refresh trade history: POST /api/trade/refresh merges saved + exchange rows and, on USD-M futures, bypasses the income-ledger throttle so new closes reconcile immediately."
+                    aria-label="Refresh trade history and force reconcile from exchange"
                     onClick={() => {
                       setTradeRefreshing(true);
                       deferTask(() => {
@@ -3458,18 +3458,6 @@ export function PortfolioPanel() {
                   </div>
                 ) : pnlHistoryRange === "custom" && historyRangeFilter.kind === "invalid" ? (
                   <div className="mt-0.5 text-[10px] text-amber-700 dark:text-amber-300">Invalid range — showing all rows.</div>
-                ) : null}
-                {isFuturesVenue ? (
-                  <div
-                    className="mt-1.5 rounded-md border border-amber-500/50 bg-amber-100/90 px-2 py-1.5 text-[10px] leading-snug text-amber-950 dark:border-amber-400/35 dark:bg-amber-950/50 dark:text-amber-50"
-                    role="note"
-                  >
-                    <span className="font-semibold">USD-M realized row: </span>
-                    Gross / Net / PnL% on closes use Binance{" "}
-                    <span className="font-mono">REALIZED_PNL</span> (Binance ID = income tran id) plus a modeled close
-                    fee when commission is not on the row. OPEN PnL% is live unrealized vs margin, not the closed trade.
-                    Refresh after a signal exit if rows look stale.
-                  </div>
                 ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-1">

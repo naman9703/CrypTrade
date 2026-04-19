@@ -520,6 +520,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     lastFundingPollAt: 0,
     /** CLOSE `orderId`s for which we already inserted a synthetic OPEN from `userTrades`. */
     syntheticOpenCloseOrderIds: new Set(),
+    /** Set when a position goes flat — next income poll runs immediately (see `syncRealizedIncomeFromExchange`). */
+    forceNextIncomeSync: false,
   };
 
   const trailSymLock = new Set();
@@ -1165,12 +1167,14 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     syncFundingIncomeFromExchange().catch((e) =>
       log?.warn?.("binance_live_futures_funding_sync_failed", { error: String(e?.message || e) }),
     );
+    const bypassIncomeThrottle = mem.forceNextIncomeSync === true;
+    if (bypassIncomeThrottle) mem.forceNextIncomeSync = false;
     const now = Date.now();
     const incomePollMinMs = Math.max(
       800,
       Math.min(10_000, Number(process.env.BINANCE_INCOME_POLL_MIN_MS ?? 1500)),
     );
-    if (now - mem.lastIncomePollAt < incomePollMinMs) return;
+    if (!bypassIncomeThrottle && now - mem.lastIncomePollAt < incomePollMinMs) return;
     mem.lastIncomePollAt = now;
     // First run (no cursor file): only a short boot window — NOT 7d of historical REALIZED_PNL
     const start =
@@ -1711,7 +1715,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         return [];
       }
     },
-    async getTrades() {
+    async getTrades(opts = {}) {
+      if (opts?.forceReconcile === true) mem.forceNextIncomeSync = true;
       await refreshUsdMPositionSnapshotAndReconcile();
       await syncRealizedIncomeFromExchange();
       await backfillMissingOpenCommissionsUsdM();
@@ -2349,6 +2354,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             trailingMode: tf.trailingMode,
             positionSideAtOpen: positionSideAtOpenFromCloseSide(b.closeSide),
             });
+          mem.forceNextIncomeSync = true;
           delete mem.localBrackets[lbSym];
           delete mem.placedBracketTargets[lbSym];
           delete mem.trailingBySymbol[symU];
@@ -2439,6 +2445,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         closeOrderId:
           manualCloseOut?.orderId != null ? String(manualCloseOut.orderId) : undefined,
       });
+      mem.forceNextIncomeSync = true;
       delete mem.localBrackets[p.symbol];
       delete mem.placedBracketTargets[p.symbol];
       delete mem.trailingBySymbol[String(p.symbol || "").toUpperCase()];

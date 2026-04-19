@@ -456,6 +456,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     fundingCursorMs: null,
     lastFundingPollAt: 0,
     syntheticOpenCloseOrderIds: new Set(),
+    forceNextIncomeSync: false,
   };
 
   /** Exchange-native SL/TP closes do not hit `localBrackets` — drop orphan trail/bracket memory. */
@@ -963,8 +964,10 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     syncFundingIncomeFromExchange().catch((e) =>
       log?.warn?.("binance_demo_futures_funding_sync_failed", { error: String(e?.message || e) }),
     );
+    const bypassIncomeThrottle = mem.forceNextIncomeSync === true;
+    if (bypassIncomeThrottle) mem.forceNextIncomeSync = false;
     const now = Date.now();
-    if (now - mem.lastIncomePollAt < 2500) return;
+    if (!bypassIncomeThrottle && now - mem.lastIncomePollAt < 2500) return;
     mem.lastIncomePollAt = now;
     // First run (no cursor file): only a short boot window — NOT 7d of historical REALIZED_PNL
     const start =
@@ -1983,7 +1986,8 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         return [];
       }
     },
-    async getTrades() {
+    async getTrades(opts = {}) {
+      if (opts?.forceReconcile === true) mem.forceNextIncomeSync = true;
       await refreshUsdMPositionSnapshotAndReconcile();
       await syncRealizedIncomeFromExchange();
       await backfillMissingOpenCommissionsUsdM();
@@ -2566,6 +2570,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
             trailingMode: tf.trailingMode,
             positionSideAtOpen: positionSideAtOpenFromCloseSide(b.closeSide),
           });
+          mem.forceNextIncomeSync = true;
           delete mem.localBrackets[lbSym];
           delete mem.placedBracketTargets[lbSym];
           delete mem.trailingBySymbol[symU];
@@ -2652,6 +2657,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         leverage: lev,
         positionSideAtOpen: p.side != null ? String(p.side) : undefined,
       });
+      mem.forceNextIncomeSync = true;
       delete mem.localBrackets[p.symbol];
       delete mem.placedBracketTargets[p.symbol];
       delete mem.trailingBySymbol[String(p.symbol || "").toUpperCase()];

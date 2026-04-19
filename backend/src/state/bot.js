@@ -27,14 +27,8 @@ import {
   binanceIntervalMs,
 } from "../lib/supertrendChartAlign.js";
 import { broadcastActivity } from "../lib/activityLog.js";
-import {
-  mergePersistedTradesWithExchange,
-  mergeTradesById,
-  readTradeWsEvents,
-  TRADE_HISTORY_SNAPSHOT_MAX,
-} from "../lib/activityPersistence.js";
+import { mergePersistedTradesWithExchange } from "../lib/activityPersistence.js";
 import { fetchUsdMBookTicker, fetchUsdMPremiumMark } from "../lib/binanceUsdMBookTicker.js";
-import { filterStrictPortfolioTradesAfterMerge } from "../lib/tradeLedgerClassification.js";
 import { readBotTradingConfig, writeBotTradingConfig } from "../lib/botTradingConfigStore.js";
 import {
   appendSupertrendSignalHistoryEntry,
@@ -7100,20 +7094,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         positions: positionsMtM,
       });
 
+      /** Same merge as WS hello + `/state`: full audit trail + exchange mem (no 400-line audit shrink). */
       let mergedTrades;
       if (strict && account == null) {
         mergedTrades = mergePersistedTradesWithExchange(runtimeTradingMode(), []);
       } else {
         const recentTrades = await exch.getTrades().catch(() => []);
-        mergedTrades = filterStrictPortfolioTradesAfterMerge(
-          runtimeTradingMode(),
-          mergeTradesById(readTradeWsEvents(400), recentTrades || [])
-        );
+        mergedTrades = mergePersistedTradesWithExchange(runtimeTradingMode(), recentTrades || []);
       }
-      const cap = Math.min(500, TRADE_HISTORY_SNAPSHOT_MAX);
       wsHub.broadcast("trades_snapshot", {
         replace: true,
-        trades: mergedTrades.slice(-cap),
+        trades: mergedTrades,
         mode: runtimeTradingMode(),
       });
     } catch {

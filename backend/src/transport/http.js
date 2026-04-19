@@ -4,10 +4,7 @@ import { runBacktest } from "../backtest/backtest.js";
 import { getTradingEvaluationChecklist } from "../evaluation/tradingChecklist.js";
 import { formatAiServiceError } from "../svc/aiHttpError.js";
 import { broadcastActivity } from "../lib/activityLog.js";
-import {
-  mergePersistedTradesWithExchange,
-  TRADE_HISTORY_SNAPSHOT_MAX,
-} from "../lib/activityPersistence.js";
+import { mergePersistedTradesWithExchange } from "../lib/activityPersistence.js";
 import { isStrictBinanceAccountMode, tradingModeToPersistenceSlug } from "../lib/tradingModePersistence.js";
 import { computeMqTuningPatch, readMqTradeOutcomeRows } from "../lib/mqTuneFromOutcomes.js";
 import { uiAuthEnabled } from "../auth/uiGate.js";
@@ -54,13 +51,13 @@ export function createRouter({ appState }) {
   }
 
   /** Merged audit + exchange `getTrades()`, then WS `trades_snapshot` replace (all clients). */
-  async function broadcastMergedTradesSnapshot(req, bodyMode) {
+  async function broadcastMergedTradesSnapshot(req, bodyMode, { forceReconcile = false } = {}) {
     const row = getEngineForBotRequest(req, bodyMode);
     const viewM = resolveViewTradingMode(req, bodyMode);
     const ex = row.exchange;
     let trades = [];
     try {
-      trades = await ex.getTrades();
+      trades = await ex.getTrades({ forceReconcile });
     } catch {
       trades = [];
     }
@@ -69,10 +66,9 @@ export function createRouter({ appState }) {
       if (acct == null) trades = [];
     }
     trades = mergePersistedTradesWithExchange(viewM, trades);
-    const cap = Math.min(500, TRADE_HISTORY_SNAPSHOT_MAX);
     appState.wsHub?.broadcast?.("trades_snapshot", {
       replace: true,
-      trades: trades.slice(-cap),
+      trades,
       mode: viewM,
     });
     return { ok: true, count: trades.length };
@@ -703,7 +699,7 @@ export function createRouter({ appState }) {
 
   r.post("/trade/refresh", async (req, res) => {
     try {
-      const { count } = await broadcastMergedTradesSnapshot(req, undefined);
+      const { count } = await broadcastMergedTradesSnapshot(req, undefined, { forceReconcile: true });
       res.json({ ok: true, count });
     } catch (e) {
       res.status(400).json({ ok: false, error: String(e?.message || e) });

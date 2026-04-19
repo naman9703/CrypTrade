@@ -49,15 +49,15 @@ export function createHybridExchange({ spot, futures, log }) {
       }
       return out;
     },
-    async getTrades() {
+    async getTrades(opts = {}) {
       const out = [];
       try {
-        if (spot?.getTrades) out.push(...(await spot.getTrades()).map((t) => ({ ...t, venue: "SPOT" })));
+        if (spot?.getTrades) out.push(...(await spot.getTrades(opts)).map((t) => ({ ...t, venue: "SPOT" })));
       } catch (e) {
         log?.warn?.("hybrid_spot_trades_failed", { error: String(e?.message || e) });
       }
       try {
-        if (futures?.getTrades) out.push(...(await futures.getTrades()).map((t) => ({ ...t, venue: "FUTURES" })));
+        if (futures?.getTrades) out.push(...(await futures.getTrades(opts)).map((t) => ({ ...t, venue: "FUTURES" })));
       } catch (e) {
         log?.warn?.("hybrid_futures_trades_failed", { error: String(e?.message || e) });
       }

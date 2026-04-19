@@ -86,6 +86,9 @@ export async function reconcileUsdMExternalClosesFromPositions(ctx, rawPositions
     const exitViaTrailedStop = tf.exitViaTrailedStop;
     const trailStep = tf.trailStepAtClose;
 
+    /** Tell income sync to bypass throttle so REALIZED_PNL rows land in history immediately after a flat. */
+    mem.forceNextIncomeSync = true;
+
     const openLeg = findLastOpenTrade(mem.trades, symU);
     const symDisplay = String(openLeg?.symbol || symU).toUpperCase();
     const strategy = openLeg?.strategy || "AUTO";
