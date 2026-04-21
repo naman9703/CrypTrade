@@ -184,6 +184,26 @@ function buildToastViewModel(l: LogPayload & Record<string, unknown>): ToastView
     };
   }
 
+  if (reason === "trail_sl_replace_started" && detail) {
+    const tier = detail.tier != null ? String(detail.tier) : "";
+    const req = detail.requestedSl;
+    const head =
+      tier && req != null
+        ? `${tier} · submitting SL ${fmtPx(req)}`
+        : req != null
+          ? `Submitting protective SL ${fmtPx(req)}`
+          : "Submitting trailing stop to exchange";
+    const sub: string[] = [];
+    if (detail.priorSl != null) sub.push(`Prior bracket/ref ${fmtPx(detail.priorSl)}`);
+    if (detail.markPx != null) sub.push(`Mark ${fmtPx(detail.markPx)}`);
+    return {
+      title: sym ? `${sym} · Trail (exchange)` : "Trail (exchange)",
+      headline: head,
+      sublines: sub,
+      chips,
+    };
+  }
+
   // MODE SWITCH
   if (cat === "trading_mode" && reason && String(reason).startsWith("mode_changed")) {
     const mode = detail?.mode != null ? String(detail.mode) : undefined;

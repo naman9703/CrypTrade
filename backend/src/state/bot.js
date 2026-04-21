@@ -45,6 +45,7 @@ import {
 } from "../strategy/supertrendMoveQuality.js";
 import { learnSmartSignalStrengthThreshold } from "../lib/signalStrengthSmartThreshold.js";
 import { extractSurfPulseFeatures } from "../strategy/surfPulseMl.js";
+import { mergeMarketDecisionConfig, computeMarketDecisionSnapshot } from "../lib/marketDecisionEngine.js";
 import { maxTrailStepsForConfig } from "../lib/trailingStopLoss.js";
 import { entryRejectedLiquidationBreakeven } from "../lib/supertrendTrailingSl.js";
 import { postOpenStableProbeMs } from "../lib/binanceUsdmPositionVerify.js";
@@ -239,6 +240,17 @@ function enrichCloseTradeForHistory(t) {
     next.meta = m;
   }
   return next;
+}
+
+/** Binance USD-M `placeOrder` returns `id: fut_<SYM>` for position rows; merge keys need the real entry order id. */
+function binanceFuturesEntryOrderIdFromPlaceOrder(order) {
+  if (!order || typeof order !== "object") return null;
+  if (order.binanceOrderId != null && String(order.binanceOrderId).trim() !== "") {
+    return String(order.binanceOrderId).trim();
+  }
+  const r = order.raw;
+  if (r && r.orderId != null && String(r.orderId).trim() !== "") return String(r.orderId).trim();
+  return null;
 }
 
 /** Clamp `riskPerTrade` / `maxDailyLoss` to valid ranges for their unit modes. */
@@ -849,9 +861,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     },
     /**
      * Per-symbol Supertrend bar-close snapshots for multi-coin watch (WS + sweep). UI tabs; not persisted to disk.
-     * @type {Record<string, { ts: number, buySignal: boolean, sellSignal: boolean, trend: number | null, strength01: number | null, signalStrength: number | null, stAction: string | null, aiGateBuy: number | null, aiGateSell: number | null, bufferBars: number | null, updatedAt: number, source?: string }>}
+     * @type {Record<string, { ts: number, buySignal: boolean, sellSignal: boolean, trend: number | null, strength01: number | null, signalStrength: number | null, stAction: string | null, aiGateBuy: number | null, aiGateSell: number | null, bufferBars: number | null, updatedAt: number, source?: string, marketDecisionSnapshot?: object | null }>}
      */
     multiSymbolWatchSignals: Object.create(null),
+    /** Partial market decision engine config; merged with defaults in `getPublicState`. */
+    marketDecision: Object.create(null),
   };
 
   /**
@@ -1411,6 +1425,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           supertrendMoveQualityMinBodyVsAvg: state.supertrendMoveQualityMinBodyVsAvg,
           supertrendMoveQualityMinDirectionalBody: state.supertrendMoveQualityMinDirectionalBody,
           supertrendMoveQualityMinVolumeVsAvg: state.supertrendMoveQualityMinVolumeVsAvg,
+          marketDecision: state.marketDecision && typeof state.marketDecision === "object" ? { ...state.marketDecision } : {},
           supertrendBreakoutConfirm: state.supertrendBreakoutConfirm === true,
           supertrendBreakoutMaxBars: state.supertrendBreakoutMaxBars,
           signalStrengthOpenMin: state.signalStrengthOpenMin,
@@ -1654,6 +1669,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       }
       if (b.supertrendMoveQualityMinVolumeVsAvg != null && Number.isFinite(Number(b.supertrendMoveQualityMinVolumeVsAvg))) {
         state.supertrendMoveQualityMinVolumeVsAvg = Math.max(0, Number(b.supertrendMoveQualityMinVolumeVsAvg));
+      }
+      if (b.marketDecision != null && typeof b.marketDecision === "object") {
+        state.marketDecision = { ...(state.marketDecision || {}), ...b.marketDecision };
       }
       if (typeof b.supertrendBreakoutConfirm === "boolean") state.supertrendBreakoutConfirm = b.supertrendBreakoutConfirm;
       if (b.supertrendBreakoutMaxBars != null && Number.isFinite(Number(b.supertrendBreakoutMaxBars))) {
@@ -1944,6 +1962,56 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     return {
       reason: "move_quality_gate",
       detail: { mq: mqEval, slEst },
+    };
+  }
+
+  /**
+   * When the market decision engine is enabled in bot settings, block **opens** when the snapshot verdict
+   * is not ALLOW (e.g. BLOCK / WAIT). BYPASS only occurs when the engine master switch is off.
+   * If a full snapshot cannot be built (insufficient bars while enabled), block conservatively.
+   */
+  function marketDecisionBlocksOpen({ openingSide, candles, cTs, decisionSnapshotBar, symbol }) {
+    const mdCfg = mergeMarketDecisionConfig(state.marketDecision);
+    if (!mdCfg.enabled) return null;
+    if (openingSide !== "BUY" && openingSide !== "SELL") return null;
+    const row = {
+      buySignal: openingSide === "BUY",
+      sellSignal: openingSide === "SELL",
+      trend: null,
+    };
+    let snap;
+    try {
+      const cfg = { ...mdCfg };
+      const rt = Number(state.trailOpenFeeRate ?? 0) + Number(state.trailCloseFeeRate ?? 0);
+      if (Number.isFinite(rt) && rt > 0) cfg.defaultRoundTripFeeRate = rt;
+      snap = computeMarketDecisionSnapshot({
+        candles,
+        cTs,
+        row,
+        decisionSnapshotBar,
+        symbol: String(symbol || "").toUpperCase(),
+        timeframe: String(state.timeframe || ""),
+        config: cfg,
+        regimeBtc: null,
+        regimeHtf: null,
+      });
+    } catch (e) {
+      log?.warn?.("market_decision_snapshot_error", { symbol, error: String(e?.message || e) });
+      return { reason: "market_decision_error", detail: { message: String(e?.message || e) } };
+    }
+    if (!snap) {
+      return {
+        reason: "market_decision_unavailable",
+        detail: {
+          message: "Insufficient candle history for full market-decision snapshot while engine is enabled",
+        },
+      };
+    }
+    const v = String(snap.verdict || "").toUpperCase();
+    if (v === "ALLOW" || v === "BYPASS") return null;
+    return {
+      reason: "market_decision_gate",
+      detail: { verdict: snap.verdict, failedStage: snap.failedStage, snapshot: snap },
     };
   }
 
@@ -2475,6 +2543,30 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           signalStrength: ss ?? undefined,
           expectedMoveLong: decisionSnapSpot?.expectedMoveLong ?? null,
           expectedMoveShort: decisionSnapSpot?.expectedMoveShort ?? null,
+        };
+      }
+      const barTsMd =
+        Number.isFinite(anchorTsSpot) && anchorTsSpot > 0 ? anchorTsSpot : Number(last?.ts);
+      const mdSpot = marketDecisionBlocksOpen({
+        openingSide: "BUY",
+        candles,
+        cTs: barTsMd,
+        decisionSnapshotBar: decisionSnapSpot,
+        symbol: orderSymbol,
+      });
+      if (mdSpot) {
+        const sn = mdSpot.detail?.snapshot;
+        wsHub?.broadcast?.("log", {
+          level: "info",
+          msg: `Supertrend spot BUY skipped: market decision — verdict ${sn?.verdict ?? mdSpot.reason} · stage ${sn?.failedStage ?? "—"}`,
+          symbol: orderSymbol,
+        });
+        return {
+          venue: "SPOT",
+          side,
+          action: "skipped",
+          reason: mdSpot.reason,
+          ...(sn ? { marketDecisionSnapshot: sn } : {}),
         };
       }
       const mqSpot = moveQualityBlocksOpen({
@@ -3107,6 +3199,30 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
 
     if (openingSide === "BUY" || (openingSide === "SELL" && twoWay)) {
+      const barTsMd =
+        Number.isFinite(anchorTsFut) && anchorTsFut > 0 ? anchorTsFut : Number(last?.ts);
+      const mdFut = marketDecisionBlocksOpen({
+        openingSide,
+        candles,
+        cTs: barTsMd,
+        decisionSnapshotBar: snapUsedForOpen,
+        symbol: orderSymbol,
+      });
+      if (mdFut) {
+        const sn = mdFut.detail?.snapshot;
+        wsHub?.broadcast?.("log", {
+          level: "info",
+          msg: `Supertrend futures ${openingSide} skipped: market decision — verdict ${sn?.verdict ?? mdFut.reason} · stage ${sn?.failedStage ?? "—"}`,
+          symbol: orderSymbol,
+        });
+        return {
+          venue: "FUTURES",
+          side,
+          action: "skipped",
+          reason: mdFut.reason,
+          ...(sn ? { marketDecisionSnapshot: sn } : {}),
+        };
+      }
       const mqFut = moveQualityBlocksOpen({
         openingSide,
         candles,
@@ -3802,6 +3918,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           });
         } else throw e;
       }
+      const entryExOid = binanceFuturesEntryOrderIdFromPlaceOrder(order);
       const tpSlNote = !aiFilterOn ? "fixed SL/TP (no AI filter)" : "ATR+regime+AI";
       wsHub?.broadcast?.("log", {
         level: "info",
@@ -3869,6 +3986,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         leverage: order.leverage ?? lev,
         meta: {
           supertrend: true,
+          ...(entryExOid ? { orderId: entryExOid } : {}),
           leverage: order.leverage ?? lev,
           venue: "FUTURES",
           stopLoss,
@@ -4121,6 +4239,33 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
   }
 
+  /** Full market-decision snapshot at bar close (JSON-safe clone for signal history + jsonl). */
+  function snapMarketDecisionForHistory({ candles, cTs, row, decisionSnapshotBar, symbol, timeframe }) {
+    try {
+      const mdCfg = mergeMarketDecisionConfig(state.marketDecision);
+      const rt = Number(state.trailOpenFeeRate ?? 0) + Number(state.trailCloseFeeRate ?? 0);
+      if (Number.isFinite(rt) && rt > 0) mdCfg.defaultRoundTripFeeRate = rt;
+      const s = computeMarketDecisionSnapshot({
+        candles,
+        cTs,
+        row: {
+          buySignal: Boolean(row?.buySignal),
+          sellSignal: Boolean(row?.sellSignal),
+          trend: row?.trend,
+        },
+        decisionSnapshotBar,
+        symbol: String(symbol || "").toUpperCase(),
+        timeframe: String(timeframe || ""),
+        config: mdCfg,
+        regimeBtc: null,
+        regimeHtf: null,
+      });
+      return s ? JSON.parse(JSON.stringify(s)) : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Persist flip to jsonl; merge into in-memory history + WS for every symbol (multi-coin AUTO). */
   function mergeSupertrendSignalHistoryFromAutoMulti(entry, wsHub) {
     appendSupertrendSignalHistoryEntry(entry, cfgPersistenceSlug);
@@ -4160,6 +4305,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       Number.isFinite(Number(entry.signalBarCloseTs)) &&
       Number(entry.signalBarCloseTs) > 0
         ? { signalBarCloseTs: Number(entry.signalBarCloseTs) }
+        : {}),
+      ...(entry.marketDecisionSnapshot != null && typeof entry.marketDecisionSnapshot === "object"
+        ? { marketDecisionSnapshot: entry.marketDecisionSnapshot }
         : {}),
     });
     filt.sort((a, b) => Number(a.ts) - Number(b.ts));
@@ -4475,7 +4623,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       openSyms,
       refreshOpenSymsAfterTrade,
     } = ctx;
-    const { cTs, allowBuy, allowSell, decisionSnapshotBar, supertrendStrength01, closedRaw: cr } = ev;
+    const { cTs, allowBuy, allowSell, decisionSnapshotBar, supertrendStrength01, closedRaw: cr, row } = ev;
     if (Number(state.autoMultiLastSeenBarTs[symU]) === cTs) return;
     if (!allowBuy && !allowSell) {
       state.autoMultiLastSeenBarTs[symU] = cTs;
@@ -4708,6 +4856,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         barAtFlip != null && Number.isFinite(Number(barAtFlip.close)) && Number(barAtFlip.close) > 0
           ? Number(barAtFlip.close)
           : null;
+      const mdMulti = snapMarketDecisionForHistory({
+        candles: cr,
+        cTs: Number(cTs),
+        row,
+        decisionSnapshotBar,
+        symbol: symU,
+        timeframe: state.timeframe,
+      });
       mergeSupertrendSignalHistoryFromAutoMulti(
         {
           ts: Number(cTs),
@@ -4736,6 +4892,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
             Number.isFinite(Number(cTs)) && String(state.timeframe || "").trim()
               ? Number(cTs) + binanceIntervalMs(state.timeframe)
               : undefined,
+          ...(mdMulti ? { marketDecisionSnapshot: mdMulti } : {}),
         },
         hubLocal,
       );
@@ -5108,6 +5265,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         Number.isFinite(Number(row.ts)) && String(state.timeframe || "").trim()
           ? Number(row.ts) + binanceIntervalMs(state.timeframe)
           : null;
+      const mdSnap = snapMarketDecisionForHistory({
+        candles: rawCandles,
+        cTs: Number(row.ts),
+        row,
+        decisionSnapshotBar,
+        symbol: state.symbol,
+        timeframe: state.timeframe,
+      });
       const entry = {
         ts: Number(row.ts),
         side,
@@ -5131,6 +5296,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           : {}),
         ...(signalBarClose != null ? { signalBarClose } : {}),
         ...(signalBarCloseTs != null ? { signalBarCloseTs } : {}),
+        ...(mdSnap ? { marketDecisionSnapshot: mdSnap } : {}),
       };
       appendSupertrendSignalHistoryEntry(entry, cfgPersistenceSlug);
       const prev = Array.isArray(state.supertrendSignalHistory) ? state.supertrendSignalHistory : [];
@@ -5165,6 +5331,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         Number.isFinite(Number(entry.signalBarCloseTs)) &&
         Number(entry.signalBarCloseTs) > 0
           ? { signalBarCloseTs: Number(entry.signalBarCloseTs) }
+          : {}),
+        ...(entry.marketDecisionSnapshot != null && typeof entry.marketDecisionSnapshot === "object"
+          ? { marketDecisionSnapshot: entry.marketDecisionSnapshot }
           : {}),
       });
       filt.sort((a, b) => Number(a.ts) - Number(b.ts));
@@ -5761,6 +5930,33 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       Number(prevSnap.ts) === Number(ev.cTs) &&
       Boolean(prevSnap.buySignal) === Boolean(ev.allowBuy) &&
       Boolean(prevSnap.sellSignal) === Boolean(ev.allowSell);
+
+    let marketDecisionSnapshot = null;
+    try {
+      const mdCfg = mergeMarketDecisionConfig(state.marketDecision);
+      const rt = Number(state.trailOpenFeeRate ?? 0) + Number(state.trailCloseFeeRate ?? 0);
+      if (Number.isFinite(rt) && rt > 0) {
+        mdCfg.defaultRoundTripFeeRate = rt;
+      }
+      marketDecisionSnapshot = computeMarketDecisionSnapshot({
+        candles: cr,
+        cTs: ev.cTs,
+        row: {
+          buySignal: Boolean(ev.row?.buySignal),
+          sellSignal: Boolean(ev.row?.sellSignal),
+          trend: ev.row?.trend,
+        },
+        decisionSnapshotBar: ev.decisionSnapshotBar,
+        symbol: symU,
+        timeframe: state.timeframe,
+        config: mdCfg,
+        regimeBtc: null,
+        regimeHtf: null,
+      });
+    } catch {
+      marketDecisionSnapshot = null;
+    }
+
     state.multiSymbolWatchSignals = {
       ...base,
       [symU]: {
@@ -5776,6 +5972,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         bufferBars: typeof feed.getCandlesForSymbol === "function" ? feed.getCandlesForSymbol(symU)?.length ?? null : null,
         updatedAt: Date.now(),
         source: source === "sweep" ? "sweep" : "kline_ws",
+        marketDecisionSnapshot,
       },
     };
     if (wsHubRef && (ev.allowBuy || ev.allowSell) && !signalUnchanged) {
@@ -6735,6 +6932,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       supertrendMoveQualityMinBodyVsAvg: clamp(Number(state.supertrendMoveQualityMinBodyVsAvg ?? 0.62), 0.15, 1),
       supertrendMoveQualityMinDirectionalBody: clamp(Number(state.supertrendMoveQualityMinDirectionalBody ?? 0), 0, 1),
       supertrendMoveQualityMinVolumeVsAvg: Math.max(0, Number(state.supertrendMoveQualityMinVolumeVsAvg ?? 0)),
+      marketDecision: mergeMarketDecisionConfig(state.marketDecision),
       supertrendBreakoutConfirm: state.supertrendBreakoutConfirm === true,
       supertrendBreakoutMaxBars: Math.max(1, Math.min(20, Math.floor(Number(state.supertrendBreakoutMaxBars ?? 5)))),
       signalStrengthOpenMin: clamp(Math.round(Number(state.signalStrengthOpenMin ?? 65)), 0, 100),
@@ -8467,6 +8665,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       strategyKey,
     });
 
+    const entryExOidStrategy = binanceFuturesEntryOrderIdFromPlaceOrder(order);
     broadcastTrade(wsHub, {
       type: "OPEN",
       id: order.id,
@@ -8478,6 +8677,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       takeProfit: plan.takeProfit,
       strategyKey,
       aiProbability: prob,
+      ...(isFuturesVenue && entryExOidStrategy
+        ? { meta: { orderId: entryExOidStrategy, venue: "FUTURES" } }
+        : {}),
     });
     if (isFuturesVenue && order.immediateCloseTrade && typeof order.immediateCloseTrade === "object") {
       broadcastTrade(wsHub, {
@@ -9060,6 +9262,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       }
     }
 
+    if (patch.marketDecision != null && typeof patch.marketDecision === "object") {
+      state.marketDecision = { ...(state.marketDecision || {}), ...patch.marketDecision };
+    }
+
     // Futures Supertrend AI filter only applies when futures autotrade is on; otherwise reset to default.
     if (!state.supertrendFuturesAuto || state.marketMode === "SPOT") {
       state.supertrendFuturesAiConfidenceFilter = true;
@@ -9171,6 +9377,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       },
     });
 
+    const entryExOidManual = binanceFuturesEntryOrderIdFromPlaceOrder(order);
     broadcastTrade(wsHub, {
       type: "OPEN",
       id: order.id,
@@ -9182,6 +9389,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       takeProfit,
       strategyKey,
       manual: true,
+      ...(entryExOidManual ? { meta: { orderId: entryExOidManual, venue: "FUTURES" } } : {}),
     });
     if (order.immediateCloseTrade && typeof order.immediateCloseTrade === "object") {
       broadcastTrade(wsHub, {

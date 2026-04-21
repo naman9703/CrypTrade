@@ -175,6 +175,46 @@ export function defaultTieredPostT02SpacingFrac(roundTripFeeRate: number): numbe
   return Math.min(0.02, Math.max(rt > 0 ? 2 * rt : 0, 0.0004));
 }
 
+/** Mirrors `backend/src/lib/trailingStopLoss.js` `tieredStLockPxForCompletedTrailStep`. */
+export function tieredStLockPxForCompletedTrailStep(
+  trailStep: number,
+  ctx: {
+    entryPx: number;
+    isLong: boolean;
+    feeBeLockRate: number;
+    feeBeSt: number;
+    roundTripFeeR: number;
+    postT02SpacingFrac?: number | null;
+    t01LockSlipFrac?: number;
+  },
+): number | null {
+  const s = Math.max(0, Math.floor(Number(trailStep) || 0));
+  const E = Number(ctx.entryPx);
+  const isLong = Boolean(ctx.isLong);
+  const feeBeLockRate = Number(ctx.feeBeLockRate);
+  const feeBeSt = Number(ctx.feeBeSt);
+  const rt = Number(ctx.roundTripFeeR);
+  const spUser = ctx.postT02SpacingFrac != null ? Number(ctx.postT02SpacingFrac) : Number.NaN;
+  const slip = Math.max(0, Math.min(0.01, Number(ctx.t01LockSlipFrac) || 0));
+  if (!Number.isFinite(E) || E <= 0) return null;
+  if (s < 1) return null;
+  if (s === 1) {
+    return isLong ? E * (1 + slip) : E * (1 - slip);
+  }
+  if (s === 2) {
+    if (!Number.isFinite(feeBeLockRate) || feeBeLockRate < 0) return null;
+    return isLong ? E * (1 + feeBeLockRate) : E * (1 - feeBeLockRate);
+  }
+  const spacingAbs =
+    E *
+    (Number.isFinite(spUser) && spUser > 0 ? Math.min(0.05, spUser) : defaultTieredPostT02SpacingFrac(rt));
+  const t02Lock = isLong ? E * (1 + feeBeSt) : E * (1 - feeBeSt);
+  const k = s - 2;
+  const lockPx = isLong ? t02Lock + k * spacingAbs : t02Lock - k * spacingAbs;
+  if (!Number.isFinite(lockPx) || lockPx <= 0) return null;
+  return lockPx;
+}
+
 /**
  * Synthetic lock ladder: T01 entry, T02 padded BE lock, then equidistant rungs (preview / reference only).
  */

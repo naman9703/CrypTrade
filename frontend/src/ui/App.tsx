@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { clsx } from "clsx";
 import { HeaderBar } from "./HeaderBar";
 import { HeaderSignalsStrip } from "./HeaderSignalsStrip";
+import { RegimeEngineStrip } from "./RegimeEngineStrip";
 import { ActivityToasts } from "./ActivityToasts";
 import { ChartPanel } from "./ChartPanel";
 import { ChartErrorBoundary } from "./ChartErrorBoundary";
@@ -42,6 +43,7 @@ export function App() {
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <HeaderSignalsStrip />
       <HeaderBar />
+      <RegimeEngineStrip />
       {notificationsOn ? <ActivityToasts /> : null}
 
       <div className="mx-auto max-w-[1600px] px-4 pb-6 pt-4">

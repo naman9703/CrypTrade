@@ -1,6 +1,6 @@
 import { clamp } from "../lib/math.js";
 
-function ema(values, period) {
+export function ema(values, period) {
   const k = 2 / (period + 1);
   let out = [];
   let prev = values[0] ?? 0;
@@ -12,7 +12,7 @@ function ema(values, period) {
   return out;
 }
 
-function rsi(values, period = 14) {
+export function rsi(values, period = 14) {
   let gains = 0;
   let losses = 0;
   const out = new Array(values.length).fill(50);
@@ -59,7 +59,7 @@ export function atr(candles, period = 14) {
 }
 
 // Lightweight ADX approximation (good enough for regime gating)
-function adx(candles, period = 14) {
+export function adx(candles, period = 14) {
   const plusDM = [];
   const minusDM = [];
   const tr = [];

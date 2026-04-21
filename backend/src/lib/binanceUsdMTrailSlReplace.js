@@ -42,6 +42,20 @@ export function exchangeSlMatchesTargetPrice(verifiedSl, targetSl, tickSize) {
 }
 
 /**
+ * Temporary trailing fallback after cancel/place failure or immediate-trigger (-2021).
+ * Exchange replace should keep being attempted on later advances; clear after verified SL.
+ */
+function isTrailingTemporaryLocalBracket(lb) {
+  const st = lb?.strategy;
+  return st === "trailing_sl_safety" || st === "trailing_sl_breach";
+}
+
+/** True when Binance cannot host native conditional brackets (4120 etc.) — never try exchange trailing. */
+function isNative4120StyleLocalOnly(lb) {
+  return Boolean(lb) && !isTrailingTemporaryLocalBracket(lb);
+}
+
+/**
  * @param {object} p
  * @param {(m: string, path: string, params?: Record<string, string>) => Promise<unknown>} p.signed
  * @param {string} p.symU
@@ -583,7 +597,7 @@ export async function evalTrailingForSymbolUsdM(ctx) {
       return;
     }
 
-    if (mem.localBrackets[s]) {
+    if (isNative4120StyleLocalOnly(mem.localBrackets[s])) {
       try {
         notifyActivity?.({
           level: "warn",
@@ -670,6 +684,24 @@ export async function evalTrailingForSymbolUsdM(ctx) {
           };
         }
 
+        try {
+          notifyActivity?.({
+            level: "info",
+            category: "trailing",
+            reason: "trail_sl_replace_started",
+            msg: `${s} · ${tierLabel} — submitting protective SL (configured target) → ${Number(newSlPx).toFixed(8)} · bracket/ref ≈ ${slPriorToTrailAdvance != null ? Number(slPriorToTrailAdvance).toFixed(8) : "—"} · mark ${Number.isFinite(markPx) ? Number(markPx).toFixed(8) : "—"}`,
+            detail: {
+              symbol: s,
+              tier: tierLabel,
+              requestedSl: newSlPx,
+              priorSl: slPriorToTrailAdvance,
+              markPx: Number.isFinite(markPx) ? markPx : null,
+            },
+          });
+        } catch {
+          /* ignore */
+        }
+
         const SETTLE_MS = 320;
         const RETRY_GAP_MS = 280;
         const MAX_ATTEMPTS = 3;
@@ -724,13 +756,15 @@ export async function evalTrailingForSymbolUsdM(ctx) {
           if (!lastRep?.ok && lastRep?.localBracketInstalled) {
             flushQueuedAdvances();
             if (mem.trailingBySymbol[s]) delete mem.trailingBySymbol[s].slTrailConfirm;
+            const lbSafe = mem.localBrackets[s];
+            const slLocal = Number(lbSafe?.stopLoss ?? newSlPx);
             try {
               notifyActivity?.({
-                level: "info",
+                level: "warn",
                 category: "trailing",
-                reason: "trail_sl_breached_local_close",
-                msg: `${s} ${tierLabel} — mark crossed trailing SL ${newSlPx}, local bracket for immediate close`,
-                detail: { symbol: s, tier: tierLabel, newSlPx, prevSl },
+                reason: "trail_sl_safety_fallback_local",
+                msg: `${s} ${tierLabel} — exchange SL replace failed; safety local bracket at ${Number.isFinite(slLocal) ? slLocal.toFixed(8) : String(newSlPx)} (not on Binance order book). Will retry placing on exchange on the next trail advance.`,
+                detail: { symbol: s, tier: tierLabel, newSlPx, prevSl, localStopLoss: lbSafe?.stopLoss },
               });
             } catch {
               /* ignore */
@@ -850,6 +884,10 @@ export async function evalTrailingForSymbolUsdM(ctx) {
         if (verifiedOk) {
           flushQueuedAdvances();
           if (mem.trailingBySymbol[s]) delete mem.trailingBySymbol[s].slTrailConfirm;
+          const lbAfterVerify = mem.localBrackets[s];
+          if (lbAfterVerify && isTrailingTemporaryLocalBracket(lbAfterVerify)) {
+            delete mem.localBrackets[s];
+          }
           if (mem.trailingBySymbol[s]) {
             const curStep = Math.max(0, Math.floor(Number(mem.trailingBySymbol[s].trailStep) || 0));
             const priorConfirmed = Math.max(0, Math.floor(Number(mem.trailingBySymbol[s].confirmedTrailStep) || 0));

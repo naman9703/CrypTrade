@@ -483,6 +483,8 @@ export function createRouter({ appState }) {
           tpPctStr: z.string().max(32).optional(),
         })
         .optional(),
+      /** Market regime + signal-quality engine (merged with server defaults). */
+      marketDecision: z.record(z.string(), z.unknown()).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });

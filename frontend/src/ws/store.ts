@@ -497,6 +497,20 @@ export const useAppStore = create<AppState>((set, get) => ({
               const idx = s.trades.findIndex((t: any) => t?.id === id);
               if (idx >= 0) {
                 const prev = s.trades[idx] as Record<string, unknown>;
+                const prevType = String(prev?.type ?? "").toUpperCase();
+                const nextType = String((p as Record<string, unknown>)?.type ?? "").toUpperCase();
+                // Paper futures (and similar) reuse the position id for OPEN and CLOSE. Merging by id
+                // would drop the open leg until the next full trades_snapshot, breaking the table and
+                // open↔close resolution for net PnL.
+                if (
+                  prevType &&
+                  nextType &&
+                  prevType !== nextType &&
+                  (prevType === "OPEN" || prevType === "CLOSE") &&
+                  (nextType === "OPEN" || nextType === "CLOSE")
+                ) {
+                  return { trades: [p, ...s.trades].slice(0, TRADE_HISTORY_UI_MAX) };
+                }
                 const merged = {
                   ...prev,
                   ...p,

@@ -8,8 +8,10 @@ import {
   resolveSupertrendTieredActivationGate,
   maxTrailStepsForConfig,
   computeEffectiveTrailBuffer,
+  tieredStLockPxForCompletedTrailStep,
 } from "../../lib/trailingStopLoss.js";
 import {
+  applyMinTrailGapFromMark,
   computeSupertrendTrailingSlUpdate,
   feeRateBreakevenPadded,
   migrateTieredTrailLegacySchema,
@@ -27,6 +29,8 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
   const feeRate = Math.max(0, feeBps) / 10_000;
   const slipRate = Math.max(0, slippageBps) / 10_000;
   const defaultLeverage = Math.max(1, Math.min(100, Number(process.env.FUTURES_DEFAULT_LEVERAGE || 5)));
+  /** Match USD-M adapters (`binance*FuturesUsdM`) so merged history + hello snapshot stay aligned. */
+  const MAX_MEM_TRADES = 800;
 
   const state = {
     equity: 10_000,
@@ -403,20 +407,48 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
 
                 if (tieredStMode) {
                   migrateTieredTrailLegacySchema(pos.meta);
-                  const t01ActivationPx = isLong ? entryPx * (1 + buf) : entryPx * (1 - buf);
-                  const t02ActivationPx = defaultActivationPx;
                   const t01LockSlip = Math.max(
                     0,
                     Math.min(0.01, Number(trailingStopLoss.trailT01LockSlippageFrac ?? 0)),
                   );
-                  const entryLockBreakevenPx = isLong ? entryPx * (1 + t01LockSlip) : entryPx * (1 - t01LockSlip);
+                  const slipFracPaper = Math.max(
+                    0,
+                    Math.min(
+                      0.01,
+                      Number(trailingStopLoss.activationSlippageFrac != null ? Number(trailingStopLoss.activationSlippageFrac) : 0),
+                    ),
+                  );
+                  const feeBeLockRatePaper = feeBe;
+                  const feeBeStPaper = Math.min(0.02, feeBe + slipFracPaper);
+                  if (!pos.meta.trailLadderSnapshotV1) {
+                    pos.meta.trailLadderSnapshotV1 = {
+                      entryPx: Number(entryPx),
+                      isLong,
+                      feeBeLockRate: feeBeLockRatePaper,
+                      feeBeSt: feeBeStPaper,
+                      buf,
+                      postT02Buf: postT02BufPf,
+                      postT02SpacingFrac: postT02SpacingUser,
+                      roundTripFeeRate: rtRateST,
+                      t01LockSlipFrac: t01LockSlip,
+                    };
+                  }
+                  const entryLadder = Number(pos.meta.trailLadderSnapshotV1.entryPx);
+                  if (!Number.isFinite(entryLadder) || entryLadder <= 0) {
+                    /* skip */
+                  } else {
+                  const t01ActivationPx = isLong ? entryLadder * (1 + buf) : entryLadder * (1 - buf);
+                  const t02ActivationPx = isLong
+                    ? entryLadder * (1 + (useFeeBeTrail ? feeBeStPaper : 0) + buf)
+                    : entryLadder * (1 - (useFeeBeTrail ? feeBeStPaper : 0) - buf);
+                  const entryLockBreakevenPx = isLong ? entryLadder * (1 + t01LockSlip) : entryLadder * (1 - t01LockSlip);
                   const c = confirmedPaper();
                   const prevTrailStep = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
                   const rawPriceStep = computeSupertrendTieredMaxTrailStepFromExtreme({
                     hwm,
-                    entryPx,
+                    entryPx: entryLadder,
                     isLong,
-                    feeBe,
+                    feeBe: feeBeStPaper,
                     bufferRate: buf,
                     useFeeBeTrail,
                     stLevels,
@@ -428,12 +460,6 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                   const priceStep = maxStepCapTiered != null ? Math.min(rawPriceStep, maxStepCapTiered) : rawPriceStep;
                   const nextTrailStep = Math.max(prevTrailStep, priceStep, c);
                   if (nextTrailStep >= 1) {
-                    const useAdvCompute = nextTrailStep >= 3 && effectiveUseAdv;
-                    if (useAdvCompute && !hasValidStPx) {
-                      pos.meta.trailStep = nextTrailStep;
-                      pos.meta.trailTierLabel = trailStepToTierLabel(pos.meta.trailStep, "tiered_st_fee_entry");
-                      tieredTrailStepPremerged = true;
-                    } else {
                       const gateForGeometry =
                         nextTrailStep <= 1
                           ? t01ActivationPx
@@ -442,33 +468,74 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                             : resolveSupertrendTieredActivationGate({
                                 stepNow: nextTrailStep - 1,
                                 isLong,
-                                entryPx,
-                                feeBe,
+                                entryPx: entryLadder,
+                                feeBe: feeBeStPaper,
                                 bufferRate: buf,
                                 useFeeBeTrail,
                                 stLevels,
                                 ...gateRtSpacing,
                               }).activationPx;
                       const pxForCompute = isLong ? Math.max(px, gateForGeometry) : Math.min(px, gateForGeometry);
-                      const computeBreakevenPx = nextTrailStep === 1 ? entryLockBreakevenPx : bePx;
+                      const computeBreakevenPx =
+                        nextTrailStep === 1
+                          ? entryLockBreakevenPx
+                          : useFeeBeTrail
+                            ? isLong
+                              ? entryLadder * (1 + feeBe)
+                              : entryLadder * (1 - feeBe)
+                            : entryLadder;
                       const computeActivationPx = gateForGeometry;
-                      const r = computeSupertrendTrailingSlUpdate({
-                        entryPrice: entryPx,
-                        currentPrice: pxForCompute,
-                        supertrend: useAdvCompute && stForCompute != null ? Number(stForCompute) : NaN,
-                        previousSl: prevSl,
-                        isLong,
-                        leverage: lev,
-                        feeRate: feeBe,
-                        bufferRate: buf,
-                        maintenanceMarginRate: mm,
-                        minSlDistanceFrac: minDist,
-                        minTrailGapFromMarkFrac: minGapMark,
-                        useFeeBreakeven: useFeeBeTrail,
-                        useAdvancedTrail: useAdvCompute,
-                        activationPrice: computeActivationPx,
-                        breakevenPrice: computeBreakevenPx,
-                      });
+                      let r;
+                      if (nextTrailStep >= 3) {
+                        const ladderRaw = tieredStLockPxForCompletedTrailStep(nextTrailStep, {
+                          entryPx: entryLadder,
+                          isLong,
+                          feeBeLockRate: feeBeLockRatePaper,
+                          feeBeSt: feeBeStPaper,
+                          roundTripFeeR: rtRateST,
+                          postT02SpacingFrac: postT02SpacingUser,
+                          t01LockSlipFrac: t01LockSlip,
+                        });
+                        if (ladderRaw != null && Number.isFinite(ladderRaw)) {
+                          let ladderSl = applyMinTrailGapFromMark({
+                            isLong,
+                            cur: px,
+                            prevSl,
+                            newSl: ladderRaw,
+                            breakeven: computeBreakevenPx,
+                            useFeeBe: useFeeBeTrail,
+                            gapFrac: minGapMark,
+                          });
+                          if (Number.isFinite(minDist) && minDist > 0 && px > 0) {
+                            const dist = Math.abs(px - ladderSl) / px;
+                            const tightening = isLong ? ladderSl > prevSl : ladderSl < prevSl;
+                            if (dist < minDist && !tightening) {
+                              ladderSl = prevSl;
+                            }
+                          }
+                          r = { newSl: ladderSl, status: "OK" };
+                        } else {
+                          r = { newSl: prevSl, status: "INVALID" };
+                        }
+                      } else {
+                        r = computeSupertrendTrailingSlUpdate({
+                          entryPrice: entryPx,
+                          currentPrice: pxForCompute,
+                          supertrend: NaN,
+                          previousSl: prevSl,
+                          isLong,
+                          leverage: lev,
+                          feeRate: feeBe,
+                          bufferRate: buf,
+                          maintenanceMarginRate: mm,
+                          minSlDistanceFrac: minDist,
+                          minTrailGapFromMarkFrac: minGapMark,
+                          useFeeBreakeven: useFeeBeTrail,
+                          useAdvancedTrail: false,
+                          activationPrice: computeActivationPx,
+                          breakevenPrice: computeBreakevenPx,
+                        });
+                      }
                       if (
                         r.status !== "REJECT_TRADE" &&
                         r.status !== "INVALID" &&
@@ -481,7 +548,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                         merged = mergeStopWithTrail({ isLong, currentStopPx: prevSl, trailSlPx: r.newSl });
                         trailStatus = r.status;
                       }
-                    }
+                  }
                   }
                 } else {
                   const stepNow = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
@@ -618,7 +685,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
       }));
     },
     async getTrades() {
-      return state.trades.slice(-200);
+      return state.trades.slice(-MAX_MEM_TRADES);
     },
     async placeOrder({ symbol, side, qty, price, stopLoss, takeProfit, strategy, meta }) {
       rolloverIfNeeded();

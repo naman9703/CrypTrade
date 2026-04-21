@@ -13,6 +13,9 @@ import {
   riskTierMultPreview,
 } from "../lib/futuresLiquidation";
 import { DEFAULT_TRAIL_FEE_BE_MULTIPLIER } from "../lib/trailingFeeLadder";
+import { mergeMarketDecisionConfig } from "../lib/marketDecision/configDefaults";
+import type { MarketDecisionEngineConfig } from "../lib/marketDecision/types";
+import { MarketDecisionConfigPanel } from "./MarketDecisionConfigPanel";
 
 const numericInputClass =
   "w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100 tabular-nums";
@@ -1181,6 +1184,15 @@ export function TradingPanel() {
       supertrendMoveQualityMinBodyVsAvg: clampNum(Number(bot?.supertrendMoveQualityMinBodyVsAvg ?? 0.62), 0.15, 1),
       supertrendMoveQualityMinDirectionalBody: clampNum(Number(bot?.supertrendMoveQualityMinDirectionalBody ?? 0), 0, 1),
       supertrendMoveQualityMinVolumeVsAvg: Math.max(0, Number(bot?.supertrendMoveQualityMinVolumeVsAvg ?? 0)),
+      marketDecisionEnabled:
+        bot?.marketDecision != null &&
+        typeof bot.marketDecision === "object" &&
+        (bot.marketDecision as { enabled?: boolean }).enabled === true,
+      marketDecisionMerged: mergeMarketDecisionConfig(
+        bot?.marketDecision != null && typeof bot.marketDecision === "object"
+          ? (bot.marketDecision as Partial<MarketDecisionEngineConfig>)
+          : undefined,
+      ),
       supertrendBreakoutConfirm: bot?.supertrendBreakoutConfirm === true,
       supertrendBreakoutMaxBars: Math.max(1, Math.min(20, Math.floor(Number(bot?.supertrendBreakoutMaxBars ?? 5)))),
       signalStrengthOpenMin: clampNum(Math.round(Number(bot?.signalStrengthOpenMin ?? 65)), 0, 100),
@@ -3822,6 +3834,59 @@ export function TradingPanel() {
                   </div>
                 </div>
 
+                <div className="mt-3 space-y-2 rounded-lg border border-violet-800/25 bg-white/85 p-2 dark:border-violet-400/20 dark:bg-slate-950/50">
+                  <div className="text-[11px] font-semibold text-violet-900 dark:text-violet-100">
+                    Market decision (regime · chop · score · fees)
+                  </div>
+                  <label className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={cfg.marketDecisionEnabled}
+                      onChange={(e) => {
+                        const on = e.currentTarget.checked;
+                        deferTask(() => {
+                          void (async () => {
+                            try {
+                              await api.botConfig({ marketDecision: { enabled: on } });
+                              pushLog({
+                                level: "info",
+                                msg: on
+                                  ? "Market decision engine ON — multi-coin snapshots use regime + fee gate (see tabs)"
+                                  : "Market decision engine OFF — snapshots use BYPASS (diagnostic metrics only; supertrend Action stays authoritative)",
+                              });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to update market decision config" });
+                            }
+                          })();
+                        });
+                      }}
+                    />
+                    <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        Enable regime + signal-quality pipeline
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                        Server evaluates ADX/EMA regime, chop, composite score, entry timing, and fee vs expected move on each multi-coin bar-close
+                        snapshot. Default off; does not replace the legacy signal-strength / move-quality engines.
+                      </span>
+                    </span>
+                  </label>
+                  <MarketDecisionConfigPanel
+                    md={cfg.marketDecisionMerged}
+                    onPatch={(patch) => {
+                      const prev =
+                        bot?.marketDecision != null && typeof bot.marketDecision === "object"
+                          ? { ...(bot.marketDecision as Record<string, unknown>) }
+                          : {};
+                      void api
+                        .botConfig({ marketDecision: { ...prev, ...patch } as Record<string, unknown> })
+                        .catch(() => {
+                          pushLog({ level: "error", msg: "Failed to update market decision layers" });
+                        });
+                    }}
+                  />
+                </div>
                 <div className="mt-3 space-y-2 rounded-lg border border-cyan-800/25 bg-white/85 p-2 dark:border-cyan-400/20 dark:bg-slate-950/50">
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-[11px] font-semibold text-cyan-900 dark:text-cyan-100">

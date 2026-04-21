@@ -841,6 +841,36 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
   }
 
   /**
+   * OPEN leg for the position being closed: **strictly before** this close's income time.
+   * `findLastOpenRefForSym` alone is unsafe when a newer same-symbol OPEN exists (late income sync
+   * or overlapping cycles) — it would pair the wrong entry with Binance REALIZED_PNL.
+   *
+   * @param {string} symU
+   * @param {number} closeEventMs
+   * @param {string} closeSide  reduce-only close side (BUY closes a short, SELL closes a long)
+   */
+  function findOpenRefForSymBeforeClose(symU, closeEventMs, closeSide) {
+    const cs = String(closeSide || "").toUpperCase();
+    const expOpen = cs === "BUY" ? "SELL" : cs === "SELL" ? "BUY" : "";
+    const tClose = Number(closeEventMs);
+    if (!Number.isFinite(tClose) || tClose <= 0) return null;
+    let best = null;
+    let bestMs = -1;
+    for (let j = mem.trades.length - 1; j >= 0; j--) {
+      const tr = mem.trades[j];
+      if (tr?.type !== "OPEN" || String(tr.symbol || "").toUpperCase() !== symU) continue;
+      if (expOpen && String(tr.side || "").toUpperCase() !== expOpen) continue;
+      const openMs = Date.parse(tr.ts || "");
+      if (!Number.isFinite(openMs) || !(openMs < tClose)) continue;
+      if (openMs >= bestMs) {
+        bestMs = openMs;
+        best = tr;
+      }
+    }
+    return best;
+  }
+
+  /**
    * Run reason re-inference on a CLOSE row once its `exitAvgFillPrice` is authoritative. Upgrades
    * generic `EXCHANGE_REALIZED` / `MANUAL_CLOSE` / `STOP_LOSS_DEFAULT` labels to `STOP_LOSS` /
    * `TAKE_PROFIT` / `TRAILED_SUPERTREND_Tnn` when the real fill landed within {@link CLOSE_REASON_FILL_BAND}
@@ -848,7 +878,12 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
    */
   function refineClosedRowReason(cr) {
     if (!cr || cr.type !== "CLOSE") return;
-    const openRef = findLastOpenRefForSym(String(cr.symbol || "").toUpperCase());
+    const symU = String(cr.symbol || "").toUpperCase();
+    const closeMs = Date.parse(cr.ts || "");
+    const openRef =
+      Number.isFinite(closeMs) && closeMs > 0
+        ? findOpenRefForSymBeforeClose(symU, closeMs, cr.side) || findLastOpenRefForSym(symU)
+        : findLastOpenRefForSym(symU);
     const refined = refineCloseReasonFromExitFill({
       existingReason: cr.reason,
       exitAvgFillPrice: cr.meta?.exitAvgFillPrice ?? cr.meta?.exitPrice ?? cr.price,
@@ -1026,14 +1061,26 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
         eventMs,
         targetQty: tqMerge,
         lcHint,
-        priorOpenRef: findLastOpenRefForSym(sym),
+        priorOpenRef:
+          findOpenRefForSymBeforeClose(sym, eventMs, mergeInto.side) || findLastOpenRefForSym(sym),
       });
       return;
     }
 
     /** First fill for this orderId → create a new CLOSE row. Prefer local close hint for trail state
      * / bracket / strategy metadata, but per-fill figures come from `tradeDetail`. */
-    let openRef = findLastOpenRefForSym(sym);
+    const lo = findLastOpenRefForSym(sym);
+    const closeSideGuess = String(tradeDetail?.side || lcHint?.closeSide || "").toUpperCase();
+    const cs0 =
+      closeSideGuess === "BUY" || closeSideGuess === "SELL"
+        ? closeSideGuess
+        : lo?.side === "BUY"
+          ? "SELL"
+          : lo?.side === "SELL"
+            ? "BUY"
+            : "—";
+    let openRef =
+      cs0 !== "—" ? findOpenRefForSymBeforeClose(sym, eventMs, cs0) || lo : lo;
     const closeSide =
       tradeDetail?.side ||
       lcHint?.closeSide ||
@@ -1065,7 +1112,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
       priorOpenRef: openRef,
     });
 
-    openRef = findLastOpenRefForSym(sym);
+    openRef =
+      findOpenRefForSymBeforeClose(sym, eventMs, closeSide) || findLastOpenRefForSym(sym);
 
     const entryPxRef =
       lcHint?.entryPrice != null
@@ -1672,6 +1720,24 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
           const trail = pickBracketTargets(mem.trailingBySymbol, sym);
           const entryEx = lastOpenBinanceEntryMetaForSymbol(mem.trades, symU);
           const openSlTp = slTpFromLastOpenTrade(mem.trades, symU);
+          /** Bot trailing target (`placedBracketTargets`) is the configured/engine SL; exchange `oo.sl` can lag or differ mid-replace. */
+          const pbSl =
+            pb?.stopLoss != null && Number.isFinite(Number(pb.stopLoss)) && Number(pb.stopLoss) > 0
+              ? Number(pb.stopLoss)
+              : null;
+          let stopLossOut = null;
+          let takeProfitOut = null;
+          if (trail && pbSl != null) {
+            stopLossOut = pbSl;
+            const pbTp =
+              pb?.takeProfit != null && Number.isFinite(Number(pb.takeProfit)) && Number(pb.takeProfit) > 0
+                ? Number(pb.takeProfit)
+                : null;
+            takeProfitOut = pbTp ?? oo.tp ?? lb?.takeProfit ?? openSlTp.tp ?? null;
+          } else {
+            stopLossOut = oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? openSlTp.sl ?? null;
+            takeProfitOut = oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? openSlTp.tp ?? null;
+          }
           const row = {
             id: `fut_${sym}`,
             symbol: sym,
@@ -1679,8 +1745,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
             qty: Math.abs(Number(p.positionAmt)),
             entryPrice: Number(p.entryPrice || 0),
             unrealizedPnl: Number(p.unrealizedProfit || 0),
-            stopLoss: oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? openSlTp.sl ?? null,
-            takeProfit: oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? openSlTp.tp ?? null,
+            stopLoss: stopLossOut,
+            takeProfit: takeProfitOut,
             leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
             venue: "FUTURES",
             syncSource: "fapi_v2_account",
@@ -1693,7 +1759,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
                   ...(entryEx.clientOrderId ? { binanceClientOrderId: entryEx.clientOrderId } : {}),
                 }
               : {};
-          if (trail && trail.entryPrice) {
+          if (trail) {
             row.meta = {
               ...entryMeta,
               autoTradeTrailing: true,
@@ -1701,6 +1767,9 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
               confirmedTrailStep: Math.max(0, Math.floor(Number(trail.confirmedTrailStep) || 0)),
               extremePx: trail.extremePx,
               trailTierLabel: trail.trailTierLabel ?? null,
+              ...(trail.entryPrice != null ? { entryPrice: trail.entryPrice } : {}),
+              ...(trail.trailLadderSnapshotV1 ? { trailLadderSnapshotV1: { ...trail.trailLadderSnapshotV1 } } : {}),
+              ...(pbSl != null ? { slDisplaySource: "bot_trailing_target" } : { slDisplaySource: "exchange_or_fallback" }),
               ...(trail.slTrailConfirm ? { trailSlConfirm: { ...trail.slTrailConfirm } } : {}),
             };
             row.trailTierLabel = trail.trailTierLabel ?? null;
@@ -2114,6 +2183,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
 
       return {
         id: posId,
+        /** Exchange entry order id — unique per open; `id` stays `fut_<SYM>` for position linking. */
+        binanceOrderId: orderId,
         filledPrice,
         leverage,
         venue: "FUTURES",

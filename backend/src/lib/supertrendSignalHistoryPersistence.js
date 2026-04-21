@@ -49,6 +49,18 @@ function trimJsonlTail(p, maxLines) {
   }
 }
 
+/** Strip non-JSON / cap size for jsonl (full market decision snapshot). */
+function sanitizeMarketDecisionSnapshotForDisk(m) {
+  if (m == null || typeof m !== "object") return null;
+  try {
+    const s = JSON.stringify(m);
+    if (s.length > 120_000) return null;
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
 function cleanRow(e) {
   if (!e || typeof e !== "object") return null;
   if (e.side !== "BUY" && e.side !== "SELL") return null;
@@ -65,6 +77,7 @@ function cleanRow(e) {
       : null;
   const mqS = e.mqScore != null && Number.isFinite(Number(e.mqScore)) ? Number(e.mqScore) : null;
   const mqV = e.mqVerdict != null && String(e.mqVerdict).trim() ? String(e.mqVerdict).trim() : null;
+  const mds = sanitizeMarketDecisionSnapshotForDisk(e.marketDecisionSnapshot);
   return {
     ts: Number(e.ts),
     side: e.side,
@@ -78,6 +91,7 @@ function cleanRow(e) {
     ...(mqV != null ? { mqVerdict: mqV } : {}),
     ...(sbc != null ? { signalBarClose: sbc } : {}),
     ...(sbct != null ? { signalBarCloseTs: sbct } : {}),
+    ...(mds ? { marketDecisionSnapshot: mds } : {}),
   };
 }
 
@@ -163,6 +177,13 @@ export function readSupertrendSignalHistory({ symbol, timeframe, limit = 2000, a
         o.signalBarClose != null && Number.isFinite(Number(o.signalBarClose)) && Number(o.signalBarClose) > 0
           ? Number(o.signalBarClose)
           : null;
+      const sbctR =
+        o.signalBarCloseTs != null && Number.isFinite(Number(o.signalBarCloseTs)) && Number(o.signalBarCloseTs) > 0
+          ? Number(o.signalBarCloseTs)
+          : null;
+      const mqSR = o.mqScore != null && Number.isFinite(Number(o.mqScore)) ? Number(o.mqScore) : null;
+      const mqVR = o.mqVerdict != null && String(o.mqVerdict).trim() ? String(o.mqVerdict).trim() : null;
+      const mdsR = sanitizeMarketDecisionSnapshotForDisk(o.marketDecisionSnapshot);
       out.push({
         ts: Number(o.ts),
         side: o.side,
@@ -174,6 +195,10 @@ export function readSupertrendSignalHistory({ symbol, timeframe, limit = 2000, a
         surfPulse:
           o.surfPulse != null && Number.isFinite(Number(o.surfPulse)) ? Number(o.surfPulse) : null,
         ...(sbcR != null ? { signalBarClose: sbcR } : {}),
+        ...(sbctR != null ? { signalBarCloseTs: sbctR } : {}),
+        ...(mqSR != null ? { mqScore: mqSR } : {}),
+        ...(mqVR != null ? { mqVerdict: mqVR } : {}),
+        ...(mdsR ? { marketDecisionSnapshot: mdsR } : {}),
       });
     } catch {
       /* skip */

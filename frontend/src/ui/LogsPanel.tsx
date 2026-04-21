@@ -43,8 +43,25 @@ export function LogsPanel() {
                 Object.entries(l as Record<string, unknown>).filter(([k]) => !skip.has(k)),
               );
               const restStr = Object.keys(rest).length > 0 ? JSON.stringify(rest, null, 2) : null;
+              const cat = String((l as LogPayload).category ?? "").toLowerCase();
+              const reason = String((l as LogPayload).reason ?? "");
+              const trailRowStart =
+                cat === "trailing" &&
+                (reason === "trail_sl_replace_started" || reason === "trailing_activation_engaged");
+              const trailRowDone =
+                cat === "trailing" &&
+                (reason === "trail_sl_replace_success" || reason === "trailing_sl_advance");
               return (
-                <div key={idx} className="flex gap-2">
+                <div
+                  key={idx}
+                  className={`flex gap-2 rounded px-0.5 py-0.5 ${
+                    trailRowStart
+                      ? "border border-amber-500/45 bg-amber-500/10"
+                      : trailRowDone
+                        ? "border border-emerald-500/40 bg-emerald-500/10"
+                        : ""
+                  }`}
+                >
                   <span className="shrink-0 text-slate-600">{logClock(l.ts)}</span>
                   <span
                     className={

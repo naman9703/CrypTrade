@@ -26,13 +26,19 @@ import {
   computeSupertrendTieredMaxTrailStepFromExtreme,
   maxTrailStepsForConfig,
   computeEffectiveTrailBuffer,
+  tieredStLockPxForCompletedTrailStep,
 } from "../lib/trailingFeeLadder";
-import { computeSupertrendTrailingSlUpdate, trailStepToTierLabel } from "../lib/supertrendTrailingSl";
+import {
+  applyMinTrailGapFromMark,
+  computeSupertrendTrailingSlUpdate,
+  trailStepToTierLabel,
+} from "../lib/supertrendTrailingSl";
 import { clampTradeCloseFeeRate } from "../lib/tradeCloseFee";
 import {
   computeSupertrendSignalVerdicts,
   formatSupertrendSignalVerdict,
 } from "../lib/supertrendSignalVerdict";
+import { displayMarketDecisionVerdict, mdEngineIsBypass } from "../lib/marketDecision/display";
 import { useThemeStore } from "../themeStore";
 import { CHART_CANDLE_MAX, useAppStore } from "../ws/store";
 import { OrderBookPanel } from "./OrderBookPanel";
@@ -154,6 +160,8 @@ type SupertrendSignalHistRow = {
   /** Move-quality composite score (0–1) and PASS | BORDER | WEAK. */
   mqScore?: number | null;
   mqVerdict?: string | null;
+  /** Full market-decision engine snapshot at this bar (ADX/RSI/EMA, regime, verdict, reasons). */
+  marketDecisionSnapshot?: Record<string, unknown> | null;
 };
 
 /** On-chart marker (compact; full text also in list under chart). */
@@ -194,6 +202,463 @@ function formatHistTimeIst(ts: number): string {
     minute: "2-digit",
     hour12: false,
   });
+}
+
+function fmtSigNum(n: unknown, d: number): string {
+  if (n == null || !Number.isFinite(Number(n))) return "—";
+  return Number(n).toFixed(d);
+}
+
+/** Min SS threshold when signal-strength gate is on (shown on signal list row). */
+function signalListSsGateMin(bot: unknown): number | null {
+  const b = bot as { signalStrengthGatesTrades?: boolean; signalStrengthOpenMin?: number } | null | undefined;
+  if (!b?.signalStrengthGatesTrades) return null;
+  const m = Math.round(Number(b.signalStrengthOpenMin ?? 65));
+  return Number.isFinite(m) ? Math.max(0, Math.min(100, m)) : null;
+}
+
+/** Min MQ score when move-quality gate is on (shown on signal list row). */
+function signalListMqGateMin(bot: unknown): number | null {
+  const b = bot as { supertrendMoveQualityGate?: boolean; supertrendMoveQualityMinScore?: number } | null | undefined;
+  if (!b?.supertrendMoveQualityGate) return null;
+  const m = Number(b.supertrendMoveQualityMinScore ?? 0.6);
+  return Number.isFinite(m) ? Math.max(0, Math.min(1, m)) : null;
+}
+
+/** Compact bracket from `passThresholds` on the snapshot (market decision layers). */
+function signalListMdPassBracketCompact(pt: Record<string, unknown> | null): string | null {
+  if (!pt) return null;
+  const bits: string[] = [];
+  const minC = pt.minRegimeConfidence;
+  if (minC != null && Number.isFinite(Number(minC))) bits.push(`conf≥${Math.round(Number(minC))}%`);
+  const sc = pt.signalScoreMin;
+  if (sc != null && Number.isFinite(Number(sc))) bits.push(`score≥${Number(sc).toFixed(1)}`);
+  const fee = pt.feeMinExpectedMovePct;
+  if (fee != null && Number.isFinite(Number(fee))) bits.push(`fee≥${Number(fee).toFixed(3)}%`);
+  const chopA = pt.chopAdxMin;
+  if (chopA != null && Number.isFinite(Number(chopA))) bits.push(`chop ADX≥${Number(chopA).toFixed(0)}`);
+  const chopR = pt.chopRangeMin;
+  if (chopR != null && Number.isFinite(Number(chopR))) bits.push(`Range≥${(Number(chopR) * 100).toFixed(2)}%`);
+  const chopF = pt.chopFlipsMax;
+  if (chopF != null && Number.isFinite(Number(chopF))) bits.push(`flips≤${Number(chopF).toFixed(0)}`);
+  if (!bits.length) return null;
+  return `[${bits.join(" · ")}]`;
+}
+
+const MD_PASS_CLS = "text-slate-500 dark:text-slate-400";
+
+/** RSI row: composite score gives +weight if this bias holds (not a hard block by itself). */
+function mdRsiScorePassHint(side: "BUY" | "SELL" | null): string {
+  if (side === "SELL") return "[score +pts: RSI ≤ 50]";
+  if (side === "BUY") return "[score +pts: RSI ≥ 50]";
+  return "[score +pts: long ≥50 · short ≤50]";
+}
+
+/** EMA row: alignment component of composite score. */
+function mdEmaAlignPassHint(side: "BUY" | "SELL" | null): string {
+  if (side === "BUY") return "[score +pts: close > EMA]";
+  if (side === "SELL") return "[score +pts: close < EMA]";
+  return "[score +pts: BUY close>EMA · SELL close<EMA]";
+}
+
+function mdResolveSignalSide(mds: Record<string, unknown> | null | undefined, h: SupertrendSignalHistRow): "BUY" | "SELL" | null {
+  const a = mds?.signalSide != null ? String(mds.signalSide).toUpperCase() : "";
+  if (a === "BUY" || a === "SELL") return a;
+  const b = h.side != null ? String(h.side).toUpperCase() : "";
+  if (b === "BUY" || b === "SELL") return b;
+  return null;
+}
+
+/** Entry timing: numeric pass band vs current distance (from snapshot metrics). */
+function mdEntryTimingPassBracket(et: Record<string, unknown>, pt: Record<string, unknown> | null): string | null {
+  const mode = String(et.mode ?? "");
+  const m = et.metrics as Record<string, unknown> | undefined;
+  const th = m?.threshold;
+  const t = typeof th === "number" && Number.isFinite(th) ? th : null;
+  const dist = m?.distToEmaPct;
+  const distFrac = typeof dist === "number" && Number.isFinite(dist) ? dist : null;
+  const cur = distFrac != null ? (distFrac * 100).toFixed(3) : null;
+  if (mode === "INSTANT") return "[pass: ENTER immediately — no EMA distance wait]";
+  if (mode === "PULLBACK" && t != null) {
+    const cap = (t * 100).toFixed(3);
+    return `[pass: |close−EMA|/price ≤ ${cap}% — now ${cur != null ? `${cur}%` : "—"}]`;
+  }
+  if (mode === "BREAKOUT" && t != null) {
+    const floor = (t * 0.5 * 100).toFixed(3);
+    return `[pass: |close−EMA|/price ≥ ${floor}% — now ${cur != null ? `${cur}%` : "—"}]`;
+  }
+  if (pt?.entryTimingPassHint) return `[${String(pt.entryTimingPassHint)}]`;
+  return null;
+}
+
+/** Expanded details under a signal row: SS/MQ + market decision snapshot at bar close. */
+function SupertrendSignalAccordionDetails({ h }: { h: SupertrendSignalHistRow }) {
+  const mds = h.marketDecisionSnapshot;
+  const verdict = displayMarketDecisionVerdict(mds);
+  const failedStage = mds && mds.failedStage != null ? String(mds.failedStage) : null;
+  const bypass = mdEngineIsBypass(mds);
+  const reasons = Array.isArray(mds?.reasons) ? (mds.reasons as string[]) : [];
+  const ci =
+    mds && mds.classifierInputs != null && typeof mds.classifierInputs === "object"
+      ? (mds.classifierInputs as Record<string, unknown>)
+      : null;
+  const regime = mds && mds.regime != null && typeof mds.regime === "object" ? (mds.regime as Record<string, unknown>) : null;
+  const ltf = regime?.ltf != null && typeof regime.ltf === "object" ? (regime.ltf as Record<string, unknown>) : null;
+  const chop = mds && mds.chop != null && typeof mds.chop === "object" ? (mds.chop as Record<string, unknown>) : null;
+  const cg = mds && mds.confidenceGate != null && typeof mds.confidenceGate === "object" ? (mds.confidenceGate as Record<string, unknown>) : null;
+  const et = mds && mds.entryTiming != null && typeof mds.entryTiming === "object" ? (mds.entryTiming as Record<string, unknown>) : null;
+  const fg = mds && mds.feeGate != null && typeof mds.feeGate === "object" ? (mds.feeGate as Record<string, unknown>) : null;
+  const score = mds && mds.score != null && typeof mds.score === "object" ? (mds.score as Record<string, unknown>) : null;
+  const breakdown = Array.isArray(score?.breakdown) ? (score.breakdown as Array<Record<string, unknown>>) : [];
+  const mdMetrics =
+    mds && mds.metrics != null && typeof mds.metrics === "object" ? (mds.metrics as Record<string, unknown>) : null;
+  const pipeDiag =
+    mds && mds.pipelineDiagnostics != null && typeof mds.pipelineDiagnostics === "object"
+      ? (mds.pipelineDiagnostics as {
+          primaryStage?: string | null;
+          primarySeverity?: string;
+          secondary?: Array<{ stage: string; severity: string; detail: string }>;
+        })
+      : null;
+  const pt =
+    mds && mds.passThresholds != null && typeof mds.passThresholds === "object"
+      ? (mds.passThresholds as Record<string, unknown>)
+      : null;
+  const chopM =
+    chop && chop.metrics != null && typeof chop.metrics === "object"
+      ? (chop.metrics as Record<string, unknown>)
+      : null;
+  const mdSide = mds ? mdResolveSignalSide(mds as Record<string, unknown>, h) : null;
+  const entryBracket = et ? mdEntryTimingPassBracket(et as Record<string, unknown>, pt) : null;
+  const pxNum = ci?.price != null && Number.isFinite(Number(ci.price)) ? Number(ci.price) : null;
+  const emaNum = ci?.ema != null && Number.isFinite(Number(ci.ema)) ? Number(ci.ema) : null;
+  const distCloseEmaPct =
+    pxNum != null && emaNum != null && pxNum > 0 ? (Math.abs(pxNum - emaNum) / pxNum) * 100 : null;
+
+  return (
+    <div className="space-y-2 border-t border-slate-300/40 pt-2 dark:border-slate-600/50">
+      <div>
+        <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Composite signal strength</div>
+        <p className="mt-0.5 text-[10px] text-slate-700 dark:text-slate-300">
+          SS {h.strength != null && Number.isFinite(Number(h.strength)) ? Math.round(Number(h.strength)) : "—"} · Action{" "}
+          <span className="font-mono">{h.stAction ?? "—"}</span> <span className="text-slate-500">(TRADE / WAIT / SKIP)</span>
+        </p>
+      </div>
+      <div>
+        <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Move quality</div>
+        <p className="mt-0.5 text-[10px] text-slate-700 dark:text-slate-300">
+          Score{" "}
+          {h.mqScore != null && Number.isFinite(Number(h.mqScore)) ? Number(h.mqScore).toFixed(3) : "—"} · Verdict{" "}
+          <span className="font-mono">{h.mqVerdict ?? "—"}</span>
+        </p>
+      </div>
+      {mds ? (
+        <div>
+          <div className="text-[9px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+            Market decision engine
+          </div>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-800 dark:text-slate-200">
+            <span className="font-mono font-semibold">{verdict ?? "—"}</span>
+            {bypass ? (
+              <span className="text-slate-500">(engine off — pass-through, not a trade permit)</span>
+            ) : failedStage && failedStage !== "null" ? (
+              <span className="text-slate-500">
+                stage: <span className="font-mono">{failedStage}</span>
+                {pipeDiag?.primarySeverity ? (
+                  <span title="Primary failure severity (for tuning)">
+                    {" "}
+                    · <span className="font-mono text-amber-800 dark:text-amber-200">{pipeDiag.primarySeverity}</span>
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+          </p>
+          {bypass ? (
+            <p className="mt-1 text-[9px] text-slate-600 dark:text-slate-400">
+              Supertrend <span className="font-mono">Action</span> ({h.stAction ?? "—"}) is authoritative for open/close logic; the rows below are
+              diagnostics only until the engine is enabled.
+            </p>
+          ) : null}
+          {reasons.length > 0 ? (
+            <ul className="mt-1 list-inside list-disc space-y-0.5 text-[9px] text-slate-600 dark:text-slate-400">
+              {reasons.map((r, j) => (
+                <li key={j}>{r}</li>
+              ))}
+            </ul>
+          ) : null}
+          {mdMetrics?.warmupPartial === true ? (
+            <p className="mt-1 text-[9px] text-amber-800/95 dark:text-amber-200/90">
+              Warm-up snapshot (short history vs full ADX/EMA pipeline) — verdict is still BYPASS; engine off does not filter trades.
+            </p>
+          ) : null}
+          {ltf ? (
+            <div className="mt-2 rounded border border-violet-200/50 bg-violet-50/50 px-2 py-1 dark:border-violet-800/40 dark:bg-violet-950/30">
+              <div className="text-[9px] font-semibold text-violet-800 dark:text-violet-200">Regime (LTF)</div>
+              <p className="mt-0.5 font-mono text-[10px] text-slate-800 dark:text-slate-200">
+                {String(ltf.type ?? "—")}
+                {chop?.isChoppy === true && String(ltf.type ?? "").toUpperCase() === "UPTREND" ? (
+                  <span className="font-sans text-amber-800 dark:text-amber-200"> (weak / choppy)</span>
+                ) : null}
+                {ltf.confidence != null && Number.isFinite(Number(ltf.confidence))
+                  ? ` · conf ${Math.round(Number(ltf.confidence))}%`
+                  : ""}
+                {pt?.minRegimeConfidence != null && Number.isFinite(Number(pt.minRegimeConfidence)) ? (
+                  <span className="text-slate-500"> [pass ≥ {Math.round(Number(pt.minRegimeConfidence))}%]</span>
+                ) : null}
+              </p>
+              {ltf.raw != null && typeof ltf.raw === "object" ? (
+                <p className="mt-0.5 text-[9px] text-slate-600 dark:text-slate-400">
+                  raw ADX {fmtSigNum((ltf.raw as Record<string, unknown>).adx, 1)}
+                  {pt?.chopAdxMin != null && Number.isFinite(Number(pt.chopAdxMin)) ? (
+                    <span className="text-slate-500"> [pass: ADX ≥ {fmtSigNum(pt.chopAdxMin, 0)}]</span>
+                  ) : null}{" "}
+                  · ATR/price{" "}
+                  {fmtSigNum(
+                    ((ltf.raw as Record<string, unknown>).atrRatio as number) != null
+                      ? Number((ltf.raw as Record<string, unknown>).atrRatio) * 100
+                      : null,
+                    2,
+                  )}
+                  %
+                  {pt?.atrVolThreshold != null && Number.isFinite(Number(pt.atrVolThreshold)) ? (
+                    <span className="text-slate-500">
+                      {" "}
+                      [VOLATILE if ATR/price {'>'} {(Number(pt.atrVolThreshold) * 100).toFixed(2)}%]
+                    </span>
+                  ) : null}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {ci ? (
+            <div className="mt-2 space-y-1">
+              <div className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">
+                Classifier inputs — values vs pass rules
+              </div>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono text-[9px] text-slate-700 dark:text-slate-300 sm:grid-cols-3">
+                <span>
+                  ADX(14) {fmtSigNum(ci.adx, 1)}
+                  {pt?.chopAdxMin != null && Number.isFinite(Number(pt.chopAdxMin)) ? (
+                    <span className={MD_PASS_CLS}>
+                      {" "}
+                      [chop: need ADX ≥ {fmtSigNum(pt.chopAdxMin, 0)} to avoid weak-ADX chop flag]
+                    </span>
+                  ) : (
+                    <span className={MD_PASS_CLS}> [regime input — chop threshold N/A]</span>
+                  )}
+                </span>
+                <span>
+                  RSI(14) {fmtSigNum(ci.rsi, 1)}{" "}
+                  <span className={MD_PASS_CLS}>{mdRsiScorePassHint(mdSide)}</span>
+                </span>
+                <span>
+                  EMA({String(ci.emaLength ?? "—")}) {fmtSigNum(ci.ema, 4)}{" "}
+                  <span className={MD_PASS_CLS}>{mdEmaAlignPassHint(mdSide)}</span>
+                </span>
+                <span>
+                  ATR(14) {fmtSigNum(ci.atr, 6)}
+                  <span className={MD_PASS_CLS}>
+                    {" "}
+                    [used as ATR/price → %ATR row; pullback band = ATR%×mult]
+                  </span>
+                </span>
+                <span>
+                  %ATR{" "}
+                  {ci.atrPct != null && Number.isFinite(Number(ci.atrPct))
+                    ? `${(Number(ci.atrPct) * 100).toFixed(2)}%`
+                    : "—"}
+                  {pt?.atrVolThreshold != null && Number.isFinite(Number(pt.atrVolThreshold)) ? (
+                    <span className={MD_PASS_CLS}>
+                      {" "}
+                      [regime: classify VOLATILE if %ATR &gt; {(Number(pt.atrVolThreshold) * 100).toFixed(2)}%]
+                    </span>
+                  ) : (
+                    <span className={MD_PASS_CLS}> [VOLATILE threshold N/A]</span>
+                  )}
+                </span>
+                <span>
+                  Close {fmtSigNum(ci.price, 4)}
+                  {distCloseEmaPct != null ? (
+                    <span className={MD_PASS_CLS}> [|close−EMA|/price {distCloseEmaPct.toFixed(3)}% — compare to entry band below]</span>
+                  ) : null}
+                </span>
+                <span className="col-span-2 sm:col-span-3">
+                  Range₁₀{" "}
+                  {ci.rangeCompression != null && Number.isFinite(Number(ci.rangeCompression))
+                    ? `${(Number(ci.rangeCompression) * 100).toFixed(2)}%`
+                    : "—"}
+                  {pt?.chopRangeMin != null && Number.isFinite(Number(pt.chopRangeMin)) ? (
+                    <span className={MD_PASS_CLS}>
+                      {" "}
+                      [chop: need Range₁₀ ≥ {(Number(pt.chopRangeMin) * 100).toFixed(2)}% to avoid tight-range chop flag]
+                    </span>
+                  ) : (
+                    <span className={MD_PASS_CLS}> [chop range threshold N/A]</span>
+                  )}{" "}
+                  · ΔEMA/bar {fmtSigNum(ci.emaSlope, 6)}
+                  <span className={MD_PASS_CLS}> [regime trend uses slope vs price — no single pass #]</span>
+                </span>
+              </div>
+            </div>
+          ) : null}
+          {chop && (chop.isChoppy === true || (Array.isArray(chop.reasons) && (chop.reasons as unknown[]).length > 0)) ? (
+            <div className="mt-1.5 space-y-0.5 text-[9px] text-slate-600 dark:text-slate-400">
+              <div>
+                Chop: {String(chop.isChoppy)}
+                {chop.isChoppy === true ? " · trend can still be up/down while chop flags messy microstructure" : ""}
+                {chopM?.flips != null && Number.isFinite(Number(chopM.flips)) ? ` · flips ${fmtSigNum(chopM.flips, 0)}` : ""}
+                {pt?.chopFlipsMax != null && Number.isFinite(Number(pt.chopFlipsMax)) ? (
+                  <span className={MD_PASS_CLS}> [pass: flips ≤ {fmtSigNum(pt.chopFlipsMax, 0)}]</span>
+                ) : null}
+                {" · "}
+                {(chop.reasons as string[])?.join(" · ") || "—"}
+              </div>
+              {pt?.chopAdxMin != null ||
+              pt?.chopRangeMin != null ||
+              pt?.chopFlipsMax != null ? (
+                <div className={MD_PASS_CLS}>
+                  To clear chop (when chop gate is on): ADX ≥ {pt?.chopAdxMin != null ? fmtSigNum(pt.chopAdxMin, 0) : "—"} · Range₁₀ ≥
+                  {pt?.chopRangeMin != null ? ` ${(Number(pt.chopRangeMin) * 100).toFixed(2)}%` : " —"} · flips ≤
+                  {pt?.chopFlipsMax != null ? ` ${fmtSigNum(pt.chopFlipsMax, 0)}` : " —"}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {cg ? (
+            <div className="mt-1 space-y-0.5 text-[9px] text-slate-600 dark:text-slate-400">
+              <div>
+                Regime confidence: {fmtSigNum(cg.regimeConfidence, 0)}% vs min {fmtSigNum(cg.minRequired, 0)}%
+                <span className={MD_PASS_CLS}>
+                  {" "}
+                  [pass: confidence ≥ {fmtSigNum(cg.minRequired, 0)}% — {cg.mode === "BLOCK" ? "below blocks" : "below adds penalty"}]
+                </span>{" "}
+                ·{" "}
+                {cg.passed === true ? (
+                  <span className="text-emerald-700 dark:text-emerald-300">meets threshold</span>
+                ) : (
+                  <span className="text-amber-700 dark:text-amber-300">below min</span>
+                )}
+                {bypass ? <span className="text-slate-500"> (informational — engine off)</span> : null}
+              </div>
+              <div>
+                Confidence mode: <span className="font-mono">{String(cg.mode)}</span>
+              </div>
+              <div>
+                Status:{" "}
+                {cg.passed === true ? (
+                  <span className="text-emerald-700 dark:text-emerald-300">PASS</span>
+                ) : (
+                  <span className="text-amber-700 dark:text-amber-300">below min</span>
+                )}
+                {cg.mode === "PENALTY" && cg.passed === true ? (
+                  <span className="text-slate-500"> (no confidence penalty to score)</span>
+                ) : null}
+                {cg.mode === "PENALTY" && cg.passed === false ? (
+                  <span className="text-slate-500"> (score penalty applies when engine is on)</span>
+                ) : null}
+                {cg.mode === "BLOCK" ? (
+                  <span className="text-slate-500"> — below min blocks when engine is on</span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          {et ? (
+            <div className="mt-1 text-[9px] text-slate-600 dark:text-slate-400">
+              Entry timing: <span className="font-mono">{String(et.recommendation ?? "—")}</span> · mode{" "}
+              <span className="font-mono">{String(et.mode ?? "—")}</span>
+              {entryBracket ? <span className={MD_PASS_CLS}> {entryBracket}</span> : null}
+              {bypass ? <span className="text-slate-500"> — not enforced (engine off)</span> : null}
+              {et.reasons != null && Array.isArray(et.reasons) && (et.reasons as string[]).length ? (
+                <span> — {(et.reasons as string[]).join("; ")}</span>
+              ) : null}
+            </div>
+          ) : null}
+          {pt?.directionPassHint ? (
+            <div className="mt-1 text-[9px] text-slate-600 dark:text-slate-400">
+              Direction vs regime: <span className="text-slate-500">[{String(pt.directionPassHint)}]</span>
+            </div>
+          ) : null}
+          {fg ? (
+            <div className="mt-1 space-y-0.5 text-[9px] text-slate-600 dark:text-slate-400">
+              <div>
+                Fee gate{fg.enabled === false ? " (disabled in settings)" : ""}:{" "}
+                {fg.passed === true ? (
+                  <span className="text-emerald-700 dark:text-emerald-300">PASS</span>
+                ) : (
+                  <span className="text-amber-700 dark:text-amber-300">FAIL</span>
+                )}
+                {bypass ? <span className="text-slate-500"> — not enforced (engine off)</span> : null}
+              </div>
+              <div className="font-mono text-[9px]">
+                Expected move:{" "}
+                {fg.expectedMovePct != null && Number.isFinite(Number(fg.expectedMovePct))
+                  ? `${Number(fg.expectedMovePct).toFixed(3)}%`
+                  : "—"}
+                {pt?.feeMinExpectedMovePct != null && Number.isFinite(Number(pt.feeMinExpectedMovePct)) ? (
+                  <span className={MD_PASS_CLS}>
+                    {" "}
+                    [pass: expected move ≥ {Number(pt.feeMinExpectedMovePct).toFixed(3)}% (= required line below when gate on)]
+                  </span>
+                ) : null}{" "}
+                · Required (fees + buffer + slippage):{" "}
+                {fg.requiredMovePct != null && Number.isFinite(Number(fg.requiredMovePct))
+                  ? `${Number(fg.requiredMovePct).toFixed(3)}%`
+                  : "—"}
+                {fg.requiredMovePct != null && Number.isFinite(Number(fg.requiredMovePct)) ? (
+                  <span className={MD_PASS_CLS}>
+                    {" "}
+                    [hurdle: favorable move must cover ≥ this %]
+                  </span>
+                ) : null}
+              </div>
+              {Array.isArray(fg.reasons) && (fg.reasons as string[]).length > 0 ? (
+                <div className="text-[8px] text-slate-500 dark:text-slate-500">{(fg.reasons as string[]).join(" · ")}</div>
+              ) : null}
+            </div>
+          ) : null}
+          {breakdown.length > 0 ? (
+            <div className="mt-2">
+              <div className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">Score breakdown</div>
+              <ul className="mt-0.5 space-y-0.5 text-[9px] text-slate-600 dark:text-slate-400">
+                {breakdown.map((b, k) => {
+                  const bid = String(b.id ?? "");
+                  let hint = "";
+                  if (bid === "st") hint = "[+w if ST confirms at bar]";
+                  else if (bid === "ema") hint = mdEmaAlignPassHint(mdSide);
+                  else if (bid === "rsi") hint = mdRsiScorePassHint(mdSide);
+                  else if (bid === "htf") hint = "[+w if HTF trend matches LTF]";
+                  else if (bid === "conf") hint = "[− penalty if conf < min]";
+                  else if (bid === "weak") hint = "[− penalty in weak trend]";
+                  else if (bid === "over") hint = "[− penalty if overextended]";
+                  else if (bid === "chop_soft") hint = "[− penalty if chop (soft)]";
+                  else if (bid === "dir") hint = "[− penalty if direction vs regime]";
+                  else if (bid === "btc") hint = "[− penalty: BTC filter]";
+                  return (
+                    <li key={k}>
+                      {String(b.label ?? b.id)}: +{fmtSigNum(b.contribution, 1)} / w {fmtSigNum(b.weight, 0)}{" "}
+                      {hint ? <span className={MD_PASS_CLS}>{hint}</span> : null}
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-0.5 text-[9px] font-mono text-slate-700 dark:text-slate-300">
+                Total {fmtSigNum(score?.total, 1)} / threshold {fmtSigNum(score?.threshold, 1)}
+                {pt?.signalScoreMin != null && Number.isFinite(Number(pt.signalScoreMin)) ? (
+                  <span className="text-slate-500"> [pass: total ≥ {fmtSigNum(pt.signalScoreMin, 1)}]</span>
+                ) : null}{" "}
+                · {String(score?.passed ?? "")}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="text-[9px] text-slate-500 dark:text-slate-500">
+          No market decision snapshot on this row (server build before persistence, or snapshot failed). New signals include full ADX/RSI/EMA
+          + verdict.
+        </p>
+      )}
+    </div>
+  );
 }
 
 type BracketPriceLineHandle = { remove: () => void };
@@ -631,6 +1096,8 @@ export function ChartPanel() {
   const [altCandles, setAltCandles] = useState<any[]>([]);
   /** After SL tightens at least once for a symbol, keep the Trailed chip highlighted for that chart session (e.g. after flat). */
   const [chartTrailedSessionBySymbol, setChartTrailedSessionBySymbol] = useState<Record<string, true>>({});
+  /** One expanded row at a time in the signal list under the chart. */
+  const [openSignalAccordionKey, setOpenSignalAccordionKey] = useState<string | null>(null);
 
   const effectiveSym = useMemo(() => {
     const b = normalizeSymTf(bot?.symbol);
@@ -1321,7 +1788,20 @@ export function ChartPanel() {
       tierLabel: trailedTierLabel,
       trailExchangePending,
     });
-    const entry = Number(pos.entryPrice);
+    const ladderSnap = (pos.meta as Record<string, unknown> | undefined)?.trailLadderSnapshotV1 as
+      | {
+          entryPx?: number;
+          feeBeSt?: number;
+          buf?: number;
+          postT02SpacingFrac?: number | null;
+          roundTripFeeR?: number;
+        }
+      | undefined;
+    const useFrozenLadder =
+      ladderSnap != null &&
+      Number.isFinite(Number(ladderSnap.entryPx)) &&
+      Number(ladderSnap.entryPx) > 0;
+    const entry = useFrozenLadder ? Number(ladderSnap.entryPx) : Number(pos.entryPrice);
     if (!Number.isFinite(entry) || entry <= 0) return none("trail-noentry", mkBadge(false));
     const levRaw = Number(pos.leverage);
     const lev = Math.max(1, Math.floor(Number.isFinite(levRaw) && levRaw > 0 ? levRaw : 1));
@@ -1601,11 +2081,29 @@ export function ChartPanel() {
       bot?.trailPostT02SpacingFrac != null && Number.isFinite(Number(bot.trailPostT02SpacingFrac))
         ? Number(bot.trailPostT02SpacingFrac)
         : null;
+    const paddedFeeStActive =
+      useFrozenLadder && ladderSnap != null && Number.isFinite(Number(ladderSnap.feeBeSt))
+        ? Number(ladderSnap.feeBeSt)
+        : paddedFeeSt;
+    const bufTieredActive =
+      useFrozenLadder && ladderSnap != null && Number.isFinite(Number(ladderSnap.buf)) ? Number(ladderSnap.buf) : bufEffective;
+    const postT02SpacingActive =
+      useFrozenLadder &&
+      ladderSnap != null &&
+      ladderSnap.postT02SpacingFrac != null &&
+      Number.isFinite(Number(ladderSnap.postT02SpacingFrac))
+        ? Number(ladderSnap.postT02SpacingFrac)
+        : postT02SpacingUser;
+    const rtFeeActive =
+      useFrozenLadder && ladderSnap != null && Number.isFinite(Number(ladderSnap.roundTripFeeR))
+        ? Number(ladderSnap.roundTripFeeR)
+        : rtFeeChart;
+    const feeBeLockRateActive = feeRateBreakevenPadded(rtFeeActive, feeBeMultiplierChart);
     const postT02MaxExtraTiers = Math.max(
       10,
       Math.min(500, Math.floor(Number(bot?.trailPostT02MaxExtraTiers ?? 150))),
     );
-    const tieredGateOpts = { roundTripFeeRate: rtFeeChart, postT02SpacingFrac: postT02SpacingUser };
+    const tieredGateOpts = { roundTripFeeRate: rtFeeActive, postT02SpacingFrac: postT02SpacingActive };
     const maxTieredActivationSteps = maxTrailStepsForConfig(extrasSt, postT02MaxExtraTiers);
     const tsMeta = Number((pos.meta as Record<string, unknown> | undefined)?.trailStep);
     const stepNow = Number.isFinite(tsMeta) && tsMeta >= 0 ? Math.floor(tsMeta) : 0;
@@ -1623,21 +2121,21 @@ export function ChartPanel() {
     let activation: number;
     let liquidation: number;
     if (isLong) {
-      breakeven = entry * (1 + paddedFeeSt);
-      activation = entry * (1 + paddedFeeSt + bufEffective);
+      breakeven = entry * (1 + paddedFeeStActive);
+      activation = entry * (1 + paddedFeeStActive + bufTieredActive);
       liquidation = entry * (1 - 1 / lev + maintenanceMarginRate);
       if (liquidation >= breakeven) return none("trail-reject", mkBadge(false));
     } else {
-      breakeven = entry * (1 - paddedFeeSt);
-      activation = entry * (1 - paddedFeeSt - bufEffective);
+      breakeven = entry * (1 - paddedFeeStActive);
+      activation = entry * (1 - paddedFeeStActive - bufTieredActive);
       liquidation = entry * (1 + 1 / lev - maintenanceMarginRate);
       if (liquidation <= breakeven) return none("trail-reject", mkBadge(false));
     }
     const tierAct = supertrendTieredActivationGate(
       entry,
       isLong,
-      paddedFeeSt,
-      bufEffective,
+      paddedFeeStActive,
+      bufTieredActive,
       useFeeBeTrail,
       stepNow,
       stLevels,
@@ -1659,25 +2157,58 @@ export function ChartPanel() {
         hwm,
         entryPx: entry,
         isLong,
-        feeBe: paddedFeeSt,
-        bufferRate: bufEffective,
+        feeBe: paddedFeeStActive,
+        bufferRate: bufTieredActive,
         useFeeBeTrail,
         stLevels,
         maxActivationSteps: maxTieredActivationSteps,
-        roundTripFeeRate: rtFeeChart,
-        postT02SpacingFrac: postT02SpacingUser,
+        roundTripFeeRate: rtFeeActive,
+        postT02SpacingFrac: postT02SpacingActive,
       });
       const maxCap = Math.max(maxTieredActivationSteps, 3);
       const priceStep = Math.min(rawPriceStep, maxCap);
       const nextTrailStep = Math.max(stepNow, priceStep);
-      const t01ActivationPx = isLong ? entry * (1 + bufEffective) : entry * (1 - bufEffective);
-      const t02ActivationPx = isLong ? entry * (1 + paddedFeeSt + bufEffective) : entry * (1 - paddedFeeSt - bufEffective);
+      const t01ActivationPx = isLong ? entry * (1 + bufTieredActive) : entry * (1 - bufTieredActive);
+      const t02ActivationPx = isLong
+        ? entry * (1 + paddedFeeStActive + bufTieredActive)
+        : entry * (1 - paddedFeeStActive - bufTieredActive);
       const entryLockBreakevenPx = isLong ? entry * (1 + t01LockSlipChart) : entry * (1 - t01LockSlipChart);
-      const beEvtBase = isLong ? entry * (1 + paddedFeeSt) : entry * (1 - paddedFeeSt);
+      const beEvtBase = isLong ? entry * (1 + feeBeLockRateActive) : entry * (1 - feeBeLockRateActive);
       if (nextTrailStep < 1) {
         r = { newSl: prevSlForCompute, status: "NO_TRAIL" };
+      } else if (nextTrailStep >= 3) {
+        const ladderRaw = tieredStLockPxForCompletedTrailStep(nextTrailStep, {
+          entryPx: entry,
+          isLong,
+          feeBeLockRate: feeBeLockRateActive,
+          feeBeSt: paddedFeeStActive,
+          roundTripFeeR: rtFeeActive,
+          postT02SpacingFrac: postT02SpacingActive,
+          t01LockSlipFrac: t01LockSlipChart,
+        });
+        if (ladderRaw == null || !Number.isFinite(ladderRaw)) {
+          r = { newSl: prevSlForCompute, status: "NO_TRAIL" };
+        } else {
+          const computeBreakevenPx = nextTrailStep === 1 ? entryLockBreakevenPx : beEvtBase;
+          let ladderSl = applyMinTrailGapFromMark({
+            isLong,
+            cur: cur,
+            prevSl: prevSlForCompute,
+            newSl: ladderRaw,
+            breakeven: computeBreakevenPx,
+            useFeeBe: useFeeBeTrail,
+            gapFrac: minGapMark,
+          });
+          if (Number.isFinite(minSlDist) && minSlDist > 0 && cur > 0) {
+            const dist = Math.abs(cur - ladderSl) / cur;
+            const tightening = isLong ? ladderSl > prevSlForCompute : ladderSl < prevSlForCompute;
+            if (dist < minSlDist && !tightening) {
+              ladderSl = prevSlForCompute;
+            }
+          }
+          r = { newSl: ladderSl, status: "OK" };
+        }
       } else {
-        const useAdvCompute = nextTrailStep >= 3 && Number.isFinite(stPx) && stPx > 0;
         const gateForGeometry =
           nextTrailStep <= 1
             ? t01ActivationPx
@@ -1686,8 +2217,8 @@ export function ChartPanel() {
               : supertrendTieredActivationGate(
                   entry,
                   isLong,
-                  paddedFeeSt,
-                  bufEffective,
+                  paddedFeeStActive,
+                  bufTieredActive,
                   useFeeBeTrail,
                   nextTrailStep - 1,
                   stLevels,
@@ -1698,17 +2229,17 @@ export function ChartPanel() {
         r = computeSupertrendTrailingSlUpdate({
           entryPrice: entry,
           currentPrice: pxForCompute,
-          supertrend: useAdvCompute ? stPx : Number.NaN,
+          supertrend: Number.NaN,
           previousSl: prevSlForCompute,
           isLong,
           leverage: lev,
-          feeRate: paddedFeeSt,
-          bufferRate: bufEffective,
+          feeRate: paddedFeeStActive,
+          bufferRate: bufTieredActive,
           maintenanceMarginRate,
           minSlDistanceFrac: minSlDist,
           minTrailGapFromMarkFrac: minGapMark,
           useFeeBreakeven: useFeeBeTrail,
-          useAdvancedTrail: useAdvCompute,
+          useAdvancedTrail: false,
           activationPrice: gateForGeometry,
           breakevenPrice: computeBreakevenPx,
         });
@@ -1721,8 +2252,8 @@ export function ChartPanel() {
         previousSl: prevSlForCompute,
         isLong,
         leverage: lev,
-        feeRate: paddedFeeSt,
-        bufferRate: bufEffective,
+        feeRate: paddedFeeStActive,
+        bufferRate: bufTieredActive,
         maintenanceMarginRate,
         minSlDistanceFrac: minSlDist,
         minTrailGapFromMarkFrac: minGapMark,
@@ -1765,8 +2296,8 @@ export function ChartPanel() {
         const g = supertrendTieredActivationGate(
           entry,
           isLong,
-          paddedFeeSt,
-          bufEffective,
+          paddedFeeStActive,
+          bufTieredActive,
           useFeeBeTrail,
           gateIdx,
           stLevels,
@@ -1793,8 +2324,8 @@ export function ChartPanel() {
         const g = supertrendTieredActivationGate(
           entry,
           isLong,
-          paddedFeeSt,
-          bufEffective,
+          paddedFeeStActive,
+          bufTieredActive,
           useFeeBeTrail,
           gateIdx,
           stLevels,
@@ -1806,8 +2337,8 @@ export function ChartPanel() {
         let lockPx = Number.NaN;
         if (g.nextRow != null && Number.isFinite(Number(g.nextRow.lockPx)) && Number(g.nextRow.lockPx) > 0) {
           lockPx = Number(g.nextRow.lockPx);
-        } else if (Number.isFinite(bufEffective) && bufEffective > 0) {
-          lockPx = isLong ? ap / (1 + bufEffective) : ap / (1 - bufEffective);
+        } else if (Number.isFinite(bufTieredActive) && bufTieredActive > 0) {
+          lockPx = isLong ? ap / (1 + bufTieredActive) : ap / (1 - bufTieredActive);
         } else {
           lockPx = ap;
         }
@@ -1859,15 +2390,15 @@ export function ChartPanel() {
       uiTrailedStep >= 1 ? trailStepToTierLabel(uiTrailedStep, tierLabelStyleHud) : null;
     const nextTwoTierLocks: { tierLabel: string; lockPx: number; activationPx: number }[] = [];
     if (tieredStMode) {
-      const buf = bufEffective;
+      const buf = bufTieredActive;
       for (let gi = 0; gi < 2; gi++) {
         const gateIdx = stepNow + gi;
         if (gateIdx > maxTieredActivationSteps) break;
         const g = supertrendTieredActivationGate(
           entry,
           isLong,
-          paddedFeeSt,
-          bufEffective,
+          paddedFeeStActive,
+          bufTieredActive,
           useFeeBeTrail,
           gateIdx,
           stLevels,
@@ -2832,36 +3363,103 @@ export function ChartPanel() {
                   (h.symbol != null && String(h.symbol).trim()) ||
                   normalizeSymTf(effectiveSym) ||
                   "—";
+                const rowKey = `${pair}-${h.ts}-${h.side}-${i}`;
+                const mdSnap =
+                  h.marketDecisionSnapshot != null && typeof h.marketDecisionSnapshot === "object"
+                    ? (h.marketDecisionSnapshot as Record<string, unknown>)
+                    : null;
+                const mdVerdict = displayMarketDecisionVerdict(mdSnap);
+                const ssGateMin = signalListSsGateMin(bot);
+                const mqGateMin = signalListMqGateMin(bot);
+                const mdPt =
+                  mdSnap?.passThresholds != null && typeof mdSnap.passThresholds === "object"
+                    ? (mdSnap.passThresholds as Record<string, unknown>)
+                    : null;
+                const mdPassBr = signalListMdPassBracketCompact(mdPt);
                 return (
                   <li
-                    key={`${pair}-${h.ts}-${h.side}-${i}`}
+                    key={rowKey}
                     className={
                       h.side === "BUY"
-                        ? "border-l-2 border-emerald-500/60 pl-2 text-emerald-100/95"
-                        : "border-l-2 border-rose-500/60 pl-2 text-rose-100/95"
+                        ? "border-l-2 border-emerald-500/60 pl-1 text-emerald-100/95"
+                        : "border-l-2 border-rose-500/60 pl-1 text-rose-100/95"
                     }
                   >
-                    <span
-                      className="text-slate-600 dark:text-slate-500"
-                      title="Bar close (order window); was bar open — aligns with execution on 1m+ TF"
+                    <button
+                      type="button"
+                      className="w-full rounded px-0.5 py-0.5 text-left hover:bg-slate-200/40 dark:hover:bg-slate-800/50"
+                      onClick={() => setOpenSignalAccordionKey((k) => (k === rowKey ? null : rowKey))}
+                      aria-expanded={openSignalAccordionKey === rowKey}
+                      title={
+                        mdEngineIsBypass(mdSnap)
+                          ? "Click to expand. MD engine off: supertrend Action is authoritative; regime/MQ/fee lines are informational. Brackets on the row = min to pass each gate when that gate is on."
+                          : "Click to expand: signal strength, move quality, market decision (ADX/RSI/EMA) + verdict when engine is on. Brackets = min threshold to pass that filter layer."
+                      }
                     >
-                      {formatHistTimeIst(displayTs)}
-                    </span>{" "}
-                    <span className="font-mono text-[10px] font-semibold text-slate-700 dark:text-slate-300">{pair}</span>{" "}
-                    <span className="font-semibold">{h.side}</span>
-                    <span className="text-slate-600 dark:text-slate-400"> · @ {entryStr}</span>
-                    <span className="text-slate-600 dark:text-slate-400"> · AI {ai}</span>
-                    <span className="text-slate-600 dark:text-slate-400"> · SS {ss}</span>
-                    <span className="text-slate-600 dark:text-slate-400"> · SP {sp}</span>
-                    <span
-                      className="text-slate-600 dark:text-slate-400"
-                      title="Move quality: ATR vs SL, ADX, body vs avg, ATR expansion — composite 0–1 + PASS/BORDER/WEAK"
-                    >
-                      {" "}
-                      · MQ {mq} {mqV !== "—" ? `(${mqV})` : ""}
-                    </span>
-                    <span className="text-slate-600 dark:text-slate-500"> · {act}</span>
-                    <span className={`font-medium ${vCls}`}> · {vLabel}</span>
+                      <span className="inline-block w-4 shrink-0 text-[10px] text-slate-500">
+                        {openSignalAccordionKey === rowKey ? "▾" : "▸"}
+                      </span>
+                      <span
+                        className="text-slate-600 dark:text-slate-500"
+                        title="Bar close (order window); was bar open — aligns with execution on 1m+ TF"
+                      >
+                        {formatHistTimeIst(displayTs)}
+                      </span>{" "}
+                      <span className="font-mono text-[10px] font-semibold text-slate-700 dark:text-slate-300">{pair}</span>{" "}
+                      <span className="font-semibold">{h.side}</span>
+                      <span className="text-slate-600 dark:text-slate-400"> · @ {entryStr}</span>
+                      <span className="text-slate-600 dark:text-slate-400"> · AI {ai}</span>
+                      <span className="text-slate-600 dark:text-slate-400"> · SS {ss}</span>
+                      {ssGateMin != null ? (
+                        <span
+                          className="text-slate-500 dark:text-slate-500"
+                          title="Min composite signal strength to pass the signal-strength gate (when enabled in Trading)"
+                        >
+                          {" "}
+                          [≥{ssGateMin}]
+                        </span>
+                      ) : null}
+                      <span className="text-slate-600 dark:text-slate-400"> · SP {sp}</span>
+                      <span
+                        className="text-slate-600 dark:text-slate-400"
+                        title="Move quality: ATR vs SL, ADX, body vs avg, ATR expansion — composite 0–1 + PASS/BORDER/WEAK"
+                      >
+                        {" "}
+                        · MQ {mq} {mqV !== "—" ? `(${mqV})` : ""}
+                      </span>
+                      {mqGateMin != null ? (
+                        <span
+                          className="text-slate-500 dark:text-slate-500"
+                          title="Min move-quality score to pass the move-quality gate (when enabled in Trading)"
+                        >
+                          {" "}
+                          [≥{mqGateMin.toFixed(2)}]
+                        </span>
+                      ) : null}
+                      <span className="text-slate-600 dark:text-slate-500"> · {act}</span>
+                      <span className={`font-medium ${vCls}`}> · {vLabel}</span>
+                      {mdVerdict ? (
+                        <span
+                          className="text-violet-600/95 dark:text-violet-300/90"
+                          title={
+                            mdEngineIsBypass(mdSnap)
+                              ? "BYPASS: engine disabled — not a permit to trade; compare to supertrend Action"
+                              : "Market decision engine verdict at this bar (when enabled, enforced with other gates). Bracket = min thresholds for regime/score/fee/chop layers from snapshot."
+                          }
+                        >
+                          {" "}
+                          · MD <span className="font-mono">{mdVerdict}</span>
+                          {mdPassBr ? (
+                            <span className="text-slate-500 dark:text-slate-500"> {mdPassBr}</span>
+                          ) : null}
+                        </span>
+                      ) : null}
+                    </button>
+                    {openSignalAccordionKey === rowKey ? (
+                      <div className="mt-1 pl-5 pr-1 pb-1">
+                        <SupertrendSignalAccordionDetails h={h} />
+                      </div>
+                    ) : null}
                   </li>
                 );
               })}

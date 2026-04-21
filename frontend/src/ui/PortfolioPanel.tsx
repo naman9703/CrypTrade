@@ -539,6 +539,15 @@ function tradeGrossPnlClose(
   const m = t?.meta || {};
   if (t?.grossPnl != null && Number.isFinite(Number(t.grossPnl))) return Number(t.grossPnl);
   if (m.grossPnl != null && Number.isFinite(Number(m.grossPnl))) return Number(m.grossPnl);
+  /**
+   * Binance `fapi_income` CLOSE rows: `pnl` is exchange REALIZED_PNL (authoritative for Net).
+   * `pnl + roundTripFee` is **not** “price gross” — it mislabels when entry was paired to the wrong OPEN
+   * (same symbol, newer cycle) or when funding is folded into fee columns. Prefer entry vs exit × qty.
+   */
+  if (!closeStoredPnlIsPackedWalletNet(t)) {
+    const inferred = inferCloseGrossFromPrices(t, openRef, displayQty, displayPrice);
+    if (inferred != null && Number.isFinite(inferred)) return inferred;
+  }
   const net = Number(t?.pnl ?? m.pnl ?? m.realizedPnl ?? m.realized_pnl);
   if (Number.isFinite(net)) {
     const fee =
@@ -1052,6 +1061,45 @@ function tradeHistoryPnlPct(
   return null;
 }
 
+/** Align with backend `CLOSE_REASON_FILL_BAND` — exit vs bracket SL tolerance. */
+const CLOSE_SL_TRAIL_DISPLAY_BAND = 0.0035;
+
+function isTrailedCloseRowForSlDisplay(t: any): boolean {
+  if (String(t?.type ?? "").toUpperCase() !== "CLOSE") return false;
+  const m = t?.meta || {};
+  const r = String(t?.reason || "").toUpperCase();
+  if (m.exitViaTrailedStop === true) return true;
+  if (m.trailTierAtClose != null && String(m.trailTierAtClose).trim() !== "") return true;
+  if (r.includes("TRAILED_SUPERTREND") || r.includes("TRAILED_STOP_LOSS")) return true;
+  return false;
+}
+
+/**
+ * OPEN rows use initial Supertrend SL on `fut_<SYM>` legs; CLOSE merges often copy that into `stopLoss`.
+ * Trailed exits still show the correct reason/tier, but SL was the default bracket — prefer explicit
+ * `meta.slAtClose` when present, else exit fill when it is far from the stored (initial) SL.
+ */
+function closeRowDisplayStopLossPx(t: any, openRef: any | undefined, slResolved: number | null | undefined): number | undefined {
+  const m = t?.meta || {};
+  const explicit =
+    numFinite(m.slAtClose) ?? numFinite(m.effectiveStopLoss) ?? numFinite(m.trailStopAtClose);
+  if (explicit != null) return explicit;
+
+  if (!isTrailedCloseRowForSlDisplay(t)) {
+    return slResolved ?? undefined;
+  }
+
+  const exitPx = numFinite(t?.price ?? m.exitAvgFillPrice ?? m.exitPrice ?? m.closePrice);
+  if (exitPx == null || !(exitPx > 0)) return slResolved ?? undefined;
+
+  const sl0 = slResolved;
+  if (sl0 == null || !(sl0 > 0)) return exitPx;
+
+  const band = Math.abs(exitPx - sl0) / sl0;
+  if (band > CLOSE_SL_TRAIL_DISPLAY_BAND) return exitPx;
+  return sl0;
+}
+
 /** CLOSE rows often omit fields; fill from matching OPEN (same id) and common aliases. */
 function tradeHistoryDisplayFields(t: any, openRef: any | undefined, bot?: any) {
   const lev = numFinite(
@@ -1104,13 +1152,17 @@ function tradeHistoryDisplayFields(t: any, openRef: any | undefined, bot?: any) 
       if (Number.isFinite(est) && est > 0) price = est;
     }
   }
-  const sl = numFinite(
+  let sl = numFinite(
     t?.stopLoss ??
       t?.meta?.stopLoss ??
       t?.meta?.sl ??
       openRef?.stopLoss ??
       openRef?.meta?.stopLoss,
   );
+  if (String(t?.type ?? "").toUpperCase() === "CLOSE") {
+    const slAdj = closeRowDisplayStopLossPx(t, openRef, sl ?? null);
+    if (slAdj != null) sl = slAdj;
+  }
   const tp = numFinite(
     t?.takeProfit ??
       t?.meta?.takeProfit ??
@@ -3229,8 +3281,22 @@ export function PortfolioPanel() {
                         {positionInitialMarginUsd(p)}
                       </td>
                       <td
-                        className="px-3 py-2 text-slate-700 dark:text-slate-300"
-                        title={p.venue === "FUTURES" ? futuresTrailLadderSummaryTitle(p, bot) : undefined}
+                        className={`px-3 py-2 text-slate-700 dark:text-slate-300${
+                          trailSlPending ? " bg-amber-500/12 ring-1 ring-inset ring-amber-500/30" : ""
+                        }`}
+                        title={(() => {
+                          const parts: string[] = [];
+                          if (p.venue === "FUTURES") {
+                            const ladder = futuresTrailLadderSummaryTitle(p, bot);
+                            if (ladder) parts.push(ladder);
+                          }
+                          const src = (p.meta as Record<string, unknown> | undefined)?.slDisplaySource;
+                          if (src === "bot_trailing_target") {
+                            parts.push("SL = configured trailing target (engine); exchange order can lag briefly.");
+                          }
+                          if (trailSlPending) parts.push("Stop replace in flight — confirming on exchange.");
+                          return parts.length ? parts.join(" — ") : undefined;
+                        })()}
                       >
                         {p.stopLoss != null ? fmtInstrumentPx(p.stopLoss) : "—"}
                         {(() => {

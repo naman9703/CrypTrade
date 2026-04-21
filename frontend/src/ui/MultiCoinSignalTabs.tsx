@@ -1,5 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { clsx } from "clsx";
+import { computeMultiCoinTabSymbols } from "../lib/multiCoinTabSymbols";
+import { displayMarketDecisionVerdict } from "../lib/marketDecision/display";
 import { useAppStore } from "../ws/store";
 
 const CHART_TIMEZONE = "Asia/Kolkata";
@@ -17,6 +19,12 @@ type WatchSnap = {
   bufferBars: number | null;
   updatedAt: number;
   source?: string;
+  marketDecisionSnapshot?: {
+    verdict?: string;
+    failedStage?: string | null;
+    reasons?: string[];
+    regime?: { ltf?: { type?: string; confidence?: number } };
+  } | null;
 };
 
 function formatIst(ms: number) {
@@ -49,45 +57,7 @@ export function MultiCoinSignalTabs() {
   const chartDisplaySymbol = useAppStore((s) => s.chartDisplaySymbol);
   const setChartDisplaySymbol = useAppStore((s) => s.setChartDisplaySymbol);
 
-  const tabs = useMemo(() => {
-    const multi = String(bot?.universeCoinSelectMode || "").toUpperCase() === "MULTIPLE";
-    if (!multi) return [];
-    const serverTabs = Array.isArray(bot?.multiCoinSignalTabSymbols)
-      ? [...new Set(bot.multiCoinSignalTabSymbols.map((x: string) => String(x || "").trim().toUpperCase()).filter(Boolean))]
-      : [];
-    if (serverTabs.length) return serverTabs;
-    const manual = String(bot?.universePinControl || "").toUpperCase() === "MANUAL";
-    const pins = Array.isArray(bot?.universePinnedSymbols) ? bot!.universePinnedSymbols : [];
-    if (manual && pins.length) {
-      return [...new Set(pins.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean))].slice(0, 10);
-    }
-    const sel = Array.isArray(bot?.universe?.selected) ? bot.universe.selected : [];
-    const ranked = Array.isArray(bot?.universe?.ranked)
-      ? bot.universe.ranked.map((r: { symbol?: string }) => r?.symbol).filter(Boolean)
-      : [];
-    const seen = new Set<string>();
-    const merged: string[] = [];
-    for (const s of sel) {
-      const u = String(s || "").trim().toUpperCase();
-      if (!u || seen.has(u)) continue;
-      seen.add(u);
-      merged.push(u);
-    }
-    for (const s of ranked) {
-      const u = String(s || "").trim().toUpperCase();
-      if (!u || seen.has(u)) continue;
-      seen.add(u);
-      merged.push(u);
-    }
-    return merged.length ? merged.slice(0, 12) : [];
-  }, [
-    bot?.universeCoinSelectMode,
-    bot?.multiCoinSignalTabSymbols,
-    bot?.universePinControl,
-    bot?.universePinnedSymbols,
-    bot?.universe?.selected,
-    bot?.universe?.ranked,
-  ]);
+  const tabs = useMemo(() => computeMultiCoinTabSymbols(bot as Record<string, unknown>), [bot]);
 
   const snaps = (bot?.multiSymbolWatchSignals || {}) as Record<string, WatchSnap>;
   const primary = String(bot?.symbol || "").toUpperCase();
@@ -230,6 +200,33 @@ export function MultiCoinSignalTabs() {
                   Action: <span className="font-mono">{snap.stAction ?? "—"}</span>
                 </span>
               </div>
+              {snap.marketDecisionSnapshot ? (
+                <div className="mt-1 rounded border border-violet-200/80 bg-violet-50/80 px-2 py-1.5 text-[10px] leading-snug text-violet-950 dark:border-violet-800/60 dark:bg-violet-950/40 dark:text-violet-100">
+                  <span className="font-semibold uppercase tracking-wide text-violet-800 dark:text-violet-200">
+                    Market decision
+                  </span>
+                  <span className="mx-1 text-violet-400">·</span>
+                  <span className="font-mono font-semibold">
+                    {displayMarketDecisionVerdict(snap.marketDecisionSnapshot as Record<string, unknown>) ?? "—"}
+                  </span>
+                  {snap.marketDecisionSnapshot.regime?.ltf?.type ? (
+                    <>
+                      <span className="mx-1 text-violet-400">·</span>
+                      <span className="text-violet-800/90 dark:text-violet-200/90">
+                        regime {String(snap.marketDecisionSnapshot.regime.ltf.type)}
+                        {snap.marketDecisionSnapshot.regime.ltf.confidence != null
+                          ? ` (${Math.round(Number(snap.marketDecisionSnapshot.regime.ltf.confidence))})`
+                          : ""}
+                      </span>
+                    </>
+                  ) : null}
+                  {snap.marketDecisionSnapshot.reasons?.length ? (
+                    <div className="mt-0.5 text-violet-900/85 dark:text-violet-200/85">
+                      {snap.marketDecisionSnapshot.reasons.slice(0, 2).join(" · ")}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </>
           )}
         </div>

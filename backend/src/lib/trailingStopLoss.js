@@ -1,5 +1,6 @@
 import { roundTo } from "./math.js";
 import {
+  applyMinTrailGapFromMark,
   computeSupertrendTrailingSlUpdate,
   feeRateBreakevenPadded,
   migrateTieredTrailLegacySchema,
@@ -134,6 +135,38 @@ export function buildTrailLockPrices({
 export function defaultTieredPostT02SpacingFrac(roundTripFeeRate) {
   const rt = clampFeeRate(Number(roundTripFeeRate));
   return Math.min(0.02, Math.max(rt > 0 ? 2 * rt : 0, 0.0004));
+}
+
+/**
+ * Discrete SL lock after completing `trailStep` in `tiered_st_fee_entry` mode.
+ * Must stay aligned with `resolveSupertrendTieredActivationGate` (T01 slip, T02 = exact fee BE lock, post‑T02 equidistant from T02 anchor using `feeBeSt`).
+ */
+export function tieredStLockPxForCompletedTrailStep(trailStep, ctx) {
+  const s = Math.max(0, Math.floor(Number(trailStep) || 0));
+  const E = Number(ctx.entryPx);
+  const isLong = Boolean(ctx.isLong);
+  const feeBeLockRate = Number(ctx.feeBeLockRate);
+  const feeBeSt = Number(ctx.feeBeSt);
+  const rt = Number(ctx.roundTripFeeR);
+  const spUser = ctx.postT02SpacingFrac != null ? Number(ctx.postT02SpacingFrac) : NaN;
+  const slip = Math.max(0, Math.min(0.01, Number(ctx.t01LockSlipFrac) || 0));
+  if (!Number.isFinite(E) || E <= 0) return null;
+  if (s < 1) return null;
+  if (s === 1) {
+    return isLong ? E * (1 + slip) : E * (1 - slip);
+  }
+  if (s === 2) {
+    if (!Number.isFinite(feeBeLockRate) || feeBeLockRate < 0) return null;
+    return isLong ? E * (1 + feeBeLockRate) : E * (1 - feeBeLockRate);
+  }
+  const spacingAbs =
+    E *
+    (Number.isFinite(spUser) && spUser > 0 ? Math.min(0.05, spUser) : defaultTieredPostT02SpacingFrac(rt));
+  const t02Lock = isLong ? E * (1 + feeBeSt) : E * (1 - feeBeSt);
+  const k = s - 2;
+  const lockPx = isLong ? t02Lock + k * spacingAbs : t02Lock - k * spacingAbs;
+  if (!Number.isFinite(lockPx) || lockPx <= 0) return null;
+  return lockPx;
 }
 
 /**
@@ -705,19 +738,41 @@ export function applyTrailingStopBinanceMemory(opts) {
     };
 
     /**
-     * Tiered fee-BE + advanced: **tier index follows price** (ladder activations on HWM), while **SL**
-     * still follows `max(ST, BE)` in one geometry pass — avoids ST-lag leaving `trailStep` stuck at T1
-     * when the mark has already crossed T5 gates.
+     * Tiered fee-BE: **trailStep** follows HWM vs ladder activations; **post‑T02 SL** is the discrete
+     * equidistant lock (same formula as preview), frozen in `trailLadderSnapshotV1` at first evaluation.
      */
     if (tieredStMode) {
       enforceMonotonicTrailStep();
       migrateTieredTrailLegacySchema(tr);
       tr.trailStepLabelStyle = "tiered_st_fee_entry";
-      const t01ActivationPx = isLong ? tr.entryPrice * (1 + buf) : tr.entryPrice * (1 - buf);
-      const t02ActivationPx = defaultActivationPx;
+      /** Freeze ladder inputs once per open position so mid-trade config/ATR buffer changes cannot move rungs. */
+      if (!tr.trailLadderSnapshotV1) {
+        tr.trailLadderSnapshotV1 = {
+          entryPx: Number(tr.entryPrice),
+          isLong,
+          feeBeLockRate: feeBe,
+          feeBeSt,
+          buf,
+          postT02Buf,
+          postT02SpacingFrac: postT02SpacingUser,
+          roundTripFeeR,
+          t01LockSlipFrac,
+        };
+      }
+      const entryLadder = Number(tr.trailLadderSnapshotV1.entryPx);
+      if (!Number.isFinite(entryLadder) || entryLadder <= 0) return false;
+      const t01ActivationPx = isLong ? entryLadder * (1 + buf) : entryLadder * (1 - buf);
+      const t02ActivationPx = isLong
+        ? entryLadder * (1 + (useFeeBeTrail ? feeBeSt : 0) + buf)
+        : entryLadder * (1 - (useFeeBeTrail ? feeBeSt : 0) - buf);
       const entryLockBreakevenPx = isLong
-        ? tr.entryPrice * (1 + t01LockSlipFrac)
-        : tr.entryPrice * (1 - t01LockSlipFrac);
+        ? entryLadder * (1 + t01LockSlipFrac)
+        : entryLadder * (1 - t01LockSlipFrac);
+      const evtBreakevenBaseLadder = stFeeOnEvt
+        ? isLong
+          ? entryLadder * (1 + feeBeLockRate)
+          : entryLadder * (1 - feeBeLockRate)
+        : entryLadder;
       const bCur = localBrackets[sym];
       const tgtCur = placedBracketTargets?.[sym];
       const prevRawCur = bCur ? bCur.stopLoss : tgtCur?.stopLoss;
@@ -736,7 +791,7 @@ export function applyTrailingStopBinanceMemory(opts) {
 
       const rawPriceStep = computeSupertrendTieredMaxTrailStepFromExtreme({
         hwm,
-        entryPx: tr.entryPrice,
+        entryPx: entryLadder,
         isLong,
         feeBe: feeBeSt,
         bufferRate: buf,
@@ -761,37 +816,24 @@ export function applyTrailingStopBinanceMemory(opts) {
             : resolveSupertrendTieredActivationGate({
                 stepNow: nextTrailStep - 1,
                 isLong,
-                entryPx: tr.entryPrice,
+                entryPx: entryLadder,
                 feeBe: feeBeSt,
                 bufferRate: buf,
                 useFeeBeTrail,
                 stLevels,
                 ...gateRtSpacing,
               }).activationPx;
-      breakevenForEvt = nextTrailStep === 1 ? entryLockBreakevenPx : evtBreakevenBase;
+      breakevenForEvt = nextTrailStep === 1 ? entryLockBreakevenPx : evtBreakevenBaseLadder;
 
       if (nextTrailStep < 1) {
         return false;
       }
 
-      /** T01/T02 = entry then fee-BE locks (no ST line); step ≥ 3 = Supertrend with fee-BE floor. */
-      const useAdvCompute = nextTrailStep >= 3 && effectiveUseAdv;
-      if (useAdvCompute && !hasValidStPx) {
-        tr.trailStep = nextTrailStep;
-        tr.trailTierLabel = trailStepToTierLabel(tr.trailStep, "tiered_st_fee_entry");
-        if (trailDiagEmit(tr, "tiered_st_no_px", 90_000)) {
-          notifyActivity?.({
-            category: "risk",
-            level: "warn",
-            msg: `Tiered trailing · ${sym} · mark passed Supertrend gates (after T02) but Supertrend price missing (tier state updated; SL unchanged until ST is available)`,
-            reason: "trailing_sl_diagnostic",
-            symbol: sym,
-            detail: { outcome: "failure", phase: "activation", markPx, trailStep: tr.trailStep },
-          });
-        }
-        return false;
-      }
-
+      /**
+       * Post‑T02 (step ≥ 3): SL is the **discrete ladder lock** (equidistant from T02 anchor), not min(SL, Supertrend).
+       * Tier index already tracks HWM vs ladder gates; mixing ST into SL broke spacing vs preview ("silent" wrong distances).
+       * T01/T02: still use fee‑BE geometry without ST line.
+       */
       const gateForGeometry =
         nextTrailStep <= 1
           ? t01ActivationPx
@@ -800,7 +842,7 @@ export function applyTrailingStopBinanceMemory(opts) {
             : resolveSupertrendTieredActivationGate({
                 stepNow: nextTrailStep - 1,
                 isLong,
-                entryPx: tr.entryPrice,
+                entryPx: entryLadder,
                 feeBe: feeBeSt,
                 bufferRate: buf,
                 useFeeBeTrail,
@@ -809,26 +851,59 @@ export function applyTrailingStopBinanceMemory(opts) {
               }).activationPx;
       const pxForCompute = isLong ? Math.max(markPx, gateForGeometry) : Math.min(markPx, gateForGeometry);
 
-      const computeBreakevenPx = nextTrailStep === 1 ? entryLockBreakevenPx : evtBreakevenBase;
+      const computeBreakevenPx = nextTrailStep === 1 ? entryLockBreakevenPx : evtBreakevenBaseLadder;
       const computeActivationPx = gateForGeometry;
 
-      const r = computeSupertrendTrailingSlUpdate({
-        entryPrice: tr.entryPrice,
-        currentPrice: pxForCompute,
-        supertrend: useAdvCompute && hasValidStPx ? stPx : NaN,
-        previousSl: prevSlCur,
-        isLong,
-        leverage: lev,
-        feeRate: feeBeSt,
-        bufferRate: buf,
-        maintenanceMarginRate: mm,
-        minSlDistanceFrac: minDistLoop,
-        minTrailGapFromMarkFrac: minGapFromMark,
-        useFeeBreakeven: useFeeBeTrail,
-        useAdvancedTrail: useAdvCompute,
-        activationPrice: computeActivationPx,
-        breakevenPrice: computeBreakevenPx,
-      });
+      let r;
+      if (nextTrailStep >= 3) {
+        const ladderRaw = tieredStLockPxForCompletedTrailStep(nextTrailStep, {
+          entryPx: entryLadder,
+          isLong,
+          feeBeLockRate: feeBe,
+          feeBeSt,
+          roundTripFeeR,
+          postT02SpacingFrac: postT02SpacingUser,
+          t01LockSlipFrac,
+        });
+        if (ladderRaw == null || !Number.isFinite(ladderRaw)) {
+          return false;
+        }
+        let ladderSl = applyMinTrailGapFromMark({
+          isLong,
+          cur: markPx,
+          prevSl: prevSlCur,
+          newSl: ladderRaw,
+          breakeven: computeBreakevenPx,
+          useFeeBe: useFeeBeTrail,
+          gapFrac: minGapFromMark,
+        });
+        if (Number.isFinite(minDistLoop) && minDistLoop > 0 && markPx > 0) {
+          const dist = Math.abs(markPx - ladderSl) / markPx;
+          const tightening = isLong ? ladderSl > prevSlCur : ladderSl < prevSlCur;
+          if (dist < minDistLoop && !tightening) {
+            ladderSl = prevSlCur;
+          }
+        }
+        r = { newSl: ladderSl, status: "OK" };
+      } else {
+        r = computeSupertrendTrailingSlUpdate({
+          entryPrice: tr.entryPrice,
+          currentPrice: pxForCompute,
+          supertrend: NaN,
+          previousSl: prevSlCur,
+          isLong,
+          leverage: lev,
+          feeRate: feeBeSt,
+          bufferRate: buf,
+          maintenanceMarginRate: mm,
+          minSlDistanceFrac: minDistLoop,
+          minTrailGapFromMarkFrac: minGapFromMark,
+          useFeeBreakeven: useFeeBeTrail,
+          useAdvancedTrail: false,
+          activationPrice: computeActivationPx,
+          breakevenPrice: computeBreakevenPx,
+        });
+      }
 
       if (r.status === "REJECT_TRADE" || r.status === "INVALID") {
         if (trailDiagEmit(tr, `bad_${r.status}`, 120_000)) {
@@ -862,14 +937,14 @@ export function applyTrailingStopBinanceMemory(opts) {
             s === 1 ? t01ActivationPx : s === 2 ? t02ActivationPx : resolveSupertrendTieredActivationGate({
                 stepNow: s - 1,
                 isLong,
-                entryPx: tr.entryPrice,
+                entryPx: entryLadder,
                 feeBe: feeBeSt,
                 bufferRate: buf,
                 useFeeBeTrail,
                 stLevels,
                 ...gateRtSpacing,
               }).activationPx;
-          const beAp = s === 1 ? entryLockBreakevenPx : evtBreakevenBase;
+          const beAp = s === 1 ? entryLockBreakevenPx : evtBreakevenBaseLadder;
           seen[lab] = true;
           notifyActivity?.({
             category: "trailing",
@@ -884,7 +959,7 @@ export function applyTrailingStopBinanceMemory(opts) {
               activationPrice: gateAp,
               breakeven: beAp,
               tierLabel: lab,
-              entryPrice: tr.entryPrice,
+              entryPrice: entryLadder,
               isLong,
               supertrendPx: supertrendPxForEvt,
             },
@@ -934,7 +1009,7 @@ export function applyTrailingStopBinanceMemory(opts) {
         newStopLoss: finalSlLoop,
         maxTrailSteps: trailingOpts.maxTrailSteps ?? 1,
         isLong,
-        entryPrice: tr.entryPrice,
+        entryPrice: entryLadder,
         supertrendPx: supertrendPxForEvt,
         trailStatus: r.status,
         breakeven: breakevenForEvt,

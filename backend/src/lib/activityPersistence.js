@@ -145,7 +145,14 @@ function tradeTsSortMs(t) {
   return Number.isFinite(ms) ? ms : 0;
 }
 
-/** Stable key for merge map: CLOSE rows keyed by income tranId when present (avoids fut_<sym> collisions). */
+/**
+ * Stable key for merge map:
+ * - Binance USD-M CLOSE: `meta.tranId` → `close_tran:…` (unique vs OPEN position id).
+ * - Paper futures CLOSE reuses the position id as `id` (same string as OPEN); without a tranId,
+ *   falling back to `String(id)` would collide with OPEN and drop one leg — use `close_id:…`.
+ * - Binance USD-M OPEN: `id` is often `fut_<SYMBOL>` (one per symbol for position linking), so **not**
+ *   unique per round-trip — key by `meta.orderId` (exchange entry order id) when present.
+ */
 function tradeMergeKey(t) {
   if (!t) return null;
   if (String(t.type) === "CLOSE") {
@@ -155,6 +162,13 @@ function tradeMergeKey(t) {
         ? t.meta.tranIds[t.meta.tranIds.length - 1]
         : null);
     if (tid != null && String(tid) !== "") return `close_tran:${String(tid)}`;
+    if (t.id != null && String(t.id) !== "") return `close_id:${String(t.id)}`;
+    return null;
+  }
+  if (String(t.type) === "OPEN") {
+    const oid =
+      t.meta?.orderId ?? t.meta?.binanceOrderId ?? t.meta?.exchangeOrderId ?? t.meta?.entryOrderId;
+    if (oid != null && String(oid).trim() !== "") return `open_ord:${String(oid).trim()}`;
   }
   if (t.id != null && String(t.id) !== "") return String(t.id);
   return null;

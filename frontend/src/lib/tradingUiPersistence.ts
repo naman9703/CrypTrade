@@ -72,6 +72,7 @@ export const PERSIST_BOT_KEYS = [
   "supertrendMoveQualityMinBodyVsAvg",
   "supertrendMoveQualityMinDirectionalBody",
   "supertrendMoveQualityMinVolumeVsAvg",
+  "marketDecision",
   "supertrendBreakoutConfirm",
   "supertrendBreakoutMaxBars",
   "signalStrengthOpenMin",
@@ -105,6 +106,8 @@ export function extractPersistableBotPatch(bot: Record<string, unknown> | null |
     if (Object.prototype.hasOwnProperty.call(bot, key) && bot[key] !== undefined) {
       if (key === "tradingFormDefaults" && bot.tradingFormDefaults && typeof bot.tradingFormDefaults === "object") {
         out.tradingFormDefaults = { ...(bot.tradingFormDefaults as Record<string, unknown>) };
+      } else if (key === "marketDecision" && bot.marketDecision && typeof bot.marketDecision === "object") {
+        out.marketDecision = { ...(bot.marketDecision as Record<string, unknown>) };
       } else if (
         (key === "multiBudgetCoinUsdt" || key === "multiBudgetCoinPct") &&
         bot[key] &&
@@ -130,6 +133,9 @@ export function mergePersistedBotPatch(
     if (key === "tradingFormDefaults" && patch.tradingFormDefaults && typeof patch.tradingFormDefaults === "object") {
       const prev = (serverBot.tradingFormDefaults as Record<string, unknown> | undefined) || {};
       out.tradingFormDefaults = { ...prev, ...(patch.tradingFormDefaults as Record<string, unknown>) };
+    } else if (key === "marketDecision" && patch.marketDecision && typeof patch.marketDecision === "object") {
+      const prev = (serverBot.marketDecision as Record<string, unknown> | undefined) || {};
+      out.marketDecision = { ...prev, ...(patch.marketDecision as Record<string, unknown>) };
     } else if (
       (key === "multiBudgetCoinUsdt" || key === "multiBudgetCoinPct") &&
       patch[key] &&
