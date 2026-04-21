@@ -6,7 +6,7 @@
 import { adx, atr, ema, rsi } from "../strategy/indicators.js";
 import { binanceIntervalMs } from "./supertrendChartAlign.js";
 
-export const MARKET_DECISION_SCHEMA_VERSION = 3;
+export const MARKET_DECISION_SCHEMA_VERSION = 4;
 
 export const DEFAULT_MARKET_DECISION_CONFIG = {
   enabled: false,
@@ -597,63 +597,34 @@ export function evaluateMarketDecision(input) {
   const useRegime = config.regimeFilterEnabled;
 
   if (!config.enabled) {
-    reasons.push("Market decision engine disabled — pass-through (metrics only)");
-    const entryPreview = evaluateEntryTiming({
-      config,
-      price: input.entryTiming.price,
-      ema: input.entryTiming.ema,
-      atr: input.entryTiming.atr,
+    const hypot = evaluateMarketDecision({
+      ...input,
+      config: { ...config, enabled: true },
     });
-    const feeRt = Number.isFinite(input.feeGate.roundTripFeeRate)
-      ? input.feeGate.roundTripFeeRate
-      : config.defaultRoundTripFeeRate;
-    const feeEvalDisplay = evaluateFeeGate({
-      config: { ...config, feeGateEnabled: true },
-      expectedMovePct: input.feeGate.expectedMovePct,
-      roundTripFeeRate: feeRt,
-    });
-    const feeReasons = [...feeEvalDisplay.reasons];
-    if (!config.feeGateEnabled) feeReasons.push("Fee gate disabled in config — numbers are what-if");
-    feeReasons.push("Market decision engine disabled — not enforced for trading");
-    const confidencePassed = ltf.confidence >= config.minRegimeConfidence;
-    const passThresholds = buildPassThresholds(
-      config,
-      {
-        ...entryPreview,
-        reasons: [...entryPreview.reasons, "Not enforced — market decision engine is disabled"],
-      },
-      config.feeGateEnabled ? feeEvalDisplay.requiredMovePct : null,
-    );
-    const snap = buildSnapshot({
-      input,
-      ltf,
-      stability,
-      transition,
-      chop,
-      verdict: "BYPASS",
-      failedStage: "engine_disabled",
-      reasons,
-      metrics,
-      confidencePassed,
-      confidencePenalty: 0,
-      score: undefined,
+    const merged = {
+      ...hypot,
+      version: MARKET_DECISION_SCHEMA_VERSION,
+      engineDisabled: true,
+      reasons: [
+        "Market decision engine disabled — verdict is what would apply if enabled; trading is not filtered.",
+        ...(Array.isArray(hypot.reasons) ? hypot.reasons : []),
+      ],
       entryTiming: {
-        ...entryPreview,
-        reasons: [...entryPreview.reasons, "Not enforced — market decision engine is disabled"],
+        ...hypot.entryTiming,
+        reasons: [
+          ...(Array.isArray(hypot.entryTiming?.reasons) ? hypot.entryTiming.reasons : []),
+          "Not enforced — engine master switch is off",
+        ],
       },
       feeGate: {
-        enabled: config.feeGateEnabled,
-        requiredMovePct: feeEvalDisplay.requiredMovePct,
-        expectedMovePct: Number.isFinite(input.feeGate.expectedMovePct) ? input.feeGate.expectedMovePct : null,
-        passed: config.feeGateEnabled ? feeEvalDisplay.passed : true,
-        reasons: feeReasons,
+        ...hypot.feeGate,
+        reasons: [
+          ...(Array.isArray(hypot.feeGate?.reasons) ? hypot.feeGate.reasons : []),
+          "Not enforced — engine master switch is off",
+        ],
       },
-      alignment: "N_A",
-      alignmentBlocked: false,
-      pipelineDiagnostics: undefined,
-      passThresholds,
-    });
-    return deepFreezeSnapshot(snap);
+    };
+    return deepFreezeSnapshot(merged);
   }
 
   const confidencePassed = ltf.confidence >= config.minRegimeConfidence;

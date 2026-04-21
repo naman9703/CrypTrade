@@ -3853,7 +3853,7 @@ export function TradingPanel() {
                                 level: "info",
                                 msg: on
                                   ? "Market decision engine ON — multi-coin snapshots use regime + fee gate (see tabs)"
-                                  : "Market decision engine OFF — snapshots use BYPASS (diagnostic metrics only; supertrend Action stays authoritative)",
+                                  : "Market decision engine OFF — snapshots still show ALLOW/BLOCK/WAIT (hypothetical if enabled); filters not applied; supertrend Action stays authoritative",
                               });
                             } catch {
                               pushLog({ level: "error", msg: "Failed to update market decision config" });

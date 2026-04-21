@@ -3,11 +3,11 @@
  * Schema version bumps when snapshot shape changes incompatibly.
  */
 
-export const MARKET_DECISION_SCHEMA_VERSION = 3 as const;
+export const MARKET_DECISION_SCHEMA_VERSION = 4 as const;
 
 export type RegimeType = "UPTREND" | "DOWNTREND" | "SIDEWAYS" | "VOLATILE" | "UNCLEAR";
 
-/** BYPASS = engine disabled (diagnostics only; does not permit or block trades). */
+/** BYPASS = legacy / warm-up placeholder; when master switch is off, snapshots use ALLOW/BLOCK/WAIT + {@link MarketDecisionSnapshot.engineDisabled}. */
 export type DecisionVerdict = "ALLOW" | "BLOCK" | "WAIT" | "BYPASS";
 
 export type PipelineStageId =
@@ -135,10 +135,12 @@ export interface MarketDecisionSnapshot {
   timeframe: string;
   signalSide: "BUY" | "SELL" | null;
   verdict: DecisionVerdict;
+  /** When true, master switch is off: {@link verdict} is still the hypothetical outcome if enabled; trading is not filtered. */
+  engineDisabled?: boolean;
   failedStage: PipelineStageId | null;
   reasons: string[];
   metrics: Record<string, unknown>;
-  /** Present when engine evaluated (not BYPASS): primary stage severity + secondary issues for debugging. */
+  /** Present when verdict is BLOCK/WAIT with a primary stage: severity + secondary issues for debugging. */
   pipelineDiagnostics?: {
     primaryStage: PipelineStageId | null;
     primarySeverity: "high" | "medium" | "low";

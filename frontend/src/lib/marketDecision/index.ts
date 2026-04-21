@@ -25,5 +25,5 @@ export { computeSignalQualityScore } from "./score";
 export { evaluateFeeGate, computeRequiredMovePct } from "./feeGate";
 export { evaluateEntryTiming } from "./entryTiming";
 export { evaluateMarketDecision } from "./pipeline";
-export { displayMarketDecisionVerdict, mdEngineIsBypass } from "./display";
+export { displayMarketDecisionVerdict, mdEngineIsBypass, mdEnforcementOff } from "./display";
 export { buildRegimeHistoryLtf } from "./helpers";

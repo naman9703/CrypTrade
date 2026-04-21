@@ -38,7 +38,7 @@ import {
   computeSupertrendSignalVerdicts,
   formatSupertrendSignalVerdict,
 } from "../lib/supertrendSignalVerdict";
-import { displayMarketDecisionVerdict, mdEngineIsBypass } from "../lib/marketDecision/display";
+import { displayMarketDecisionVerdict, mdEnforcementOff } from "../lib/marketDecision/display";
 import { useThemeStore } from "../themeStore";
 import { CHART_CANDLE_MAX, useAppStore } from "../ws/store";
 import { OrderBookPanel } from "./OrderBookPanel";
@@ -296,7 +296,7 @@ function SupertrendSignalAccordionDetails({ h }: { h: SupertrendSignalHistRow })
   const mds = h.marketDecisionSnapshot;
   const verdict = displayMarketDecisionVerdict(mds);
   const failedStage = mds && mds.failedStage != null ? String(mds.failedStage) : null;
-  const bypass = mdEngineIsBypass(mds);
+  const enforcementOff = mdEnforcementOff(mds);
   const reasons = Array.isArray(mds?.reasons) ? (mds.reasons as string[]) : [];
   const ci =
     mds && mds.classifierInputs != null && typeof mds.classifierInputs === "object"
@@ -359,9 +359,10 @@ function SupertrendSignalAccordionDetails({ h }: { h: SupertrendSignalHistRow })
           </div>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-800 dark:text-slate-200">
             <span className="font-mono font-semibold">{verdict ?? "—"}</span>
-            {bypass ? (
-              <span className="text-slate-500">(engine off — pass-through, not a trade permit)</span>
-            ) : failedStage && failedStage !== "null" ? (
+            {enforcementOff ? (
+              <span className="text-slate-500">(monitoring — filters not applied to trades)</span>
+            ) : null}
+            {failedStage && failedStage !== "null" && (verdict === "BLOCK" || verdict === "WAIT") ? (
               <span className="text-slate-500">
                 stage: <span className="font-mono">{failedStage}</span>
                 {pipeDiag?.primarySeverity ? (
@@ -373,10 +374,10 @@ function SupertrendSignalAccordionDetails({ h }: { h: SupertrendSignalHistRow })
               </span>
             ) : null}
           </p>
-          {bypass ? (
+          {enforcementOff ? (
             <p className="mt-1 text-[9px] text-slate-600 dark:text-slate-400">
-              Supertrend <span className="font-mono">Action</span> ({h.stAction ?? "—"}) is authoritative for open/close logic; the rows below are
-              diagnostics only until the engine is enabled.
+              Supertrend <span className="font-mono">Action</span> ({h.stAction ?? "—"}) controls opens/closes while the engine is off; the verdict
+              above is what would apply if the engine were enabled — use it to compare against real trades.
             </p>
           ) : null}
           {reasons.length > 0 ? (
@@ -388,7 +389,8 @@ function SupertrendSignalAccordionDetails({ h }: { h: SupertrendSignalHistRow })
           ) : null}
           {mdMetrics?.warmupPartial === true ? (
             <p className="mt-1 text-[9px] text-amber-800/95 dark:text-amber-200/90">
-              Warm-up snapshot (short history vs full ADX/EMA pipeline) — verdict is still BYPASS; engine off does not filter trades.
+              Warm-up snapshot (short history vs full ADX/EMA pipeline) — hypothetical verdict; filters not applied when the engine master switch is
+              off.
             </p>
           ) : null}
           {ltf ? (
@@ -538,7 +540,7 @@ function SupertrendSignalAccordionDetails({ h }: { h: SupertrendSignalHistRow })
                 ) : (
                   <span className="text-amber-700 dark:text-amber-300">below min</span>
                 )}
-                {bypass ? <span className="text-slate-500"> (informational — engine off)</span> : null}
+                {enforcementOff ? <span className="text-slate-500"> (not enforced — engine off)</span> : null}
               </div>
               <div>
                 Confidence mode: <span className="font-mono">{String(cg.mode)}</span>
@@ -567,7 +569,7 @@ function SupertrendSignalAccordionDetails({ h }: { h: SupertrendSignalHistRow })
               Entry timing: <span className="font-mono">{String(et.recommendation ?? "—")}</span> · mode{" "}
               <span className="font-mono">{String(et.mode ?? "—")}</span>
               {entryBracket ? <span className={MD_PASS_CLS}> {entryBracket}</span> : null}
-              {bypass ? <span className="text-slate-500"> — not enforced (engine off)</span> : null}
+              {enforcementOff ? <span className="text-slate-500"> — not enforced (engine off)</span> : null}
               {et.reasons != null && Array.isArray(et.reasons) && (et.reasons as string[]).length ? (
                 <span> — {(et.reasons as string[]).join("; ")}</span>
               ) : null}
@@ -587,7 +589,7 @@ function SupertrendSignalAccordionDetails({ h }: { h: SupertrendSignalHistRow })
                 ) : (
                   <span className="text-amber-700 dark:text-amber-300">FAIL</span>
                 )}
-                {bypass ? <span className="text-slate-500"> — not enforced (engine off)</span> : null}
+                {enforcementOff ? <span className="text-slate-500"> — not enforced (engine off)</span> : null}
               </div>
               <div className="font-mono text-[9px]">
                 Expected move:{" "}
@@ -3391,8 +3393,8 @@ export function ChartPanel() {
                       onClick={() => setOpenSignalAccordionKey((k) => (k === rowKey ? null : rowKey))}
                       aria-expanded={openSignalAccordionKey === rowKey}
                       title={
-                        mdEngineIsBypass(mdSnap)
-                          ? "Click to expand. MD engine off: supertrend Action is authoritative; regime/MQ/fee lines are informational. Brackets on the row = min to pass each gate when that gate is on."
+                        mdEnforcementOff(mdSnap)
+                          ? "Click to expand. Engine master switch off: MD verdict is what would apply if enabled (for monitoring). Supertrend Action is authoritative for trades. Brackets = min to pass each gate when that gate is on."
                           : "Click to expand: signal strength, move quality, market decision (ADX/RSI/EMA) + verdict when engine is on. Brackets = min threshold to pass that filter layer."
                       }
                     >
@@ -3442,8 +3444,8 @@ export function ChartPanel() {
                         <span
                           className="text-violet-600/95 dark:text-violet-300/90"
                           title={
-                            mdEngineIsBypass(mdSnap)
-                              ? "BYPASS: engine disabled — not a permit to trade; compare to supertrend Action"
+                            mdEnforcementOff(mdSnap)
+                              ? "Verdict if engine were enabled (monitoring when master switch is off). Not a trade permit by itself — compare to supertrend Action."
                               : "Market decision engine verdict at this bar (when enabled, enforced with other gates). Bracket = min thresholds for regime/score/fee/chop layers from snapshot."
                           }
                         >

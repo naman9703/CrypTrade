@@ -1967,7 +1967,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
   /**
    * When the market decision engine is enabled in bot settings, block **opens** when the snapshot verdict
-   * is not ALLOW (e.g. BLOCK / WAIT). BYPASS only occurs when the engine master switch is off.
+   * is not ALLOW (e.g. BLOCK / WAIT). When the master switch is off, snapshots carry hypothetical verdicts +
+   * engineDisabled; this function returns null early because mdCfg.enabled is false.
    * If a full snapshot cannot be built (insufficient bars while enabled), block conservatively.
    */
   function marketDecisionBlocksOpen({ openingSide, candles, cTs, decisionSnapshotBar, symbol }) {
@@ -2008,7 +2009,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       };
     }
     const v = String(snap.verdict || "").toUpperCase();
-    if (v === "ALLOW" || v === "BYPASS") return null;
+    if (v === "ALLOW" || v === "BYPASS") return null; // BYPASS: legacy snapshots only
     return {
       reason: "market_decision_gate",
       detail: { verdict: snap.verdict, failedStage: snap.failedStage, snapshot: snap },
