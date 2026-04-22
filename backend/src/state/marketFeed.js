@@ -25,12 +25,134 @@ function syntheticBasePrice(symbol) {
   return Math.max(0.01, (Math.abs(h) % 50_000) / 100);
 }
 
+/**
+ * Strip trailing `/api` so `GET /api/v3/klines` joins correctly when env uses a `.../api` REST root.
+ */
+function normalizeBinanceSpotKlineRestRoot(raw, fallbackHost) {
+  let s = String(raw || "").trim();
+  if (!s) s = fallbackHost;
+  s = s.replace(/\/$/, "");
+  if (s.endsWith("/api")) s = s.slice(0, -4);
+  return s || fallbackHost;
+}
+
+function resolveSpotRestBaseForFeed(tradingMode) {
+  const tm = String(tradingMode || "").toUpperCase();
+  if (tm === "BINANCE_DEMO_API") {
+    return normalizeBinanceSpotKlineRestRoot(
+      process.env.BINANCE_DEMO_SPOT_KLINE_REST_BASE || process.env.BINANCE_DEMO_REST_BASE,
+      "https://demo-api.binance.com",
+    );
+  }
+  if (tm === "BINANCE_LIVE") {
+    return normalizeBinanceSpotKlineRestRoot(
+      process.env.BINANCE_LIVE_SPOT_KLINE_REST_BASE || process.env.BINANCE_LIVE_REST_BASE,
+      "https://api.binance.com",
+    );
+  }
+  if (tm === "BINANCE_TESTNET") {
+    return normalizeBinanceSpotKlineRestRoot(process.env.BINANCE_TESTNET_REST_BASE, "https://testnet.binance.vision");
+  }
+  return normalizeBinanceSpotKlineRestRoot(process.env.BINANCE_REST_BASE, "https://api.binance.com");
+}
+
+function resolveSpotWsBaseForFeed(tradingMode) {
+  const tm = String(tradingMode || "").toUpperCase();
+  if (tm === "BINANCE_DEMO_API") {
+    return process.env.BINANCE_DEMO_WS_BASE || "wss://demo-stream.binance.com/ws";
+  }
+  if (tm === "BINANCE_LIVE") {
+    return process.env.BINANCE_LIVE_WS_BASE || process.env.BINANCE_WS_BASE || "wss://stream.binance.com:9443/ws";
+  }
+  if (tm === "BINANCE_TESTNET") {
+    return process.env.BINANCE_TESTNET_WS_BASE || "wss://testnet.binance.vision/ws";
+  }
+  return process.env.BINANCE_WS_BASE || "wss://stream.binance.com:9443/ws";
+}
+
+function resolveSpotCombinedBaseForFeed(tradingMode) {
+  const tm = String(tradingMode || "").toUpperCase();
+  if (tm === "BINANCE_DEMO_API") {
+    return process.env.BINANCE_DEMO_COMBINED_BASE || "wss://demo-stream.binance.com/stream";
+  }
+  if (tm === "BINANCE_LIVE") {
+    return (
+      process.env.BINANCE_LIVE_COMBINED_BASE ||
+      process.env.BINANCE_COMBINED_BASE ||
+      "wss://stream.binance.com:9443/stream"
+    );
+  }
+  if (tm === "BINANCE_TESTNET") {
+    return process.env.BINANCE_TESTNET_COMBINED_BASE || "wss://testnet.binance.vision/stream";
+  }
+  return process.env.BINANCE_COMBINED_BASE || "wss://stream.binance.com:9443/stream";
+}
+
+function resolveFuturesRestBaseForFeed(tradingMode) {
+  const tm = String(tradingMode || "").toUpperCase();
+  if (tm === "BINANCE_DEMO_API") {
+    return process.env.BINANCE_DEMO_FUTURES_REST_BASE || "https://demo-fapi.binance.com";
+  }
+  if (tm === "BINANCE_TESTNET") {
+    return process.env.BINANCE_FUTURES_TESTNET_REST_BASE || "https://testnet.binancefuture.com";
+  }
+  if (tm === "BINANCE_LIVE") {
+    return (
+      process.env.BINANCE_LIVE_FUTURES_REST_BASE ||
+      process.env.BINANCE_FUTURES_REST_BASE ||
+      "https://fapi.binance.com"
+    );
+  }
+  return process.env.BINANCE_FUTURES_REST_BASE || "https://fapi.binance.com";
+}
+
+/** USD-M testnet / demo-fapi public streams (Binance derivatives general-info), not mainnet fstream. */
+function resolveFuturesWsBaseForFeed(tradingMode) {
+  const tm = String(tradingMode || "").toUpperCase();
+  if (tm === "BINANCE_DEMO_API" || tm === "BINANCE_TESTNET") {
+    return (
+      process.env.BINANCE_DEMO_FUTURES_WS_BASE ||
+      process.env.BINANCE_FUTURES_TESTNET_WS_BASE ||
+      "wss://fstream.binancefuture.com/ws"
+    );
+  }
+  if (tm === "BINANCE_LIVE") {
+    return (
+      process.env.BINANCE_LIVE_FUTURES_WS_BASE ||
+      process.env.BINANCE_FUTURES_WS_BASE ||
+      "wss://fstream.binance.com/ws"
+    );
+  }
+  return process.env.BINANCE_FUTURES_WS_BASE || "wss://fstream.binance.com/ws";
+}
+
+function resolveFuturesCombinedBaseForFeed(tradingMode) {
+  const tm = String(tradingMode || "").toUpperCase();
+  if (tm === "BINANCE_DEMO_API" || tm === "BINANCE_TESTNET") {
+    return (
+      process.env.BINANCE_DEMO_FUTURES_COMBINED_BASE ||
+      process.env.BINANCE_FUTURES_TESTNET_COMBINED_BASE ||
+      "wss://fstream.binancefuture.com/stream"
+    );
+  }
+  if (tm === "BINANCE_LIVE") {
+    return (
+      process.env.BINANCE_LIVE_FUTURES_COMBINED_BASE ||
+      process.env.BINANCE_FUTURES_COMBINED_BASE ||
+      "wss://fstream.binance.com/stream"
+    );
+  }
+  return process.env.BINANCE_FUTURES_COMBINED_BASE || "wss://fstream.binance.com/stream";
+}
+
 // Feed factory. Default: SYNTH. Optional: BINANCE (spot) or BINANCE_FUTURES (USDT-M public fapi + fstream).
 // `feedKind` lets PAPER use live public data while process.env.MARKET_FEED stays SYNTH for other modes.
-export function createMarketFeed({ log, symbol, timeframe, onCandleClose = null, feedKind } = {}) {
+// `tradingMode` routes demo vs live public WS + kline REST (BINANCE_DEMO_API / BINANCE_TESTNET / BINANCE_LIVE); PAPER keeps mainnet defaults.
+export function createMarketFeed({ log, symbol, timeframe, onCandleClose = null, feedKind, tradingMode } = {}) {
   const kind = String(
     feedKind != null && String(feedKind).trim() ? feedKind : process.env.MARKET_FEED || "SYNTH",
   ).toUpperCase();
+  const tm = tradingMode != null && String(tradingMode).trim() !== "" ? String(tradingMode) : "";
   if (kind === "BINANCE") {
     return createBinanceCombinedMarketFeed({
       log,
@@ -38,8 +160,9 @@ export function createMarketFeed({ log, symbol, timeframe, onCandleClose = null,
       timeframe,
       variant: "spot",
       watchSymbols: [],
-      restBase: process.env.BINANCE_REST_BASE || "https://api.binance.com",
-      wsBase: process.env.BINANCE_WS_BASE || "wss://stream.binance.com:9443/ws",
+      restBase: resolveSpotRestBaseForFeed(tm),
+      wsBase: resolveSpotWsBaseForFeed(tm),
+      combinedStreamBase: resolveSpotCombinedBaseForFeed(tm),
       onCandleClose,
     });
   }
@@ -50,8 +173,9 @@ export function createMarketFeed({ log, symbol, timeframe, onCandleClose = null,
       timeframe,
       variant: "futures",
       watchSymbols: [],
-      restBase: process.env.BINANCE_FUTURES_REST_BASE || "https://fapi.binance.com",
-      wsBase: process.env.BINANCE_FUTURES_WS_BASE || "wss://fstream.binance.com/ws",
+      restBase: resolveFuturesRestBaseForFeed(tm),
+      wsBase: resolveFuturesWsBaseForFeed(tm),
+      combinedStreamBase: resolveFuturesCombinedBaseForFeed(tm),
       onCandleClose,
     });
   }

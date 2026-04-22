@@ -1494,9 +1494,11 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     const syms = _markPxWsSymbols;
     if (!syms.length) return;
 
-    const wsBaseUrl = process.env.BINANCE_DEMO_FUTURES_WS_BASE
-      || process.env.BINANCE_FUTURES_WS_BASE
-      || "wss://fstream.binance.com/ws";
+    /** Binance USD-M testnet / demo-fapi public streams (see derivatives general-info). Not mainnet fstream. */
+    const wsBaseUrl =
+      process.env.BINANCE_DEMO_FUTURES_WS_BASE ||
+      process.env.BINANCE_FUTURES_TESTNET_WS_BASE ||
+      "wss://fstream.binancefuture.com/ws";
     const streams = syms.map((s) => `${s.toLowerCase()}@markPrice@1s`);
     const url = streams.length === 1
       ? `${wsBaseUrl.replace(/\/$/, "")}/${streams[0]}`

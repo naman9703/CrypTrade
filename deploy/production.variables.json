@@ -35,6 +35,8 @@
     "BINANCE_DEMO_API_SECRET": "",
     "BINANCE_DEMO_ALLOW_AUTO": "0",
     "BINANCE_DEMO_FUTURES_REST_BASE": "https://demo-fapi.binance.com",
+    "BINANCE_DEMO_FUTURES_WS_BASE": "wss://fstream.binancefuture.com/ws",
+    "BINANCE_DEMO_FUTURES_COMBINED_BASE": "wss://fstream.binancefuture.com/stream",
     "BINANCE_DEMO_FUTURES_API_KEY": "",
     "BINANCE_DEMO_FUTURES_API_SECRET": "",
     "BINANCE_DEMO_INCOME_MATCH_TTL_MS": "300000",

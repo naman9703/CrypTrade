@@ -904,9 +904,38 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   }
 
   function binanceDepthWsBase() {
-    return effectiveMarketFeedKind() === "BINANCE_FUTURES"
-      ? process.env.BINANCE_FUTURES_WS_BASE || "wss://fstream.binance.com/ws"
-      : process.env.BINANCE_WS_BASE;
+    const k = effectiveMarketFeedKind();
+    const tm = String(runtimeTradingMode() || "").toUpperCase();
+    if (k === "BINANCE_FUTURES") {
+      if (tm === "BINANCE_DEMO_API" || tm === "BINANCE_TESTNET") {
+        return (
+          process.env.BINANCE_DEMO_FUTURES_WS_BASE ||
+          process.env.BINANCE_FUTURES_TESTNET_WS_BASE ||
+          "wss://fstream.binancefuture.com/ws"
+        );
+      }
+      if (tm === "BINANCE_LIVE") {
+        return (
+          process.env.BINANCE_LIVE_FUTURES_WS_BASE ||
+          process.env.BINANCE_FUTURES_WS_BASE ||
+          "wss://fstream.binance.com/ws"
+        );
+      }
+      return process.env.BINANCE_FUTURES_WS_BASE || "wss://fstream.binance.com/ws";
+    }
+    if (k === "BINANCE") {
+      if (tm === "BINANCE_DEMO_API") {
+        return process.env.BINANCE_DEMO_WS_BASE || "wss://demo-stream.binance.com/ws";
+      }
+      if (tm === "BINANCE_LIVE") {
+        return process.env.BINANCE_LIVE_WS_BASE || process.env.BINANCE_WS_BASE || "wss://stream.binance.com:9443/ws";
+      }
+      if (tm === "BINANCE_TESTNET") {
+        return process.env.BINANCE_TESTNET_WS_BASE || "wss://testnet.binance.vision/ws";
+      }
+      return process.env.BINANCE_WS_BASE || "wss://stream.binance.com:9443/ws";
+    }
+    return process.env.BINANCE_WS_BASE;
   }
 
   function normalizeTrailingExtraPcts(arr) {
@@ -5887,6 +5916,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     symbol: state.symbol,
     timeframe: state.timeframe,
     feedKind: effectiveMarketFeedKind(),
+    tradingMode: runtimeTradingMode(),
     onCandleClose: (c) => {
       void processSupertrendCandleClose(c);
       void maybeAutoMultiBarClose(c);

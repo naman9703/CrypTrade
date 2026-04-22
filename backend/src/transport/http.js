@@ -20,6 +20,17 @@ const optionalBoolLoose = z.preprocess((v) => {
   return v;
 }, z.boolean().optional());
 
+/** Same idea as toggles: require confirm=true but accept "true" / 1 from proxies or older clients. */
+const modeSetConfirmLoose = z.preprocess((v) => {
+  if (v === true || v === 1 || v === "1" || v === "true" || String(v).toLowerCase() === "true") return true;
+  return v;
+}, z.literal(true));
+
+const modeSetBody = z.object({
+  mode: BOT_TARGET_MODES,
+  confirm: modeSetConfirmLoose,
+});
+
 export function createRouter({ appState }) {
   const r = express.Router();
 
@@ -709,13 +720,20 @@ export function createRouter({ appState }) {
   });
 
   r.post("/mode/set", async (req, res) => {
-    const schema = z.object({
-      mode: z.enum(["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"]),
-      confirm: z.literal(true),
-    });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    const parsed = modeSetBody.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      const fieldErrors = parsed.error.flatten().fieldErrors;
+      return res.status(400).json({
+        ok: false,
+        error: `mode_set_invalid_body:${JSON.stringify(fieldErrors)}`,
+      });
+    }
     const next = normalizeTradingMode(parsed.data.mode);
+    try {
+      appState.ensureEngine(next);
+    } catch (e) {
+      return res.status(400).json({ ok: false, error: String(e?.message || e) });
+    }
     if (uiAuthEnabled() && req.session?.uiAuthOk) {
       req.session.uiTradingMode = next;
       return req.session.save((err) => {

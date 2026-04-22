@@ -125,8 +125,9 @@ export function HeaderBar() {
                     try {
                       await api.setMode(next as any);
                       pushLog({ level: "warn", msg: "Mode switch requested", mode: next });
-                    } catch {
-                      pushLog({ level: "error", msg: "Mode switch failed" });
+                    } catch (e) {
+                      const detail = e instanceof Error ? e.message : String(e);
+                      pushLog({ level: "error", msg: `Mode switch failed: ${detail}` });
                     }
                   })();
                 });

@@ -32,6 +32,8 @@ export function createBinanceCombinedMarketFeed({
   timeframe,
   restBase,
   wsBase,
+  /** Optional: combined `?streams=` base (spot or futures). When set, overrides env defaults. */
+  combinedStreamBase,
   variant = "spot",
   watchSymbols = [],
   onCandleClose = null,
@@ -49,12 +51,18 @@ export function createBinanceCombinedMarketFeed({
   const resubscribeDebounceMs = Math.max(50, Number(process.env.BINANCE_COMBINED_RESUBSCRIBE_MS ?? 400));
 
   const defaultWsBase = isFutures
-    ? process.env.BINANCE_FUTURES_WS_BASE || "wss://fstream.binance.com/ws"
+    ? wsBase != null && String(wsBase).trim() !== ""
+      ? String(wsBase).trim()
+      : process.env.BINANCE_FUTURES_WS_BASE || "wss://fstream.binance.com/ws"
     : wsBase || DEFAULT_SPOT_WS;
 
   const combinedBaseDefault = isFutures
-    ? String(process.env.BINANCE_FUTURES_COMBINED_BASE || "wss://fstream.binance.com/stream")
-    : String(process.env.BINANCE_COMBINED_BASE || DEFAULT_SPOT_COMBINED_BASE);
+    ? combinedStreamBase != null && String(combinedStreamBase).trim() !== ""
+      ? String(combinedStreamBase).trim()
+      : String(process.env.BINANCE_FUTURES_COMBINED_BASE || "wss://fstream.binance.com/stream")
+    : combinedStreamBase != null && String(combinedStreamBase).trim() !== ""
+      ? String(combinedStreamBase).trim()
+      : String(process.env.BINANCE_COMBINED_BASE || DEFAULT_SPOT_COMBINED_BASE);
 
   let symbol = normalizeSymbol(primarySymbol);
   let tf = normalizeInterval(timeframe);

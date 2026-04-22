@@ -258,7 +258,10 @@ export const api = {
       }),
     );
     if (data?.ok) {
-      const { tradingUiPersistMode } = await import("../lib/tradingUiPersistence");
+      const [{ tradingUiPersistMode }, { useAppStore }] = await Promise.all([
+        import("../lib/tradingUiPersistence"),
+        import("../ws/store"),
+      ]);
       tradingUiPersistMode(mode, useAppStore.getState().authUiUserTag ?? null);
     }
     return data;
