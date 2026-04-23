@@ -528,6 +528,8 @@ export async function evalTrailingForSymbolUsdM(ctx) {
         maxTrailSteps: trailingStopLoss.maxTrailSteps,
         trailPostT02SpacingFrac: trailingStopLoss.trailPostT02SpacingFrac,
         trailPostT02MaxExtraTiers: trailingStopLoss.trailPostT02MaxExtraTiers,
+        /** Required for T1/T2/T3… gates; omitting null made `Number(null)→0` collapse activation onto lock (bug). */
+        postT02ActivationBufferRate: trailingStopLoss.postT02ActivationBufferRate ?? null,
         supertrendPx: trailMode === "FEE_LADDER" ? trailingStopLoss.supertrendPx : stPx,
         bufferRate: trailingStopLoss.bufferRate,
         activationSlippageFrac: trailingStopLoss.activationSlippageFrac,

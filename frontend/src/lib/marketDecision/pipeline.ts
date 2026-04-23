@@ -14,6 +14,7 @@ import type {
 import { MARKET_DECISION_SCHEMA_VERSION } from "./types";
 import { computeRegimeStability, detectRegimeTransition } from "./stability";
 import { computeSignalQualityScore } from "./score";
+import { buildMarketDecisionStageChecks } from "./stageChecks";
 
 function directionMismatch(
   signalSide: "BUY" | "SELL" | null,
@@ -82,6 +83,8 @@ function buildPassThresholds(
     feeMinExpectedMovePct: config.feeGateEnabled ? feeRequiredPct : null,
     atrVolThreshold: config.atrVolThreshold,
     directionPassHint,
+    scoreRsiLongMin: config.signalQualityEnabled ? config.scoreRsiLongMin : null,
+    scoreRsiShortMax: config.signalQualityEnabled ? config.scoreRsiShortMax : null,
   };
 }
 
@@ -119,10 +122,17 @@ export function evaluateMarketDecision(input: MarketDecisionInput): MarketDecisi
       ...input,
       config: { ...config, enabled: true },
     });
+    const engineRow = {
+      id: "engine_master",
+      label: "Engine master switch",
+      verdict: "N_A" as const,
+      detail: "Disabled — rows below are hypothetical if the filter were enabled; not enforced on opens.",
+    };
     const merged: MarketDecisionSnapshot = {
       ...hypot,
       version: MARKET_DECISION_SCHEMA_VERSION,
       engineDisabled: true,
+      stageChecks: [engineRow, ...(Array.isArray(hypot.stageChecks) ? hypot.stageChecks : [])],
       reasons: [
         "Market decision engine disabled — verdict is what would apply if enabled; trading is not filtered.",
         ...hypot.reasons,
@@ -223,7 +233,11 @@ export function evaluateMarketDecision(input: MarketDecisionInput): MarketDecisi
     if (!sc.passed) {
       verdict = "BLOCK";
       failedStage = "signal_score";
-      reasons.push(`Score ${sc.total.toFixed(1)} < threshold ${sc.threshold}`);
+      reasons.push(
+        sc.failKind === "htf_match"
+          ? `Score ${sc.total.toFixed(1)} vs threshold ${sc.threshold} — HTF layer on but higher timeframe does not align`
+          : `Score ${sc.total.toFixed(1)} < threshold ${sc.threshold}`,
+      );
     }
   }
 
@@ -307,7 +321,13 @@ export function evaluateMarketDecision(input: MarketDecisionInput): MarketDecisi
         btcPenalty,
       );
     if (!sc.passed) {
-      addSecondary("signal_score", "medium", `${sc.total.toFixed(1)} < ${sc.threshold} (would block)`);
+      addSecondary(
+        "signal_score",
+        "medium",
+        sc.failKind === "htf_match"
+          ? `${sc.total.toFixed(1)} vs ${sc.threshold}: HTF alignment required (would block)`
+          : `${sc.total.toFixed(1)} < ${sc.threshold} (would block)`,
+      );
     } else {
       addSecondary("signal_score", "medium", `${sc.total.toFixed(1)} ≥ ${sc.threshold} (would pass)`);
     }
@@ -335,6 +355,20 @@ export function evaluateMarketDecision(input: MarketDecisionInput): MarketDecisi
     config.feeGateEnabled ? feeEval.requiredMovePct : null,
   );
 
+  const stageChecks = buildMarketDecisionStageChecks({
+    config,
+    input,
+    ltf,
+    transition,
+    chop,
+    confidencePassed,
+    useRegime,
+    directionMismatchFlag,
+    scoreOut,
+    entry,
+    feeEval,
+  });
+
   const snap = buildSnapshot({
     input,
     ltf,
@@ -355,11 +389,13 @@ export function evaluateMarketDecision(input: MarketDecisionInput): MarketDecisi
       expectedMovePct: input.feeGate.expectedMovePct,
       passed: feeEval.passed,
       reasons: feeEval.reasons,
+      requiredMoveBasis: feeEval.requiredMoveBasis,
     },
     alignment,
     alignmentBlocked,
     pipelineDiagnostics,
     passThresholds,
+    stageChecks,
   });
 
   return deepFreezeSnapshot(snap) as MarketDecisionSnapshot;
@@ -384,6 +420,7 @@ function buildSnapshot(p: {
   alignmentBlocked: boolean;
   pipelineDiagnostics?: MarketDecisionSnapshot["pipelineDiagnostics"];
   passThresholds?: MarketDecisionPassThresholds;
+  stageChecks?: MarketDecisionSnapshot["stageChecks"];
 }): MarketDecisionSnapshot {
   const { input } = p;
   return {
@@ -419,5 +456,6 @@ function buildSnapshot(p: {
     score: p.score,
     entryTiming: p.entryTiming,
     feeGate: p.feeGate,
+    ...(p.stageChecks != null ? { stageChecks: p.stageChecks } : {}),
   };
 }

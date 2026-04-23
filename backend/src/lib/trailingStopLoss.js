@@ -21,6 +21,19 @@ export function clampFeeRate(r) {
 }
 
 /**
+ * Post-T02 activation buffer: explicit number (incl. 0) vs inherit T01/T02 `bufferRate`.
+ * `Number(null) === 0` must NOT turn "unset" into zero — that collapses activation onto the lock price.
+ */
+function resolvePostT02ActivationBufferFrac(postT02BufferRate, bufferRate) {
+  const buf = Number(bufferRate);
+  const fallback = Number.isFinite(buf) && buf >= 0 ? buf : 0;
+  if (postT02BufferRate == null) return fallback;
+  const x = Number(postT02BufferRate);
+  if (!Number.isFinite(x) || x < 0) return fallback;
+  return x;
+}
+
+/**
  * T0 SL price: entry + round-trip fee (optionally padded by feeBeMultiplier).
  * Formula: entry × (1 + roundTripFeeRate)  [LONG]
  *          entry × (1 - roundTripFeeRate)  [SHORT]
@@ -219,9 +232,8 @@ export function resolveSupertrendTieredActivationGate({
 }) {
   const E = Number(entryPx);
   const buf = Number(bufferRate);
-  /** Post-T02 rungs use their own buffer; fall back to `buf` so legacy callers/configs keep working. */
-  const postBufRaw = Number(postT02BufferRate);
-  const postBuf = Number.isFinite(postBufRaw) && postBufRaw >= 0 ? postBufRaw : buf;
+  /** Post-T02 rungs: explicit buffer or inherit `bufferRate` (never treat null as 0). */
+  const postBuf = resolvePostT02ActivationBufferFrac(postT02BufferRate, bufferRate);
   const fb = Number(feeBe);
   const defaultActivationPx = isLong
     ? E * (1 + (useFeeBeTrail ? fb : 0) + buf)
@@ -249,9 +261,7 @@ export function resolveSupertrendTieredActivationGate({
       return { activationPx: defaultActivationPx, activationTierLabel: `T${stepNow - 1}` };
     }
     const gatePx =
-      Number.isFinite(postBuf) && postBuf > 0
-        ? (isLong ? lockPx * (1 + postBuf) : lockPx * (1 - postBuf))
-        : lockPx;
+      postBuf > 0 ? (isLong ? lockPx * (1 + postBuf) : lockPx * (1 - postBuf)) : lockPx;
     return { activationPx: gatePx, activationTierLabel: `T${stepNow - 1}` };
   }
 
@@ -265,9 +275,9 @@ export function resolveSupertrendTieredActivationGate({
     const lockPx = Number(L?.lockPx);
     const good = Number.isFinite(lockPx) && lockPx > 0;
     const gatePx = good
-      ? (Number.isFinite(postBuf) && postBuf > 0
-          ? (isLong ? lockPx * (1 + postBuf) : lockPx * (1 - postBuf))
-          : lockPx)
+      ? postBuf > 0
+        ? (isLong ? lockPx * (1 + postBuf) : lockPx * (1 - postBuf))
+        : lockPx
       : defaultActivationPx;
     return {
       activationPx: gatePx,

@@ -21,9 +21,15 @@ export { deepFreezeSnapshot } from "./freeze";
 export { computeRegimeSliceFromBar } from "./regime";
 export { computeRegimeStability, detectRegimeTransition } from "./stability";
 export { evaluateChop, countRegimeFlips } from "./chop";
-export { computeSignalQualityScore } from "./score";
-export { evaluateFeeGate, computeRequiredMovePct } from "./feeGate";
+export { computeSignalQualityScore, rsiBiasPassesForConfig } from "./score";
+export {
+  evaluateFeeGate,
+  computeRequiredMovePct,
+  feeRateBreakevenPadded,
+  t02ActivationMoveFractionFromEntry,
+} from "./feeGate";
 export { evaluateEntryTiming } from "./entryTiming";
 export { evaluateMarketDecision } from "./pipeline";
+export { buildMarketDecisionStageChecks } from "./stageChecks";
 export { displayMarketDecisionVerdict, mdEngineIsBypass, mdEnforcementOff } from "./display";
 export { buildRegimeHistoryLtf } from "./helpers";

@@ -14,7 +14,7 @@
  *   live       → BINANCE_LIVE_FUTURES_API_KEY/SECRET  (fallback BINANCE_LIVE_API_KEY/SECRET)
  *                REST base: BINANCE_LIVE_FUTURES_REST_BASE (default https://fapi.binance.com)
  *   demo_api   → BINANCE_DEMO_FUTURES_API_KEY/SECRET (fallback BINANCE_DEMO_API_KEY/SECRET)
- *                REST base: BINANCE_DEMO_FUTURES_REST_BASE (default https://testnet.binancefuture.com)
+ *                REST base: BINANCE_DEMO_FUTURES_REST_BASE (default https://demo-fapi.binance.com)
  *   testnet    → BINANCE_FUTURES_API_KEY/SECRET
  *                REST base: BINANCE_FUTURES_TESTNET_REST_BASE (default https://testnet.binancefuture.com)
  *   paper      → no API; only reason sanity + local idempotent cleanup
@@ -62,7 +62,7 @@ const MODE_CONFIG = {
   demo_api: {
     key: process.env.BINANCE_DEMO_FUTURES_API_KEY || process.env.BINANCE_DEMO_API_KEY || "",
     secret: process.env.BINANCE_DEMO_FUTURES_API_SECRET || process.env.BINANCE_DEMO_API_SECRET || "",
-    base: process.env.BINANCE_DEMO_FUTURES_REST_BASE || "https://testnet.binancefuture.com",
+    base: process.env.BINANCE_DEMO_FUTURES_REST_BASE || "https://demo-fapi.binance.com",
   },
   testnet: {
     key: process.env.BINANCE_FUTURES_API_KEY || "",

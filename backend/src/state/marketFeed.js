@@ -106,14 +106,22 @@ function resolveFuturesRestBaseForFeed(tradingMode) {
   return process.env.BINANCE_FUTURES_REST_BASE || "https://fapi.binance.com";
 }
 
-/** USD-M testnet / demo-fapi public streams (Binance derivatives general-info), not mainnet fstream. */
+/**
+ * Futures public WS: demo-fapi (BINANCE_DEMO_API) follows mainnet prices — use fstream.binance.com, not
+ * fstream.binancefuture.com (that host is USD-M *testnet*, a different market from demo-fapi REST).
+ */
 function resolveFuturesWsBaseForFeed(tradingMode) {
   const tm = String(tradingMode || "").toUpperCase();
-  if (tm === "BINANCE_DEMO_API" || tm === "BINANCE_TESTNET") {
+  if (tm === "BINANCE_DEMO_API") {
     return (
       process.env.BINANCE_DEMO_FUTURES_WS_BASE ||
-      process.env.BINANCE_FUTURES_TESTNET_WS_BASE ||
-      "wss://fstream.binancefuture.com/ws"
+      process.env.BINANCE_FUTURES_WS_BASE ||
+      "wss://fstream.binance.com/ws"
+    );
+  }
+  if (tm === "BINANCE_TESTNET") {
+    return (
+      process.env.BINANCE_FUTURES_TESTNET_WS_BASE || "wss://fstream.binancefuture.com/ws"
     );
   }
   if (tm === "BINANCE_LIVE") {
@@ -128,11 +136,16 @@ function resolveFuturesWsBaseForFeed(tradingMode) {
 
 function resolveFuturesCombinedBaseForFeed(tradingMode) {
   const tm = String(tradingMode || "").toUpperCase();
-  if (tm === "BINANCE_DEMO_API" || tm === "BINANCE_TESTNET") {
+  if (tm === "BINANCE_DEMO_API") {
     return (
       process.env.BINANCE_DEMO_FUTURES_COMBINED_BASE ||
-      process.env.BINANCE_FUTURES_TESTNET_COMBINED_BASE ||
-      "wss://fstream.binancefuture.com/stream"
+      process.env.BINANCE_FUTURES_COMBINED_BASE ||
+      "wss://fstream.binance.com/stream"
+    );
+  }
+  if (tm === "BINANCE_TESTNET") {
+    return (
+      process.env.BINANCE_FUTURES_TESTNET_COMBINED_BASE || "wss://fstream.binancefuture.com/stream"
     );
   }
   if (tm === "BINANCE_LIVE") {

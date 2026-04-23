@@ -907,11 +907,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     const k = effectiveMarketFeedKind();
     const tm = String(runtimeTradingMode() || "").toUpperCase();
     if (k === "BINANCE_FUTURES") {
-      if (tm === "BINANCE_DEMO_API" || tm === "BINANCE_TESTNET") {
+      if (tm === "BINANCE_DEMO_API") {
         return (
           process.env.BINANCE_DEMO_FUTURES_WS_BASE ||
-          process.env.BINANCE_FUTURES_TESTNET_WS_BASE ||
-          "wss://fstream.binancefuture.com/ws"
+          process.env.BINANCE_FUTURES_WS_BASE ||
+          "wss://fstream.binance.com/ws"
+        );
+      }
+      if (tm === "BINANCE_TESTNET") {
+        return (
+          process.env.BINANCE_FUTURES_TESTNET_WS_BASE || "wss://fstream.binancefuture.com/ws"
         );
       }
       if (tm === "BINANCE_LIVE") {
@@ -2014,6 +2019,19 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       const cfg = { ...mdCfg };
       const rt = Number(state.trailOpenFeeRate ?? 0) + Number(state.trailCloseFeeRate ?? 0);
       if (Number.isFinite(rt) && rt > 0) cfg.defaultRoundTripFeeRate = rt;
+      if (cfg.feeGateRequiredMoveBasis === "T02_ACTIVATION" && cfg.feeGateT02SyncFromBotTrailing !== false) {
+        cfg.feeGateT02FeeBeMultiplier = clamp(
+          Number(state.trailFeeBeMultiplier ?? process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1),
+          1,
+          2,
+        );
+        cfg.feeGateT02ActivationSlippageFrac = clamp(
+          Number(state.trailActivationSlippageFrac ?? 0),
+          0,
+          0.01,
+        );
+        cfg.feeGateT02TrailBufferRate = clamp(Number(state.trailBufferRate ?? 0.0005), 0, 0.05);
+      }
       snap = computeMarketDecisionSnapshot({
         candles,
         cTs,

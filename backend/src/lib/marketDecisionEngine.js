@@ -5,8 +5,9 @@
 
 import { adx, atr, ema, rsi } from "../strategy/indicators.js";
 import { binanceIntervalMs } from "./supertrendChartAlign.js";
+import { buildMarketDecisionStageChecks } from "./marketDecisionStageChecks.js";
 
-export const MARKET_DECISION_SCHEMA_VERSION = 4;
+export const MARKET_DECISION_SCHEMA_VERSION = 6;
 
 export const DEFAULT_MARKET_DECISION_CONFIG = {
   enabled: false,
@@ -40,7 +41,9 @@ export const DEFAULT_MARKET_DECISION_CONFIG = {
   btcBlockMode: "BLOCK",
   btcFilterPenalty: 20,
   signalQualityEnabled: true,
-  scoreThreshold: 5,
+  scoreThreshold: 6,
+  scoreRsiLongMin: 52,
+  scoreRsiShortMax: 48,
   weightSupertrend: 3,
   weightEmaAlign: 2,
   weightRsi: 1,
@@ -51,6 +54,11 @@ export const DEFAULT_MARKET_DECISION_CONFIG = {
   entryMode: "PULLBACK",
   pullbackAtrMult: 0.35,
   feeGateEnabled: true,
+  feeGateRequiredMoveBasis: "FEE_BUFFER_SLIP",
+  feeGateT02SyncFromBotTrailing: true,
+  feeGateT02FeeBeMultiplier: 1,
+  feeGateT02ActivationSlippageFrac: 0,
+  feeGateT02TrailBufferRate: 0.0005,
   feeSlippageBps: 3,
   feeBufferPct: 0.15,
   defaultRoundTripFeeRate: 0.0016,
@@ -275,7 +283,45 @@ function evaluateChop(args) {
   return { isChoppy: reasons.length > 0, reasons, metrics };
 }
 
+function clampRoundTripFee(r) {
+  const x = Number(r);
+  if (!Number.isFinite(x) || x < 0) return 0.0004;
+  return Math.min(0.01, Math.max(0, x));
+}
+
+function feeRateBreakevenPaddedMd(roundTripFeeRate, multiplier) {
+  const r = clampRoundTripFee(roundTripFeeRate);
+  const m =
+    multiplier != null && Number.isFinite(Number(multiplier)) && Number(multiplier) >= 1
+      ? Math.min(2, Number(multiplier))
+      : 1;
+  return Math.min(0.02, r * m);
+}
+
+function t02ActivationMoveFractionFromEntryMd(args) {
+  const rt = Math.max(0, Number(args.roundTripFeeRate) || 0);
+  const mult =
+    args.feeBeMultiplier != null && Number.isFinite(Number(args.feeBeMultiplier))
+      ? Number(args.feeBeMultiplier)
+      : 1;
+  const feeBe = feeRateBreakevenPaddedMd(rt, mult);
+  const slip = Math.max(0, Math.min(0.01, Number(args.activationSlippageFrac) || 0));
+  const feeBeSt = Math.min(0.02, feeBe + slip);
+  const buf = Math.max(0, Math.min(0.05, Number(args.trailBufferRate) || 0));
+  return feeBeSt + buf;
+}
+
 function computeRequiredMovePct(config, roundTripFeeRate) {
+  const basis = config.feeGateRequiredMoveBasis ?? "FEE_BUFFER_SLIP";
+  if (basis === "T02_ACTIVATION") {
+    const frac = t02ActivationMoveFractionFromEntryMd({
+      roundTripFeeRate,
+      feeBeMultiplier: config.feeGateT02FeeBeMultiplier ?? 1,
+      activationSlippageFrac: config.feeGateT02ActivationSlippageFrac ?? 0,
+      trailBufferRate: config.feeGateT02TrailBufferRate ?? 0.0005,
+    });
+    return frac * 100;
+  }
   const rt = Math.max(0, Number(roundTripFeeRate) || 0);
   const buf = Math.max(0, Number(config.feeBufferPct) || 0);
   const slip = Math.max(0, Number(config.feeSlippageBps) || 0) / 100;
@@ -284,21 +330,26 @@ function computeRequiredMovePct(config, roundTripFeeRate) {
 
 function evaluateFeeGate(args) {
   const { config, expectedMovePct, roundTripFeeRate } = args;
+  const basis = config.feeGateRequiredMoveBasis ?? "FEE_BUFFER_SLIP";
   if (!config.feeGateEnabled) {
-    return { passed: true, requiredMovePct: 0, reasons: ["Fee gate disabled"] };
+    return { passed: true, requiredMovePct: 0, reasons: ["Fee gate disabled"], requiredMoveBasis: basis };
   }
   const req = computeRequiredMovePct(config, roundTripFeeRate);
   const exp = Number(expectedMovePct);
   if (!Number.isFinite(exp)) {
-    return { passed: false, requiredMovePct: req, reasons: ["Expected move unknown"] };
+    return { passed: false, requiredMovePct: req, reasons: ["Expected move unknown"], requiredMoveBasis: basis };
   }
   const passed = exp >= req;
+  const basisNote =
+    basis === "T02_ACTIVATION"
+      ? " (required = T02 activation distance: padded fee + activation slip + trail buffer)"
+      : "";
   const reasons = [
     passed
-      ? `Expected move ${exp.toFixed(3)}% ≥ required ${req.toFixed(3)}%`
-      : `Expected move ${exp.toFixed(3)}% < required ${req.toFixed(3)}%`,
+      ? `Expected move ${exp.toFixed(3)}% ≥ required ${req.toFixed(3)}%${basisNote}`
+      : `Expected move ${exp.toFixed(3)}% < required ${req.toFixed(3)}%${basisNote}`,
   ];
-  return { passed, requiredMovePct: req, reasons };
+  return { passed, requiredMovePct: req, reasons, requiredMoveBasis: basis };
 }
 
 function evaluateEntryTiming(args) {
@@ -350,12 +401,16 @@ function evaluateEntryTiming(args) {
   };
 }
 
-function rsiBiasPasses(signalSide, rsi) {
+function rsiBiasPassesForConfig(signalSide, rsi, longMin, shortMax) {
   const r = Number(rsi);
   if (!Number.isFinite(r)) return false;
-  if (signalSide === "SELL") return r <= 50;
-  if (signalSide === "BUY") return r >= 50;
-  return r >= 50;
+  const lo = Number(longMin);
+  const hi = Number(shortMax);
+  const l = Number.isFinite(lo) ? lo : 52;
+  const s = Number.isFinite(hi) ? hi : 48;
+  if (signalSide === "SELL") return r <= s;
+  if (signalSide === "BUY") return r >= l;
+  return r >= l;
 }
 
 function computeSignalQualityScore(
@@ -385,13 +440,21 @@ function computeSignalQualityScore(
     });
   };
 
+  const rsiLongMin = Number(config.scoreRsiLongMin);
+  const rsiShortMax = Number(config.scoreRsiShortMax);
+  const longM = Number.isFinite(rsiLongMin) ? rsiLongMin : 52;
+  const shortM = Number.isFinite(rsiShortMax) ? rsiShortMax : 48;
+
   add("st", "Supertrend confirmed", scoring.supertrendConfirmed, config.weightSupertrend);
   add("ema", "EMA alignment", scoring.priceAboveEma, config.weightEmaAlign);
-  add("rsi", "RSI bias", rsiBiasPasses(input.signalSide, scoring.rsi), config.weightRsi);
+  add("rsi", "RSI bias", rsiBiasPassesForConfig(input.signalSide, scoring.rsi, longM, shortM), config.weightRsi);
   const htfOk =
     htf != null &&
     ((ltf.type === "UPTREND" && htf.type === "UPTREND") || (ltf.type === "DOWNTREND" && htf.type === "DOWNTREND"));
-  add("htf", "HTF trend match", scoring.htfTrendMatch || htfOk, config.weightHtfMatch);
+  const htfW = config.htfEnabled === true ? Number(config.weightHtfMatch) : 0;
+  if (config.htfEnabled === true && htfW > 0) {
+    add("htf", "HTF trend match", Boolean(scoring.htfTrendMatch) || htfOk, htfW);
+  }
 
   if (confidencePenalty > 0) {
     total -= confidencePenalty;
@@ -455,10 +518,21 @@ function computeSignalQualityScore(
   }
 
   const max =
-    config.weightSupertrend + config.weightEmaAlign + config.weightRsi + config.weightHtfMatch;
+    config.weightSupertrend +
+    config.weightEmaAlign +
+    config.weightRsi +
+    (config.htfEnabled === true ? Number(config.weightHtfMatch) : 0);
 
-  const passed = total >= config.scoreThreshold;
-  return { total, max, threshold: config.scoreThreshold, passed, breakdown };
+  const htfRequired = config.htfEnabled === true && Number(config.weightHtfMatch) > 0;
+  const htfMatched = !htfRequired || Boolean(scoring.htfTrendMatch) || htfOk;
+
+  const passed = htfMatched && total >= config.scoreThreshold;
+  let failKind;
+  if (!passed) {
+    if (htfRequired && !htfMatched) failKind = "htf_match";
+    else failKind = "below_threshold";
+  }
+  return { total, max, threshold: config.scoreThreshold, passed, breakdown, failKind };
 }
 
 function directionMismatch(signalSide, ltf, allowSideways) {
@@ -529,6 +603,8 @@ function buildPassThresholds(config, entry, feeRequiredPct) {
     feeMinExpectedMovePct: config.feeGateEnabled ? feeRequiredPct : null,
     atrVolThreshold: config.atrVolThreshold,
     directionPassHint,
+    scoreRsiLongMin: config.signalQualityEnabled ? config.scoreRsiLongMin : null,
+    scoreRsiShortMax: config.signalQualityEnabled ? config.scoreRsiShortMax : null,
   };
 }
 
@@ -568,6 +644,7 @@ function buildSnapshot(p) {
   };
   if (p.pipelineDiagnostics) out.pipelineDiagnostics = p.pipelineDiagnostics;
   if (p.passThresholds) out.passThresholds = p.passThresholds;
+  if (Array.isArray(p.stageChecks) && p.stageChecks.length) out.stageChecks = p.stageChecks;
   return out;
 }
 
@@ -601,10 +678,17 @@ export function evaluateMarketDecision(input) {
       ...input,
       config: { ...config, enabled: true },
     });
+    const engineRow = {
+      id: "engine_master",
+      label: "Engine master switch",
+      verdict: "N_A",
+      detail: "Disabled — rows below are hypothetical if the filter were enabled; not enforced on opens.",
+    };
     const merged = {
       ...hypot,
       version: MARKET_DECISION_SCHEMA_VERSION,
       engineDisabled: true,
+      stageChecks: [engineRow, ...(Array.isArray(hypot.stageChecks) ? hypot.stageChecks : [])],
       reasons: [
         "Market decision engine disabled — verdict is what would apply if enabled; trading is not filtered.",
         ...(Array.isArray(hypot.reasons) ? hypot.reasons : []),
@@ -708,7 +792,11 @@ export function evaluateMarketDecision(input) {
     if (!sc.passed) {
       verdict = "BLOCK";
       failedStage = "signal_score";
-      reasons.push(`Score ${sc.total.toFixed(1)} < threshold ${sc.threshold}`);
+      reasons.push(
+        sc.failKind === "htf_match"
+          ? `Score ${sc.total.toFixed(1)} vs threshold ${sc.threshold} — HTF layer on but higher timeframe does not align`
+          : `Score ${sc.total.toFixed(1)} < threshold ${sc.threshold}`,
+      );
     }
   }
 
@@ -783,7 +871,13 @@ export function evaluateMarketDecision(input) {
         btcPenalty,
       );
     if (!sc.passed) {
-      addSecondary("signal_score", "medium", `${sc.total.toFixed(1)} < ${sc.threshold} (would block)`);
+      addSecondary(
+        "signal_score",
+        "medium",
+        sc.failKind === "htf_match"
+          ? `${sc.total.toFixed(1)} vs ${sc.threshold}: HTF alignment required (would block)`
+          : `${sc.total.toFixed(1)} < ${sc.threshold} (would block)`,
+      );
     } else {
       addSecondary("signal_score", "medium", `${sc.total.toFixed(1)} ≥ ${sc.threshold} (would pass)`);
     }
@@ -809,6 +903,20 @@ export function evaluateMarketDecision(input) {
     config.feeGateEnabled ? feeEval.requiredMovePct : null,
   );
 
+  const stageChecks = buildMarketDecisionStageChecks({
+    config,
+    input,
+    ltf,
+    transition,
+    chop,
+    confidencePassed,
+    useRegime,
+    directionMismatchFlag,
+    scoreOut,
+    entry,
+    feeEval,
+  });
+
   const snap = buildSnapshot({
     input,
     ltf,
@@ -829,11 +937,13 @@ export function evaluateMarketDecision(input) {
       expectedMovePct: input.feeGate.expectedMovePct,
       passed: feeEval.passed,
       reasons: feeEval.reasons,
+      requiredMoveBasis: feeEval.requiredMoveBasis,
     },
     alignment,
     alignmentBlocked,
     pipelineDiagnostics,
     passThresholds,
+    stageChecks,
   });
 
   return deepFreezeSnapshot(snap);
@@ -890,6 +1000,14 @@ function minimalBypassWhenNoCandles(cfg, symbol, timeframe) {
       expectedMovePct: NaN,
       leverage: 1,
       roundTripFeeRate: cfg.defaultRoundTripFeeRate,
+    },
+    classifierMetrics: {
+      atrPct: 0,
+      atrVolThreshold: cfg.atrVolThreshold,
+      adx: 0,
+      adxStrong: cfg.adxStrong,
+      adxWeak: cfg.adxWeak,
+      rangeCompression: 0,
     },
   };
   const snap = evaluateMarketDecision(input);
@@ -988,6 +1106,14 @@ function computeMarketDecisionSnapshotEngineOffWarmup({
       expectedMovePct,
       leverage: 1,
       roundTripFeeRate: cfg.defaultRoundTripFeeRate,
+    },
+    classifierMetrics: {
+      atrPct,
+      atrVolThreshold: cfg.atrVolThreshold,
+      adx: adxV,
+      adxStrong: cfg.adxStrong,
+      adxWeak: cfg.adxWeak,
+      rangeCompression: rangeComp,
     },
   };
 
@@ -1170,6 +1296,14 @@ export function computeMarketDecisionSnapshot({
       expectedMovePct,
       leverage: 1,
       roundTripFeeRate: cfg.defaultRoundTripFeeRate,
+    },
+    classifierMetrics: {
+      atrPct,
+      atrVolThreshold: cfg.atrVolThreshold,
+      adx: chopAdx,
+      adxStrong: cfg.adxStrong,
+      adxWeak: cfg.adxWeak,
+      rangeCompression: rangeComp,
     },
   };
 

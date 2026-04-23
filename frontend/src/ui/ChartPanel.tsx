@@ -247,11 +247,30 @@ function signalListMdPassBracketCompact(pt: Record<string, unknown> | null): str
 
 const MD_PASS_CLS = "text-slate-500 dark:text-slate-400";
 
-/** RSI row: composite score gives +weight if this bias holds (not a hard block by itself). */
-function mdRsiScorePassHint(side: "BUY" | "SELL" | null): string {
-  if (side === "SELL") return "[score +pts: RSI ≤ 50]";
-  if (side === "BUY") return "[score +pts: RSI ≥ 50]";
-  return "[score +pts: long ≥50 · short ≤50]";
+/** Filled pill behind verdict chips (accordion stage table + summary). */
+function mdStageVerdictBadgeCls(v: string): string {
+  const u = String(v).toUpperCase();
+  if (u === "ALLOW")
+    return "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-500/25 dark:bg-emerald-950/55 dark:text-emerald-200 dark:ring-emerald-400/20";
+  if (u === "BLOCK")
+    return "bg-rose-100 text-rose-900 ring-1 ring-rose-500/25 dark:bg-rose-950/55 dark:text-rose-200 dark:ring-rose-400/20";
+  if (u === "WAIT")
+    return "bg-amber-100 text-amber-950 ring-1 ring-amber-500/25 dark:bg-amber-950/50 dark:text-amber-100 dark:ring-amber-400/20";
+  return "bg-slate-100 text-slate-700 ring-1 ring-slate-400/20 dark:bg-slate-800/80 dark:text-slate-200 dark:ring-slate-500/25";
+}
+
+/** RSI row: composite score gives +weight if this bias holds (bands from engine config / snapshot passThresholds). */
+function mdRsiScorePassHint(
+  side: "BUY" | "SELL" | null,
+  pt?: { scoreRsiLongMin?: number | null; scoreRsiShortMax?: number | null } | null,
+): string {
+  const lo =
+    pt?.scoreRsiLongMin != null && Number.isFinite(Number(pt.scoreRsiLongMin)) ? Number(pt.scoreRsiLongMin) : 52;
+  const hi =
+    pt?.scoreRsiShortMax != null && Number.isFinite(Number(pt.scoreRsiShortMax)) ? Number(pt.scoreRsiShortMax) : 48;
+  if (side === "SELL") return `[score +pts: RSI ≤ ${hi}]`;
+  if (side === "BUY") return `[score +pts: RSI ≥ ${lo}]`;
+  return `[score +pts: long ≥${lo} · short ≤${hi}]`;
 }
 
 /** EMA row: alignment component of composite score. */
@@ -357,29 +376,94 @@ function SupertrendSignalAccordionDetails({ h }: { h: SupertrendSignalHistRow })
           <div className="text-[9px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
             Market decision engine
           </div>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-800 dark:text-slate-200">
-            <span className="font-mono font-semibold">{verdict ?? "—"}</span>
+          <div className="mt-1 rounded-md border border-violet-200/80 bg-violet-50/90 px-2.5 py-2 dark:border-violet-800/60 dark:bg-violet-950/40">
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] font-bold leading-snug text-slate-900 dark:text-slate-100">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-800/90 dark:text-violet-200/90">Final</span>
+              <span
+                className={`inline-flex items-center rounded px-2 py-0.5 font-mono text-[11px] font-bold ${mdStageVerdictBadgeCls(String(verdict ?? ""))}`}
+              >
+                {verdict ?? "—"}
+              </span>
+              {score != null &&
+              typeof score.total === "number" &&
+              Number.isFinite(Number(score.total)) &&
+              typeof score.threshold === "number" ? (
+                <>
+                  <span className="font-sans text-[11px] font-bold text-slate-800 dark:text-slate-100">
+                    Score{" "}
+                    <span className="font-mono text-violet-900 dark:text-violet-100">
+                      {Number(score.total).toFixed(1)}
+                    </span>
+                    <span className="font-normal font-mono text-violet-700/90 dark:text-violet-300/90"> / ≥ {Number(score.threshold).toFixed(1)}</span>
+                    {typeof score.max === "number" && Number.isFinite(score.max) ? (
+                      <span className="font-normal text-slate-600 dark:text-slate-400"> (max {Number(score.max).toFixed(0)})</span>
+                    ) : null}
+                  </span>
+                </>
+              ) : (
+                <span className="text-[11px] font-normal text-slate-600 dark:text-slate-400">Composite score off or unavailable</span>
+              )}
+            </p>
             {enforcementOff ? (
-              <span className="text-slate-500">(monitoring — filters not applied to trades)</span>
+              <p className="mt-1.5 text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">Monitoring only.</span> Supertrend{" "}
+                <span className="font-mono">Action</span> ({h.stAction ?? "—"}) drives trades; the verdict above is for review if the engine were
+                enabled.
+              </p>
             ) : null}
             {failedStage && failedStage !== "null" && (verdict === "BLOCK" || verdict === "WAIT") ? (
-              <span className="text-slate-500">
-                stage: <span className="font-mono">{failedStage}</span>
+              <p className="mt-0.5 text-[9px] text-slate-600 dark:text-slate-400">
+                Primary stage: <span className="font-mono">{failedStage}</span>
                 {pipeDiag?.primarySeverity ? (
-                  <span title="Primary failure severity (for tuning)">
+                  <span>
                     {" "}
-                    · <span className="font-mono text-amber-800 dark:text-amber-200">{pipeDiag.primarySeverity}</span>
+                    · severity <span className="font-mono text-amber-800 dark:text-amber-200">{pipeDiag.primarySeverity}</span>
                   </span>
                 ) : null}
-              </span>
+              </p>
             ) : null}
-          </p>
-          {enforcementOff ? (
-            <p className="mt-1 text-[9px] text-slate-600 dark:text-slate-400">
-              Supertrend <span className="font-mono">Action</span> ({h.stAction ?? "—"}) controls opens/closes while the engine is off; the verdict
-              above is what would apply if the engine were enabled — use it to compare against real trades.
-            </p>
-          ) : null}
+            {Array.isArray(mds.stageChecks) && (mds.stageChecks as unknown[]).length > 0 ? (
+              <div className="mt-2.5">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+                  Per-parameter verdicts
+                </div>
+                <div className="max-h-[min(320px,45vh)] overflow-y-auto rounded-lg border border-slate-200/90 bg-white/90 shadow-sm dark:border-slate-600/55 dark:bg-slate-900/60">
+                  <table className="w-full border-collapse text-left text-[10px]">
+                    <thead className="sticky top-0 z-[1] border-b border-slate-200/80 bg-slate-100/98 dark:border-slate-600/50 dark:bg-slate-800/98">
+                      <tr>
+                        <th className="whitespace-nowrap px-2 py-1.5 font-semibold text-slate-700 dark:text-slate-200">Verdict</th>
+                        <th className="px-2 py-1.5 font-semibold text-slate-700 dark:text-slate-200">Check</th>
+                        <th className="px-2 py-1.5 font-semibold text-slate-700 dark:text-slate-200">Detail</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(mds.stageChecks as Array<{ id: string; label: string; verdict: string; detail: string }>).map((row, ri) => {
+                        const vLabel = row.verdict === "N_A" ? "N/A" : row.verdict;
+                        const stripe = ri % 2 === 0 ? "bg-white/0 dark:bg-transparent" : "bg-slate-50/90 dark:bg-slate-800/35";
+                        return (
+                          <tr key={row.id} className={`border-t border-slate-200/50 dark:border-slate-700/45 ${stripe}`}>
+                            <td className="whitespace-nowrap px-2 py-1 align-top">
+                              <span
+                                className={`inline-flex rounded px-1.5 py-0.5 font-mono text-[9px] font-bold ${mdStageVerdictBadgeCls(row.verdict)}`}
+                              >
+                                {vLabel}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1 align-top font-semibold text-slate-800 dark:text-slate-100">{row.label}</td>
+                            <td className="px-2 py-1 align-top leading-snug text-slate-600 dark:text-slate-400">{row.detail}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
+                Per-parameter rows need snapshot schema v6+ (restart backend after upgrade). Older saved signals show the summary blocks below only.
+              </p>
+            )}
+          </div>
           {reasons.length > 0 ? (
             <ul className="mt-1 list-inside list-disc space-y-0.5 text-[9px] text-slate-600 dark:text-slate-400">
               {reasons.map((r, j) => (
@@ -451,7 +535,7 @@ function SupertrendSignalAccordionDetails({ h }: { h: SupertrendSignalHistRow })
                 </span>
                 <span>
                   RSI(14) {fmtSigNum(ci.rsi, 1)}{" "}
-                  <span className={MD_PASS_CLS}>{mdRsiScorePassHint(mdSide)}</span>
+                  <span className={MD_PASS_CLS}>{mdRsiScorePassHint(mdSide, pt)}</span>
                 </span>
                 <span>
                   EMA({String(ci.emaLength ?? "—")}) {fmtSigNum(ci.ema, 4)}{" "}
@@ -627,7 +711,7 @@ function SupertrendSignalAccordionDetails({ h }: { h: SupertrendSignalHistRow })
                   let hint = "";
                   if (bid === "st") hint = "[+w if ST confirms at bar]";
                   else if (bid === "ema") hint = mdEmaAlignPassHint(mdSide);
-                  else if (bid === "rsi") hint = mdRsiScorePassHint(mdSide);
+                  else if (bid === "rsi") hint = mdRsiScorePassHint(mdSide, pt);
                   else if (bid === "htf") hint = "[+w if HTF trend matches LTF]";
                   else if (bid === "conf") hint = "[− penalty if conf < min]";
                   else if (bid === "weak") hint = "[− penalty in weak trend]";
@@ -650,6 +734,11 @@ function SupertrendSignalAccordionDetails({ h }: { h: SupertrendSignalHistRow })
                 ) : null}{" "}
                 · {String(score?.passed ?? "")}
               </p>
+              {score && score.passed === false && score.failKind === "htf_match" ? (
+                <p className="mt-0.5 text-[9px] text-amber-800 dark:text-amber-200">
+                  Total meets the numeric threshold, but the HTF layer is on — higher timeframe must align with LTF for a pass.
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>
