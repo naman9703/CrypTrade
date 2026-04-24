@@ -6,15 +6,36 @@ function normalizeSymbol(symbol) {
   return String(symbol || "").toUpperCase();
 }
 
+/** Full stream name for Binance public WS (spot or USD-M): `btcusdt@aggTrade`. */
+export function binancePublicAggTradeStreamName(symbol) {
+  return `${normalizeSymbol(symbol).toLowerCase()}@aggTrade`;
+}
+
 function aggTradeStream(symbol) {
-  return `${symbol.toLowerCase()}@aggTrade`;
+  return binancePublicAggTradeStreamName(symbol);
 }
 
 // Aggregates buy/sell volumes by candle openTime (ms).
-export function createBinanceDeltaAggregator({ log, symbol, timeframe, wsBase, onDelta }) {
-  symbol = normalizeSymbol(symbol);
+export function createBinanceDeltaAggregator({
+  log,
+  symbol: initialSymbol,
+  timeframe: initialTf,
+  wsBase,
+  onDelta,
+  /** When true, no dedicated trades socket — parent multiplexes `symbol@aggTrade` on the kline connection. */
+  multiplexed = false,
+}) {
+  let symbol = normalizeSymbol(initialSymbol);
+  let timeframe = String(initialTf || "1m");
   let ws = null;
-  let status = { ok: false, source: "BINANCE_TRADES", lastMsgAt: null, stream: null, error: null };
+  let status = {
+    ok: false,
+    source: "BINANCE_TRADES",
+    lastMsgAt: null,
+    stream: null,
+    error: null,
+    multiplexed: Boolean(multiplexed),
+  };
   let reconnectAttempt = 0;
   const reconnectMinMs = Math.max(500, Number(process.env.BINANCE_WS_RECONNECT_MIN_MS ?? 1500));
   const reconnectMaxMs = Math.max(reconnectMinMs, Number(process.env.BINANCE_WS_RECONNECT_MAX_MS ?? 60_000));
@@ -36,20 +57,44 @@ export function createBinanceDeltaAggregator({ log, symbol, timeframe, wsBase, o
 
   function flushOld(nowTs) {
     const w = tfMs();
-    for (const [t, v] of buckets.entries()) {
+    for (const [t] of buckets.entries()) {
       if (t < nowTs - 2 * w) buckets.delete(t);
     }
   }
 
+  function applyAggTradePayload(msg) {
+    const ts = Number(msg?.T);
+    const qty = Number(msg?.q || 0);
+    const isBuyerMaker = Boolean(msg?.m);
+    const openTime = bucketOpenTime(ts);
+
+    const cur = buckets.get(openTime) || { buy: 0, sell: 0 };
+    if (isBuyerMaker) cur.sell += qty;
+    else cur.buy += qty;
+    buckets.set(openTime, cur);
+
+    onDelta?.({ openTime, buy_volume: cur.buy, sell_volume: cur.sell, delta: cur.buy - cur.sell });
+    flushOld(ts);
+  }
+
   function connect() {
+    if (multiplexed) return;
     const stream = aggTradeStream(symbol);
-    status = { ok: false, source: "BINANCE_TRADES", lastMsgAt: status.lastMsgAt, stream, error: null };
+    status = {
+      ...status,
+      ok: false,
+      source: "BINANCE_TRADES",
+      lastMsgAt: status.lastMsgAt,
+      stream,
+      error: null,
+      multiplexed: false,
+    };
     const url = `${wsBase || DEFAULT_WS_BASE}/${stream}`;
     ws = new WebSocket(url);
 
     ws.on("open", () => {
       reconnectAttempt = 0;
-      status = { ...status, ok: true, error: null };
+      status = { ...status, ok: true, error: null, lastMsgAt: Date.now(), multiplexed: false };
       log.info("binance_trades_ws_open", { stream });
     });
 
@@ -57,20 +102,7 @@ export function createBinanceDeltaAggregator({ log, symbol, timeframe, wsBase, o
       status.lastMsgAt = Date.now();
       try {
         const msg = JSON.parse(String(raw));
-        // aggTrade fields: T (trade time), q (quantity), m (is buyer maker)
-        const ts = Number(msg?.T);
-        const qty = Number(msg?.q || 0);
-        const isBuyerMaker = Boolean(msg?.m);
-        const openTime = bucketOpenTime(ts);
-
-        const cur = buckets.get(openTime) || { buy: 0, sell: 0 };
-        // if buyer is maker, then taker is seller => sell volume
-        if (isBuyerMaker) cur.sell += qty;
-        else cur.buy += qty;
-        buckets.set(openTime, cur);
-
-        onDelta?.({ openTime, buy_volume: cur.buy, sell_volume: cur.sell, delta: cur.buy - cur.sell });
-        flushOld(ts);
+        applyAggTradePayload(msg);
       } catch {
         // ignore
       }
@@ -98,14 +130,46 @@ export function createBinanceDeltaAggregator({ log, symbol, timeframe, wsBase, o
     });
   }
 
-  connect();
+  if (multiplexed) {
+    status = {
+      ok: true,
+      source: "BINANCE_TRADES",
+      lastMsgAt: null,
+      stream: binancePublicAggTradeStreamName(symbol),
+      error: null,
+      multiplexed: true,
+    };
+    log?.info?.("binance_aggtrade_multiplex", { stream: status.stream, note: "trades on kline WebSocket" });
+  } else {
+    connect();
+  }
 
   return {
     getStatus() {
       return { ...status, symbol, timeframe };
     },
+    /** Parent kline multiplex: feed parsed `aggTrade` payloads (after `stream`/`data` unwrap). */
+    ingestMultiplexAggTrade(msg) {
+      if (!multiplexed || !msg || msg.e !== "aggTrade") return;
+      if (normalizeSymbol(msg.s) !== symbol) return;
+      status.lastMsgAt = Date.now();
+      try {
+        applyAggTradePayload(msg);
+      } catch {
+        // ignore
+      }
+    },
     setSymbol(next) {
       symbol = normalizeSymbol(next);
+      if (multiplexed) {
+        buckets.clear();
+        status = {
+          ...status,
+          stream: binancePublicAggTradeStreamName(symbol),
+          lastMsgAt: null,
+        };
+        return;
+      }
       try {
         ws?.terminate();
       } catch {
@@ -120,4 +184,3 @@ export function createBinanceDeltaAggregator({ log, symbol, timeframe, wsBase, o
     },
   };
 }
-

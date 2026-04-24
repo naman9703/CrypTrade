@@ -178,7 +178,10 @@ export function createRouter({ appState }) {
         if (!snap?.candles?.length) return res.status(503).json({ ok: false, error: "no_candles" });
         return res.json({ ok: true, ...snap });
       }
-      const snap = bot.getChartSnapshot({ hours });
+      const snap =
+        typeof bot.getChartSnapshotOrRestRepair === "function"
+          ? await bot.getChartSnapshotOrRestRepair({ hours })
+          : bot.getChartSnapshot({ hours });
       if (!snap?.candles?.length) return res.status(503).json({ ok: false, error: "no_candles" });
       res.json({ ok: true, ...snap });
     } catch (e) {
@@ -486,6 +489,11 @@ export function createRouter({ appState }) {
       /** RANKED_AI_SS = universe rank (AI + opp); ST_SIGNAL_FIRST = walk list for first Supertrend bar-close signal. */
       universeAutoCoinPick: z.enum(["RANKED_AI_SS", "ST_SIGNAL_FIRST"]).optional(),
       universePinnedSymbols: z.array(z.string().regex(symbolRe)).max(10).optional(),
+      /**
+       * Ephemeral UI: main chart symbol in multi-coin mode (multiplex klines + WS `market`); null follows `symbol`.
+       * Not persisted in bot-trading-config.json.
+       */
+      uiChartFocusSymbol: z.union([z.string().regex(symbolRe), z.null()]).optional(),
       /** Manual order form (persisted with bot settings). */
       tradingFormDefaults: z
         .object({
@@ -501,6 +509,8 @@ export function createRouter({ appState }) {
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
 
     const { mode: configTargetMode, ...patch } = parsed.data;
+    const patchKeys = Object.keys(patch).filter((k) => patch[k] !== undefined);
+    const chartFocusOnlyPatch = patchKeys.length === 1 && patchKeys[0] === "uiChartFocusSymbol";
     let row;
     try {
       row = getEngineForBotRequest(req, configTargetMode);
@@ -513,21 +523,23 @@ export function createRouter({ appState }) {
     } catch (e) {
       return res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
-    try {
-      broadcastActivity(
-        appState.wsHub,
-        {
-          level: "info",
-          msg: "Bot configuration updated",
-          category: "config",
-          reason: "api_patch",
-          detail: { ...patch, targetMode: configTargetMode ?? resolveViewTradingMode(req, undefined) },
-          tradingMode: configTargetMode ?? resolveViewTradingMode(req, undefined),
-        },
-        { persistenceSlug: tradingModeToPersistenceSlug(String(configTargetMode ?? resolveViewTradingMode(req, undefined))) },
-      );
-    } catch (e) {
-      return res.status(500).json({ ok: false, error: String(e?.message || e) });
+    if (!chartFocusOnlyPatch) {
+      try {
+        broadcastActivity(
+          appState.wsHub,
+          {
+            level: "info",
+            msg: "Bot configuration updated",
+            category: "config",
+            reason: "api_patch",
+            detail: { ...patch, targetMode: configTargetMode ?? resolveViewTradingMode(req, undefined) },
+            tradingMode: configTargetMode ?? resolveViewTradingMode(req, undefined),
+          },
+          { persistenceSlug: tradingModeToPersistenceSlug(String(configTargetMode ?? resolveViewTradingMode(req, undefined))) },
+        );
+      } catch (e) {
+        return res.status(500).json({ ok: false, error: String(e?.message || e) });
+      }
     }
     // Match WS `state` shape so the UI doesn't drop account/positions until the next heartbeat.
     const ex = row.exchange;

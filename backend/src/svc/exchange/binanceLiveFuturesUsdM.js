@@ -34,6 +34,7 @@ import {
   trailCloseFieldsFromMemory,
 } from "../../lib/binanceUsdmCloseReasonHint.js";
 import { TRAIL_TIER_SCHEMA_VERSION } from "../../lib/supertrendTrailingSl.js";
+import { binanceUsdmMarketCombinedBaseFromWsBase, routeBinanceUsdmWsBase } from "../../lib/binanceUsdmWsRoute.js";
 import {
   fetchUsdMOrderCommissionDetails,
   fetchUsdMOrderCommissionDetailsWithRetry,
@@ -565,12 +566,13 @@ export function createBinanceLiveFuturesUsdMExchange({ log }) {
     const wsBaseUrl =
       process.env.BINANCE_LIVE_FUTURES_WS_BASE ||
       process.env.BINANCE_FUTURES_WS_BASE ||
-      "wss://fstream.binance.com/ws";
+      "wss://fstream.binance.com/market/ws";
+    const baseRouted = routeBinanceUsdmWsBase(wsBaseUrl.replace(/\/$/, ""), "market");
     const streams = syms.map((s) => `${s.toLowerCase()}@markPrice@1s`);
     const url =
       streams.length === 1
-        ? `${wsBaseUrl.replace(/\/$/, "")}/${streams[0]}`
-        : `${wsBaseUrl.replace(/\/ws\/?$/, "/stream")}?streams=${streams.join("/")}`;
+        ? `${baseRouted}/${streams[0]}`
+        : `${binanceUsdmMarketCombinedBaseFromWsBase(baseRouted)}?streams=${streams.join("/")}`;
 
     let ws;
     try {

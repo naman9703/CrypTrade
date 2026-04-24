@@ -53,3 +53,33 @@ export async function fetchUsdMPremiumMark(symbol, tradingMode) {
     return null;
   }
 }
+
+/**
+ * Official bar close from REST for the kline starting at `openTimeMs` (matches feed `candle.ts`).
+ * Used to anchor entry slippage vs book/mark when the WS buffer lags on unrouted endpoints.
+ *
+ * @returns {Promise<number | null>} close price or null
+ */
+export async function fetchUsdMKlineCloseAtOpenTime(symbol, interval, openTimeMs, tradingMode) {
+  const sym = String(symbol || "").toUpperCase();
+  const ot = Number(openTimeMs);
+  const intv = String(interval || "1m").trim();
+  if (!sym || !Number.isFinite(ot) || ot <= 0 || !intv) return null;
+  const base = usdMFapiPublicBaseForTradingMode(tradingMode).replace(/\/$/, "");
+  const url = `${base}/fapi/v1/klines`;
+  try {
+    const { data } = await axios.get(url, {
+      params: { symbol: sym, interval: intv, startTime: ot, limit: 1 },
+      timeout: 6000,
+    });
+    if (!Array.isArray(data) || !data.length) return null;
+    const row = data[0];
+    const openT = Number(row?.[0]);
+    const close = Number(row?.[4]);
+    if (!Number.isFinite(close) || close <= 0) return null;
+    if (Number.isFinite(openT) && Math.abs(openT - ot) > 2) return null;
+    return close;
+  } catch {
+    return null;
+  }
+}

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { normalizeSym } from "../lib/symbolPriceSanity";
 import { useAppStore } from "../ws/store";
 
 function fmt(n: number, dp = 2) {
@@ -18,10 +19,20 @@ function priceDp(p: number) {
 
 export function OrderBookPanel() {
   const depth = useAppStore((s) => s.depth);
-  const chartSymbol = useAppStore((s) => s.market?.symbol);
+  const chartDisplaySymbol = useAppStore((s) => s.chartDisplaySymbol);
+  const botSymbol = useAppStore((s) => s.bot?.symbol);
+  /** Match chart: multi-coin tab uses `chartDisplaySymbol`; `market.symbol` can lag one tick vs depth after focus changes. */
+  const chartSymbolForBook = useMemo(() => {
+    const d = chartDisplaySymbol ? String(chartDisplaySymbol).trim() : "";
+    const b = String(botSymbol ?? "").trim();
+    return d || b || "";
+  }, [chartDisplaySymbol, botSymbol]);
   const symbol = depth?.symbol;
-  const depthMismatch =
-    Boolean(chartSymbol && symbol && String(chartSymbol).toUpperCase() !== String(symbol).toUpperCase());
+  const depthMismatch = Boolean(
+    chartSymbolForBook &&
+      symbol &&
+      normalizeSym(chartSymbolForBook) !== normalizeSym(symbol),
+  );
 
   const rows = useMemo(() => {
     const bids = (depth?.bids || []).slice(0, 12);
@@ -37,11 +48,13 @@ export function OrderBookPanel() {
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40">
       <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-3 py-2">
         <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Order book</div>
-        <div className="text-[11px] text-slate-600 dark:text-slate-500">{symbol ?? chartSymbol ?? "—"}</div>
+        <div className="text-[11px] text-slate-600 dark:text-slate-500">
+          {symbol ?? (chartSymbolForBook || "—")}
+        </div>
       </div>
       {depthMismatch ? (
         <div className="px-3 py-2 text-[11px] text-amber-200/90">
-          Depth catching up ({symbol} book vs chart {chartSymbol})…
+          Depth catching up ({symbol} book vs chart {chartSymbolForBook})…
         </div>
       ) : null}
 

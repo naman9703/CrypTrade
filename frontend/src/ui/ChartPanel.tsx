@@ -9,7 +9,7 @@ import {
 } from "lightweight-charts";
 import { api } from "../api/client";
 import { buildOhlc, isOhlcBarRenderable, ohlcBarsToMsCandles, type OhlcBar } from "../lib/chartOhlc";
-import { isPlausibleCandleClose } from "../lib/symbolPriceSanity";
+import { isPlausibleCandleClose, normalizeSym } from "../lib/symbolPriceSanity";
 import { CLIENT_SUPERTREND_CHIME_EVENT, type ClientSupertrendChimeDetail } from "../lib/clientActivityEvents";
 import { playSupertrendBuySound, playSupertrendSellSound } from "../lib/uiSounds";
 import { binanceIntervalMs, buildChartSupertrend } from "../lib/supertrend";
@@ -55,15 +55,35 @@ const CHART_MARKER_DISPLAY_CAP = 40;
 const SUPERTREND_SIGNAL_LIST_MAX = 50;
 
 /**
+ * Multi-coin alt tab: REST gives deep history; WS `candles` give the live tail. Merge so the chart is not
+ * stuck painting **only** `altCandles` until an arbitrary bar count — that made non-primary pairs look frozen.
+ */
+function mergeAltRestWithLiveWs(alt: any[], live: any[]): any[] {
+  if (!live.length) return alt.length ? alt.slice(-CHART_CANDLE_MAX) : [];
+  if (!alt.length) return live.slice(-CHART_CANDLE_MAX);
+  const byTs = new Map<number, any>();
+  for (const c of alt) {
+    const t = Number(c?.ts);
+    if (!Number.isFinite(t)) continue;
+    byTs.set(t, c);
+  }
+  for (const c of live) {
+    const t = Number(c?.ts);
+    if (!Number.isFinite(t)) continue;
+    byTs.set(t, c);
+  }
+  return [...byTs.values()].sort((a, b) => Number(a.ts) - Number(b.ts)).slice(-CHART_CANDLE_MAX);
+}
+
+/**
  * REST reconcile for candles (does not remount chart; restores visible range).
- * Primary pair is driven by WS `market` pushes — this only backfills if WS lags and refreshes
- * alt-symbol tiles that poll `/api/market/candles`. Default 15s (was 60s) to cut visible 1–2m drift;
- * set `VITE_CHART_REST_RECONCILE_MS` (ms), clamped 5000–120000.
+ * Primary pair is driven by WS `market` pushes — this catches WS stalls / background-tab throttling.
+ * Default 8s; set `VITE_CHART_REST_RECONCILE_MS` (ms), clamped 3000–120000.
  */
 const CHART_BACKGROUND_SYNC_MS = (() => {
   const raw = Number(import.meta.env.VITE_CHART_REST_RECONCILE_MS);
-  if (!Number.isFinite(raw) || raw <= 0) return 15_000;
-  return Math.min(120_000, Math.max(5_000, Math.floor(raw)));
+  if (!Number.isFinite(raw) || raw <= 0) return 8_000;
+  return Math.min(120_000, Math.max(3_000, Math.floor(raw)));
 })();
 
 function normalizeSymTf(s: string | undefined) {
@@ -1256,7 +1276,27 @@ export function ChartPanel() {
     };
   }, [effectiveSym, bot?.symbol, parseCandlesFromMarketApi]);
 
-  const baseCandles = isAltChartView ? altCandles : candles;
+  /**
+   * Only use Zustand `candles` when they belong to the chart’s symbol (see `mergeMarketIntoState`).
+   * Without this, switching multi-coin tab back to primary left `candles` on the old pair while
+   * `isAltChartView` became false → `buildOhlc` mixed wrong OHLC with the new symbol and broke the chart.
+   */
+  const chartSymNorm = useMemo(() => normalizeSym(effectiveSym), [effectiveSym]);
+  const marketSymNorm = useMemo(() => normalizeSym(market?.symbol), [market?.symbol]);
+  const wsStoreAligned = Boolean(chartSymNorm && candles.length && marketSymNorm === chartSymNorm);
+
+  const baseCandles = useMemo(() => {
+    if (isAltChartView) {
+      if (wsStoreAligned && candles.length > 0) {
+        return mergeAltRestWithLiveWs(altCandles, candles);
+      }
+      if (altCandles.length) return altCandles;
+      return candles;
+    }
+    if (wsStoreAligned) return candles;
+    if (chartSymNorm && marketSymNorm && marketSymNorm !== chartSymNorm) return [];
+    return candles;
+  }, [isAltChartView, wsStoreAligned, candles, altCandles, chartSymNorm, marketSymNorm]);
 
   const ohlc = useMemo(
     () => buildOhlc(baseCandles, { symbol: effectiveSym || undefined }),
@@ -1678,7 +1718,7 @@ export function ChartPanel() {
     if (cur.length) {
       try {
         const st = useAppStore.getState();
-        const sym0 = normalizeSymTf(st.chartDisplaySymbol ?? st.bot?.symbol);
+        const sym0 = canonicalChartSymbol(st.chartDisplaySymbol ?? st.bot?.symbol);
         const filtered = cur.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? cur[i - 1]! : null, sym0));
         if (filtered.length) {
           series.setData(filtered);
@@ -2780,6 +2820,14 @@ export function ChartPanel() {
     if (!ohlc.length) {
       chartOhlcAppliedRef.current = null;
       syncPreserveViewRef.current = false;
+      /** Store can clear `candles` (e.g. WS `state` rekey) before new bars arrive — must wipe LWC or old pair sticks on canvas. */
+      if (chartOkRef.current && seriesRef.current) {
+        try {
+          seriesRef.current.setData([]);
+        } catch {
+          /* ignore */
+        }
+      }
       return;
     }
     if (!chartOkRef.current || !seriesRef.current || !chartRef.current) {
@@ -2805,7 +2853,8 @@ export function ChartPanel() {
     const prev = chartOhlcAppliedRef.current;
     const last = ohlc[ohlc.length - 1]!;
     const first = ohlc[0]!;
-    const sym = normalizeSymTf(effectiveSym);
+    /** Match `buildOhlc` / exchange keys — slashes in UI symbol must not skip `EXACT_CLOSE_RANGE` in sanity checks. */
+    const sym = canonicalChartSymbol(effectiveSym);
 
     let full =
       !prev ||
@@ -2825,7 +2874,15 @@ export function ChartPanel() {
     try {
       if (full) {
         const sanitized = ohlc.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? ohlc[i - 1]! : null, sym));
-        if (!sanitized.length) return;
+        if (!sanitized.length) {
+          try {
+            series.setData([]);
+          } catch {
+            /* ignore */
+          }
+          chartOhlcAppliedRef.current = null;
+          return;
+        }
         series.setData(sanitized);
         chartOhlcAppliedRef.current = sanitized.slice();
       } else {
@@ -3074,6 +3131,29 @@ export function ChartPanel() {
     return () => clearInterval(id);
   }, [effectiveSym, bot?.symbol, bot?.timeframe, applyMarketCandlesResult]);
 
+  /** Tab back to foreground: rAF/microtask backlog while hidden can leave the last candle minutes stale; snap from REST once. */
+  useEffect(() => {
+    const sym = normalizeSymTf(bot?.symbol);
+    const tf = normalizeSymTf(bot?.timeframe);
+    if (!sym || !tf) return;
+    if (normalizeSymTf(effectiveSym) !== sym) return;
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      const live = useAppStore.getState();
+      const liveSym = normalizeSymTf(live.bot?.symbol);
+      const liveTf = normalizeSymTf(live.bot?.timeframe);
+      if (liveSym !== sym || liveTf !== tf) return;
+      api
+        .marketCandles(24)
+        .then((r) => {
+          applyMarketCandlesResult(r, sym, tf, { preserveView: true });
+        })
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [effectiveSym, bot?.symbol, bot?.timeframe, applyMarketCandlesResult]);
+
   useEffect(() => {
     if (stLineFlushRafRef.current) cancelAnimationFrame(stLineFlushRafRef.current);
     stLineFlushRafRef.current = requestAnimationFrame(() => {
@@ -3219,9 +3299,11 @@ export function ChartPanel() {
 
       <div className="flex flex-col gap-4">
         {isAltChartView ? (
-          <p className="text-[10px] leading-snug text-amber-800/95 dark:text-amber-200/90">
-            Main chart: <span className="font-mono">{effectiveSym}</span> (REST + periodic sync). Live WebSocket candle stream follows bot symbol{" "}
-            <span className="font-mono">{normalizeSymTf(bot?.symbol) || "—"}</span> — switch tab to match bot for realtime ticks.
+          <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+            Chart: <span className="font-mono">{effectiveSym}</span>
+            {" · "}
+            live multiplex feed + WS <span className="font-mono">market</span> (bot trades{" "}
+            <span className="font-mono">{normalizeSymTf(bot?.symbol) || "—"}</span>).
           </p>
         ) : null}
         <div className="relative w-full shrink-0">

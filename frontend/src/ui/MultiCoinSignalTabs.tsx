@@ -71,10 +71,13 @@ export function MultiCoinSignalTabs() {
 
   useEffect(() => {
     if (!tabs.length) return;
-    if (chartDisplaySymbol == null) {
-      setChartDisplaySymbol(tabs[0]);
-    }
-  }, [tabs, chartDisplaySymbol, setChartDisplaySymbol]);
+    if (chartDisplaySymbol != null) return;
+    const serverFocus = String((bot as Record<string, unknown>)?.uiChartFocusSymbol ?? "")
+      .trim()
+      .toUpperCase();
+    const pick = serverFocus && tabs.includes(serverFocus) ? serverFocus : tabs[0];
+    setChartDisplaySymbol(pick);
+  }, [tabs, chartDisplaySymbol, setChartDisplaySymbol, bot]);
 
   if (tabs.length === 0) return null;
 

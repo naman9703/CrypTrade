@@ -5,7 +5,7 @@ import {
   loadTradingUiPrefs,
   mergePersistedBotPatch,
 } from "../lib/tradingUiPersistence";
-import { isPlausibleCandleClose } from "../lib/symbolPriceSanity";
+import { isPlausibleCandleClose, normalizeSym } from "../lib/symbolPriceSanity";
 import { isIncomeLedgerClose, playProfitCloseSound } from "../lib/uiSounds";
 
 type Candle = {
@@ -175,9 +175,16 @@ let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 /** When true, the next `onclose` must not schedule reconnect (logout / auth gate). */
 let wsIntentionalClose = false;
 
-/** Coalesce burst `market` WS frames to one store commit per animation frame (bad links / JS backlog). */
-let pendingMarketPayload: MarketPayload | null = null;
-let pendingMarketRaf = 0;
+/**
+ * Coalesce burst `market` WS frames to one store commit per microtask (not rAF — rAF is throttled in
+ * background tabs). **Per-symbol map**: a single `pendingMarketPayload` would drop all but the last frame;
+ * when the server emits primary + alt pairs in the same tick (tick + multiplex live push), the wrong
+ * symbol could win and the chart tab would stop updating (merge rejects non-view symbols).
+ */
+let pendingMarketBySymbol: Map<string, MarketPayload> | null = null;
+let pendingMarketFlushScheduled = false;
+/** Debounce `POST /api/bot/config` when multi-coin chart tab changes (server multiplex + `market` routing). */
+let chartFocusSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** One-shot: push saved mode + /api/bot/config after load (hello or first HTTP hydrate). */
 let tradingUiSessionRestoreStarted = false;
@@ -236,8 +243,11 @@ function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial
   const h = Number(c?.high);
   const l = Number(c?.low);
   const cl = Number(c?.close);
-  const payloadSym = normWsSym(p.symbol);
-  const viewSym = normWsSym(s.chartDisplaySymbol ?? s.bot?.symbol);
+  /** Match ChartPanel / Binance wire: `BTC/USDT` vs `BTCUSDT` must not block every `market` tick. */
+  const payloadSym = normalizeSym(p.symbol);
+  /** Without a symbol, `symbolChanged` would be true vs any prior pair and wipe the whole buffer. */
+  if (!payloadSym) return s;
+  const viewSym = normalizeSym(s.chartDisplaySymbol ?? s.bot?.symbol);
   /** Stale or misrouted ticks (WS backlog) must not append into another pair’s candle buffer. */
   if (viewSym && payloadSym && viewSym !== payloadSym) {
     return s;
@@ -247,17 +257,25 @@ function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial
    * `prevSymbol && prevSymbol !== p.symbol`, which kept `symbolChanged` false and merged
    * BTC (etc.) history with BNB ticks — HUD/chart then flickered plausible-but-wrong prices.
    */
-  const prevMarketSym = normWsSym(s.market?.symbol);
+  const prevMarketSym = normalizeSym(s.market?.symbol);
   const symbolChanged = prevMarketSym !== payloadSym;
   const prev = symbolChanged ? [] : s.candles;
   const lastPrev = prev.length ? prev[prev.length - 1] : null;
   const prevClose =
     lastPrev && Number.isFinite(Number(lastPrev.close)) ? Number(lastPrev.close) : null;
+  /** Same open time as last store bar = in-progress kline tail; skip 45% step check vs last tick (avoids dropping live partials). */
+  const sameBarAsPrev =
+    lastPrev != null && Number.isFinite(Number(lastPrev.ts)) && Number(lastPrev.ts) === Number(c?.ts);
+  const symPlausible = String(p.symbol ?? "");
+  let plausible = isPlausibleCandleClose(symPlausible, cl, l, prevClose);
+  if (!plausible && sameBarAsPrev) {
+    plausible = isPlausibleCandleClose(symPlausible, cl, l, null);
+  }
   if (
     c == null ||
     !Number.isFinite(Number(c.ts)) ||
     ![o, h, l, cl].every((x) => Number.isFinite(x) && x > 0) ||
-    !isPlausibleCandleClose(String(p.symbol ?? ""), cl, l, prevClose)
+    !plausible
   ) {
     return s;
   }
@@ -276,7 +294,12 @@ function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial
     Array.isArray(p.supertrendSignals) && p.supertrendSignals.length > 0
       ? p.supertrendSignals
       : (s.market?.supertrendSignals ?? []);
+  const prevMarket =
+    s.market && typeof s.market === "object" && !Array.isArray(s.market)
+      ? { ...(s.market as MarketPayload) }
+      : {};
   const marketMerged: MarketPayload = {
+    ...prevMarket,
     ...p,
     supertrendLine: stLine,
     supertrendSignals: stSig,
@@ -467,7 +490,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           return;
         }
         if (type === "market") {
-          pendingMarketPayload = payload as MarketPayload;
+          const p = payload as MarketPayload;
+          const k = normalizeSym(p.symbol);
+          if (!k) return;
+          if (!pendingMarketBySymbol) pendingMarketBySymbol = new Map();
+          pendingMarketBySymbol.set(k, p);
           scheduleMarketFlush();
           return;
         }
@@ -544,10 +571,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setBot: (bot) => set({ bot }),
 
-  setChartDisplaySymbol: (sym) =>
-    set({
-      chartDisplaySymbol: sym == null || String(sym).trim() === "" ? null : normWsSym(String(sym)),
-    }),
+  setChartDisplaySymbol: (sym) => {
+    const next = sym == null || String(sym).trim() === "" ? null : normWsSym(String(sym));
+    set({ chartDisplaySymbol: next });
+    if (chartFocusSyncTimer) clearTimeout(chartFocusSyncTimer);
+    /** Immediate: delayed sync left live USD-M multiplex without `uiChartFocusSymbol` for ~120ms → ticked `market` stayed on the bot pair and the UI dropped every frame for the selected tab. */
+    void api
+      .botConfig({ uiChartFocusSymbol: next } as Record<string, unknown>)
+      .catch(() => {});
+    chartFocusSyncTimer = setTimeout(() => {
+      chartFocusSyncTimer = null;
+      void api
+        .botConfig({ uiChartFocusSymbol: next } as Record<string, unknown>)
+        .catch(() => {});
+    }, 800);
+  },
 
   pushLog: (p) =>
     set((s) => {
@@ -565,13 +603,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 }));
 
 function scheduleMarketFlush() {
-  if (pendingMarketRaf) return;
-  pendingMarketRaf = requestAnimationFrame(() => {
-    pendingMarketRaf = 0;
-    const p = pendingMarketPayload;
-    pendingMarketPayload = null;
-    if (!p) return;
-    useAppStore.setState((s) => mergeMarketIntoState(s, p) as AppState);
+  if (pendingMarketFlushScheduled) return;
+  pendingMarketFlushScheduled = true;
+  queueMicrotask(() => {
+    pendingMarketFlushScheduled = false;
+    const map = pendingMarketBySymbol;
+    pendingMarketBySymbol = null;
+    if (!map || map.size === 0) return;
+    const s = useAppStore.getState();
+    const viewNorm = normalizeSym(s.chartDisplaySymbol ?? s.bot?.symbol);
+    const pick =
+      viewNorm && map.has(viewNorm)
+        ? map.get(viewNorm)
+        : undefined;
+    if (!pick) return;
+    useAppStore.setState((st) => mergeMarketIntoState(st, pick) as AppState);
   });
 }
 
@@ -585,7 +631,10 @@ export function applyWsStateSnapshot(payload: unknown) {
     const prevTf = prev.bot?.timeframe != null ? String(prev.bot.timeframe) : "";
     const nextTf = p.timeframe != null ? String(p.timeframe) : "";
     const chartRekey =
-      (prevSym && nextSym && prevSym !== nextSym) || (prevTf && nextTf && prevTf !== nextTf);
+      (prevSym &&
+        nextSym &&
+        normalizeSym(prevSym) !== normalizeSym(nextSym)) ||
+      (prevTf && nextTf && prevTf !== nextTf);
     const nextMode = p.mode != null ? String(p.mode) : prev.mode;
     const modeChanged = p.mode != null && String(prev.mode ?? "") !== String(p.mode);
     const nextAccount = p.account !== undefined ? p.account : prev.account;
@@ -653,11 +702,8 @@ export async function hydrateStateViaHttp(): Promise<void> {
 export function forceDisconnectWebSocket() {
   tradingUiSessionRestoreStarted = false;
   wsIntentionalClose = true;
-  if (pendingMarketRaf) {
-    cancelAnimationFrame(pendingMarketRaf);
-    pendingMarketRaf = 0;
-  }
-  pendingMarketPayload = null;
+  pendingMarketFlushScheduled = false;
+  pendingMarketBySymbol = null;
   if (wsReconnectTimer) {
     clearTimeout(wsReconnectTimer);
     wsReconnectTimer = null;

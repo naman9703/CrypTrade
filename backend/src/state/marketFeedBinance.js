@@ -104,7 +104,7 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
 
     ws.on("open", () => {
       reconnectAttempt = 0;
-      status = { ...status, ok: true, error: null };
+      status = { ...status, ok: true, error: null, lastMsgAt: Date.now() };
       log.info("binance_ws_open", { stream });
     });
 

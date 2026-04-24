@@ -1,3 +1,4 @@
+import { routeBinanceUsdmWsBase } from "../lib/binanceUsdmWsRoute.js";
 import { createCandleBuffer } from "./marketBuffer.js";
 import { createBinanceCombinedMarketFeed } from "./marketFeedBinanceCombined.js";
 
@@ -88,80 +89,103 @@ function resolveSpotCombinedBaseForFeed(tradingMode) {
   return process.env.BINANCE_COMBINED_BASE || "wss://stream.binance.com:9443/stream";
 }
 
+/**
+ * Strip trailing `/fapi` so `GET /fapi/v1/klines` joins correctly when env uses `https://fapi.binance.com/fapi`.
+ * @see https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data
+ */
+function normalizeFuturesKlineRestRoot(raw, fallbackHost) {
+  let s = String(raw || "").trim();
+  if (!s) s = fallbackHost;
+  s = s.replace(/\/$/, "");
+  if (s.endsWith("/fapi")) s = s.slice(0, -5);
+  return s || fallbackHost;
+}
+
 function resolveFuturesRestBaseForFeed(tradingMode) {
   const tm = String(tradingMode || "").toUpperCase();
   if (tm === "BINANCE_DEMO_API") {
-    return process.env.BINANCE_DEMO_FUTURES_REST_BASE || "https://demo-fapi.binance.com";
-  }
-  if (tm === "BINANCE_TESTNET") {
-    return process.env.BINANCE_FUTURES_TESTNET_REST_BASE || "https://testnet.binancefuture.com";
-  }
-  if (tm === "BINANCE_LIVE") {
-    return (
-      process.env.BINANCE_LIVE_FUTURES_REST_BASE ||
-      process.env.BINANCE_FUTURES_REST_BASE ||
-      "https://fapi.binance.com"
+    return normalizeFuturesKlineRestRoot(
+      process.env.BINANCE_DEMO_FUTURES_REST_BASE,
+      "https://demo-fapi.binance.com",
     );
   }
-  return process.env.BINANCE_FUTURES_REST_BASE || "https://fapi.binance.com";
+  if (tm === "BINANCE_TESTNET") {
+    return normalizeFuturesKlineRestRoot(
+      process.env.BINANCE_FUTURES_TESTNET_REST_BASE,
+      "https://testnet.binancefuture.com",
+    );
+  }
+  if (tm === "BINANCE_LIVE") {
+    return normalizeFuturesKlineRestRoot(
+      process.env.BINANCE_LIVE_FUTURES_REST_BASE ||
+        process.env.BINANCE_FUTURES_REST_BASE ||
+        "https://fapi.binance.com",
+      "https://fapi.binance.com",
+    );
+  }
+  return normalizeFuturesKlineRestRoot(process.env.BINANCE_FUTURES_REST_BASE, "https://fapi.binance.com");
 }
 
 /**
- * Futures public WS: demo-fapi (BINANCE_DEMO_API) follows mainnet prices — use fstream.binance.com, not
- * fstream.binancefuture.com (that host is USD-M *testnet*, a different market from demo-fapi REST).
+ * Futures public WS: `BINANCE_DEMO_API` uses the same USD-M **testnet** stream host as Binance documents for
+ * demo-fapi (`demo-fapi.binance.com` + `wss://fstream.binancefuture.com`). Live mainnet stays on fstream.binance.com.
+ * Override with BINANCE_DEMO_FUTURES_WS_BASE; alias BINANCE_FUTURES_TESTNET_WS_BASE if you set both modes together.
  */
 function resolveFuturesWsBaseForFeed(tradingMode) {
   const tm = String(tradingMode || "").toUpperCase();
+  let u;
   if (tm === "BINANCE_DEMO_API") {
-    return (
+    u =
       process.env.BINANCE_DEMO_FUTURES_WS_BASE ||
-      process.env.BINANCE_FUTURES_WS_BASE ||
-      "wss://fstream.binance.com/ws"
-    );
-  }
-  if (tm === "BINANCE_TESTNET") {
-    return (
-      process.env.BINANCE_FUTURES_TESTNET_WS_BASE || "wss://fstream.binancefuture.com/ws"
-    );
-  }
-  if (tm === "BINANCE_LIVE") {
-    return (
+      process.env.BINANCE_FUTURES_TESTNET_WS_BASE ||
+      "wss://fstream.binancefuture.com/market/ws";
+  } else if (tm === "BINANCE_TESTNET") {
+    u = process.env.BINANCE_FUTURES_TESTNET_WS_BASE || "wss://fstream.binancefuture.com/market/ws";
+  } else if (tm === "BINANCE_LIVE") {
+    u =
       process.env.BINANCE_LIVE_FUTURES_WS_BASE ||
       process.env.BINANCE_FUTURES_WS_BASE ||
-      "wss://fstream.binance.com/ws"
-    );
+      "wss://fstream.binance.com/market/ws";
+  } else {
+    u = process.env.BINANCE_FUTURES_WS_BASE || "wss://fstream.binance.com/market/ws";
   }
-  return process.env.BINANCE_FUTURES_WS_BASE || "wss://fstream.binance.com/ws";
+  return routeBinanceUsdmWsBase(u, "market");
 }
 
 function resolveFuturesCombinedBaseForFeed(tradingMode) {
   const tm = String(tradingMode || "").toUpperCase();
+  let u;
   if (tm === "BINANCE_DEMO_API") {
-    return (
+    u =
       process.env.BINANCE_DEMO_FUTURES_COMBINED_BASE ||
-      process.env.BINANCE_FUTURES_COMBINED_BASE ||
-      "wss://fstream.binance.com/stream"
-    );
-  }
-  if (tm === "BINANCE_TESTNET") {
-    return (
-      process.env.BINANCE_FUTURES_TESTNET_COMBINED_BASE || "wss://fstream.binancefuture.com/stream"
-    );
-  }
-  if (tm === "BINANCE_LIVE") {
-    return (
+      process.env.BINANCE_FUTURES_TESTNET_COMBINED_BASE ||
+      "wss://fstream.binancefuture.com/market/stream";
+  } else if (tm === "BINANCE_TESTNET") {
+    u =
+      process.env.BINANCE_FUTURES_TESTNET_COMBINED_BASE || "wss://fstream.binancefuture.com/market/stream";
+  } else if (tm === "BINANCE_LIVE") {
+    u =
       process.env.BINANCE_LIVE_FUTURES_COMBINED_BASE ||
       process.env.BINANCE_FUTURES_COMBINED_BASE ||
-      "wss://fstream.binance.com/stream"
-    );
+      "wss://fstream.binance.com/market/stream";
+  } else {
+    u = process.env.BINANCE_FUTURES_COMBINED_BASE || "wss://fstream.binance.com/market/stream";
   }
-  return process.env.BINANCE_FUTURES_COMBINED_BASE || "wss://fstream.binance.com/stream";
+  return routeBinanceUsdmWsBase(u, "market");
 }
 
 // Feed factory. Default: SYNTH. Optional: BINANCE (spot) or BINANCE_FUTURES (USDT-M public fapi + fstream).
 // `feedKind` lets PAPER use live public data while process.env.MARKET_FEED stays SYNTH for other modes.
 // `tradingMode` routes demo vs live public WS + kline REST (BINANCE_DEMO_API / BINANCE_TESTNET / BINANCE_LIVE); PAPER keeps mainnet defaults.
-export function createMarketFeed({ log, symbol, timeframe, onCandleClose = null, feedKind, tradingMode } = {}) {
+export function createMarketFeed({
+  log,
+  symbol,
+  timeframe,
+  onCandleClose = null,
+  feedKind,
+  tradingMode,
+  onPrimaryCandleLive = null,
+} = {}) {
   const kind = String(
     feedKind != null && String(feedKind).trim() ? feedKind : process.env.MARKET_FEED || "SYNTH",
   ).toUpperCase();
@@ -177,19 +201,25 @@ export function createMarketFeed({ log, symbol, timeframe, onCandleClose = null,
       wsBase: resolveSpotWsBaseForFeed(tm),
       combinedStreamBase: resolveSpotCombinedBaseForFeed(tm),
       onCandleClose,
+      onPrimaryCandleLive,
     });
   }
   if (kind === "BINANCE_FUTURES") {
+    const tmU = String(tm || "").toUpperCase();
+    const futuresStreamRealm =
+      tmU === "BINANCE_DEMO_API" || tmU === "BINANCE_TESTNET" ? "demo_testnet" : "live";
     return createBinanceCombinedMarketFeed({
       log,
       symbol,
       timeframe,
       variant: "futures",
+      futuresStreamRealm,
       watchSymbols: [],
       restBase: resolveFuturesRestBaseForFeed(tm),
       wsBase: resolveFuturesWsBaseForFeed(tm),
       combinedStreamBase: resolveFuturesCombinedBaseForFeed(tm),
       onCandleClose,
+      onPrimaryCandleLive,
     });
   }
 
@@ -233,6 +263,17 @@ export function createMarketFeed({ log, symbol, timeframe, onCandleClose = null,
     const volume = 20 + Math.random() * 25;
     buf.push({ ts: t, open, high, low, close, volume });
     lastClose = close;
+    if (typeof onPrimaryCandleLive === "function") {
+      try {
+        onPrimaryCandleLive({
+          symbol: String(symbol || "").trim().toUpperCase(),
+          timeframe: String(timeframe || "1m").trim(),
+          candle: { ts: t, open, high, low, close, volume },
+        });
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   // drive synthetic candles

@@ -58,7 +58,16 @@ export function HeaderSignalsStrip() {
   const aiGate = bot?.lastAi?.gateProbability;
   const modelKind = bot?.lastAi?.model_kind || bot?.lastAi?.modelKind;
   const feedOk = Boolean(bot?.feed?.ok);
-  const feedSource = bot?.feed?.source || "—";
+  /** Backend reports the public data product (e.g. BINANCE_FUTURES); demo mode still uses that stream for OHLC. */
+  const feedSourceRaw = bot?.feed?.source || "—";
+  const feedSource =
+    mode === "BINANCE_DEMO_API"
+      ? feedSourceRaw === "BINANCE_FUTURES"
+        ? "FUTURES·demo"
+        : feedSourceRaw === "BINANCE"
+          ? "SPOT·demo"
+          : feedSourceRaw
+      : feedSourceRaw;
   const exchangeName = bot?.exchange?.name || mode || "—";
 
   const udf = bot?.exchangeStatus?.udf as
@@ -87,7 +96,9 @@ export function HeaderSignalsStrip() {
 
   const feedTitle =
     feedOk && !bot?.feed?.error
-      ? `Market data: ${feedSource}`
+      ? mode === "BINANCE_DEMO_API"
+        ? `Market data: ${feedSourceRaw} (public Binance klines; orders on Futures Demo API)`
+        : `Market data: ${feedSource}`
       : [feedSource, bot?.feed?.error].filter(Boolean).join(" — ") || "Market feed";
 
   const pendingSt = bot?.pendingSupertrendAction as { side?: string; venue?: string } | undefined;

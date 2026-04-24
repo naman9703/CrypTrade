@@ -28,7 +28,12 @@ import {
 } from "../lib/supertrendChartAlign.js";
 import { broadcastActivity } from "../lib/activityLog.js";
 import { mergePersistedTradesWithExchange } from "../lib/activityPersistence.js";
-import { fetchUsdMBookTicker, fetchUsdMPremiumMark } from "../lib/binanceUsdMBookTicker.js";
+import {
+  fetchUsdMBookTicker,
+  fetchUsdMKlineCloseAtOpenTime,
+  fetchUsdMPremiumMark,
+} from "../lib/binanceUsdMBookTicker.js";
+import { routeBinanceUsdmWsBase } from "../lib/binanceUsdmWsRoute.js";
 import { readBotTradingConfig, writeBotTradingConfig } from "../lib/botTradingConfigStore.js";
 import {
   appendSupertrendSignalHistoryEntry,
@@ -38,6 +43,10 @@ import {
 import { appendMqTradeOutcomeRow } from "../lib/mqTradeOutcomeLog.js";
 import { isStrictBinanceAccountMode, tradingModeToPersistenceSlug } from "../lib/tradingModePersistence.js";
 import { fetchBinanceKlinesRows, fetchBinanceKlinesRange } from "../lib/binanceKlinesRest.js";
+import {
+  evaluateLiveBinanceFeedExecutionGate,
+  feedRecoveredForAutoRestart,
+} from "../lib/binanceFeedHealth.js";
 import { computeSupertrendSignalVerdictsBackend, closeBySecFromKlines } from "../lib/supertrendSignalVerdict.js";
 import {
   evaluateSupertrendMoveQuality,
@@ -150,18 +159,6 @@ function activityStartMsg(reason) {
     daily_loss_reset_resume: "Bot started · daily loss baseline reset (user)",
   };
   return labels[r] || `Bot started · ${r}`;
-}
-
-/** Latest activity from Binance feed: max(kline lastMsgAt, aggTrade delta lastMsgAt) — avoids false stops when only one stream stalls. */
-function freshestBinanceFeedMsgAt(feedStatus) {
-  if (!feedStatus) return null;
-  const k = Number(feedStatus.lastMsgAt);
-  const d = feedStatus.delta?.lastMsgAt != null ? Number(feedStatus.delta.lastMsgAt) : NaN;
-  const vals = [];
-  if (Number.isFinite(k)) vals.push(k);
-  if (Number.isFinite(d)) vals.push(d);
-  if (!vals.length) return null;
-  return Math.max(...vals);
 }
 
 /** Blend calibrated vs raw AI probability (reduces isotonic collapse). */
@@ -864,13 +861,19 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
      * @type {Record<string, { ts: number, buySignal: boolean, sellSignal: boolean, trend: number | null, strength01: number | null, signalStrength: number | null, stAction: string | null, aiGateBuy: number | null, aiGateSell: number | null, bufferBars: number | null, updatedAt: number, source?: string, marketDecisionSnapshot?: object | null }>}
      */
     multiSymbolWatchSignals: Object.create(null),
+    /**
+     * Multi-coin UI: which symbol the main chart focuses (live `market` + ST overlay). Null = `symbol`.
+     * Ephemeral — not written to bot-trading-config.json.
+     */
+    uiChartFocusSymbol: null,
     /** Partial market decision engine config; merged with defaults in `getPublicState`. */
     marketDecision: Object.create(null),
   };
 
   /**
    * Paper: use Binance **public** OHLCV / depth (same math as demo & live) while orders stay on local paper legs.
-   * Non-paper: `MARKET_FEED` only. Paper opt-out: `PAPER_MARKET_FEED=SYNTH`.
+   * Demo/testnet/live: explicit `MARKET_FEED=BINANCE|BINANCE_FUTURES` overrides; if unset or SYNTH, default
+   * matches paper (SPOT → BINANCE, else BINANCE_FUTURES). Paper opt-out: `PAPER_MARKET_FEED=SYNTH`.
    */
   function effectiveMarketFeedKind() {
     const tm = runtimeTradingMode();
@@ -883,8 +886,34 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         const mm = String(state.marketMode || "AUTO").toUpperCase();
         const futOn = Boolean(state.supertrendFuturesAuto);
         const spotOn = Boolean(state.supertrendSpotAuto);
-        const wantsFutures = mm === "FUTURES" || (mm === "AUTO" && futOn && !spotOn);
+        let wantsFutures = mm === "FUTURES" || (mm === "AUTO" && futOn && !spotOn);
+        /**
+         * `MARKET_FEED=BINANCE` is ambiguous: many deployments (and Binance geo rules) block **spot**
+         * `api.binance.com` / `stream.binance.com` while **USD-M** `fapi` / `fstream` still works — live then
+         * looks "stuck" / Feed: stale while demo (demo-fapi + fstream.binancefuture.com) is fine.
+         * If Market is AUTO and neither Supertrend leg is chosen yet, default strict exchange modes to **futures**
+         * OHLCV so the chart matches the usual USD-M venue. Use Market **SPOT** or `MARKET_FEED=BINANCE_FUTURES`
+         * / `BINANCE` + futures toggles to force a venue explicitly.
+         */
+        if (
+          !wantsFutures &&
+          mm === "AUTO" &&
+          !futOn &&
+          !spotOn &&
+          (tm === "BINANCE_LIVE" || tm === "BINANCE_DEMO_API" || tm === "BINANCE_TESTNET")
+        ) {
+          wantsFutures = true;
+        }
         return wantsFutures ? "BINANCE_FUTURES" : "BINANCE";
+      }
+      // Paper defaults to public Binance when MARKET_FEED is SYNTH; demo/testnet/live used to fall through
+      // to SYNTH here — charts then had no real klines unless MARKET_FEED was set explicitly.
+      if (
+        g === "SYNTH" &&
+        (tm === "BINANCE_DEMO_API" || tm === "BINANCE_TESTNET" || tm === "BINANCE_LIVE")
+      ) {
+        const mm = String(state.marketMode || "AUTO").toUpperCase();
+        return mm === "SPOT" ? "BINANCE" : "BINANCE_FUTURES";
       }
       return "SYNTH";
     }
@@ -906,27 +935,42 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   function binanceDepthWsBase() {
     const k = effectiveMarketFeedKind();
     const tm = String(runtimeTradingMode() || "").toUpperCase();
+    /** Partial depth is a **Public** stream; do not reuse `/market/ws` from kline env. */
+    function futuresDepthBaseFromEnv() {
+      const depthFirst =
+        String(process.env.BINANCE_FUTURES_DEPTH_WS_BASE || "").trim() ||
+        String(process.env.BINANCE_LIVE_FUTURES_DEPTH_WS_BASE || "").trim();
+      if (depthFirst) {
+        let r = depthFirst;
+        if (/fstream\.binance/i.test(r) && /\/market\//i.test(r)) r = r.replace(/\/market\//gi, "/public/");
+        return routeBinanceUsdmWsBase(r, "public");
+      }
+      const chain = [
+        tm === "BINANCE_DEMO_API" ? process.env.BINANCE_DEMO_FUTURES_WS_BASE : null,
+        tm === "BINANCE_DEMO_API" || tm === "BINANCE_TESTNET" ? process.env.BINANCE_FUTURES_TESTNET_WS_BASE : null,
+        tm === "BINANCE_LIVE" ? process.env.BINANCE_LIVE_FUTURES_WS_BASE : null,
+        process.env.BINANCE_FUTURES_WS_BASE,
+      ];
+      let raw = "";
+      for (const c of chain) {
+        const s = String(c || "").trim();
+        if (!s) continue;
+        raw = s;
+        break;
+      }
+      if (!raw) {
+        raw =
+          tm === "BINANCE_DEMO_API" || tm === "BINANCE_TESTNET"
+            ? "wss://fstream.binancefuture.com/public/ws"
+            : "wss://fstream.binance.com/public/ws";
+      }
+      if (/fstream\.binance/i.test(raw) && /\/market\//i.test(raw)) {
+        raw = raw.replace(/\/market\//gi, "/public/");
+      }
+      return routeBinanceUsdmWsBase(raw, "public");
+    }
     if (k === "BINANCE_FUTURES") {
-      if (tm === "BINANCE_DEMO_API") {
-        return (
-          process.env.BINANCE_DEMO_FUTURES_WS_BASE ||
-          process.env.BINANCE_FUTURES_WS_BASE ||
-          "wss://fstream.binance.com/ws"
-        );
-      }
-      if (tm === "BINANCE_TESTNET") {
-        return (
-          process.env.BINANCE_FUTURES_TESTNET_WS_BASE || "wss://fstream.binancefuture.com/ws"
-        );
-      }
-      if (tm === "BINANCE_LIVE") {
-        return (
-          process.env.BINANCE_LIVE_FUTURES_WS_BASE ||
-          process.env.BINANCE_FUTURES_WS_BASE ||
-          "wss://fstream.binance.com/ws"
-        );
-      }
-      return process.env.BINANCE_FUTURES_WS_BASE || "wss://fstream.binance.com/ws";
+      return futuresDepthBaseFromEnv();
     }
     if (k === "BINANCE") {
       if (tm === "BINANCE_DEMO_API") {
@@ -2000,6 +2044,26 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   }
 
   /**
+   * Fee gate inputs: use venue round-trip trail fee rates; when basis is T02_ACTIVATION and sync is on,
+   * copy fee-BE multiplier, activation slip, and trail buffer from bot trailing (same for opens + chart snapshots).
+   */
+  function augmentMarketDecisionConfigForFeeGate(mdCfg) {
+    const cfg = { ...mdCfg };
+    const rt = Number(state.trailOpenFeeRate ?? 0) + Number(state.trailCloseFeeRate ?? 0);
+    if (Number.isFinite(rt) && rt > 0) cfg.defaultRoundTripFeeRate = rt;
+    if (cfg.feeGateRequiredMoveBasis === "T02_ACTIVATION" && cfg.feeGateT02SyncFromBotTrailing !== false) {
+      cfg.feeGateT02FeeBeMultiplier = clamp(
+        Number(state.trailFeeBeMultiplier ?? process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1),
+        1,
+        2,
+      );
+      cfg.feeGateT02ActivationSlippageFrac = clamp(Number(state.trailActivationSlippageFrac ?? 0), 0, 0.01);
+      cfg.feeGateT02TrailBufferRate = clamp(Number(state.trailBufferRate ?? 0.0005), 0, 0.05);
+    }
+    return cfg;
+  }
+
+  /**
    * When the market decision engine is enabled in bot settings, block **opens** when the snapshot verdict
    * is not ALLOW (e.g. BLOCK / WAIT). When the master switch is off, snapshots carry hypothetical verdicts +
    * engineDisabled; this function returns null early because mdCfg.enabled is false.
@@ -2016,22 +2080,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     };
     let snap;
     try {
-      const cfg = { ...mdCfg };
-      const rt = Number(state.trailOpenFeeRate ?? 0) + Number(state.trailCloseFeeRate ?? 0);
-      if (Number.isFinite(rt) && rt > 0) cfg.defaultRoundTripFeeRate = rt;
-      if (cfg.feeGateRequiredMoveBasis === "T02_ACTIVATION" && cfg.feeGateT02SyncFromBotTrailing !== false) {
-        cfg.feeGateT02FeeBeMultiplier = clamp(
-          Number(state.trailFeeBeMultiplier ?? process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1),
-          1,
-          2,
-        );
-        cfg.feeGateT02ActivationSlippageFrac = clamp(
-          Number(state.trailActivationSlippageFrac ?? 0),
-          0,
-          0.01,
-        );
-        cfg.feeGateT02TrailBufferRate = clamp(Number(state.trailBufferRate ?? 0.0005), 0, 0.05);
-      }
+      const cfg = augmentMarketDecisionConfigForFeeGate(mdCfg);
       snap = computeMarketDecisionSnapshot({
         candles,
         cTs,
@@ -3701,6 +3750,34 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         String(process.env.SUPERTREND_FUTURES_REQUIRE_MARK_PRICE ?? "0") === "1";
       const recheckMs = Math.max(0, Math.floor(Number(state.supertrendFuturesEntryRecheckMs ?? 0)));
 
+      /** Exchange REST bar close for `last.ts` — aligns slippage guard with official OHLC when WS tail lags (live). */
+      let slipSignalRef = pxEntryOpen;
+      if (slipFrac > 0 && marketFeedUsesLiveBinance() && effectiveMarketFeedKind() === "BINANCE_FUTURES") {
+        const barOpenTs = Number(last?.ts);
+        if (Number.isFinite(barOpenTs) && barOpenTs > 0) {
+          const auth = await fetchUsdMKlineCloseAtOpenTime(
+            orderSymbol,
+            state.timeframe,
+            barOpenTs,
+            runtimeTradingMode(),
+          );
+          if (Number.isFinite(auth) && auth > 0) {
+            slipSignalRef = auth;
+            if (pxEntryOpen > 0) {
+              const rel = Math.abs(auth - pxEntryOpen) / pxEntryOpen;
+              if (rel > 0.002) {
+                log.warn("supertrend_slip_signal_ref_rest_anchor", {
+                  symbol: orderSymbol,
+                  feedClose: pxEntryOpen,
+                  restBarClose: auth,
+                  barOpenTs,
+                });
+              }
+            }
+          }
+        }
+      }
+
       let bookTicker = null;
       let markPxEntry = null;
       let midPxEntry = null;
@@ -3719,8 +3796,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       }
 
       function entryDriftFails(bt, markPx, midPx) {
-        if (!(slipFrac > 0 && Number.isFinite(pxEntryOpen) && pxEntryOpen > 0)) return { fail: false };
-        const ref = pxEntryOpen;
+        if (!(slipFrac > 0 && Number.isFinite(slipSignalRef) && slipSignalRef > 0)) return { fail: false };
+        const ref = slipSignalRef;
         if (bt) {
           if (openingSide === "BUY") {
             const ask = Number(bt.askPrice);
@@ -3812,7 +3889,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         log.info("supertrend_entry_microstructure", {
           symbol: orderSymbol,
           side: openingSide,
-          signalBarClose: pxEntryOpen,
+          signalBarClose: slipSignalRef,
+          feedTailClose: pxEntryOpen,
           bestBid: bookTicker.bidPrice,
           bestAsk: bookTicker.askPrice,
           midPx: midPxEntry,
@@ -3867,11 +3945,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
             symbol: orderSymbol,
           });
           openStyle = "MARKET";
-        } else if (Number.isFinite(pxEntryOpen) && pxEntryOpen > 0) {
+        } else if (Number.isFinite(slipSignalRef) && slipSignalRef > 0) {
           entryMetaExtra =
             openingSide === "BUY"
-              ? { entryOrderStyle: "LIMIT_IOC", entryLimitPrice: pxEntryOpen * (1 + slipFrac) }
-              : { entryOrderStyle: "LIMIT_IOC", entryLimitPrice: pxEntryOpen * (1 - slipFrac) };
+              ? { entryOrderStyle: "LIMIT_IOC", entryLimitPrice: slipSignalRef * (1 + slipFrac) }
+              : { entryOrderStyle: "LIMIT_IOC", entryLimitPrice: slipSignalRef * (1 - slipFrac) };
         }
       }
 
@@ -3892,7 +3970,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         entryBookBestAsk: bookTicker?.askPrice,
         entryBookMidPx: Number.isFinite(midPxEntry) ? midPxEntry : undefined,
         entryMarkPx: Number.isFinite(markPxEntry) ? markPxEntry : undefined,
-        signalBarCloseForEntry: Number.isFinite(pxEntryOpen) && pxEntryOpen > 0 ? pxEntryOpen : undefined,
+        signalBarCloseForEntry:
+          Number.isFinite(slipSignalRef) && slipSignalRef > 0 ? slipSignalRef : undefined,
         ...(mqAtEntryFutures ? { mqAtEntry: mqAtEntryFutures } : {}),
         ...entryMetaExtra,
       };
@@ -4291,8 +4370,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   function snapMarketDecisionForHistory({ candles, cTs, row, decisionSnapshotBar, symbol, timeframe }) {
     try {
       const mdCfg = mergeMarketDecisionConfig(state.marketDecision);
-      const rt = Number(state.trailOpenFeeRate ?? 0) + Number(state.trailCloseFeeRate ?? 0);
-      if (Number.isFinite(rt) && rt > 0) mdCfg.defaultRoundTripFeeRate = rt;
+      const cfg = augmentMarketDecisionConfigForFeeGate(mdCfg);
       const s = computeMarketDecisionSnapshot({
         candles,
         cTs,
@@ -4304,7 +4382,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         decisionSnapshotBar,
         symbol: String(symbol || "").toUpperCase(),
         timeframe: String(timeframe || ""),
-        config: mdCfg,
+        config: cfg,
         regimeBtc: null,
         regimeHtf: null,
       });
@@ -5845,18 +5923,44 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       .map(([s]) => s)
       .slice(0, uiMax);
 
-    const autoSyms = parallelSupertrendWatchGate(mm) ? computeAutoMultiWatchSymbolList() : [];
+    /**
+     * Multiplex klines for **every** multi-coin tab symbol whenever `MULTIPLE` is on — not only when
+     * `parallelSupertrendWatchGate` (AUTO+ST+…) is true. Otherwise live USD-M had WS buffers only for
+     * `uiChartFocusSymbol` + MRU UI hits → other tabs saw REST-only candles and looked “frozen” vs demo.
+     */
+    const multiCoinMode = String(state.universeCoinSelectMode || "SINGLE").toUpperCase() === "MULTIPLE";
+    const autoSyms =
+      multiCoinMode || parallelSupertrendWatchGate(mm) ? computeAutoMultiWatchSymbolList() : [];
+    const focusChart =
+      state.uiChartFocusSymbol != null && String(state.uiChartFocusSymbol).trim()
+        ? String(state.uiChartFocusSymbol).trim().toUpperCase()
+        : "";
 
     // Union + cap to combined WS stream budget.
     const maxStreams = Math.max(1, Math.min(80, Math.floor(Number(process.env.BINANCE_COMBINED_MAX_STREAMS ?? 12))));
     const out = [];
     const seen = new Set();
-    for (const s of [...autoSyms, ...uiSyms]) {
+    for (const s of [...(focusChart && focusChart !== primary ? [focusChart] : []), ...autoSyms, ...uiSyms]) {
       const u = String(s || "").toUpperCase();
       if (!u || seen.has(u)) continue;
       seen.add(u);
       out.push(u);
       if (out.length >= maxStreams) break;
+    }
+    /** Chart focus must stay on the wire even if the cap cut it — otherwise tick `market` stays primary-only. */
+    if (focusChart && focusChart !== primary && !seen.has(focusChart)) {
+      const fu = focusChart;
+      if (out.length < maxStreams) {
+        out.push(fu);
+        seen.add(fu);
+      } else {
+        for (let i = out.length - 1; i >= 0; i--) {
+          if (out[i] !== primary) {
+            out[i] = fu;
+            break;
+          }
+        }
+      }
     }
     return out;
   }
@@ -5939,6 +6043,21 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       void processSupertrendCandleClose(c);
       void maybeAutoMultiBarClose(c);
     },
+    /** Chart/UI: push last bar on each Binance kline WS (throttled); full `market` from `tick()` still ~BOT_TICK_MS. */
+    onPrimaryCandleLive: (payload) => {
+      const hub = wsHubRef;
+      if (!hub || typeof hub.broadcast !== "function") return;
+      if (typeof hub.clientCount === "function" && hub.clientCount() === 0) return;
+      try {
+        hub.broadcast("market", {
+          ...payload,
+          feedExecutionPause: state.feedExecutionPause,
+          originTradingMode: runtimeTradingMode(),
+        });
+      } catch {
+        /* ignore */
+      }
+    },
   });
 
   let watchSigBroadcastTimer = null;
@@ -5983,10 +6102,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     let marketDecisionSnapshot = null;
     try {
       const mdCfg = mergeMarketDecisionConfig(state.marketDecision);
-      const rt = Number(state.trailOpenFeeRate ?? 0) + Number(state.trailCloseFeeRate ?? 0);
-      if (Number.isFinite(rt) && rt > 0) {
-        mdCfg.defaultRoundTripFeeRate = rt;
-      }
+      const cfg = augmentMarketDecisionConfigForFeeGate(mdCfg);
       marketDecisionSnapshot = computeMarketDecisionSnapshot({
         candles: cr,
         cTs: ev.cTs,
@@ -5998,7 +6114,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         decisionSnapshotBar: ev.decisionSnapshotBar,
         symbol: symU,
         timeframe: state.timeframe,
-        config: mdCfg,
+        config: cfg,
         regimeBtc: null,
         regimeHtf: null,
       });
@@ -6105,8 +6221,15 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     const mm = String(state.marketMode || "AUTO").toUpperCase();
     if (!parallelSupertrendWatchGate(mm)) return;
     const symU = String(candle.symbol || "").toUpperCase();
+    const primaryU = String(state.symbol || "").toUpperCase();
     const watch = computeFeedWatchSymbols();
-    if (!watch.includes(symU)) return;
+    /**
+     * `watch` is capped (`BINANCE_COMBINED_MAX_STREAMS`) and prepends UI focus first. The trading **primary**
+     * is always the multiplex `feed` main symbol (its own stream) but can be **dropped from `watch`** when the
+     * cap fills with focus + other alts. `processSupertrendCandleClose` is a no-op in this mode, so skipping
+     * here meant **zero** bar-close orders on the bot’s selected coin.
+     */
+    if (symU !== primaryU && !watch.includes(symU)) return;
     const minBars = Math.max(30, state.supertrendPeriod + 2);
     let rows = typeof feed.getCandlesForSymbol === "function" ? feed.getCandlesForSymbol(symU) : [];
     if (!Array.isArray(rows) || rows.length < minBars) {
@@ -6794,14 +6917,90 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     };
   }
 
+  /** Chart snapshot from an in-feed symbol buffer (multiplex watchlist). */
+  function getChartSnapshotFromFeedSymbol(symU, opts = {}) {
+    const hours = Math.max(0.25, Number(opts.hours ?? 24));
+    const s = String(symU || "").trim().toUpperCase();
+    if (!SYM_RE.test(s)) return null;
+    const raw = typeof feed.getCandlesForSymbol === "function" ? feed.getCandlesForSymbol(s) || [] : [];
+    const n = maxBarsForHistory(state.timeframe, hours);
+    const slice = raw.length <= n ? raw.slice() : raw.slice(-n);
+    const candles = sanitizeCandlesForSt(slice, s);
+    const st = computeSupertrendChartModel(candles, { symbol: s });
+    return {
+      symbol: s,
+      timeframe: state.timeframe,
+      hours,
+      candles,
+      supertrendLine: st.line,
+      supertrendSignals: st.signals,
+      supertrend: st.lastRow
+        ? {
+            ts: st.lastRow.ts,
+            up: st.lastRow.up,
+            dn: st.lastRow.dn,
+            trend: st.lastRow.trend,
+            line: st.lastRow.line,
+          }
+        : null,
+    };
+  }
+
+  /**
+   * Last candle `ts` is bar **open** time. If the feed WebSocket stops advancing, the UI REST poll
+   * (`/market/candles`) used to re-read the same frozen buffer — this detects that and triggers REST OHLCV.
+   */
+  function feedChartTailLooksStale(candles) {
+    if (!marketFeedUsesLiveBinance()) return false;
+    if (!Array.isArray(candles) || !candles.length) return true;
+    const last = candles[candles.length - 1];
+    const ts = Number(last?.ts);
+    if (!Number.isFinite(ts) || ts <= 0) return true;
+    const tfMs = binanceIntervalMs(state.timeframe);
+    if (!Number.isFinite(tfMs) || tfMs <= 0) return false;
+    const age = Date.now() - ts;
+    return age > tfMs * 2 + 15_000;
+  }
+
+  /** Same shape as `getChartSnapshot`, but fetches Binance REST klines when the in-memory tail is stale. */
+  async function getChartSnapshotOrRestRepair(opts = {}) {
+    const focusU =
+      state.uiChartFocusSymbol != null && String(state.uiChartFocusSymbol).trim()
+        ? String(state.uiChartFocusSymbol).trim().toUpperCase()
+        : "";
+    const primaryU = String(state.symbol || "").toUpperCase();
+    if (focusU && focusU !== primaryU) {
+      const snapF = getChartSnapshotFromFeedSymbol(focusU, opts);
+      if (snapF?.candles?.length && !feedChartTailLooksStale(snapF.candles)) return snapF;
+      log.warn("chart_snapshot_feed_tail_stale_using_rest", {
+        symbol: focusU,
+        timeframe: state.timeframe,
+        lastTs: snapF?.candles?.length ? snapF.candles[snapF.candles.length - 1]?.ts : null,
+        uiChartFocus: true,
+      });
+      const repairedF = await getChartSnapshotForSymbol(focusU, { ...opts, forceRest: true });
+      return repairedF?.candles?.length ? repairedF : snapF || getChartSnapshot(opts);
+    }
+    const snap = getChartSnapshot(opts);
+    if (!feedChartTailLooksStale(snap?.candles)) return snap;
+    log.warn("chart_snapshot_feed_tail_stale_using_rest", {
+      symbol: state.symbol,
+      timeframe: state.timeframe,
+      lastTs: snap?.candles?.length ? snap.candles[snap.candles.length - 1]?.ts : null,
+    });
+    const repaired = await getChartSnapshotForSymbol(String(state.symbol || ""), { ...opts, forceRest: true });
+    return repaired?.candles?.length ? repaired : snap;
+  }
+
   async function getChartSnapshotForSymbol(sym, opts = {}) {
+    const forceRest = Boolean(opts.forceRest);
     const hours = Math.max(0.25, Math.min(168, Number(opts.hours ?? 24)));
     const symU = String(sym || "").trim().toUpperCase();
     if (!SYM_RE.test(symU)) return null;
     noteUiChartWatchSymbol(symU);
     const n = maxBarsForHistory(state.timeframe, hours);
     const minBars = Math.max(30, state.supertrendPeriod + 2);
-    if (typeof feed.getCandlesForSymbol === "function" && marketFeedUsesLiveBinance()) {
+    if (!forceRest && typeof feed.getCandlesForSymbol === "function" && marketFeedUsesLiveBinance()) {
       const buf = feed.getCandlesForSymbol(symU);
       if (Array.isArray(buf) && buf.length >= minBars) {
         const raw = buf.length <= n ? buf.slice() : buf.slice(-n);
@@ -7069,6 +7268,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         state.multiSymbolWatchSignals && typeof state.multiSymbolWatchSignals === "object"
           ? { ...state.multiSymbolWatchSignals }
           : {},
+      uiChartFocusSymbol: state.uiChartFocusSymbol != null ? String(state.uiChartFocusSymbol).toUpperCase() : null,
       multiCoinSignalTabSymbols:
         String(state.universeCoinSelectMode || "SINGLE").toUpperCase() === "MULTIPLE"
           ? computeAutoMultiWatchSymbolList()
@@ -7389,26 +7589,30 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         }
       }
     }
-    if (!last) return;
-    state.metrics.tickCount += 1;
 
-    // Feed health affects **execution only** (see `feedExecutionPause`). Chart/regime/signals keep updating
-    // from the candle buffer whenever we have a `last` candle.
+    // Feed health (execution only — see `feedExecutionPause`): `../lib/binanceFeedHealth.js`
+    // - Stale = no timely **inbound** kline socket activity and/or no **accepted** primary kline (post-sanity).
+    // - Threshold = 2× chart interval (clamped), or `FEED_STALE_MS` override — not a random fixed 60s.
+    // - Data-plane staleness triggers debounced `feed.requestReconnect()` (zombie open socket).
     const feedStatus = feed.getStatus ? feed.getStatus() : null;
     const inGrace =
       state.coinLastSwitchedAt && Date.now() - Number(state.coinLastSwitchedAt) < Number(state.feedGraceMsAfterSwitch || 0);
 
-    // After AUTO switches symbols, avoid using ticks from the old stream window (best-effort).
-    if (
-      state.coinLastSwitchedAt &&
-      inGrace &&
-      feedStatus?.lastMsgAt &&
-      Number(feedStatus.lastMsgAt) < Number(state.coinLastSwitchedAt)
-    ) {
-      return;
-    }
-    const feedStaleMs = Math.max(15_000, Number(process.env.FEED_STALE_MS ?? 60_000));
-    const freshestAt = freshestBinanceFeedMsgAt(feedStatus);
+    const feedUseBinance = marketFeedUsesLiveBinance();
+    const gate = feedUseBinance
+      ? evaluateLiveBinanceFeedExecutionGate({
+          now: Date.now(),
+          timeframe: state.timeframe,
+          inTradingGrace: Boolean(inGrace),
+          combinedWsOk: feedStatus?.ok === true,
+          lastKlineSocketInboundAt: feedStatus?.lastMsgAt,
+          lastPrimaryAcceptedKlineAt: feedStatus?.lastPrimaryBufferPushAt,
+          deltaWsOk: feedStatus?.delta?.ok,
+          lastDeltaInboundAt: feedStatus?.delta?.lastMsgAt,
+        })
+      : null;
+
+    const feedStaleMs = gate?.thresholdMs ?? 60_000;
     const feedAutoRestartOn =
       String(process.env.FEED_AUTO_RESTART ?? "1").toLowerCase() !== "0" &&
       String(process.env.FEED_AUTO_RESTART ?? "1").toLowerCase() !== "false";
@@ -7417,10 +7621,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       !state.running &&
       state.pendingAutoRestartAfterFeedStale &&
       feedAutoRestartOn &&
-      marketFeedUsesLiveBinance() &&
+      feedUseBinance &&
+      gate &&
       feedStatus?.ok === true &&
-      freshestAt != null &&
-      Date.now() - freshestAt <= feedStaleMs
+      feedRecoveredForAutoRestart({
+        now: Date.now(),
+        maxActivityRef: gate.maxActivityRef,
+        thresholdMs: gate.thresholdMs,
+      })
     ) {
       state.pendingAutoRestartAfterFeedStale = false;
       state.metrics.feedRecoveryRestarts += 1;
@@ -7429,8 +7637,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         reason: "feed_recovery",
         source: "safety_tick",
         detail: {
-          freshestMsgAt: freshestAt,
-          thresholdMs: feedStaleMs,
+          maxActivityRef: gate.maxActivityRef,
+          thresholdMs: gate.thresholdMs,
           symbol: state.symbol,
         },
       });
@@ -7444,17 +7652,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       }
     }
 
-    const feedUseBinance = marketFeedUsesLiveBinance();
-    const wsUnhealthy = !inGrace && feedStatus?.ok === false;
-    const dataStale =
-      !inGrace &&
-      feedUseBinance &&
-      freshestAt != null &&
-      Date.now() - freshestAt > feedStaleMs;
-    const shouldPauseExecution = feedUseBinance && (wsUnhealthy || dataStale);
+    const shouldPauseExecution = Boolean(gate?.shouldPauseExecution);
+
+    if (feedUseBinance && gate && shouldPauseExecution && gate.dataStale && !gate.wsUnhealthy && typeof feed.requestReconnect === "function") {
+      feed.requestReconnect("binance_public_feed_stale");
+    }
 
     if (shouldPauseExecution) {
-      const reason = wsUnhealthy ? "feed_ws" : "feed_stale";
+      const reason = gate?.wsUnhealthy ? "feed_ws" : "feed_stale";
       const prev = state.feedExecutionPause;
       if (!prev || prev.reason !== reason) {
         state.feedExecutionPause = { reason, since: Date.now() };
@@ -7468,9 +7673,13 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
             category: "feed",
             reason,
             detail: {
+              ...gate?.detail,
               klineLastMsgAt: feedStatus?.lastMsgAt ?? null,
               aggTradeLastMsgAt: feedStatus?.delta?.lastMsgAt ?? null,
-              freshestMsgAt: freshestAt,
+              primaryBufferPushAt: feedStatus?.lastPrimaryBufferPushAt ?? null,
+              primaryKlineExchangeEventMs: feedStatus?.lastPrimaryKlineExchangeEventMs ?? null,
+              minActivityRef: gate?.minActivityRef ?? null,
+              maxActivityRef: gate?.maxActivityRef ?? null,
               thresholdMs: feedStaleMs,
             },
           });
@@ -7482,8 +7691,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           symbol: state.symbol,
           pauseReason: reason,
           wsOk: feedStatus?.ok,
-          freshestMsgAt: freshestAt,
-          staleMs: freshestAt != null ? Date.now() - freshestAt : null,
+          minActivityRef: gate?.minActivityRef ?? null,
+          maxActivityRef: gate?.maxActivityRef ?? null,
+          primaryKlineExchangeEventMs: feedStatus?.lastPrimaryKlineExchangeEventMs ?? null,
+          thresholdMs: feedStaleMs,
+          staleMs:
+            gate?.stalenessRef != null
+              ? Date.now() - gate.stalenessRef
+              : gate?.minActivityRef != null
+                ? Date.now() - gate.minActivityRef
+                : null,
         });
       }
     } else if (state.feedExecutionPause) {
@@ -7499,7 +7716,130 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       }
     }
 
-    if (!state.feedExecutionPause) {
+    if (!last) return;
+    state.metrics.tickCount += 1;
+
+    const indicators = computeIndicators(candles);
+    const rawRegime = detectRegime({ candles, indicators });
+    if (!state.regimeCandidate || state.regimeCandidate.type !== rawRegime.type) {
+      state.regimeCandidate = { type: rawRegime.type, seen: 1 };
+    } else {
+      state.regimeCandidate.seen += 1;
+    }
+    const confirmed = state.regimeCandidate.seen >= Math.max(1, state.regimeConfirmCandles);
+    const regime = confirmed ? rawRegime : { ...rawRegime, type: state.lastRegime?.type || rawRegime.type, pending: rawRegime.type };
+    state.lastRegime = regime;
+
+    /**
+     * Chart `market` must be broadcast **before** `await exch.markToMarket` / trailing recovery. Live futures
+     * `markToMarket` can block on signed REST or exchange latency; demo/paper often returns fast — that
+     * mismatch looked like a “frozen” OHLC tail and could leave `tickInFlight` stuck if a tick hung.
+     *
+     * When `uiChartFocusSymbol` differs from the trading symbol, OHLC + ST follow the **focused** pair
+     * (multiplex buffer) while strategy below still uses `candles` / `indicators` for `state.symbol`.
+     *
+     * Use the focus buffer as soon as it has **any** bars (REST backfill + WS). Requiring 30+ bars meant
+     * `market` fell back to the bot’s primary symbol while the UI tab was another pair — `mergeMarketIntoState`
+     * then ignored every tick → frozen “selected coin” chart on live multiplex.
+     */
+    const focusRaw =
+      state.uiChartFocusSymbol != null && String(state.uiChartFocusSymbol).trim()
+        ? String(state.uiChartFocusSymbol).trim().toUpperCase()
+        : "";
+    const primaryUForMarket = String(state.symbol || "").toUpperCase();
+    const focusBuf =
+      focusRaw &&
+      focusRaw !== primaryUForMarket &&
+      typeof feed.getCandlesForSymbol === "function" &&
+      marketFeedUsesLiveBinance()
+        ? feed.getCandlesForSymbol(focusRaw) || []
+        : [];
+    const useFocusMarket = Boolean(focusRaw && focusRaw !== primaryUForMarket && focusBuf.length > 0);
+    const marketSymU = useFocusMarket ? focusRaw : primaryUForMarket;
+    const candlesMarketSeries = useFocusMarket ? focusBuf : candles;
+    const lastForMarket = useFocusMarket ? focusBuf[focusBuf.length - 1] : last;
+    const indicatorsForMarket = useFocusMarket ? computeIndicators(candlesMarketSeries) : indicators;
+    const regimeForMarket = useFocusMarket
+      ? detectRegime({ candles: candlesMarketSeries, indicators: indicatorsForMarket })
+      : regime;
+
+    const chartCandlesPrimary24 = getChartCandles({ hours: 24 });
+    const stModelPrimaryFast = computeSupertrendChartModel(chartCandlesPrimary24, {
+      withChartArrays: false,
+      symbol: state.symbol,
+    });
+    let stModelForMarket;
+    if (!useFocusMarket) {
+      stModelForMarket = stModelPrimaryFast;
+    } else {
+      const nWs = maxBarsForHistory(state.timeframe, 24);
+      const windowed =
+        candlesMarketSeries.length <= nWs ? candlesMarketSeries.slice() : candlesMarketSeries.slice(-nWs);
+      const chartCandlesForWs = sanitizeCandlesForSt(windowed, marketSymU);
+      stModelForMarket = computeSupertrendChartModel(chartCandlesForWs, {
+        withChartArrays: false,
+        symbol: marketSymU,
+      });
+    }
+    if (!useFocusMarket && stModelPrimaryFast.lastRow) {
+      state.supertrendLast = {
+        ts: stModelPrimaryFast.lastRow.ts,
+        up: stModelPrimaryFast.lastRow.up,
+        dn: stModelPrimaryFast.lastRow.dn,
+        trend: stModelPrimaryFast.lastRow.trend,
+        line: stModelPrimaryFast.lastRow.line,
+      };
+    }
+    try {
+      state.decisionEngine = computeDecisionSnapshot({
+        candles,
+        indicatorsLatest: indicators.latest,
+        supertrendLastRow: stModelPrimaryFast.lastRow,
+        symbol: state.symbol,
+        supertrendOpts: {
+          period: state.supertrendPeriod,
+          multiplier: state.supertrendMultiplier,
+          wilderAtr: state.supertrendWilderAtr,
+        },
+      });
+    } catch (e) {
+      log.warn("decision_engine_snapshot_failed", { error: String(e?.message || e) });
+    }
+    wsHub?.broadcast("market", {
+      symbol: marketSymU,
+      timeframe: state.timeframe,
+      candle: lastForMarket,
+      indicators: indicatorsForMarket.latest,
+      regime: regimeForMarket,
+      supertrend: useFocusMarket
+        ? stModelForMarket.lastRow
+          ? {
+              ts: stModelForMarket.lastRow.ts,
+              up: stModelForMarket.lastRow.up,
+              dn: stModelForMarket.lastRow.dn,
+              trend: stModelForMarket.lastRow.trend,
+              line: stModelForMarket.lastRow.line,
+            }
+          : null
+        : state.supertrendLast,
+      supertrendLine: stModelForMarket.line,
+      supertrendSignals: stModelForMarket.signals,
+      feedExecutionPause: state.feedExecutionPause,
+      originTradingMode: runtimeTradingMode(),
+    });
+
+    /**
+     * After AUTO coin switch, skip **venue-sensitive** work until the kline socket has caught up — chart data
+     * still advances from the in-memory buffer (market WS above). A full `return` before broadcast froze live.
+     */
+    const skipVenueSensitiveTick = Boolean(
+      state.coinLastSwitchedAt &&
+        inGrace &&
+        feedStatus?.lastMsgAt &&
+        Number(feedStatus.lastMsgAt) < Number(state.coinLastSwitchedAt),
+    );
+
+    if (!state.feedExecutionPause && !skipVenueSensitiveTick) {
       const extraTrailPcts = normalizeTrailingExtraPcts(state.trailingStopExtraScalpingPcts);
       const trailMode = normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode);
       let supertrendTrailPx = null;
@@ -7784,19 +8124,6 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         _realtimeTrailingPollStarted = true;
       }
     }
-    await ingestClosedTrades({ wsHub });
-
-    const indicators = computeIndicators(candles);
-    const rawRegime = detectRegime({ candles, indicators });
-    // Regime confirmation to avoid noisy switching
-    if (!state.regimeCandidate || state.regimeCandidate.type !== rawRegime.type) {
-      state.regimeCandidate = { type: rawRegime.type, seen: 1 };
-    } else {
-      state.regimeCandidate.seen += 1;
-    }
-    const confirmed = state.regimeCandidate.seen >= Math.max(1, state.regimeConfirmCandles);
-    const regime = confirmed ? rawRegime : { ...rawRegime, type: state.lastRegime?.type || rawRegime.type, pending: rawRegime.type };
-    state.lastRegime = regime;
 
     let account = _cachedAccount;
     let positions = _cachedPositions;
@@ -7980,53 +8307,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       action: signal?.action,
     });
 
-    const chartCandles = getChartCandles({ hours: 24 });
-    const stModel = computeSupertrendChartModel(chartCandles, { withChartArrays: false, symbol: state.symbol });
-    if (stModel.lastRow) {
-      state.supertrendLast = {
-        ts: stModel.lastRow.ts,
-        up: stModel.lastRow.up,
-        dn: stModel.lastRow.dn,
-        trend: stModel.lastRow.trend,
-        line: stModel.lastRow.line,
-      };
-    }
-
-    try {
-      state.decisionEngine = computeDecisionSnapshot({
-        candles,
-        indicatorsLatest: indicators.latest,
-        supertrendLastRow: stModel.lastRow,
-        symbol: state.symbol,
-        supertrendOpts: {
-          period: state.supertrendPeriod,
-          multiplier: state.supertrendMultiplier,
-          wilderAtr: state.supertrendWilderAtr,
-        },
-      });
-    } catch (e) {
-      log.warn("decision_engine_snapshot_failed", { error: String(e?.message || e) });
-    }
-
-    wsHub?.broadcast("market", {
-      symbol: state.symbol,
-      timeframe: state.timeframe,
-      candle: last,
-      indicators: indicators.latest,
-      regime,
-      supertrend: state.supertrendLast,
-      supertrendLine: stModel.line,
-      supertrendSignals: stModel.signals,
-      feedExecutionPause: state.feedExecutionPause,
-      originTradingMode: runtimeTradingMode(),
-    });
-
     wsHub?.broadcast("state", {
       mode: runtimeTradingMode(),
       ...getPublicState(),
       account: acctBroadcast,
       positions: positionsMtM,
     });
+
+    // After OHLC/state: demo futures `getTrades()` chains income + userTrade lookups and can take many
+    // seconds — must not block `market` or the chart appears frozen while live (often faster) stays fine.
+    await ingestClosedTrades({ wsHub });
 
     if (!state.running) return;
 
@@ -8920,6 +9210,34 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
   function updateConfig(patch) {
     let capitalCycleResetNeeded = false;
+    if (patch.uiChartFocusSymbol !== undefined) {
+      const rawF = patch.uiChartFocusSymbol;
+      if (rawF == null || rawF === "") {
+        state.uiChartFocusSymbol = null;
+      } else {
+        const u = String(rawF).trim().toUpperCase();
+        state.uiChartFocusSymbol = SYM_RE.test(u) ? u : null;
+      }
+      if (state.uiChartFocusSymbol) {
+        try {
+          noteUiChartWatchSymbol(state.uiChartFocusSymbol);
+        } catch {
+          /* ignore */
+        }
+      }
+      /** Order book WS stayed on `state.symbol` while `market` followed `uiChartFocusSymbol` → UI hid all rows as “mismatch”. */
+      if (depth && marketFeedUsesLiveBinance()) {
+        try {
+          const depthSymU =
+            state.uiChartFocusSymbol && String(state.uiChartFocusSymbol).trim()
+              ? String(state.uiChartFocusSymbol).trim().toUpperCase()
+              : String(state.symbol || "").trim().toUpperCase();
+          if (depthSymU) depth.setSymbol(depthSymU);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
     if (patch.symbol) {
       state.symbol = patch.symbol;
       state.coinLastSwitchedAt = Date.now();
@@ -8963,10 +9281,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       state.universeCoinSelectMode = patch.universeCoinSelectMode;
       capitalCycleResetNeeded = true;
       if (patch.universeCoinSelectMode === "SINGLE") {
+        state.uiChartFocusSymbol = null;
         if (state.universePinnedSymbols?.length > 1) {
           state.universePinnedSymbols = state.universePinnedSymbols.slice(0, 1);
         }
         state.universePinnedSymbol = state.universePinnedSymbols?.[0] ?? null;
+        try {
+          depth?.setSymbol?.(String(state.symbol || "").trim().toUpperCase() || state.symbol);
+        } catch {
+          /* ignore */
+        }
       } else {
         state.universePinnedSymbol = null;
       }
@@ -9480,6 +9804,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     getPublicState,
     getChartCandles,
     getChartSnapshot,
+    getChartSnapshotOrRestRepair,
     getChartSnapshotForSymbol,
     getMetrics() {
       return {

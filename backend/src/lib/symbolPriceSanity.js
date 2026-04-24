@@ -24,7 +24,8 @@ const EXACT_CLOSE_RANGE = {
   TAOUSDT: [1, 10_000],
 };
 
-function normalizeSym(s) {
+/** Uppercase + strip punctuation — aligns UI symbols (e.g. DOGE/USDT) with Binance wire `s`. */
+export function normalizeSym(s) {
   return String(s ?? "")
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");

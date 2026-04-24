@@ -15,6 +15,7 @@ import {
   trailCloseFieldsFromMemory,
 } from "../../lib/binanceUsdmCloseReasonHint.js";
 import { TRAIL_TIER_SCHEMA_VERSION } from "../../lib/supertrendTrailingSl.js";
+import { binanceUsdmMarketCombinedBaseFromWsBase, routeBinanceUsdmWsBase } from "../../lib/binanceUsdmWsRoute.js";
 import {
   inferSlTpFromMark,
   pickBracketTargets,
@@ -1494,15 +1495,17 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     const syms = _markPxWsSymbols;
     if (!syms.length) return;
 
-    /** Demo-fapi orders use mainnet-linked marks; public mark stream must be mainnet fstream (not testnet host). */
+    /** Mark price is a **Market** stream (same routing as kline on USD-M). */
     const wsBaseUrl =
       process.env.BINANCE_DEMO_FUTURES_WS_BASE ||
-      process.env.BINANCE_FUTURES_WS_BASE ||
-      "wss://fstream.binance.com/ws";
+      process.env.BINANCE_FUTURES_TESTNET_WS_BASE ||
+      "wss://fstream.binancefuture.com/market/ws";
+    const baseRouted = routeBinanceUsdmWsBase(wsBaseUrl.replace(/\/$/, ""), "market");
     const streams = syms.map((s) => `${s.toLowerCase()}@markPrice@1s`);
-    const url = streams.length === 1
-      ? `${wsBaseUrl.replace(/\/$/, "")}/${streams[0]}`
-      : `${wsBaseUrl.replace(/\/ws\/?$/, "/stream")}?streams=${streams.join("/")}`;
+    const url =
+      streams.length === 1
+        ? `${baseRouted}/${streams[0]}`
+        : `${binanceUsdmMarketCombinedBaseFromWsBase(baseRouted)}?streams=${streams.join("/")}`;
 
     let ws;
     try {

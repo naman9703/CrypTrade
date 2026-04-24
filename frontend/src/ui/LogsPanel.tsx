@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import { normalizeSym } from "../lib/symbolPriceSanity";
 import { useAppStore, type LogPayload } from "../ws/store";
 
 /** Activity timestamps match chart crosshair preference: IST (UTC+5:30). */
@@ -20,8 +22,40 @@ function logClock(iso: unknown): string {
   });
 }
 
+function activityLogPrioritySymbol(chartDisplaySymbol: string | null, botSymbol: string | undefined): string {
+  const a = normalizeSym(chartDisplaySymbol ?? "");
+  if (a) return a;
+  return normalizeSym(botSymbol ?? "");
+}
+
+function logTouchesSymbol(l: LogPayload, symU: string): boolean {
+  if (!symU) return false;
+  const top = (l as Record<string, unknown>).symbol;
+  if (typeof top === "string" && normalizeSym(top) === symU) return true;
+  const d = l.detail;
+  if (d && typeof d === "object" && !Array.isArray(d)) {
+    const ds = (d as Record<string, unknown>).symbol;
+    if (typeof ds === "string" && normalizeSym(ds) === symU) return true;
+  }
+  return false;
+}
+
 export function LogsPanel() {
   const logs = useAppStore((s) => s.logs);
+  const chartDisplaySymbol = useAppStore((s) => s.chartDisplaySymbol);
+  const botSymbol = useAppStore((s) => s.bot?.symbol as string | undefined);
+
+  const sortedLogs = useMemo(() => {
+    const pri = activityLogPrioritySymbol(chartDisplaySymbol, botSymbol);
+    if (!pri) return logs;
+    const a: LogPayload[] = [];
+    const b: LogPayload[] = [];
+    for (const row of logs) {
+      if (logTouchesSymbol(row, pri)) a.push(row);
+      else b.push(row);
+    }
+    return [...a, ...b];
+  }, [logs, chartDisplaySymbol, botSymbol]);
 
   return (
     <div className="p-4">
@@ -33,11 +67,11 @@ export function LogsPanel() {
       </div>
 
       <div className="max-h-[520px] overflow-auto rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-2">
-        {logs.length === 0 ? (
+        {sortedLogs.length === 0 ? (
           <div className="px-2 py-3 text-xs text-slate-600 dark:text-slate-500">No logs yet</div>
         ) : (
           <div className="space-y-1 font-mono text-[11px]">
-            {logs.map((l, idx) => {
+            {sortedLogs.map((l, idx) => {
               const skip = new Set(["ts", "level", "msg"]);
               const rest = Object.fromEntries(
                 Object.entries(l as Record<string, unknown>).filter(([k]) => !skip.has(k)),

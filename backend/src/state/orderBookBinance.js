@@ -43,8 +43,10 @@ export function createBinanceOrderBook({ log, symbol, wsBase }) {
       status.lastMsgAt = Date.now();
       try {
         const msg = JSON.parse(String(raw));
-        const bids = toLevels(msg?.bids);
-        const asks = toLevels(msg?.asks);
+        /** Spot partial depth uses `bids`/`asks`; USD-M futures use `b`/`a` (same [price,qty] tuples). */
+        const root = msg?.data && typeof msg.data === "object" ? msg.data : msg;
+        const bids = toLevels(root?.bids ?? root?.b);
+        const asks = toLevels(root?.asks ?? root?.a);
         if (bids.length || asks.length) {
           // Binance sends bids/asks sorted, but we'll still enforce.
           bids.sort((a, b) => b[0] - a[0]);

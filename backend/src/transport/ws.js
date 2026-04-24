@@ -39,7 +39,10 @@ async function snapshotHelloForView(appState, viewMode, extraHelloFields = {}) {
   }
   let chart = null;
   try {
-    chart = bot.getChartSnapshot({ hours: 24 });
+    chart =
+      typeof bot.getChartSnapshotOrRestRepair === "function"
+        ? await bot.getChartSnapshotOrRestRepair({ hours: 24 })
+        : bot.getChartSnapshot({ hours: 24 });
   } catch {
     chart = null;
   }
@@ -60,8 +63,16 @@ async function snapshotHelloForView(appState, viewMode, extraHelloFields = {}) {
   return { hello, trades: mergedTrades };
 }
 
-function clientViewMode(ws, globalActive) {
-  return String(ws._clientTradingMode ?? globalActive).toUpperCase();
+/**
+ * TRADING_MODE used to route WS frames to this client.
+ * - UI auth + logged in: session `uiTradingMode` on the socket (updated by `notifySessionTradingMode`).
+ * - Otherwise: always the server global mode so `POST /api/mode/set` works without reconnect (stale
+ *   `ws._clientTradingMode` from connect was dropping `market` / `state` for the newly selected engine).
+ */
+function effectiveClientViewMode(ws, globalActive) {
+  const g = String(globalActive || "PAPER").toUpperCase();
+  if (ws._perSessionTradingMode) return String(ws._clientTradingMode ?? g).toUpperCase();
+  return g;
 }
 
 export function attachWs({ wss, appState }) {
@@ -134,7 +145,7 @@ export function attachWs({ wss, appState }) {
         const msg = JSON.stringify({ type, payload });
         for (const ws of clients) {
           if (ws.readyState !== ws.OPEN) continue;
-          if (origin !== clientViewMode(ws, active)) continue;
+          if (origin !== effectiveClientViewMode(ws, active)) continue;
           ws.send(msg);
         }
         return;
@@ -144,7 +155,7 @@ export function attachWs({ wss, appState }) {
         const msg = JSON.stringify({ type, payload });
         for (const ws of clients) {
           if (ws.readyState !== ws.OPEN) continue;
-          if (origin !== clientViewMode(ws, active)) continue;
+          if (origin !== effectiveClientViewMode(ws, active)) continue;
           ws.send(msg);
         }
         return;
@@ -154,7 +165,7 @@ export function attachWs({ wss, appState }) {
         const msg = JSON.stringify({ type, payload });
         for (const ws of clients) {
           if (ws.readyState !== ws.OPEN) continue;
-          if (origin !== clientViewMode(ws, active)) continue;
+          if (origin !== effectiveClientViewMode(ws, active)) continue;
           ws.send(msg);
         }
         return;
@@ -165,7 +176,7 @@ export function attachWs({ wss, appState }) {
         const msg = JSON.stringify({ type, payload });
         for (const ws of clients) {
           if (ws.readyState !== ws.OPEN) continue;
-          if (tm !== clientViewMode(ws, active)) continue;
+          if (tm !== effectiveClientViewMode(ws, active)) continue;
           ws.send(msg);
         }
         return;
@@ -188,6 +199,7 @@ export function attachWs({ wss, appState }) {
       for (const ws of clients) {
         if (ws._sessionId !== sessionId) continue;
         ws._clientTradingMode = m;
+        ws._perSessionTradingMode = true;
         void (async () => {
           try {
             const extra = {};
@@ -233,6 +245,7 @@ export function attachWs({ wss, appState }) {
       viewMode = normalizeTradingMode(request.session.uiTradingMode);
     }
     ws._clientTradingMode = normalizeTradingMode(viewMode);
+    ws._perSessionTradingMode = Boolean(uiAuthEnabled() && request?.session?.uiAuthOk);
     ws._sessionId = request?.sessionID || null;
     ws._uiUserTag = request?.session?.uiUserTag || null;
 
@@ -269,7 +282,10 @@ export function attachWs({ wss, appState }) {
           if (uiAuthEnabled() && request?.session?.uiAuthOk) extra.perSessionTradingMode = true;
           let chart = null;
           try {
-            chart = bot?.getChartSnapshot?.({ hours: 24 }) ?? null;
+            chart =
+              typeof bot?.getChartSnapshotOrRestRepair === "function"
+                ? await bot.getChartSnapshotOrRestRepair({ hours: 24 })
+                : bot?.getChartSnapshot?.({ hours: 24 }) ?? null;
           } catch {
             chart = null;
           }
@@ -307,7 +323,8 @@ export function attachWs({ wss, appState }) {
 
     const id = setInterval(() => {
       try {
-        const m = String(ws._clientTradingMode || appState.mode).toUpperCase();
+        const globalActive = String(appState.mode || "PAPER").toUpperCase();
+        const m = effectiveClientViewMode(ws, globalActive);
         const row = appState.getEngine(m);
         if (!row?.bot) return;
         ws.send(
