@@ -13,9 +13,31 @@
 # Build & run:
 #   docker compose up -d --build
 #
-# App listens on : — publish only behind TLS (Caddy) or bind to localhost + reverse proxy.
+# Postgres/Timescale is service `timescale`. In backend/.env use:
+#   DATABASE_URL=postgres://postgres:YOUR_PASSWORD@timescale:5432/trading
+# Password must match POSTGRES_PASSWORD (Compose default tradingdev unless you set POSTGRES_PASSWORD in repo-root `.env`).
+#
+# App listens on : — publish only behind TLS (Caddy) or reverse-proxy host.
 
 services:
+  timescale:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tradingdev}
+      POSTGRES_DB: trading
+    volumes:
+      - trading-timescale-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:54333:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d trading"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
   ai:
     build:
       context: ./ai-service
@@ -39,11 +61,10 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
-      - ai
-    # Linux (e.g. VPS): map host.docker.internal → host gateway so DATABASE_URL can use
-    # postgres://...@host.docker.internal:54333/trading with docker-compose.db.yml on the host.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      ai:
+        condition: service_started
+      timescale:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -57,3 +78,4 @@ services:
 volumes:
   ai-model-data:
   trading-data:
+  trading-timescale-data:
