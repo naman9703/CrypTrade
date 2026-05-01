@@ -13,8 +13,12 @@ services:
   timescale:
     image: timescale/timescaledb:latest-pg16
     restart: unless-stopped
+    # `127.0.0.1:54333` only listens on host loopback — other containers using
+    # `host.docker.internal:54333` hit the bridge IP and will TIME OUT. Use plain
+    # host binding below when `app` runs in Docker on the same machine; keep port
+    # 54333 closed on your VPS firewall (do not expose Postgres to the internet).
     ports:
-      - "127.0.0.1:54333:5432"
+      - "54333:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: tradingdev
