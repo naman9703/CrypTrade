@@ -40,6 +40,10 @@ services:
     restart: unless-stopped
     depends_on:
       - ai
+    # Linux (e.g. VPS): map host.docker.internal → host gateway so DATABASE_URL can use
+    # postgres://...@host.docker.internal:54333/trading with docker-compose.db.yml on the host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8000:8000"
     environment:
