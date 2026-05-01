@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { clsx } from "clsx";
 import { computeMultiCoinTabSymbols } from "../lib/multiCoinTabSymbols";
 import { displayMarketDecisionVerdict } from "../lib/marketDecision/display";
@@ -57,9 +57,35 @@ export function MultiCoinSignalTabs() {
   const chartDisplaySymbol = useAppStore((s) => s.chartDisplaySymbol);
   const setChartDisplaySymbol = useAppStore((s) => s.setChartDisplaySymbol);
 
-  const tabs = useMemo(() => computeMultiCoinTabSymbols(bot as Record<string, unknown>), [bot]);
+  const liveTabs = useMemo(() => computeMultiCoinTabSymbols(bot as Record<string, unknown>), [bot]);
+  const lastNonEmptyTabsRef = useRef<string[]>([]);
+  const tabs = useMemo(() => {
+    if (liveTabs.length > 0) {
+      lastNonEmptyTabsRef.current = liveTabs;
+      return liveTabs;
+    }
+    /** Keep tabs stable across transient bot snapshot gaps. */
+    return lastNonEmptyTabsRef.current;
+  }, [liveTabs]);
 
-  const snaps = (bot?.multiSymbolWatchSignals || {}) as Record<string, WatchSnap>;
+  const liveSnaps = (bot?.multiSymbolWatchSignals || {}) as Record<string, WatchSnap>;
+  const lastSnapsRef = useRef<Record<string, WatchSnap>>({});
+  const snaps = useMemo(() => {
+    const next = { ...lastSnapsRef.current };
+    for (const k of Object.keys(liveSnaps)) next[k] = liveSnaps[k];
+    // Keep cache bounded to active tabs (+ primary) so stale symbols don't accumulate forever.
+    const keep = new Set<string>([
+      ...tabs,
+      String((bot as Record<string, unknown> | null | undefined)?.symbol ?? "")
+        .trim()
+        .toUpperCase(),
+    ]);
+    for (const k of Object.keys(next)) {
+      if (k && keep.size && !keep.has(k)) delete next[k];
+    }
+    lastSnapsRef.current = next;
+    return next;
+  }, [liveSnaps, tabs, bot]);
   const primary = String(bot?.symbol || "").toUpperCase();
 
   const chartU = String(chartDisplaySymbol ?? "")

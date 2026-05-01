@@ -41,6 +41,12 @@ import {
   fetchUsdMTradeByTradeId,
   synthesizeOpenLegUsdMFromIncomeClose,
 } from "../../lib/binanceUsdMUserTradeCommission.js";
+import {
+  binanceRecvWindowMs,
+  createBinanceServerTimeSkew,
+  isBinanceRecvWindowOrTimestampError,
+} from "../../lib/binanceSignedHttp.js";
+import { createUsdMUserDataStream } from "../../lib/binanceUsdMUserDataStream.js";
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
@@ -85,10 +91,13 @@ function lastOpenBinanceEntryMetaForSymbol(trades, symU) {
   return null;
 }
 
-export function createBinanceDemoFuturesUsdMExchange({ log }) {
+export function createBinanceDemoFuturesUsdMExchange({ log, apiKey: apiKeyOverride, apiSecret: apiSecretOverride } = {}) {
   // By default, reuse demo API keys unless dedicated futures demo keys are provided.
-  const apiKey = process.env.BINANCE_DEMO_FUTURES_API_KEY || process.env.BINANCE_DEMO_API_KEY || "";
-  const apiSecret = process.env.BINANCE_DEMO_FUTURES_API_SECRET || process.env.BINANCE_DEMO_API_SECRET || "";
+  const apiKey =
+    (apiKeyOverride ?? process.env.BINANCE_DEMO_FUTURES_API_KEY ?? process.env.BINANCE_DEMO_API_KEY) || "";
+  const apiSecret =
+    (apiSecretOverride ?? process.env.BINANCE_DEMO_FUTURES_API_SECRET ?? process.env.BINANCE_DEMO_API_SECRET) ||
+    "";
   const baseURL = process.env.BINANCE_DEMO_FUTURES_REST_BASE || "https://demo-fapi.binance.com";
   const defaultLeverage = Math.max(1, Math.min(100, Number(process.env.FUTURES_DEFAULT_LEVERAGE || 5)));
 
@@ -98,15 +107,26 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     headers: { "X-MBX-APIKEY": apiKey },
   });
 
+  const timeSkew = createBinanceServerTimeSkew({ log, tag: "binance_demo_futures_usdm" });
+  async function fetchServerTimeMs() {
+    const { data } = await http.request({ method: "GET", url: "/fapi/v1/time", headers: {} });
+    return Number(data?.serverTime);
+  }
+
   /** Per-symbol SL/TP from open orders (2s TTL). Scoped GETs avoid missing older SL legs in unpaged “all symbols” responses. */
   const slTpOpenOrdersCacheBySym = new Map();
 
   async function signed(method, path, params = {}) {
-    const ts = Date.now();
-    const qp = new URLSearchParams({ ...params, timestamp: String(ts) });
-    const sig = hmacSha256(apiSecret, qp.toString());
-    qp.set("signature", sig);
-    const url = `${path}?${qp.toString()}`;
+    await timeSkew.ensureFresh(fetchServerTimeMs);
+    const recvWindow = binanceRecvWindowMs();
+    const buildUrl = () => {
+      const ts = timeSkew.timestampMs();
+      const qp = new URLSearchParams({ ...params, timestamp: String(ts), recvWindow: String(recvWindow) });
+      const sig = hmacSha256(apiSecret, qp.toString());
+      qp.set("signature", sig);
+      return `${path}?${qp.toString()}`;
+    };
+    let url = buildUrl();
     try {
       const { data } = await http.request({ method, url });
       return data;
@@ -117,6 +137,13 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
       const code = body?.code;
       const err = new Error(`binance_demo_futures_http_${method}_${path}:${status ?? "?"}:${code ?? "?"}:${msg}`);
       err.cause = e;
+      if (isBinanceRecvWindowOrTimestampError(err)) {
+        timeSkew.invalidateSyncClock();
+        await timeSkew.ensureFresh(fetchServerTimeMs, true);
+        url = buildUrl();
+        const { data } = await http.request({ method, url });
+        return data;
+      }
       throw err;
     }
   }
@@ -125,6 +152,62 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     const qp = new URLSearchParams({ ...params });
     const url = qp.toString() ? `${path}?${qp.toString()}` : path;
     const { data } = await http.request({ method: "GET", url, headers: {} });
+    return data;
+  }
+
+  let _acctSnapCoalesce = { at: 0, data: null };
+  const ACCT_SNAP_COALESCE_MS = Math.max(
+    0,
+    Math.min(5000, Number(process.env.BINANCE_USDM_ACCOUNT_SNAPSHOT_COALESCE_MS ?? 700)),
+  );
+  const UDS_ENABLED = String(process.env.BINANCE_USDM_USER_DATA_STREAM ?? "1").toLowerCase() !== "0";
+  /** Demo-fapi listen keys pair with Binance’s demo/testnet stream host, not mainnet `fstream.binance.com`. */
+  const userWsBase =
+    String(process.env.BINANCE_DEMO_FUTURES_USER_WS_BASE || "").trim() || "wss://fstream.binancefuture.com/ws";
+  const UDS_FRESH_MS = Math.max(2000, Math.min(120_000, Number(process.env.BINANCE_USDM_USER_STREAM_FRESH_MS ?? 8000)));
+
+  const usdMUserStream =
+    UDS_ENABLED && apiKey
+      ? createUsdMUserDataStream({
+          log,
+          tag: "binance_demo_futures_usdm",
+          http,
+          apiKey,
+          userWsBase,
+          WebSocket: WsModule,
+        })
+      : null;
+
+  let _udsStartInFlight = false;
+  function ensureUsdMUserStream() {
+    if (!usdMUserStream || _udsStartInFlight) return;
+    _udsStartInFlight = true;
+    usdMUserStream
+      .start()
+      .catch((e) => log?.warn?.("binance_demo_futures_usdm_uds_start_failed", { error: String(e?.message || e) }))
+      .finally(() => {
+        _udsStartInFlight = false;
+      });
+  }
+
+  async function getAccountSnapshotCoalesced() {
+    const now = Date.now();
+    ensureUsdMUserStream();
+    if (usdMUserStream?.connected && usdMUserStream.isFresh(now, UDS_FRESH_MS) && usdMUserStream.getMergedAccount()) {
+      const snap = usdMUserStream.getMergedAccount();
+      _acctSnapCoalesce = { at: now, data: snap };
+      return snap;
+    }
+    if (
+      ACCT_SNAP_COALESCE_MS > 0 &&
+      _acctSnapCoalesce.data != null &&
+      now - _acctSnapCoalesce.at < ACCT_SNAP_COALESCE_MS
+    ) {
+      return _acctSnapCoalesce.data;
+    }
+    const data = await signed("GET", "/fapi/v2/account");
+    usdMUserStream?.ingestRestSnapshot(data);
+    _acctSnapCoalesce = { at: Date.now(), data };
     return data;
   }
 
@@ -564,7 +647,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     let rows;
     try {
       rows = await signed("GET", "/fapi/v1/income", {
-        incomeType: "FUNDING",
+        incomeType: "FUNDING_FEE",
         startTime: String(start),
         limit: "1000",
       });
@@ -1962,14 +2045,14 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
     storeInfo: { baseURL, note: "USD-M Futures Demo (real demo futures)" },
     async getAccount() {
       if (!apiKey || !apiSecret) throw new Error("binance_demo_futures_missing_keys");
-      const a = await signed("GET", "/fapi/v2/account");
+      const a = await getAccountSnapshotCoalesced();
       const equity = Number(a?.totalWalletBalance || 0);
       const free = Number(a?.availableBalance || 0);
       return { equity, freeBalance: free, dailyStartEquity: null, dailyPnlPct: 0, leverage: defaultLeverage };
     },
     async getPositions() {
       try {
-        const a = await signed("GET", "/fapi/v2/account");
+        const a = await getAccountSnapshotCoalesced();
         const ps = Array.isArray(a?.positions) ? a.positions : [];
         await reconcileUsdMExternalClosesFromPositions({ mem, publicGet, clearMemBracketTrailForSymbol, log }, ps);
         const rows = ps
@@ -1985,6 +2068,9 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         for (const { sym, lb, pb, lev, p } of rows) {
           const oo = await stopTakeFromExchangeOpenOrders(sym);
           const symU = String(sym || "").toUpperCase();
+          const posSideRaw = String(p?.positionSide ?? "BOTH").trim().toUpperCase();
+          const posSideKey =
+            posSideRaw === "LONG" || posSideRaw === "SHORT" ? posSideRaw : "BOTH";
           const trail = pickBracketTargets(mem.trailingBySymbol, sym);
           const entryEx = lastOpenBinanceEntryMetaForSymbol(mem.trades, symU);
           const openSlTp = slTpFromLastOpenTrade(mem.trades, symU);
@@ -2006,13 +2092,16 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
             stopLossOut = oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? openSlTp.sl ?? null;
             takeProfitOut = oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? openSlTp.tp ?? null;
           }
+          const markPx = Number(p?.markPrice);
           const row = {
-            id: `fut_${sym}`,
+            id: posSideKey !== "BOTH" ? `fut_${symU}_${posSideKey}` : `fut_${symU}`,
             symbol: sym,
             side: Number(p.positionAmt) > 0 ? "BUY" : "SELL",
             qty: Math.abs(Number(p.positionAmt)),
             entryPrice: Number(p.entryPrice || 0),
             unrealizedPnl: Number(p.unrealizedProfit || 0),
+            ...(Number.isFinite(markPx) && markPx > 0 ? { markPrice: markPx } : {}),
+            ...(posSideKey !== "BOTH" ? { positionSide: posSideKey } : {}),
             stopLoss: stopLossOut,
             takeProfit: takeProfitOut,
             leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
@@ -2049,7 +2138,10 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         return out;
       } catch (e) {
         log?.warn?.("binance_demo_futures_positions_failed", { error: String(e?.message || e) });
-        return [];
+        // Re-throw so the hybrid wrapper / caller can fall back to the last-good cache instead of treating
+        // a transient REST failure as "no positions". Returning [] here used to clobber `lastFutPos` and made
+        // the UI flicker between the real positions and an empty table on every Demo Futures auth/network blip.
+        throw e instanceof Error ? e : new Error(String(e?.message || e));
       }
     },
     async getTrades(opts = {}) {
@@ -2659,19 +2751,42 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
         const ps = Array.isArray(a?.positions) ? a.positions : [];
         positions = ps
           .filter((p) => Math.abs(Number(p?.positionAmt || 0)) > 1e-8)
-          .map((p) => ({
-            symbol: p.symbol,
-            side: Number(p.positionAmt) > 0 ? "BUY" : "SELL",
-            qty: Math.abs(Number(p.positionAmt)),
-            entryPrice: Number(p.entryPrice || 0),
-            leverage: Number(p.leverage || 0),
-          }));
+          .map((p) => {
+            const psRaw = String(p?.positionSide ?? "BOTH").trim().toUpperCase();
+            const positionSide = psRaw === "LONG" || psRaw === "SHORT" ? psRaw : "BOTH";
+            return {
+              symbol: p.symbol,
+              side: Number(p.positionAmt) > 0 ? "BUY" : "SELL",
+              qty: Math.abs(Number(p.positionAmt)),
+              entryPrice: Number(p.entryPrice || 0),
+              leverage: Number(p.leverage || 0),
+              positionSide,
+            };
+          });
       } catch (e) {
         return { ok: false, error: String(e?.message || e) };
       }
       const sid = String(id || "");
-      const symFromId = sid.startsWith("fut_") ? sid.slice(4) : sid;
-      const p = positions.find((x) => x.symbol === symFromId || x.symbol === sid);
+      let wantSym = sid;
+      let hedgeSide = null;
+      if (sid.startsWith("fut_")) {
+        const rest = sid.slice(4);
+        if (rest.endsWith("_LONG")) {
+          wantSym = rest.slice(0, -5);
+          hedgeSide = "LONG";
+        } else if (rest.endsWith("_SHORT")) {
+          wantSym = rest.slice(0, -6);
+          hedgeSide = "SHORT";
+        } else {
+          wantSym = rest;
+        }
+      }
+      const symU = String(wantSym || "").toUpperCase();
+      const p = positions.find((x) => {
+        if (String(x.symbol || "").toUpperCase() !== symU) return false;
+        if (!hedgeSide) return true;
+        return x.positionSide === hedgeSide;
+      });
       if (!p) return { ok: false, error: "not_found" };
       const m = await getOrLoadSymbolMeta(p.symbol);
       const qtyStr = formatToStep(p.qty, m);
@@ -2823,14 +2938,29 @@ export function createBinanceDemoFuturesUsdMExchange({ log }) {
       await _runRealtimePoll();
     },
     async close() {
+      usdMUserStream?.stop();
       // Stop real-time trailing poll on exchange close
       if (_realtimeTrailingTimer != null) {
         clearTimeout(_realtimeTrailingTimer);
         _realtimeTrailingTimer = null;
       }
     },
+    dispose() {
+      usdMUserStream?.stop();
+      if (_realtimeTrailingTimer != null) {
+        clearTimeout(_realtimeTrailingTimer);
+        _realtimeTrailingTimer = null;
+      }
+    },
+    subscribeAccountPush(cb) {
+      return usdMUserStream?.subscribeAccountPush?.(cb) ?? (() => {});
+    },
     getStatus() {
-      return { udf: { ok: true, syncMode: "rest", error: null } };
+      const udsOk = Boolean(usdMUserStream?.connected);
+      return {
+        udf: { ok: true, syncMode: udsOk ? "websocket" : "rest", error: null },
+        usdmUserStream: { ok: udsOk, connected: udsOk },
+      };
     },
     /**
      * Recover extremePx for open trailing positions by scanning historical candles since entry.

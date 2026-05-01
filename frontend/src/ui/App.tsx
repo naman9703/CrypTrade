@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { HeaderBar } from "./HeaderBar";
 import { HeaderSignalsStrip } from "./HeaderSignalsStrip";
@@ -12,8 +12,13 @@ import { PortfolioPanel } from "./PortfolioPanel";
 import { LogsPanel } from "./LogsPanel";
 import { ThemeToggle } from "./ThemeToggle";
 import { TradingModeBadge } from "./TradingModeBadge";
+import { StrategySidebar } from "./strategy/StrategySidebar";
+import { InstanceNavBar } from "./instances/InstanceNavBar";
+import { AccountWidget } from "./accounts/AccountWidget";
+import { AppSidebar } from "./AppSidebar";
 import { useAuthActions } from "../authContext";
 import { hydrateStateViaHttp, useAppStore } from "../ws/store";
+import { OverviewPage } from "./analytics/OverviewPage";
 
 function notificationsEnabledFromEnv(): boolean {
   const raw = String(import.meta.env.VITE_ACTIVITY_NOTIFICATIONS ?? "1").trim().toLowerCase();
@@ -26,7 +31,9 @@ export function App() {
   const connect = useAppStore((s) => s.connect);
   const connected = useAppStore((s) => s.ws.connected);
   const wsLastError = useAppStore((s) => s.ws.lastError);
+  const mainView = useAppStore((s) => s.mainView);
   const notificationsOn = notificationsEnabledFromEnv();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   useEffect(() => {
     connect();
   }, [connect]);
@@ -39,46 +46,70 @@ export function App() {
     return () => window.clearInterval(t);
   }, [connected]);
 
+  const shellTop = (
+    <>
+      <HeaderSignalsStrip />
+      <HeaderBar onOpenSidebar={() => setSidebarOpen(true)} />
+      <RegimeEngineStrip />
+      <InstanceNavBar />
+      {notificationsOn ? <ActivityToasts /> : null}
+      <AppSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <AccountWidget />
+    </>
+  );
+
+  if (mainView !== "instance") {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        {shellTop}
+        <OverviewPage />
+        <TradingModeBadge />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <HeaderSignalsStrip />
-      <HeaderBar />
-      <RegimeEngineStrip />
-      {notificationsOn ? <ActivityToasts /> : null}
+      {shellTop}
 
-      <div className="mx-auto max-w-[1600px] px-4 pb-6 pt-4">
-        <div
-          className={clsx(
-            "grid gap-4",
-            "grid-cols-1",
-            "lg:grid-cols-[1.6fr_1fr]",
-            "auto-rows-min"
-          )}
-        >
-          <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
-            <PortfolioPanel />
-          </div>
+      <div className="mx-auto max-w-[1920px] px-4 pb-6 pt-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
+            <div
+              className={clsx(
+                "grid min-w-0 gap-4",
+                "grid-cols-1",
+                "lg:grid-cols-[1.6fr_1fr]",
+                "auto-rows-min",
+              )}
+            >
+              <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
+                <PortfolioPanel />
+              </div>
 
-          <div className="space-y-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
-              <ChartErrorBoundary>
-                <ChartPanel />
-              </ChartErrorBoundary>
+              <div className="space-y-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
+                  <ChartErrorBoundary>
+                    <ChartPanel />
+                  </ChartErrorBoundary>
+                </div>
+              </div>
+
+              <div className="grid gap-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
+                  <TradingPanel />
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
+                  <InsightsPanel />
+                </div>
+              </div>
+
+              <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
+                <LogsPanel />
+              </div>
             </div>
           </div>
-
-          <div className="grid gap-4">
-            <div className="rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
-              <TradingPanel />
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
-              <InsightsPanel />
-            </div>
-          </div>
-
-          <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
-            <LogsPanel />
-          </div>
+          <StrategySidebar />
         </div>
 
         <div className="mt-3 text-xs text-slate-600 dark:text-slate-500">

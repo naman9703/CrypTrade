@@ -11,14 +11,19 @@ import {
 } from "../../lib/binanceSpotCommissions.js";
 import { extractMinNotionalFromFilters } from "../../lib/binanceMinNotional.js";
 import { buildSpotOcoSellPrices, reanchorSpotLongSlTpToFill } from "../../lib/binanceSpotOco.js";
+import {
+  binanceRecvWindowMs,
+  createBinanceServerTimeSkew,
+  isBinanceRecvWindowOrTimestampError,
+} from "../../lib/binanceSignedHttp.js";
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
 }
 
-export function createBinanceDemoSpotExchange({ log }) {
-  const apiKey = process.env.BINANCE_DEMO_API_KEY || "";
-  const apiSecret = process.env.BINANCE_DEMO_API_SECRET || "";
+export function createBinanceDemoSpotExchange({ log, apiKey: apiKeyOverride, apiSecret: apiSecretOverride } = {}) {
+  const apiKey = (apiKeyOverride ?? process.env.BINANCE_DEMO_API_KEY) || "";
+  const apiSecret = (apiSecretOverride ?? process.env.BINANCE_DEMO_API_SECRET) || "";
   const baseURL = process.env.BINANCE_DEMO_REST_BASE || "https://demo-api.binance.com/api";
   const allowAuto = String(process.env.BINANCE_DEMO_ALLOW_AUTO || "0") === "1";
 
@@ -33,6 +38,12 @@ export function createBinanceDemoSpotExchange({ log }) {
     headers: { "X-MBX-APIKEY": apiKey },
   });
 
+  const timeSkew = createBinanceServerTimeSkew({ log, tag: "binance_demo_spot" });
+  async function fetchServerTimeMs() {
+    const { data } = await http.request({ method: "GET", url: "/v3/time", headers: {} });
+    return Number(data?.serverTime);
+  }
+
   const usdtPriceForAsset = createUsdtTicker({ http, path: "/v3/ticker/price", log });
 
   const wsBase = process.env.BINANCE_DEMO_WS_BASE || "wss://demo-stream.binance.com/ws";
@@ -43,6 +54,8 @@ export function createBinanceDemoSpotExchange({ log }) {
     keepAliveTimer: null,
     userStreamDisabled: false,
     status: { ok: false, lastMsgAt: null, error: null, syncMode: "polling" },
+    balanceRows: null,
+    balancePushAt: 0,
   };
 
   /** Binance spot MARKET BUY `quoteOrderQty` minimum (USDT); demo and mainnet use similar floors. */
@@ -51,11 +64,16 @@ export function createBinanceDemoSpotExchange({ log }) {
   }
 
   async function signed(method, path, params = {}) {
-    const ts = Date.now();
-    const qp = new URLSearchParams({ ...params, timestamp: String(ts) });
-    const sig = hmacSha256(apiSecret, qp.toString());
-    qp.set("signature", sig);
-    const url = `${path}?${qp.toString()}`;
+    await timeSkew.ensureFresh(fetchServerTimeMs);
+    const recvWindow = binanceRecvWindowMs();
+    const buildUrl = () => {
+      const ts = timeSkew.timestampMs();
+      const qp = new URLSearchParams({ ...params, timestamp: String(ts), recvWindow: String(recvWindow) });
+      const sig = hmacSha256(apiSecret, qp.toString());
+      qp.set("signature", sig);
+      return `${path}?${qp.toString()}`;
+    };
+    let url = buildUrl();
     try {
       const { data } = await http.request({ method, url });
       return data;
@@ -66,6 +84,13 @@ export function createBinanceDemoSpotExchange({ log }) {
       const code = body?.code;
       const err = new Error(`binance_demo_http_${method}_${path}:${status ?? "?"}:${code ?? "?"}:${msg}`);
       err.cause = e;
+      if (isBinanceRecvWindowOrTimestampError(err)) {
+        timeSkew.invalidateSyncClock();
+        await timeSkew.ensureFresh(fetchServerTimeMs, true);
+        url = buildUrl();
+        const { data } = await http.request({ method, url });
+        return data;
+      }
       throw err;
     }
   }
@@ -160,6 +185,8 @@ export function createBinanceDemoSpotExchange({ log }) {
       // ignore
     }
     udf.ws = null;
+    udf.balanceRows = null;
+    udf.balancePushAt = 0;
     udf.status = { ...udf.status, ok: false };
   }
 
@@ -178,8 +205,8 @@ export function createBinanceDemoSpotExchange({ log }) {
         log.info("binance_demo_udf_open", {});
       });
 
-      ws.on("message", () => {
-        udf.status = { ...udf.status, lastMsgAt: Date.now() };
+      ws.on("message", (raw) => {
+        handleSpotUserStreamMessage(raw);
       });
 
       ws.on("error", (err) => {
@@ -222,6 +249,89 @@ export function createBinanceDemoSpotExchange({ log }) {
   }
 
   const mem = { trades: [], positions: new Map(), lastSyncAt: null };
+  /** Cache last successful ticker prices to keep equity stable across transient /ticker failures. */
+  const lastTickerPriceMap = new Map();
+
+  const SPOT_UDS_BALANCE_TTL_MS = Math.max(
+    1500,
+    Math.min(30_000, Number(process.env.BINANCE_SPOT_USER_STREAM_BALANCE_TTL_MS ?? 5000)),
+  );
+
+  function handleSpotUserStreamMessage(raw) {
+    let msg;
+    try {
+      msg = JSON.parse(String(raw || ""));
+    } catch {
+      return;
+    }
+    udf.status = { ...udf.status, lastMsgAt: Date.now() };
+    const ev = msg?.e;
+    if (ev === "outboundAccountPosition") {
+      const B = Array.isArray(msg.B) ? msg.B : [];
+      udf.balanceRows = B.map((b) => ({
+        asset: String(b.a || ""),
+        free: Number(b.f),
+        locked: Number(b.l),
+        total: Number(b.f) + Number(b.l),
+      })).filter((b) => b.asset && Number.isFinite(b.total));
+      udf.balancePushAt = Date.now();
+    } else if (ev === "executionReport" && String(msg.X || "") === "FILLED") {
+      mem.lastSyncAt = 0;
+    }
+  }
+
+  async function accountViewFromNormalizedBalances(balances) {
+    const filtered = balances.filter((b) => b.total > 0);
+    let equity = 0;
+    const nonUsdt = [];
+    for (const b of filtered) {
+      if (b.asset === "USDT") {
+        equity += b.total;
+      } else {
+        nonUsdt.push(b);
+      }
+    }
+    if (nonUsdt.length > 0) {
+      try {
+        const { data: tickers } = await http.get("/v3/ticker/price");
+        const priceMap = new Map();
+        for (const t of Array.isArray(tickers) ? tickers : []) {
+          priceMap.set(t.symbol, Number(t.price));
+        }
+        if (priceMap.size > 0) {
+          lastTickerPriceMap.clear();
+          for (const [k, v] of priceMap.entries()) lastTickerPriceMap.set(k, v);
+        }
+        for (const b of nonUsdt) {
+          const px = priceMap.get(b.asset + "USDT") || 0;
+          equity += b.total * px;
+        }
+      } catch {
+        if (lastTickerPriceMap.size > 0) {
+          for (const b of nonUsdt) {
+            const px = Number(lastTickerPriceMap.get(b.asset + "USDT") || 0);
+            equity += b.total * px;
+          }
+        } else {
+          for (const pos of mem.positions.values()) {
+            const px = Number(pos.entryPrice || 0);
+            equity += Number(pos.qty || 0) * px;
+          }
+        }
+      }
+    }
+    const usdtBal = filtered.find((b) => b.asset === "USDT");
+    const freeUsdt = usdtBal ? usdtBal.free : 0;
+    const lockedUsdt = usdtBal ? usdtBal.locked : 0;
+    return {
+      equity,
+      freeBalance: freeUsdt,
+      spotUsdt: { free: freeUsdt, locked: lockedUsdt, total: freeUsdt + lockedUsdt },
+      dailyStartEquity: null,
+      dailyPnlPct: 0,
+      balances: filtered,
+    };
+  }
 
   async function getOrderList(orderListId) {
     return signed("GET", "/v3/orderList", { orderListId: String(orderListId) });
@@ -364,6 +474,16 @@ export function createBinanceDemoSpotExchange({ log }) {
     storeInfo: { baseURL, wsBase },
     async getAccount() {
       if (!apiKey || !apiSecret) throw new Error("binance_demo_missing_keys");
+      void openUdf().catch(() => {});
+      const now = Date.now();
+      if (
+        udf.status.ok &&
+        Array.isArray(udf.balanceRows) &&
+        udf.balanceRows.length > 0 &&
+        now - udf.balancePushAt < SPOT_UDS_BALANCE_TTL_MS
+      ) {
+        return await accountViewFromNormalizedBalances(udf.balanceRows);
+      }
       const a = await signed("GET", "/v3/account");
       const balances = (a.balances || [])
         .map((b) => ({
@@ -373,50 +493,7 @@ export function createBinanceDemoSpotExchange({ log }) {
           total: Number(b.free) + Number(b.locked),
         }))
         .filter((b) => b.total > 0);
-
-      let equity = 0;
-      const nonUsdt = [];
-      for (const b of balances) {
-        if (b.asset === "USDT") {
-          equity += b.total;
-        } else {
-          nonUsdt.push(b);
-        }
-      }
-
-      // Value non-USDT assets at current market price
-      if (nonUsdt.length > 0) {
-        try {
-          const { data: tickers } = await http.get("/v3/ticker/price");
-          const priceMap = new Map();
-          for (const t of Array.isArray(tickers) ? tickers : []) {
-            priceMap.set(t.symbol, Number(t.price));
-          }
-          for (const b of nonUsdt) {
-            const px = priceMap.get(b.asset + "USDT") || 0;
-            equity += b.total * px;
-          }
-        } catch {
-          // If ticker fetch fails, just count positions from memory
-          for (const pos of mem.positions.values()) {
-            const px = Number(pos.entryPrice || 0);
-            equity += Number(pos.qty || 0) * px;
-          }
-        }
-      }
-
-      const usdtBal = balances.find((b) => b.asset === "USDT");
-      /** Spendable USDT for MARKET BUY (`quoteOrderQty`); excludes locked margin/orders. */
-      const freeUsdt = usdtBal ? usdtBal.free : 0;
-      const lockedUsdt = usdtBal ? usdtBal.locked : 0;
-      return {
-        equity,
-        freeBalance: freeUsdt,
-        spotUsdt: { free: freeUsdt, locked: lockedUsdt, total: freeUsdt + lockedUsdt },
-        dailyStartEquity: null,
-        dailyPnlPct: 0,
-        balances,
-      };
+      return await accountViewFromNormalizedBalances(balances);
     },
     async getPositions() {
       return Array.from(mem.positions.values()).map((p) => ({ ...p }));
@@ -703,6 +780,9 @@ export function createBinanceDemoSpotExchange({ log }) {
       };
     },
     async close() {
+      closeUdf();
+    },
+    dispose() {
       closeUdf();
     },
     getStatus() {

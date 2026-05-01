@@ -42,6 +42,7 @@ import { displayMarketDecisionVerdict, mdEnforcementOff } from "../lib/marketDec
 import { useThemeStore } from "../themeStore";
 import { CHART_CANDLE_MAX, useAppStore } from "../ws/store";
 import { OrderBookPanel } from "./OrderBookPanel";
+import { IntelligencePanel } from "./intelligence/IntelligencePanel";
 import { MultiCoinSignalTabs } from "./MultiCoinSignalTabs";
 import { PositionMiniChartsRow } from "./PositionMiniChartsRow";
 
@@ -50,6 +51,24 @@ const CHART_TIMEZONE = "Asia/Kolkata";
 
 /** Max markers on candlesticks (merged live + history); excess causes overlap and slows lightweight-charts. */
 const CHART_MARKER_DISPLAY_CAP = 40;
+
+function snapOverlayToCandles(eventSec: number, candleTimes: Set<number>, tfSec: number): number | null {
+  const aligned = Math.floor(eventSec / tfSec) * tfSec;
+  const candidates = [aligned, aligned - tfSec, aligned + tfSec, eventSec];
+  for (const t of candidates) {
+    if (candleTimes.has(t)) return t;
+  }
+  let best: number | null = null;
+  let bestD = Infinity;
+  for (const t of candleTimes) {
+    const d = Math.abs(t - eventSec);
+    if (d < bestD && d <= tfSec * 3) {
+      best = t;
+      bestD = d;
+    }
+  }
+  return best;
+}
 
 /** Max rows in the “signals” list under the chart (newest first). */
 const SUPERTREND_SIGNAL_LIST_MAX = 50;
@@ -1202,6 +1221,7 @@ export function ChartPanel() {
   const chartDisplaySymbol = useAppStore((s) => s.chartDisplaySymbol);
   const setChartDisplaySymbol = useAppStore((s) => s.setChartDisplaySymbol);
   const positions = useAppStore((s) => s.positions);
+  const showMarketIntelligencePanel = useAppStore((s) => s.showMarketIntelligencePanel);
   const chartTheme = useThemeStore((s) => s.theme);
 
   const [altCandles, setAltCandles] = useState<any[]>([]);
@@ -1209,6 +1229,10 @@ export function ChartPanel() {
   const [chartTrailedSessionBySymbol, setChartTrailedSessionBySymbol] = useState<Record<string, true>>({});
   /** One expanded row at a time in the signal list under the chart. */
   const [openSignalAccordionKey, setOpenSignalAccordionKey] = useState<string | null>(null);
+  const [chartOverlay, setChartOverlay] = useState<{
+    events: { id: string; title: string; eventTime: string; impactLevel: string }[];
+    whales: { id: string; alertedAt: string; amountUsd: number | null; symbol: string }[];
+  }>({ events: [], whales: [] });
 
   const effectiveSym = useMemo(() => {
     const b = normalizeSymTf(bot?.symbol);
@@ -1221,7 +1245,8 @@ export function ChartPanel() {
     return Boolean(effectiveSym && b && effectiveSym !== b);
   }, [effectiveSym, bot?.symbol]);
 
-  const isMultiCoinMode = String(bot?.universeCoinSelectMode || "").toUpperCase() === "MULTIPLE";
+  const universeCoinSelectModeU = String(bot?.universeCoinSelectMode || "").toUpperCase();
+  const isMultiCoinMode = universeCoinSelectModeU === "MULTIPLE";
 
   /** Server `supertrendLastBarClose` / flips are for `bot.symbol` only — ignore on chart when viewing another pair. */
   const serverStSnapMatchesChart = useMemo(() => {
@@ -1230,9 +1255,15 @@ export function ChartPanel() {
     return Boolean(es && bs && es === bs);
   }, [effectiveSym, bot?.symbol]);
 
+  /**
+   * Only clear chart override on explicit SINGLE. Transient WS/hydrate gaps can omit `universeCoinSelectMode`
+   * or differ from MULTIPLE for a tick; `MultiCoinSignalTabs` still shows cached tabs, but `!isMultiCoinMode`
+   * used to null `chartDisplaySymbol` → main chart snapped back to `bot.symbol` while the tab row looked multi.
+   */
   useEffect(() => {
-    if (!isMultiCoinMode) setChartDisplaySymbol(null);
-  }, [isMultiCoinMode, setChartDisplaySymbol]);
+    if (universeCoinSelectModeU !== "SINGLE") return;
+    setChartDisplaySymbol(null);
+  }, [universeCoinSelectModeU, setChartDisplaySymbol]);
 
   const parseCandlesFromMarketApi = useCallback((r: any, chartSym: string) => {
     if (!r?.ok || !Array.isArray(r.candles)) return [] as any[];
@@ -1310,6 +1341,45 @@ export function ChartPanel() {
   /** Same bars as candlesticks (in ms) so Supertrend math cannot diverge from what you see. */
   const ohlcAsMsCandles = useMemo(() => ohlcBarsToMsCandles(ohlc), [ohlc]);
   const candleTimes = useMemo(() => new Set(ohlc.map((b) => Number(b.time))), [ohlc]);
+  const ohlcSpanKey = useMemo(() => {
+    if (!ohlc.length || !effectiveSym) return "";
+    return `${effectiveSym}|${ohlc[0]!.time}|${ohlc[ohlc.length - 1]!.time}|${normalizeSymTf(bot?.timeframe)}`;
+  }, [ohlc, effectiveSym, bot?.timeframe]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!ohlc.length || !effectiveSym) return;
+      const fromIso = new Date(Number(ohlc[0]!.time) * 1000).toISOString();
+      const toIso = new Date(Number(ohlc[ohlc.length - 1]!.time) * 1000).toISOString();
+      const baseAsset = canonicalChartSymbol(effectiveSym).replace(/USDT|USDC|BUSD$/u, "");
+      try {
+        const [evRaw, whRaw] = await Promise.all([
+          api.getMarketEvents({ from: fromIso, to: toIso, assets: baseAsset }),
+          api.getWhaleAlerts({ from: fromIso, to: toIso, symbol: canonicalChartSymbol(effectiveSym) }),
+        ]);
+        const evRes = (Array.isArray(evRaw) ? evRaw : []) as {
+          id: string;
+          title: string;
+          eventTime: string;
+          impactLevel: string;
+        }[];
+        const whRes = (Array.isArray(whRaw) ? whRaw : []) as {
+          id: string;
+          alertedAt: string;
+          amountUsd: number | null;
+          symbol: string;
+        }[];
+        if (!cancelled) setChartOverlay({ events: evRes, whales: whRes });
+      } catch {
+        if (!cancelled) setChartOverlay({ events: [], whales: [] });
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [ohlcSpanKey, effectiveSym, ohlc]);
   const chartSupertrend = useMemo(() => {
     const period = Math.max(2, Math.floor(Number(bot?.supertrendPeriod ?? 10)));
     const multiplier = Number(bot?.supertrendMultiplier ?? 3);
@@ -1489,11 +1559,11 @@ export function ChartPanel() {
       seen.add(k);
       extra.push({ time: sec, side, preview: false });
     }
-    const merged = [...safeMarkers, ...extra].sort((a, b) => a.time - b.time);
-    const capped =
-      merged.length > CHART_MARKER_DISPLAY_CAP ? merged.slice(-CHART_MARKER_DISPLAY_CAP) : merged;
+    const mergedSt = [...safeMarkers, ...extra].sort((a, b) => a.time - b.time);
+    const stBudget = 32;
+    const cappedSt = mergedSt.length > stBudget ? mergedSt.slice(-stBudget) : mergedSt;
 
-    return capped.map((m) => {
+    const stLwc = cappedSt.map((m) => {
       const hMatch = histByKey.get(`${m.time}:${m.side}`);
       const text =
         isMultiCoinMode && !m.preview
@@ -1514,7 +1584,66 @@ export function ChartPanel() {
         text,
       };
     });
-  }, [safeMarkers, supertrendSignalHistoryRecent, candleTimes, isMultiCoinMode]);
+
+    const tfRaw = normalizeSymTf(bot?.timeframe) || "15m";
+    const tfMs = binanceIntervalMs(tfRaw);
+    const tfSec = Math.max(60, Math.floor(tfMs / 1000));
+
+    const overlay: Array<{
+      time: UTCTimestamp;
+      position: "belowBar" | "aboveBar";
+      color: string;
+      shape: "arrowUp" | "arrowDown" | "circle" | "square";
+      text: string;
+    }> = [];
+
+    for (const ev of chartOverlay.events.slice(-14)) {
+      const ms = new Date(ev.eventTime).getTime();
+      if (!Number.isFinite(ms)) continue;
+      const sec = Math.floor(ms / 1000);
+      const t = snapOverlayToCandles(sec, candleTimes, tfSec);
+      if (t == null) continue;
+      const hi = ev.impactLevel === "high";
+      overlay.push({
+        time: t as UTCTimestamp,
+        position: "belowBar",
+        color: hi ? "#a855f7" : "#64748b",
+        shape: "square",
+        text: ev.title.length > 26 ? `${ev.title.slice(0, 26)}…` : ev.title,
+      });
+    }
+
+    const chartSymCanon = canonicalChartSymbol(effectiveSym);
+    for (const w of chartOverlay.whales.slice(0, 12)) {
+      if (canonicalChartSymbol(w.symbol) !== chartSymCanon) continue;
+      const ms = new Date(w.alertedAt).getTime();
+      if (!Number.isFinite(ms)) continue;
+      const sec = Math.floor(ms / 1000);
+      const t = snapOverlayToCandles(sec, candleTimes, tfSec);
+      if (t == null) continue;
+      const amt = w.amountUsd != null && Number.isFinite(w.amountUsd) ? w.amountUsd : null;
+      overlay.push({
+        time: t as UTCTimestamp,
+        position: "aboveBar",
+        color: "#38bdf8",
+        shape: "circle",
+        text: amt != null ? `Whale $${(amt / 1e6).toFixed(1)}M` : "Whale",
+      });
+    }
+
+    const mergedOut = [...stLwc, ...overlay].sort((a, b) => Number(a.time) - Number(b.time));
+    return mergedOut.length > CHART_MARKER_DISPLAY_CAP
+      ? mergedOut.slice(-CHART_MARKER_DISPLAY_CAP)
+      : mergedOut;
+  }, [
+    safeMarkers,
+    supertrendSignalHistoryRecent,
+    candleTimes,
+    isMultiCoinMode,
+    chartOverlay,
+    bot?.timeframe,
+    effectiveSym,
+  ]);
 
   const supertrendSoundCtx = useMemo(
     () =>
@@ -3641,6 +3770,7 @@ export function ChartPanel() {
         ) : null}
         <div className="w-full">
           <OrderBookPanel />
+          {showMarketIntelligencePanel ? <IntelligencePanel embedded /> : null}
         </div>
       </div>
     </div>

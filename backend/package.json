@@ -7,7 +7,14 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
+    "test": "node --test src/lib/encryption.test.mjs src/db/services/capitalAllotmentService.test.mjs src/lib/strategyInstanceSplit.test.mjs",
     "build": "node --check src/index.js",
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "db:migrate:local": "node scripts/db-migrate.mjs --compose --wait",
+    "db:seed-admin": "node scripts/seed-admin.mjs",
+    "db:seed-paper-account": "node scripts/seedPaperAccount.mjs",
+    "db:sync-ui-users": "node scripts/sync-ui-users-to-db.mjs",
+    "db:report-strategies": "node scripts/report-strategies.mjs",
     "futures:testnet:smoke": "node scripts/futures-testnet-smoke-order.mjs",
     "supertrend:flow-demo": "node scripts/supertrend-indicator-flow-demo.mjs",
     "supertrend:flow-demo:mimic": "node scripts/supertrend-indicator-flow-demo.mjs --mimic-both --venue both --dry-run"
@@ -15,12 +22,14 @@
   "dependencies": {
     "axios": "^1.7.9",
     "bcrypt": "^6.0.0",
+    "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^8.3.2",
     "express-session": "^1.18.1",
     "helmet": "^8.1.0",
+    "pg": "^8.13.1",
     "ws": "^8.18.0",
     "zod": "^3.24.2"
   }

@@ -13,6 +13,7 @@ import {
   loadPortfolioPnlRangeForMode,
   tradingUiPersistPortfolioPnlRange,
 } from "../lib/tradingUiPersistence";
+import { tradingModeToApiModeSlug } from "../lib/tradingModeSlug";
 import { useAppStore } from "../ws/store";
 import { api } from "../api/client";
 import { isIncomeLedgerClose } from "../lib/tradeClassification";
@@ -2218,8 +2219,21 @@ export function PortfolioPanel() {
   const positions = useAppStore((s) => s.positions) || [];
   const pushLog = useAppStore((s) => s.pushLog);
   const mode = useAppStore((s) => s.mode);
+  const mainView = useAppStore((s) => s.mainView);
+  const selectedInstanceId = useAppStore((s) => s.selectedInstanceId);
+  const modeSlug = tradingModeToApiModeSlug(mode);
+  const instances = useAppStore((s) => s.instancesByMode[modeSlug] ?? []);
+  const fetchInstancesForMode = useAppStore((s) => s.fetchInstancesForMode);
+  const runningByMode = useAppStore((s) => s.runningByMode ?? {});
   const authUiUserTag = useAppStore((s) => s.authUiUserTag ?? null);
   const exchName = useAppStore((s) => s.bot?.exchange?.name) as string | undefined;
+  const selectedInstance =
+    mainView === "instance" ? instances.find((i: any) => i.id === selectedInstanceId) ?? null : null;
+  const modeUpper = String(mode || "PAPER").toUpperCase();
+  const mainEngineOn = Boolean((runningByMode as Record<string, boolean>)[modeUpper]);
+  const instanceRunning = String(selectedInstance?.status ?? "").toLowerCase() === "running";
+  const effectiveInstanceOn = mainEngineOn && instanceRunning;
+  const [instanceToggleBusy, setInstanceToggleBusy] = useState(false);
 
   const strictAccountMissing =
     (mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET") && account === null;
@@ -2288,6 +2302,28 @@ export function PortfolioPanel() {
     setCustomRangeStart(toDatetimeLocalValue(start));
     setCustomRangeEnd("");
   }, [pnlHistoryRange, customRangeStart, customRangeEnd]);
+
+  async function onToggleSelectedInstance() {
+    if (!selectedInstance?.id) return;
+    if (!instanceRunning && !mainEngineOn) {
+      pushLog({ level: "warn", msg: "Turn on the mode bot first, then enable this instance." });
+      return;
+    }
+    setInstanceToggleBusy(true);
+    try {
+      if (instanceRunning) {
+        await api.pauseInstance(selectedInstance.id);
+      } else {
+        await api.resumeInstance(selectedInstance.id);
+      }
+      await fetchInstancesForMode(modeSlug);
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      pushLog({ level: "error", msg: `Failed to toggle instance: ${detail}` });
+    } finally {
+      setInstanceToggleBusy(false);
+    }
+  }
 
   const historyRangeFilter = useMemo(
     () => buildHistoryRangeFilter(pnlHistoryRange, customRangeStart, customRangeEnd),
@@ -2693,8 +2729,10 @@ export function PortfolioPanel() {
       const fRaw = venues?.futures?.equity;
       const s = sRaw != null && Number.isFinite(Number(sRaw)) ? Number(sRaw) : null;
       const f = fRaw != null && Number.isFinite(Number(fRaw)) ? Number(fRaw) : null;
-      if (mm === "FUTURES" && f != null) return f;
-      if (mm === "SPOT" && s != null) return s;
+      // Strict market-mode: when configured for a specific venue, only show that venue's equity.
+      // Never fall through to the other venue's number — that would show the wrong wallet.
+      if (mm === "FUTURES" || mm === "FUTURES_USD_M") return f;
+      if (mm === "SPOT") return s;
       if (s != null && f != null) return s + f;
       if (s != null) return s;
       if (f != null) return f;
@@ -2741,9 +2779,34 @@ export function PortfolioPanel() {
         />
       ) : null}
       <div className="p-4">
-      <div className="mb-2">
-        <div className="text-sm font-semibold">Portfolio</div>
-        <div className="text-xs text-slate-600 dark:text-slate-400">{subtitle}</div>
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div>
+          <div className="text-sm font-semibold">Portfolio</div>
+          <div className="text-xs text-slate-600 dark:text-slate-400">{subtitle}</div>
+        </div>
+        {selectedInstance ? (
+          <button
+            type="button"
+            disabled={instanceToggleBusy}
+            title={
+              mainEngineOn
+                ? effectiveInstanceOn
+                  ? "Turn this instance OFF"
+                  : "Turn this instance ON"
+                : "Mode bot is OFF. Turn it on first."
+            }
+            onClick={() => {
+              void onToggleSelectedInstance();
+            }}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+              effectiveInstanceOn
+                ? "border-rose-400/70 bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                : "border-emerald-400/70 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+            }`}
+          >
+            {instanceToggleBusy ? "…" : effectiveInstanceOn ? "Instance ON ● (turn OFF)" : "Instance OFF ○ (turn ON)"}
+          </button>
+        ) : null}
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
@@ -2822,11 +2885,21 @@ export function PortfolioPanel() {
                 </div>
                 <div>
                   Futures:{" "}
-                  <span className="text-slate-900 dark:text-slate-100">
+                  <span className={(account as any)?.futuresAuthError ? "text-rose-400" : "text-slate-900 dark:text-slate-100"}>
                     {account?.venues?.futures?.equity != null ? `$${Number(account.venues.futures.equity).toFixed(2)}` : "—"}
                   </span>
                 </div>
               </div>
+              {(account as any)?.futuresAuthError ? (
+                <div className="mt-1.5 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] leading-snug text-amber-300">
+                  <span className="font-semibold">Futures auth failed.</span>{" "}
+                  {mode === "BINANCE_DEMO_API"
+                    ? "Demo futures (demo-fapi.binance.com) requires separate demo-futures API keys — your demo-spot keys won't work here. Set BINANCE_DEMO_FUTURES_API_KEY + BINANCE_DEMO_FUTURES_API_SECRET in backend/.env with keys from Binance's demo futures portal, or add them to this account."
+                    : mode === "BINANCE_TESTNET"
+                      ? "Futures testnet requires keys from testnet.binancefuture.com (different from spot testnet keys). Set BINANCE_FUTURES_API_KEY/SECRET in backend/.env."
+                      : `Futures API error: ${String((account as any).futuresAuthError)}`}
+                </div>
+              ) : null}
               <div className="mt-1 text-slate-600 dark:text-slate-500">
                 {mode === "BINANCE_TESTNET"
                   ? "Spot: testnet.binance.vision · Futures: testnet.binancefuture.com (when connected)."

@@ -1,4 +1,10 @@
 import { clamp, roundTo } from "../lib/math.js";
+import {
+  updateIntelligenceCandles,
+  updateIntelligenceAdx,
+  updateIntelligenceOrderBook,
+  computeAndBroadcastIntelligenceSnapshot,
+} from "../intelligence/index.js";
 import { tradeCloseFeeUsdtFromNotional, tradeCloseFeeRate } from "../lib/tradeCloseFee.js";
 import { maxBarsForHistory } from "../lib/chartWindow.js";
 import { computeIndicators } from "../strategy/indicators.js";
@@ -7,6 +13,7 @@ import { detectRegime } from "../strategy/regime.js";
 import { strategies } from "../strategy/strategies.js";
 import { pickStrategyAuto, topStrategies } from "../strategy/selector.js";
 import { riskPlan, spotBracketFromAtr } from "../strategy/risk.js";
+import { evaluateIntelligenceGateForSupertrendOpen } from "./intelligenceGate.js";
 import { createMarketFeed } from "./marketFeed.js";
 import { createBinanceUniverse } from "../svc/universe/binanceUniverse.js";
 import { createBinanceOrderBook } from "./orderBookBinance.js";
@@ -28,6 +35,11 @@ import {
 } from "../lib/supertrendChartAlign.js";
 import { broadcastActivity } from "../lib/activityLog.js";
 import { mergePersistedTradesWithExchange } from "../lib/activityPersistence.js";
+import { getPool } from "../db/pool.js";
+import { fireAndForgetWalletSnapshot } from "../db/services/walletService.js";
+import { computeInstanceStats, updateInstanceStats } from "../db/services/instanceService.js";
+import { getAllotmentForInstance, updateReserved } from "../db/services/capitalAllotmentService.js";
+import * as tradeService from "../db/services/tradeService.js";
 import {
   fetchUsdMBookTicker,
   fetchUsdMKlineCloseAtOpenTime,
@@ -95,16 +107,6 @@ const SUPERTREND_SIGNAL_STATE_MAX = Math.max(
   Math.min(50_000, Number(process.env.SUPERTREND_SIGNAL_HISTORY_STATE_MAX || 2000)),
 );
 const SYM_RE = /^[A-Z0-9]{5,20}$/i;
-
-/** Optional local Cursor/agent ingest; avoids hot-path TCP when unset. */
-function postSupertrendLocalAgentIngestIfEnabled(body) {
-  if (String(process.env.TRADING_DEBUG_AGENT_INGEST || "") !== "1") return;
-  fetch("http://127.0.0.1:7607/ingest/19a148df-af4d-4baa-8f12-56d6d537b33c", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b66075" },
-    body: JSON.stringify(body),
-  }).catch(() => {});
-}
 
 /**
  * Trailing uses the lower ST rail for longs and the upper rail for shorts.
@@ -415,8 +417,80 @@ function normalizeCapitalBudgetFields(s, SYM_RE) {
   s.perTradeBudgetInputMode = pti === "PCT_OF_USABLE" ? "PCT_OF_USABLE" : "USDT";
 }
 
-export function createBot({ log, ai, exchange, defaults, getTradingMode, persistenceSlug }) {
+export function createBot({
+  log,
+  ai,
+  exchange,
+  defaults,
+  getTradingMode,
+  getActiveInstanceId = null,
+  persistenceSlug,
+  dbAccountId = null,
+  initialPersistedConfig = null,
+}) {
   let exch = exchange;
+  /** Phase 2C: DB `accounts.id` for wallet_snapshots telemetry; null skips writes. */
+  const walletTelemetryAccountId = dbAccountId && String(dbAccountId).trim() ? String(dbAccountId).trim() : null;
+  function scheduleCapitalReservedSyncAfterTrade() {
+    if (!getPool()) return;
+    let iid = null;
+    try {
+      iid = typeof getActiveInstanceId === "function" ? getActiveInstanceId() : null;
+    } catch {
+      iid = null;
+    }
+    if (!iid) return;
+    void (async () => {
+      try {
+        const allot = await getAllotmentForInstance(String(iid));
+        if (!allot?.id) return;
+        let pos = _cachedPositions || [];
+        try {
+          pos = await exch.getPositions();
+        } catch {
+          /* keep cache */
+        }
+        const margin = sumOpenMarginUsedUsdt(pos, state.marketMode);
+        const row = await updateReserved(String(allot.id), margin);
+        const hub = wsHubRef;
+        if (hub?.broadcast && row) {
+          const ru = Number(row.reserved_usdt ?? 0);
+          hub.broadcast("instance_status", {
+            instanceId: String(iid),
+            reservedUsdt: Number.isFinite(ru) ? ru : null,
+            triggeredBy: "system",
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      } catch (e) {
+        log?.warn?.("[capital] updateReserved failed", { error: String(e?.message || e) });
+      }
+    })();
+  }
+
+  async function placeOrderWithWalletTelemetry(venueEx, runPlaceOrder) {
+    if (!walletTelemetryAccountId || !getPool()) {
+      try {
+        const o = await runPlaceOrder();
+        if (getPool()) scheduleCapitalReservedSyncAfterTrade();
+        return o;
+      } catch (e) {
+        if (getPool()) scheduleCapitalReservedSyncAfterTrade();
+        throw e;
+      }
+    }
+    fireAndForgetWalletSnapshot(walletTelemetryAccountId, "pre_trade", venueEx);
+    try {
+      const o = await runPlaceOrder();
+      fireAndForgetWalletSnapshot(walletTelemetryAccountId, "post_trade", venueEx);
+      scheduleCapitalReservedSyncAfterTrade();
+      return o;
+    } catch (e) {
+      fireAndForgetWalletSnapshot(walletTelemetryAccountId, "post_trade", venueEx);
+      scheduleCapitalReservedSyncAfterTrade();
+      throw e;
+    }
+  }
   function runtimeTradingMode() {
     if (typeof getTradingMode === "function") {
       try {
@@ -464,6 +538,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   }
   const state = {
     running: false,
+    /** Phase 3D: tick continues; Supertrend entry paths skip new risk while exits / flips-to-flat still allowed. */
+    paused: false,
     symbol: defaults.symbol,
     timeframe: defaults.timeframe,
     symbolMode: "AUTO", // SINGLE | AUTO (coin selection)
@@ -672,6 +748,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       0.00005,
       0.5,
     ),
+    /** Enable/disable SurfPulse ML probability gate for SURF_PULSE_ML opens. */
+    surfPulseMlGateEnabled: String(process.env.SURF_PULSE_ML_GATE_ENABLED ?? "1").toLowerCase() !== "0",
+    /** Enable market intelligence gate — skips trades when high-confidence signals oppose direction. Default off until tested. */
+    intelligenceGateEnabled: String(process.env.INTELLIGENCE_GATE_ENABLED ?? "0").toLowerCase() !== "0",
     /** Min XGBoost win probability (0–1) for SURF_PULSE_ML opens; default from env `SURF_PULSE_ML_THRESHOLD`. */
     surfPulseMlThreshold: clamp(Number(process.env.SURF_PULSE_ML_THRESHOLD ?? 0.6), 0, 1),
     /** Futures autotrade: fee breakeven, fee-based first scalping, then optional %-of-entry locks (see `trailingStopLoss.js`). */
@@ -1435,139 +1515,141 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     return p;
   }
 
+  function buildTradingConfigPersistPayload() {
+    return {
+      v: 1,
+      bot: {
+        symbol: state.symbol,
+        timeframe: state.timeframe,
+        symbolMode: state.symbolMode,
+        universePinnedSymbol: state.universePinnedSymbol,
+        universeCoinBase: state.universeCoinBase,
+        universeCustomSymbols: state.universeCustomSymbols,
+        universeCoinSelectMode: state.universeCoinSelectMode,
+        universePinControl: state.universePinControl,
+        universeAutoCoinPick: state.universeAutoCoinPick,
+        universePinnedSymbols: state.universePinnedSymbols,
+        aiThreshold: state.aiThreshold,
+        riskPerTrade: state.riskPerTrade,
+        maxDailyLoss: state.maxDailyLoss,
+        riskPerTradeUnit: state.riskPerTradeUnit,
+        maxDailyLossUnit: state.maxDailyLossUnit,
+        capitalSplitAcrossCoins: Boolean(state.capitalSplitAcrossCoins),
+        allowedBudgetUsdt: Number(state.allowedBudgetUsdt) || 0,
+        allowedBudgetWalletPct: clamp(Number(state.allowedBudgetWalletPct || 0), 0, 100),
+        allowedBudgetInputMode: state.allowedBudgetInputMode === "WALLET_PCT" ? "WALLET_PCT" : "USDT",
+        allowedBudgetPnlAnchorMs:
+          state.allowedBudgetPnlAnchorMs != null && Number.isFinite(Number(state.allowedBudgetPnlAnchorMs))
+            ? Math.round(Number(state.allowedBudgetPnlAnchorMs))
+            : null,
+        multiTradeUsePctOfUsable: Boolean(state.multiTradeUsePctOfUsable),
+        multiTradePctOfUsable: clamp(Number(state.multiTradePctOfUsable ?? 100), 0, 100),
+        capitalAllotmentCompoundPnlUi: Boolean(state.capitalAllotmentCompoundPnlUi),
+        capitalCycleStrategyBalanceUsdt: Math.max(0, Number(state.capitalCycleStrategyBalanceUsdt) || 0),
+        capitalCyclePoolAnchorUsdt: Math.max(0, Number(state.capitalCyclePoolAnchorUsdt) || 0),
+        capitalCycleRealizedPnlUsdt: Number(state.capitalCycleRealizedPnlUsdt) || 0,
+        capitalCycleSymbols: Array.isArray(state.capitalCycleSymbols) ? [...state.capitalCycleSymbols] : [],
+        perTradeBudgetCapEnabled: Boolean(state.perTradeBudgetCapEnabled !== false),
+        perTradeBudgetInputMode: state.perTradeBudgetInputMode === "PCT_OF_USABLE" ? "PCT_OF_USABLE" : "USDT",
+        multiCoinCapitalSizingActive: Boolean(state.multiCoinCapitalSizingActive),
+        multiBudgetSplitMode:
+          state.multiBudgetSplitMode === "FULL" ||
+          state.multiBudgetSplitMode === "EQUAL" ||
+          state.multiBudgetSplitMode === "CUSTOM_USDT" ||
+          state.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED"
+            ? state.multiBudgetSplitMode
+            : null,
+        multiBudgetCoinUsdt:
+          state.multiBudgetCoinUsdt && typeof state.multiBudgetCoinUsdt === "object" ? { ...state.multiBudgetCoinUsdt } : {},
+        multiBudgetCoinPct:
+          state.multiBudgetCoinPct && typeof state.multiBudgetCoinPct === "object" ? { ...state.multiBudgetCoinPct } : {},
+        strategyMode: state.strategyMode,
+        manualStrategy: state.manualStrategy,
+        marketMode: state.marketMode,
+        futuresLeverageMode: state.futuresLeverageMode,
+        futuresLeverage: state.futuresLeverage,
+        supertrendSpotAuto: state.supertrendSpotAuto,
+        supertrendFuturesAuto: state.supertrendFuturesAuto,
+        supertrendFuturesAiConfidenceFilter: state.supertrendFuturesAiConfidenceFilter,
+        signalStrengthGatesTrades: state.signalStrengthGatesTrades,
+        supertrendMoveQualityGate: state.supertrendMoveQualityGate === true,
+        supertrendMoveQualityMinScore: state.supertrendMoveQualityMinScore,
+        supertrendMoveQualityMinAdx: state.supertrendMoveQualityMinAdx,
+        supertrendMoveQualityMinMoveSlRatio: state.supertrendMoveQualityMinMoveSlRatio,
+        supertrendMoveQualityExpectedMoveAtrMult: state.supertrendMoveQualityExpectedMoveAtrMult,
+        supertrendMoveQualityMinAtrExpansion: state.supertrendMoveQualityMinAtrExpansion,
+        supertrendMoveQualityMinBodyVsAvg: state.supertrendMoveQualityMinBodyVsAvg,
+        supertrendMoveQualityMinDirectionalBody: state.supertrendMoveQualityMinDirectionalBody,
+        supertrendMoveQualityMinVolumeVsAvg: state.supertrendMoveQualityMinVolumeVsAvg,
+        marketDecision: state.marketDecision && typeof state.marketDecision === "object" ? { ...state.marketDecision } : {},
+        supertrendBreakoutConfirm: state.supertrendBreakoutConfirm === true,
+        supertrendBreakoutMaxBars: state.supertrendBreakoutMaxBars,
+        signalStrengthOpenMin: state.signalStrengthOpenMin,
+        smartSignalStrengthThreshold:
+          state.smartSignalStrengthThreshold != null && Number.isFinite(Number(state.smartSignalStrengthThreshold))
+            ? clamp(Math.round(Number(state.smartSignalStrengthThreshold)), 0, 100)
+            : null,
+        smartSignalStrengthThresholdMeta:
+          state.smartSignalStrengthThresholdMeta && typeof state.smartSignalStrengthThresholdMeta === "object"
+            ? { ...state.smartSignalStrengthThresholdMeta }
+            : null,
+        supertrendFuturesMinAiProb: state.supertrendFuturesMinAiProb,
+        surfPulseMlGateEnabled: state.surfPulseMlGateEnabled !== false,
+        surfPulseMlThreshold: state.surfPulseMlThreshold,
+        intelligenceGateEnabled: state.intelligenceGateEnabled === true,
+        trailingStopLossAuto: state.trailingStopLossAuto,
+        futuresTrailingStopMode: normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode),
+        futuresTrailingStFeeBreakeven: state.futuresTrailingStFeeBreakeven !== false,
+        futuresTrailingStAdvanced: state.futuresTrailingStAdvanced !== false,
+        trailingStopExtraScalpingPcts: normalizeTrailingExtraPcts(state.trailingStopExtraScalpingPcts),
+        trailOpenFeeRate: state.trailOpenFeeRate,
+        trailCloseFeeRate: state.trailCloseFeeRate,
+        tradeHistoryMakerOpenFeeRate: state.tradeHistoryMakerOpenFeeRate,
+        tradeHistoryMakerCloseFeeRate: state.tradeHistoryMakerCloseFeeRate,
+        tradeHistoryTakerOpenFeeRate: state.tradeHistoryTakerOpenFeeRate,
+        tradeHistoryTakerCloseFeeRate: state.tradeHistoryTakerCloseFeeRate,
+        trailFeeBeMultiplier: state.trailFeeBeMultiplier,
+        trailBufferRate: state.trailBufferRate,
+        trailActivationSlippageFrac: state.trailActivationSlippageFrac,
+        trailT01LockSlippageFrac: state.trailT01LockSlippageFrac,
+        trailBufferAtrMult: state.trailBufferAtrMult,
+        trailBufferMode: normalizeTrailBufferMode(state.trailBufferMode),
+        trailPostT02ActivationBufferRate: state.trailPostT02ActivationBufferRate,
+        trailMinSlDistFrac: state.trailMinSlDistFrac,
+        trailMinGapFromMarkFrac: state.trailMinGapFromMarkFrac,
+        trailMaintMarginRate: state.trailMaintMarginRate,
+        trailPostT02SpacingFrac: state.trailPostT02SpacingFrac,
+        trailPostT02MaxExtraTiers: state.trailPostT02MaxExtraTiers,
+        supertrendFuturesFixedSlPct: state.supertrendFuturesFixedSlPct,
+        supertrendFuturesFixedTpPct: state.supertrendFuturesFixedTpPct,
+        supertrendFuturesTwoWay: state.supertrendFuturesTwoWay,
+        supertrendFuturesMaxEntrySlippagePct: clamp(Number(state.supertrendFuturesMaxEntrySlippagePct ?? 0.15), 0, 5),
+        supertrendFuturesEntryOpenStyle: (() => {
+          const s = String(state.supertrendFuturesEntryOpenStyle || "AUTO").toUpperCase();
+          return s === "MARKET" || s === "LIMIT_IOC" ? s : "AUTO";
+        })(),
+        supertrendFuturesEntryRecheckMs: Math.max(0, Math.floor(Number(state.supertrendFuturesEntryRecheckMs ?? 0))),
+        supertrendFuturesIocFallbackMarket: state.supertrendFuturesIocFallbackMarket === true,
+        supertrendFuturesRequireMarkPrice: state.supertrendFuturesRequireMarkPrice === true,
+        supertrendFuturesRequireBookTicker: state.supertrendFuturesRequireBookTicker === true,
+        supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(Number(state.supertrendFuturesMaxSignalLagMs ?? 0))),
+        supertrendPeriod: state.supertrendPeriod,
+        supertrendMultiplier: state.supertrendMultiplier,
+        supertrendWilderAtr: state.supertrendWilderAtr,
+      },
+      tradingFormDefaults: { ...state.tradingFormDefaults },
+    };
+  }
+
   function persistTradingConfigToDisk() {
     try {
-      writeBotTradingConfig(
-        {
-        v: 1,
-        bot: {
-          symbol: state.symbol,
-          timeframe: state.timeframe,
-          symbolMode: state.symbolMode,
-          universePinnedSymbol: state.universePinnedSymbol,
-          universeCoinBase: state.universeCoinBase,
-          universeCustomSymbols: state.universeCustomSymbols,
-          universeCoinSelectMode: state.universeCoinSelectMode,
-          universePinControl: state.universePinControl,
-          universeAutoCoinPick: state.universeAutoCoinPick,
-          universePinnedSymbols: state.universePinnedSymbols,
-          aiThreshold: state.aiThreshold,
-          riskPerTrade: state.riskPerTrade,
-          maxDailyLoss: state.maxDailyLoss,
-          riskPerTradeUnit: state.riskPerTradeUnit,
-          maxDailyLossUnit: state.maxDailyLossUnit,
-          capitalSplitAcrossCoins: Boolean(state.capitalSplitAcrossCoins),
-          allowedBudgetUsdt: Number(state.allowedBudgetUsdt) || 0,
-          allowedBudgetWalletPct: clamp(Number(state.allowedBudgetWalletPct || 0), 0, 100),
-          allowedBudgetInputMode: state.allowedBudgetInputMode === "WALLET_PCT" ? "WALLET_PCT" : "USDT",
-          allowedBudgetPnlAnchorMs:
-            state.allowedBudgetPnlAnchorMs != null && Number.isFinite(Number(state.allowedBudgetPnlAnchorMs))
-              ? Math.round(Number(state.allowedBudgetPnlAnchorMs))
-              : null,
-          multiTradeUsePctOfUsable: Boolean(state.multiTradeUsePctOfUsable),
-          multiTradePctOfUsable: clamp(Number(state.multiTradePctOfUsable ?? 100), 0, 100),
-          capitalAllotmentCompoundPnlUi: Boolean(state.capitalAllotmentCompoundPnlUi),
-          capitalCycleStrategyBalanceUsdt: Math.max(0, Number(state.capitalCycleStrategyBalanceUsdt) || 0),
-          capitalCyclePoolAnchorUsdt: Math.max(0, Number(state.capitalCyclePoolAnchorUsdt) || 0),
-          capitalCycleRealizedPnlUsdt: Number(state.capitalCycleRealizedPnlUsdt) || 0,
-          capitalCycleSymbols: Array.isArray(state.capitalCycleSymbols) ? [...state.capitalCycleSymbols] : [],
-          perTradeBudgetCapEnabled: Boolean(state.perTradeBudgetCapEnabled !== false),
-          perTradeBudgetInputMode: state.perTradeBudgetInputMode === "PCT_OF_USABLE" ? "PCT_OF_USABLE" : "USDT",
-          multiCoinCapitalSizingActive: Boolean(state.multiCoinCapitalSizingActive),
-          multiBudgetSplitMode:
-            state.multiBudgetSplitMode === "FULL" ||
-            state.multiBudgetSplitMode === "EQUAL" ||
-            state.multiBudgetSplitMode === "CUSTOM_USDT" ||
-            state.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED"
-              ? state.multiBudgetSplitMode
-              : null,
-          multiBudgetCoinUsdt:
-            state.multiBudgetCoinUsdt && typeof state.multiBudgetCoinUsdt === "object" ? { ...state.multiBudgetCoinUsdt } : {},
-          multiBudgetCoinPct:
-            state.multiBudgetCoinPct && typeof state.multiBudgetCoinPct === "object" ? { ...state.multiBudgetCoinPct } : {},
-          strategyMode: state.strategyMode,
-          manualStrategy: state.manualStrategy,
-          marketMode: state.marketMode,
-          futuresLeverageMode: state.futuresLeverageMode,
-          futuresLeverage: state.futuresLeverage,
-          supertrendSpotAuto: state.supertrendSpotAuto,
-          supertrendFuturesAuto: state.supertrendFuturesAuto,
-          supertrendFuturesAiConfidenceFilter: state.supertrendFuturesAiConfidenceFilter,
-          signalStrengthGatesTrades: state.signalStrengthGatesTrades,
-          supertrendMoveQualityGate: state.supertrendMoveQualityGate === true,
-          supertrendMoveQualityMinScore: state.supertrendMoveQualityMinScore,
-          supertrendMoveQualityMinAdx: state.supertrendMoveQualityMinAdx,
-          supertrendMoveQualityMinMoveSlRatio: state.supertrendMoveQualityMinMoveSlRatio,
-          supertrendMoveQualityExpectedMoveAtrMult: state.supertrendMoveQualityExpectedMoveAtrMult,
-          supertrendMoveQualityMinAtrExpansion: state.supertrendMoveQualityMinAtrExpansion,
-          supertrendMoveQualityMinBodyVsAvg: state.supertrendMoveQualityMinBodyVsAvg,
-          supertrendMoveQualityMinDirectionalBody: state.supertrendMoveQualityMinDirectionalBody,
-          supertrendMoveQualityMinVolumeVsAvg: state.supertrendMoveQualityMinVolumeVsAvg,
-          marketDecision: state.marketDecision && typeof state.marketDecision === "object" ? { ...state.marketDecision } : {},
-          supertrendBreakoutConfirm: state.supertrendBreakoutConfirm === true,
-          supertrendBreakoutMaxBars: state.supertrendBreakoutMaxBars,
-          signalStrengthOpenMin: state.signalStrengthOpenMin,
-          smartSignalStrengthThreshold:
-            state.smartSignalStrengthThreshold != null && Number.isFinite(Number(state.smartSignalStrengthThreshold))
-              ? clamp(Math.round(Number(state.smartSignalStrengthThreshold)), 0, 100)
-              : null,
-          smartSignalStrengthThresholdMeta:
-            state.smartSignalStrengthThresholdMeta && typeof state.smartSignalStrengthThresholdMeta === "object"
-              ? { ...state.smartSignalStrengthThresholdMeta }
-              : null,
-          supertrendFuturesMinAiProb: state.supertrendFuturesMinAiProb,
-          surfPulseMlThreshold: state.surfPulseMlThreshold,
-          trailingStopLossAuto: state.trailingStopLossAuto,
-          futuresTrailingStopMode: normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode),
-          futuresTrailingStFeeBreakeven: state.futuresTrailingStFeeBreakeven !== false,
-          futuresTrailingStAdvanced: state.futuresTrailingStAdvanced !== false,
-          trailingStopExtraScalpingPcts: normalizeTrailingExtraPcts(state.trailingStopExtraScalpingPcts),
-          trailOpenFeeRate: state.trailOpenFeeRate,
-          trailCloseFeeRate: state.trailCloseFeeRate,
-          tradeHistoryMakerOpenFeeRate: state.tradeHistoryMakerOpenFeeRate,
-          tradeHistoryMakerCloseFeeRate: state.tradeHistoryMakerCloseFeeRate,
-          tradeHistoryTakerOpenFeeRate: state.tradeHistoryTakerOpenFeeRate,
-          tradeHistoryTakerCloseFeeRate: state.tradeHistoryTakerCloseFeeRate,
-          trailFeeBeMultiplier: state.trailFeeBeMultiplier,
-          trailBufferRate: state.trailBufferRate,
-          trailActivationSlippageFrac: state.trailActivationSlippageFrac,
-          trailT01LockSlippageFrac: state.trailT01LockSlippageFrac,
-          trailBufferAtrMult: state.trailBufferAtrMult,
-          trailBufferMode: normalizeTrailBufferMode(state.trailBufferMode),
-          trailPostT02ActivationBufferRate: state.trailPostT02ActivationBufferRate,
-          trailMinSlDistFrac: state.trailMinSlDistFrac,
-          trailMinGapFromMarkFrac: state.trailMinGapFromMarkFrac,
-          trailMaintMarginRate: state.trailMaintMarginRate,
-          trailPostT02SpacingFrac: state.trailPostT02SpacingFrac,
-          trailPostT02MaxExtraTiers: state.trailPostT02MaxExtraTiers,
-          supertrendFuturesFixedSlPct: state.supertrendFuturesFixedSlPct,
-          supertrendFuturesFixedTpPct: state.supertrendFuturesFixedTpPct,
-          supertrendFuturesTwoWay: state.supertrendFuturesTwoWay,
-          supertrendFuturesMaxEntrySlippagePct: clamp(Number(state.supertrendFuturesMaxEntrySlippagePct ?? 0.15), 0, 5),
-          supertrendFuturesEntryOpenStyle: (() => {
-            const s = String(state.supertrendFuturesEntryOpenStyle || "AUTO").toUpperCase();
-            return s === "MARKET" || s === "LIMIT_IOC" ? s : "AUTO";
-          })(),
-          supertrendFuturesEntryRecheckMs: Math.max(0, Math.floor(Number(state.supertrendFuturesEntryRecheckMs ?? 0))),
-          supertrendFuturesIocFallbackMarket: state.supertrendFuturesIocFallbackMarket === true,
-          supertrendFuturesRequireMarkPrice: state.supertrendFuturesRequireMarkPrice === true,
-          supertrendFuturesRequireBookTicker: state.supertrendFuturesRequireBookTicker === true,
-          supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(Number(state.supertrendFuturesMaxSignalLagMs ?? 0))),
-          supertrendPeriod: state.supertrendPeriod,
-          supertrendMultiplier: state.supertrendMultiplier,
-          supertrendWilderAtr: state.supertrendWilderAtr,
-        },
-        tradingFormDefaults: { ...state.tradingFormDefaults },
-      },
-      cfgPersistenceSlug,
-    );
+      writeBotTradingConfig(buildTradingConfigPersistPayload(), cfgPersistenceSlug);
     } catch (e) {
       log?.warn?.("bot_trading_config_persist_failed", { error: String(e?.message || e) });
     }
   }
 
-  function hydrateTradingConfigFromDisk() {
-    const raw = readBotTradingConfig(cfgPersistenceSlug);
+  function hydrateTradingConfigFromPersistedObject(raw) {
     if (!raw || typeof raw !== "object") return;
     const b = raw.bot;
     if (b && typeof b === "object") {
@@ -1767,8 +1849,14 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       if (b.supertrendFuturesMinAiProb != null && Number.isFinite(Number(b.supertrendFuturesMinAiProb))) {
         state.supertrendFuturesMinAiProb = clamp(Number(b.supertrendFuturesMinAiProb), 0, 1);
       }
+      if (b.surfPulseMlGateEnabled != null) {
+        state.surfPulseMlGateEnabled = Boolean(b.surfPulseMlGateEnabled);
+      }
       if (b.surfPulseMlThreshold != null && Number.isFinite(Number(b.surfPulseMlThreshold))) {
         state.surfPulseMlThreshold = clamp(Number(b.surfPulseMlThreshold), 0, 1);
+      }
+      if (b.intelligenceGateEnabled != null) {
+        state.intelligenceGateEnabled = Boolean(b.intelligenceGateEnabled);
       }
       if (typeof b.trailingStopLossAuto === "boolean") state.trailingStopLossAuto = b.trailingStopLossAuto;
       if (b.futuresTrailingStopMode != null) state.futuresTrailingStopMode = normalizeFuturesTrailingStopMode(b.futuresTrailingStopMode);
@@ -1882,6 +1970,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     if (!state.supertrendFuturesAuto || state.marketMode === "SPOT") {
       state.supertrendFuturesAiConfidenceFilter = true;
     }
+  }
+
+  function hydrateTradingConfigFromDisk() {
+    const raw = readBotTradingConfig(cfgPersistenceSlug);
+    hydrateTradingConfigFromPersistedObject(raw);
   }
 
   let smartSsRefreshTimer = null;
@@ -2185,6 +2278,130 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   let feed;
   /** Set before market feed connects so kline `onCandleClose` never hits TDZ. */
   let wsHubRef = null;
+  /** Phase 3E: exchange OPEN leg id (order / position) → DB `trades.id` (open rows). */
+  const dbTradeIdByExchangeOpenRef = new Map();
+  function rememberDbTradeRef(exchangeRef, dbTradeUuid) {
+    if (exchangeRef == null || dbTradeUuid == null) return;
+    const a = String(exchangeRef).trim();
+    const b = String(dbTradeUuid).trim();
+    if (!a || !b) return;
+    dbTradeIdByExchangeOpenRef.set(a, b);
+  }
+  function takeDbTradeIdForClose(t) {
+    const m = t?.meta || {};
+    const candidates = [];
+    if (m.openRefId != null && String(m.openRefId).trim()) candidates.push(String(m.openRefId).trim());
+    if (t?.id != null && String(t.id).trim()) candidates.push(String(t.id).trim());
+    for (const c of candidates) {
+      if (dbTradeIdByExchangeOpenRef.has(c)) {
+        const tid = dbTradeIdByExchangeOpenRef.get(c);
+        dbTradeIdByExchangeOpenRef.delete(c);
+        return tid;
+      }
+    }
+    return null;
+  }
+  function persistSupertrendSkippedSignal({
+    gateReason,
+    direction,
+    row,
+    cTs,
+    symbolU,
+    decisionSnapshotBar,
+    supertrendStrength01,
+    stSpot,
+    stFut,
+  }) {
+    if (!getPool()) return;
+    let iid = null;
+    try {
+      iid = typeof getActiveInstanceId === "function" ? getActiveInstanceId() : null;
+    } catch {
+      iid = null;
+    }
+    if (!iid || !symbolU) return;
+    const tfMs = binanceIntervalMs(state.timeframe);
+    const barCloseWall =
+      Number.isFinite(cTs) && cTs > 0 && Number.isFinite(tfMs) && tfMs > 0 ? new Date(cTs + tfMs) : new Date();
+    void tradeService
+      .recordSignal(String(iid), {
+        symbol: symbolU,
+        signalType: "SUPERTREND",
+        direction: direction === "SHORT" ? "SHORT" : "LONG",
+        timeframe: state.timeframe,
+        barCloseTime: barCloseWall,
+        stValue: row?.line != null ? Number(row.line) : null,
+        aiProbability: state.lastAi?.probability ?? null,
+        mdeScore:
+          decisionSnapshotBar?.long?.total != null
+            ? Number(decisionSnapshotBar.long.total)
+            : decisionSnapshotBar?.short?.total != null
+              ? Number(decisionSnapshotBar.short.total)
+              : null,
+        signalStrength: supertrendStrength01 != null ? Number(supertrendStrength01) : null,
+        wasExecuted: false,
+        gateReason: gateReason != null ? String(gateReason) : "skipped",
+        rawContext: { barTs: cTs, stSpot, stFut },
+      })
+      .catch((e) => log?.warn?.("trade_signal_persist_failed", { error: String(e?.message || e) }));
+  }
+  function persistOpenTradeDbRow({
+    dbSignalId,
+    symbol,
+    venue,
+    direction,
+    order,
+    qty,
+    stopLoss,
+    takeProfit,
+    leverage,
+  }) {
+    if (!getPool() || !order?.id) return;
+    let iid = null;
+    try {
+      iid = typeof getActiveInstanceId === "function" ? getActiveInstanceId() : null;
+    } catch {
+      iid = null;
+    }
+    if (!iid) return;
+    const entryPx = Number(order.filledPrice);
+    const oidBin = venue === "FUTURES" ? binanceFuturesEntryOrderIdFromPlaceOrder(order) : null;
+    const oids = [oidBin || String(order.id)].filter(Boolean);
+    const dir = direction === "SHORT" ? "SHORT" : "LONG";
+    const fillSide = dir === "SHORT" ? "SELL" : "BUY";
+    void tradeService
+      .openTrade(String(iid), dbSignalId && String(dbSignalId).trim() ? String(dbSignalId) : null, {
+        symbol,
+        marketType: venue,
+        direction: dir,
+        quantity: qty,
+        entryPrice: Number.isFinite(entryPx) && entryPx > 0 ? entryPx : null,
+        notional:
+          Number.isFinite(entryPx) && entryPx > 0 && Number.isFinite(Number(qty)) ? entryPx * Math.abs(Number(qty)) : null,
+        leverage: leverage != null ? Number(leverage) : null,
+        slPrice: stopLoss,
+        tpPrice: takeProfit,
+        binanceOrderIds: oids,
+      })
+      .then((trow) => {
+        if (trow?.id) rememberDbTradeRef(String(order.id), trow.id);
+        if (trow?.id && Number.isFinite(entryPx) && entryPx > 0 && Number.isFinite(Number(qty)) && qty !== 0) {
+          void tradeService
+            .addFill(String(trow.id), {
+              binanceOrderId: oids[0] || String(order.id),
+              binanceTradeId: order.raw?.tradeId != null ? String(order.raw.tradeId) : null,
+              fillType: "entry",
+              side: fillSide,
+              price: entryPx,
+              quantity: Math.abs(Number(qty)),
+              feeUsdt: order.fee != null && Number.isFinite(Number(order.fee)) ? Number(order.fee) : null,
+              filledAt: new Date(),
+            })
+            .catch((e) => log?.warn?.("trade_fill_persist_failed", { error: String(e?.message || e) }));
+        }
+      })
+      .catch((e) => log?.warn?.("trade_open_persist_failed", { error: String(e?.message || e) }));
+  }
 
   function resolveSupertrendDecisionSnapshot(precomputed) {
     if (precomputed) return precomputed;
@@ -2512,6 +2729,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     fixedQuoteSpendUsdt = null,
     multiUnpinnedOrder = false,
     anchorBarTs = null,
+    dbSignalId = null,
   }) {
     let spot = exch?.spot;
     if (!spot?.placeOrder && typeof exch?.placeOrder === "function") spot = exch;
@@ -2524,6 +2742,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
     if (state.feedExecutionPause) {
       return { venue: "SPOT", side, action: "skipped", reason: "feed_execution_paused" };
+    }
+    if (state.paused && side === "BUY") {
+      return { venue: "SPOT", side, action: "skipped", reason: "bot_paused" };
     }
     const orderSymbol = String(tradeSymbol || state.symbol).toUpperCase();
     const candles =
@@ -2718,7 +2939,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         return { venue: "SPOT", side, action: "skipped", reason: "no_spendable_balance" };
       }
       if (side === "BUY") {
-        const spend = tradable * bufferPct;
+        let spend = tradable * bufferPct;
+        if (state.intelligenceGateEnabled) {
+          const im = Number(state._intelligenceSizeMultiplier);
+          if (Number.isFinite(im) && im > 0 && im !== 1) spend *= im;
+        }
         qty = roundTo(spend / Number(last.close), 8);
         if (!qty || qty <= 0) {
           wsHub?.broadcast?.("log", {
@@ -2757,7 +2982,11 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         return { venue: "SPOT", side, action: "skipped", reason: "no_spendable_balance" };
       }
       if (side === "BUY") {
-        const spend = Math.min(fixedSpend * bufferPct, tradable * bufferPct);
+        let spend = Math.min(fixedSpend * bufferPct, tradable * bufferPct);
+        if (state.intelligenceGateEnabled) {
+          const im = Number(state._intelligenceSizeMultiplier);
+          if (Number.isFinite(im) && im > 0 && im !== 1) spend *= im;
+        }
         qty = roundTo(spend / Number(last.close), 8);
         if (!qty || qty <= 0) {
           wsHub?.broadcast?.("log", {
@@ -2809,6 +3038,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         return { venue: "SPOT", side, action: "skipped", reason: plan.reason || "risk_plan" };
       }
       qty = plan.qty;
+      if (side === "BUY" && state.intelligenceGateEnabled) {
+        const im = Number(state._intelligenceSizeMultiplier);
+        if (Number.isFinite(im) && im > 0 && im !== 1) qty = roundTo(qty * im, 8);
+      }
       if (side === "SELL") {
         const pos = here[0];
         qty = roundTo(Number(pos?.qty || 0), 8);
@@ -2866,30 +3099,32 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           ? Number(state._supertrendLastBuySpendUsdt)
           : undefined;
       const mqAtEntrySpot = side === "BUY" ? buildMqAtEntrySnapshot("BUY", candles, indicators.latest, "SPOT") : null;
-      const order = await spot.placeOrder({
-        symbol: orderSymbol,
-        side,
-        qty,
-        price: last.close,
-        stopLoss,
-        takeProfit,
-        strategy: strategyKey,
-        meta: {
-          supertrend: true,
-          aiProbability: prob,
-          marketMode: "SPOT",
-          indicatorFullCapital: Boolean(indicatorFullCapital),
-          autoMultiUnpinned: Boolean(multiUnpinnedOrder),
-          spendQuoteUsdt: spendMeta,
-          /** Candle open time (ms) for the Supertrend signal bar used to place this order. */
-          signalBarTs: Number.isFinite(Number(last?.ts)) ? Number(last.ts) : undefined,
-          signalBarCloseTs:
-            Number.isFinite(Number(last?.ts)) && String(state.timeframe || "").trim()
-              ? Number(last.ts) + binanceIntervalMs(state.timeframe)
-              : undefined,
-          ...(mqAtEntrySpot ? { mqAtEntry: mqAtEntrySpot } : {}),
-        },
-      });
+      const order = await placeOrderWithWalletTelemetry(spot, () =>
+        spot.placeOrder({
+          symbol: orderSymbol,
+          side,
+          qty,
+          price: last.close,
+          stopLoss,
+          takeProfit,
+          strategy: strategyKey,
+          meta: {
+            supertrend: true,
+            aiProbability: prob,
+            marketMode: "SPOT",
+            indicatorFullCapital: Boolean(indicatorFullCapital),
+            autoMultiUnpinned: Boolean(multiUnpinnedOrder),
+            spendQuoteUsdt: spendMeta,
+            /** Candle open time (ms) for the Supertrend signal bar used to place this order. */
+            signalBarTs: Number.isFinite(Number(last?.ts)) ? Number(last.ts) : undefined,
+            signalBarCloseTs:
+              Number.isFinite(Number(last?.ts)) && String(state.timeframe || "").trim()
+                ? Number(last.ts) + binanceIntervalMs(state.timeframe)
+                : undefined,
+            ...(mqAtEntrySpot ? { mqAtEntry: mqAtEntrySpot } : {}),
+          },
+        }),
+      );
       wsHub?.broadcast?.("log", {
         level: "info",
         msg: `Supertrend ${side} (${
@@ -2915,6 +3150,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           aiProbability: prob,
           venue: "SPOT",
           source: "SUPERTREND",
+        });
+        persistOpenTradeDbRow({
+          dbSignalId,
+          symbol: orderSymbol,
+          venue: "SPOT",
+          direction: "LONG",
+          order,
+          qty,
+          stopLoss,
+          takeProfit,
+          leverage: null,
         });
       } else {
         const exitPx = Number(order.filledPrice);
@@ -3004,6 +3250,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     maxNotionalUsd = null,
     anchorBarTs = null,
     barCloseAiGates = null,
+    dbSignalId = null,
   }) {
     let futuresEx = exch?.futures;
     if (!futuresEx?.placeOrder && typeof exch?.placeOrder === "function") {
@@ -3042,38 +3289,6 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       });
       return { venue: "FUTURES", side, action: "skipped", reason: "no_candles" };
     }
-    // #region agent log
-    {
-      const fb = typeof feed.getCandlesForSymbol === "function" ? feed.getCandlesForSymbol(orderSymbol) : feed.getCandles();
-      const fbL = Array.isArray(fb) && fb.length ? fb[fb.length - 1] : null;
-      const crTail = candles.length ? candles[candles.length - 1] : null;
-      const h2Data = {
-        orderSymbol,
-        side,
-        hasOverride: _hasCandlesOverride,
-        anchorBarTs: Number.isFinite(anchorTsFut) && anchorTsFut > 0 ? anchorTsFut : null,
-        anchoredFromBarTs,
-        crTailTs: crTail != null ? Number(crTail.ts) : null,
-        crTailClose: crTail != null ? Number(crTail.close) : null,
-        candleLen: candles.length,
-        lastTs: Number(last.ts),
-        lastClose: Number(last.close),
-        feedTailTs: fbL != null ? Number(fbL.ts) : null,
-        feedTailClose: fbL != null ? Number(fbL.close) : null,
-        tailMatchesFeed: fbL != null ? Number(last.ts) === Number(fbL.ts) : null,
-      };
-      log.info("debug_supertrend_h2", { sessionId: "b66075", hypothesisId: "H2", ...h2Data });
-      postSupertrendLocalAgentIngestIfEnabled({
-        sessionId: "b66075",
-        runId: "pre",
-        hypothesisId: "H2",
-        location: "bot.js:trySupertrendFuturesOrder",
-        message: "candles_tail_for_order",
-        data: h2Data,
-        timestamp: Date.now(),
-      });
-    }
-    // #endregion
 
     const indicators = computeIndicators(candles);
     const regimeType = state.lastRegime?.type || "UNKNOWN";
@@ -3192,6 +3407,23 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
     /** BUY: open long; 2-way closes any short first. */
     if (side === "BUY") {
+      if (state.paused) {
+        if (shortHere.length > 0 && twoWay) {
+          const cr = await closeFuturesLegsForSupertrend(shortHere, "SUPERTREND_EXIT_PAUSED");
+          if (!cr.ok) return { venue: "FUTURES", side, action: "error", reason: String(cr.error || "close_failed") };
+          const pos0 = shortHere[0];
+          return {
+            venue: "FUTURES",
+            side,
+            action: "placed",
+            orderId: pos0?.id || pos0?.symbol,
+            qty: pos0?.qty,
+            tradeSymbol: orderSymbol,
+            reason: "paused_close_short_only",
+          };
+        }
+        return { venue: "FUTURES", side, action: "skipped", reason: "bot_paused" };
+      }
       if (longHere.length > 0) {
         wsHub?.broadcast?.("log", {
           level: "info",
@@ -3227,6 +3459,15 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
             detail: { priorError: String(cr.error || "") },
           });
         }
+        if (state.paused) {
+          return {
+            venue: "FUTURES",
+            side,
+            action: "placed",
+            tradeSymbol: orderSymbol,
+            reason: "paused_no_new_long_after_short_cover",
+          };
+        }
       }
       if (here.length > 0) {
         wsHub?.broadcast?.("log", {
@@ -3253,6 +3494,15 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         const cr = await closeFuturesLegsForSupertrend(longHere, "SUPERTREND_EXIT");
         if (!cr.ok) return { venue: "FUTURES", side, action: "error", reason: String(cr.error || "close_failed") };
         ({ here, longHere, shortHere } = await refreshFuturesLegs());
+        if (state.paused) {
+          return {
+            venue: "FUTURES",
+            side,
+            action: "placed",
+            tradeSymbol: orderSymbol,
+            reason: "paused_close_long_only",
+          };
+        }
       }
       if (shortHere.length > 0) {
         wsHub?.broadcast?.("log", {
@@ -3261,6 +3511,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           symbol: orderSymbol,
         });
         return { venue: "FUTURES", side, action: "skipped", reason: "already_in_short" };
+      }
+      if (state.paused) {
+        return { venue: "FUTURES", side, action: "skipped", reason: "bot_paused" };
       }
     }
 
@@ -3602,6 +3855,29 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     if (Number.isFinite(capN) && capN > 0 && pxEntry > 0) {
       const maxQ = capN / pxEntry;
       if (qty > maxQ) qty = roundTo(maxQ, 6);
+    }
+
+    if (state.intelligenceGateEnabled) {
+      const intelMult = Number(state._intelligenceSizeMultiplier);
+      if (Number.isFinite(intelMult) && intelMult > 0 && intelMult !== 1) {
+        qty = roundTo(qty * intelMult, 6);
+        {
+          const cqM = clampQtyToPerCoinMarginCap({
+            symbol: orderSymbol,
+            qty,
+            entryPx: pxEntry,
+            leverage: lev,
+            positions,
+            wsHub,
+            context: "supertrend_open_intel_mult",
+          });
+          qty = cqM.qty;
+        }
+        if (Number.isFinite(capN) && capN > 0 && pxEntry > 0) {
+          const maxQ2 = capN / pxEntry;
+          if (qty > maxQ2) qty = roundTo(maxQ2, 6);
+        }
+      }
     }
 
     const minFut = Number(
@@ -3979,16 +4255,18 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       let order;
       let entryStyleUsed = openStyle;
       try {
-        order = await futuresEx.placeOrder({
-          symbol: orderSymbol,
-          side: openingSide,
-          qty,
-          price: last.close,
-          stopLoss,
-          takeProfit,
-          strategy: strategyKey,
-          meta: openMetaBase,
-        });
+        order = await placeOrderWithWalletTelemetry(futuresEx, () =>
+          futuresEx.placeOrder({
+            symbol: orderSymbol,
+            side: openingSide,
+            qty,
+            price: last.close,
+            stopLoss,
+            takeProfit,
+            strategy: strategyKey,
+            meta: openMetaBase,
+          }),
+        );
       } catch (e) {
         const errMsg = String(e?.message || e);
         const iocFallback =
@@ -4027,22 +4305,24 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
             return { venue: "FUTURES", side, action: "skipped", reason: "ioc_no_fill_price_moved" };
           }
           entryStyleUsed = "MARKET";
-          order = await futuresEx.placeOrder({
-            symbol: orderSymbol,
-            side: openingSide,
-            qty,
-            price: last.close,
-            stopLoss,
-            takeProfit,
-            strategy: strategyKey,
-            meta: {
-              ...openMetaBase,
-              entryOrderStyle: "MARKET",
-              entryLimitPrice: undefined,
-              entryIocFallback: true,
-              priorIocNoFillError: errMsg,
-            },
-          });
+          order = await placeOrderWithWalletTelemetry(futuresEx, () =>
+            futuresEx.placeOrder({
+              symbol: orderSymbol,
+              side: openingSide,
+              qty,
+              price: last.close,
+              stopLoss,
+              takeProfit,
+              strategy: strategyKey,
+              meta: {
+                ...openMetaBase,
+                entryOrderStyle: "MARKET",
+                entryLimitPrice: undefined,
+                entryIocFallback: true,
+                priorIocNoFillError: errMsg,
+              },
+            }),
+          );
         } else throw e;
       }
       const entryExOid = binanceFuturesEntryOrderIdFromPlaceOrder(order);
@@ -4057,25 +4337,6 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       });
       const signalBarClose = Number(last.close);
       const fillPx = Number(order.filledPrice);
-      // #region agent log
-      {
-        const d =
-          Number.isFinite(signalBarClose) && signalBarClose > 0 && Number.isFinite(fillPx) && fillPx > 0
-            ? (fillPx - signalBarClose) / signalBarClose
-            : null;
-        const h3Data = { orderSymbol, side: openingSide, signalBarClose, fillPx, relSlippage: d };
-        log.info("debug_supertrend_h3", { sessionId: "b66075", hypothesisId: "H3", ...h3Data });
-        postSupertrendLocalAgentIngestIfEnabled({
-          sessionId: "b66075",
-          runId: "pre",
-          hypothesisId: "H3",
-          location: "bot.js:trySupertrendFuturesOrder:after_place",
-          message: "signal_close_vs_fill",
-          data: h3Data,
-          timestamp: Date.now(),
-        });
-      }
-      // #endregion
       if (Number.isFinite(signalBarClose) && signalBarClose > 0 && Number.isFinite(fillPx) && fillPx > 0) {
         const adverseBps =
           openingSide === "BUY"
@@ -4142,6 +4403,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           ...(mqAtEntryFutures ? { mqAtEntry: mqAtEntryFutures } : {}),
         },
         source: "SUPERTREND",
+      });
+      persistOpenTradeDbRow({
+        dbSignalId,
+        symbol: orderSymbol,
+        venue: "FUTURES",
+        direction: openingSide === "BUY" ? "LONG" : "SHORT",
+        order,
+        qty,
+        stopLoss,
+        takeProfit,
+        leverage: order.leverage ?? lev,
       });
       if (order.immediateCloseTrade && typeof order.immediateCloseTrade === "object") {
         broadcastTrade(wsHub, {
@@ -4764,6 +5036,19 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     const gatesSweep = await resolveSupertrendBarCloseAiGatesNoLastAi(cr, symU);
 
     try {
+      state._intelligenceSizeMultiplier = 1;
+      if (state.intelligenceGateEnabled) {
+        const ig = evaluateIntelligenceGateForSupertrendOpen({
+          gateEnabled: true,
+          symbol: symU,
+          openingLong: Boolean(allowBuy),
+          broadcastLog: (p) =>
+            hubLocal?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
+          logInfo: (eventName, meta) => log?.info?.(eventName, meta),
+        });
+        if (ig.veto) return gatesSweep;
+        state._intelligenceSizeMultiplier = ig.sizeMultiplier;
+      }
     if (allowSell && allowBuy) {
       hubLocal?.broadcast?.("log", {
         level: "warn",
@@ -5022,36 +5307,6 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         },
         hubLocal,
       );
-      // #region agent log
-      {
-        const snapL = Array.isArray(cr) && cr.length ? cr[cr.length - 1] : null;
-        const live =
-          typeof feed.getCandlesForSymbol === "function" ? feed.getCandlesForSymbol(symU) : feed.getCandles();
-        const liveL = Array.isArray(live) && live.length ? live[live.length - 1] : null;
-        const h1mData = {
-          sym: symU,
-          cTs,
-          crLen: Array.isArray(cr) ? cr.length : 0,
-          crLastTs: snapL != null ? Number(snapL.ts) : null,
-          crLastClose: snapL != null ? Number(snapL.close) : null,
-          barAtCtsClose: signalBarCloseMulti,
-          liveLen: Array.isArray(live) ? live.length : null,
-          liveLastTs: liveL != null ? Number(liveL.ts) : null,
-          liveLastClose: liveL != null ? Number(liveL.close) : null,
-          crTailSameTsAsCts: snapL != null ? Number(snapL.ts) === Number(cTs) : null,
-        };
-        log.info("debug_supertrend_h1_multi", { sessionId: "b66075", hypothesisId: "H1m", ...h1mData });
-        postSupertrendLocalAgentIngestIfEnabled({
-          sessionId: "b66075",
-          runId: "pre",
-          hypothesisId: "H1m",
-          location: "bot.js:processAutoMultiFromEval",
-          message: "multi_bar_close_cr_vs_live",
-          data: h1mData,
-          timestamp: Date.now(),
-        });
-      }
-      // #endregion
     }
     return gatesSweep;
   }
@@ -5169,6 +5424,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     if (parallelSupertrendWatchGate(mm)) {
       return;
     }
+    state._intelligenceSizeMultiplier = 1;
     const spotOn = Boolean(state.supertrendSpotAuto);
     const futOn = Boolean(state.supertrendFuturesAuto);
     let stSpot = spotOn && mm === "SPOT";
@@ -5640,6 +5896,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           supertrendStrength01: supertrendStrength01 ?? undefined,
         });
       }
+      persistSupertrendSkippedSignal({
+        gateReason: "supertrend_autotrade_off_or_market_mode_mismatch",
+        direction: allowBuy ? "LONG" : "SHORT",
+        row,
+        cTs,
+        symbolU: String(state.symbol || "").trim().toUpperCase(),
+        decisionSnapshotBar,
+        supertrendStrength01,
+        stSpot,
+        stFut,
+      });
       return;
     }
 
@@ -5657,6 +5924,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           supertrendStrength01: supertrendStrength01 ?? undefined,
         });
       }
+      persistSupertrendSkippedSignal({
+        gateReason: `feed_paused:${state.feedExecutionPause.reason}`,
+        direction: allowBuy ? "LONG" : "SHORT",
+        row,
+        cTs,
+        symbolU: String(state.symbol || "").trim().toUpperCase(),
+        decisionSnapshotBar,
+        supertrendStrength01,
+        stSpot,
+        stFut,
+      });
       return;
     }
 
@@ -5685,6 +5963,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           pendingDedupeKey: barCloseKey,
         });
       }
+      persistSupertrendSkippedSignal({
+        gateReason: "queued_bot_not_running",
+        direction: allowBuy ? "LONG" : "SHORT",
+        row,
+        cTs,
+        symbolU: String(state.symbol || "").trim().toUpperCase(),
+        decisionSnapshotBar,
+        supertrendStrength01,
+        stSpot,
+        stFut,
+      });
       return;
     }
 
@@ -5723,6 +6012,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           action: "skipped",
           reason: "implausible_close_step_vs_prior_sanitized_bar",
         });
+        persistSupertrendSkippedSignal({
+          gateReason: "implausible_close_step_vs_prior_sanitized_bar",
+          direction: allowBuy ? "LONG" : allowSell ? "SHORT" : "LONG",
+          row,
+          cTs,
+          symbolU: symTrade,
+          decisionSnapshotBar,
+          supertrendStrength01,
+          stSpot,
+          stFut,
+        });
         return;
       }
     }
@@ -5755,6 +6055,17 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           supertrendStrength01: supertrendStrength01 ?? undefined,
         });
       }
+      persistSupertrendSkippedSignal({
+        gateReason: "breakout_confirm_wait_next_close",
+        direction: allowBuy ? "LONG" : "SHORT",
+        row,
+        cTs,
+        symbolU: symTrade,
+        decisionSnapshotBar,
+        supertrendStrength01,
+        stSpot,
+        stFut,
+      });
       return;
     }
 
@@ -5767,35 +6078,72 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     const barCloseCandlesSnapshot = rawCandles.map((c) =>
       c && typeof c === "object" ? { ...c } : c,
     );
-    // #region agent log
-    {
-      const snapL = barCloseCandlesSnapshot[barCloseCandlesSnapshot.length - 1];
-      const live = feed.getCandles();
-      const liveL = Array.isArray(live) && live.length ? live[live.length - 1] : null;
-      const h1Data = {
-        sym: symTrade,
-        cTs,
-        snapLen: barCloseCandlesSnapshot.length,
-        snapLastTs: snapL != null ? Number(snapL.ts) : null,
-        snapLastClose: snapL != null ? Number(snapL.close) : null,
-        liveLen: Array.isArray(live) ? live.length : null,
-        liveLastTs: liveL != null ? Number(liveL.ts) : null,
-        liveLastClose: liveL != null ? Number(liveL.close) : null,
-        tsMatch: snapL != null && liveL != null ? Number(snapL.ts) === Number(liveL.ts) : null,
-      };
-      log.info("debug_supertrend_h1", { sessionId: "b66075", hypothesisId: "H1", ...h1Data });
-      postSupertrendLocalAgentIngestIfEnabled({
-        sessionId: "b66075",
-        runId: "pre",
-        hypothesisId: "H1",
-        location: "bot.js:processSupertrendCandleClose",
-        message: "bar_close_snapshot_vs_live_feed_tail",
-        data: h1Data,
-        timestamp: Date.now(),
-      });
-    }
-    // #endregion
 
+    let barSignalId = null;
+    if (getPool()) {
+      let iid = null;
+      try {
+        iid = typeof getActiveInstanceId === "function" ? getActiveInstanceId() : null;
+      } catch {
+        iid = null;
+      }
+      if (iid) {
+        const tfMsSig = binanceIntervalMs(state.timeframe);
+        const barCloseWall =
+          Number.isFinite(cTs) && cTs > 0 && Number.isFinite(tfMsSig) && tfMsSig > 0
+            ? new Date(cTs + tfMsSig)
+            : new Date();
+        const dirSig = allowBuy ? "LONG" : "SHORT";
+        try {
+          const sig = await tradeService.recordSignal(String(iid), {
+            symbol: symTrade,
+            signalType: "SUPERTREND",
+            direction: dirSig,
+            timeframe: state.timeframe,
+            barCloseTime: barCloseWall,
+            stValue: row?.line != null ? Number(row.line) : null,
+            aiProbability: state.lastAi?.probability ?? null,
+            mdeScore:
+              decisionSnapshotBar?.long?.total != null
+                ? Number(decisionSnapshotBar.long.total)
+                : decisionSnapshotBar?.short?.total != null
+                  ? Number(decisionSnapshotBar.short.total)
+                  : null,
+            signalStrength: supertrendStrength01 != null ? Number(supertrendStrength01) : null,
+            wasExecuted: false,
+            gateReason: null,
+            rawContext: { barTs: cTs, allowBuy, allowSell, stSpot, stFut },
+          });
+          barSignalId = sig?.id ?? null;
+        } catch (e) {
+          log?.warn?.("trade_signal_bar_failed", { error: String(e?.message || e) });
+        }
+      }
+    }
+
+    // ── Intelligence gate (optional, non-blocking) ───────────────────────────
+    try {
+      if (state.intelligenceGateEnabled) {
+        const ig = evaluateIntelligenceGateForSupertrendOpen({
+          gateEnabled: true,
+          symbol: symTrade,
+          openingLong: Boolean(allowBuy),
+          broadcastLog: (p) =>
+            wsHubRef?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
+          logInfo: (eventName, meta) => log?.info?.(eventName, meta),
+        });
+        if (ig.veto) {
+          state.supertrendStHandledCloseKey = barCloseKey;
+          return;
+        }
+        state._intelligenceSizeMultiplier = ig.sizeMultiplier;
+      }
+    } catch {
+      /* never block a trade on intelligence error */
+    }
+
+    let placedBarExecution = false;
+    let skipReasonBar = null;
     if (allowBuy) {
       let buyRes;
       if (stSpot) {
@@ -5808,6 +6156,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           decisionSnapshot: decisionSnapshotBar,
           candlesOverride: barCloseCandlesSnapshot,
           anchorBarTs: cTs,
+          dbSignalId: barSignalId,
         });
       } else {
         buyRes = await trySupertrendFuturesOrder({
@@ -5820,12 +6169,16 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           candlesOverride: barCloseCandlesSnapshot,
           anchorBarTs: cTs,
           barCloseAiGates: { aiGateBuy, aiGateSell },
+          dbSignalId: barSignalId,
         });
       }
       emitSupertrendSignalFeedback(hub, { ...buyRes, signalStrength: supertrendStrength01 ?? undefined });
-      if (buyRes?.action === "placed") await pushImmediateState(hub);
+      if (buyRes?.action === "placed") {
+        placedBarExecution = true;
+        await pushImmediateState(hub);
+      } else skipReasonBar = skipReasonBar || buyRes?.reason || null;
     }
-    if (allowSell) {
+    if (allowSell && !placedBarExecution) {
       let sellRes;
       if (stSpot) {
         sellRes = await trySupertrendSpotOrder({
@@ -5837,6 +6190,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           decisionSnapshot: decisionSnapshotBar,
           candlesOverride: barCloseCandlesSnapshot,
           anchorBarTs: cTs,
+          dbSignalId: barSignalId,
         });
       } else {
         sellRes = await trySupertrendFuturesOrder({
@@ -5849,16 +6203,34 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           candlesOverride: barCloseCandlesSnapshot,
           anchorBarTs: cTs,
           barCloseAiGates: { aiGateBuy, aiGateSell },
+          dbSignalId: barSignalId,
         });
       }
       emitSupertrendSignalFeedback(hub, { ...sellRes, signalStrength: supertrendStrength01 ?? undefined });
-      if (sellRes?.action === "placed") await pushImmediateState(hub);
+      if (sellRes?.action === "placed") {
+        placedBarExecution = true;
+        await pushImmediateState(hub);
+      } else skipReasonBar = skipReasonBar || sellRes?.reason || null;
+    }
+    if (barSignalId) {
+      void tradeService
+        .updateSignalOutcome(String(barSignalId), {
+          wasExecuted: placedBarExecution,
+          gateReason: placedBarExecution ? null : skipReasonBar || "not_placed",
+        })
+        .catch((e) => log?.warn?.("trade_signal_outcome_failed", { error: String(e?.message || e) }));
     }
 
     await flushSupertrendFlipSignalHistoryIfNeeded();
   }
 
+  // Disk holds the latest runtime edits (e.g. PATCH /bot/config). Strategy cfg_raw may omit fields that were
+  // added after a version was saved — load disk first, then overlay DB strategy + instance merge so explicit
+  // cfg_raw values win while missing keys (notably intelligenceGateEnabled on older snapshots) keep disk/env flow.
   hydrateTradingConfigFromDisk();
+  if (initialPersistedConfig != null && typeof initialPersistedConfig === "object") {
+    hydrateTradingConfigFromPersistedObject(initialPersistedConfig);
+  }
   loadSupertrendSignalHistoryFromDisk();
 
   /**
@@ -6039,7 +6411,21 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     timeframe: state.timeframe,
     feedKind: effectiveMarketFeedKind(),
     tradingMode: runtimeTradingMode(),
-    onCandleClose: (c) => {
+    onCandleClose: async (c) => {
+      try {
+        const sym = String(c.symbol || state.symbol || "").toUpperCase();
+        const tf = String(state.timeframe || "15m");
+        const allCandles =
+          typeof feed.getCandlesForSymbol === "function"
+            ? feed.getCandlesForSymbol(sym)
+            : feed.getCandles();
+        if (sym && allCandles.length) {
+          updateIntelligenceCandles(sym, tf, allCandles);
+          await computeAndBroadcastIntelligenceSnapshot(sym, wsHubRef).catch(() => {});
+        }
+      } catch {
+        /* never block on intelligence */
+      }
       void processSupertrendCandleClose(c);
       void maybeAutoMultiBarClose(c);
     },
@@ -6276,6 +6662,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
   function setWsHub(hub) {
     wsHubRef = hub || null;
+    queueMicrotask(() => wireExchangeAccountPushListener());
   }
   let _cachedAccount = null;
   let _cachedPositions = [];
@@ -6557,8 +6944,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     return { dailyPnlPctByVenue, dailyPnlUsdByVenue, dailyPnlPctWorst, dailyPnlUsdWorst, exceeded };
   }
 
+  let _destroyed = false;
   const BOT_TICK_MS = Math.max(500, Math.min(10_000, Number(process.env.BOT_TICK_MS || 1000)));
-  setInterval(() => {
+  const _tickTimer = setInterval(() => {
+    if (_destroyed) return;
     if (tickInFlight) return;
     tickInFlight = true;
     tick({ wsHub: wsHubRef })
@@ -6567,18 +6956,27 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   }, BOT_TICK_MS);
   // Depth broadcast loop (UI order book). Skip serialization when no client is
   // subscribed — avoids burning CPU on the 500 ms cadence in headless runs.
-  setInterval(() => {
-    if (!wsHubRef) return;
+  const _depthTimer = setInterval(() => {
+    if (_destroyed) return;
     if (!depth) return;
-    if (typeof wsHubRef.clientCount === "function" && wsHubRef.clientCount() === 0) return;
     const b = depth.getBook();
+    if (b?.symbol && Array.isArray(b.bids) && Array.isArray(b.asks)) {
+      try {
+        updateIntelligenceOrderBook(String(b.symbol).trim().toUpperCase(), b.bids, b.asks);
+      } catch {
+        /* optional intelligence feed — never block depth */
+      }
+    }
+    if (!wsHubRef) return;
+    if (typeof wsHubRef.clientCount === "function" && wsHubRef.clientCount() === 0) return;
     if (!b?.symbol) return;
     wsHubRef.broadcast("depth", { ...b, originTradingMode: runtimeTradingMode() });
   }, 500);
 
   // External context loop (CoinGecko market context for current symbol)
   let cgInFlight = false;
-  setInterval(() => {
+  const _cgTimer = setInterval(() => {
+    if (_destroyed) return;
     if (!wsHubRef) return;
     if (cgInFlight) return;
     if (String(process.env.ENABLE_COINGECKO || "1") === "0") return;
@@ -6616,7 +7014,8 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
   // Coin selection loop (runs even if bot stopped so you can see ranks).
   let scanInFlight = false;
-  setInterval(() => {
+  const _scanTimer = setInterval(() => {
+    if (_destroyed) return;
     if (scanInFlight) return;
     if (!marketFeedUsesLiveBinance()) return;
     if (state.symbolMode !== "AUTO") return;
@@ -7070,6 +7469,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   function getPublicState() {
     return {
       running: state.running,
+      paused: Boolean(state.paused),
       symbol: state.symbol,
       timeframe: state.timeframe,
       symbolMode: state.symbolMode,
@@ -7193,7 +7593,9 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
           ? { ...state.smartSignalStrengthThresholdMeta }
           : null,
       supertrendFuturesMinAiProb: clamp(Number(state.supertrendFuturesMinAiProb ?? 0.55), 0, 1),
+      surfPulseMlGateEnabled: state.surfPulseMlGateEnabled !== false,
       surfPulseMlThreshold: clamp(Number(state.surfPulseMlThreshold ?? 0.6), 0, 1),
+      intelligenceGateEnabled: state.intelligenceGateEnabled === true,
       trailingStopLossAuto: state.trailingStopLossAuto === true,
       futuresTrailingStopMode: normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode),
       futuresTrailingStFeeBreakeven: state.futuresTrailingStFeeBreakeven !== false,
@@ -7321,6 +7723,64 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
       if (isIncomeLedgerClose(t)) {
         continue;
+      }
+
+      const dbTid = takeDbTradeIdForClose(enrichedClose);
+      if (dbTid && getPool()) {
+        const m = enrichedClose.meta || {};
+        const exitPx = Number(
+          enrichedClose.price ?? enrichedClose.exitPrice ?? m.closePrice ?? m.exitPrice ?? m.markPx,
+        );
+        const net = Number(enrichedClose.pnl ?? 0);
+        const fee = Number(enrichedClose.fee ?? 0);
+        let gross = enrichedClose.grossPnl != null ? Number(enrichedClose.grossPnl) : null;
+        if (!Number.isFinite(gross) && Number.isFinite(net) && Number.isFinite(fee)) {
+          gross = net + fee;
+        }
+        const roi = m.pnlPct != null ? Number(m.pnlPct) : null;
+        const openedMs =
+          m.signalBarCloseTs != null
+            ? Number(m.signalBarCloseTs)
+            : m.signalBarTs != null
+              ? Number(m.signalBarTs)
+              : null;
+        const closedMs = Date.parse(enrichedClose.ts);
+        const holdSec =
+          Number.isFinite(openedMs) && Number.isFinite(closedMs)
+            ? Math.max(0, Math.floor((closedMs - openedMs) / 1000))
+            : null;
+        const orderIds = [];
+        if (m.orderId) orderIds.push(String(m.orderId));
+        if (enrichedClose.id) orderIds.push(String(enrichedClose.id));
+        void tradeService
+          .closeTrade(String(dbTid), {
+            exitPrice: Number.isFinite(exitPx) && exitPx > 0 ? exitPx : null,
+            exitReason: String(enrichedClose.reason ?? m.closeReason ?? ""),
+            grossPnl: Number.isFinite(gross) ? gross : null,
+            feesUsdt: Number.isFinite(fee) ? fee : null,
+            netPnl: Number.isFinite(net) ? net : null,
+            roiPct: Number.isFinite(roi) ? roi : null,
+            holdDurationSec: holdSec,
+            binanceOrderIds: orderIds,
+          })
+          .then((trow) => {
+            if (!trow) return;
+            if (Number.isFinite(exitPx) && exitPx > 0 && Number.isFinite(Number(enrichedClose.qty))) {
+              void tradeService
+                .addFill(String(dbTid), {
+                  binanceOrderId: String(enrichedClose.id || orderIds[0] || "exit"),
+                  binanceTradeId: m.binanceTradeId != null ? String(m.binanceTradeId) : null,
+                  fillType: "exit",
+                  side: String(enrichedClose.side || "SELL"),
+                  price: exitPx,
+                  quantity: Math.abs(Number(enrichedClose.qty)),
+                  feeUsdt: Number.isFinite(fee) ? fee : null,
+                  filledAt: new Date(enrichedClose.ts || Date.now()),
+                })
+                .catch(() => {});
+            }
+          })
+          .catch((e) => log?.warn?.("trade_close_persist_failed", { error: String(e?.message || e) }));
       }
 
       if (
@@ -7476,12 +7936,37 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     }
 
     if (sawClosedTrade) {
+      let iid = null;
+      try {
+        iid = typeof getActiveInstanceId === "function" ? getActiveInstanceId() : null;
+      } catch {
+        iid = null;
+      }
+      if (iid && getPool()) {
+        void computeInstanceStats(String(iid))
+          .then((stats) => updateInstanceStats(String(iid), stats))
+          .then((row) => {
+            if (!row || !wsHub?.broadcast) return;
+            const hub = wsHub;
+            const tt = row.total_trades != null ? Math.floor(Number(row.total_trades)) : null;
+            const pnl = row.total_pnl_usdt != null ? Number(row.total_pnl_usdt) : null;
+            hub.broadcast("instance_status", {
+              instanceId: String(iid),
+              totalTrades: Number.isFinite(Number(tt)) ? Number(tt) : null,
+              totalPnlUsdt: Number.isFinite(Number(pnl)) ? Number(pnl) : null,
+              triggeredBy: "system",
+              updatedAt: new Date().toISOString(),
+            });
+          })
+          .catch((e) => log?.warn?.("[instance] stats sync failed", { error: String(e?.message || e) }));
+      }
       await maybeRebalanceCapitalCycleOnFlat({ wsHub, source: "ingest_closed_trades" });
     }
   }
 
   /** Refresh Portfolio (positions + account + trade tail) over WS right after Supertrend fills. */
-  async function pushImmediateState(wsHub) {
+  async function pushImmediateState(wsHub, options = {}) {
+    const withTrades = options.withTrades !== false;
     if (!wsHub?.broadcast) return;
     try {
       const strict = requiresStrictBinanceAccount();
@@ -7558,22 +8043,46 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
         positions: positionsMtM,
       });
 
-      /** Same merge as WS hello + `/state`: full audit trail + exchange mem (no 400-line audit shrink). */
-      let mergedTrades;
-      if (strict && account == null) {
-        mergedTrades = mergePersistedTradesWithExchange(runtimeTradingMode(), []);
-      } else {
-        const recentTrades = await exch.getTrades().catch(() => []);
-        mergedTrades = mergePersistedTradesWithExchange(runtimeTradingMode(), recentTrades || []);
+      if (withTrades) {
+        /** Same merge as WS hello + `/state`: full audit trail + exchange mem (no 400-line audit shrink). */
+        let mergedTrades;
+        if (strict && account == null) {
+          mergedTrades = mergePersistedTradesWithExchange(runtimeTradingMode(), []);
+        } else {
+          const recentTrades = await exch.getTrades().catch(() => []);
+          mergedTrades = mergePersistedTradesWithExchange(runtimeTradingMode(), recentTrades || []);
+        }
+        wsHub.broadcast("trades_snapshot", {
+          replace: true,
+          trades: mergedTrades,
+          mode: runtimeTradingMode(),
+        });
       }
-      wsHub.broadcast("trades_snapshot", {
-        replace: true,
-        trades: mergedTrades,
-        mode: runtimeTradingMode(),
-      });
     } catch {
       /* ignore */
     }
+  }
+
+  let _unsubExchangeAccountPush = null;
+  let _udsUiPushTimer = null;
+  function wireExchangeAccountPushListener() {
+    if (_unsubExchangeAccountPush) {
+      try {
+        _unsubExchangeAccountPush();
+      } catch {
+        /* ignore */
+      }
+      _unsubExchangeAccountPush = null;
+    }
+    if (_destroyed || !exch || typeof exch.subscribeAccountPush !== "function") return;
+    _unsubExchangeAccountPush = exch.subscribeAccountPush(() => {
+      if (_destroyed || !wsHubRef?.broadcast) return;
+      if (_udsUiPushTimer) clearTimeout(_udsUiPushTimer);
+      _udsUiPushTimer = setTimeout(() => {
+        _udsUiPushTimer = null;
+        void pushImmediateState(wsHubRef, { withTrades: false });
+      }, 100);
+    });
   }
 
   async function tick({ wsHub }) {
@@ -7721,6 +8230,10 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
 
     const indicators = computeIndicators(candles);
     const rawRegime = detectRegime({ candles, indicators });
+    try {
+      const symU = String(state.symbol || '').toUpperCase();
+      if (symU && indicators?.adx != null) updateIntelligenceAdx(symU, indicators.adx);
+    } catch { /* never block on intelligence */ }
     if (!state.regimeCandidate || state.regimeCandidate.type !== rawRegime.type) {
       state.regimeCandidate = { type: rawRegime.type, seen: 1 };
     } else {
@@ -8275,22 +8788,24 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       signal = strat.signal({ candles, indicators, regime, surfPulse: { fundingRate: fr } });
       state.lastSurfPulseMl = null;
       if (signal.action !== "HOLD" && signal.features) {
-        const surfTh = clamp(Number(state.surfPulseMlThreshold ?? 0.6), 0, 1);
-        try {
-          const sp = await ai.predictSurfPulse({ features: signal.features });
-          const p = Number(sp.probability ?? 0);
-          state.lastSurfPulseMl = { probability: p, threshold: surfTh, at: Date.now() };
-          if (!Number.isFinite(p) || p < surfTh) {
-            signal = {
-              action: "HOLD",
-              reason: "surfpulse_ml_below_threshold",
-              features: signal.features,
-            };
+        if (state.surfPulseMlGateEnabled !== false) {
+          const surfTh = clamp(Number(state.surfPulseMlThreshold ?? 0.6), 0, 1);
+          try {
+            const sp = await ai.predictSurfPulse({ features: signal.features });
+            const p = Number(sp.probability ?? 0);
+            state.lastSurfPulseMl = { probability: p, threshold: surfTh, at: Date.now() };
+            if (!Number.isFinite(p) || p < surfTh) {
+              signal = {
+                action: "HOLD",
+                reason: "surfpulse_ml_below_threshold",
+                features: signal.features,
+              };
+            }
+          } catch (e) {
+            const errMsg = formatAiServiceError(e);
+            log.warn("surfpulse_ml_predict_failed", { symbol: state.symbol, error: errMsg });
+            signal = { action: "HOLD", reason: "surfpulse_ml_predict_failed", features: signal.features };
           }
-        } catch (e) {
-          const errMsg = formatAiServiceError(e);
-          log.warn("surfpulse_ml_predict_failed", { symbol: state.symbol, error: errMsg });
-          signal = { action: "HOLD", reason: "surfpulse_ml_predict_failed", features: signal.features };
         }
       }
     } else {
@@ -8927,29 +9442,31 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     let order;
     const orderStartMs = Date.now();
     try {
-      order = await venueEx.placeOrder({
-        symbol: state.symbol,
-        side: tradeAction,
-        qty: finalQtyTick,
-        price: last.close,
-        stopLoss: plan.stopLoss,
-        takeProfit: plan.takeProfit,
-        strategy: strategyKey,
-        meta: {
-          aiProbability: prob,
-          aiFeatures: aiResp?.features || {},
-          modelKind: aiResp?.model_kind || aiResp?.modelKind || null,
-          tierMult: plan.tierMult,
-          riskUsd: plan.riskUsd,
-          aiThreshold: state.aiThreshold,
-          strategyKey,
-          tradeReason,
-          marketMode: state.marketMode,
-          futuresLeverage,
-          futuresLeverageMode: state.futuresLeverageMode,
-          autoTradeTrailing: isFuturesVenue && Boolean(state.trailingStopLossAuto),
-        },
-      });
+      order = await placeOrderWithWalletTelemetry(venueEx, () =>
+        venueEx.placeOrder({
+          symbol: state.symbol,
+          side: tradeAction,
+          qty: finalQtyTick,
+          price: last.close,
+          stopLoss: plan.stopLoss,
+          takeProfit: plan.takeProfit,
+          strategy: strategyKey,
+          meta: {
+            aiProbability: prob,
+            aiFeatures: aiResp?.features || {},
+            modelKind: aiResp?.model_kind || aiResp?.modelKind || null,
+            tierMult: plan.tierMult,
+            riskUsd: plan.riskUsd,
+            aiThreshold: state.aiThreshold,
+            strategyKey,
+            tradeReason,
+            marketMode: state.marketMode,
+            futuresLeverage,
+            futuresLeverageMode: state.futuresLeverageMode,
+            autoTradeTrailing: isFuturesVenue && Boolean(state.trailingStopLossAuto),
+          },
+        }),
+      );
     } catch (e) {
       const err = String(e?.message || e);
       emitSignalActionActivity(wsHub, {
@@ -9078,6 +9595,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     if (state.running) return;
     wsHubRef = wsHub;
     state.lastStopReason = null;
+    state.paused = false;
     state.running = true;
     // Reset poll flag so it gets restarted fresh on first tick
     _realtimeTrailingPollStarted = false;
@@ -9144,6 +9662,7 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
   function stop({ wsHub, reason = "user_request", source = "api", detail } = {}) {
     if (!state.running) return;
     state.running = false;
+    state.paused = false;
     // Stop real-time trailing poll when the bot stops
     if (_realtimeTrailingPollStarted && typeof exch?.stopRealtimeTrailingPoll === "function") {
       exch.stopRealtimeTrailingPoll();
@@ -9504,6 +10023,12 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     if (patch.supertrendFuturesMinAiProb != null && Number.isFinite(Number(patch.supertrendFuturesMinAiProb))) {
       state.supertrendFuturesMinAiProb = clamp(Number(patch.supertrendFuturesMinAiProb), 0, 1);
     }
+    if (patch.surfPulseMlGateEnabled != null) {
+      state.surfPulseMlGateEnabled = Boolean(patch.surfPulseMlGateEnabled);
+    }
+    if (patch.intelligenceGateEnabled != null) {
+      state.intelligenceGateEnabled = Boolean(patch.intelligenceGateEnabled);
+    }
     if (patch.surfPulseMlThreshold != null && Number.isFinite(Number(patch.surfPulseMlThreshold))) {
       state.surfPulseMlThreshold = clamp(Number(patch.surfPulseMlThreshold), 0, 1);
     }
@@ -9734,21 +10259,23 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       }
     }
 
-    const order = await venueEx.placeOrder({
-      symbol: state.symbol,
-      side,
-      qty,
-      price: px,
-      stopLoss,
-      takeProfit,
-      strategy: strategyKey,
-      meta: {
-        manual: true,
-        marketMode: state.marketMode,
-        futuresLeverage: manualLev ?? state.futuresLeverage,
-        futuresLeverageMode: state.futuresLeverageMode,
-      },
-    });
+    const order = await placeOrderWithWalletTelemetry(venueEx, () =>
+      venueEx.placeOrder({
+        symbol: state.symbol,
+        side,
+        qty,
+        price: px,
+        stopLoss,
+        takeProfit,
+        strategy: strategyKey,
+        meta: {
+          manual: true,
+          marketMode: state.marketMode,
+          futuresLeverage: manualLev ?? state.futuresLeverage,
+          futuresLeverageMode: state.futuresLeverageMode,
+        },
+      }),
+    );
 
     const entryExOidManual = binanceFuturesEntryOrderIdFromPlaceOrder(order);
     broadcastTrade(wsHub, {
@@ -9856,6 +10383,13 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
     saveTradingConfigToDisk() {
       persistTradingConfigToDisk();
     },
+    getTradingConfigPersistPayload() {
+      return buildTradingConfigPersistPayload();
+    },
+    reloadTradingConfigFromPersisted(raw) {
+      hydrateTradingConfigFromPersistedObject(raw);
+      loadSupertrendSignalHistoryFromDisk();
+    },
     reloadTradingConfigFromDisk() {
       hydrateTradingConfigFromDisk();
       loadSupertrendSignalHistoryFromDisk();
@@ -9865,6 +10399,30 @@ export function createBot({ log, ai, exchange, defaults, getTradingMode, persist
       lastSeenTradeId = null;
       ingestedCloseBroadcastKeys = new Set();
       closedSinceRetrain = 0;
+      queueMicrotask(() => wireExchangeAccountPushListener());
+    },
+    setPaused(next) {
+      state.paused = Boolean(next);
+    },
+    destroy() {
+      _destroyed = true;
+      if (_udsUiPushTimer) {
+        clearTimeout(_udsUiPushTimer);
+        _udsUiPushTimer = null;
+      }
+      if (_unsubExchangeAccountPush) {
+        try {
+          _unsubExchangeAccountPush();
+        } catch {
+          /* ignore */
+        }
+        _unsubExchangeAccountPush = null;
+      }
+      clearInterval(_tickTimer);
+      clearInterval(_depthTimer);
+      clearInterval(_cgTimer);
+      clearInterval(_scanTimer);
+      wsHubRef = null;
     },
   };
 }

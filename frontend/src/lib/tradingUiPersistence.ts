@@ -1,5 +1,7 @@
 /** Browser persistence for trading mode + bot config fields (survives server restarts / empty data dir). */
 
+import { api } from "../api/client";
+
 /** v2: capital-allotment fields added to persist list; migrate v1 without copying `byMode` (stale prefs broke VPS vs dev). */
 const STORAGE_KEY_BASE = "trading-ui-prefs-v2";
 const LEGACY_STORAGE_KEY = "trading-ui-prefs-v1";
@@ -25,6 +27,8 @@ export type TradingUiPersistedV1 = {
   byMode: Record<string, Record<string, unknown>>;
   /** Portfolio trade-history PnL window per mode (browser-only; survives backend restarts). */
   portfolioPnlRangeByMode?: Record<string, PortfolioPnlRangePersisted>;
+  /** Market Intelligence strip under chart order book (instance view). */
+  showMarketIntelligencePanel?: boolean;
 };
 
 /** Keys mirror backend `persistTradingConfigToDisk` + tradingFormDefaults + pin symbol. */
@@ -226,6 +230,7 @@ export function tradingUiPersistMode(mode: string | undefined, userTag?: string 
   } catch {
     /* ignore */
   }
+  enqueueServerUiPrefsPatch({ lastMode: m as TradingModeSlug });
 }
 
 export function tradingUiPersistBotSnapshot(
@@ -249,6 +254,147 @@ export function tradingUiPersistBotSnapshot(
 }
 
 const MODE_SLUGS = new Set(["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"]);
+
+/** Multi-chart grid layout (must match `MultiChartGrid` localStorage keys). */
+export const CHART_GRID_PAGE_LS_KEY = "trading-multi-chart-page-v1";
+export const CHART_GRID_SORT_LS_KEY = "trading-multi-chart-sort-v1";
+
+const UI_PREFS_DEBOUNCE_MS = 1000;
+let uiPrefsSyncAllowed = false;
+let uiPrefsDirty: Record<string, unknown> = {};
+let uiPrefsTimer: ReturnType<typeof setTimeout> | null = null;
+
+function deepMergePrefsPatch(acc: Record<string, unknown>, partial: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...acc };
+  for (const k of Object.keys(partial)) {
+    const pv = partial[k];
+    const av = out[k];
+    if (
+      pv !== null &&
+      typeof pv === "object" &&
+      !Array.isArray(pv) &&
+      av !== null &&
+      typeof av === "object" &&
+      !Array.isArray(av)
+    ) {
+      out[k] = deepMergePrefsPatch(av as Record<string, unknown>, pv as Record<string, unknown>);
+    } else {
+      out[k] = pv;
+    }
+  }
+  return out;
+}
+
+/** DB-backed `/api/me/ui-prefs` sync is only for sessions with a `users` row (see `/api/auth/me` → syncUiPrefs). */
+export function setUiPrefsSyncAllowed(v: boolean) {
+  uiPrefsSyncAllowed = v;
+  if (!v && uiPrefsTimer) {
+    clearTimeout(uiPrefsTimer);
+    uiPrefsTimer = null;
+    uiPrefsDirty = {};
+  }
+}
+
+/** Debounced PATCH to `/api/me/ui-prefs` (cosmetic prefs only — never `PERSIST_BOT_KEYS`). */
+export function enqueueServerUiPrefsPatch(partial: Record<string, unknown>) {
+  if (!uiPrefsSyncAllowed || typeof window === "undefined") return;
+  uiPrefsDirty = deepMergePrefsPatch(uiPrefsDirty, partial);
+  if (uiPrefsTimer) clearTimeout(uiPrefsTimer);
+  uiPrefsTimer = setTimeout(() => {
+    const payload = uiPrefsDirty;
+    uiPrefsDirty = {};
+    uiPrefsTimer = null;
+    void api.patchUiPrefs(payload).catch(() => {
+      /* offline / 403 */
+    });
+  }, UI_PREFS_DEBOUNCE_MS);
+}
+
+/**
+ * Merge server-stored UI prefs into localStorage; server wins for keys present in `server`.
+ * Does not touch `byMode` / bot config (`PERSIST_BOT_KEYS`).
+ */
+export function mergeServerUiPrefsIntoLocalStorage(userTag: string | null, server: Record<string, unknown>) {
+  const cur = loadTradingUiPrefs(userTag) || { v: 1 as const, byMode: {} };
+  const next: TradingUiPersistedV1 = {
+    ...cur,
+    v: 1,
+    byMode: cur.byMode && typeof cur.byMode === "object" ? { ...cur.byMode } : {},
+  };
+  if (Object.prototype.hasOwnProperty.call(server, "lastMode")) {
+    const lm = String(server.lastMode || "").toUpperCase();
+    if (MODE_SLUGS.has(lm)) next.lastMode = lm as TradingModeSlug;
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(server, "portfolioPnlRangeByMode") &&
+    server.portfolioPnlRangeByMode &&
+    typeof server.portfolioPnlRangeByMode === "object"
+  ) {
+    const s = server.portfolioPnlRangeByMode as Record<string, unknown>;
+    next.portfolioPnlRangeByMode = {
+      ...(next.portfolioPnlRangeByMode && typeof next.portfolioPnlRangeByMode === "object"
+        ? next.portfolioPnlRangeByMode
+        : {}),
+    };
+    for (const mode of Object.keys(s)) {
+      const mu = mode.toUpperCase();
+      if (!MODE_SLUGS.has(mu)) continue;
+      const row = s[mode];
+      if (!row || typeof row !== "object") continue;
+      const pr = row as PortfolioPnlRangePersisted;
+      next.portfolioPnlRangeByMode[mu] = {
+        pnlHistoryRange: pr.pnlHistoryRange === "custom" ? "custom" : "all",
+        customRangeStart: typeof pr.customRangeStart === "string" ? pr.customRangeStart : "",
+        customRangeEnd: typeof pr.customRangeEnd === "string" ? pr.customRangeEnd : "",
+      };
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(server, "showMarketIntelligencePanel")) {
+    next.showMarketIntelligencePanel = Boolean(server.showMarketIntelligencePanel);
+  }
+  try {
+    const key = tradingUiStorageKey(userTag);
+    localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+  if (Object.prototype.hasOwnProperty.call(server, "multiChartGrid")) {
+    const g = server.multiChartGrid;
+    if (g && typeof g === "object") {
+      const sort = (g as { sort?: unknown }).sort;
+      const page = (g as { page?: unknown }).page;
+      if (typeof sort === "string") {
+        try {
+          localStorage.setItem(CHART_GRID_SORT_LS_KEY, sort);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (typeof page === "number" && Number.isFinite(page)) {
+        try {
+          localStorage.setItem(CHART_GRID_PAGE_LS_KEY, String(Math.max(0, Math.floor(page))));
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+}
+
+/** Apply server `users.ui_prefs` into local caches + theme store. */
+export async function hydrateTradingUiPrefsFromServer(userTag: string | null, server: Record<string, unknown> | null | undefined) {
+  if (!server || typeof server !== "object") return;
+  mergeServerUiPrefsIntoLocalStorage(userTag, server);
+  if (Object.prototype.hasOwnProperty.call(server, "theme")) {
+    const theme = server.theme;
+    if (theme === "light" || theme === "dark") {
+      const { applyDomTheme, useThemeStore } = await import("../themeStore");
+      applyDomTheme(theme);
+      useThemeStore.setState({ theme });
+    }
+  }
+  await syncShowMarketIntelligencePanelFromStorage(userTag);
+}
 
 /** Read saved portfolio PnL custom range for the active trading mode. */
 export function loadPortfolioPnlRangeForMode(
@@ -296,4 +442,36 @@ export function tradingUiPersistPortfolioPnlRange(
   } catch {
     /* ignore */
   }
+  enqueueServerUiPrefsPatch({
+    portfolioPnlRangeByMode: {
+      [m]: {
+        pnlHistoryRange: payload.pnlHistoryRange === "custom" ? "custom" : "all",
+        customRangeStart: String(payload.customRangeStart ?? ""),
+        customRangeEnd: String(payload.customRangeEnd ?? ""),
+      },
+    },
+  });
+}
+
+/** Persist Market Intelligence under-chart panel (localStorage + optional DB ui_prefs). */
+export function tradingUiPersistShowMarketIntelligencePanel(show: boolean, userTag?: string | null) {
+  try {
+    const key = tradingUiStorageKey(userTag);
+    const cur = loadTradingUiPrefs(userTag) || { v: 1 as const, byMode: {} };
+    cur.v = 1;
+    cur.byMode = cur.byMode && typeof cur.byMode === "object" ? cur.byMode : {};
+    cur.showMarketIntelligencePanel = Boolean(show);
+    localStorage.setItem(key, JSON.stringify(cur));
+  } catch {
+    /* ignore */
+  }
+  enqueueServerUiPrefsPatch({ showMarketIntelligencePanel: Boolean(show) });
+}
+
+/** Apply saved preference into Zustand (avoids circular imports from `ws/store.ts`). */
+export async function syncShowMarketIntelligencePanelFromStorage(userTag?: string | null) {
+  const prefs = loadTradingUiPrefs(userTag);
+  if (!prefs || typeof prefs.showMarketIntelligencePanel !== "boolean") return;
+  const { useAppStore } = await import("../ws/store");
+  useAppStore.setState({ showMarketIntelligencePanel: prefs.showMarketIntelligencePanel });
 }

@@ -5,11 +5,53 @@ import { getTradingEvaluationChecklist } from "../evaluation/tradingChecklist.js
 import { formatAiServiceError } from "../svc/aiHttpError.js";
 import { broadcastActivity } from "../lib/activityLog.js";
 import { mergePersistedTradesWithExchange } from "../lib/activityPersistence.js";
-import { isStrictBinanceAccountMode, tradingModeToPersistenceSlug } from "../lib/tradingModePersistence.js";
+import {
+  isStrictBinanceAccountMode,
+  persistenceSlugToTradingMode,
+  tradingModeToPersistenceSlug,
+} from "../lib/tradingModePersistence.js";
 import { computeMqTuningPatch, readMqTradeOutcomeRows } from "../lib/mqTuneFromOutcomes.js";
-import { uiAuthEnabled } from "../auth/uiGate.js";
-import { normalizeTradingMode } from "../state/appState.js";
-
+import {
+  requireAccountsDbUser,
+  resolveAccountsOwnerUserId,
+  resolveDbActingUserId,
+  assertAccountMutable,
+  assertAccountVisible,
+} from "../auth/accountsAccess.js";
+import { requireAdmin, requireDbUserSession, uiAuthEnabled } from "../auth/uiGate.js";
+import * as accountsService from "../db/services/accountsService.js";
+import * as credentialsService from "../db/services/credentialsService.js";
+import * as usersService from "../db/services/usersService.js";
+import { normalizeModeSlugParam } from "../lib/modeSlug.js";
+import { getPool } from "../db/pool.js";
+import { query } from "../db/query.js";
+import * as strategyService from "../db/services/strategyService.js";
+import { getLatestIntelligenceApiPayload, getIntelligenceHistory } from "../db/services/intelligenceService.js";
+import { getLiquidationPayloadForSymbol } from "../intelligence/collectors/liquidationCollector.js";
+import {
+  refreshMarketIntelApisFromStore,
+  getResolvedMarketIntelApis,
+  marketIntelEncryptionKeyConfigured,
+} from "../intelligence/marketIntelResolvedApis.js";
+import { encryptSecret, decryptSecret } from "../lib/encryption.js";
+import * as marketEventsService from "../db/services/marketEventsService.js";
+import * as whaleAlertsService from "../db/services/whaleAlertsService.js";
+import * as strategyEdgeService from "../db/services/strategyEdgeService.js";
+import { readBotTradingConfig } from "../lib/botTradingConfigStore.js";
+import { modeSlugRequiresSelectedAccount, normalizeTradingMode } from "../state/appState.js";
+import {
+  getPaperSystemAccountId,
+  getLatestSnapshot,
+  getSnapshotHistory,
+  resolveWalletSnapshotAccountId,
+  scheduleWalletSnapshotWrite,
+  writeSnapshot,
+} from "../db/services/walletService.js";
+import * as instanceService from "../db/services/instanceService.js";
+import * as tradeService from "../db/services/tradeService.js";
+import * as performanceService from "../db/services/performanceService.js";
+import { getAccountAllotmentHeadroom, InsufficientCapitalError } from "../db/services/capitalAllotmentService.js";
+import { extractInstanceConfig } from "../lib/strategyInstanceSplit.js";
 const BOT_TARGET_MODES = z.enum(["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"]);
 
 /** Accept true/false and common JSON/proxy coercions so toggles never 400 on edge clients. */
@@ -31,8 +73,46 @@ const modeSetBody = z.object({
   confirm: modeSetConfirmLoose,
 });
 
+const marketIntelProvidersPutBody = z.object({
+  finnhubApiKey: z.string().optional(),
+  cryptoquantApiKey: z.string().optional(),
+  whaleAlertApiKey: z.string().optional(),
+  aiBaseUrl: z.string().max(512).optional(),
+});
+
 export function createRouter({ appState }) {
   const r = express.Router();
+
+  /** DB `users.id` for this request: session login, or `dbActingUserId` set by `requireDbUserSession`. */
+  function effectiveSessionUserId(req) {
+    const a = req.session?.uiUserId;
+    if (a != null && String(a).trim() !== "") return String(a);
+    const b = req.dbActingUserId;
+    if (b != null && String(b).trim() !== "") return String(b);
+    return null;
+  }
+
+  /** Phase 3D — richer `instance_status` WS for lifecycle + capital/stats hints. */
+  async function broadcastInstanceStatusFromDetail(instanceId, userId, extra = {}) {
+    if (!appState.wsHub?.broadcast || !getPool()) return;
+    try {
+      const inst = await instanceService.getInstanceDetail(String(instanceId), String(userId));
+      if (!inst) return;
+      appState.wsHub.broadcast("instance_status", {
+        instanceId: String(instanceId),
+        status: inst.status,
+        reason: extra.reason != null ? String(extra.reason) : null,
+        triggeredBy: extra.triggeredBy != null ? String(extra.triggeredBy) : "user",
+        errorMessage: String(inst.status || "").toLowerCase() === "error" ? inst.errorMessage : null,
+        reservedUsdt: inst.allotment != null ? Number(inst.allotment.reservedUsdt) : null,
+        totalTrades: inst.totalTrades != null ? Number(inst.totalTrades) : null,
+        totalPnlUsdt: inst.totalPnlUsdt != null ? Number(inst.totalPnlUsdt) : null,
+        updatedAt: inst.updatedAt != null ? String(inst.updatedAt) : new Date().toISOString(),
+      });
+    } catch (e) {
+      appState.log?.warn?.("instance_status_broadcast_failed", { error: String(e?.message || e) });
+    }
+  }
 
   const symbolRe = /^[A-Z0-9]{5,20}$/;
   const allowedTimeframes = new Set(["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"]);
@@ -53,9 +133,9 @@ export function createRouter({ appState }) {
     return appState.mode;
   }
 
-  function getEngineForBotRequest(req, bodyMode) {
+  async function getEngineForBotRequest(req, bodyMode) {
     const m = resolveViewTradingMode(req, bodyMode);
-    appState.ensureEngine(m);
+    await appState.ensureEngine(m);
     const row = appState.getEngine(m);
     if (!row?.bot) throw new Error(`engine_missing:${m}`);
     return row;
@@ -63,7 +143,7 @@ export function createRouter({ appState }) {
 
   /** Merged audit + exchange `getTrades()`, then WS `trades_snapshot` replace (all clients). */
   async function broadcastMergedTradesSnapshot(req, bodyMode, { forceReconcile = false } = {}) {
-    const row = getEngineForBotRequest(req, bodyMode);
+    const row = await getEngineForBotRequest(req, bodyMode);
     const viewM = resolveViewTradingMode(req, bodyMode);
     const ex = row.exchange;
     let trades = [];
@@ -94,7 +174,7 @@ export function createRouter({ appState }) {
 
   r.get("/state", async (req, res) => {
     const viewM = resolveViewTradingMode(req, undefined);
-    const row = getEngineForBotRequest(req, undefined);
+    const row = await getEngineForBotRequest(req, undefined);
     const ex = row.exchange;
     let account = null;
     let positions = [];
@@ -120,11 +200,22 @@ export function createRouter({ appState }) {
     } else {
       trades = mergePersistedTradesWithExchange(viewM, trades);
     }
+    void (async () => {
+      try {
+        const aid = await resolveWalletSnapshotAccountId(appState, viewM);
+        if (aid && account != null) scheduleWalletSnapshotWrite(aid, account, positions);
+      } catch {
+        /* ignore */
+      }
+    })();
     res.json({
       ok: true,
       mode: viewM,
       bot: row.bot.getPublicState(),
       runningByMode: appState.getRunningByMode?.() ?? {},
+      activeAccountByMode: appState.getActiveAccountByModeSnapshot(),
+      activeStrategyVersionByMode: appState.getActiveStrategyVersionByModeSnapshot?.() ?? {},
+      activeInstanceByMode: appState.getActiveInstanceByModeSnapshot?.() ?? {},
       account,
       positions,
       trades,
@@ -136,7 +227,7 @@ export function createRouter({ appState }) {
    * Query: symbol (defaults to bot symbol), venue = SPOT | FUTURES | BOTH (defaults from bot marketMode; AUTO → BOTH).
    */
   r.get("/symbol/constraints", async (req, res) => {
-    const row = getEngineForBotRequest(req, undefined);
+    const row = await getEngineForBotRequest(req, undefined);
     const botState = row.bot.getPublicState();
     const symbol = String(req.query.symbol || botState.symbol || "").toUpperCase();
     let venue = String(req.query.venue || "").toUpperCase();
@@ -168,7 +259,7 @@ export function createRouter({ appState }) {
   /** Last N bars for chart (~24h). Default: bot symbol + live buffer. `?symbol=OTHERUSDT` fetches REST OHLC for multi-chart tiles. */
   r.get("/market/candles", async (req, res) => {
     try {
-      const row = getEngineForBotRequest(req, undefined);
+      const row = await getEngineForBotRequest(req, undefined);
       const bot = row.bot;
       const hours = Math.max(0.25, Math.min(168, Number(req.query.hours ?? 24)));
       const symQ = String(req.query.symbol || "").trim().toUpperCase();
@@ -233,9 +324,9 @@ export function createRouter({ appState }) {
     }
   });
 
-  r.get("/metrics", (req, res) => {
+  r.get("/metrics", async (req, res) => {
     try {
-      const row = getEngineForBotRequest(req, undefined);
+      const row = await getEngineForBotRequest(req, undefined);
       res.json({ ok: true, data: row.bot.getMetrics?.() || {} });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e?.message || e) });
@@ -311,18 +402,51 @@ export function createRouter({ appState }) {
     }
   });
 
-  r.post("/bot/start", (req, res) => {
+  r.post("/bot/start", async (req, res) => {
     try {
       const parsed = botLifecycleBody.safeParse(req.body && typeof req.body === "object" ? req.body : {});
       const body = parsed.success ? parsed.data : {};
-      const row = getEngineForBotRequest(req, body.mode);
       const targetM = resolveViewTradingMode(req, body.mode);
+      const slug = tradingModeToPersistenceSlug(targetM);
+      if (modeSlugRequiresSelectedAccount(slug)) {
+        const hasAcct = Boolean(appState.getActiveAccount(slug));
+        const hasInst = Boolean(appState.getActiveInstance?.(slug));
+        if (!hasAcct && !hasInst) {
+          return res.status(400).json({
+            ok: false,
+            error: "no_account_selected",
+            message: "Select an account before starting the bot in this mode",
+          });
+        }
+      }
+      const row = await getEngineForBotRequest(req, body.mode);
       row.bot.start({
         wsHub: appState.wsHub,
         reason: body.reason ?? "user_request",
         source: "http",
         detail: body.detail,
       });
+      const iid = appState.getActiveInstance?.(slug);
+      if (iid && getPool()) {
+        try {
+          const reason = body.reason ?? "User started";
+          await instanceService.updateInstanceStatus(String(iid), "running", reason, "user", null);
+          const uid = await resolveDbActingUserId(req);
+          if (uid) {
+            await broadcastInstanceStatusFromDetail(String(iid), uid, { reason, triggeredBy: "user" });
+          } else {
+            appState.wsHub?.broadcast?.("instance_status", {
+              instanceId: String(iid),
+              status: "running",
+              reason,
+              triggeredBy: "user",
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        } catch (e) {
+          appState.log?.warn?.("instance_status_on_start_failed", { error: String(e?.message || e) });
+        }
+      }
       res.json({
         ok: true,
         mode: targetM,
@@ -335,18 +459,40 @@ export function createRouter({ appState }) {
     }
   });
 
-  r.post("/bot/stop", (req, res) => {
+  r.post("/bot/stop", async (req, res) => {
     try {
       const parsed = botLifecycleBody.safeParse(req.body && typeof req.body === "object" ? req.body : {});
       const body = parsed.success ? parsed.data : {};
-      const row = getEngineForBotRequest(req, body.mode);
+      const row = await getEngineForBotRequest(req, body.mode);
       const targetM = resolveViewTradingMode(req, body.mode);
+      const slug = tradingModeToPersistenceSlug(targetM);
       row.bot.stop({
         wsHub: appState.wsHub,
         reason: body.reason ?? "user_request",
         source: "http",
         detail: body.detail,
       });
+      const iid = appState.getActiveInstance?.(slug);
+      if (iid && getPool()) {
+        try {
+          const reason = body.reason ?? "User stopped";
+          await instanceService.updateInstanceStatus(String(iid), "stopped", reason, "user", null);
+          const uid = await resolveDbActingUserId(req);
+          if (uid) {
+            await broadcastInstanceStatusFromDetail(String(iid), uid, { reason, triggeredBy: "user" });
+          } else {
+            appState.wsHub?.broadcast?.("instance_status", {
+              instanceId: String(iid),
+              status: "stopped",
+              reason,
+              triggeredBy: "user",
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        } catch (e) {
+          appState.log?.warn?.("instance_status_on_stop_failed", { error: String(e?.message || e) });
+        }
+      }
       res.json({
         ok: true,
         mode: targetM,
@@ -360,9 +506,9 @@ export function createRouter({ appState }) {
   });
 
   /** Re-anchor hybrid daily loss baselines to current wallet equity and start the bot (after max-daily-loss stop). */
-  r.post("/bot/reset-daily-loss", (req, res) => {
+  r.post("/bot/reset-daily-loss", async (req, res) => {
     try {
-      const row = getEngineForBotRequest(req, undefined);
+      const row = await getEngineForBotRequest(req, undefined);
       row.bot.resetDailyLossBaselineAndStart({ wsHub: appState.wsHub, source: "http" });
       res.json({ ok: true, bot: row.bot.getPublicState() });
     } catch (e) {
@@ -370,7 +516,7 @@ export function createRouter({ appState }) {
     }
   });
 
-  r.post("/bot/config", (req, res) => {
+  r.post("/bot/config", async (req, res) => {
     const schema = z.object({
       /** Apply patch to this mode’s bot (defaults to UI’s active mode). */
       mode: BOT_TARGET_MODES.optional(),
@@ -418,8 +564,12 @@ export function createRouter({ appState }) {
       signalStrengthOpenMin: z.number().int().min(0).max(100).optional(),
       /** Min AI probability (0–1) for Supertrend futures opens when `supertrendFuturesAiConfidenceFilter` is on. */
       supertrendFuturesMinAiProb: z.number().min(0).max(1).optional(),
+      /** Enable/disable SurfPulse ML gate for SURF_PULSE_ML opens. */
+      surfPulseMlGateEnabled: z.boolean().optional(),
       /** Min SurfPulse XGBoost win probability (0–1) when strategy SURF_PULSE_ML is active. */
       surfPulseMlThreshold: z.number().min(0).max(1).optional(),
+      /** When true, high-confidence opposing composite intelligence score can skip Supertrend opens. */
+      intelligenceGateEnabled: z.boolean().optional(),
       trailingStopLossAuto: z.boolean().optional(),
       /** `SUPERTREND` vs `FEE_LADDER` — see bot `futuresTrailingStopMode`. */
       futuresTrailingStopMode: z.enum(["SUPERTREND", "FEE_LADDER"]).optional(),
@@ -513,7 +663,7 @@ export function createRouter({ appState }) {
     const chartFocusOnlyPatch = patchKeys.length === 1 && patchKeys[0] === "uiChartFocusSymbol";
     let row;
     try {
-      row = getEngineForBotRequest(req, configTargetMode);
+      row = await getEngineForBotRequest(req, configTargetMode);
     } catch (e) {
       return res.status(400).json({ ok: false, error: String(e?.message || e) });
     }
@@ -541,6 +691,10 @@ export function createRouter({ appState }) {
         return res.status(500).json({ ok: false, error: String(e?.message || e) });
       }
     }
+
+    // Auto-save to strategy versions is intentionally disabled.
+    // Config edits are persisted to bot config, and explicit Save / Save-as-New actions
+    // are handled by dedicated strategy save endpoints.
     // Match WS `state` shape so the UI doesn't drop account/positions until the next heartbeat.
     const ex = row.exchange;
     Promise.all([ex.getAccount().catch(() => null), ex.getPositions().catch(() => [])])
@@ -559,7 +713,7 @@ export function createRouter({ appState }) {
    * Analyze `mq-trade-outcomes.jsonl` for this trading mode and suggest / apply Move Quality thresholds
    * from winning-trade percentiles (see `mqTuneFromOutcomes.js`).
    */
-  r.post("/bot/tune-move-quality", (req, res) => {
+  r.post("/bot/tune-move-quality", async (req, res) => {
     const schema = z.object({
       mode: BOT_TARGET_MODES.optional(),
       apply: z.boolean().optional(),
@@ -569,7 +723,7 @@ export function createRouter({ appState }) {
     const parsed = schema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
     try {
-      const row = getEngineForBotRequest(req, parsed.data.mode);
+      const row = await getEngineForBotRequest(req, parsed.data.mode);
       const viewM = resolveViewTradingMode(req, parsed.data.mode);
       const slug = tradingModeToPersistenceSlug(viewM);
       const { path: logPath, rows } = readMqTradeOutcomeRows(slug);
@@ -637,7 +791,7 @@ export function createRouter({ appState }) {
   // ?refresh=1 forces a fresh scan (otherwise last cached snapshot may be returned).
   r.get("/universe/scan", async (req, res) => {
     try {
-      const row = getEngineForBotRequest(req, undefined);
+      const row = await getEngineForBotRequest(req, undefined);
       const force = String(req.query?.refresh || "") === "1";
       const out = await row.bot.getUniverseScan?.({ force });
       if (!out) return res.status(400).json({ ok: false, error: "universe_unavailable" });
@@ -650,7 +804,7 @@ export function createRouter({ appState }) {
   /** Tradable USDT symbols for the active spot/futures universe (custom coin-base picker). */
   r.get("/universe/symbols", async (req, res) => {
     try {
-      const row = getEngineForBotRequest(req, undefined);
+      const row = await getEngineForBotRequest(req, undefined);
       const out = await row.bot.listTradableUniverseSymbols?.();
       if (!out) return res.status(400).json({ ok: false, error: "universe_unavailable" });
       return res.json(out);
@@ -670,7 +824,7 @@ export function createRouter({ appState }) {
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
 
     try {
-      const row = getEngineForBotRequest(req, undefined);
+      const row = await getEngineForBotRequest(req, undefined);
       const out = await row.bot.manualTrade({ wsHub: appState.wsHub, ...parsed.data });
       res.json(out);
     } catch (e) {
@@ -682,7 +836,12 @@ export function createRouter({ appState }) {
     const schema = z.object({ id: z.string().min(3) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
-    const row = getEngineForBotRequest(req, undefined);
+    let row;
+    try {
+      row = await getEngineForBotRequest(req, undefined);
+    } catch (e) {
+      return res.status(400).json({ ok: false, error: String(e?.message || e) });
+    }
     const ex = row.exchange;
     const viewM = resolveViewTradingMode(req, undefined);
     if (typeof ex?.closePosition !== "function") {
@@ -742,7 +901,7 @@ export function createRouter({ appState }) {
     }
     const next = normalizeTradingMode(parsed.data.mode);
     try {
-      appState.ensureEngine(next);
+      await appState.ensureEngine(next);
     } catch (e) {
       return res.status(400).json({ ok: false, error: String(e?.message || e) });
     }
@@ -766,13 +925,13 @@ export function createRouter({ appState }) {
     }
   });
 
-  r.get("/strategies", (req, res) => {
-    const row = getEngineForBotRequest(req, undefined);
+  r.get("/strategies", async (req, res) => {
+    const row = await getEngineForBotRequest(req, undefined);
     res.json({ ok: true, strategies: row.bot.getPublicState().topStrategies });
   });
 
-  r.get("/trading/evaluation", (req, res) => {
-    const row = getEngineForBotRequest(req, undefined);
+  r.get("/trading/evaluation", async (req, res) => {
+    const row = await getEngineForBotRequest(req, undefined);
     const viewM = resolveViewTradingMode(req, undefined);
     res.json(
       getTradingEvaluationChecklist({
@@ -782,8 +941,8 @@ export function createRouter({ appState }) {
     );
   });
 
-  r.get("/backtest", (req, res) => {
-    const row = getEngineForBotRequest(req, undefined);
+  r.get("/backtest", async (req, res) => {
+    const row = await getEngineForBotRequest(req, undefined);
     const limit = Math.max(200, Math.min(1500, Number(req.query.limit || 600)));
     const feeBps = Math.max(0, Math.min(50, Number(req.query.feeBps || 10)));
     const slippageBps = Math.max(0, Math.min(50, Number(req.query.slippageBps || 3)));
@@ -805,10 +964,1554 @@ export function createRouter({ appState }) {
     const schema = z.object({ confirm: z.literal(true) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: "confirm_required" });
-    const row = getEngineForBotRequest(req, undefined);
+    const row = await getEngineForBotRequest(req, undefined);
     if (row.exchange?.name !== "paper") return res.status(400).json({ ok: false, error: "not_paper_mode" });
     const out = await row.exchange.reset({ confirm: true });
     return res.json(out);
+  });
+
+  const accountUuid = z.string().uuid();
+  const credentialsBody = z.object({
+    apiKey: z.string().min(1).max(4000),
+    secret: z.string().min(1).max(4000),
+  });
+  const createAccountBody = z.object({
+    label: z.string().min(1).max(200),
+    accountType: z.enum(["main", "sub"]),
+    binanceUid: z.string().max(100).optional(),
+    notes: z.string().max(4000).optional(),
+  });
+  const patchAccountBody = z.object({
+    label: z.string().min(1).max(200).optional(),
+    notes: z.string().max(4000).optional().nullable(),
+    binance_uid: z.string().max(100).optional().nullable(),
+  });
+
+  r.get("/trading-modes/:modeSlug/accounts", requireAccountsDbUser, async (req, res) => {
+    try {
+      if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+      const ownerId = await resolveAccountsOwnerUserId(req, res);
+      if (!ownerId) return;
+      const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+      if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+      const accounts = await accountsService.getAllAccountsForMode(modeSlug, ownerId);
+      res.json({ ok: true, accounts });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg === "db_not_configured") return res.status(503).json({ ok: false, error: "db_not_configured" });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  r.post("/trading-modes/:modeSlug/accounts", requireAccountsDbUser, async (req, res) => {
+    const parsed = createAccountBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "invalid_body" });
+    try {
+      if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+      const ownerId = await resolveAccountsOwnerUserId(req, res);
+      if (!ownerId) return;
+      const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+      if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+      const acc = await accountsService.createAccount(modeSlug, ownerId, {
+        label: parsed.data.label,
+        accountType: parsed.data.accountType,
+        binanceUid: parsed.data.binanceUid,
+        notes: parsed.data.notes,
+      });
+      res.json({ ok: true, account: acc });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg === "paper_accounts_not_user_created") {
+        return res.status(400).json({ ok: false, error: "paper_read_only" });
+      }
+      if (msg === "db_not_configured") return res.status(503).json({ ok: false, error: "db_not_configured" });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  const setActiveAccountBody = z.object({ accountId: z.string().uuid() });
+
+  r.post("/trading-modes/:modeSlug/active-account", requireAccountsDbUser, async (req, res) => {
+    const parsed = setActiveAccountBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "invalid_body" });
+    try {
+      if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+      const ownerId = await resolveAccountsOwnerUserId(req, res);
+      if (!ownerId) return;
+      const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+      if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+      if (modeSlug === "paper") {
+        return res.status(400).json({ ok: false, error: "paper_no_active_account" });
+      }
+      const accessRow = await accountsService.getAccountAccessRow(parsed.data.accountId);
+      if (!accessRow) return res.status(404).json({ ok: false, error: "account_not_found" });
+      const vis = assertAccountVisible(req, accessRow, ownerId);
+      if (vis) return res.status(vis === "not_found" ? 404 : 403).json({ ok: false, error: vis });
+      if (String(accessRow.mode_slug || "") !== modeSlug) {
+        return res.status(400).json({ ok: false, error: "account_mode_mismatch" });
+      }
+      if (accessRow.requires_api === false) {
+        return res.status(400).json({ ok: false, error: "account_does_not_use_api_keys" });
+      }
+      const merged = await usersService.mergeUiPrefsForUser(ownerId, {
+        activeAccountByMode: { [modeSlug]: parsed.data.accountId },
+      });
+      // Rebuild the engine only when the account actually changes — this swaps in the new credentials
+      // without destroying a running engine unnecessarily on repeated auto-selects of the same account.
+      const prevActiveAccount = appState.getActiveAccount?.(modeSlug) ?? null;
+      const accountChanged = prevActiveAccount !== parsed.data.accountId;
+      appState.setActiveAccount(modeSlug, parsed.data.accountId, { rebuildEngine: accountChanged });
+      const snap =
+        merged && typeof merged === "object" && merged.activeAccountByMode && typeof merged.activeAccountByMode === "object"
+          ? merged.activeAccountByMode
+          : appState.getActiveAccountByModeSnapshot();
+      res.json({ ok: true, activeAccountByMode: snap });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg === "db_not_configured") return res.status(503).json({ ok: false, error: "db_not_configured" });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  r.patch("/accounts/:accountId", requireAccountsDbUser, async (req, res) => {
+    const accountId = String(req.params.accountId || "");
+    if (!accountUuid.safeParse(accountId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_account_id" });
+    }
+    const parsed = patchAccountBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "invalid_body" });
+    try {
+      if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+      const ownerId = await resolveAccountsOwnerUserId(req, res);
+      if (!ownerId) return;
+      const accessRow = await accountsService.getAccountAccessRow(accountId);
+      if (!accessRow) return res.status(404).json({ ok: false, error: "account_not_found" });
+      const vis = assertAccountVisible(req, accessRow, ownerId);
+      if (vis) return res.status(403).json({ ok: false, error: "forbidden" });
+      const mut = assertAccountMutable(req, accessRow, ownerId);
+      if (mut) {
+        const code = mut === "system_readonly" ? "system_readonly" : "forbidden";
+        return res.status(mut === "system_readonly" ? 400 : 403).json({ ok: false, error: code });
+      }
+      const acc = await accountsService.updateAccount(accountId, parsed.data);
+      res.json({ ok: true, account: acc });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg === "db_not_configured") return res.status(503).json({ ok: false, error: "db_not_configured" });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  r.delete("/accounts/:accountId", requireAccountsDbUser, async (req, res) => {
+    const accountId = String(req.params.accountId || "");
+    if (!accountUuid.safeParse(accountId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_account_id" });
+    }
+    try {
+      if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+      const ownerId = await resolveAccountsOwnerUserId(req, res);
+      if (!ownerId) return;
+      const accessRow = await accountsService.getAccountAccessRow(accountId);
+      if (!accessRow) return res.status(404).json({ ok: false, error: "account_not_found" });
+      const vis = assertAccountVisible(req, accessRow, ownerId);
+      if (vis) return res.status(403).json({ ok: false, error: "forbidden" });
+      const mut = assertAccountMutable(req, accessRow, ownerId);
+      if (mut) {
+        const code = mut === "system_readonly" ? "system_readonly" : "forbidden";
+        return res.status(mut === "system_readonly" ? 400 : 403).json({ ok: false, error: code });
+      }
+      const out = await accountsService.deactivateAccount(accountId);
+      res.json({ ok: true, ...out });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg === "db_not_configured") return res.status(503).json({ ok: false, error: "db_not_configured" });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  r.get("/accounts/:accountId/wallet/history", requireAccountsDbUser, async (req, res) => {
+    const accountId = String(req.params.accountId || "");
+    if (!accountUuid.safeParse(accountId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_account_id" });
+    }
+    try {
+      if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+      const ownerId = await resolveAccountsOwnerUserId(req, res);
+      if (!ownerId) return;
+      const accessRow = await accountsService.getAccountAccessRow(accountId);
+      if (!accessRow) return res.status(404).json({ ok: false, error: "account_not_found" });
+      const vis = assertAccountVisible(req, accessRow, ownerId);
+      if (vis) return res.status(vis === "not_found" ? 404 : 403).json({ ok: false, error: vis });
+      const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 50));
+      const rows = await getSnapshotHistory(accountId, limit);
+      res.json({ ok: true, rows });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg === "db_not_configured") return res.status(503).json({ ok: false, error: "db_not_configured" });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  r.get("/accounts/:accountId/credentials", requireAccountsDbUser, async (req, res) => {
+    const accountId = String(req.params.accountId || "");
+    if (!accountUuid.safeParse(accountId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_account_id" });
+    }
+    try {
+      if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+      const ownerId = await resolveAccountsOwnerUserId(req, res);
+      if (!ownerId) return;
+      const accessRow = await accountsService.getAccountAccessRow(accountId);
+      if (!accessRow) return res.status(404).json({ ok: false, error: "account_not_found" });
+      const vis = assertAccountVisible(req, accessRow, ownerId);
+      if (vis) return res.status(403).json({ ok: false, error: "forbidden" });
+      if (accessRow.requires_api === false) {
+        return res.json({ ok: true, meta: null });
+      }
+      const row = await credentialsService.getCredentials(accountId);
+      if (!row) return res.json({ ok: true, meta: null });
+      res.json({
+        ok: true,
+        meta: {
+          id: row.id,
+          apiKey: accountsService.maskApiKey(String(row.api_key || "")),
+          isActive: row.is_active,
+          lastVerifiedAt: row.last_verified_at ? new Date(row.last_verified_at).toISOString() : null,
+          permissions: row.permissions != null && typeof row.permissions === "object" ? row.permissions : null,
+        },
+      });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg === "db_not_configured") return res.status(503).json({ ok: false, error: "db_not_configured" });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  r.post("/accounts/:accountId/credentials", requireAccountsDbUser, async (req, res) => {
+    const accountId = String(req.params.accountId || "");
+    if (!accountUuid.safeParse(accountId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_account_id" });
+    }
+    const parsed = credentialsBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "invalid_body" });
+    try {
+      if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+      const ownerId = await resolveAccountsOwnerUserId(req, res);
+      if (!ownerId) return;
+      const accessRow = await accountsService.getAccountAccessRow(accountId);
+      if (!accessRow) return res.status(404).json({ ok: false, error: "account_not_found" });
+      const vis = assertAccountVisible(req, accessRow, ownerId);
+      if (vis) return res.status(403).json({ ok: false, error: "forbidden" });
+      const mut = assertAccountMutable(req, accessRow, ownerId);
+      if (mut) {
+        const code = mut === "system_readonly" ? "system_readonly" : "forbidden";
+        return res.status(mut === "system_readonly" ? 400 : 403).json({ ok: false, error: code });
+      }
+      if (accessRow.requires_api === false) {
+        return res.status(400).json({ ok: false, error: "credentials_not_applicable" });
+      }
+      const row = await credentialsService.addCredentials(accountId, parsed.data.apiKey, parsed.data.secret);
+      res.json({
+        ok: true,
+        credential: {
+          id: row.id,
+          account_id: row.account_id,
+          api_key: accountsService.maskApiKey(String(row.api_key || "")),
+          encryption_ver: row.encryption_ver,
+          permissions: row.permissions ?? null,
+          last_verified_at: row.last_verified_at ?? null,
+          is_active: row.is_active,
+          created_at: row.created_at,
+        },
+      });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg.includes("API_CREDENTIALS_ENCRYPTION_KEY")) {
+        return res.status(503).json({ ok: false, error: "encryption_not_configured" });
+      }
+      if (msg === "db_not_configured") return res.status(503).json({ ok: false, error: "db_not_configured" });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  r.delete("/accounts/:accountId/credentials", requireAccountsDbUser, async (req, res) => {
+    const accountId = String(req.params.accountId || "");
+    if (!accountUuid.safeParse(accountId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_account_id" });
+    }
+    try {
+      if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+      const ownerId = await resolveAccountsOwnerUserId(req, res);
+      if (!ownerId) return;
+      const accessRow = await accountsService.getAccountAccessRow(accountId);
+      if (!accessRow) return res.status(404).json({ ok: false, error: "account_not_found" });
+      const vis = assertAccountVisible(req, accessRow, ownerId);
+      if (vis) return res.status(403).json({ ok: false, error: "forbidden" });
+      const mut = assertAccountMutable(req, accessRow, ownerId);
+      if (mut) {
+        const code = mut === "system_readonly" ? "system_readonly" : "forbidden";
+        return res.status(mut === "system_readonly" ? 400 : 403).json({ ok: false, error: code });
+      }
+      if (accessRow.requires_api === false) {
+        return res.status(400).json({ ok: false, error: "credentials_not_applicable" });
+      }
+      const out = await credentialsService.revokeCredentials(accountId);
+      res.json({ ok: true, ...out });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg === "db_not_configured") return res.status(503).json({ ok: false, error: "db_not_configured" });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  r.get("/trading-modes/:modeSlug/strategies", requireDbUserSession, async (req, res) => {
+    const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+    if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const includeArchived = String(req.query?.includeArchived || "") === "1";
+    try {
+      const uid = effectiveSessionUserId(req);
+      let strategies = await strategyService.listStrategiesWithLatest(uid, {
+        modeSlug,
+        includeArchived,
+      });
+      if (!strategies.length) {
+        const fileRaw = readBotTradingConfig(modeSlug);
+        const configRaw =
+          fileRaw && typeof fileRaw === "object"
+            ? fileRaw
+            : { v: 1, bot: {}, tradingFormDefaults: { amountUsdStr: "", slPctStr: "", tpPctStr: "" } };
+        const def = await strategyService.createStrategy(
+          uid,
+          modeSlug,
+          "Default Strategy",
+          "Default starter strategy. Use Save As New to branch.",
+          ["default-strategy", "auto-migrated"],
+        );
+        if (def?.id) {
+          await strategyService.createVersion(def.id, uid, configRaw, "v1 — starter", null);
+          strategies = await strategyService.listStrategiesWithLatest(uid, {
+            modeSlug,
+            includeArchived,
+          });
+        }
+      }
+      res.json({ ok: true, strategies });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.post("/trading-modes/:modeSlug/strategies", requireDbUserSession, async (req, res) => {
+    const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+    if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const bodySchema = z.object({
+      name: z.string().min(1).max(200),
+      description: z.string().max(4000).optional().nullable(),
+      tags: z.array(z.string().max(64)).max(48).optional(),
+    });
+    const parsed = bodySchema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const fileRaw = readBotTradingConfig(modeSlug);
+      const configRaw =
+        fileRaw && typeof fileRaw === "object"
+          ? fileRaw
+          : { v: 1, bot: {}, tradingFormDefaults: { amountUsdStr: "", slPctStr: "", tpPctStr: "" } };
+      const strategy = await strategyService.createStrategy(
+        effectiveSessionUserId(req),
+        modeSlug,
+        parsed.data.name,
+        parsed.data.description ?? null,
+        parsed.data.tags ?? [],
+      );
+      if (!strategy) {
+        return res.status(500).json({ ok: false, error: "create_strategy_failed" });
+      }
+      const version = await strategyService.createVersion(
+        strategy.id,
+        effectiveSessionUserId(req),
+        configRaw,
+        "v1 — cloned from current",
+        null,
+      );
+      res.json({ ok: true, strategy, version });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/trading-modes/:modeSlug/active-strategy", requireDbUserSession, async (req, res) => {
+    const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+    if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+    const versionId = appState.getActiveStrategyVersion?.(modeSlug) ?? null;
+    res.json({ ok: true, modeSlug, versionId });
+  });
+
+  r.post("/trading-modes/:modeSlug/active-strategy", requireDbUserSession, async (req, res) => {
+    const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+    if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const bodySchema = z.object({ versionId: z.string().uuid() });
+    const parsed = bodySchema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const st = await strategyService.getStrategyByVersionId(parsed.data.versionId);
+      if (!st || st.userId !== effectiveSessionUserId(req)) {
+        return res.status(404).json({ ok: false, error: "version_not_found" });
+      }
+      appState.setActiveStrategyVersion(modeSlug, parsed.data.versionId);
+      await usersService.mergeUiPrefsForUser(effectiveSessionUserId(req), {
+        activeStrategyVersionByMode: { [modeSlug]: parsed.data.versionId },
+      });
+      res.json({ ok: true, modeSlug, versionId: parsed.data.versionId });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.post("/trading-modes/:modeSlug/strategy-config/save", requireDbUserSession, async (req, res) => {
+    const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+    if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const bodySchema = z.object({
+      action: z.enum(["save", "save_as_new"]),
+      name: z.string().min(1).max(200).optional(),
+      description: z.string().max(4000).optional().nullable(),
+      tags: z.array(z.string().max(64)).max(48).optional(),
+      label: z.string().max(200).optional().nullable(),
+    });
+    const parsed = bodySchema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const uid = effectiveSessionUserId(req);
+      // Mode-level active strategy may be unset when the user only selects an instance
+      // (instance tab drives engine binding). Fall back to the instance's bound version.
+      let activeVid = appState.getActiveStrategyVersion?.(modeSlug) ?? null;
+      if (!activeVid) {
+        const iid = appState.getActiveInstance?.(modeSlug) ?? null;
+        if (iid) {
+          try {
+            const bind = await instanceService.getInstanceEngineBinding(String(iid));
+            if (bind && !bind.isDeleted && String(bind.accountModeSlug || "") === String(modeSlug)) {
+              activeVid = bind.strategyVersionId ?? null;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      if (!activeVid) return res.status(400).json({ ok: false, error: "no_active_strategy_version" });
+      const st = await strategyService.getStrategyByVersionId(activeVid);
+      if (!st || st.userId !== uid) return res.status(404).json({ ok: false, error: "active_strategy_not_found" });
+      const row = await getEngineForBotRequest(req);
+      const payload = row?.bot?.getTradingConfigPersistPayload?.();
+      if (!payload || typeof payload !== "object") {
+        return res.status(500).json({ ok: false, error: "config_snapshot_unavailable" });
+      }
+      const label = parsed.data.label != null ? String(parsed.data.label) : "Saved from config";
+
+      // Strategy version stores SIGNAL-BRAIN only (createVersion strips inst_* fields
+      // from cfg_raw automatically). Instance-owned operational fields are routed to
+      // the active instance below so a single "Save" persists both sides correctly.
+      const instanceOpCols = (() => {
+        const inst = extractInstanceConfig(payload);
+        // Drop capital fields here — they are managed via capital_allotments + the
+        // dedicated allotment endpoint. The non-capital inst_* fields (symbol,
+        // timeframe, market mode, universe, risk) are safe to mirror onto the row.
+        const { inst_capital_mode: _a, inst_capital_usdt: _b, inst_capital_pct: _c, ...rest } = inst;
+        return rest;
+      })();
+      const activeInstanceId = appState.getActiveInstance?.(modeSlug) ?? null;
+      const persistInstanceOverrides = async () => {
+        if (!activeInstanceId) return;
+        try {
+          await instanceService.updateInstanceOperationalConfig(
+            String(activeInstanceId),
+            uid,
+            instanceOpCols,
+          );
+        } catch (e) {
+          // Non-fatal — the strategy save itself succeeded.
+          // eslint-disable-next-line no-console
+          console.warn("instance_operational_config_persist_failed", String(e?.message || e));
+        }
+      };
+
+      if (parsed.data.action === "save") {
+        const nv = await strategyService.createVersion(st.id, uid, payload, label, activeVid);
+        appState.setActiveStrategyVersion(modeSlug, nv.id, { rebuildEngine: false });
+        await usersService.mergeUiPrefsForUser(uid, {
+          activeStrategyVersionByMode: { [modeSlug]: nv.id },
+        });
+        if (activeInstanceId) {
+          try {
+            await instanceService.updateInstanceStrategyVersion(String(activeInstanceId), uid, String(nv.id));
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn("instance_strategy_version_update_failed", String(e?.message || e));
+          }
+        }
+        await persistInstanceOverrides();
+        return res.json({ ok: true, action: "save", strategy: st, version: nv });
+      }
+      const name = String(parsed.data.name || "").trim() || `${st.name} copy`;
+      const newStrategy = await strategyService.createStrategy(
+        uid,
+        modeSlug,
+        name,
+        parsed.data.description ?? st.description ?? null,
+        Array.isArray(parsed.data.tags) ? parsed.data.tags : st.tags ?? [],
+      );
+      if (!newStrategy) return res.status(500).json({ ok: false, error: "create_strategy_failed" });
+      const nv = await strategyService.createVersion(newStrategy.id, uid, payload, label, activeVid);
+      appState.setActiveStrategyVersion(modeSlug, nv.id, { rebuildEngine: false });
+      await usersService.mergeUiPrefsForUser(uid, {
+        activeStrategyVersionByMode: { [modeSlug]: nv.id },
+      });
+      if (activeInstanceId) {
+        try {
+          await instanceService.updateInstanceStrategyVersion(String(activeInstanceId), uid, String(nv.id));
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn("instance_strategy_version_update_failed", String(e?.message || e));
+        }
+      }
+      await persistInstanceOverrides();
+      return res.json({ ok: true, action: "save_as_new", strategy: newStrategy, version: nv });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  /** Operational overrides accepted at instance creation / update. All optional;
+   *  any field omitted falls back to the strategy version's stored default. */
+  const operationalOverridesShape = z
+    .object({
+      symbol: z.string().min(1).max(64).nullable(),
+      timeframe: z.string().min(1).max(8).nullable(),
+      symbolMode: z.string().min(1).max(32).nullable(),
+      marketMode: z.string().min(1).max(32).nullable(),
+      universe: z.record(z.unknown()).nullable(),
+      riskPerTrade: z.number().nullable(),
+      riskUnit: z.string().min(1).max(8).nullable(),
+      maxDailyLoss: z.number().nullable(),
+      maxDailyLossUnit: z.string().min(1).max(8).nullable(),
+      compoundPnl: z.boolean().nullable(),
+    })
+    .partial();
+
+  /** UI-shape → service-shape (`inst_*` keys) */
+  function operationalToInstColumns(op) {
+    if (!op || typeof op !== "object") return {};
+    const out = {};
+    if ("symbol" in op) out.inst_symbol = op.symbol;
+    if ("timeframe" in op) out.inst_timeframe = op.timeframe;
+    if ("symbolMode" in op) out.inst_symbol_mode = op.symbolMode;
+    if ("marketMode" in op) out.inst_market_mode = op.marketMode;
+    if ("universe" in op) out.inst_universe = op.universe;
+    if ("riskPerTrade" in op) out.inst_risk_per_trade = op.riskPerTrade;
+    if ("riskUnit" in op) out.inst_risk_unit = op.riskUnit;
+    if ("maxDailyLoss" in op) out.inst_max_daily_loss = op.maxDailyLoss;
+    if ("maxDailyLossUnit" in op) out.inst_max_daily_loss_unit = op.maxDailyLossUnit;
+    if ("compoundPnl" in op) out.inst_compound_pnl = op.compoundPnl;
+    return out;
+  }
+
+  const createInstanceBody = z
+    .object({
+      strategyVersionId: z.string().uuid(),
+      label: z.string().min(1).max(200),
+      capitalMode: z.enum(["FIXED", "PCT"]),
+      capitalUsdt: z.number().nonnegative().nullable().optional(),
+      capitalPct: z.number().min(0).max(100).nullable().optional(),
+      operational: operationalOverridesShape.optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.capitalMode === "FIXED") {
+        const v = data.capitalUsdt;
+        if (v == null || !Number.isFinite(Number(v)) || Number(v) <= 0) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "capitalUsdt_required", path: ["capitalUsdt"] });
+        }
+      } else {
+        const p = data.capitalPct;
+        if (p == null || !Number.isFinite(Number(p)) || Number(p) <= 0) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "capitalPct_required", path: ["capitalPct"] });
+        }
+      }
+    });
+
+  r.get("/trading-modes/:modeSlug/instances", requireDbUserSession, async (req, res) => {
+    const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+    if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      const rows = await instanceService.listInstancesForMode(effectiveSessionUserId(req), modeSlug);
+      res.json({ ok: true, modeSlug, instances: rows });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/trading-modes/:modeSlug/allotment-headroom", requireDbUserSession, async (req, res) => {
+    const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+    if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      let accountId;
+      /** @type {string | null} */
+      let snapshotWarmupErr = null;
+      if (modeSlug === "paper") {
+        accountId = await getPaperSystemAccountId();
+        if (!accountId) return res.status(503).json({ ok: false, error: "paper_account_missing" });
+      } else {
+        accountId = appState.getActiveAccount(modeSlug);
+        if (!accountId) {
+          return res.status(400).json({ ok: false, error: "no_account_selected", message: "Select an account for this mode" });
+        }
+      }
+      // New account/key wiring path: if snapshot is missing, fetch account immediately and persist one.
+      // This avoids a UX dead-end ("No wallet snapshot yet") before the periodic poller/WS writes first row.
+      const latest = await getLatestSnapshot(String(accountId));
+      if (!latest) {
+        try {
+          const tm = normalizeTradingMode(persistenceSlugToTradingMode(modeSlug));
+          await appState.ensureEngine(tm);
+          const row = appState.getEngine(tm);
+          const ex = row?.exchange;
+          if (ex && typeof ex.getAccount === "function") {
+            const account = await ex.getAccount().catch(() => null);
+            const positions = typeof ex?.getPositions === "function" ? await ex.getPositions().catch(() => []) : [];
+            if (account != null) {
+              await writeSnapshot(String(accountId), "scheduled", account, Array.isArray(positions) ? positions : []);
+            }
+          }
+        } catch (e) {
+          snapshotWarmupErr = String(e?.message || e);
+        }
+      }
+      const afterWarmup = latest ? latest : await getLatestSnapshot(String(accountId));
+      if (!afterWarmup && snapshotWarmupErr) {
+        return res.status(502).json({
+          ok: false,
+          error: "account_fetch_failed",
+          message: snapshotWarmupErr,
+        });
+      }
+      const headroom = await getAccountAllotmentHeadroom(String(accountId));
+      res.json({ ok: true, modeSlug, accountId: String(accountId), headroom });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.post("/trading-modes/:modeSlug/instances", requireDbUserSession, async (req, res) => {
+    const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+    if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const parsed = createInstanceBody.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      let accountId;
+      if (modeSlug === "paper") {
+        accountId = await getPaperSystemAccountId();
+        if (!accountId) return res.status(503).json({ ok: false, error: "paper_account_missing" });
+      } else {
+        accountId = appState.getActiveAccount(modeSlug);
+        if (!accountId) {
+          return res.status(400).json({
+            ok: false,
+            error: "no_account_selected",
+            message: "Select an account before creating an instance in this mode",
+          });
+        }
+      }
+      const inst = await instanceService.createInstance(
+        effectiveSessionUserId(req),
+        modeSlug,
+        String(accountId),
+        parsed.data.strategyVersionId,
+        parsed.data.label,
+        parsed.data.capitalMode,
+        parsed.data.capitalUsdt ?? null,
+        parsed.data.capitalPct ?? null,
+        operationalToInstColumns(parsed.data.operational ?? {}),
+      );
+      res.json({ ok: true, instance: inst });
+    } catch (e) {
+      if (e instanceof instanceService.ModesMismatchError) {
+        return res.status(400).json({ ok: false, error: e.code, message: e.message });
+      }
+      if (e instanceof InsufficientCapitalError) {
+        return res.status(400).json({ ok: false, error: e.code, message: String(e.message || e.code) });
+      }
+      const msg = String(e?.message || e);
+      if (msg === "strategy_version_not_found" || msg === "account_not_found") {
+        return res.status(404).json({ ok: false, error: msg });
+      }
+      if (msg === "account_forbidden") return res.status(403).json({ ok: false, error: msg });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  r.get("/trading-modes/:modeSlug/active-instance", requireDbUserSession, async (req, res) => {
+    const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+    if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+    const instanceId = appState.getActiveInstance?.(modeSlug) ?? null;
+    res.json({ ok: true, modeSlug, instanceId });
+  });
+
+  r.post("/trading-modes/:modeSlug/active-instance", requireDbUserSession, async (req, res) => {
+    const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
+    if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const bodySchema = z.object({ instanceId: z.string().uuid().nullable() });
+    const parsed = bodySchema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    const instanceId = parsed.data.instanceId;
+    try {
+      // Tab selection should not stop/recreate the running mode engine.
+      appState.setActiveInstance(modeSlug, instanceId, { rebuildEngine: false });
+      if (instanceId) {
+        // Validate ownership/mode only; selecting an instance must not mutate mode-level
+        // account/strategy bindings (that can silently swap API credentials).
+        await instanceService.assertInstanceMatchesMode(String(instanceId), effectiveSessionUserId(req), modeSlug);
+        await usersService.mergeUiPrefsForUser(effectiveSessionUserId(req), {
+          activeInstanceByMode: { [modeSlug]: instanceId },
+        });
+      } else {
+        await usersService.mergeUiPrefsForUser(effectiveSessionUserId(req), {
+          activeInstanceByMode: { [modeSlug]: null },
+        });
+      }
+      res.json({
+        ok: true,
+        modeSlug,
+        instanceId,
+        activeAccountByMode: appState.getActiveAccountByModeSnapshot(),
+        activeStrategyVersionByMode: appState.getActiveStrategyVersionByModeSnapshot(),
+      });
+    } catch (e) {
+      if (e instanceof instanceService.InstanceNotFoundError) {
+        return res.status(404).json({ ok: false, error: e.code });
+      }
+      const msg = String(e?.message || e);
+      if (msg === "instance_mode_mismatch") return res.status(400).json({ ok: false, error: msg });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  r.get("/instances/:instanceId", requireDbUserSession, async (req, res) => {
+    const instanceId = String(req.params.instanceId || "");
+    if (!z.string().uuid().safeParse(instanceId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_instance_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      const inst = await instanceService.getInstanceDetail(instanceId, effectiveSessionUserId(req));
+      if (!inst) return res.status(404).json({ ok: false, error: "instance_not_found" });
+      res.json({ ok: true, instance: inst });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  /**
+   * Patch the operational (instance-side) config — symbol/timeframe/risk/capital/etc.
+   * The signal brain (strategy) is updated via /trading-modes/:mode/strategy-config/save.
+   * Capital allotment values flow through the existing capital-allotment service in
+   * a follow-up endpoint; this PATCH only updates the instance-owned defaults.
+   */
+  r.patch("/instances/:instanceId/operational-config", requireDbUserSession, async (req, res) => {
+    const instanceId = String(req.params.instanceId || "");
+    if (!z.string().uuid().safeParse(instanceId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_instance_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const parsed = operationalOverridesShape.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const cols = operationalToInstColumns(parsed.data);
+      const detail = await instanceService.updateInstanceOperationalConfig(
+        instanceId,
+        effectiveSessionUserId(req),
+        cols,
+      );
+      if (!detail) return res.status(404).json({ ok: false, error: "instance_not_found" });
+      res.json({ ok: true, instance: detail });
+    } catch (e) {
+      if (e instanceof instanceService.InstanceNotFoundError) {
+        return res.status(404).json({ ok: false, error: e.code });
+      }
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.patch("/instances/:instanceId", requireDbUserSession, async (req, res) => {
+    const instanceId = String(req.params.instanceId || "");
+    if (!z.string().uuid().safeParse(instanceId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_instance_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const bodySchema = z.object({ label: z.string().min(1).max(200) });
+    const parsed = bodySchema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const inst = await instanceService.updateInstanceLabel(instanceId, effectiveSessionUserId(req), parsed.data.label);
+      res.json({ ok: true, instance: inst });
+    } catch (e) {
+      if (e instanceof instanceService.InstanceNotFoundError) {
+        return res.status(404).json({ ok: false, error: e.code });
+      }
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.delete("/instances/:instanceId", requireDbUserSession, async (req, res) => {
+    const instanceId = String(req.params.instanceId || "");
+    if (!z.string().uuid().safeParse(instanceId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_instance_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      await instanceService.deleteInstance(instanceId, effectiveSessionUserId(req));
+      for (const slug of ["paper", "demo_api", "testnet", "live"]) {
+        if (appState.getActiveInstance?.(slug) === instanceId) {
+          appState.setActiveInstance(slug, null, { rebuildEngine: false });
+          await usersService.mergeUiPrefsForUser(effectiveSessionUserId(req), { activeInstanceByMode: { [slug]: null } });
+        }
+      }
+      res.json({ ok: true });
+    } catch (e) {
+      if (e instanceof instanceService.InstanceNotFoundError) {
+        return res.status(404).json({ ok: false, error: e.code });
+      }
+      if (e instanceof instanceService.InstanceNotStoppedError) {
+        return res.status(400).json({ ok: false, error: e.code, message: "Stop the bot before deleting" });
+      }
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/instances/:instanceId/status-log", requireDbUserSession, async (req, res) => {
+    const instanceId = String(req.params.instanceId || "");
+    if (!z.string().uuid().safeParse(instanceId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_instance_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const lim = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    try {
+      const log = await instanceService.getStatusLog(instanceId, effectiveSessionUserId(req), lim);
+      res.json({ ok: true, entries: log });
+    } catch (e) {
+      if (e instanceof instanceService.InstanceNotFoundError) {
+        return res.status(404).json({ ok: false, error: e.code });
+      }
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/instances/:instanceId/trades", requireDbUserSession, async (req, res) => {
+    const instanceId = String(req.params.instanceId || "");
+    if (!z.string().uuid().safeParse(instanceId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_instance_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const offset = Math.max(0, Math.floor(Number(req.query.offset) || 0));
+    const status = req.query.status != null && String(req.query.status).trim() ? String(req.query.status).trim() : undefined;
+    try {
+      await instanceService.assertInstanceOwned(instanceId, effectiveSessionUserId(req));
+      const trades = await tradeService.getTradesForInstance(instanceId, { limit, offset, status });
+      res.json({ ok: true, trades, limit, offset });
+    } catch (e) {
+      if (e instanceof instanceService.InstanceNotFoundError) {
+        return res.status(404).json({ ok: false, error: e.code });
+      }
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/instances/:instanceId/signals", requireDbUserSession, async (req, res) => {
+    const instanceId = String(req.params.instanceId || "");
+    if (!z.string().uuid().safeParse(instanceId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_instance_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const we = req.query.wasExecuted;
+    const wasExecuted = we === "true" ? true : we === "false" ? false : undefined;
+    try {
+      await instanceService.assertInstanceOwned(instanceId, effectiveSessionUserId(req));
+      const signals = await tradeService.getSignalsForInstance(instanceId, { limit, wasExecuted });
+      res.json({ ok: true, signals, limit });
+    } catch (e) {
+      if (e instanceof instanceService.InstanceNotFoundError) {
+        return res.status(404).json({ ok: false, error: e.code });
+      }
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/trades/:tradeId", requireDbUserSession, async (req, res) => {
+    const tradeId = String(req.params.tradeId || "");
+    if (!z.string().uuid().safeParse(tradeId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_trade_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      const row = await tradeService.getTradeById(tradeId);
+      if (!row) return res.status(404).json({ ok: false, error: "trade_not_found" });
+      await instanceService.assertInstanceOwned(String(row.instanceId), effectiveSessionUserId(req));
+      res.json({ ok: true, trade: row });
+    } catch (e) {
+      if (e instanceof instanceService.InstanceNotFoundError) {
+        return res.status(404).json({ ok: false, error: e.code });
+      }
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.post("/instances/:instanceId/clear-error", requireDbUserSession, async (req, res) => {
+    const instanceId = String(req.params.instanceId || "");
+    if (!z.string().uuid().safeParse(instanceId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_instance_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const uid = effectiveSessionUserId(req);
+    try {
+      const preview = await instanceService.getInstanceDetail(instanceId, uid);
+      if (!preview) {
+        return res.status(404).json({ ok: false, error: "instance_not_found" });
+      }
+      if (String(preview.status || "").toLowerCase() !== "error") {
+        return res.status(400).json({ ok: false, error: "not_in_error_state" });
+      }
+      const slug = preview.accountModeSlug != null ? String(preview.accountModeSlug).toLowerCase() : "";
+      if (!slug) {
+        return res.status(400).json({ ok: false, error: "instance_mode_unknown" });
+      }
+      const tm = persistenceSlugToTradingMode(slug);
+      await appState.ensureEngine(tm);
+      const eng = appState.getEngine(tm);
+      if (eng?.bot?.getPublicState?.()?.running) {
+        return res.status(400).json({ ok: false, error: "bot_still_running" });
+      }
+      const inst = await instanceService.clearInstanceError(instanceId, uid);
+      await broadcastInstanceStatusFromDetail(instanceId, uid, {
+        reason: "Error cleared by user",
+        triggeredBy: "user",
+      });
+      res.json({ ok: true, instance: inst });
+    } catch (e) {
+      if (e instanceof instanceService.InstanceNotFoundError) {
+        return res.status(404).json({ ok: false, error: e.code });
+      }
+      const msg = String(e?.message || e);
+      if (msg === "not_in_error_state") return res.status(400).json({ ok: false, error: msg });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  r.post("/instances/:instanceId/pause", requireDbUserSession, async (req, res) => {
+    const instanceId = String(req.params.instanceId || "");
+    if (!z.string().uuid().safeParse(instanceId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_instance_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const uid = effectiveSessionUserId(req);
+    try {
+      const inst0 = await instanceService.getInstanceDetail(instanceId, uid);
+      if (!inst0) return res.status(404).json({ ok: false, error: "instance_not_found" });
+      const slug = inst0.accountModeSlug != null ? String(inst0.accountModeSlug).toLowerCase() : "";
+      if (!slug || appState.getActiveInstance?.(slug) !== instanceId) {
+        return res.status(400).json({ ok: false, error: "instance_not_active_for_mode" });
+      }
+      const tm = persistenceSlugToTradingMode(slug);
+      await appState.ensureEngine(tm);
+      const row = appState.getEngine(tm);
+      const pub = row?.bot?.getPublicState?.();
+      if (!pub?.running) {
+        return res.status(400).json({ ok: false, error: "bot_not_running" });
+      }
+      row.bot.setPaused?.(true);
+      await instanceService.updateInstanceStatus(instanceId, "paused", "User paused", "user", null);
+      await broadcastInstanceStatusFromDetail(instanceId, uid, { reason: "User paused", triggeredBy: "user" });
+      const inst = await instanceService.getInstanceDetail(instanceId, uid);
+      res.json({ ok: true, instance: inst, bot: row.bot.getPublicState?.() });
+    } catch (e) {
+      if (e instanceof instanceService.InstanceNotFoundError) {
+        return res.status(404).json({ ok: false, error: e.code });
+      }
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.post("/instances/:instanceId/resume", requireDbUserSession, async (req, res) => {
+    const instanceId = String(req.params.instanceId || "");
+    if (!z.string().uuid().safeParse(instanceId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_instance_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const uid = effectiveSessionUserId(req);
+    try {
+      const inst0 = await instanceService.getInstanceDetail(instanceId, uid);
+      if (!inst0) return res.status(404).json({ ok: false, error: "instance_not_found" });
+      if (String(inst0.status || "").toLowerCase() !== "paused") {
+        return res.status(400).json({ ok: false, error: "instance_not_paused" });
+      }
+      const slug = inst0.accountModeSlug != null ? String(inst0.accountModeSlug).toLowerCase() : "";
+      if (!slug || appState.getActiveInstance?.(slug) !== instanceId) {
+        return res.status(400).json({ ok: false, error: "instance_not_active_for_mode" });
+      }
+      const tm = persistenceSlugToTradingMode(slug);
+      await appState.ensureEngine(tm);
+      const row = appState.getEngine(tm);
+      const pub = row?.bot?.getPublicState?.();
+      if (!pub?.running) {
+        return res.status(400).json({ ok: false, error: "bot_not_running" });
+      }
+      row.bot.setPaused?.(false);
+      await instanceService.updateInstanceStatus(instanceId, "running", "User resumed", "user", null);
+      await broadcastInstanceStatusFromDetail(instanceId, uid, { reason: "User resumed", triggeredBy: "user" });
+      const inst = await instanceService.getInstanceDetail(instanceId, uid);
+      res.json({ ok: true, instance: inst, bot: row.bot.getPublicState?.() });
+    } catch (e) {
+      if (e instanceof instanceService.InstanceNotFoundError) {
+        return res.status(404).json({ ok: false, error: e.code });
+      }
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/strategies/:strategyId", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    if (!accountUuid.safeParse(strategyId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_strategy_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      const strategy = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
+      if (!strategy) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const latestVersion = await strategyService.getLatestVersion(strategyId);
+      res.json({ ok: true, strategy, latestVersion });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.patch("/strategies/:strategyId", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    if (!accountUuid.safeParse(strategyId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_strategy_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const bodySchema = z.object({
+      name: z.string().min(1).max(200).optional(),
+      description: z.string().max(4000).optional().nullable(),
+      tags: z.array(z.string().max(64)).max(48).optional(),
+    });
+    const parsed = bodySchema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const owned = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
+      if (!owned) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const strategy = await strategyService.updateStrategyMeta(strategyId, parsed.data);
+      res.json({ ok: true, strategy });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.delete("/strategies/:strategyId", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    if (!accountUuid.safeParse(strategyId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_strategy_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      const owned = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
+      if (!owned) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      if (Array.isArray(owned.tags) && owned.tags.includes("default-strategy")) {
+        return res.status(400).json({ ok: false, error: "default_strategy_cannot_be_archived" });
+      }
+      await strategyService.archiveStrategy(strategyId);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/strategies/:strategyId/versions", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    if (!accountUuid.safeParse(strategyId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_strategy_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      const owned = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
+      if (!owned) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const versions = await strategyService.listVersions(strategyId);
+      res.json({ ok: true, versions });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/strategies/:strategyId/versions/:versionId", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    const versionId = String(req.params.versionId || "");
+    if (!accountUuid.safeParse(strategyId).success || !accountUuid.safeParse(versionId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      const owned = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
+      if (!owned) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const version = await strategyService.getVersion(versionId);
+      if (!version || version.strategyId !== strategyId) {
+        return res.status(404).json({ ok: false, error: "version_not_found" });
+      }
+      res.json({ ok: true, version });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.post("/strategies/:strategyId/versions", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    if (!accountUuid.safeParse(strategyId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_strategy_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const bodySchema = z.object({
+      configRaw: z.record(z.unknown()),
+      label: z.string().max(500).optional().nullable(),
+      promotedFrom: z.string().uuid().optional().nullable(),
+    });
+    const parsed = bodySchema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const owned = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
+      if (!owned) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const version = await strategyService.createVersion(
+        strategyId,
+        effectiveSessionUserId(req),
+        parsed.data.configRaw,
+        parsed.data.label ?? null,
+        parsed.data.promotedFrom ?? null,
+      );
+      res.json({ ok: true, version });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.post("/strategies/:strategyId/versions/:versionId/clone", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    const versionId = String(req.params.versionId || "");
+    if (!accountUuid.safeParse(strategyId).success || !accountUuid.safeParse(versionId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const bodySchema = z.object({
+      targetStrategyId: z.string().uuid().optional(),
+      label: z.string().max(500).optional().nullable(),
+    });
+    const parsed = bodySchema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const ownedSrc = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
+      if (!ownedSrc) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const ver = await strategyService.getVersion(versionId);
+      if (!ver || ver.strategyId !== strategyId) {
+        return res.status(404).json({ ok: false, error: "version_not_found" });
+      }
+      const destId = parsed.data.targetStrategyId ?? strategyId;
+      const ownedDest = await strategyService.assertStrategyOwnedByUser(destId, effectiveSessionUserId(req));
+      if (!ownedDest) return res.status(404).json({ ok: false, error: "target_strategy_not_found" });
+      const cfgRaw = ver.cfgRaw && typeof ver.cfgRaw === "object" ? ver.cfgRaw : {};
+      const defaultLabel = `Cloned from v${ver.versionNumber}`;
+      const version = await strategyService.createVersion(
+        destId,
+        effectiveSessionUserId(req),
+        cfgRaw,
+        parsed.data.label != null && String(parsed.data.label).trim() ? String(parsed.data.label).trim() : defaultLabel,
+        versionId,
+      );
+      res.json({ ok: true, version });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.post("/strategies/:strategyId/versions/snapshot", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    if (!accountUuid.safeParse(strategyId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_strategy_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const bodySchema = z.object({ label: z.string().max(500).optional().nullable() });
+    const parsed = bodySchema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const strategy = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
+      if (!strategy) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const viewM = resolveViewTradingMode(req, undefined);
+      const sessionSlug = tradingModeToPersistenceSlug(viewM);
+      if (strategy.modeSlug !== sessionSlug) {
+        return res.status(400).json({ ok: false, error: "strategy_mode_mismatch_session" });
+      }
+      await appState.ensureEngine(viewM);
+      const row = appState.getEngine(viewM);
+      if (!row?.bot?.getTradingConfigPersistPayload) {
+        return res.status(500).json({ ok: false, error: "engine_bot_missing" });
+      }
+      const payload = row.bot.getTradingConfigPersistPayload();
+      const activeVid = appState.getActiveStrategyVersion?.(sessionSlug) ?? null;
+      let promotedFrom = null;
+      if (activeVid) {
+        const av = await strategyService.getVersion(activeVid);
+        if (av && av.strategyId === strategyId) promotedFrom = activeVid;
+      }
+      const version = await strategyService.createVersion(
+        strategyId,
+        effectiveSessionUserId(req),
+        payload,
+        parsed.data.label != null && String(parsed.data.label).trim()
+          ? String(parsed.data.label).trim()
+          : "Manual snapshot",
+        promotedFrom,
+      );
+      res.json({ ok: true, version });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  /** Phase 4 — strategy performance (closed trades aggregated per version). */
+  r.get("/strategies/:strategyId/performance", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    if (!accountUuid.safeParse(strategyId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_strategy_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      const owned = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
+      if (!owned) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const rows = await performanceService.getPerformanceRowsForStrategy(strategyId);
+      res.json({ ok: true, versions: rows });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/strategies/:strategyId/versions/:versionId/performance", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    const versionId = String(req.params.versionId || "");
+    if (!accountUuid.safeParse(strategyId).success || !accountUuid.safeParse(versionId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      const owned = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
+      if (!owned) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const ver = await strategyService.getVersion(versionId);
+      if (!ver || ver.strategyId !== strategyId) {
+        return res.status(404).json({ ok: false, error: "version_not_found" });
+      }
+      const rows = await performanceService.getPerformanceRowsForStrategy(strategyId);
+      const hit = rows.find((x) => x.versionId === versionId);
+      res.json({ ok: true, metrics: hit?.metrics ?? null });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/strategies/:strategyId/versions/:versionId/equity-curve", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    const versionId = String(req.params.versionId || "");
+    if (!accountUuid.safeParse(strategyId).success || !accountUuid.safeParse(versionId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      const owned = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
+      if (!owned) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const ver = await strategyService.getVersion(versionId);
+      if (!ver || ver.strategyId !== strategyId) {
+        return res.status(404).json({ ok: false, error: "version_not_found" });
+      }
+      const curve = await performanceService.getEquityCurve(versionId);
+      res.json({ ok: true, curve });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/trading-modes/:modeSlug/performance/compare", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const slug = normalizeModeSlugParam(req.params.modeSlug);
+    if (!slug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
+    try {
+      const rows = await performanceService.listPerformanceCompareForUserMode(effectiveSessionUserId(req), slug);
+      res.json({ ok: true, rows });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.post("/admin/recalculate-performance", requireAdmin, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      const out = await performanceService.recalculateAllStrategyPerformance();
+      res.json({ ok: true, processed: out.processed, errors: out.errors });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/me/ui-prefs", requireDbUserSession, async (req, res) => {
+    try {
+      const uid = effectiveSessionUserId(req);
+      if (!uid) return res.status(403).json({ ok: false, error: "db_user_required" });
+      const prefs = await usersService.getUiPrefsByUserId(uid);
+      res.json({ ok: true, ui_prefs: prefs });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg === "db_not_configured") return res.status(503).json({ ok: false, error: "db_not_configured" });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  r.patch("/me/ui-prefs", requireDbUserSession, async (req, res) => {
+    const body = req.body;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return res.status(400).json({ ok: false, error: "invalid_body" });
+    }
+    try {
+      const uid = effectiveSessionUserId(req);
+      if (!uid) return res.status(403).json({ ok: false, error: "db_user_required" });
+      const next = await usersService.mergeUiPrefsForUser(uid, body);
+      res.json({ ok: true, ui_prefs: next });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg === "db_not_configured") return res.status(503).json({ ok: false, error: "db_not_configured" });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  // ── Market Intelligence provider APIs (encrypted prefs on first active user; overrides env) ──
+  r.get("/market-intelligence/providers", requireDbUserSession, async (_req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    try {
+      const apis = getResolvedMarketIntelApis();
+      const envPresent = {
+        finnhubApiKey: Boolean(String(process.env.FINNHUB_API_KEY ?? "").trim()),
+        cryptoquantApiKey: Boolean(String(process.env.CRYPTOQUANT_API_KEY ?? "").trim()),
+        whaleAlertApiKey: Boolean(String(process.env.WHALE_ALERT_API_KEY ?? "").trim()),
+        aiBaseUrl: Boolean(String(process.env.AI_BASE_URL ?? "").trim()),
+      };
+      const effectivePresent = {
+        finnhubApiKey: Boolean(apis.finnhubApiKey),
+        cryptoquantApiKey: Boolean(apis.cryptoquantApiKey),
+        whaleAlertApiKey: Boolean(apis.whaleAlertApiKey),
+        aiBaseUrl: Boolean(apis.aiBaseUrl),
+      };
+
+      /** @type {Record<string, string | null>} */
+      const storedPreview = {};
+      let storedBlobPresent = false;
+      const ownerId = await usersService.getFirstActiveUserId();
+      if (ownerId && marketIntelEncryptionKeyConfigured()) {
+        const prefs = await usersService.getUiPrefsByUserId(ownerId);
+        const c = prefs.marketIntelProvidersCipher;
+        if (typeof c === "string" && c.length > 5) {
+          storedBlobPresent = true;
+          try {
+            const o = JSON.parse(decryptSecret(c));
+            for (const k of ["finnhubApiKey", "cryptoquantApiKey", "whaleAlertApiKey", "aiBaseUrl"]) {
+              const v = o[k];
+              storedPreview[k] =
+                typeof v === "string" && v.length > 4 ? `…${v.slice(-4)}` : v ? "••••" : null;
+            }
+          } catch {
+            for (const k of ["finnhubApiKey", "cryptoquantApiKey", "whaleAlertApiKey", "aiBaseUrl"]) {
+              storedPreview[k] = null;
+            }
+          }
+        }
+      }
+
+      res.json({
+        ok: true,
+        encryptionConfigured: marketIntelEncryptionKeyConfigured(),
+        storedBlobPresent,
+        envPresent,
+        effectivePresent,
+        storedPreview,
+        /** Safe to display — resolved AI base URL (env or stored). */
+        effectiveAiBaseUrl: apis.aiBaseUrl || null,
+      });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.put("/market-intelligence/providers", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    if (!marketIntelEncryptionKeyConfigured()) {
+      return res.status(400).json({
+        ok: false,
+        error: "encryption_not_configured",
+        message:
+          "Set API_CREDENTIALS_ENCRYPTION_KEY in the server environment to store provider secrets, or configure providers via backend .env.",
+      });
+    }
+    const parsed = marketIntelProvidersPutBody.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "invalid_body", detail: parsed.error.flatten() });
+    }
+    try {
+      const ownerId = await usersService.getFirstActiveUserId();
+      if (!ownerId) return res.status(503).json({ ok: false, error: "no_active_user" });
+
+      const prefs = await usersService.getUiPrefsByUserId(ownerId);
+      /** @type {Record<string, string>} */
+      let cur = {};
+      const c = prefs.marketIntelProvidersCipher;
+      if (typeof c === "string" && c.length > 5) {
+        try {
+          cur = JSON.parse(decryptSecret(c));
+          if (!cur || typeof cur !== "object" || Array.isArray(cur)) cur = {};
+        } catch {
+          cur = {};
+        }
+      }
+
+      const body = parsed.data;
+      for (const k of ["finnhubApiKey", "cryptoquantApiKey", "whaleAlertApiKey", "aiBaseUrl"]) {
+        if (body[k] !== undefined) {
+          const v = String(body[k] ?? "").trim();
+          if (!v) delete cur[k];
+          else cur[k] = v;
+        }
+      }
+
+      const nextCipher =
+        Object.keys(cur).length > 0 ? encryptSecret(JSON.stringify(cur)) : null;
+      await usersService.mergeUiPrefsForUser(ownerId, {
+        marketIntelProvidersCipher: nextCipher,
+      });
+      await refreshMarketIntelApisFromStore();
+      res.json({ ok: true });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  // ── Market Intelligence ─────────────────────────────────────────────────────
+  r.get('/intelligence/:symbol', async (req, res) => {
+    try {
+      const data = await getLatestIntelligenceApiPayload(req.params.symbol);
+      res.json(data ?? {});
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  r.get('/intelligence/:symbol/liquidations', async (req, res) => {
+    try {
+      const sym = String(req.params.symbol || '').trim().toUpperCase();
+      const data =
+        getLiquidationPayloadForSymbol(sym) ?? {
+          longUsd: 0,
+          shortUsd: 0,
+          totalUsd: 0,
+          count: 0,
+          dominance: 'neutral',
+          intensity: 'low',
+          windowHours: 4,
+          lastUpdated: Date.now(),
+        };
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  r.get('/intelligence/:symbol/history', async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit ?? '100'), 500);
+      const data  = await getIntelligenceHistory(req.params.symbol, limit);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  r.get('/market/events', requireDbUserSession, async (req, res) => {
+    try {
+      if (!getPool()) return res.json({ ok: true, events: [] });
+      const from = String(req.query.from ?? '').trim();
+      const to = String(req.query.to ?? '').trim();
+      const assetsRaw = String(req.query.assets ?? '').trim();
+      const assets = assetsRaw ? assetsRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+      if (!from || !to) return res.status(400).json({ ok: false, error: 'from_and_to_required' });
+      const events = await marketEventsService.listMarketEventsInRange({ fromIso: from, toIso: to, assets });
+      res.json({ ok: true, events });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get('/market/whales', requireDbUserSession, async (req, res) => {
+    try {
+      if (!getPool()) return res.json({ ok: true, alerts: [] });
+      const from = String(req.query.from ?? '').trim();
+      const to = String(req.query.to ?? '').trim();
+      const symbol = req.query.symbol != null ? String(req.query.symbol).trim().toUpperCase() : '';
+      if (!from || !to) return res.status(400).json({ ok: false, error: 'from_and_to_required' });
+      const alerts = await whaleAlertsService.listWhaleAlertsInRange({
+        fromIso: from,
+        toIso: to,
+        symbol: symbol || undefined,
+      });
+      res.json({ ok: true, alerts });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get('/analytics/strategy-edge', requireDbUserSession, async (req, res) => {
+    try {
+      if (!getPool()) return res.status(503).json({ ok: false, error: 'db_not_configured' });
+      const uid = effectiveSessionUserId(req);
+      if (!uid) return res.status(403).json({ ok: false, error: 'db_user_required' });
+      const instanceId = req.query.instanceId != null ? String(req.query.instanceId).trim() : '';
+      const strategyVersionId =
+        req.query.strategyVersionId != null ? String(req.query.strategyVersionId).trim() : '';
+      const windowDays = Math.min(730, Math.max(7, parseInt(String(req.query.windowDays ?? '90'), 10) || 90));
+      if (!instanceId && !strategyVersionId) {
+        return res.status(400).json({ ok: false, error: 'instance_or_version_required' });
+      }
+      if (instanceId) {
+        const inst = await instanceService.getInstanceDetail(instanceId, uid);
+        if (!inst) return res.status(404).json({ ok: false, error: 'instance_not_found' });
+        const metrics = await strategyEdgeService.getStrategyEdgeForInstance(instanceId, windowDays);
+        return res.json({ ok: true, metrics });
+      }
+      const st = await strategyService.getStrategyByVersionId(strategyVersionId);
+      if (!st || String(st.userId || '') !== String(uid)) {
+        return res.status(404).json({ ok: false, error: 'version_not_found' });
+      }
+      const metrics = await strategyEdgeService.getStrategyEdgeForVersion(strategyVersionId, windowDays);
+      return res.json({ ok: true, metrics });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
   });
 
   return r;

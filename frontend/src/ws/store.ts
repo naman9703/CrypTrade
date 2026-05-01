@@ -1,10 +1,19 @@
 import { create } from "zustand";
 import { api } from "../api/client";
+import { tradingModeToApiModeSlug, type ApiTradingModeSlug } from "../lib/tradingModeSlug";
+import type { Account, CreateAccountDto, UpdateAccountDto } from "../types/accounts";
 import {
   botMatchesPersistedPatch,
+  enqueueServerUiPrefsPatch,
   loadTradingUiPrefs,
   mergePersistedBotPatch,
+  tradingUiPersistShowMarketIntelligencePanel,
 } from "../lib/tradingUiPersistence";
+import type { CreateStrategyDto, Strategy, StrategyMetaPatch, StrategyVersion } from "../types/strategy";
+import type { BotInstance, CreateInstanceDto } from "../types/instance";
+import type { Trade } from "../types/trade";
+import type { EquityCurvePoint, PerformanceCompareRow, StrategyPerformance } from "../types/performance";
+import type { IntelligenceData } from "../types/intelligence";
 import { isPlausibleCandleClose, normalizeSym } from "../lib/symbolPriceSanity";
 import { isIncomeLedgerClose, playProfitCloseSound } from "../lib/uiSounds";
 
@@ -65,6 +74,12 @@ type HelloPayload = {
   chart?: ChartSnapshotPayload | null;
   /** Parallel engines: which TRADING_MODE bots are running. */
   runningByMode?: Record<string, boolean>;
+  /** Server: selected DB account UUID per mode slug (Phase 2B). */
+  activeAccountByMode?: Record<string, string | null>;
+  /** Server: active strategy_versions.id per persistence slug (Phase 3B). */
+  activeStrategyVersionByMode?: Record<string, string | null>;
+  /** Server: active bot_instances.id per persistence slug (Phase 3C). */
+  activeInstanceByMode?: Record<string, string | null>;
   /** When UI auth is on: stable key for per-user browser prefs (SHA-256 prefix of email on server). */
   uiUserTag?: string;
   /** True when trading mode is stored per login session (not shared across users). */
@@ -113,11 +128,162 @@ type AppState = {
   logs: Array<{ ts: string } & LogPayload>;
   trades: TradePayload[];
 
+  /** Phase 2A — trading accounts per mode (DB-backed). */
+  accounts: Account[];
+  selectedAccountId: string | null;
+  /** Phase 2B — which account supplies exchange API keys per mode (from server prefs / hello). */
+  activeAccountByMode: Record<ApiTradingModeSlug, string | null>;
+  accountsLoading: boolean;
+  accountsError: string | null;
+
+  /** Phase 3B — versioned strategies (DB user session). */
+  activeStrategyVersionByMode: Record<ApiTradingModeSlug, string | null>;
+  /** Phase 3C — bot instance bound to engine when set. */
+  activeInstanceByMode: Record<ApiTradingModeSlug, string | null>;
+  instancesByMode: Partial<Record<ApiTradingModeSlug, BotInstance[]>>;
+  instancesLoading: boolean;
+  /** Phase 3E — DB-backed trades keyed by `bot_instances.id`. */
+  tradesByInstance: Record<string, Trade[]>;
+  tradesLoadingByInstance: Record<string, boolean>;
+  selectedInstanceId: string | null;
+  strategiesByMode: Partial<Record<ApiTradingModeSlug, Strategy[]>>;
+  versionsByStrategyId: Record<string, StrategyVersion[]>;
+  selectedStrategyId: string | null;
+  strategiesLoading: boolean;
+  strategiesError: string | null;
+  /** Collapsible sidebars; `layout` also mirrored to `users.ui_prefs` when sync allowed. */
+  layout: {
+    accountsSidebarCollapsed: boolean;
+    strategySidebarCollapsed: boolean;
+    instancesPanelCollapsed: boolean;
+  };
+  /** Main view: 'overview' is the default landing (analytics/instances list); 'instance' is the full trading UI for a selected instance. */
+  mainView: "overview" | "instance";
+  /** Market intelligence data keyed by symbol. */
+  intelligence: Record<string, IntelligenceData>;
+  /** When true, Market Intelligence is shown under the chart order book (instance trading UI only). */
+  showMarketIntelligencePanel: boolean;
+  /** Unsaved strategy-config edits (set on bot config change; cleared by explicit save). */
+  strategyConfigDirtyByMode: Record<ApiTradingModeSlug, boolean>;
+
   connect: () => void;
   setBot: (bot: any) => void;
   setChartDisplaySymbol: (sym: string | null) => void;
   pushLog: (p: LogPayload) => void;
+  fetchAccountsForMode: (modeSlug: ApiTradingModeSlug) => Promise<void>;
+  selectAccount: (accountId: string | null) => void;
+  setActiveAccountForMode: (modeSlug: ApiTradingModeSlug, accountId: string) => Promise<void>;
+  createAccount: (modeSlug: ApiTradingModeSlug, data: CreateAccountDto) => Promise<Account>;
+  updateAccount: (accountId: string, patch: UpdateAccountDto) => Promise<Account>;
+  deactivateAccount: (accountId: string) => Promise<void>;
+
+  fetchStrategiesForMode: (modeSlug: ApiTradingModeSlug, opts?: { includeArchived?: boolean }) => Promise<void>;
+  fetchVersionsForStrategy: (strategyId: string) => Promise<void>;
+  selectStrategy: (strategyId: string | null) => void;
+  createStrategyForMode: (modeSlug: ApiTradingModeSlug, dto: CreateStrategyDto) => Promise<{ strategy: Strategy }>;
+  updateStrategyMetaStore: (strategyId: string, patch: StrategyMetaPatch) => Promise<Strategy>;
+  archiveStrategyStore: (strategyId: string) => Promise<void>;
+  saveNewStrategyVersionSnapshot: (strategyId: string, label?: string) => Promise<StrategyVersion>;
+  cloneStrategyVersionStore: (
+    strategyId: string,
+    versionId: string,
+    opts?: { targetStrategyId?: string; label?: string },
+  ) => Promise<StrategyVersion>;
+  setActiveStrategyVersionForMode: (modeSlug: ApiTradingModeSlug, versionId: string) => Promise<void>;
+  fetchInstancesForMode: (modeSlug: ApiTradingModeSlug) => Promise<void>;
+  createInstanceStore: (modeSlug: ApiTradingModeSlug, dto: CreateInstanceDto) => Promise<BotInstance>;
+  deleteInstanceStore: (instanceId: string) => Promise<void>;
+  setActiveTradingInstanceForMode: (modeSlug: ApiTradingModeSlug, instanceId: string | null) => Promise<void>;
+  selectInstance: (instanceId: string | null) => void;
+  /** Returns number of trades returned in this request (0 on error). */
+  fetchTradesForInstance: (instanceId: string, opts?: { limit?: number; append?: boolean }) => Promise<number>;
+  setSidebarCollapsed: (which: "accounts" | "strategy", collapsed: boolean) => void;
+  setInstancesPanelCollapsed: (collapsed: boolean) => void;
+  hydrateLayoutFromServer: (layout: unknown) => void;
+  setMainView: (v: "overview" | "instance") => void;
+  setShowMarketIntelligencePanel: (show: boolean) => void;
+  fetchIntelligence: (symbol: string) => Promise<void>;
+  /** Navigate into the full trading UI for a specific instance. */
+  enterInstance: (instanceId: string) => Promise<void>;
 };
+
+export function parseActiveAccountByModeFromServer(raw: unknown): Record<ApiTradingModeSlug, string | null> {
+  const slugs: ApiTradingModeSlug[] = ["paper", "demo_api", "testnet", "live"];
+  const out: Record<ApiTradingModeSlug, string | null> = {
+    paper: null,
+    demo_api: null,
+    testnet: null,
+    live: null,
+  };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  const o = raw as Record<string, unknown>;
+  for (const k of slugs) {
+    const v = o[k];
+    out[k] = typeof v === "string" && v.length > 0 ? v : null;
+  }
+  return out;
+}
+
+export function parseActiveStrategyVersionByModeFromServer(raw: unknown): Record<ApiTradingModeSlug, string | null> {
+  const slugs: ApiTradingModeSlug[] = ["paper", "demo_api", "testnet", "live"];
+  const out: Record<ApiTradingModeSlug, string | null> = {
+    paper: null,
+    demo_api: null,
+    testnet: null,
+    live: null,
+  };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  const o = raw as Record<string, unknown>;
+  for (const k of slugs) {
+    const v = o[k];
+    out[k] = typeof v === "string" && v.length > 0 ? v : null;
+  }
+  return out;
+}
+
+export function parseActiveInstanceByModeFromServer(raw: unknown): Record<ApiTradingModeSlug, string | null> {
+  const slugs: ApiTradingModeSlug[] = ["paper", "demo_api", "testnet", "live"];
+  const out: Record<ApiTradingModeSlug, string | null> = {
+    paper: null,
+    demo_api: null,
+    testnet: null,
+    live: null,
+  };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  const o = raw as Record<string, unknown>;
+  for (const k of slugs) {
+    const v = o[k];
+    out[k] = typeof v === "string" && v.length > 0 ? v : null;
+  }
+  return out;
+}
+
+function patchInstanceInByMode(
+  byMode: Partial<Record<ApiTradingModeSlug, BotInstance[]>>,
+  instanceId: string,
+  patch: Partial<BotInstance>,
+): Partial<Record<ApiTradingModeSlug, BotInstance[]>> {
+  const next: Partial<Record<ApiTradingModeSlug, BotInstance[]>> = { ...byMode };
+  const slugs: ApiTradingModeSlug[] = ["paper", "demo_api", "testnet", "live"];
+  for (const slug of slugs) {
+    const list = next[slug];
+    if (!list?.length) continue;
+    const idx = list.findIndex((i) => i.id === instanceId);
+    if (idx < 0) continue;
+    const copy = [...list];
+    const prev = copy[idx];
+    const allotIn = patch.allotment;
+    const mergedAllotment =
+      allotIn && prev.allotment
+        ? { ...prev.allotment, ...allotIn }
+        : allotIn !== undefined
+          ? allotIn
+          : prev.allotment;
+    copy[idx] = { ...prev, ...patch, allotment: mergedAllotment };
+    next[slug] = copy;
+  }
+  return next;
+}
 
 function defaultDevWsUrl() {
   if (typeof window === "undefined") return "ws://localhost:5173/ws";
@@ -183,11 +349,41 @@ let wsIntentionalClose = false;
  */
 let pendingMarketBySymbol: Map<string, MarketPayload> | null = null;
 let pendingMarketFlushScheduled = false;
+/** Last-wins coalesce for burst `state` frames (multiplex + tick can emit several/sec — log showed e.g. state:3 + market:7 in one wall second). */
+let pendingWsStatePayload: unknown = undefined;
+let pendingStateFlushScheduled = false;
+/** Last-wins coalesce for burst `depth` frames (same multiplex pattern). */
+let pendingDepthPayload: DepthPayload | null = null;
+let pendingDepthFlushScheduled = false;
+/** Monotonic id for activity log rows so prepending does not shift React keys (avoids list remount flicker). */
+let nextActivityLogLid = 1;
 /** Debounce `POST /api/bot/config` when multi-coin chart tab changes (server multiplex + `market` routing). */
 let chartFocusSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** One-shot: push saved mode + /api/bot/config after load (hello or first HTTP hydrate). */
 let tradingUiSessionRestoreStarted = false;
+
+function scheduleWsStateFlush() {
+  if (pendingStateFlushScheduled) return;
+  pendingStateFlushScheduled = true;
+  queueMicrotask(() => {
+    pendingStateFlushScheduled = false;
+    const p = pendingWsStatePayload;
+    pendingWsStatePayload = undefined;
+    if (p !== undefined) applyWsStateSnapshot(p);
+  });
+}
+
+function scheduleDepthFlush() {
+  if (pendingDepthFlushScheduled) return;
+  pendingDepthFlushScheduled = true;
+  queueMicrotask(() => {
+    pendingDepthFlushScheduled = false;
+    const d = pendingDepthPayload;
+    pendingDepthPayload = null;
+    if (d) useAppStore.setState({ depth: d });
+  });
+}
 
 function scheduleTradingUiSessionRestore(serverMode: string) {
   if (typeof window === "undefined" || tradingUiSessionRestoreStarted) return;
@@ -307,6 +503,67 @@ function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial
   return { market: marketMerged, candles: next };
 }
 
+function mergeHybridAccountSnapshot(prevAccount: unknown, nextAccount: unknown): unknown {
+  if (nextAccount == null) return prevAccount ?? nextAccount;
+  if (!nextAccount || typeof nextAccount !== "object" || Array.isArray(nextAccount)) return nextAccount;
+  const nextObj = nextAccount as Record<string, unknown>;
+  const prevObj =
+    prevAccount && typeof prevAccount === "object" && !Array.isArray(prevAccount)
+      ? (prevAccount as Record<string, unknown>)
+      : null;
+  const nextVenues =
+    nextObj.venues && typeof nextObj.venues === "object" && !Array.isArray(nextObj.venues)
+      ? (nextObj.venues as Record<string, unknown>)
+      : null;
+  const prevVenues =
+    prevObj?.venues && typeof prevObj.venues === "object" && !Array.isArray(prevObj.venues)
+      ? (prevObj.venues as Record<string, unknown>)
+      : null;
+  if (!nextVenues && !prevVenues) return nextObj;
+
+  const mergedVenues = {
+    spot: (nextVenues?.spot ?? prevVenues?.spot ?? null) as unknown,
+    futures: (nextVenues?.futures ?? prevVenues?.futures ?? null) as unknown,
+  };
+  const sEqRaw =
+    mergedVenues.spot && typeof mergedVenues.spot === "object"
+      ? (mergedVenues.spot as Record<string, unknown>).equity
+      : null;
+  const fEqRaw =
+    mergedVenues.futures && typeof mergedVenues.futures === "object"
+      ? (mergedVenues.futures as Record<string, unknown>).equity
+      : null;
+  const sEq = sEqRaw != null && Number.isFinite(Number(sEqRaw)) ? Number(sEqRaw) : null;
+  const fEq = fEqRaw != null && Number.isFinite(Number(fEqRaw)) ? Number(fEqRaw) : null;
+  const nextEqRaw = nextObj.equity;
+  const nextEq = nextEqRaw != null && Number.isFinite(Number(nextEqRaw)) ? Number(nextEqRaw) : null;
+  const mergedByVenue =
+    nextObj.dailyPnlPctByVenue && typeof nextObj.dailyPnlPctByVenue === "object" && !Array.isArray(nextObj.dailyPnlPctByVenue)
+      ? {
+          ...(prevObj?.dailyPnlPctByVenue && typeof prevObj.dailyPnlPctByVenue === "object" && !Array.isArray(prevObj.dailyPnlPctByVenue)
+            ? (prevObj.dailyPnlPctByVenue as Record<string, unknown>)
+            : {}),
+          ...(nextObj.dailyPnlPctByVenue as Record<string, unknown>),
+        }
+      : prevObj?.dailyPnlPctByVenue;
+
+  // futuresAuthError: always explicitly set so null from the server clears any stale warning.
+  // `...nextObj` spreads it when present, but if the key is absent (old server), fall back to prev.
+  const futuresAuthError = Object.prototype.hasOwnProperty.call(nextObj, "futuresAuthError")
+    ? (nextObj.futuresAuthError as string | null | undefined) ?? null
+    : (prevObj?.futuresAuthError as string | null | undefined) ?? null;
+
+  return {
+    ...(prevObj ?? {}),
+    ...nextObj,
+    venues: mergedVenues,
+    ...(mergedByVenue && typeof mergedByVenue === "object" ? { dailyPnlPctByVenue: mergedByVenue } : {}),
+    ...(sEq != null && fEq != null ? { equity: sEq + fEq } : nextEq != null ? { equity: nextEq } : {}),
+    ...(mergedVenues.spot == null || mergedVenues.futures == null ? { accountFetchPartial: true } : {}),
+    futuresAuthError,
+  };
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   ws: { connected: false },
   authUiUserTag: null,
@@ -316,7 +573,36 @@ export const useAppStore = create<AppState>((set, get) => ({
   activityLogBulkGeneration: 0,
   logs: [],
   trades: [],
+  accounts: [],
+  selectedAccountId: null,
+  activeAccountByMode: { paper: null, demo_api: null, testnet: null, live: null },
+  accountsLoading: false,
+  accountsError: null,
+  activeStrategyVersionByMode: { paper: null, demo_api: null, testnet: null, live: null },
+  activeInstanceByMode: { paper: null, demo_api: null, testnet: null, live: null },
+  instancesByMode: {},
+  instancesLoading: false,
+  tradesByInstance: {},
+  tradesLoadingByInstance: {},
+  selectedInstanceId: null,
+  strategiesByMode: {},
+  versionsByStrategyId: {},
+  selectedStrategyId: null,
+  strategiesLoading: false,
+  strategiesError: null,
+  layout: { accountsSidebarCollapsed: false, strategySidebarCollapsed: false, instancesPanelCollapsed: false },
+  mainView: "overview",
+  intelligence: {},
+  showMarketIntelligencePanel: false,
+  performanceByVersion: {},
+  equityCurveByVersion: {},
+  analyticsCompareRows: [],
+  analyticsCompareLoading: false,
+  analyticsSelectedStrategyId: null,
+  analyticsSelectedVersionId: null,
+  analyticsModeSlug: "paper",
   runningByMode: {},
+  strategyConfigDirtyByMode: { paper: false, demo_api: false, testnet: false, live: false },
   account: undefined,
   positions: [],
 
@@ -394,18 +680,17 @@ export const useAppStore = create<AppState>((set, get) => ({
           const chart = p.chart;
           set((s) => {
             const act = Array.isArray(p.activityLog) ? p.activityLog : [];
-            const logsFromServer = act
-              .slice(0, 500)
-              .map((row: unknown) => {
-                const r = row as Record<string, unknown>;
-                const tsIso =
-                  typeof r.ts === "string" && r.ts.length >= 10
-                    ? r.ts
-                    : typeof r.serverTs === "string" && r.serverTs.length >= 10
-                      ? r.serverTs
-                      : new Date().toISOString();
-                return { ...(r as LogPayload), ts: tsIso };
-              });
+            const logsFromServer = act.slice(0, 500).map((row: unknown) => {
+              const r = row as Record<string, unknown>;
+              const tsIso =
+                typeof r.ts === "string" && r.ts.length >= 10
+                  ? r.ts
+                  : typeof r.serverTs === "string" && r.serverTs.length >= 10
+                    ? r.serverTs
+                    : new Date().toISOString();
+              const _lid = nextActivityLogLid++;
+              return { ...(r as LogPayload), ts: tsIso, _lid };
+            });
             const tagNext =
               typeof (p as HelloPayload & { uiUserTag?: string }).uiUserTag === "string" &&
               String((p as HelloPayload & { uiUserTag?: string }).uiUserTag).trim()
@@ -428,9 +713,31 @@ export const useAppStore = create<AppState>((set, get) => ({
                 p.runningByMode != null && typeof p.runningByMode === "object"
                   ? (p.runningByMode as Record<string, boolean>)
                   : s.runningByMode ?? {},
+              activeAccountByMode:
+                p.activeAccountByMode != null && typeof p.activeAccountByMode === "object"
+                  ? parseActiveAccountByModeFromServer(p.activeAccountByMode)
+                  : s.activeAccountByMode,
+              activeStrategyVersionByMode:
+                (p as HelloPayload & { activeStrategyVersionByMode?: unknown }).activeStrategyVersionByMode !=
+                  null &&
+                typeof (p as HelloPayload & { activeStrategyVersionByMode?: unknown }).activeStrategyVersionByMode ===
+                  "object"
+                  ? parseActiveStrategyVersionByModeFromServer(
+                      (p as HelloPayload & { activeStrategyVersionByMode?: unknown }).activeStrategyVersionByMode,
+                    )
+                  : s.activeStrategyVersionByMode,
+              activeInstanceByMode:
+                (p as HelloPayload & { activeInstanceByMode?: unknown }).activeInstanceByMode != null &&
+                typeof (p as HelloPayload & { activeInstanceByMode?: unknown }).activeInstanceByMode === "object"
+                  ? parseActiveInstanceByModeFromServer(
+                      (p as HelloPayload & { activeInstanceByMode?: unknown }).activeInstanceByMode,
+                    )
+                  : s.activeInstanceByMode,
               bot: mergedHelloBot,
               account:
-                (p as any).account !== undefined ? (p as any).account : s.account,
+                (p as any).account !== undefined
+                  ? mergeHybridAccountSnapshot(s.account, (p as any).account)
+                  : s.account,
               positions:
                 (p as any).positions !== undefined ? (p as any).positions : s.positions,
               logs: logsFromServer,
@@ -466,6 +773,46 @@ export const useAppStore = create<AppState>((set, get) => ({
             return base as AppState;
           });
           queueMicrotask(() => scheduleTradingUiSessionRestore(String(p.mode || "")));
+          queueMicrotask(() => {
+            const slug = tradingModeToApiModeSlug(String(p.mode || ""));
+            void useAppStore.getState().fetchAccountsForMode(slug);
+            void useAppStore.getState().fetchStrategiesForMode(slug);
+            void useAppStore.getState().fetchInstancesForMode(slug);
+            // If no active instance for the new mode, reset to overview
+            const activeInst = useAppStore.getState().activeInstanceByMode[slug];
+            if (!activeInst) {
+              useAppStore.getState().setMainView("overview");
+            }
+          });
+          return;
+        }
+        if (type === "instance_status") {
+          const raw = payload as Record<string, unknown>;
+          const instanceId = raw.instanceId != null ? String(raw.instanceId) : "";
+          if (!instanceId) return;
+          const patch: Partial<BotInstance> = {};
+          if (raw.status != null && String(raw.status).trim() !== "") patch.status = String(raw.status);
+          if (raw.errorMessage !== undefined) {
+            patch.errorMessage =
+              raw.errorMessage != null && String(raw.errorMessage).trim() !== ""
+                ? String(raw.errorMessage)
+                : null;
+          }
+          const ru = raw.reservedUsdt;
+          if (ru != null && Number.isFinite(Number(ru))) {
+            patch.allotment = { reservedUsdt: Number(ru) } as BotInstance["allotment"];
+          }
+          const tt = raw.totalTrades;
+          if (tt != null && Number.isFinite(Number(tt))) patch.totalTrades = Math.floor(Number(tt));
+          const tp = raw.totalPnlUsdt;
+          if (tp != null && Number.isFinite(Number(tp))) patch.totalPnlUsdt = Number(tp);
+          if (raw.updatedAt != null && String(raw.updatedAt).trim() !== "") {
+            patch.updatedAt = String(raw.updatedAt);
+          }
+          if (Object.keys(patch).length === 0) return;
+          set((s) => ({
+            instancesByMode: patchInstanceInByMode(s.instancesByMode, instanceId, patch) as typeof s.instancesByMode,
+          }));
           return;
         }
         if (type === "trades_snapshot") {
@@ -486,7 +833,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           return;
         }
         if (type === "state") {
-          applyWsStateSnapshot(payload);
+          pendingWsStatePayload = payload;
+          scheduleWsStateFlush();
           return;
         }
         if (type === "market") {
@@ -507,6 +855,48 @@ export const useAppStore = create<AppState>((set, get) => ({
           const current = String(get().mode || "PAPER").toUpperCase();
           if (tm != null && tm !== current) return;
           get().pushLog(payload as LogPayload);
+          return;
+        }
+        if (type === "funding_alert") {
+          const p = payload as {
+            message?: string;
+            symbol?: string;
+            band?: string;
+            zscore?: number;
+            ts?: string;
+          };
+          const msg = typeof p?.message === "string" ? p.message : "Funding extreme";
+          get().pushLog({
+            level: "warn",
+            category: "intelligence",
+            reason: "funding_extreme",
+            msg,
+            symbol: p?.symbol,
+            detail: { band: p?.band, zscore: p?.zscore },
+            ts: typeof p?.ts === "string" ? p.ts : undefined,
+          } as LogPayload);
+          return;
+        }
+        if (type === "whale_alert") {
+          const p = payload as { alert?: { symbol?: string; amountUsd?: number | null }; timestamp?: string };
+          const a = p?.alert;
+          const sym = a?.symbol != null ? String(a.symbol) : "";
+          const amt = a?.amountUsd != null && Number.isFinite(Number(a.amountUsd)) ? Number(a.amountUsd) : null;
+          const msg =
+            sym && amt != null
+              ? `Large transfer · ${sym} ~$${(amt / 1e6).toFixed(2)}M`
+              : sym
+                ? `Whale alert · ${sym}`
+                : "Whale alert";
+          get().pushLog({
+            level: "info",
+            category: "intelligence",
+            reason: "whale_alert",
+            msg,
+            symbol: sym || undefined,
+            detail: { alert: a },
+            ts: typeof p?.timestamp === "string" ? p.timestamp : undefined,
+          } as LogPayload);
           return;
         }
         if (type === "trade") {
@@ -556,11 +946,25 @@ export const useAppStore = create<AppState>((set, get) => ({
           return;
         }
         if (type === "depth") {
-          set({ depth: payload as DepthPayload });
+          pendingDepthPayload = payload as DepthPayload;
+          scheduleDepthFlush();
           return;
         }
         if (type === "external") {
           set({ external: payload as ExternalPayload });
+          return;
+        }
+        if (type === "intelligence_update") {
+          const p = payload as { symbol?: string; data?: IntelligenceData; timestamp?: string };
+          if (p?.symbol && p?.data) {
+            const merged: IntelligenceData = {
+              ...p.data,
+              timestamp: p.data.timestamp ?? p.timestamp ?? new Date().toISOString(),
+            };
+            set((s) => ({
+              intelligence: { ...s.intelligence, [p.symbol!]: merged },
+            }));
+          }
           return;
         }
       } catch {
@@ -596,10 +1000,376 @@ export const useAppStore = create<AppState>((set, get) => ({
           : typeof raw.serverTs === "string" && raw.serverTs.length >= 10
             ? raw.serverTs
             : new Date().toISOString();
+      const _lid = nextActivityLogLid++;
       return {
-        logs: [{ ...p, ts: tsIso }, ...s.logs].slice(0, 500),
+        logs: [{ ...p, ts: tsIso, _lid }, ...s.logs].slice(0, 500),
       };
     }),
+
+  fetchAccountsForMode: async (modeSlug) => {
+    set({ accountsLoading: true, accountsError: null });
+    try {
+      const list = await api.getAccountsForMode(modeSlug);
+      set({ accounts: list, accountsLoading: false, accountsError: null });
+      const sel = get().selectedAccountId;
+      if (sel && !list.some((a) => a.id === sel)) {
+        const fallback = list.find((a) => a.isActive)?.id ?? null;
+        set({ selectedAccountId: fallback });
+      }
+      // Auto-select first active account if none is set for this mode
+      const activeForMode = get().activeAccountByMode[modeSlug];
+      if (!activeForMode) {
+        const firstActive = list.find((a) => a.isActive);
+        if (firstActive) {
+          try {
+            await get().setActiveAccountForMode(modeSlug, firstActive.id);
+          } catch {
+            /* non-critical: ignore */
+          }
+        }
+      }
+    } catch (e) {
+      set({
+        accountsLoading: false,
+        accountsError: e instanceof Error ? e.message : "accounts_fetch_failed",
+      });
+    }
+  },
+
+  selectAccount: (accountId) => set({ selectedAccountId: accountId }),
+
+  setActiveAccountForMode: async (modeSlug, accountId) => {
+    const data = await api.setActiveAccountForMode(modeSlug, accountId);
+    if (data.activeAccountByMode && typeof data.activeAccountByMode === "object") {
+      set({ activeAccountByMode: parseActiveAccountByModeFromServer(data.activeAccountByMode) });
+    }
+  },
+
+  createAccount: async (modeSlug, data) => {
+    const acc = await api.createAccount(modeSlug, data);
+    await get().fetchAccountsForMode(modeSlug);
+    return acc;
+  },
+
+  updateAccount: async (accountId, patch) => {
+    const acc = await api.updateAccount(accountId, patch);
+    const mode = get().mode;
+    await get().fetchAccountsForMode(tradingModeToApiModeSlug(mode));
+    return acc;
+  },
+
+  deactivateAccount: async (accountId) => {
+    await api.deactivateAccount(accountId);
+    const mode = get().mode;
+    await get().fetchAccountsForMode(tradingModeToApiModeSlug(mode));
+    if (get().selectedAccountId === accountId) {
+      set({ selectedAccountId: null });
+    }
+  },
+
+  fetchStrategiesForMode: async (modeSlug, opts) => {
+    set({ strategiesLoading: true, strategiesError: null });
+    try {
+      const list = await api.getStrategiesForMode(modeSlug, opts);
+      set((s) => ({
+        strategiesByMode: { ...s.strategiesByMode, [modeSlug]: list },
+        strategiesLoading: false,
+        strategiesError: null,
+      }));
+    } catch (e) {
+      set({
+        strategiesLoading: false,
+        strategiesError: e instanceof Error ? e.message : "strategies_fetch_failed",
+      });
+    }
+  },
+
+  fetchVersionsForStrategy: async (strategyId) => {
+    try {
+      const versions = await api.getStrategyVersions(strategyId);
+      set((s) => ({
+        versionsByStrategyId: { ...s.versionsByStrategyId, [strategyId]: versions },
+      }));
+    } catch {
+      /* ignore */
+    }
+  },
+
+  selectStrategy: (strategyId) => set({ selectedStrategyId: strategyId }),
+
+  createStrategyForMode: async (modeSlug, dto) => {
+    const { strategy } = await api.createStrategy(modeSlug, dto);
+    await get().fetchStrategiesForMode(modeSlug);
+    return { strategy };
+  },
+
+  updateStrategyMetaStore: async (strategyId, patch) => {
+    const st = await api.updateStrategyMeta(strategyId, patch);
+    const mode = get().mode;
+    const slug = tradingModeToApiModeSlug(mode);
+    await get().fetchStrategiesForMode(slug);
+    return st;
+  },
+
+  archiveStrategyStore: async (strategyId) => {
+    await api.archiveStrategy(strategyId);
+    const mode = get().mode;
+    const slug = tradingModeToApiModeSlug(mode);
+    await get().fetchStrategiesForMode(slug);
+    if (get().selectedStrategyId === strategyId) {
+      set({ selectedStrategyId: null });
+    }
+  },
+
+  saveNewStrategyVersionSnapshot: async (strategyId, label) => {
+    const v = await api.saveStrategyVersionSnapshot(strategyId, label);
+    await get().fetchVersionsForStrategy(strategyId);
+    const mode = get().mode;
+    await get().fetchStrategiesForMode(tradingModeToApiModeSlug(mode));
+    return v;
+  },
+
+  cloneStrategyVersionStore: async (strategyId, versionId, opts) => {
+    const v = await api.cloneStrategyVersion(strategyId, versionId, opts);
+    const destId = opts?.targetStrategyId ?? strategyId;
+    await get().fetchVersionsForStrategy(destId);
+    const mode = get().mode;
+    await get().fetchStrategiesForMode(tradingModeToApiModeSlug(mode));
+    return v;
+  },
+
+  setActiveStrategyVersionForMode: async (modeSlug, versionId) => {
+    await api.setActiveStrategyForMode(modeSlug, versionId);
+    set((s) => ({
+      activeStrategyVersionByMode: { ...s.activeStrategyVersionByMode, [modeSlug]: versionId },
+      strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
+    }));
+  },
+
+  fetchInstancesForMode: async (modeSlug) => {
+    set({ instancesLoading: true });
+    try {
+      const list = await api.listInstancesForMode(modeSlug);
+      set((s) => ({
+        instancesByMode: { ...s.instancesByMode, [modeSlug]: list },
+        instancesLoading: false,
+      }));
+    } catch {
+      set({ instancesLoading: false });
+    }
+  },
+
+  createInstanceStore: async (modeSlug, dto) => {
+    const inst = await api.createInstance(modeSlug, dto);
+    await get().fetchInstancesForMode(modeSlug);
+    return inst;
+  },
+
+  deleteInstanceStore: async (instanceId) => {
+    await api.deleteInstance(instanceId);
+    const slug = tradingModeToApiModeSlug(get().mode || "PAPER");
+    set((s) => {
+      const next: Partial<Record<ApiTradingModeSlug, BotInstance[]>> = { ...s.instancesByMode };
+      for (const k of Object.keys(next) as ApiTradingModeSlug[]) {
+        const list = next[k];
+        if (!list) continue;
+        next[k] = list.filter((i) => i.id !== instanceId);
+      }
+      const ai = { ...s.activeInstanceByMode };
+      for (const key of Object.keys(ai) as ApiTradingModeSlug[]) {
+        if (ai[key] === instanceId) ai[key] = null;
+      }
+      const sel = s.selectedInstanceId === instanceId ? null : s.selectedInstanceId;
+      const tradesByInstance = { ...s.tradesByInstance };
+      delete tradesByInstance[instanceId];
+      const tradesLoadingByInstance = { ...s.tradesLoadingByInstance };
+      delete tradesLoadingByInstance[instanceId];
+      return {
+        instancesByMode: next,
+        selectedInstanceId: sel,
+        activeInstanceByMode: ai,
+        tradesByInstance,
+        tradesLoadingByInstance,
+      };
+    });
+    await get().fetchInstancesForMode(slug);
+  },
+
+  setActiveTradingInstanceForMode: async (modeSlug, instanceId) => {
+    const data = await api.setActiveInstanceForMode(modeSlug, instanceId);
+    set((s) => ({
+      activeInstanceByMode: { ...s.activeInstanceByMode, [modeSlug]: instanceId },
+      ...(data?.activeAccountByMode
+        ? { activeAccountByMode: parseActiveAccountByModeFromServer(data.activeAccountByMode) }
+        : {}),
+      ...(data?.activeStrategyVersionByMode
+        ? { activeStrategyVersionByMode: parseActiveStrategyVersionByModeFromServer(data.activeStrategyVersionByMode) }
+        : {}),
+    }));
+    const patch: Record<string, unknown> = {
+      activeInstanceByMode: { [modeSlug]: instanceId },
+    };
+    if (data?.activeAccountByMode) patch.activeAccountByMode = data.activeAccountByMode;
+    if (data?.activeStrategyVersionByMode) patch.activeStrategyVersionByMode = data.activeStrategyVersionByMode;
+    enqueueServerUiPrefsPatch(patch);
+  },
+
+  selectInstance: (instanceId) => set({ selectedInstanceId: instanceId }),
+
+  fetchTradesForInstance: async (instanceId, opts) => {
+    const limit = opts?.limit ?? 20;
+    const append = opts?.append === true;
+    if (!instanceId) return 0;
+    set((s) => ({
+      tradesLoadingByInstance: { ...s.tradesLoadingByInstance, [instanceId]: true },
+    }));
+    try {
+      const prev = get().tradesByInstance[instanceId];
+      const offset = append && Array.isArray(prev) ? prev.length : 0;
+      const page = await api.getInstanceTrades(instanceId, { limit, offset });
+      set((s) => {
+        const existing = s.tradesByInstance[instanceId];
+        const merged =
+          append && Array.isArray(existing)
+            ? [
+                ...existing,
+                ...page.filter((t) => !existing.some((e) => e.id === t.id)),
+              ]
+            : page;
+        return {
+          tradesByInstance: { ...s.tradesByInstance, [instanceId]: merged },
+          tradesLoadingByInstance: { ...s.tradesLoadingByInstance, [instanceId]: false },
+        };
+      });
+      return page.length;
+    } catch {
+      set((s) => ({
+        tradesLoadingByInstance: { ...s.tradesLoadingByInstance, [instanceId]: false },
+      }));
+      return 0;
+    }
+  },
+
+  setSidebarCollapsed: (which, collapsed) => {
+    set((s) => ({
+      layout:
+        which === "accounts"
+          ? { ...s.layout, accountsSidebarCollapsed: collapsed }
+          : { ...s.layout, strategySidebarCollapsed: collapsed },
+    }));
+    enqueueServerUiPrefsPatch({
+      layout:
+        which === "accounts"
+          ? { accountsSidebarCollapsed: collapsed }
+          : { strategySidebarCollapsed: collapsed },
+    });
+  },
+
+  setInstancesPanelCollapsed: (collapsed) => {
+    set((s) => ({ layout: { ...s.layout, instancesPanelCollapsed: collapsed } }));
+    enqueueServerUiPrefsPatch({ layout: { instancesPanelCollapsed: collapsed } });
+  },
+
+  hydrateLayoutFromServer: (layout) => {
+    if (!layout || typeof layout !== "object" || Array.isArray(layout)) return;
+    const L = layout as Record<string, unknown>;
+    set((s) => ({
+      layout: {
+        accountsSidebarCollapsed:
+          L.accountsSidebarCollapsed === true ? true : L.accountsSidebarCollapsed === false ? false : s.layout.accountsSidebarCollapsed,
+        strategySidebarCollapsed:
+          L.strategySidebarCollapsed === true ? true : L.strategySidebarCollapsed === false ? false : s.layout.strategySidebarCollapsed,
+        instancesPanelCollapsed:
+          L.instancesPanelCollapsed === true
+            ? true
+            : L.instancesPanelCollapsed === false
+              ? false
+              : s.layout.instancesPanelCollapsed,
+      },
+    }));
+  },
+
+  setMainView: (v) => {
+    const safe = v === "overview" || v === "instance" ? v : "overview";
+    set({ mainView: safe });
+    if (safe === "overview") {
+      const slug = tradingModeToApiModeSlug(get().mode || "PAPER");
+      set({ analyticsModeSlug: slug });
+      void get().fetchComparisonData(slug);
+    }
+  },
+
+  setShowMarketIntelligencePanel: (show) => {
+    const v = Boolean(show);
+    set({ showMarketIntelligencePanel: v });
+    tradingUiPersistShowMarketIntelligencePanel(v, get().authUiUserTag ?? null);
+  },
+
+  fetchIntelligence: async (symbol: string) => {
+    try {
+      const res = await fetch(`/api/intelligence/${encodeURIComponent(symbol)}`);
+      const data = await res.json() as IntelligenceData & { symbol?: string };
+      if (data && data.symbol) {
+        set((s) => {
+          const prev = s.intelligence[symbol];
+          const merged: IntelligenceData = {
+            ...data,
+            newsImpact: data.newsImpact ?? prev?.newsImpact ?? null,
+            confluence: data.confluence ?? prev?.confluence ?? null,
+          };
+          return { intelligence: { ...s.intelligence, [symbol]: merged } };
+        });
+      }
+    } catch {
+      /* silent */
+    }
+  },
+
+  enterInstance: async (instanceId) => {
+    const slug = tradingModeToApiModeSlug(get().mode || "PAPER");
+    set({ selectedInstanceId: instanceId, mainView: "instance" });
+    await get().setActiveTradingInstanceForMode(slug, instanceId);
+  },
+
+  fetchPerformanceForStrategy: async (strategyId) => {
+    try {
+      const rows = await api.getStrategyPerformance(strategyId);
+      set((s) => {
+        const next = { ...s.performanceByVersion };
+        for (const row of rows) {
+          if (row.metrics) next[row.versionId] = row.metrics;
+        }
+        return { performanceByVersion: next };
+      });
+    } catch {
+      /* ignore */
+    }
+  },
+
+  fetchEquityCurve: async (strategyId, versionId) => {
+    try {
+      const curve = await api.getEquityCurve(strategyId, versionId);
+      set((s) => ({ equityCurveByVersion: { ...s.equityCurveByVersion, [versionId]: curve } }));
+    } catch {
+      /* ignore */
+    }
+  },
+
+  fetchComparisonData: async (modeSlug) => {
+    set({ analyticsCompareLoading: true });
+    try {
+      const rows = await api.getPerformanceCompare(modeSlug);
+      set({ analyticsCompareRows: rows, analyticsCompareLoading: false });
+    } catch {
+      set({ analyticsCompareRows: [], analyticsCompareLoading: false });
+    }
+  },
+
+  selectAnalyticsVersion: (strategyId, versionId) => {
+    set({ analyticsSelectedStrategyId: strategyId, analyticsSelectedVersionId: versionId });
+    void get().fetchEquityCurve(strategyId, versionId);
+    void get().fetchPerformanceForStrategy(strategyId);
+  },
 }));
 
 function scheduleMarketFlush() {
@@ -637,25 +1407,112 @@ export function applyWsStateSnapshot(payload: unknown) {
       (prevTf && nextTf && prevTf !== nextTf);
     const nextMode = p.mode != null ? String(p.mode) : prev.mode;
     const modeChanged = p.mode != null && String(prev.mode ?? "") !== String(p.mode);
-    const nextAccount = p.account !== undefined ? p.account : prev.account;
+    const nextAccount =
+      p.account !== undefined ? mergeHybridAccountSnapshot(prev.account, p.account) : prev.account;
     const rawPos = p.positions;
     const nextPositions =
       rawPos !== undefined ? (Array.isArray(rawPos) ? rawPos : []) : prev.positions;
+    const payloadHadRunningByMode =
+      Object.prototype.hasOwnProperty.call(p, "runningByMode") &&
+      p.runningByMode != null &&
+      typeof p.runningByMode === "object";
     const nextRb =
       p.runningByMode != null && typeof p.runningByMode === "object"
         ? (p.runningByMode as Record<string, boolean>)
         : prev.runningByMode ?? {};
     const botPayload = { ...p };
     delete (botPayload as { runningByMode?: unknown }).runningByMode;
-    return {
+    const nextSav =
+      p.activeStrategyVersionByMode != null && typeof p.activeStrategyVersionByMode === "object"
+        ? parseActiveStrategyVersionByModeFromServer(p.activeStrategyVersionByMode)
+        : undefined;
+    const nextAi =
+      p.activeInstanceByMode != null && typeof p.activeInstanceByMode === "object"
+        ? parseActiveInstanceByModeFromServer(p.activeInstanceByMode)
+        : undefined;
+    const prevBot =
+      prev.bot && typeof prev.bot === "object" && !Array.isArray(prev.bot)
+        ? (prev.bot as Record<string, unknown>)
+        : {};
+    const incMssRaw = (botPayload as Record<string, unknown>).multiSymbolWatchSignals;
+    delete (botPayload as { multiSymbolWatchSignals?: unknown }).multiSymbolWatchSignals;
+    const prevMss =
+      prevBot.multiSymbolWatchSignals && typeof prevBot.multiSymbolWatchSignals === "object" && !Array.isArray(prevBot.multiSymbolWatchSignals)
+        ? ({ ...(prevBot.multiSymbolWatchSignals as Record<string, unknown>) } as Record<string, unknown>)
+        : {};
+    const incomingMode = String((botPayload as Record<string, unknown>).universeCoinSelectMode ?? "").toUpperCase();
+    const prevMode = String(prevBot.universeCoinSelectMode ?? "").toUpperCase();
+    const incomingExplicitSingle = incomingMode === "SINGLE";
+    let nextMss: Record<string, unknown> = { ...prevMss };
+    if (incMssRaw != null && typeof incMssRaw === "object" && !Array.isArray(incMssRaw)) {
+      const inc = incMssRaw as Record<string, unknown>;
+      const incKeys = Object.keys(inc);
+      if (incKeys.length === 0) {
+        if (incomingExplicitSingle) {
+          nextMss = {};
+        } else if ((incomingMode === "MULTIPLE" || prevMode === "MULTIPLE") && Object.keys(prevMss).length > 0) {
+          nextMss = { ...prevMss };
+        } else {
+          nextMss = {};
+        }
+      } else {
+        nextMss = { ...prevMss, ...inc };
+      }
+    }
+    // Stabilize multiCoinSignalTabSymbols order: only accept a new tab list if the SET of symbols
+    // changed (additions/removals). Pure reorders from universe scans are ignored so tabs don't
+    // constantly shuffle while the bot is running in MULTIPLE mode.
+    const incTabsRaw = (botPayload as Record<string, unknown>).multiCoinSignalTabSymbols;
+    const incTabs = Array.isArray(incTabsRaw) ? (incTabsRaw as string[]) : null;
+    const prevTabs2 = Array.isArray(prevBot.multiCoinSignalTabSymbols)
+      ? (prevBot.multiCoinSignalTabSymbols as string[])
+      : [];
+    let stableTabSymbols: string[] | undefined;
+    if (incTabs !== null) {
+      const incSet = new Set(incTabs.map((s) => String(s).toUpperCase()));
+      const prevSet = new Set(prevTabs2.map((s) => String(s).toUpperCase()));
+      const setsEqual = incSet.size === prevSet.size && [...incSet].every((s) => prevSet.has(s));
+      if (setsEqual && prevTabs2.length > 0) {
+        // Same symbols, different order — keep previous stable order
+        stableTabSymbols = prevTabs2;
+      } else {
+        // Symbols added or removed — accept the new list (preserves order of retained symbols)
+        const prevOrder = new Map(prevTabs2.map((s, i) => [String(s).toUpperCase(), i]));
+        stableTabSymbols = [
+          ...prevTabs2.filter((s) => incSet.has(String(s).toUpperCase())),
+          ...incTabs.filter((s) => !prevSet.has(String(s).toUpperCase())),
+        ];
+        void prevOrder; // used for type-checking only
+      }
+    }
+    if (stableTabSymbols !== undefined) {
+      (botPayload as Record<string, unknown>).multiCoinSignalTabSymbols = stableTabSymbols;
+    }
+    const mergedBot: Record<string, unknown> = { ...prevBot, ...botPayload, multiSymbolWatchSignals: nextMss };
+    const modeKeySync = String(nextMode || prev.mode || "PAPER").toUpperCase();
+    if (payloadHadRunningByMode && typeof nextRb[modeKeySync] === "boolean") {
+      mergedBot.running = Boolean(nextRb[modeKeySync]);
+    }
+    const out = {
       mode: nextMode,
       runningByMode: nextRb,
-      bot: botPayload,
+      bot: mergedBot,
       account: nextAccount,
       positions: nextPositions,
       ...(chartRekey ? { candles: [], market: undefined } : {}),
-      ...(modeChanged ? { trades: [] } : {}),
+      ...(modeChanged ? { trades: [], selectedInstanceId: null } : {}),
+      ...(nextSav ? { activeStrategyVersionByMode: nextSav } : {}),
+      ...(nextAi ? { activeInstanceByMode: nextAi } : {}),
     };
+    if (modeChanged) {
+      const slug = tradingModeToApiModeSlug(String(nextMode));
+      queueMicrotask(() => {
+        void useAppStore.getState().fetchAccountsForMode(slug);
+        void useAppStore.getState().fetchStrategiesForMode(slug);
+        void useAppStore.getState().fetchInstancesForMode(slug);
+      });
+    }
+    return out;
   });
 }
 
@@ -687,6 +1544,23 @@ export async function hydrateStateViaHttp(): Promise<void> {
         : {}),
     };
     applyWsStateSnapshot(payload);
+    if (res.activeAccountByMode != null && typeof res.activeAccountByMode === "object") {
+      useAppStore.setState({
+        activeAccountByMode: parseActiveAccountByModeFromServer(res.activeAccountByMode),
+      });
+    }
+    if (res.activeStrategyVersionByMode != null && typeof res.activeStrategyVersionByMode === "object") {
+      useAppStore.setState({
+        activeStrategyVersionByMode: parseActiveStrategyVersionByModeFromServer(res.activeStrategyVersionByMode),
+      });
+    }
+    if (res.activeInstanceByMode != null && typeof res.activeInstanceByMode === "object") {
+      useAppStore.setState({
+        activeInstanceByMode: parseActiveInstanceByModeFromServer(res.activeInstanceByMode),
+      });
+    }
+    const httpSlug = tradingModeToApiModeSlug(String(res.mode || ""));
+    void useAppStore.getState().fetchInstancesForMode(httpSlug);
     if (Array.isArray(res.trades)) {
       useAppStore.setState({ trades: res.trades.slice(0, TRADE_HISTORY_UI_MAX) });
     }
@@ -704,6 +1578,10 @@ export function forceDisconnectWebSocket() {
   wsIntentionalClose = true;
   pendingMarketFlushScheduled = false;
   pendingMarketBySymbol = null;
+  pendingStateFlushScheduled = false;
+  pendingWsStatePayload = undefined;
+  pendingDepthFlushScheduled = false;
+  pendingDepthPayload = null;
   if (wsReconnectTimer) {
     clearTimeout(wsReconnectTimer);
     wsReconnectTimer = null;

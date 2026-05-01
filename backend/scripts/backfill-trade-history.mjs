@@ -170,7 +170,7 @@ async function fetchFundingRowsSince(startMs, endMs) {
     let rows;
     try {
       rows = await signedGet("/fapi/v1/income", {
-        incomeType: "FUNDING",
+        incomeType: "FUNDING_FEE",
         startTime: cur,
         endTime: chunkEnd,
         limit: 1000,

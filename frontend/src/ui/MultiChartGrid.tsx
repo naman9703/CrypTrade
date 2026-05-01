@@ -1,11 +1,12 @@
 import { ColorType, createChart, LineStyle, type IChartApi, type ISeriesApi } from "lightweight-charts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
+import { CHART_GRID_PAGE_LS_KEY, CHART_GRID_SORT_LS_KEY, enqueueServerUiPrefsPatch } from "../lib/tradingUiPersistence";
 import { useThemeStore } from "../themeStore";
 import { useAppStore } from "../ws/store";
 
-const GRID_PAGE_LS = "trading-multi-chart-page-v1";
-const GRID_SORT_LS = "trading-multi-chart-sort-v1";
+const GRID_PAGE_LS = CHART_GRID_PAGE_LS_KEY;
+const GRID_SORT_LS = CHART_GRID_SORT_LS_KEY;
 const TILE_H = 180;
 const POLL_MS = 15_000;
 
@@ -249,6 +250,10 @@ export function MultiChartGrid() {
   const maxPage = Math.max(0, Math.ceil(sorted.length / perPage) - 1);
   const safePage = Math.min(page, maxPage);
   const slice = sorted.slice(safePage * perPage, safePage * perPage + perPage);
+
+  useEffect(() => {
+    enqueueServerUiPrefsPatch({ multiChartGrid: { sort, page: safePage } });
+  }, [sort, safePage]);
 
   useEffect(() => {
     if (page > maxPage) setPage(maxPage);

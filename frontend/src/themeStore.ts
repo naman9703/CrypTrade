@@ -5,7 +5,7 @@ export const THEME_STORAGE_KEY = "trading-ui-theme";
 
 export type UiTheme = "light" | "dark";
 
-function applyDomTheme(theme: UiTheme) {
+export function applyDomTheme(theme: UiTheme) {
   document.documentElement.classList.toggle("dark", theme === "dark");
 }
 
@@ -16,6 +16,7 @@ export const useThemeStore = create(
       setTheme: (t) => {
         applyDomTheme(t);
         set({ theme: t });
+        enqueueServerUiPrefsPatch({ theme: t });
       },
     }),
     {

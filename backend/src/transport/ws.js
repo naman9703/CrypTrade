@@ -11,6 +11,7 @@ import {
 } from "../lib/tradingModePersistence.js";
 import { uiAuthEnabled } from "../auth/uiGate.js";
 import { normalizeTradingMode } from "../state/appState.js";
+import { resolveWalletSnapshotAccountId, scheduleWalletSnapshotWrite } from "../db/services/walletService.js";
 
 /** @type {((payload: unknown) => void) | null} */
 let telegramTradeHook = null;
@@ -26,13 +27,21 @@ export function setTelegramTradeHook(fn) {
  */
 async function snapshotHelloForView(appState, viewMode, extraHelloFields = {}) {
   const m = normalizeTradingMode(viewMode);
-  appState.ensureEngine(m);
+  await appState.ensureEngine(m);
   const row = appState.getEngine(m);
   if (!row?.bot) throw new Error(`engine_missing:${m}`);
   const { bot, exchange: ex } = row;
   const account = await ex.getAccount().catch(() => null);
   const strictAcc = isStrictBinanceAccountMode(m);
   const positions = account == null ? [] : await ex.getPositions().catch(() => []);
+  void (async () => {
+    try {
+      const aid = await resolveWalletSnapshotAccountId(appState, m);
+      if (aid && account != null) scheduleWalletSnapshotWrite(aid, account, positions);
+    } catch {
+      /* ignore */
+    }
+  })();
   let trades = [];
   if (!strictAcc || account != null) {
     trades = await ex.getTrades().catch(() => []);
@@ -54,6 +63,9 @@ async function snapshotHelloForView(appState, viewMode, extraHelloFields = {}) {
     state: bot.getPublicState(),
     mode: m,
     runningByMode: appState.getRunningByMode?.() ?? {},
+    activeAccountByMode: appState.getActiveAccountByModeSnapshot?.() ?? {},
+    activeStrategyVersionByMode: appState.getActiveStrategyVersionByModeSnapshot?.() ?? {},
+    activeInstanceByMode: appState.getActiveInstanceByModeSnapshot?.() ?? {},
     account,
     positions: Array.isArray(positions) ? positions : [],
     chart,
@@ -297,6 +309,9 @@ export function attachWs({ wss, appState }) {
                 state: bot?.getPublicState?.() ?? {},
                 mode: m,
                 runningByMode: appState.getRunningByMode?.() ?? {},
+                activeAccountByMode: appState.getActiveAccountByModeSnapshot?.() ?? {},
+                activeStrategyVersionByMode: appState.getActiveStrategyVersionByModeSnapshot?.() ?? {},
+                activeInstanceByMode: appState.getActiveInstanceByModeSnapshot?.() ?? {},
                 ...(strictFallback ? { account: null, positions: [] } : {}),
                 chart,
                 activityLog: activityLogFallback,

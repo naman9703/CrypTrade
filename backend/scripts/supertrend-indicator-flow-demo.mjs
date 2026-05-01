@@ -504,7 +504,7 @@ Loads backend/.env. Env: SCRIPT_FUTURES_LEVERAGE, SUPERTREND_* (see file header)
     }
     const mode = process.env.TRADING_MODE || "PAPER";
     log.info("TRADING_MODE=", mode, "mimic-both venue=", args.venue);
-    const ex = createExchange({ mode, log });
+    const ex = await createExchange({ mode, log });
     log.info("Exchange:", ex.name, ex.storeInfo || {});
     await runMimicBothFlow(args, ex);
     return;
@@ -518,7 +518,7 @@ Loads backend/.env. Env: SCRIPT_FUTURES_LEVERAGE, SUPERTREND_* (see file header)
   const mode = process.env.TRADING_MODE || "PAPER";
   log.info("TRADING_MODE=", mode, "venue=", args.venue, "dryRun=", args.dryRun);
 
-  const ex = createExchange({ mode, log });
+  const ex = await createExchange({ mode, log });
   log.info("Exchange:", ex.name, ex.storeInfo || {});
 
   const variant = args.venue === "futures" ? "futures" : "spot";

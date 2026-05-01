@@ -1,9 +1,12 @@
 import express from "express";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
+import { getPool } from "../db/pool.js";
+import * as usersService from "../db/services/usersService.js";
 
 /** Valid bcrypt of "__no_user_match__" — used so bcrypt.compare always runs (no email oracle). */
 const BCRYPT_NO_USER_PLACEHOLDER = "$2b$12$fDmbJ2juUJ.mNaCFylelnudb3Tlhj4Q05rpRmSP6SdHM5vbHZr30W";
@@ -97,12 +100,18 @@ export function validateUiAuthEnv(log) {
     log.warn("bot_http_api_key_short", { hint: "Use at least 16 random characters for BOT_HTTP_API_KEY" });
   }
   const users = loadUiAuthUsers();
-  if (!users.length) {
+  const dbUrl = String(process.env.DATABASE_URL || "").trim();
+  if (!users.length && !dbUrl) {
     log.error("app_ui_auth_misconfigured", {
       hint:
-        "No UI users: set APP_UI_AUTH_EMAIL + APP_UI_AUTH_PASSWORD_HASH and/or APP_UI_AUTH_EMAIL_1 + APP_UI_AUTH_PASSWORD_HASH_1 (… _2, _3). Run: node scripts/hash-ui-password.mjs",
+        "No UI users: set APP_UI_AUTH_EMAIL + APP_UI_AUTH_PASSWORD_HASH and/or numbered _1.._N, or set DATABASE_URL and run npm run db:seed-admin. Run: node scripts/hash-ui-password.mjs",
     });
     process.exit(1);
+  }
+  if (!users.length && dbUrl) {
+    log.warn("app_ui_auth_env_users_empty", {
+      hint: "Using DATABASE_URL: log in with users in the `users` table (see npm run db:seed-admin). Env password hashes optional.",
+    });
   }
   uiAuthUsersCache = users;
   const sec = String(process.env.SESSION_SECRET || "").trim();
@@ -114,8 +123,11 @@ export function validateUiAuthEnv(log) {
   }
 }
 
-/** @param {{ log: import('../lib/logger.js').Logger }} opts */
-export function createSessionMiddleware({ log }) {
+/**
+ * @param {{ log: import('../lib/logger.js').Logger, pool?: import('pg').Pool | null }} opts
+ * When `pool` is set, sessions persist in `express_sessions` (migration 015 + connect-pg-simple).
+ */
+export function createSessionMiddleware({ log, pool }) {
   const secret =
     String(process.env.SESSION_SECRET || "").trim() ||
     (process.env.NODE_ENV === "production" ? null : "dev-only-insecure-session-secret-change-me");
@@ -139,7 +151,7 @@ export function createSessionMiddleware({ log }) {
   const cookieMaxAge =
     Number.isFinite(sessionMsParsed) && sessionMsParsed > 0 ? sessionMsParsed : DEFAULT_UI_AUTH_SESSION_MS;
 
-  return session({
+  const sessionOpts = {
     name: SESSION_NAME,
     secret,
     resave: false,
@@ -153,7 +165,22 @@ export function createSessionMiddleware({ log }) {
       maxAge: cookieMaxAge,
       path: "/",
     },
-  });
+  };
+
+  if (pool) {
+    const PgSession = connectPgSimple(session);
+    log.info?.("session_store_pg", { table: "express_sessions" });
+    return session({
+      ...sessionOpts,
+      store: new PgSession({
+        pool,
+        tableName: "express_sessions",
+        createTableIfMissing: false,
+      }),
+    });
+  }
+  log.warn?.("session_store_memory", { hint: "Set DATABASE_URL for restart-safe sessions (express_sessions)." });
+  return session(sessionOpts);
 }
 
 const attemptState = new Map();
@@ -224,7 +251,15 @@ export function createUiAuthRouter({ log }) {
 
   r.get("/me", (req, res) => {
     if (!uiAuthEnabled()) {
-      return res.json({ ok: true, enabled: false, authenticated: true, uiUserTag: null, uiTradingMode: null });
+      return res.json({
+        ok: true,
+        enabled: false,
+        authenticated: true,
+        uiUserTag: null,
+        uiTradingMode: null,
+        syncUiPrefs: false,
+        uiUserRole: null,
+      });
     }
     const ok = Boolean(req.session?.uiAuthOk);
     res.json({
@@ -233,6 +268,8 @@ export function createUiAuthRouter({ log }) {
       authenticated: ok,
       uiUserTag: ok && req.session?.uiUserTag ? String(req.session.uiUserTag) : null,
       uiTradingMode: ok && req.session?.uiTradingMode ? String(req.session.uiTradingMode) : null,
+      syncUiPrefs: ok && Boolean(req.session?.uiUserId),
+      uiUserRole: ok && req.session?.uiUserRole ? String(req.session.uiUserRole) : null,
     });
   });
 
@@ -253,26 +290,60 @@ export function createUiAuthRouter({ log }) {
     }
 
     const { email, password } = parsed.data;
-    const users = uiAuthUsersCache;
-    let matchedHash = null;
-    for (const u of users) {
-      if (emailsMatch(u.emailNorm, email)) {
-        matchedHash = u.hash;
-        break;
+    const emailNorm = String(parsed.data.email || "")
+      .toLowerCase()
+      .trim();
+
+    let passOk = false;
+    let matchedEnv = false;
+    /** @type {Awaited<ReturnType<typeof usersService.findUserByUsername>> | null} */
+    let dbUserForSession = null;
+
+    const pool = getPool();
+    if (pool) {
+      try {
+        const dbUser = await usersService.findUserByUsername(emailNorm);
+        if (dbUser) {
+          try {
+            passOk = await usersService.validatePassword(dbUser, password);
+          } catch (e) {
+            log.warn("ui_login_bcrypt_error", { error: String(e?.message || e), source: "db" });
+          }
+          if (!passOk) {
+            recordFailure(ip);
+            await bcrypt.hash(String(password + "hmac"), 4).catch(() => {});
+            return res.status(401).json({ ok: false, error: "invalid_credentials" });
+          }
+          dbUserForSession = dbUser;
+          matchedEnv = true; // reuse flow below (session regenerate)
+        }
+      } catch (e) {
+        log.warn("ui_login_db_error", { error: String(e?.message || e) });
+        return res.status(503).json({ ok: false, error: "auth_backend_unavailable" });
       }
     }
-    const hashForCompare = matchedHash || BCRYPT_NO_USER_PLACEHOLDER;
-    let passOk = false;
-    try {
-      passOk = await bcrypt.compare(password, hashForCompare);
-    } catch (e) {
-      log.warn("ui_login_bcrypt_error", { error: String(e?.message || e) });
-    }
 
-    if (!matchedHash || !passOk) {
-      recordFailure(ip);
-      await bcrypt.hash(String(password + "hmac"), 4).catch(() => {});
-      return res.status(401).json({ ok: false, error: "invalid_credentials" });
+    if (!matchedEnv) {
+      const users = uiAuthUsersCache;
+      let matchedHash = null;
+      for (const u of users) {
+        if (emailsMatch(u.emailNorm, email)) {
+          matchedHash = u.hash;
+          break;
+        }
+      }
+      const hashForCompare = matchedHash || BCRYPT_NO_USER_PLACEHOLDER;
+      try {
+        passOk = await bcrypt.compare(password, hashForCompare);
+      } catch (e) {
+        log.warn("ui_login_bcrypt_error", { error: String(e?.message || e) });
+      }
+
+      if (!matchedHash || !passOk) {
+        recordFailure(ip);
+        await bcrypt.hash(String(password + "hmac"), 4).catch(() => {});
+        return res.status(401).json({ ok: false, error: "invalid_credentials" });
+      }
     }
 
     recordSuccess(ip);
@@ -283,10 +354,15 @@ export function createUiAuthRouter({ log }) {
       }
       req.session.uiAuthOk = true;
       req.session.uiAuthAt = Date.now();
-      const emailNorm = String(parsed.data.email || "")
-        .toLowerCase()
-        .trim();
       req.session.uiUserTag = crypto.createHash("sha256").update(emailNorm).digest("hex").slice(0, 24);
+      req.session.uiAuthEmailNorm = emailNorm;
+      if (dbUserForSession) {
+        req.session.uiUserId = dbUserForSession.id;
+        req.session.uiUserRole = String(dbUserForSession.role || "user");
+      } else {
+        delete req.session.uiUserId;
+        req.session.uiUserRole = "admin";
+      }
       req.session.save((err) => {
         if (err) {
           log.warn("ui_login_session_save", { error: String(err?.message || err) });
@@ -316,6 +392,57 @@ export function requireUiAuth(req, res, next) {
   if (req.session?.uiAuthOk) return next();
   if (botHttpApiKeyMatches(req) && isBotHttpKeyBypassRoute(req)) return next();
   res.status(401).json({ ok: false, error: "auth_required" });
+}
+
+/** Credential routes: UI auth must be on; session must be admin (DB role or env-login operator). */
+export function requireAdmin(req, res, next) {
+  if (!uiAuthEnabled()) {
+    return res.status(403).json({ ok: false, error: "ui_auth_required" });
+  }
+  if (!req.session?.uiAuthOk) {
+    return res.status(401).json({ ok: false, error: "auth_required" });
+  }
+  if (String(req.session.uiUserRole || "") !== "admin") {
+    return res.status(403).json({ ok: false, error: "admin_required" });
+  }
+  return next();
+}
+
+/**
+ * `/api/me/ui-prefs`, strategies, instances, etc. need a `users.id`.
+ * - DB email/password login sets `session.uiUserId`.
+ * - Env-only admin (`APP_UI_AUTH_*` without a matching `users` row) has no `uiUserId`; use first active user (same as accounts dev fallback).
+ * - UI auth off: same implicit user for local/dev parity with `resolveAccountsOwnerUserId`.
+ */
+export function requireDbUserSession(req, res, next) {
+  if (req.session?.uiUserId != null && String(req.session.uiUserId).trim() !== "") return next();
+  void (async () => {
+    try {
+      if (!getPool()) {
+        res.status(503).json({ ok: false, error: "db_not_configured" });
+        return;
+      }
+      const allowImplicit =
+        !uiAuthEnabled() ||
+        (uiAuthEnabled() &&
+          req.session?.uiAuthOk &&
+          String(req.session.uiUserRole || "") === "admin" &&
+          !req.session?.uiUserId);
+      if (!allowImplicit) {
+        res.status(403).json({ ok: false, error: "db_user_required" });
+        return;
+      }
+      const uid = await usersService.getFirstActiveUserId();
+      if (uid) {
+        req.dbActingUserId = String(uid);
+        next();
+        return;
+      }
+    } catch {
+      /* fall through */
+    }
+    res.status(403).json({ ok: false, error: "db_user_required" });
+  })().catch(() => res.status(500).json({ ok: false, error: "db_user_resolve_failed" }));
 }
 
 /**

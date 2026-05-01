@@ -1,3 +1,17 @@
+import type { Account, CreateAccountDto, CredentialsMeta, UpdateAccountDto } from "../types/accounts";
+import type { ApiTradingModeSlug } from "../lib/tradingModeSlug";
+import type { CreateStrategyDto, Strategy, StrategyMetaPatch, StrategyVersion } from "../types/strategy";
+import type { AllotmentHeadroom, BotInstance, CreateInstanceDto, InstanceStatusLogEntry } from "../types/instance";
+import type { Trade, TradeFill } from "../types/trade";
+import type {
+  EquityCurvePoint,
+  PerformanceCompareRow,
+  StrategyEdgeMetrics,
+  StrategyPerformance,
+  VersionPerformanceRow,
+} from "../types/performance";
+import { mapApiStrategy, mapApiStrategyVersion } from "../lib/strategyApiMappers";
+
 /** DEV: "" → Vite proxy. PROD: "" → same origin (Express SERVE_FRONTEND or reverse proxy). Else set VITE_BACKEND_HTTP. */
 const HTTP =
   import.meta.env.VITE_BACKEND_HTTP ?? (import.meta.env.DEV ? "" : "");
@@ -24,6 +38,133 @@ async function json<T>(res: Response): Promise<T> {
   return (data ?? {}) as T;
 }
 
+function mapApiTradeFill(raw: unknown): TradeFill | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string" || typeof r.tradeId !== "string") return null;
+  return {
+    id: String(r.id),
+    tradeId: String(r.tradeId),
+    binanceOrderId: String(r.binanceOrderId ?? ""),
+    binanceTradeId: r.binanceTradeId != null ? String(r.binanceTradeId) : null,
+    fillType: String(r.fillType ?? ""),
+    side: String(r.side ?? ""),
+    price: Number(r.price),
+    quantity: Number(r.quantity),
+    feeAsset: r.feeAsset != null ? String(r.feeAsset) : null,
+    feeAmount: r.feeAmount != null ? Number(r.feeAmount) : null,
+    feeUsdt: r.feeUsdt != null ? Number(r.feeUsdt) : null,
+    isMaker: r.isMaker != null ? Boolean(r.isMaker) : null,
+    filledAt: r.filledAt != null ? String(r.filledAt) : null,
+  };
+}
+
+function mapApiTrade(raw: unknown): Trade | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string") return null;
+  const fillsRaw = r.fills;
+  const fills = Array.isArray(fillsRaw) ? fillsRaw.map(mapApiTradeFill).filter((x): x is TradeFill => x != null) : undefined;
+  return {
+    id: String(r.id),
+    instanceId: String(r.instanceId ?? ""),
+    signalId: r.signalId != null ? String(r.signalId) : null,
+    strategyVersionId: r.strategyVersionId != null ? String(r.strategyVersionId) : null,
+    symbol: String(r.symbol ?? ""),
+    marketType: String(r.marketType ?? ""),
+    direction: String(r.direction ?? ""),
+    status: String(r.status ?? ""),
+    entryPrice: r.entryPrice != null ? Number(r.entryPrice) : null,
+    exitPrice: r.exitPrice != null ? Number(r.exitPrice) : null,
+    quantity: r.quantity != null ? Number(r.quantity) : null,
+    notionalUsdt: r.notionalUsdt != null ? Number(r.notionalUsdt) : null,
+    leverage: r.leverage != null ? Number(r.leverage) : null,
+    slPrice: r.slPrice != null ? Number(r.slPrice) : null,
+    tpPrice: r.tpPrice != null ? Number(r.tpPrice) : null,
+    exitReason: r.exitReason != null ? String(r.exitReason) : null,
+    grossPnl: r.grossPnl != null ? Number(r.grossPnl) : null,
+    feesUsdt: r.feesUsdt != null ? Number(r.feesUsdt) : null,
+    netPnl: r.netPnl != null ? Number(r.netPnl) : null,
+    roiPct: r.roiPct != null ? Number(r.roiPct) : null,
+    holdDurationSec: r.holdDurationSec != null ? Number(r.holdDurationSec) : null,
+    binanceOrderIds: Array.isArray(r.binanceOrderIds) ? r.binanceOrderIds.map(String) : null,
+    openedAt: r.openedAt != null ? String(r.openedAt) : null,
+    closedAt: r.closedAt != null ? String(r.closedAt) : null,
+    createdAt: r.createdAt != null ? String(r.createdAt) : null,
+    ...(fills?.length ? { fills } : {}),
+  };
+}
+
+export function mapApiStrategyPerformance(raw: unknown, fallbackVersionId?: string): StrategyPerformance | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const vid =
+    typeof r.strategyVersionId === "string"
+      ? r.strategyVersionId
+      : fallbackVersionId != null
+        ? fallbackVersionId
+        : null;
+  if (!vid) return null;
+  return {
+    strategyVersionId: vid,
+    totalTrades: Number(r.totalTrades ?? 0),
+    winningTrades: Number(r.winningTrades ?? 0),
+    losingTrades: Number(r.losingTrades ?? 0),
+    winRatePct: r.winRatePct != null ? Number(r.winRatePct) : 0,
+    totalPnlUsdt: r.totalPnlUsdt != null ? Number(r.totalPnlUsdt) : 0,
+    avgWinUsdt: r.avgWinUsdt != null ? Number(r.avgWinUsdt) : null,
+    avgLossUsdt: r.avgLossUsdt != null ? Number(r.avgLossUsdt) : null,
+    profitFactor: r.profitFactor != null ? Number(r.profitFactor) : null,
+    maxDrawdownUsdt: r.maxDrawdownUsdt != null ? Number(r.maxDrawdownUsdt) : null,
+    maxDrawdownPct: r.maxDrawdownPct != null ? Number(r.maxDrawdownPct) : null,
+    sharpeRatio: r.sharpeRatio != null ? Number(r.sharpeRatio) : null,
+    avgHoldSec: r.avgHoldSec != null ? Number(r.avgHoldSec) : null,
+    avgRoiPct: r.avgRoiPct != null ? Number(r.avgRoiPct) : null,
+    rrRatio: r.rrRatio != null ? Number(r.rrRatio) : null,
+    lastCalculatedAt: r.lastCalculatedAt != null ? String(r.lastCalculatedAt) : null,
+  };
+}
+
+function mapApiEquityPoint(raw: unknown): EquityCurvePoint | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.closedAt !== "string") return null;
+  const dir = String(r.direction || "LONG").toUpperCase();
+  return {
+    closedAt: String(r.closedAt),
+    netPnl: Number(r.netPnl),
+    runningEquity: Number(r.runningEquity),
+    drawdownPct: Number(r.drawdownPct),
+    exitReason: r.exitReason != null ? String(r.exitReason) : null,
+    symbol: String(r.symbol ?? ""),
+    direction: dir === "SHORT" ? "SHORT" : "LONG",
+  };
+}
+
+function mapApiPerformanceCompareRow(raw: unknown): PerformanceCompareRow | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.strategyId !== "string" || typeof r.versionId !== "string") return null;
+  return {
+    strategyId: String(r.strategyId),
+    strategyName: String(r.strategyName ?? ""),
+    versionId: String(r.versionId),
+    versionNumber: Number(r.versionNumber ?? 0),
+    label: r.label != null ? String(r.label) : null,
+    metrics: mapApiStrategyPerformance(r.metrics, String(r.versionId)),
+  };
+}
+
+export type MarketIntelProvidersStatus = {
+  ok?: boolean;
+  encryptionConfigured: boolean;
+  storedBlobPresent: boolean;
+  envPresent: Record<string, boolean>;
+  effectivePresent: Record<string, boolean>;
+  storedPreview: Record<string, string | null>;
+  effectiveAiBaseUrl: string | null;
+};
+
 export const api = {
   /** Retries on 429 so UI auth bootstrap is not mistaken for logout when the global /api bucket is hot. */
   async authMe() {
@@ -40,6 +181,8 @@ export const api = {
         authenticated?: boolean;
         uiUserTag?: string | null;
         uiTradingMode?: string | null;
+        syncUiPrefs?: boolean;
+        uiUserRole?: string | null;
       }>(res);
     }
   },
@@ -61,8 +204,87 @@ export const api = {
       }),
     );
   },
+  async getUiPrefs() {
+    return json<{ ok?: boolean; ui_prefs?: Record<string, unknown> }>(await apiFetch(`${HTTP}/api/me/ui-prefs`));
+  },
+  async patchUiPrefs(patch: Record<string, unknown>) {
+    return json<{ ok?: boolean; ui_prefs?: Record<string, unknown> }>(
+      await apiFetch(`${HTTP}/api/me/ui-prefs`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      }),
+    );
+  },
   async state() {
     return json<any>(await apiFetch(`${HTTP}/api/state`));
+  },
+  async getAccountsForMode(modeSlug: ApiTradingModeSlug) {
+    const data = await json<{ ok?: boolean; accounts?: Account[] }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/accounts`),
+    );
+    return data.accounts ?? [];
+  },
+  async createAccount(modeSlug: ApiTradingModeSlug, body: CreateAccountDto) {
+    const data = await json<{ ok?: boolean; account?: Account }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/accounts`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+    if (!data.account) throw new Error("create_failed");
+    return data.account;
+  },
+  async updateAccount(accountId: string, patch: UpdateAccountDto) {
+    const data = await json<{ ok?: boolean; account?: Account }>(
+      await apiFetch(`${HTTP}/api/accounts/${encodeURIComponent(accountId)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      }),
+    );
+    if (!data.account) throw new Error("update_failed");
+    return data.account;
+  },
+  async deactivateAccount(accountId: string) {
+    await json<{ ok?: boolean }>(
+      await apiFetch(`${HTTP}/api/accounts/${encodeURIComponent(accountId)}`, {
+        method: "DELETE",
+      }),
+    );
+  },
+  /** Persist + apply which DB account supplies API keys for this mode (Phase 2B). */
+  async setActiveAccountForMode(modeSlug: ApiTradingModeSlug, accountId: string) {
+    return json<{ ok?: boolean; activeAccountByMode?: Record<string, string | null> }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/active-account`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ accountId }),
+      }),
+    );
+  },
+  async getCredentialsMeta(accountId: string) {
+    const data = await json<{ ok?: boolean; meta?: CredentialsMeta | null }>(
+      await apiFetch(`${HTTP}/api/accounts/${encodeURIComponent(accountId)}/credentials`),
+    );
+    return data.meta ?? null;
+  },
+  async saveCredentials(accountId: string, apiKey: string, secret: string) {
+    await json<{ ok?: boolean }>(
+      await apiFetch(`${HTTP}/api/accounts/${encodeURIComponent(accountId)}/credentials`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ apiKey, secret }),
+      }),
+    );
+  },
+  async revokeCredentials(accountId: string) {
+    await json<{ ok?: boolean }>(
+      await apiFetch(`${HTTP}/api/accounts/${encodeURIComponent(accountId)}/credentials`, {
+        method: "DELETE",
+      }),
+    );
   },
   /** Min notional + quote asset from Binance exchangeInfo (via backend). venue: SPOT | FUTURES | BOTH */
   async symbolConstraints(symbol?: string, venue?: string) {
@@ -156,13 +378,36 @@ export const api = {
     if (data?.ok && data.bot && typeof data.bot === "object") {
       const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
       const { useAppStore } = await import("../ws/store");
-      tradingUiPersistBotSnapshot(
-        useAppStore.getState().mode,
-        data.bot as Record<string, unknown>,
-        useAppStore.getState().authUiUserTag ?? null,
-      );
+      const botNext = data.bot as Record<string, unknown>;
+      tradingUiPersistBotSnapshot(useAppStore.getState().mode, botNext, useAppStore.getState().authUiUserTag ?? null);
+      /** Same as tune-move-quality: apply immediately so toggles / Market decision params don’t wait on async WS `state`. */
+      useAppStore.setState((s) => ({
+        bot: s.bot && typeof s.bot === "object" ? { ...(s.bot as Record<string, unknown>), ...botNext } : botNext,
+      }));
+      // Mark strategy config as dirty for explicit Save / Save-as-New workflow.
+      const patchObj = patch && typeof patch === "object" ? patch : {};
+      const patchKeys = Object.keys(patchObj);
+      const ignoredOnly = patchKeys.length > 0 && patchKeys.every((k) => k === "uiChartFocusSymbol");
+      if (!ignoredOnly) {
+        const modeSlug = (await import("../lib/tradingModeSlug")).tradingModeToApiModeSlug(useAppStore.getState().mode);
+        useAppStore.setState((s) => ({
+          strategyConfigDirtyByMode: { ...(s as any).strategyConfigDirtyByMode, [modeSlug]: true },
+        }));
+      }
     }
     return data;
+  },
+  async saveStrategyConfigForMode(
+    modeSlug: ApiTradingModeSlug,
+    body: { action: "save" | "save_as_new"; name?: string; description?: string | null; tags?: string[]; label?: string | null },
+  ) {
+    return json<{ ok?: boolean; action?: "save" | "save_as_new"; strategy?: unknown; version?: unknown }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/strategy-config/save`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
   },
   /** Suggest / apply Move Quality thresholds from `mq-trade-outcomes.jsonl` for the current mode. */
   async botTuneMoveQuality(opts?: {
@@ -291,6 +536,394 @@ export const api = {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(opts ?? {}),
+      }),
+    );
+  },
+
+  async getStrategiesForMode(modeSlug: ApiTradingModeSlug, opts?: { includeArchived?: boolean }) {
+    const q = opts?.includeArchived ? "?includeArchived=1" : "";
+    const data = await json<{ ok?: boolean; strategies?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/strategies${q}`),
+    );
+    const list = Array.isArray(data.strategies) ? data.strategies : [];
+    return list.map((row) => mapApiStrategy(row)).filter((s): s is Strategy => s != null);
+  },
+
+  async createStrategy(modeSlug: ApiTradingModeSlug, dto: CreateStrategyDto) {
+    const data = await json<{ ok?: boolean; strategy?: unknown; version?: unknown }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/strategies`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(dto),
+      }),
+    );
+    const ver = mapApiStrategyVersion(data.version);
+    const st = mapApiStrategy(data.strategy, ver);
+    if (!st) throw new Error("create_strategy_failed");
+    return { strategy: { ...st, latestVersion: ver }, version: ver };
+  },
+
+  async getStrategyDetail(strategyId: string) {
+    const data = await json<{ ok?: boolean; strategy?: unknown; latestVersion?: unknown }>(
+      await apiFetch(`${HTTP}/api/strategies/${encodeURIComponent(strategyId)}`),
+    );
+    const latest = mapApiStrategyVersion(data.latestVersion);
+    const st = mapApiStrategy(data.strategy, latest);
+    if (!st) throw new Error("strategy_not_found");
+    return { strategy: { ...st, latestVersion: latest }, latestVersion: latest };
+  },
+
+  async updateStrategyMeta(strategyId: string, patch: StrategyMetaPatch) {
+    const data = await json<{ ok?: boolean; strategy?: unknown }>(
+      await apiFetch(`${HTTP}/api/strategies/${encodeURIComponent(strategyId)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      }),
+    );
+    const st = mapApiStrategy(data.strategy);
+    if (!st) throw new Error("update_strategy_failed");
+    return st;
+  },
+
+  async archiveStrategy(strategyId: string) {
+    await json<{ ok?: boolean }>(
+      await apiFetch(`${HTTP}/api/strategies/${encodeURIComponent(strategyId)}`, { method: "DELETE" }),
+    );
+  },
+
+  async getActiveStrategyForMode(modeSlug: ApiTradingModeSlug) {
+    const data = await json<{ ok?: boolean; versionId?: string | null }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/active-strategy`),
+    );
+    return { versionId: data.versionId != null && String(data.versionId).length ? String(data.versionId) : null };
+  },
+
+  async setActiveStrategyForMode(modeSlug: ApiTradingModeSlug, versionId: string) {
+    await json<{ ok?: boolean }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/active-strategy`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ versionId }),
+      }),
+    );
+  },
+
+  async listInstancesForMode(modeSlug: ApiTradingModeSlug) {
+    const data = await json<{ ok?: boolean; instances?: BotInstance[] }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/instances`),
+    );
+    return data.instances ?? [];
+  },
+
+  async getAllotmentHeadroom(modeSlug: ApiTradingModeSlug) {
+    return json<{ ok?: boolean; accountId?: string; headroom?: AllotmentHeadroom | null }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/allotment-headroom`),
+    );
+  },
+
+  async createInstance(modeSlug: ApiTradingModeSlug, dto: CreateInstanceDto) {
+    const data = await json<{ ok?: boolean; instance?: BotInstance }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/instances`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(dto),
+      }),
+    );
+    if (!data.instance) throw new Error("create_instance_failed");
+    return data.instance;
+  },
+
+  async getActiveInstanceForMode(modeSlug: ApiTradingModeSlug) {
+    const data = await json<{ ok?: boolean; instanceId?: string | null }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/active-instance`),
+    );
+    return data.instanceId != null && String(data.instanceId).length ? String(data.instanceId) : null;
+  },
+
+  async setActiveInstanceForMode(
+    modeSlug: ApiTradingModeSlug,
+    instanceId: string | null,
+  ): Promise<{
+    activeAccountByMode?: Record<string, string | null>;
+    activeStrategyVersionByMode?: Record<string, string | null>;
+  } | null> {
+    const data = await json<{
+      ok?: boolean;
+      activeAccountByMode?: Record<string, string | null>;
+      activeStrategyVersionByMode?: Record<string, string | null>;
+    }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/active-instance`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ instanceId }),
+      }),
+    );
+    return data.ok === false ? null : data;
+  },
+
+  async getInstanceDetail(instanceId: string) {
+    const data = await json<{ ok?: boolean; instance?: BotInstance }>(
+      await apiFetch(`${HTTP}/api/instances/${encodeURIComponent(instanceId)}`),
+    );
+    if (!data.instance) throw new Error("instance_not_found");
+    return data.instance;
+  },
+
+  async patchInstanceLabel(instanceId: string, label: string) {
+    const data = await json<{ ok?: boolean; instance?: BotInstance }>(
+      await apiFetch(`${HTTP}/api/instances/${encodeURIComponent(instanceId)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ label }),
+      }),
+    );
+    if (!data.instance) throw new Error("patch_failed");
+    return data.instance;
+  },
+
+  /**
+   * Patch operational (instance-side) config — symbol/timeframe/risk/etc.
+   * Only fields present in `patch` are written. Capital allotment is a separate
+   * endpoint and is intentionally NOT updatable here.
+   */
+  async patchInstanceOperationalConfig(
+    instanceId: string,
+    patch: import("../types/instance").InstanceOperationalPatch,
+  ) {
+    const data = await json<{ ok?: boolean; instance?: BotInstance }>(
+      await apiFetch(`${HTTP}/api/instances/${encodeURIComponent(instanceId)}/operational-config`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch ?? {}),
+      }),
+    );
+    if (!data.instance) throw new Error("patch_failed");
+    return data.instance;
+  },
+
+  async deleteInstance(instanceId: string) {
+    await json<{ ok?: boolean }>(
+      await apiFetch(`${HTTP}/api/instances/${encodeURIComponent(instanceId)}`, { method: "DELETE" }),
+    );
+  },
+
+  async getInstanceStatusLog(instanceId: string, limit = 50) {
+    const data = await json<{ ok?: boolean; entries?: InstanceStatusLogEntry[] }>(
+      await apiFetch(
+        `${HTTP}/api/instances/${encodeURIComponent(instanceId)}/status-log?limit=${encodeURIComponent(String(limit))}`,
+      ),
+    );
+    return data.entries ?? [];
+  },
+
+  async clearInstanceError(instanceId: string) {
+    const data = await json<{ ok?: boolean; instance?: BotInstance }>(
+      await apiFetch(`${HTTP}/api/instances/${encodeURIComponent(instanceId)}/clear-error`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+    );
+    if (!data.instance) throw new Error("clear_error_failed");
+    return data.instance;
+  },
+
+  async pauseInstance(instanceId: string) {
+    const data = await json<{ ok?: boolean; instance?: BotInstance; bot?: unknown }>(
+      await apiFetch(`${HTTP}/api/instances/${encodeURIComponent(instanceId)}/pause`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+    );
+    if (!data.instance) throw new Error("pause_failed");
+    return data;
+  },
+
+  async resumeInstance(instanceId: string) {
+    const data = await json<{ ok?: boolean; instance?: BotInstance; bot?: unknown }>(
+      await apiFetch(`${HTTP}/api/instances/${encodeURIComponent(instanceId)}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+    );
+    if (!data.instance) throw new Error("resume_failed");
+    return data;
+  },
+
+  async getInstanceTrades(instanceId: string, opts?: { limit?: number; offset?: number; status?: string }) {
+    const lim = opts?.limit ?? 50;
+    const off = opts?.offset ?? 0;
+    const st = opts?.status != null && String(opts.status).trim() ? String(opts.status).trim() : "";
+    const q = new URLSearchParams({ limit: String(lim), offset: String(off) });
+    if (st) q.set("status", st);
+    const data = await json<{ ok?: boolean; trades?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/instances/${encodeURIComponent(instanceId)}/trades?${q.toString()}`),
+    );
+    const list = Array.isArray(data.trades) ? data.trades : [];
+    return list.map(mapApiTrade).filter((x): x is Trade => x != null);
+  },
+
+  async getTradeDetail(tradeId: string) {
+    const data = await json<{ ok?: boolean; trade?: unknown }>(
+      await apiFetch(`${HTTP}/api/trades/${encodeURIComponent(tradeId)}`),
+    );
+    return mapApiTrade(data.trade) ?? null;
+  },
+
+  async getInstanceSignals(instanceId: string, opts?: { limit?: number; wasExecuted?: boolean }) {
+    const lim = opts?.limit ?? 50;
+    const q = new URLSearchParams({ limit: String(lim) });
+    if (opts?.wasExecuted === true) q.set("wasExecuted", "true");
+    if (opts?.wasExecuted === false) q.set("wasExecuted", "false");
+    const data = await json<{ ok?: boolean; signals?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/instances/${encodeURIComponent(instanceId)}/signals?${q.toString()}`),
+    );
+    return Array.isArray(data.signals) ? data.signals : [];
+  },
+
+  async getStrategyVersions(strategyId: string) {
+    const data = await json<{ ok?: boolean; versions?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/strategies/${encodeURIComponent(strategyId)}/versions`),
+    );
+    const list = Array.isArray(data.versions) ? data.versions : [];
+    return list.map((v) => mapApiStrategyVersion(v)).filter((x): x is StrategyVersion => x != null);
+  },
+
+  async getStrategyVersion(strategyId: string, versionId: string) {
+    const data = await json<{ ok?: boolean; version?: unknown }>(
+      await apiFetch(
+        `${HTTP}/api/strategies/${encodeURIComponent(strategyId)}/versions/${encodeURIComponent(versionId)}`,
+      ),
+    );
+    const v = mapApiStrategyVersion(data.version);
+    if (!v) throw new Error("version_not_found");
+    return v;
+  },
+
+  async saveStrategyVersionSnapshot(strategyId: string, label?: string) {
+    const data = await json<{ ok?: boolean; version?: unknown }>(
+      await apiFetch(`${HTTP}/api/strategies/${encodeURIComponent(strategyId)}/versions/snapshot`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(label != null ? { label } : {}),
+      }),
+    );
+    const v = mapApiStrategyVersion(data.version);
+    if (!v) throw new Error("snapshot_failed");
+    return v;
+  },
+
+  async cloneStrategyVersion(strategyId: string, versionId: string, opts?: { targetStrategyId?: string; label?: string }) {
+    const data = await json<{ ok?: boolean; version?: unknown }>(
+      await apiFetch(
+        `${HTTP}/api/strategies/${encodeURIComponent(strategyId)}/versions/${encodeURIComponent(versionId)}/clone`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(opts ?? {}),
+        },
+      ),
+    );
+    const v = mapApiStrategyVersion(data.version);
+    if (!v) throw new Error("clone_failed");
+    return v;
+  },
+
+  async getStrategyPerformance(strategyId: string): Promise<VersionPerformanceRow[]> {
+    const data = await json<{ ok?: boolean; versions?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/strategies/${encodeURIComponent(strategyId)}/performance`),
+    );
+    const list = Array.isArray(data.versions) ? data.versions : [];
+    return list
+      .map((row) => {
+        if (!row || typeof row !== "object") return null;
+        const r = row as Record<string, unknown>;
+        if (typeof r.versionId !== "string") return null;
+        return {
+          versionId: String(r.versionId),
+          versionNumber: Number(r.versionNumber ?? 0),
+          label: r.label != null ? String(r.label) : null,
+          metrics: mapApiStrategyPerformance(r.metrics, String(r.versionId)),
+        } satisfies VersionPerformanceRow;
+      })
+      .filter((x): x is VersionPerformanceRow => x != null);
+  },
+
+  async getVersionPerformance(strategyId: string, versionId: string): Promise<StrategyPerformance | null> {
+    const data = await json<{ ok?: boolean; metrics?: unknown }>(
+      await apiFetch(
+        `${HTTP}/api/strategies/${encodeURIComponent(strategyId)}/versions/${encodeURIComponent(versionId)}/performance`,
+      ),
+    );
+    return mapApiStrategyPerformance(data.metrics, versionId);
+  },
+
+  async getEquityCurve(strategyId: string, versionId: string): Promise<EquityCurvePoint[]> {
+    const data = await json<{ ok?: boolean; curve?: unknown[] }>(
+      await apiFetch(
+        `${HTTP}/api/strategies/${encodeURIComponent(strategyId)}/versions/${encodeURIComponent(versionId)}/equity-curve`,
+      ),
+    );
+    const list = Array.isArray(data.curve) ? data.curve : [];
+    return list.map(mapApiEquityPoint).filter((x): x is EquityCurvePoint => x != null);
+  },
+
+  async getPerformanceCompare(modeSlug: ApiTradingModeSlug): Promise<PerformanceCompareRow[]> {
+    const data = await json<{ ok?: boolean; rows?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/performance/compare`),
+    );
+    const list = Array.isArray(data.rows) ? data.rows : [];
+    return list.map(mapApiPerformanceCompareRow).filter((x): x is PerformanceCompareRow => x != null);
+  },
+
+  async getMarketEvents(opts: { from: string; to: string; assets?: string }) {
+    const q = new URLSearchParams({ from: opts.from, to: opts.to });
+    if (opts.assets != null && String(opts.assets).trim() !== "") q.set("assets", String(opts.assets).trim());
+    const data = await json<{ ok?: boolean; events?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/market/events?${q.toString()}`),
+    );
+    return Array.isArray(data.events) ? data.events : [];
+  },
+
+  async getWhaleAlerts(opts: { from: string; to: string; symbol?: string }) {
+    const q = new URLSearchParams({ from: opts.from, to: opts.to });
+    if (opts.symbol != null && String(opts.symbol).trim() !== "") q.set("symbol", String(opts.symbol).trim());
+    const data = await json<{ ok?: boolean; alerts?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/market/whales?${q.toString()}`),
+    );
+    return Array.isArray(data.alerts) ? data.alerts : [];
+  },
+
+  async getStrategyEdge(opts: { instanceId?: string; strategyVersionId?: string; windowDays?: number }) {
+    const q = new URLSearchParams();
+    if (opts.instanceId) q.set("instanceId", opts.instanceId);
+    if (opts.strategyVersionId) q.set("strategyVersionId", opts.strategyVersionId);
+    if (opts.windowDays != null) q.set("windowDays", String(opts.windowDays));
+    return json<{ ok?: boolean; metrics?: StrategyEdgeMetrics }>(
+      await apiFetch(`${HTTP}/api/analytics/strategy-edge?${q.toString()}`),
+    );
+  },
+
+  async getMarketIntelProviders(): Promise<MarketIntelProvidersStatus> {
+    return json<MarketIntelProvidersStatus>(
+      await apiFetch(`${HTTP}/api/market-intelligence/providers`),
+    );
+  },
+
+  async putMarketIntelProviders(body: {
+    finnhubApiKey?: string;
+    cryptoquantApiKey?: string;
+    whaleAlertApiKey?: string;
+    aiBaseUrl?: string;
+  }) {
+    return json<{ ok?: boolean; error?: string; message?: string }>(
+      await apiFetch(`${HTTP}/api/market-intelligence/providers`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
       }),
     );
   },

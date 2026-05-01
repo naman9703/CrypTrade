@@ -72,7 +72,9 @@ export function LogsPanel() {
         ) : (
           <div className="space-y-1 font-mono text-[11px]">
             {sortedLogs.map((l, idx) => {
-              const skip = new Set(["ts", "level", "msg"]);
+              const lid = (l as Record<string, unknown>)._lid;
+              const rowKey = typeof lid === "number" ? String(lid) : `${String(l.ts)}:${idx}`;
+              const skip = new Set(["ts", "level", "msg", "_lid"]);
               const rest = Object.fromEntries(
                 Object.entries(l as Record<string, unknown>).filter(([k]) => !skip.has(k)),
               );
@@ -87,7 +89,7 @@ export function LogsPanel() {
                 (reason === "trail_sl_replace_success" || reason === "trailing_sl_advance");
               return (
                 <div
-                  key={idx}
+                  key={rowKey}
                   className={`flex gap-2 rounded px-0.5 py-0.5 ${
                     trailRowStart
                       ? "border border-amber-500/45 bg-amber-500/10"

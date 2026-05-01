@@ -14,10 +14,23 @@ const SLUG_BY_MODE = {
   BINANCE_LIVE: "live",
 };
 
+const MODE_BY_SLUG = {
+  paper: "PAPER",
+  demo_api: "BINANCE_DEMO_API",
+  testnet: "BINANCE_TESTNET",
+  live: "BINANCE_LIVE",
+};
+
 /** @param {string} [mode] TRADING_MODE value */
 export function tradingModeToPersistenceSlug(mode) {
   const m = String(mode || "PAPER").toUpperCase();
   return SLUG_BY_MODE[m] || "paper";
+}
+
+/** @param {string} [slug] persistence slug e.g. `demo_api` */
+export function persistenceSlugToTradingMode(slug) {
+  const s = String(slug || "").toLowerCase();
+  return MODE_BY_SLUG[s] || "PAPER";
 }
 
 /** Call whenever app `mode` is finalized (startup + after mode switch). */

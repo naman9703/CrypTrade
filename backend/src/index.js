@@ -18,7 +18,14 @@ import { WebSocketServer } from "ws";
 
 import { createLogger } from "./lib/logger.js";
 import { setTelegramActivityHook } from "./lib/activityLog.js";
-import { createAppState } from "./state/appState.js";
+import { initPool, getPool } from "./db/pool.js";
+import { ensurePaperSystemAccount } from "./db/ensurePaperSystemAccount.js";
+import { ensureDefaultStrategies } from "./db/ensureDefaultStrategies.js";
+import { backfillStrategyInstanceSplit } from "./db/backfillStrategyInstanceSplit.js";
+import * as usersService from "./db/services/usersService.js";
+import * as instanceService from "./db/services/instanceService.js";
+import { tradingModeToPersistenceSlug } from "./lib/tradingModePersistence.js";
+import { createAppState, modeSlugRequiresSelectedAccount } from "./state/appState.js";
 import {
   createSessionMiddleware,
   createUiAuthRouter,
@@ -28,8 +35,11 @@ import {
   validateUiAuthEnv,
 } from "./auth/uiGate.js";
 import { createRouter } from "./transport/http.js";
+import { sendTradingModesJson } from "./transport/tradingModesHandler.js";
 import { attachWs, setTelegramTradeHook } from "./transport/ws.js";
 import { createTelegramSidecar } from "./svc/telegram/telegramSidecar.js";
+import { startWalletSnapshotPoller } from "./lib/walletSnapshotPoller.js";
+import { startIntelligenceEngine } from "./intelligence/index.js";
 
 const PORT = Number(process.env.PORT || 8000);
 function expandFrontendOrigins(raw) {
@@ -78,7 +88,49 @@ process.on("unhandledRejection", (err) => {
 process.on("uncaughtException", (err) => {
   log.error("uncaught_exception", { error: String(err?.message || err) });
 });
+await initPool(log);
+try {
+  if (getPool()) await ensurePaperSystemAccount({ log });
+} catch (e) {
+  log.warn("ensure_paper_system_account_failed", { error: String(e?.message || e) });
+}
+try {
+  if (getPool()) await ensureDefaultStrategies({ log });
+} catch (e) {
+  log.warn("ensure_default_strategies_failed", { error: String(e?.message || e) });
+}
+try {
+  if (getPool()) await backfillStrategyInstanceSplit({ log });
+} catch (e) {
+  log.warn("backfill_strategy_instance_split_failed", { error: String(e?.message || e) });
+}
 const appState = createAppState({ log });
+try {
+  if (getPool()) {
+    const uid = await usersService.getFirstActiveUserId();
+    if (uid) {
+      const prefs = await usersService.getUiPrefsByUserId(uid);
+      appState.hydrateActiveAccountByMode(prefs);
+      appState.hydrateActiveStrategyVersionByMode(prefs);
+      appState.hydrateActiveInstanceByMode(prefs);
+      try {
+        await instanceService.syncSidebarFromActiveInstances(appState);
+      } catch (e) {
+        log.warn("sync_active_instance_sidebar_failed", { error: String(e?.message || e) });
+      }
+    }
+  }
+} catch (e) {
+  log.warn("hydrate_active_account_by_mode_failed", { error: String(e?.message || e) });
+}
+try {
+  await appState.ensureInitialEngine();
+} catch (e) {
+  log.warn("ensure_initial_engine_failed", {
+    error: String(e?.message || e),
+    hint: "Engines will initialize on first /api or WS use",
+  });
+}
 const telegramSidecar = createTelegramSidecar({ log, appState });
 setTelegramActivityHook((p) => telegramSidecar.notifyActivity(p));
 setTelegramTradeHook((p) => telegramSidecar.notifyTrade(p));
@@ -129,13 +181,18 @@ if (apiRateLimitOff) {
       standardHeaders: true,
       legacyHeaders: false,
       message: { ok: false, error: "rate_limited" },
+      /** Login + `/api/auth/me` bootstrap share this bucket with chart/state polling; excluding auth avoids false 429s and long retries. */
+      skip: (req) => {
+        const u = String(req.originalUrl || req.url || "").split("?")[0];
+        return u.startsWith("/api/auth");
+      },
     }),
   );
 }
 
 let sessionMiddleware = null;
 if (uiAuthEnabled()) {
-  sessionMiddleware = createSessionMiddleware({ log });
+  sessionMiddleware = createSessionMiddleware({ log, pool: getPool() });
   app.use(sessionMiddleware);
 }
 
@@ -144,7 +201,23 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+/** DB connectivity (no secrets). Omit detailed errors in production if desired. */
+app.get("/health/db", async (_req, res) => {
+  const pool = getPool();
+  if (!pool) {
+    return res.json({ ok: true, db: "skipped", hint: "DATABASE_URL not set" });
+  }
+  try {
+    const r = await pool.query("SELECT 1 AS ok");
+    return res.json({ ok: true, db: "up", result: r.rows[0] });
+  } catch (e) {
+    return res.status(503).json({ ok: false, db: "down", error: String(e?.message || e) });
+  }
+});
+
 app.use("/api/auth", createUiAuthRouter({ log }));
+/** Public: same payload as DB-backed modes (login UI / tooling) — no secrets. */
+app.get("/api/trading-modes", (_req, res) => sendTradingModesJson(res));
 app.use("/api", requireUiAuth, createRouter({ appState }));
 
 const distPath = path.resolve(__dirname, "..", "..", "frontend", "dist");
@@ -207,17 +280,29 @@ const onListen = () => {
     marketFeed: String(process.env.MARKET_FEED || "SYNTH").toUpperCase(),
     serveFrontend: Boolean(serveFrontend && fs.existsSync(distPath)),
   });
+  const pollMs = Number(process.env.WALLET_SNAPSHOT_POLL_MS || 60_000);
+  startWalletSnapshotPoller(appState, log, pollMs);
+  startIntelligenceEngine(appState.wsHub);
   if (truthyProxy(process.env.BOT_START_ON_BOOT)) {
-    try {
-      appState.bot.start({
-        wsHub: appState.wsHub,
-        reason: "boot_env",
-        source: "env",
-      });
-      log.info("bot_start_on_boot");
-    } catch (e) {
-      log.warn("bot_start_on_boot_failed", { error: String(e?.message || e) });
-    }
+    void (async () => {
+      try {
+        const m = appState.mode;
+        const slug = tradingModeToPersistenceSlug(m);
+        if (modeSlugRequiresSelectedAccount(slug) && !appState.getActiveAccount(slug)) {
+          log.warn("bot_start_on_boot_skipped_no_account", { mode: m, slug });
+          return;
+        }
+        await appState.ensureEngine(m);
+        appState.bot.start({
+          wsHub: appState.wsHub,
+          reason: "boot_env",
+          source: "env",
+        });
+        log.info("bot_start_on_boot");
+      } catch (e) {
+        log.warn("bot_start_on_boot_failed", { error: String(e?.message || e) });
+      }
+    })();
   }
   telegramSidecar.start();
 };

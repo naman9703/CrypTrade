@@ -1402,6 +1402,52 @@ class SurfPulsePredictResponse(BaseModel):
     model_kind: str
 
 
+class NewsImpactRequest(BaseModel):
+    headlines: list[str] = Field(default_factory=list)
+
+
+class NewsImpactResponse(BaseModel):
+    sentiment: float = Field(default=0.0, ge=-1.0, le=1.0)
+    summary: str = ""
+    model: str = "heuristic"
+
+
+def _score_news_headlines(headlines: list[str]) -> tuple[float, str]:
+    bull = (
+        "etf",
+        "approval",
+        "surge",
+        "rally",
+        "bull",
+        "gain",
+        "record high",
+        "inflow",
+        "accumulation",
+        "partnership",
+    )
+    bear = (
+        "hack",
+        "sec charges",
+        "lawsuit",
+        "crash",
+        "bear",
+        "outflow",
+        "ban",
+        "sell-off",
+        "liquidations",
+        "insolven",
+        "fraud",
+    )
+    text = " ".join(headlines[:50]).lower()
+    b = sum(1 for w in bull if w in text)
+    s = sum(1 for w in bear if w in text)
+    if b + s == 0:
+        return 0.0, "Neutral — no macro headline keywords matched."
+    raw = (b - s) / float(max(b + s, 1))
+    sentiment = float(max(-1.0, min(1.0, raw)))
+    return sentiment, f"Heuristic keyword tilt (bull={b}, bear={s})."
+
+
 # ─── FastAPI app ──────────────────────────────────────────────────────────────
 
 app = FastAPI(title="AI Service", version="2.0.0")
@@ -1454,6 +1500,15 @@ def health() -> dict[str, Any]:
         "model_path": str(model_path()),
         "feedback_csv": str(FEEDBACK_CSV),
     }
+
+
+@app.post("/news_impact_score", response_model=NewsImpactResponse)
+def news_impact_score(req: NewsImpactRequest) -> NewsImpactResponse:
+    hs = [h.strip() for h in req.headlines if isinstance(h, str) and h.strip()]
+    if not hs:
+        return NewsImpactResponse(sentiment=0.0, summary="No headlines.", model="none")
+    sentiment, summary = _score_news_headlines(hs)
+    return NewsImpactResponse(sentiment=sentiment, summary=summary, model="heuristic")
 
 
 @app.post("/predict", response_model=PredictResponse)

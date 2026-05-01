@@ -1,0 +1,32 @@
+# Local TimescaleDB for Phase 1A migrations (hypertables). Not started by default.
+#
+#   docker compose -f docker-compose.db.yml up -d
+#   npm --workspace backend run db:migrate
+#
+# Or one shot (starts compose + waits + migrates):
+#   npm --workspace backend run db:migrate:local
+#
+# If `docker compose up` fails with containerd/meta.db I/O errors: restart Docker Desktop,
+# ensure enough free disk, or Docker Desktop → Troubleshoot → Reset / clean data.
+
+services:
+  timescale:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:54333:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: tradingdev
+      POSTGRES_DB: trading
+    volumes:
+      - trading-timescale-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d trading"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  trading-timescale-data:

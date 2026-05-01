@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../api/client";
+import { hydrateTradingUiPrefsFromServer, setUiPrefsSyncAllowed, syncShowMarketIntelligencePanelFromStorage } from "../lib/tradingUiPersistence";
 import { AuthActionsContext } from "../authContext";
-import { forceDisconnectWebSocket, useAppStore } from "../ws/store";
+import {
+  forceDisconnectWebSocket,
+  parseActiveAccountByModeFromServer,
+  parseActiveInstanceByModeFromServer,
+  parseActiveStrategyVersionByModeFromServer,
+  useAppStore,
+} from "../ws/store";
 import { AiTradeMotionVisual } from "./AiTradeMotionVisual";
 import { LoginTypingIntro } from "./LoginTypingIntro";
 import { App } from "./App";
+import { AppErrorBoundary } from "./AppErrorBoundary";
 
 const LOGIN_VISUAL_MS = 120_000;
 
@@ -12,13 +20,25 @@ export function AuthShell() {
   const [phase, setPhase] = useState<"loading" | "app" | "login">("loading");
   const [authEnabled, setAuthEnabled] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (opts?: { postLogin?: boolean }) => {
     try {
-      const r = await api.authMe();
+      let r: Awaited<ReturnType<typeof api.authMe>>;
+      if (opts?.postLogin) {
+        await new Promise<void>((q) => setTimeout(q, 50));
+        r = await api.authMe();
+        for (let i = 0; i < 10 && r?.enabled && !r?.authenticated; i++) {
+          await new Promise<void>((q) => setTimeout(q, 60 + i * 20));
+          r = await api.authMe();
+        }
+      } else {
+        r = await api.authMe();
+      }
       const enabled = Boolean(r?.enabled);
       setAuthEnabled(enabled);
+      setUiPrefsSyncAllowed(false);
       if (!enabled) {
         useAppStore.setState({ authUiUserTag: null, perSessionTradingMode: false });
+        void syncShowMarketIntelligencePanelFromStorage(null);
         setPhase("app");
         return;
       }
@@ -27,11 +47,45 @@ export function AuthShell() {
           authUiUserTag: r.uiUserTag ?? null,
           perSessionTradingMode: true,
         });
+        const canSync = Boolean(r.syncUiPrefs);
+        setUiPrefsSyncAllowed(canSync);
+        if (canSync) {
+          try {
+            const p = await api.getUiPrefs();
+            const raw = (p?.ui_prefs ?? {}) as Record<string, unknown>;
+            await hydrateTradingUiPrefsFromServer(r.uiUserTag ?? null, raw);
+            if (raw.activeAccountByMode != null && typeof raw.activeAccountByMode === "object") {
+              useAppStore.setState({
+                activeAccountByMode: parseActiveAccountByModeFromServer(raw.activeAccountByMode),
+              });
+            }
+            if (raw.activeStrategyVersionByMode != null && typeof raw.activeStrategyVersionByMode === "object") {
+              useAppStore.setState({
+                activeStrategyVersionByMode: parseActiveStrategyVersionByModeFromServer(
+                  raw.activeStrategyVersionByMode,
+                ),
+              });
+            }
+            if (raw.activeInstanceByMode != null && typeof raw.activeInstanceByMode === "object") {
+              useAppStore.setState({
+                activeInstanceByMode: parseActiveInstanceByModeFromServer(raw.activeInstanceByMode),
+              });
+            }
+            if (raw.layout != null && typeof raw.layout === "object" && !Array.isArray(raw.layout)) {
+              useAppStore.getState().hydrateLayoutFromServer(raw.layout);
+            }
+          } catch {
+            /* ignore */
+          }
+        } else {
+          void syncShowMarketIntelligencePanelFromStorage(r.uiUserTag ?? null);
+        }
       } else {
         useAppStore.setState({ authUiUserTag: null, perSessionTradingMode: false });
       }
       setPhase(r?.authenticated ? "app" : "login");
     } catch {
+      setUiPrefsSyncAllowed(false);
       useAppStore.setState({ authUiUserTag: null, perSessionTradingMode: false });
       setPhase("login");
       setAuthEnabled(true);
@@ -43,6 +97,7 @@ export function AuthShell() {
   }, [refresh]);
 
   const logout = useCallback(async () => {
+    setUiPrefsSyncAllowed(false);
     try {
       await api.logout();
     } catch {
@@ -77,7 +132,9 @@ export function AuthShell() {
     <AuthActionsContext.Provider
       value={authEnabled ? { gated: true, logout } : { gated: false, logout: async () => {} }}
     >
-      <App />
+      <AppErrorBoundary>
+        <App />
+      </AppErrorBoundary>
     </AuthActionsContext.Provider>
   );
 }
@@ -97,7 +154,11 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
       setPassword("");
       onSuccess();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Login failed";
+      let msg = e instanceof Error ? e.message : "Login failed";
+      if (msg === "Failed to fetch") {
+        msg =
+          "Cannot reach the API. Start the backend (e.g. repo root `npm run dev` or `npm run dev` in backend/). If the API uses a custom port, set the same value in your shell as PORT or BACKEND_PORT, or set VITE_DEV_API_TARGET=http://127.0.0.1:<port> in frontend/.env — check the Vite terminal line “[vite] proxy …”. If you use VITE_BACKEND_HTTP, it must match that port exactly.";
+      }
       setErr(msg);
     } finally {
       setBusy(false);

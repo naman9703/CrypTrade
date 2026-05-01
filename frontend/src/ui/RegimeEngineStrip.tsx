@@ -100,7 +100,16 @@ function RegimeDot({ type }: { type: string }) {
  */
 export function RegimeEngineStrip() {
   const bot = useAppStore((s) => s.bot) as Record<string, unknown> | null | undefined;
-  const symbols = useMemo(() => computeRegimeStripSymbols(bot), [bot]);
+  const liveSymbols = useMemo(() => computeRegimeStripSymbols(bot), [bot]);
+  const lastNonEmptySymbolsRef = useRef<string[]>([]);
+  const symbols = useMemo(() => {
+    if (liveSymbols.length > 0) {
+      lastNonEmptySymbolsRef.current = liveSymbols;
+      return liveSymbols;
+    }
+    /** Keep strip mounted across transient empty snapshots to avoid visible flicker. */
+    return lastNonEmptySymbolsRef.current;
+  }, [liveSymbols]);
 
   const snaps = (bot?.multiSymbolWatchSignals || {}) as Record<string, WatchSnap>;
   const sigKey = useMemo(() => {

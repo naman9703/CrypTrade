@@ -5,6 +5,8 @@ import { deferTask } from "../lib/deferTask";
 import { playEngineStartSound } from "../lib/uiSounds";
 import { useAppStore } from "../ws/store";
 
+type Props = { onOpenSidebar?: () => void };
+
 function mergeBotFromApi(
   bot: Record<string, unknown> | null | undefined,
   extra?: { runningByMode?: Record<string, boolean> },
@@ -30,7 +32,7 @@ const MODE_LABELS: Record<string, string> = {
   BINANCE_LIVE: "Live",
 };
 
-export function HeaderBar() {
+export function HeaderBar({ onOpenSidebar }: Props = {}) {
   const bot = useAppStore((s) => s.bot);
   const mode = useAppStore((s) => s.mode);
   const runningByMode = useAppStore((s) => s.runningByMode ?? {});
@@ -38,7 +40,12 @@ export function HeaderBar() {
   const perSessionTradingMode = useAppStore((s) => s.perSessionTradingMode);
   const authActions = useAuthActions();
 
-  const botRunning = Boolean(bot?.running);
+  const modeUpper = String(mode || "PAPER").toUpperCase();
+  const runningForMode =
+    runningByMode != null && Object.prototype.hasOwnProperty.call(runningByMode, modeUpper)
+      ? Boolean((runningByMode as Record<string, boolean>)[modeUpper])
+      : undefined;
+  const botRunning = typeof runningForMode === "boolean" ? runningForMode : Boolean(bot?.running);
   const exchangeName = bot?.exchange?.name || mode || "—";
 
   const pendingSt = bot?.pendingSupertrendAction as { side?: string; venue?: string } | undefined;
@@ -56,7 +63,21 @@ export function HeaderBar() {
   return (
     <div className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 backdrop-blur">
       <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-3.5 sm:px-5 sm:py-4">
-        <div className="ml-6 flex shrink-0 items-center gap-3 sm:ml-10">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          {/* Hamburger — opens AppSidebar */}
+          <button
+            type="button"
+            aria-label="Open navigation sidebar"
+            title="Navigation sidebar"
+            onClick={onOpenSidebar}
+            className="flex h-9 w-9 items-center justify-center rounded-md text-slate-600 hover:bg-slate-200/70 dark:text-slate-400 dark:hover:bg-slate-800"
+          >
+            <svg width="18" height="14" viewBox="0 0 18 14" fill="none" aria-hidden>
+              <rect x="0" y="0" width="18" height="2" rx="1" fill="currentColor" />
+              <rect x="0" y="6" width="18" height="2" rx="1" fill="currentColor" />
+              <rect x="0" y="12" width="18" height="2" rx="1" fill="currentColor" />
+            </svg>
+          </button>
           <img
             src="/logo-light.webp"
             alt="AI Trading"
@@ -225,8 +246,9 @@ export function HeaderBar() {
                       mergeBotFromApi(out?.bot, { runningByMode: out?.runningByMode });
                       playEngineStartSound();
                     }
-                  } catch {
-                    pushLog({ level: "error", msg: "Failed to toggle bot" });
+                  } catch (e: unknown) {
+                    const detail = e instanceof Error ? e.message : String(e);
+                    pushLog({ level: "error", msg: `Failed to toggle bot: ${detail}` });
                   }
                 })();
               });

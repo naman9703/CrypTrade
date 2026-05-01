@@ -16,6 +16,7 @@ import { DEFAULT_TRAIL_FEE_BE_MULTIPLIER } from "../lib/trailingFeeLadder";
 import { mergeMarketDecisionConfig } from "../lib/marketDecision/configDefaults";
 import type { MarketDecisionEngineConfig } from "../lib/marketDecision/types";
 import { MarketDecisionConfigPanel } from "./MarketDecisionConfigPanel";
+import { tradingModeToApiModeSlug } from "../lib/tradingModeSlug";
 
 const numericInputClass =
   "w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100 tabular-nums";
@@ -1086,14 +1087,19 @@ const STRATS = [
 ];
 
 export function TradingPanel() {
+  const mode = useAppStore((s) => s.mode);
+  const modeSlug = tradingModeToApiModeSlug(mode);
   const bot = useAppStore((s) => s.bot);
   const account = useAppStore((s) => s.account);
   const positions = useAppStore((s) => s.positions);
   const trades = useAppStore((s) => s.trades);
   const pushLog = useAppStore((s) => s.pushLog);
+  const showMarketIntelligencePanel = useAppStore((s) => s.showMarketIntelligencePanel);
+  const setShowMarketIntelligencePanel = useAppStore((s) => s.setShowMarketIntelligencePanel);
   const chartCandles = useAppStore((s) => s.candles);
   const marketSym = useAppStore((s) => String(s.market?.symbol || "").toUpperCase().trim() || null);
   const marketTf = useAppStore((s) => String(s.market?.timeframe || "").trim() || null);
+  const strategyConfigDirty = useAppStore((s) => Boolean(s.strategyConfigDirtyByMode?.[modeSlug]));
   const marketAtrPct = useAppStore((s) => {
     const x = Number(s.market?.regime?.atrPct);
     return Number.isFinite(x) && x > 0 ? x : null;
@@ -1117,6 +1123,7 @@ export function TradingPanel() {
   const [tpPctStr, setTpPctStr] = useState("1.5");
   const [manualOrderBusy, setManualOrderBusy] = useState(false);
   const [mqTuneBusy, setMqTuneBusy] = useState(false);
+  const [strategySaveBusy, setStrategySaveBusy] = useState(false);
   const manualFormHydratedRef = useRef(false);
   const skipManualFormPersistRef = useRef(true);
   /** Live % label while dragging allowed-budget wallet slider (API commits on release only). */
@@ -1197,7 +1204,9 @@ export function TradingPanel() {
       supertrendBreakoutMaxBars: Math.max(1, Math.min(20, Math.floor(Number(bot?.supertrendBreakoutMaxBars ?? 5)))),
       signalStrengthOpenMin: clampNum(Math.round(Number(bot?.signalStrengthOpenMin ?? 65)), 0, 100),
       supertrendFuturesMinAiProb: clampNum(Number(bot?.supertrendFuturesMinAiProb ?? 0.55), 0, 1),
+      surfPulseMlGateEnabled: bot?.surfPulseMlGateEnabled !== false,
       surfPulseMlThreshold: clampNum(Number(bot?.surfPulseMlThreshold ?? 0.6), 0, 1),
+      intelligenceGateEnabled: bot?.intelligenceGateEnabled === true,
       trailingStopLossAuto: bot?.trailingStopLossAuto === true,
       futuresTrailingStopMode:
         String(bot?.futuresTrailingStopMode || "SUPERTREND").toUpperCase() === "FEE_LADDER" ? "FEE_LADDER" : "SUPERTREND",
@@ -2027,6 +2036,65 @@ export function TradingPanel() {
     };
   }, [cfg.strategyMode]);
 
+  async function saveCurrentStrategyConfig() {
+    try {
+      setStrategySaveBusy(true);
+      const out = await api.saveStrategyConfigForMode(modeSlug, {
+        action: "save",
+        label: "Saved from config",
+      });
+      const vid = typeof out?.version?.id === "string" ? out.version.id : null;
+      if (vid) {
+        useAppStore.setState((s) => ({
+          activeStrategyVersionByMode: { ...s.activeStrategyVersionByMode, [modeSlug]: vid },
+          strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
+        }));
+      } else {
+        useAppStore.setState((s) => ({
+          strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
+        }));
+      }
+      await useAppStore.getState().fetchStrategiesForMode(modeSlug);
+      pushLog({ level: "info", msg: "Strategy saved", category: "config", reason: "strategy_save" });
+    } catch (e) {
+      pushLog({ level: "error", msg: `Failed to save strategy: ${String((e as any)?.message || e)}` });
+    } finally {
+      setStrategySaveBusy(false);
+    }
+  }
+
+  async function saveAsNewStrategyFromConfig() {
+    const name = window.prompt("New strategy name", "New Strategy");
+    if (name == null) return;
+    const trimmed = String(name).trim();
+    if (!trimmed) return;
+    try {
+      setStrategySaveBusy(true);
+      const out = await api.saveStrategyConfigForMode(modeSlug, {
+        action: "save_as_new",
+        name: trimmed,
+        label: "v1 — saved from config",
+      });
+      const vid = typeof out?.version?.id === "string" ? out.version.id : null;
+      if (vid) {
+        useAppStore.setState((s) => ({
+          activeStrategyVersionByMode: { ...s.activeStrategyVersionByMode, [modeSlug]: vid },
+          strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
+        }));
+      } else {
+        useAppStore.setState((s) => ({
+          strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
+        }));
+      }
+      await useAppStore.getState().fetchStrategiesForMode(modeSlug);
+      pushLog({ level: "info", msg: `Saved as new strategy: ${trimmed}`, category: "config", reason: "strategy_save_as_new" });
+    } catch (e) {
+      pushLog({ level: "error", msg: `Failed to save as new strategy: ${String((e as any)?.message || e)}` });
+    } finally {
+      setStrategySaveBusy(false);
+    }
+  }
+
   return (
     <div className="p-4">
       <div className="mb-3 flex items-center justify-between">
@@ -2038,6 +2106,59 @@ export function TradingPanel() {
           </div>
         </div>
       </div>
+
+      {/*
+        ─────────────────────────────────────────────────────────────────
+        Strategy / Instance split — what gets saved where
+        ─────────────────────────────────────────────────────────────────
+        Save routes each field to the right table:
+          • SIGNAL BRAIN fields → strategy version (reusable across instances)
+          • OPERATIONAL  fields → active instance (per-deployment overrides)
+        Same strategy can run on BTC instance and ETH instance simultaneously
+        because operational fields (symbol/risk/capital) live on the instance.
+      */}
+      <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-[11px] leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+        <div className="mb-1 font-semibold text-slate-800 dark:text-slate-200">How saving works</div>
+        <div>
+          <span className="mr-1 inline-flex items-center rounded bg-sky-500/15 px-1.5 py-[1px] font-mono text-[10px] uppercase tracking-wide text-sky-700 dark:text-sky-300">
+            Strategy
+          </span>
+          Signal brain — indicator params, AI/ML, MDE filter, signal gates, entry rules, exit/trailing, leverage. Reusable across instances.
+        </div>
+        <div className="mt-1">
+          <span className="mr-1 inline-flex items-center rounded bg-emerald-500/15 px-1.5 py-[1px] font-mono text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+            Instance
+          </span>
+          Operational deployment — symbol, timeframe, market mode, universe, risk per trade, max daily loss, capital allotment. Owned by the active instance.
+        </div>
+      </div>
+
+      {strategyConfigDirty ? (
+        <div className="mb-3 rounded-lg border border-amber-400/50 bg-amber-500/10 p-3 text-xs">
+          <div className="font-semibold text-amber-300">Configuration changed</div>
+          <div className="mt-1 text-slate-600 dark:text-slate-300">
+            Save routes signal-brain fields to the current strategy and operational fields to the active instance. Save as New keeps the original strategy unchanged and points the instance to the new one.
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              disabled={strategySaveBusy}
+              onClick={() => void saveCurrentStrategyConfig()}
+              className="rounded-md border border-sky-500/60 px-2.5 py-1 font-semibold text-sky-300 disabled:opacity-60"
+            >
+              {strategySaveBusy ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              disabled={strategySaveBusy}
+              onClick={() => void saveAsNewStrategyFromConfig()}
+              className="rounded-md border border-emerald-500/60 px-2.5 py-1 font-semibold text-emerald-300 disabled:opacity-60"
+            >
+              {strategySaveBusy ? "Saving…" : "Save as New"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mb-4">
         <div className="flex rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-1">
@@ -2144,70 +2265,7 @@ export function TradingPanel() {
               </select>
             </label>
 
-            {cfg.marketMode !== "SPOT" && (
-              <div className="rounded-lg border border-slate-200 dark:border-slate-800/90 bg-white/85 dark:bg-slate-950/30 p-2">
-                <div className="mb-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-300">Supertrend futures direction</div>
-                <div className="flex gap-1.5">
-                  <button
-                    type="button"
-                    className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-semibold ${
-                      !cfg.supertrendFuturesTwoWay
-                        ? "bg-amber-600/85 text-slate-950 dark:text-slate-50 hover:bg-amber-600"
-                        : "border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-900"
-                    }`}
-                    onClick={() => {
-                      if (!cfg.supertrendFuturesTwoWay) return;
-                      deferTask(() => {
-                        void (async () => {
-                          try {
-                            await api.botConfig({ supertrendFuturesTwoWay: false });
-                            pushLog({
-                              level: "info",
-                              msg: "Futures Supertrend: 1-way (buy) — SELL signal only closes long; BUY opens long.",
-                            });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to set 1-way mode" });
-                          }
-                        })();
-                      });
-                    }}
-                  >
-                    1-way (Buy)
-                  </button>
-                  <button
-                    type="button"
-                    className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-semibold ${
-                      cfg.supertrendFuturesTwoWay
-                        ? "bg-amber-600/85 text-slate-950 dark:text-slate-50 hover:bg-amber-600"
-                        : "border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-900"
-                    }`}
-                    onClick={() => {
-                      if (cfg.supertrendFuturesTwoWay) return;
-                      deferTask(() => {
-                        void (async () => {
-                          try {
-                            await api.botConfig({ supertrendFuturesTwoWay: true });
-                            pushLog({
-                              level: "info",
-                              msg: "Futures Supertrend: 2-way — BUY closes short then long; SELL closes long then short.",
-                            });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to set 2-way mode" });
-                          }
-                        })();
-                      });
-                    }}
-                  >
-                    2-way (Buy &amp; Sell)
-                  </button>
-                </div>
-                <p className="mt-1.5 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
-                  Indicator autotrade only. With AI confidence filter off, entries use fixed SL 0.2% / TP 1.5% (defaults).
-                </p>
-              </div>
-            )}
-
-            {cfg.marketMode === "FUTURES" && (
+            {false && cfg.marketMode === "FUTURES" && (
               <>
               <div className="space-y-2 rounded-lg border border-emerald-900/45 bg-emerald-950/20 p-2">
                 <div className="text-[11px] font-semibold text-emerald-200/95">Trade history fees (USD‑M · modeled)</div>
@@ -2481,151 +2539,7 @@ export function TradingPanel() {
               </>
             )}
 
-            {(cfg.marketMode === "SPOT" || cfg.marketMode === "FUTURES") && (
-              <div
-                className={
-                  cfg.marketMode === "FUTURES"
-                    ? "space-y-2 rounded-lg border border-amber-900/40 bg-amber-950/15 p-2"
-                    : "space-y-2 rounded-lg border border-emerald-900/40 bg-emerald-950/15 p-2"
-                }
-              >
-                <label className="flex cursor-pointer items-start gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={
-                      cfg.marketMode === "SPOT" ? cfg.supertrendSpotAuto : cfg.supertrendFuturesAuto
-                    }
-                    onChange={(e) => {
-                      const autoOn = e.currentTarget.checked;
-                      const mm = cfg.marketMode;
-                      deferTask(() => {
-                        void (async () => {
-                          try {
-                            if (mm === "SPOT") {
-                              await api.botConfig({ supertrendSpotAuto: autoOn });
-                              pushLog({
-                                level: "info",
-                                msg: autoOn
-                                  ? "Supertrend spot autotrading ON — BUY uses ~all available spot quote; SELL closes full base on signal (bar close). Start the bot. AI path is paused."
-                                  : "Supertrend spot autotrading OFF",
-                              });
-                            } else {
-                              await api.botConfig(
-                                autoOn
-                                  ? { supertrendFuturesAuto: true }
-                                  : {
-                                      supertrendFuturesAuto: false,
-                                      supertrendFuturesAiConfidenceFilter: true,
-                                    },
-                              );
-                              pushLog({
-                                level: "info",
-                                msg: autoOn
-                                  ? "Supertrend futures autotrading ON — BUY sizes to ~available margin × leverage (see Lev. mode below); SELL closes the long on signal (bar close). Start the bot. AI path is paused."
-                                  : "Supertrend futures autotrading OFF",
-                              });
-                            }
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to update Supertrend" });
-                          }
-                        })();
-                      });
-                    }}
-                  />
-                  <span>
-                    <span
-                      className={
-                        cfg.marketMode === "FUTURES"
-                          ? "font-semibold text-amber-200"
-                          : "font-semibold text-emerald-200"
-                      }
-                    >
-                      Autotrade with Supertrend
-                    </span>
-                    <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
-                      {cfg.marketMode === "SPOT" ? (
-                        <>
-                          Uses your chart timeframe. Signals on bar close. BUY ≈ full spot quote (
-                          <code className="text-slate-600 dark:text-slate-400">SUPERTREND_SPOT_NOTIONAL_BUFFER_PCT</code>); SELL exits the
-                          full position. Requires <code className="text-slate-600 dark:text-slate-400">MARKET_FEED=BINANCE</code> or futures
-                          feed for klines.
-                        </>
-                      ) : (
-                        <>
-                          Bar-close Supertrend BUY calls the coin AI (<code className="text-slate-600 dark:text-slate-400">/predict</code>)
-                          for confidence: that score drives leverage (AUTO), position size (risk tiers), and SL/TP (ATR +
-                          regime + confidence). Exit: take-profit / stop on the exchange, or Supertrend SELL closes the
-                          long. Needs ≥30 candles and a running AI service. Optional{" "}
-                          <code className="text-slate-600 dark:text-slate-400">SUPERTREND_FUTURES_MIN_AI_PROB</code>. Lev. mode below applies
-                          to AUTO leverage.
-                        </>
-                      )}
-                    </span>
-                  </span>
-                </label>
-                <div className="grid grid-cols-[110px_1fr] items-center gap-2 text-xs">
-                  <span className="text-slate-600 dark:text-slate-400">ATR period</span>
-                  <NumericTextInput
-                    value={cfg.supertrendPeriod}
-                    inputMode="numeric"
-                    min={2}
-                    max={100}
-                    parse={(raw) => parseInt(raw, 10)}
-                    disabled={
-                      cfg.marketMode === "SPOT" ? !cfg.supertrendSpotAuto : !cfg.supertrendFuturesAuto
-                    }
-                    onCommit={async (v) => {
-                      try {
-                        await api.botConfig({ supertrendPeriod: v });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to set ATR period" });
-                      }
-                    }}
-                  />
-                </div>
-                <div className="grid grid-cols-[110px_1fr] items-center gap-2 text-xs">
-                  <span className="text-slate-600 dark:text-slate-400">Multiplier</span>
-                  <NumericTextInput
-                    value={cfg.supertrendMultiplier}
-                    min={0.5}
-                    max={20}
-                    disabled={
-                      cfg.marketMode === "SPOT" ? !cfg.supertrendSpotAuto : !cfg.supertrendFuturesAuto
-                    }
-                    onCommit={async (v) => {
-                      try {
-                        await api.botConfig({ supertrendMultiplier: v });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to set multiplier" });
-                      }
-                    }}
-                  />
-                </div>
-                <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={cfg.supertrendWilderAtr}
-                    disabled={
-                      cfg.marketMode === "SPOT" ? !cfg.supertrendSpotAuto : !cfg.supertrendFuturesAuto
-                    }
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      deferTask(() => {
-                        void (async () => {
-                          try {
-                            await api.botConfig({ supertrendWilderAtr: checked });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to set ATR mode" });
-                          }
-                        })();
-                      });
-                    }}
-                  />
-                  Wilder ATR (Pine default). Off = SMA(TR)
-                </label>
-              </div>
-            )}
+            
 
             {cfg.marketMode !== "SPOT" && (
               <>
@@ -3136,6 +3050,280 @@ export function TradingPanel() {
               </div>
             )}
 
+            {cfg.marketMode === "FUTURES" && (
+              <>
+                <div className="space-y-2 rounded-lg border border-emerald-900/45 bg-emerald-950/20 p-2">
+                  <div className="text-[11px] font-semibold text-emerald-200/95">Trade history fees (USD‑M · modeled)</div>
+                  <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+                    Custom maker vs taker fee rates as <span className="text-slate-700 dark:text-slate-300">percent of notional</span>{" "}
+                    (e.g. 0.05 = 0.05%). Used for Portfolio <span className="font-medium text-slate-700 dark:text-slate-300">trade history</span>{" "}
+                    when the exchange did not attach commission on a row; fills from Binance still override when present. Liquidity class comes from{" "}
+                    fill data when available, else order type / stop vs limit heuristics (defaults to taker).
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="rounded-md border border-emerald-800/40 bg-white/40 px-2 py-1.5 dark:bg-slate-950/40">
+                      <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-emerald-800/80 dark:text-emerald-300/70">
+                        Maker (limit adds liquidity)
+                      </div>
+                      <div className="grid grid-cols-[108px_1fr] items-center gap-2 text-xs">
+                        <span className="text-slate-600 dark:text-slate-400">Entry %</span>
+                        <NumericTextInput
+                          value={+(cfg.tradeHistoryMakerOpenFeeRate * 100).toFixed(4)}
+                          inputMode="decimal"
+                          min={0}
+                          max={1}
+                          parse={(raw) => parseFloat(raw)}
+                          onCommit={async (v) => {
+                            try {
+                              await api.botConfig({ tradeHistoryMakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to set maker entry fee %" });
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="mt-1 grid grid-cols-[108px_1fr] items-center gap-2 text-xs">
+                        <span className="text-slate-600 dark:text-slate-400">Exit %</span>
+                        <NumericTextInput
+                          value={+(cfg.tradeHistoryMakerCloseFeeRate * 100).toFixed(4)}
+                          inputMode="decimal"
+                          min={0}
+                          max={1}
+                          parse={(raw) => parseFloat(raw)}
+                          onCommit={async (v) => {
+                            try {
+                              await api.botConfig({ tradeHistoryMakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to set maker exit fee %" });
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-emerald-800/40 bg-white/40 px-2 py-1.5 dark:bg-slate-950/40">
+                      <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-emerald-800/80 dark:text-emerald-300/70">
+                        Taker (market / takes liquidity)
+                      </div>
+                      <div className="grid grid-cols-[108px_1fr] items-center gap-2 text-xs">
+                        <span className="text-slate-600 dark:text-slate-400">Entry %</span>
+                        <NumericTextInput
+                          value={+(cfg.tradeHistoryTakerOpenFeeRate * 100).toFixed(4)}
+                          inputMode="decimal"
+                          min={0}
+                          max={1}
+                          parse={(raw) => parseFloat(raw)}
+                          onCommit={async (v) => {
+                            try {
+                              await api.botConfig({ tradeHistoryTakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to set taker entry fee %" });
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="mt-1 grid grid-cols-[108px_1fr] items-center gap-2 text-xs">
+                        <span className="text-slate-600 dark:text-slate-400">Exit %</span>
+                        <NumericTextInput
+                          value={+(cfg.tradeHistoryTakerCloseFeeRate * 100).toFixed(4)}
+                          inputMode="decimal"
+                          min={0}
+                          max={1}
+                          parse={(raw) => parseFloat(raw)}
+                          onCommit={async (v) => {
+                            try {
+                              await api.botConfig({ tradeHistoryTakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to set taker exit fee %" });
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2 rounded-lg border border-sky-800/50 bg-sky-950/25 p-2">
+                  <div className="text-[11px] font-semibold text-sky-200/95">Futures entry (Supertrend signal → order)</div>
+                  <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                    Flow: bar-close signal uses the candle <span className="text-slate-600 dark:text-slate-300">close</span> as the
+                    reference price → server fetches <span className="text-slate-600 dark:text-slate-300">live bid/ask, mark, mid</span> →
+                    if any price is worse than your max slippage vs that close, the open is <span className="text-slate-600 dark:text-slate-300">skipped</span>{" "}
+                    (better than a bad MARKET fill). With <span className="text-slate-600 dark:text-slate-300">AUTO</span> open style and slippage
+                    &gt; 0, the first attempt is typically <span className="text-slate-600 dark:text-slate-300">LIMIT IOC</span> at close × (1±slippage).
+                    Activity logs fill vs signal as bps. Values below are saved with bot config (server{" "}
+                    <code className="text-slate-600 dark:text-slate-400">bot-trading-config.json</code>).
+                  </p>
+                  <div className="grid grid-cols-[118px_1fr] items-center gap-2 text-xs">
+                    <span className="text-slate-600 dark:text-slate-400" title="Percent points vs signal candle close (0 = disable guard).">
+                      Max slippage %
+                    </span>
+                    <NumericTextInput
+                      value={Number(cfg.supertrendFuturesMaxEntrySlippagePct.toFixed(4))}
+                      inputMode="decimal"
+                      min={0}
+                      max={5}
+                      parse={(raw) => parseFloat(raw)}
+                      onCommit={async (v) => {
+                        try {
+                          await api.botConfig({ supertrendFuturesMaxEntrySlippagePct: clampNum(v, 0, 5) });
+                        } catch {
+                          pushLog({ level: "error", msg: "Failed to set max entry slippage" });
+                        }
+                      }}
+                    />
+                  </div>
+                  <label className="grid grid-cols-[118px_1fr] items-center gap-2 text-xs">
+                    <span className="text-slate-600 dark:text-slate-400">Open style</span>
+                    <select
+                      className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
+                      value={cfg.supertrendFuturesEntryOpenStyle}
+                      onChange={(e) => {
+                        const v = e.target.value as "AUTO" | "MARKET" | "LIMIT_IOC";
+                        deferTask(() => {
+                          void (async () => {
+                            try {
+                              await api.botConfig({ supertrendFuturesEntryOpenStyle: v });
+                              pushLog({ level: "info", msg: `Futures entry open style: ${v}` });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to set open style" });
+                            }
+                          })();
+                        });
+                      }}
+                    >
+                      <option value="AUTO">AUTO (LIMIT IOC if slippage &gt; 0)</option>
+                      <option value="LIMIT_IOC">LIMIT IOC</option>
+                      <option value="MARKET">MARKET</option>
+                    </select>
+                  </label>
+                  <div className="grid grid-cols-[118px_1fr] items-center gap-2 text-xs">
+                    <span className="text-slate-600 dark:text-slate-400" title="Wait, then re-fetch book/mark before placing.">
+                      Recheck ms
+                    </span>
+                    <NumericTextInput
+                      value={cfg.supertrendFuturesEntryRecheckMs}
+                      inputMode="numeric"
+                      min={0}
+                      max={60000}
+                      parse={(raw) => parseInt(raw, 10)}
+                      onCommit={async (v) => {
+                        try {
+                          await api.botConfig({ supertrendFuturesEntryRecheckMs: Math.max(0, Math.min(60000, Math.floor(v))) });
+                        } catch {
+                          pushLog({ level: "error", msg: "Failed to set entry recheck ms" });
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-[118px_1fr] items-center gap-2 text-xs">
+                    <span className="text-slate-600 dark:text-slate-400" title="Skip if bar-close to order is too slow (AI/network).">
+                      Max signal lag ms
+                    </span>
+                    <NumericTextInput
+                      value={cfg.supertrendFuturesMaxSignalLagMs}
+                      inputMode="numeric"
+                      min={0}
+                      max={3600000}
+                      parse={(raw) => parseInt(raw, 10)}
+                      onCommit={async (v) => {
+                        try {
+                          await api.botConfig({ supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(v)) });
+                        } catch {
+                          pushLog({ level: "error", msg: "Failed to set max signal lag" });
+                        }
+                      }}
+                    />
+                  </div>
+                  <label className="flex cursor-pointer items-start gap-2 text-[11px]">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={cfg.supertrendFuturesIocFallbackMarket}
+                      onChange={(e) => {
+                        const on = e.currentTarget.checked;
+                        deferTask(() => {
+                          void (async () => {
+                            try {
+                              await api.botConfig({ supertrendFuturesIocFallbackMarket: on });
+                              pushLog({
+                                level: "info",
+                                msg: on
+                                  ? "IOC no-fill → may retry MARKET if still within slippage cap"
+                                  : "IOC no-fill → no MARKET fallback",
+                              });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to update IOC fallback" });
+                            }
+                          })();
+                        });
+                      }}
+                    />
+                    <span>
+                      <span className="font-medium text-slate-700 dark:text-slate-200">IOC → MARKET fallback</span>
+                      <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
+                        If LIMIT IOC does not fill, re-quote once; place MARKET only if still inside the slippage band (off = safer).
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2 text-[11px]">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={cfg.supertrendFuturesRequireMarkPrice}
+                      onChange={(e) => {
+                        const next = e.currentTarget.checked;
+                        deferTask(() => {
+                          void (async () => {
+                            try {
+                              await api.botConfig({ supertrendFuturesRequireMarkPrice: next });
+                            } catch (err) {
+                              pushLog({
+                                level: "error",
+                                msg: `Failed to update require mark: ${err instanceof Error ? err.message : String(err)}`,
+                              });
+                            }
+                          })();
+                        });
+                      }}
+                    />
+                    <span>
+                      Require mark price
+                      <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
+                        Skip open if premium-index mark cannot be fetched (stricter).
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2 text-[11px]">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={cfg.supertrendFuturesRequireBookTicker}
+                      onChange={(e) => {
+                        const next = e.currentTarget.checked;
+                        deferTask(() => {
+                          void (async () => {
+                            try {
+                              await api.botConfig({ supertrendFuturesRequireBookTicker: next });
+                            } catch (err) {
+                              pushLog({
+                                level: "error",
+                                msg: `Failed to update require book: ${err instanceof Error ? err.message : String(err)}`,
+                              });
+                            }
+                          })();
+                        });
+                      }}
+                    />
+                    <span>
+                      Require book ticker
+                      <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
+                        Skip open if best bid/ask snapshot fails while slippage guard is active.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </>
+            )}
+
             <label className="grid grid-cols-[110px_1fr] items-center gap-2">
               <span className="text-slate-600 dark:text-slate-400">Strategy</span>
               {cfg.strategyMode === "AUTO" ? (
@@ -3247,30 +3435,7 @@ export function TradingPanel() {
               />
             </label>
 
-            {(cfg.strategyMode === "AUTO" || cfg.manualStrategy === "SURF_PULSE_ML") && (
-              <div className="rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-white/85 dark:bg-slate-950/30 px-2 py-2">
-                <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">SurfPulse ML gate</div>
-                <p className="mt-0.5 text-[11px] leading-snug text-slate-600 dark:text-slate-500">
-                  Minimum XGBoost win probability from <span className="text-slate-600 dark:text-slate-400">/predict/surfpulse</span> required to
-                  act on a SurfPulse signal. In <span className="text-slate-600 dark:text-slate-400">AUTO</span> mode this applies whenever the
-                  selector runs SurfPulse ML; in <span className="text-slate-600 dark:text-slate-400">MANUAL</span> when SurfPulse ML is selected.
-                </p>
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min SurfPulse</span>
-                  <ThresholdSliderWithLock
-                    ariaLabel="Minimum SurfPulse ML win probability (percent)"
-                    serverSliderUnits={Math.round(cfg.surfPulseMlThreshold * 100)}
-                    formatDisplay={(u) => `${u}%`}
-                    onDebouncedCommit={(u) => {
-                      const p = clampNum(u / 100, 0, 1);
-                      void api.botConfig({ surfPulseMlThreshold: Number(p.toFixed(3)) }).catch(() => {
-                        pushLog({ level: "error", msg: "Failed to set SurfPulse threshold" });
-                      });
-                    }}
-                  />
-                </div>
-              </div>
-            )}
+            
 
             {cfg.marketMode !== "SPOT" && (
               <div className="mb-3 rounded-xl border-2 border-sky-600/35 bg-gradient-to-br from-sky-50/95 via-white to-slate-50/90 p-3 shadow-md dark:border-sky-500/35 dark:from-sky-950/45 dark:via-slate-950 dark:to-slate-900/90">
@@ -3714,7 +3879,7 @@ export function TradingPanel() {
               </div>
             )}
 
-            {(cfg.supertrendSpotAuto || cfg.supertrendFuturesAuto) && (
+            {(
               <div className="mb-3 rounded-xl border-2 border-violet-600/35 bg-gradient-to-br from-violet-50/95 via-white to-slate-50/90 p-3 shadow-md dark:border-violet-500/35 dark:from-violet-950/45 dark:via-slate-950 dark:to-slate-900/90">
                 <div className="flex flex-wrap items-start justify-between gap-2 border-b border-violet-800/15 pb-2 dark:border-violet-300/10">
                   <div className="min-w-0">
@@ -3724,6 +3889,304 @@ export function TradingPanel() {
                       minimum AI probability on USD-M futures, and minimum composite signal strength on spot and futures. Closes are unchanged.
                     </p>
                   </div>
+                </div>
+
+                {(cfg.marketMode === "SPOT" || cfg.marketMode === "FUTURES") && (
+                  <div
+                    className={`mt-3 space-y-2 rounded-lg p-2 ${
+                      cfg.marketMode === "FUTURES"
+                        ? "border border-amber-900/40 bg-amber-950/15"
+                        : "border border-emerald-900/40 bg-emerald-950/15"
+                    }`}
+                  >
+                    <label className="flex cursor-pointer items-start gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={cfg.marketMode === "SPOT" ? cfg.supertrendSpotAuto : cfg.supertrendFuturesAuto}
+                        onChange={(e) => {
+                          const autoOn = e.currentTarget.checked;
+                          const mm = cfg.marketMode;
+                          deferTask(() => {
+                            void (async () => {
+                              try {
+                                if (mm === "SPOT") {
+                                  await api.botConfig({ supertrendSpotAuto: autoOn });
+                                  pushLog({
+                                    level: "info",
+                                    msg: autoOn
+                                      ? "Supertrend spot autotrading ON — BUY uses ~all available spot quote; SELL closes full base on signal (bar close). Start the bot. AI path is paused."
+                                      : "Supertrend spot autotrading OFF",
+                                  });
+                                } else {
+                                  await api.botConfig(
+                                    autoOn
+                                      ? { supertrendFuturesAuto: true }
+                                      : { supertrendFuturesAuto: false, supertrendFuturesAiConfidenceFilter: true },
+                                  );
+                                  pushLog({
+                                    level: "info",
+                                    msg: autoOn
+                                      ? "Supertrend futures autotrading ON — BUY sizes to ~available margin × leverage (see Lev. mode below); SELL closes the long on signal (bar close). Start the bot. AI path is paused."
+                                      : "Supertrend futures autotrading OFF",
+                                  });
+                                }
+                              } catch {
+                                pushLog({ level: "error", msg: "Failed to update Supertrend" });
+                              }
+                            })();
+                          });
+                        }}
+                      />
+                      <span>
+                        <span className={cfg.marketMode === "FUTURES" ? "font-semibold text-amber-200" : "font-semibold text-emerald-200"}>
+                          Autotrade with Supertrend
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                          {cfg.marketMode === "SPOT" ? (
+                            <>
+                              Uses your chart timeframe. Signals on bar close. BUY ≈ full spot quote (
+                              <code className="text-slate-600 dark:text-slate-400">SUPERTREND_SPOT_NOTIONAL_BUFFER_PCT</code>); SELL exits the
+                              full position. Requires <code className="text-slate-600 dark:text-slate-400">MARKET_FEED=BINANCE</code> or futures
+                              feed for klines.
+                            </>
+                          ) : (
+                            <>
+                              Bar-close Supertrend BUY calls the coin AI (<code className="text-slate-600 dark:text-slate-400">/predict</code>)
+                              for confidence: that score drives leverage (AUTO), position size (risk tiers), and SL/TP (ATR +
+                              regime + confidence). Exit: take-profit / stop on the exchange, or Supertrend SELL closes the
+                              long. Needs ≥30 candles and a running AI service. Optional{" "}
+                              <code className="text-slate-600 dark:text-slate-400">SUPERTREND_FUTURES_MIN_AI_PROB</code>. Lev. mode below applies
+                              to AUTO leverage.
+                            </>
+                          )}
+                        </span>
+                      </span>
+                    </label>
+                    {cfg.marketMode !== "SPOT" && (
+                      <div className="rounded-lg border border-slate-200 dark:border-slate-800/90 bg-white/85 dark:bg-slate-950/30 p-2">
+                        <div className="mb-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-300">Supertrend futures direction</div>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-semibold ${
+                              !cfg.supertrendFuturesTwoWay
+                                ? "bg-amber-600/85 text-slate-950 dark:text-slate-50 hover:bg-amber-600"
+                                : "border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-900"
+                            }`}
+                            onClick={() => {
+                              if (!cfg.supertrendFuturesTwoWay) return;
+                              deferTask(() => {
+                                void (async () => {
+                                  try {
+                                    await api.botConfig({ supertrendFuturesTwoWay: false });
+                                    pushLog({
+                                      level: "info",
+                                      msg: "Futures Supertrend: 1-way (buy) — SELL signal only closes long; BUY opens long.",
+                                    });
+                                  } catch {
+                                    pushLog({ level: "error", msg: "Failed to set 1-way mode" });
+                                  }
+                                })();
+                              });
+                            }}
+                          >
+                            1-way (Buy)
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-semibold ${
+                              cfg.supertrendFuturesTwoWay
+                                ? "bg-amber-600/85 text-slate-950 dark:text-slate-50 hover:bg-amber-600"
+                                : "border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-900"
+                            }`}
+                            onClick={() => {
+                              if (cfg.supertrendFuturesTwoWay) return;
+                              deferTask(() => {
+                                void (async () => {
+                                  try {
+                                    await api.botConfig({ supertrendFuturesTwoWay: true });
+                                    pushLog({
+                                      level: "info",
+                                      msg: "Futures Supertrend: 2-way — BUY closes short then long; SELL closes long then short.",
+                                    });
+                                  } catch {
+                                    pushLog({ level: "error", msg: "Failed to set 2-way mode" });
+                                  }
+                                })();
+                              });
+                            }}
+                          >
+                            2-way (Buy &amp; Sell)
+                          </button>
+                        </div>
+                        <p className="mt-1.5 text-[10px] leading-snug text-slate-600 dark:text-slate-500">
+                          Indicator autotrade only. With AI confidence filter off, entries use fixed SL 0.2% / TP 1.5% (defaults).
+                        </p>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-[110px_1fr] items-center gap-2 text-xs">
+                      <span className="text-slate-600 dark:text-slate-400">ATR period</span>
+                      <NumericTextInput
+                        value={cfg.supertrendPeriod}
+                        inputMode="numeric"
+                        min={2}
+                        max={100}
+                        parse={(raw) => parseInt(raw, 10)}
+                        disabled={cfg.marketMode === "SPOT" ? !cfg.supertrendSpotAuto : !cfg.supertrendFuturesAuto}
+                        onCommit={async (v) => {
+                          try {
+                            await api.botConfig({ supertrendPeriod: v });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set ATR period" });
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-[110px_1fr] items-center gap-2 text-xs">
+                      <span className="text-slate-600 dark:text-slate-400">Multiplier</span>
+                      <NumericTextInput
+                        value={cfg.supertrendMultiplier}
+                        min={0.5}
+                        max={20}
+                        disabled={cfg.marketMode === "SPOT" ? !cfg.supertrendSpotAuto : !cfg.supertrendFuturesAuto}
+                        onCommit={async (v) => {
+                          try {
+                            await api.botConfig({ supertrendMultiplier: v });
+                          } catch {
+                            pushLog({ level: "error", msg: "Failed to set multiplier" });
+                          }
+                        }}
+                      />
+                    </div>
+                    <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={cfg.supertrendWilderAtr}
+                        disabled={cfg.marketMode === "SPOT" ? !cfg.supertrendSpotAuto : !cfg.supertrendFuturesAuto}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          deferTask(() => {
+                            void (async () => {
+                              try {
+                                await api.botConfig({ supertrendWilderAtr: checked });
+                              } catch {
+                                pushLog({ level: "error", msg: "Failed to set ATR mode" });
+                              }
+                            })();
+                          });
+                        }}
+                      />
+                      Wilder ATR (Pine default). Off = SMA(TR)
+                    </label>
+                  </div>
+                )}
+
+                {(cfg.strategyMode === "AUTO" || cfg.manualStrategy === "SURF_PULSE_ML") && (
+                  <div className="mt-3 rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-white/85 dark:bg-slate-950/30 px-2 py-2">
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">SurfPulse ML gate</div>
+                    <p className="mt-0.5 text-[11px] leading-snug text-slate-600 dark:text-slate-500">
+                      Minimum XGBoost win probability from <span className="text-slate-600 dark:text-slate-400">/predict/surfpulse</span> required to
+                      act on a SurfPulse signal. In <span className="text-slate-600 dark:text-slate-400">AUTO</span> mode this applies whenever the
+                      selector runs SurfPulse ML; in <span className="text-slate-600 dark:text-slate-400">MANUAL</span> when SurfPulse ML is selected.
+                    </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <label className="mr-2 inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-700 dark:text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={cfg.surfPulseMlGateEnabled}
+                          onChange={(e) => {
+                            const on = e.currentTarget.checked;
+                            deferTask(() => {
+                              void api
+                                .botConfig({ surfPulseMlGateEnabled: on })
+                                .then(() => {
+                                  pushLog({
+                                    level: "info",
+                                    msg: on ? "SurfPulse ML gate enabled" : "SurfPulse ML gate disabled",
+                                  });
+                                })
+                                .catch(() => {
+                                  pushLog({ level: "error", msg: "Failed to update SurfPulse gate toggle" });
+                                });
+                            });
+                          }}
+                        />
+                        Enable
+                      </label>
+                      <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min SurfPulse</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Minimum SurfPulse ML win probability (percent)"
+                        serverSliderUnits={Math.round(cfg.surfPulseMlThreshold * 100)}
+                        formatDisplay={(u) => `${u}%`}
+                        disabled={!cfg.surfPulseMlGateEnabled}
+                        onDebouncedCommit={(u) => {
+                          const p = clampNum(u / 100, 0, 1);
+                          void api.botConfig({ surfPulseMlThreshold: Number(p.toFixed(3)) }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to set SurfPulse threshold" });
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-3 rounded-md border border-violet-800/25 bg-white/85 px-2 py-2 dark:border-violet-400/20 dark:bg-slate-950/50">
+                  <div className="text-xs font-semibold text-violet-900 dark:text-violet-100">Market Intelligence</div>
+                  <p className="mt-0.5 text-[11px] leading-snug text-slate-600 dark:text-slate-500">
+                    Layered signals under the chart order book on this instance view. Live updates via WebSocket. The gate affects Supertrend bar-close opens only when enabled (
+                    server default off via <span className="font-mono text-[10px]">INTELLIGENCE_GATE_ENABLED</span>).
+                  </p>
+                  <label className="mt-2 flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={showMarketIntelligencePanel}
+                      onChange={(e) => {
+                        const on = e.currentTarget.checked;
+                        setShowMarketIntelligencePanel(on);
+                        pushLog({
+                          level: "info",
+                          msg: on ? "Market Intelligence panel shown under chart order book" : "Market Intelligence panel hidden",
+                        });
+                      }}
+                    />
+                    <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Show panel under chart (order book)</span>
+                      <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                        Tracks the chart symbol when you switch tabs; polls periodically if WS misses a beat.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="mt-2 flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={cfg.intelligenceGateEnabled}
+                      onChange={(e) => {
+                        const on = e.currentTarget.checked;
+                        deferTask(() => {
+                          void api
+                            .botConfig({ intelligenceGateEnabled: on })
+                            .then(() => {
+                              pushLog({
+                                level: "info",
+                                msg: on ? "Market intelligence gate enabled for Supertrend opens" : "Market intelligence gate disabled",
+                              });
+                            })
+                            .catch(() => {
+                              pushLog({ level: "error", msg: "Failed to update intelligence gate" });
+                            });
+                        });
+                      }}
+                    />
+                    <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Intelligence gate on Supertrend opens</span>
+                      <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                        High-confidence opposing composite score blocks the open. Independent from showing the panel.
+                      </span>
+                    </span>
+                  </label>
                 </div>
 
                 {cfg.marketMode !== "SPOT" && cfg.supertrendFuturesAuto && (

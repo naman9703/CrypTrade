@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import axios from "axios";
+import WsModule from "ws";
 import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
 import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
 import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
@@ -12,14 +13,20 @@ import {
   slTpFromAlgoOrdersList,
   slTpFromOpenOrdersList,
 } from "../../lib/binanceFuturesOpenOrdersSlTp.js";
+import {
+  binanceRecvWindowMs,
+  createBinanceServerTimeSkew,
+  isBinanceRecvWindowOrTimestampError,
+} from "../../lib/binanceSignedHttp.js";
+import { createUsdMUserDataStream } from "../../lib/binanceUsdMUserDataStream.js";
 
 function hmacSha256(secret, payload) {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
 }
 
-export function createBinanceFuturesTestnetUsdMExchange({ log }) {
-  const apiKey = process.env.BINANCE_FUTURES_API_KEY || "";
-  const apiSecret = process.env.BINANCE_FUTURES_API_SECRET || "";
+export function createBinanceFuturesTestnetUsdMExchange({ log, apiKey: apiKeyOverride, apiSecret: apiSecretOverride } = {}) {
+  const apiKey = (apiKeyOverride ?? process.env.BINANCE_FUTURES_API_KEY) || "";
+  const apiSecret = (apiSecretOverride ?? process.env.BINANCE_FUTURES_API_SECRET) || "";
   const baseURL = process.env.BINANCE_FUTURES_TESTNET_REST_BASE || "https://testnet.binancefuture.com";
   const defaultLeverage = Math.max(1, Math.min(100, Number(process.env.FUTURES_DEFAULT_LEVERAGE || 5)));
 
@@ -29,23 +36,106 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
     headers: { "X-MBX-APIKEY": apiKey },
   });
 
+  const timeSkew = createBinanceServerTimeSkew({ log, tag: "binance_futures_testnet_usdm" });
+  async function fetchServerTimeMs() {
+    const { data } = await http.request({ method: "GET", url: "/fapi/v1/time", headers: {} });
+    return Number(data?.serverTime);
+  }
+
   /** Per-symbol SL/TP from open orders (2s TTL). Scoped GETs avoid missing older SL legs in unpaged “all symbols” responses. */
   const slTpOpenOrdersCacheBySym = new Map();
 
   async function signed(method, path, params = {}) {
-    const ts = Date.now();
-    const qp = new URLSearchParams({ ...params, timestamp: String(ts) });
-    const sig = hmacSha256(apiSecret, qp.toString());
-    qp.set("signature", sig);
-    const url = `${path}?${qp.toString()}`;
-    const { data } = await http.request({ method, url });
-    return data;
+    await timeSkew.ensureFresh(fetchServerTimeMs);
+    const recvWindow = binanceRecvWindowMs();
+    const buildUrl = () => {
+      const ts = timeSkew.timestampMs();
+      const qp = new URLSearchParams({ ...params, timestamp: String(ts), recvWindow: String(recvWindow) });
+      const sig = hmacSha256(apiSecret, qp.toString());
+      qp.set("signature", sig);
+      return `${path}?${qp.toString()}`;
+    };
+    let url = buildUrl();
+    try {
+      const { data } = await http.request({ method, url });
+      return data;
+    } catch (e) {
+      const status = e?.response?.status;
+      const body = e?.response?.data;
+      const msg = body?.msg || body?.message || e?.message || "binance_futures_testnet_request_failed";
+      const code = body?.code;
+      const err = new Error(`binance_futures_testnet_http_${method}_${path}:${status ?? "?"}:${code ?? "?"}:${msg}`);
+      err.cause = e;
+      if (isBinanceRecvWindowOrTimestampError(err)) {
+        timeSkew.invalidateSyncClock();
+        await timeSkew.ensureFresh(fetchServerTimeMs, true);
+        url = buildUrl();
+        const { data } = await http.request({ method, url });
+        return data;
+      }
+      throw err;
+    }
   }
 
   async function publicGet(path, params = {}) {
     const qp = new URLSearchParams({ ...params });
     const url = qp.toString() ? `${path}?${qp.toString()}` : path;
     const { data } = await http.request({ method: "GET", url, headers: {} });
+    return data;
+  }
+
+  let _acctSnapCoalesce = { at: 0, data: null };
+  const ACCT_SNAP_COALESCE_MS = Math.max(
+    0,
+    Math.min(5000, Number(process.env.BINANCE_USDM_ACCOUNT_SNAPSHOT_COALESCE_MS ?? 700)),
+  );
+  const UDS_ENABLED = String(process.env.BINANCE_USDM_USER_DATA_STREAM ?? "1").toLowerCase() !== "0";
+  const userWsBase =
+    String(process.env.BINANCE_FUTURES_TESTNET_USER_WS_BASE || "").trim() || "wss://stream.binancefuture.com/ws";
+  const UDS_FRESH_MS = Math.max(2000, Math.min(120_000, Number(process.env.BINANCE_USDM_USER_STREAM_FRESH_MS ?? 8000)));
+
+  const usdMUserStream =
+    UDS_ENABLED && apiKey
+      ? createUsdMUserDataStream({
+          log,
+          tag: "binance_futures_testnet_usdm",
+          http,
+          apiKey,
+          userWsBase,
+          WebSocket: WsModule,
+        })
+      : null;
+
+  let _udsStartInFlight = false;
+  function ensureUsdMUserStream() {
+    if (!usdMUserStream || _udsStartInFlight) return;
+    _udsStartInFlight = true;
+    usdMUserStream
+      .start()
+      .catch((e) => log?.warn?.("binance_futures_testnet_usdm_uds_start_failed", { error: String(e?.message || e) }))
+      .finally(() => {
+        _udsStartInFlight = false;
+      });
+  }
+
+  async function getAccountSnapshotCoalesced() {
+    const now = Date.now();
+    ensureUsdMUserStream();
+    if (usdMUserStream?.connected && usdMUserStream.isFresh(now, UDS_FRESH_MS) && usdMUserStream.getMergedAccount()) {
+      const snap = usdMUserStream.getMergedAccount();
+      _acctSnapCoalesce = { at: now, data: snap };
+      return snap;
+    }
+    if (
+      ACCT_SNAP_COALESCE_MS > 0 &&
+      _acctSnapCoalesce.data != null &&
+      now - _acctSnapCoalesce.at < ACCT_SNAP_COALESCE_MS
+    ) {
+      return _acctSnapCoalesce.data;
+    }
+    const data = await signed("GET", "/fapi/v2/account");
+    usdMUserStream?.ingestRestSnapshot(data);
+    _acctSnapCoalesce = { at: Date.now(), data };
     return data;
   }
 
@@ -308,15 +398,14 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
     storeInfo: { baseURL, note: "USD-M Futures Testnet" },
     async getAccount() {
       if (!apiKey || !apiSecret) throw new Error("binance_futures_testnet_missing_keys");
-      // Futures account endpoint
-      const a = await signed("GET", "/fapi/v2/account");
+      const a = await getAccountSnapshotCoalesced();
       const w = Number(a?.totalWalletBalance || 0);
       const free = Number(a?.availableBalance || 0);
       return { equity: w, freeBalance: free, dailyStartEquity: null, dailyPnlPct: 0, leverage: defaultLeverage };
     },
     async getPositions() {
       try {
-        const a = await signed("GET", "/fapi/v2/account");
+        const a = await getAccountSnapshotCoalesced();
         const ps = Array.isArray(a?.positions) ? a.positions : [];
         const rows = ps
           .filter((p) => Math.abs(Number(p?.positionAmt || 0)) > 1e-8)
@@ -330,13 +419,20 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
         const out = [];
         for (const { sym, lb, pb, lev, p } of rows) {
           const oo = await stopTakeFromExchangeOpenOrders(sym);
+          const symU = String(sym || "").toUpperCase();
+          const posSideRaw = String(p?.positionSide ?? "BOTH").trim().toUpperCase();
+          const posSideKey =
+            posSideRaw === "LONG" || posSideRaw === "SHORT" ? posSideRaw : "BOTH";
+          const markPx = Number(p?.markPrice);
           out.push({
-            id: `${sym}`,
+            id: posSideKey !== "BOTH" ? `fut_${symU}_${posSideKey}` : `fut_${symU}`,
             symbol: sym,
             side: Number(p.positionAmt) > 0 ? "BUY" : "SELL",
             qty: Math.abs(Number(p.positionAmt)),
             entryPrice: Number(p.entryPrice || 0),
             unrealizedPnl: Number(p.unrealizedProfit || 0),
+            ...(Number.isFinite(markPx) && markPx > 0 ? { markPrice: markPx } : {}),
+            ...(posSideKey !== "BOTH" ? { positionSide: posSideKey } : {}),
             stopLoss: oo.sl ?? lb?.stopLoss ?? pb?.stopLoss ?? null,
             takeProfit: oo.tp ?? lb?.takeProfit ?? pb?.takeProfit ?? null,
             leverage: Number.isFinite(lev) && lev > 0 ? lev : defaultLeverage,
@@ -348,7 +444,9 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
         return out;
       } catch (e) {
         log?.warn?.("binance_futures_positions_failed", { error: String(e?.message || e) });
-        return [];
+        // Re-throw so the hybrid wrapper / caller can fall back to the last-good cache instead of treating
+        // a transient REST failure as "no positions" and clobbering the UI's open-positions table.
+        throw e instanceof Error ? e : new Error(String(e?.message || e));
       }
     },
     async getTrades() {
@@ -734,17 +832,40 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
         const ps = Array.isArray(a?.positions) ? a.positions : [];
         positions = ps
           .filter((p) => Math.abs(Number(p?.positionAmt || 0)) > 1e-8)
-          .map((p) => ({
-            symbol: p.symbol,
-            side: Number(p.positionAmt) > 0 ? "BUY" : "SELL",
-            qty: Math.abs(Number(p.positionAmt)),
-          }));
+          .map((p) => {
+            const psRaw = String(p?.positionSide ?? "BOTH").trim().toUpperCase();
+            const positionSide = psRaw === "LONG" || psRaw === "SHORT" ? psRaw : "BOTH";
+            return {
+              symbol: p.symbol,
+              side: Number(p.positionAmt) > 0 ? "BUY" : "SELL",
+              qty: Math.abs(Number(p.positionAmt)),
+              positionSide,
+            };
+          });
       } catch (e) {
         return { ok: false, error: String(e?.message || e) };
       }
       const sid = String(id || "");
-      const symFromId = sid.startsWith("fut_") ? sid.slice(4) : sid;
-      const p = positions.find((x) => x.symbol === sid || x.symbol === symFromId);
+      let wantSym = sid;
+      let hedgeSide = null;
+      if (sid.startsWith("fut_")) {
+        const rest = sid.slice(4);
+        if (rest.endsWith("_LONG")) {
+          wantSym = rest.slice(0, -5);
+          hedgeSide = "LONG";
+        } else if (rest.endsWith("_SHORT")) {
+          wantSym = rest.slice(0, -6);
+          hedgeSide = "SHORT";
+        } else {
+          wantSym = rest;
+        }
+      }
+      const symU = String(wantSym || "").toUpperCase();
+      const p = positions.find((x) => {
+        if (String(x.symbol || "").toUpperCase() !== symU) return false;
+        if (!hedgeSide) return true;
+        return x.positionSide === hedgeSide;
+      });
       if (!p) return { ok: false, error: "not_found" };
       const m = await getOrLoadSymbolMeta(p.symbol);
       const qtyStr = formatToStep(p.qty, m);
@@ -792,10 +913,20 @@ export function createBinanceFuturesTestnetUsdMExchange({ log }) {
       };
     },
     async close() {
-      // no-op
+      usdMUserStream?.stop();
+    },
+    dispose() {
+      usdMUserStream?.stop();
+    },
+    subscribeAccountPush(cb) {
+      return usdMUserStream?.subscribeAccountPush?.(cb) ?? (() => {});
     },
     getStatus() {
-      return { udf: { ok: false, syncMode: "polling", error: "not_implemented" } };
+      const udsOk = Boolean(usdMUserStream?.connected);
+      return {
+        udf: { ok: udsOk, syncMode: udsOk ? "websocket" : "rest", error: null },
+        usdmUserStream: { ok: udsOk, connected: udsOk },
+      };
     },
   };
 }

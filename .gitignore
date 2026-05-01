@@ -4,6 +4,12 @@ dist
 .env
 .env.local
 .env.*.local
+# Dotted env variants (production/staging); *.example stays tracked below.
+.env.*
+!.env.example
+!**/.env.example
+!.env.*.example
+!**/.env.*.example
 # Local Railway export with real API keys (syncee from backend/.env)
 deploy/railway.production.env.json
 deploy/.env
@@ -19,4 +25,7 @@ logs
 *.pem
 *.key
 docker-compose.override.yml
+
+# Cursor local/debug artifacts (rules/skills usually live outside repo or user-global)
+.cursor/*.log
 

@@ -1,6 +1,28 @@
 import { buildHybridAccountSnapshot } from "../../lib/hybridAccountEquity.js";
 
+/** Error substrings that mean "credentials are wrong / missing" — not a transient network blip. */
+const AUTH_ERR_PATTERNS = ["missing_keys", "-2014", "-2015", "api-key format", "invalid api-key", "invalid signature"];
+function isAuthError(msg) {
+  const m = String(msg || "").toLowerCase();
+  return AUTH_ERR_PATTERNS.some((p) => m.includes(p));
+}
+
 export function createHybridExchange({ spot, futures, log }) {
+  /** Keep last good leg snapshots so transient REST hiccups don't halve portfolio/equity in UI. */
+  let lastSpotAcc = null;
+  let lastFutAcc = null;
+  /** Persistent auth-failure tracking so we surface a clear error instead of silent "—". */
+  let futuresAuthErr = null;    // last auth-class error string
+  let futuresAuthFailCount = 0; // consecutive auth failures (reset on success)
+  /** Same idea for positions: avoid empty leg flips when one venue errors transiently. */
+  let lastSpotPos = [];
+  let lastFutPos = [];
+  /**
+   * Combined last-known-good positions array. Used when one or more legs fail AND the combined
+   * result is empty — this prevents a transient 401/network error from wiping the positions table.
+   * Updated whenever a combined result is non-empty, or when all legs succeed (even if empty).
+   */
+  let lastCombinedPositions = null;
   return {
     name: "hybrid",
     supportsAutoTrading: Boolean(spot?.supportsAutoTrading) || Boolean(futures?.supportsAutoTrading),
@@ -10,15 +32,35 @@ export function createHybridExchange({ spot, futures, log }) {
       let spotAcc = null;
       let futAcc = null;
       try {
-        if (spot?.getAccount) spotAcc = await spot.getAccount();
+        if (spot?.getAccount) {
+          spotAcc = await spot.getAccount();
+          if (spotAcc != null) lastSpotAcc = spotAcc;
+        }
       } catch (e) {
         log?.warn?.("hybrid_spot_account_failed", { error: String(e?.message || e) });
       }
       try {
-        if (futures?.getAccount) futAcc = await futures.getAccount();
+        if (futures?.getAccount) {
+          futAcc = await futures.getAccount();
+          if (futAcc != null) {
+            lastFutAcc = futAcc;
+            futuresAuthErr = null;       // clear on success
+            futuresAuthFailCount = 0;
+          }
+        }
       } catch (e) {
-        log?.warn?.("hybrid_futures_account_failed", { error: String(e?.message || e) });
+        const errStr = String(e?.message || e);
+        log?.warn?.("hybrid_futures_account_failed", { error: errStr });
+        if (isAuthError(errStr)) {
+          futuresAuthFailCount++;
+          // Only surface as permanent after 3 consecutive auth failures (avoids noise on transient 401s).
+          if (futuresAuthFailCount >= 3) futuresAuthErr = errStr;
+        }
       }
+
+      /** Transient leg failure: reuse last known-good leg to avoid portfolio flicker/jumps. */
+      if (spotAcc == null && lastSpotAcc != null) spotAcc = lastSpotAcc;
+      if (futAcc == null && lastFutAcc != null) futAcc = lastFutAcc;
 
       const needSpot = typeof spot?.getAccount === "function";
       const needFut = typeof futures?.getAccount === "function";
@@ -33,21 +75,58 @@ export function createHybridExchange({ spot, futures, log }) {
         needSpot,
         needFut,
         primaryFieldsFrom: primaryFieldsFrom || {},
+        futuresError: !futOk && futuresAuthErr ? futuresAuthErr : null,
       });
     },
     async getPositions() {
       const out = [];
+      let spotPs = null;
+      let futPs = null;
+      let spotOk = false;
+      let futOk = false;
       try {
-        if (spot?.getPositions) out.push(...(await spot.getPositions()).map((p) => ({ ...p, venue: "SPOT" })));
+        if (spot?.getPositions) {
+          spotPs = await spot.getPositions();
+          spotOk = true;
+          if (Array.isArray(spotPs)) lastSpotPos = spotPs;
+        }
       } catch (e) {
         log?.warn?.("hybrid_spot_positions_failed", { error: String(e?.message || e) });
       }
       try {
-        if (futures?.getPositions) out.push(...(await futures.getPositions()).map((p) => ({ ...p, venue: "FUTURES" })));
+        if (futures?.getPositions) {
+          futPs = await futures.getPositions();
+          futOk = true;
+          if (Array.isArray(futPs)) lastFutPos = futPs;
+        }
       } catch (e) {
         log?.warn?.("hybrid_futures_positions_failed", { error: String(e?.message || e) });
       }
-      return out;
+      if (!spotOk && lastSpotPos.length) spotPs = lastSpotPos;
+      if (!futOk && lastFutPos.length) futPs = lastFutPos;
+      if (Array.isArray(spotPs)) out.push(...spotPs.map((p) => ({ ...p, venue: "SPOT" })));
+      if (Array.isArray(futPs)) out.push(...futPs.map((p) => ({ ...p, venue: "FUTURES" })));
+
+      // Determine if any expected leg had a transient failure (didn't produce data this call).
+      const futExpected = typeof futures?.getPositions === "function";
+      const spotExpected = typeof spot?.getPositions === "function";
+      const anyLegFailed = (futExpected && !futOk) || (spotExpected && !spotOk);
+
+      if (out.length > 0) {
+        // Always update combined cache whenever we have real data.
+        lastCombinedPositions = out.slice();
+      } else if (!anyLegFailed) {
+        // All legs succeeded with genuinely empty result — update cache to reflect real empty.
+        lastCombinedPositions = [];
+      }
+      // else: all legs failed or partial failure with empty result → keep lastCombinedPositions as-is.
+
+      // If combined result is empty but a leg failed and we have a prior known-good snapshot, use it.
+      const result = (out.length === 0 && anyLegFailed && lastCombinedPositions !== null && lastCombinedPositions.length > 0)
+        ? lastCombinedPositions
+        : out;
+
+      return result;
     },
     async getTrades(opts = {}) {
       const out = [];
@@ -170,6 +249,23 @@ export function createHybridExchange({ spot, futures, log }) {
       } catch {
         // ignore
       }
+    },
+    dispose() {
+      try {
+        spot?.dispose?.();
+      } catch {
+        /* ignore */
+      }
+      try {
+        futures?.dispose?.();
+      } catch {
+        /* ignore */
+      }
+    },
+    /** Futures USD-M user stream → bot can refresh positions table without waiting for tick interval. */
+    subscribeAccountPush(cb) {
+      if (typeof futures?.subscribeAccountPush === "function") return futures.subscribeAccountPush(cb);
+      return () => {};
     },
     getStatus() {
       return {

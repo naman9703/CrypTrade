@@ -6,6 +6,9 @@
     "frontend"
   ],
   "scripts": {
+    "db:up": "docker compose -f docker-compose.db.yml up -d",
+    "db:migrate": "npm --workspace backend run db:migrate",
+    "db:setup": "npm --workspace backend run db:migrate:local",
     "dev": "npx --no-install npm-run-all -p dev:ai dev:backend dev:frontend",
     "dev:no-ai": "npx --no-install npm-run-all -p dev:backend dev:frontend",
     "dev:backend": "npm --workspace backend run dev",
