@@ -224,19 +224,87 @@ export const compositeScorer = {
       }
     }
 
-    // ── Headline sentiment (Finnhub → AI heuristic) ────────────
-    const ni = cache.newsImpact?.GLOBAL;
-    if (ni && typeof ni.sentiment === 'number' && Number.isFinite(ni.sentiment)) {
+    // ── Whale alerts (DB snapshot, last 4h, exchange flow) ─────
+    const whaleRows = cache.whaleAlerts?.[symbol];
+    const recentWhales = Array.isArray(whaleRows)
+      ? whaleRows.filter((w) => {
+          const ts = new Date(w.alertedAt ?? w.alerted_at ?? 0).getTime();
+          return Number.isFinite(ts) && Date.now() - ts < 4 * 60 * 60 * 1000;
+        })
+      : [];
+    if (recentWhales.length > 0) {
+      const inflows = recentWhales.filter((w) => String(w.direction || "") === "into_exchange");
+      const outflows = recentWhales.filter((w) => String(w.direction || "") === "out_of_exchange");
+      if (inflows.length > 0) {
+        const totalUsd = inflows.reduce((s, w) => s + (Number(w.amountUsd) || 0), 0);
+        if (totalUsd > 1_000_000) {
+          bearish.push({
+            name: "Whale exchange inflow",
+            detail: `$${(totalUsd / 1e6).toFixed(1)}M to exchanges (4h)`,
+            weight: 10,
+          });
+          signals.push({ score: 35, weight: 10 });
+        }
+      }
+      if (outflows.length > 0) {
+        const totalUsd = outflows.reduce((s, w) => s + (Number(w.amountUsd) || 0), 0);
+        if (totalUsd > 1_000_000) {
+          bullish.push({
+            name: "Whale exchange outflow",
+            detail: `$${(totalUsd / 1e6).toFixed(1)}M leaving exchanges (4h)`,
+            weight: 10,
+          });
+          signals.push({ score: 65, weight: 10 });
+        }
+      }
+    }
+
+    // ── Economic calendar (high-impact within next 4h) ────────
+    let calendarDampening = 1.0;
+    const calRows = Array.isArray(cache.calendarEvents) ? cache.calendarEvents : [];
+    const nowMs = Date.now();
+    const imminent = calRows.filter((e) => {
+      const t = new Date(e.eventTime ?? e.event_time ?? 0).getTime();
+      if (!Number.isFinite(t)) return false;
+      const hoursAway = (t - nowMs) / (1000 * 60 * 60);
+      return hoursAway >= 0 && hoursAway <= 4;
+    });
+    const highImpact = imminent.filter((e) => {
+      const il = String(e.impactLevel ?? e.impact_level ?? "").toLowerCase();
+      return il === "high" || il === "extreme";
+    });
+    if (highImpact.length > 0) {
+      calendarDampening = 0.5;
+      bearish.push({
+        name: "High-impact macro event imminent",
+        detail: highImpact
+          .map((e) => String(e.title || "").trim())
+          .filter(Boolean)
+          .join("; ")
+          .slice(0, 220),
+        weight: 0,
+      });
+    }
+    cache._calendarDampening = calendarDampening;
+
+    // ── Headline sentiment (per-asset bucket when available) ─────
+    const baseKey = symbol.replace(/USDT$/i, "").replace(/BUSD$/i, "").toUpperCase();
+    let ni = cache.newsImpact?.[baseKey];
+    if (!ni || typeof ni.sentiment !== "number" || !Number.isFinite(ni.sentiment)) {
+      ni = cache.newsImpact?.GLOBAL;
+    }
+    if (ni && typeof ni.sentiment === "number" && Number.isFinite(ni.sentiment)) {
       const s = ni.sentiment;
-      const blurb = typeof ni.summary === 'string' ? ni.summary.slice(0, 96) : '';
+      const blurb = typeof ni.summary === "string" ? ni.summary.slice(0, 96) : "";
+      const label = cache.newsImpact?.[baseKey] ? `${baseKey} news` : "News flow";
       if (s >= 0.35) {
-        bullish.push({ name: 'News flow', detail: blurb || `sentiment ${s.toFixed(2)}`, weight: 5 });
-        signals.push({ score: Math.round(Math.min(85, 55 + s * 28)), weight: 5 });
+        bullish.push({ name: label, detail: blurb || `sentiment ${s.toFixed(2)}`, weight: 8 });
+        signals.push({ score: Math.round(Math.min(85, 55 + s * 28)), weight: 8 });
       } else if (s <= -0.35) {
-        bearish.push({ name: 'News flow', detail: blurb || `sentiment ${s.toFixed(2)}`, weight: 5 });
-        signals.push({ score: Math.round(Math.max(15, 45 + s * 28)), weight: 5 });
+        bearish.push({ name: label, detail: blurb || `sentiment ${s.toFixed(2)}`, weight: 8 });
+        signals.push({ score: Math.round(Math.max(15, 45 + s * 28)), weight: 8 });
       } else {
-        signals.push({ score: 50, weight: 2 });
+        signals.push({ score: 50, weight: 3 });
       }
     }
 
@@ -247,7 +315,7 @@ export const compositeScorer = {
       : 50;
     const composite  = Math.round(weightedScore);
     const confidence = Math.round(Math.abs(composite - 50) * 2);
-    const vol        = cache.volatility?.[symbol];
+    const vol = cache.volatility?.[symbol];
 
     return {
       composite,
@@ -259,7 +327,7 @@ export const compositeScorer = {
       bullishSignals: bullish,
       bearishSignals: bearish,
       confidence,
-      sizeMultiplier: computeSizeMultiplier(composite, conf?.score ?? 50, vol),
+      sizeMultiplier: computeSizeMultiplier(composite, conf?.score ?? 50, vol, calendarDampening),
     };
   }
 };
@@ -287,12 +355,14 @@ function formatMillions(usd) {
   return `${(usd / 1000).toFixed(0)}K`;
 }
 
-function computeSizeMultiplier(composite, confluenceScore, vol) {
+function computeSizeMultiplier(composite, confluenceScore, vol, calendarDampening = 1.0) {
   let mult = 1.0;
   if (composite >= 70 || composite <= 30) mult = 1.5;
   if (composite >= 80 || composite <= 20) mult = 2.0;
-  if (confluenceScore < 40)               mult *= 0.5;
-  if (vol?.combined === 'high_vol_choppy') mult *= 0.25;
-  if (vol?.combined === 'low_vol_choppy')  mult *= 0.5;
+  if (confluenceScore < 40) mult *= 0.5;
+  if (vol?.combined === "high_vol_choppy") mult *= 0.25;
+  if (vol?.combined === "low_vol_choppy") mult *= 0.5;
+  const cal = Number(calendarDampening);
+  if (Number.isFinite(cal) && cal > 0 && cal < 1) mult *= cal;
   return Math.min(2.0, Math.max(0.25, parseFloat(mult.toFixed(2))));
 }

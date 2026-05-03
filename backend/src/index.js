@@ -282,7 +282,7 @@ const onListen = () => {
   });
   const pollMs = Number(process.env.WALLET_SNAPSHOT_POLL_MS || 60_000);
   startWalletSnapshotPoller(appState, log, pollMs);
-  startIntelligenceEngine(appState.wsHub);
+  startIntelligenceEngine(appState.wsHub, appState);
   if (truthyProxy(process.env.BOT_START_ON_BOOT)) {
     void (async () => {
       try {

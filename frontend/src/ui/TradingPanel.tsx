@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { deferTask } from "../lib/deferTask";
-import { useAppStore } from "../ws/store";
+import { patchInstanceInByMode, useAppStore } from "../ws/store";
 import { UniverseCustomCoinsModal } from "./UniverseCustomCoinsModal";
 import { TrailPreviewModal, type TrailPreviewCfg } from "./TrailPreviewModal";
 import { ChartErrorBoundary } from "./ChartErrorBoundary";
@@ -17,6 +17,9 @@ import { mergeMarketDecisionConfig } from "../lib/marketDecision/configDefaults"
 import type { MarketDecisionEngineConfig } from "../lib/marketDecision/types";
 import { MarketDecisionConfigPanel } from "./MarketDecisionConfigPanel";
 import { tradingModeToApiModeSlug } from "../lib/tradingModeSlug";
+
+/** Binance kline intervals allowed by `POST /api/bot/config` (must match backend `allowedTimeframes`). */
+const BOT_TRADING_TIMEFRAMES = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"] as const;
 
 const numericInputClass =
   "w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100 tabular-nums";
@@ -1089,6 +1092,7 @@ const STRATS = [
 export function TradingPanel() {
   const mode = useAppStore((s) => s.mode);
   const modeSlug = tradingModeToApiModeSlug(mode);
+  const activeInstanceId = useAppStore((s) => s.activeInstanceByMode[modeSlug] ?? null);
   const bot = useAppStore((s) => s.bot);
   const account = useAppStore((s) => s.account);
   const positions = useAppStore((s) => s.positions);
@@ -1170,6 +1174,10 @@ export function TradingPanel() {
       maxDailyLossUnit: bot?.maxDailyLossUnit === "USDT" ? ("USDT" as const) : ("PCT" as const),
       perTradeBudgetCapEnabled: bot?.perTradeBudgetCapEnabled !== false,
       strategyMode: bot?.strategyMode ?? "AUTO",
+      timeframe: (() => {
+        const raw = String(bot?.timeframe ?? "1m").trim();
+        return (BOT_TRADING_TIMEFRAMES as readonly string[]).includes(raw) ? raw : "1m";
+      })(),
       manualStrategy: bot?.manualStrategy ?? "EMA_CROSS",
       symbolMode: bot?.symbolMode ?? "SINGLE",
       marketMode: bot?.marketMode ?? "AUTO",
@@ -2036,6 +2044,25 @@ export function TradingPanel() {
     };
   }, [cfg.strategyMode]);
 
+  /**
+   * Strategy Save mirrors operational fields server-side; this PATCH keeps `inst_timeframe`
+   * aligned with `bot.timeframe` on the active instance row and refreshes instance lists in the UI.
+   */
+  async function syncActiveInstanceTimeframeAfterStrategySave() {
+    const iid = useAppStore.getState().activeInstanceByMode[modeSlug] ?? null;
+    if (!iid) return;
+    const raw = String(useAppStore.getState().bot?.timeframe ?? "1m").trim();
+    const tf = (BOT_TRADING_TIMEFRAMES as readonly string[]).includes(raw) ? raw : "1m";
+    try {
+      const inst = await api.patchInstanceOperationalConfig(iid, { timeframe: tf });
+      useAppStore.setState((s) => ({
+        instancesByMode: patchInstanceInByMode(s.instancesByMode, iid, inst),
+      }));
+    } catch {
+      /* Server save already ran extractInstanceConfig → inst_*; ignore duplicate PATCH failures */
+    }
+  }
+
   async function saveCurrentStrategyConfig() {
     try {
       setStrategySaveBusy(true);
@@ -2055,6 +2082,17 @@ export function TradingPanel() {
         }));
       }
       await useAppStore.getState().fetchStrategiesForMode(modeSlug);
+      try {
+        const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
+        tradingUiPersistBotSnapshot(
+          useAppStore.getState().mode,
+          useAppStore.getState().bot as Record<string, unknown>,
+          useAppStore.getState().authUiUserTag ?? null,
+        );
+      } catch {
+        /* ignore */
+      }
+      await syncActiveInstanceTimeframeAfterStrategySave();
       pushLog({ level: "info", msg: "Strategy saved", category: "config", reason: "strategy_save" });
     } catch (e) {
       pushLog({ level: "error", msg: `Failed to save strategy: ${String((e as any)?.message || e)}` });
@@ -2087,6 +2125,17 @@ export function TradingPanel() {
         }));
       }
       await useAppStore.getState().fetchStrategiesForMode(modeSlug);
+      try {
+        const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
+        tradingUiPersistBotSnapshot(
+          useAppStore.getState().mode,
+          useAppStore.getState().bot as Record<string, unknown>,
+          useAppStore.getState().authUiUserTag ?? null,
+        );
+      } catch {
+        /* ignore */
+      }
+      await syncActiveInstanceTimeframeAfterStrategySave();
       pushLog({ level: "info", msg: `Saved as new strategy: ${trimmed}`, category: "config", reason: "strategy_save_as_new" });
     } catch (e) {
       pushLog({ level: "error", msg: `Failed to save as new strategy: ${String((e as any)?.message || e)}` });
@@ -2210,6 +2259,49 @@ export function TradingPanel() {
               >
                 <option value="AUTO">AUTO (regime-based)</option>
                 <option value="MANUAL">MANUAL (pick strategy)</option>
+              </select>
+            </label>
+
+            <label className="grid grid-cols-[110px_1fr] items-center gap-2">
+              <span className="text-slate-600 dark:text-slate-400">Timeframe</span>
+              <select
+                className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
+                value={cfg.timeframe}
+                title="Bar interval for the bot chart and Supertrend signals (Binance klines)."
+                onChange={(e) => {
+                  const v = e.target.value;
+                  deferTask(() => {
+                    void (async () => {
+                      try {
+                        await api.botConfig({ timeframe: v });
+                        if (activeInstanceId) {
+                          try {
+                            const inst = await api.patchInstanceOperationalConfig(activeInstanceId, {
+                              timeframe: v,
+                            });
+                            useAppStore.setState((s) => ({
+                              instancesByMode: patchInstanceInByMode(s.instancesByMode, activeInstanceId, inst),
+                            }));
+                          } catch (err) {
+                            pushLog({
+                              level: "warn",
+                              msg: `Timeframe updated on bot; instance DB not synced: ${String((err as Error)?.message || err)}`,
+                            });
+                          }
+                        }
+                        pushLog({ level: "info", msg: "Trading timeframe set", timeframe: v });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set timeframe" });
+                      }
+                    })();
+                  });
+                }}
+              >
+                {BOT_TRADING_TIMEFRAMES.map((tf) => (
+                  <option key={tf} value={tf}>
+                    {tf}
+                  </option>
+                ))}
               </select>
             </label>
 
@@ -3891,78 +3983,154 @@ export function TradingPanel() {
                   </div>
                 </div>
 
-                {(cfg.marketMode === "SPOT" || cfg.marketMode === "FUTURES") && (
+                {(cfg.marketMode === "SPOT" || cfg.marketMode === "FUTURES" || cfg.marketMode === "AUTO") && (
                   <div
                     className={`mt-3 space-y-2 rounded-lg p-2 ${
                       cfg.marketMode === "FUTURES"
                         ? "border border-amber-900/40 bg-amber-950/15"
-                        : "border border-emerald-900/40 bg-emerald-950/15"
+                        : cfg.marketMode === "SPOT"
+                          ? "border border-emerald-900/40 bg-emerald-950/15"
+                          : "border border-violet-800/40 bg-gradient-to-br from-amber-950/12 via-slate-950/25 to-emerald-950/12"
                     }`}
                   >
-                    <label className="flex cursor-pointer items-start gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5"
-                        checked={cfg.marketMode === "SPOT" ? cfg.supertrendSpotAuto : cfg.supertrendFuturesAuto}
-                        onChange={(e) => {
-                          const autoOn = e.currentTarget.checked;
-                          const mm = cfg.marketMode;
-                          deferTask(() => {
-                            void (async () => {
-                              try {
-                                if (mm === "SPOT") {
-                                  await api.botConfig({ supertrendSpotAuto: autoOn });
-                                  pushLog({
-                                    level: "info",
-                                    msg: autoOn
-                                      ? "Supertrend spot autotrading ON — BUY uses ~all available spot quote; SELL closes full base on signal (bar close). Start the bot. AI path is paused."
-                                      : "Supertrend spot autotrading OFF",
-                                  });
-                                } else {
-                                  await api.botConfig(
-                                    autoOn
-                                      ? { supertrendFuturesAuto: true }
-                                      : { supertrendFuturesAuto: false, supertrendFuturesAiConfidenceFilter: true },
-                                  );
-                                  pushLog({
-                                    level: "info",
-                                    msg: autoOn
-                                      ? "Supertrend futures autotrading ON — BUY sizes to ~available margin × leverage (see Lev. mode below); SELL closes the long on signal (bar close). Start the bot. AI path is paused."
-                                      : "Supertrend futures autotrading OFF",
-                                  });
+                    {cfg.marketMode === "AUTO" ? (
+                      <div className="space-y-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Both venues (market AUTO)
+                        </div>
+                        <label className="flex cursor-pointer items-start gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={cfg.supertrendSpotAuto}
+                            onChange={(e) => {
+                              const autoOn = e.currentTarget.checked;
+                              deferTask(() => {
+                                void (async () => {
+                                  try {
+                                    await api.botConfig({ supertrendSpotAuto: autoOn });
+                                    pushLog({
+                                      level: "info",
+                                      msg: autoOn
+                                        ? "Supertrend spot autotrading ON — bar-close signals on spot; start the bot."
+                                        : "Supertrend spot autotrading OFF",
+                                    });
+                                  } catch {
+                                    pushLog({ level: "error", msg: "Failed to update Supertrend spot" });
+                                  }
+                                })();
+                              });
+                            }}
+                          />
+                          <span>
+                            <span className="font-semibold text-emerald-200">Spot · Autotrade with Supertrend</span>
+                            <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                              BUY / full-quote and SELL / full exit on bar close when the active lane is spot.
+                            </span>
+                          </span>
+                        </label>
+                        <label className="flex cursor-pointer items-start gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={cfg.supertrendFuturesAuto}
+                            onChange={(e) => {
+                              const autoOn = e.currentTarget.checked;
+                              deferTask(() => {
+                                void (async () => {
+                                  try {
+                                    await api.botConfig(
+                                      autoOn
+                                        ? { supertrendFuturesAuto: true }
+                                        : { supertrendFuturesAuto: false, supertrendFuturesAiConfidenceFilter: true },
+                                    );
+                                    pushLog({
+                                      level: "info",
+                                      msg: autoOn
+                                        ? "Supertrend futures autotrading ON — /predict confidence for sizing when the lane is USD-M."
+                                        : "Supertrend futures autotrading OFF",
+                                    });
+                                  } catch {
+                                    pushLog({ level: "error", msg: "Failed to update Supertrend futures" });
+                                  }
+                                })();
+                              });
+                            }}
+                          />
+                          <span>
+                            <span className="font-semibold text-amber-200">Futures · Autotrade with Supertrend</span>
+                            <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                              Bar-close signals on USD-M; AI confidence and gates below apply when this is on.
+                            </span>
+                          </span>
+                        </label>
+                      </div>
+                    ) : (
+                      <label className="flex cursor-pointer items-start gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={cfg.marketMode === "SPOT" ? cfg.supertrendSpotAuto : cfg.supertrendFuturesAuto}
+                          onChange={(e) => {
+                            const autoOn = e.currentTarget.checked;
+                            const mm = cfg.marketMode;
+                            deferTask(() => {
+                              void (async () => {
+                                try {
+                                  if (mm === "SPOT") {
+                                    await api.botConfig({ supertrendSpotAuto: autoOn });
+                                    pushLog({
+                                      level: "info",
+                                      msg: autoOn
+                                        ? "Supertrend spot autotrading ON — BUY uses ~all available spot quote; SELL closes full base on signal (bar close). Start the bot. AI path is paused."
+                                        : "Supertrend spot autotrading OFF",
+                                    });
+                                  } else {
+                                    await api.botConfig(
+                                      autoOn
+                                        ? { supertrendFuturesAuto: true }
+                                        : { supertrendFuturesAuto: false, supertrendFuturesAiConfidenceFilter: true },
+                                    );
+                                    pushLog({
+                                      level: "info",
+                                      msg: autoOn
+                                        ? "Supertrend futures autotrading ON — BUY sizes to ~available margin × leverage (see Lev. mode below); SELL closes the long on signal (bar close). Start the bot. AI path is paused."
+                                        : "Supertrend futures autotrading OFF",
+                                    });
+                                  }
+                                } catch {
+                                  pushLog({ level: "error", msg: "Failed to update Supertrend" });
                                 }
-                              } catch {
-                                pushLog({ level: "error", msg: "Failed to update Supertrend" });
-                              }
-                            })();
-                          });
-                        }}
-                      />
-                      <span>
-                        <span className={cfg.marketMode === "FUTURES" ? "font-semibold text-amber-200" : "font-semibold text-emerald-200"}>
-                          Autotrade with Supertrend
+                              })();
+                            });
+                          }}
+                        />
+                        <span>
+                          <span className={cfg.marketMode === "FUTURES" ? "font-semibold text-amber-200" : "font-semibold text-emerald-200"}>
+                            Autotrade with Supertrend
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                            {cfg.marketMode === "SPOT" ? (
+                              <>
+                                Uses your chart timeframe. Signals on bar close. BUY ≈ full spot quote (
+                                <code className="text-slate-600 dark:text-slate-400">SUPERTREND_SPOT_NOTIONAL_BUFFER_PCT</code>); SELL exits the
+                                full position. Requires <code className="text-slate-600 dark:text-slate-400">MARKET_FEED=BINANCE</code> or futures
+                                feed for klines.
+                              </>
+                            ) : (
+                              <>
+                                Bar-close Supertrend BUY calls the coin AI (<code className="text-slate-600 dark:text-slate-400">/predict</code>)
+                                for confidence: that score drives leverage (AUTO), position size (risk tiers), and SL/TP (ATR +
+                                regime + confidence). Exit: take-profit / stop on the exchange, or Supertrend SELL closes the
+                                long. Needs ≥30 candles and a running AI service. Optional{" "}
+                                <code className="text-slate-600 dark:text-slate-400">SUPERTREND_FUTURES_MIN_AI_PROB</code>. Lev. mode below applies
+                                to AUTO leverage.
+                              </>
+                            )}
+                          </span>
                         </span>
-                        <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
-                          {cfg.marketMode === "SPOT" ? (
-                            <>
-                              Uses your chart timeframe. Signals on bar close. BUY ≈ full spot quote (
-                              <code className="text-slate-600 dark:text-slate-400">SUPERTREND_SPOT_NOTIONAL_BUFFER_PCT</code>); SELL exits the
-                              full position. Requires <code className="text-slate-600 dark:text-slate-400">MARKET_FEED=BINANCE</code> or futures
-                              feed for klines.
-                            </>
-                          ) : (
-                            <>
-                              Bar-close Supertrend BUY calls the coin AI (<code className="text-slate-600 dark:text-slate-400">/predict</code>)
-                              for confidence: that score drives leverage (AUTO), position size (risk tiers), and SL/TP (ATR +
-                              regime + confidence). Exit: take-profit / stop on the exchange, or Supertrend SELL closes the
-                              long. Needs ≥30 candles and a running AI service. Optional{" "}
-                              <code className="text-slate-600 dark:text-slate-400">SUPERTREND_FUTURES_MIN_AI_PROB</code>. Lev. mode below applies
-                              to AUTO leverage.
-                            </>
-                          )}
-                        </span>
-                      </span>
-                    </label>
+                      </label>
+                    )}
                     {cfg.marketMode !== "SPOT" && (
                       <div className="rounded-lg border border-slate-200 dark:border-slate-800/90 bg-white/85 dark:bg-slate-950/30 p-2">
                         <div className="mb-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-300">Supertrend futures direction</div>
@@ -4033,7 +4201,13 @@ export function TradingPanel() {
                         min={2}
                         max={100}
                         parse={(raw) => parseInt(raw, 10)}
-                        disabled={cfg.marketMode === "SPOT" ? !cfg.supertrendSpotAuto : !cfg.supertrendFuturesAuto}
+                        disabled={
+                          cfg.marketMode === "SPOT"
+                            ? !cfg.supertrendSpotAuto
+                            : cfg.marketMode === "FUTURES"
+                              ? !cfg.supertrendFuturesAuto
+                              : !cfg.supertrendSpotAuto && !cfg.supertrendFuturesAuto
+                        }
                         onCommit={async (v) => {
                           try {
                             await api.botConfig({ supertrendPeriod: v });
@@ -4049,7 +4223,13 @@ export function TradingPanel() {
                         value={cfg.supertrendMultiplier}
                         min={0.5}
                         max={20}
-                        disabled={cfg.marketMode === "SPOT" ? !cfg.supertrendSpotAuto : !cfg.supertrendFuturesAuto}
+                        disabled={
+                          cfg.marketMode === "SPOT"
+                            ? !cfg.supertrendSpotAuto
+                            : cfg.marketMode === "FUTURES"
+                              ? !cfg.supertrendFuturesAuto
+                              : !cfg.supertrendSpotAuto && !cfg.supertrendFuturesAuto
+                        }
                         onCommit={async (v) => {
                           try {
                             await api.botConfig({ supertrendMultiplier: v });
@@ -4063,7 +4243,13 @@ export function TradingPanel() {
                       <input
                         type="checkbox"
                         checked={cfg.supertrendWilderAtr}
-                        disabled={cfg.marketMode === "SPOT" ? !cfg.supertrendSpotAuto : !cfg.supertrendFuturesAuto}
+                        disabled={
+                          cfg.marketMode === "SPOT"
+                            ? !cfg.supertrendSpotAuto
+                            : cfg.marketMode === "FUTURES"
+                              ? !cfg.supertrendFuturesAuto
+                              : !cfg.supertrendSpotAuto && !cfg.supertrendFuturesAuto
+                        }
                         onChange={(e) => {
                           const checked = e.target.checked;
                           deferTask(() => {
@@ -4601,17 +4787,20 @@ export function TradingPanel() {
             )}
             {cfg.marketMode !== "SPOT" && !cfg.supertrendFuturesAuto && (
               <p className="text-[11px] leading-snug text-slate-600 dark:text-slate-500">
-                Supertrend futures AI confidence filter resets to <span className="text-slate-600 dark:text-slate-400">on</span> (default).
-                {cfg.marketMode === "FUTURES" ? (
+                Supertrend futures AI confidence filter resets to <span className="text-slate-600 dark:text-slate-400">on</span> (default).{" "}
+                {cfg.marketMode === "AUTO" ? (
                   <>
-                    {" "}
+                    Enable <span className="text-slate-600 dark:text-slate-400">Futures · Autotrade with Supertrend</span> in the Indicators block
+                    above to configure it.
+                  </>
+                ) : cfg.marketMode === "FUTURES" ? (
+                  <>
                     Enable <span className="text-slate-600 dark:text-slate-400">Autotrade with Supertrend</span> above to configure them.
                   </>
                 ) : (
                   <>
-                    {" "}
-                    Set market to <span className="text-slate-600 dark:text-slate-400">FUTURES</span> and enable Autotrade with Supertrend to
-                    configure it.
+                    Set market to <span className="text-slate-600 dark:text-slate-400">FUTURES</span> or{" "}
+                    <span className="text-slate-600 dark:text-slate-400">AUTO</span> and enable futures Supertrend autotrade to configure it.
                   </>
                 )}
               </p>

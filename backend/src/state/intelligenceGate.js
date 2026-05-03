@@ -1,8 +1,15 @@
 import { clamp } from "../lib/math.js";
-import { getIntelligenceScore } from "../intelligence/index.js";
+import { getIntelligenceScore, isIntelligenceReady } from "../intelligence/index.js";
+
+const gateWarmupLoggedSymbols = new Set();
 
 /**
- * Optional Supertrend open filter: veto opens when composite strongly disagrees (same thresholds as legacy bot inline gate).
+ * Optional Supertrend open filter: veto opens when composite disagrees (LONG vs bearish, SHORT vs bullish).
+ *
+ * **Veto** uses composite thresholds only (`<= 35` / `>= 65`) so they match the UI bias bands.
+ * **`confidence`** from the scorer is `round(|composite-50|×2)`; requiring `confidence > 60` for veto made
+ * LONG vetoes almost impossible for composites 20–35 (confidence tops out at 60 there). Size scaling
+ * still requires high confidence so multipliers apply only when the score is far from neutral.
  *
  * @param {{
  *   gateEnabled: boolean,
@@ -21,16 +28,30 @@ export function evaluateIntelligenceGateForSupertrendOpen(opts) {
   const sym = String(symbol || "").trim().toUpperCase();
   if (!sym) return none;
 
+  if (!isIntelligenceReady(sym)) {
+    if (!gateWarmupLoggedSymbols.has(sym)) {
+      gateWarmupLoggedSymbols.add(sym);
+      broadcastLog?.({
+        level: "info",
+        msg: `[Intelligence] Gate warming up for ${sym} — pass-through until first composite.`,
+      });
+      logInfo?.("intelligence_gate_warming_up", { symbol: sym });
+    }
+    return none;
+  }
+
   let intel;
   try {
     intel = getIntelligenceScore(sym);
   } catch {
     return none;
   }
-  if (!intel || !(intel.confidence > 60)) return none;
+  if (!intel) return none;
 
+  const conf = Number(intel.confidence);
   const rawMult = Number(intel.sizeMultiplier);
-  const sizeMultiplier = Number.isFinite(rawMult) ? clamp(rawMult, 0.25, 2) : 1;
+  const sizeMultiplier =
+    Number.isFinite(conf) && conf > 60 && Number.isFinite(rawMult) ? clamp(rawMult, 0.25, 2) : 1;
 
   if (openingLong && intel.composite <= 35) {
     logInfo?.("intelligence_gate_skip_long", {
@@ -40,7 +61,7 @@ export function evaluateIntelligenceGateForSupertrendOpen(opts) {
     });
     broadcastLog?.({
       level: "warn",
-      msg: `[Intelligence] High-confidence bearish signals (${intel.composite}/100) oppose LONG. Skipping.`,
+      msg: `[Intelligence] Bearish composite (${intel.composite}/100) opposes LONG. Skipping.`,
     });
     return { veto: true, sizeMultiplier: 1 };
   }
@@ -52,7 +73,7 @@ export function evaluateIntelligenceGateForSupertrendOpen(opts) {
     });
     broadcastLog?.({
       level: "warn",
-      msg: `[Intelligence] High-confidence bullish signals (${intel.composite}/100) oppose SHORT. Skipping.`,
+      msg: `[Intelligence] Bullish composite (${intel.composite}/100) opposes SHORT. Skipping.`,
     });
     return { veto: true, sizeMultiplier: 1 };
   }

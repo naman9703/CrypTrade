@@ -368,32 +368,58 @@ export const api = {
     );
   },
   async botConfig(patch: any) {
-    const data = await json<any>(
-      await apiFetch(`${HTTP}/api/bot/config`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(patch),
-      }),
-    );
-    if (data?.ok && data.bot && typeof data.bot === "object") {
-      const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
-      const { useAppStore } = await import("../ws/store");
-      const botNext = data.bot as Record<string, unknown>;
-      tradingUiPersistBotSnapshot(useAppStore.getState().mode, botNext, useAppStore.getState().authUiUserTag ?? null);
-      /** Same as tune-move-quality: apply immediately so toggles / Market decision params don’t wait on async WS `state`. */
+    const { useAppStore } = await import("../ws/store");
+    const { mergeOptimisticBotPatch, tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
+    const { tradingModeToApiModeSlug } = await import("../lib/tradingModeSlug");
+
+    const patchObj =
+      patch && typeof patch === "object" && !Array.isArray(patch) ? (patch as Record<string, unknown>) : {};
+    const patchKeys = Object.keys(patchObj);
+    const ignoredOnly = patchKeys.length > 0 && patchKeys.every((k) => k === "uiChartFocusSymbol");
+    const prevBot = useAppStore.getState().bot as Record<string, unknown> | undefined;
+
+    if (!ignoredOnly && patchKeys.length > 0) {
       useAppStore.setState((s) => ({
-        bot: s.bot && typeof s.bot === "object" ? { ...(s.bot as Record<string, unknown>), ...botNext } : botNext,
+        bot: mergeOptimisticBotPatch(s.bot as Record<string, unknown> | null | undefined, patchObj),
       }));
-      // Mark strategy config as dirty for explicit Save / Save-as-New workflow.
-      const patchObj = patch && typeof patch === "object" ? patch : {};
-      const patchKeys = Object.keys(patchObj);
-      const ignoredOnly = patchKeys.length > 0 && patchKeys.every((k) => k === "uiChartFocusSymbol");
-      if (!ignoredOnly) {
-        const modeSlug = (await import("../lib/tradingModeSlug")).tradingModeToApiModeSlug(useAppStore.getState().mode);
-        useAppStore.setState((s) => ({
-          strategyConfigDirtyByMode: { ...(s as any).strategyConfigDirtyByMode, [modeSlug]: true },
-        }));
+    }
+
+    let data: any;
+    try {
+      data = await json<any>(
+        await apiFetch(`${HTTP}/api/bot/config`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(patch),
+        }),
+      );
+    } catch (e) {
+      if (!ignoredOnly && patchKeys.length > 0 && prevBot && typeof prevBot === "object") {
+        useAppStore.setState({ bot: prevBot });
       }
+      throw e;
+    }
+
+    if (!data?.ok || !data.bot || typeof data.bot !== "object") {
+      if (!ignoredOnly && patchKeys.length > 0 && prevBot && typeof prevBot === "object") {
+        useAppStore.setState({ bot: prevBot });
+      }
+      return data;
+    }
+
+    const botNext = data.bot as Record<string, unknown>;
+    tradingUiPersistBotSnapshot(useAppStore.getState().mode, botNext, useAppStore.getState().authUiUserTag ?? null);
+    useAppStore.setState((s) => ({
+      bot: s.bot && typeof s.bot === "object" ? { ...(s.bot as Record<string, unknown>), ...botNext } : botNext,
+    }));
+    const dirtyPatchKeys = Object.keys(patchObj);
+    const dirtyIgnoredOnly =
+      dirtyPatchKeys.length > 0 && dirtyPatchKeys.every((k) => k === "uiChartFocusSymbol");
+    if (!dirtyIgnoredOnly) {
+      const modeSlug = tradingModeToApiModeSlug(useAppStore.getState().mode);
+      useAppStore.setState((s) => ({
+        strategyConfigDirtyByMode: { ...(s as any).strategyConfigDirtyByMode, [modeSlug]: true },
+      }));
     }
     return data;
   },

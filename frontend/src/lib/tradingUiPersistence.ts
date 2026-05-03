@@ -154,6 +154,73 @@ export function mergePersistedBotPatch(
   return out;
 }
 
+/**
+ * After WS hello (or `/api/state`), **server bot wins** for every persisted key it defines so reload reflects
+ * saved strategy + disk — stale browser `byMode` must not overwrite authoritative runtime config.
+ * Local values apply only when the server snapshot omits the key entirely (`undefined` gap-fill).
+ */
+export function mergePersistedBotPreferServer(
+  serverBot: Record<string, unknown>,
+  localPatch: Record<string, unknown> | undefined | null,
+): Record<string, unknown> {
+  if (!localPatch || typeof localPatch !== "object" || !Object.keys(localPatch).length) return serverBot;
+  const out: Record<string, unknown> = { ...serverBot };
+  for (const key of PERSIST_BOT_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(localPatch, key) || localPatch[key] === undefined) continue;
+    if (Object.prototype.hasOwnProperty.call(serverBot, key) && serverBot[key] !== undefined) continue;
+
+    if (key === "tradingFormDefaults" && localPatch.tradingFormDefaults && typeof localPatch.tradingFormDefaults === "object") {
+      out.tradingFormDefaults = { ...(localPatch.tradingFormDefaults as Record<string, unknown>) };
+    } else if (key === "marketDecision" && localPatch.marketDecision && typeof localPatch.marketDecision === "object") {
+      out.marketDecision = { ...(localPatch.marketDecision as Record<string, unknown>) };
+    } else if (
+      (key === "multiBudgetCoinUsdt" || key === "multiBudgetCoinPct") &&
+      localPatch[key] &&
+      typeof localPatch[key] === "object"
+    ) {
+      out[key] = { ...(localPatch[key] as Record<string, unknown>) };
+    } else {
+      out[key] = localPatch[key];
+    }
+  }
+  return out;
+}
+
+/** Shallow bot patch + deep-merge known nested objects (matches `/api/bot/config` partial patches). */
+export function mergeOptimisticBotPatch(
+  prev: Record<string, unknown> | null | undefined,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const base = prev && typeof prev === "object" ? { ...prev } : {};
+  const out: Record<string, unknown> = { ...base, ...patch };
+  if (patch.marketDecision && typeof patch.marketDecision === "object" && !Array.isArray(patch.marketDecision)) {
+    const pb = patch.marketDecision as Record<string, unknown>;
+    const bb = base.marketDecision && typeof base.marketDecision === "object" && !Array.isArray(base.marketDecision)
+      ? (base.marketDecision as Record<string, unknown>)
+      : {};
+    out.marketDecision = { ...bb, ...pb };
+  }
+  if (patch.tradingFormDefaults && typeof patch.tradingFormDefaults === "object" && !Array.isArray(patch.tradingFormDefaults)) {
+    const pb = patch.tradingFormDefaults as Record<string, unknown>;
+    const bb =
+      base.tradingFormDefaults && typeof base.tradingFormDefaults === "object" && !Array.isArray(base.tradingFormDefaults)
+        ? (base.tradingFormDefaults as Record<string, unknown>)
+        : {};
+    out.tradingFormDefaults = { ...bb, ...pb };
+  }
+  for (const key of ["multiBudgetCoinUsdt", "multiBudgetCoinPct"] as const) {
+    const pv = patch[key];
+    if (pv && typeof pv === "object" && !Array.isArray(pv)) {
+      const bv =
+        base[key] && typeof base[key] === "object" && !Array.isArray(base[key])
+          ? (base[key] as Record<string, unknown>)
+          : {};
+      out[key] = { ...bv, ...(pv as Record<string, unknown>) };
+    }
+  }
+  return out;
+}
+
 function stableStringify(x: unknown): string {
   if (x === null || typeof x !== "object") return JSON.stringify(x);
   if (Array.isArray(x)) return `[${x.map(stableStringify).join(",")}]`;

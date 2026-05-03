@@ -3,10 +3,9 @@ import { api } from "../api/client";
 import { tradingModeToApiModeSlug, type ApiTradingModeSlug } from "../lib/tradingModeSlug";
 import type { Account, CreateAccountDto, UpdateAccountDto } from "../types/accounts";
 import {
-  botMatchesPersistedPatch,
   enqueueServerUiPrefsPatch,
   loadTradingUiPrefs,
-  mergePersistedBotPatch,
+  mergePersistedBotPreferServer,
   tradingUiPersistShowMarketIntelligencePanel,
 } from "../lib/tradingUiPersistence";
 import type { CreateStrategyDto, Strategy, StrategyMetaPatch, StrategyVersion } from "../types/strategy";
@@ -258,7 +257,8 @@ export function parseActiveInstanceByModeFromServer(raw: unknown): Record<ApiTra
   return out;
 }
 
-function patchInstanceInByMode(
+/** Merge a patched `BotInstance` (e.g. from `PATCH .../operational-config`) into sidebar lists. */
+export function patchInstanceInByMode(
   byMode: Partial<Record<ApiTradingModeSlug, BotInstance[]>>,
   instanceId: string,
   patch: Partial<BotInstance>,
@@ -393,36 +393,20 @@ function scheduleTradingUiSessionRestore(serverMode: string) {
   const want = String(prefs.lastMode || "").toUpperCase();
   const have = String(serverMode || "").toUpperCase();
   const modeMismatch = Boolean(want && want !== have);
-  const patchForHave = prefs.byMode[have];
-  const needBotRestore =
-    patchForHave &&
-    typeof patchForHave === "object" &&
-    Object.keys(patchForHave as Record<string, unknown>).length > 0;
-  if (!modeMismatch && !needBotRestore) return;
+  // Do not POST stale `byMode` to `/api/bot/config` on load — that overwrote saved strategy / disk with
+  // browser cache. Mode restore (`setMode`) is enough; hello state is authoritative for bot fields.
+  if (!modeMismatch) return;
   tradingUiSessionRestoreStarted = true;
 
   void (async () => {
     try {
-      if (modeMismatch) {
-        if (want === "BINANCE_LIVE") {
-          const ok = window.confirm(
-            "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Restore your saved LIVE mode?",
-          );
-          if (!ok) return;
-        }
-        await api.setMode(want as "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE");
+      if (want === "BINANCE_LIVE") {
+        const ok = window.confirm(
+          "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Restore your saved LIVE mode?",
+        );
+        if (!ok) return;
       }
-    } catch {
-      /* ignore */
-    }
-
-    try {
-      const modeNow = String(useAppStore.getState().mode || serverMode || "").toUpperCase();
-      const patch = prefs.byMode[modeNow];
-      if (!patch || typeof patch !== "object" || !Object.keys(patch).length) return;
-      const botNow = useAppStore.getState().bot as Record<string, unknown> | undefined;
-      if (botNow && botMatchesPersistedPatch(botNow, patch as Record<string, unknown>)) return;
-      await api.botConfig(patch);
+      await api.setMode(want as "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE");
     } catch {
       /* ignore */
     }
@@ -701,7 +685,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             const patchHello = prefs?.byMode?.[modeKeyHello];
             const mergedHelloBot =
               patchHello && Object.keys(patchHello).length
-                ? mergePersistedBotPatch(p.state as Record<string, unknown>, patchHello as Record<string, unknown>)
+                ? mergePersistedBotPreferServer(p.state as Record<string, unknown>, patchHello as Record<string, unknown>)
                 : p.state;
             const prevBulk =
               typeof s.activityLogBulkGeneration === "number" ? s.activityLogBulkGeneration : 0;
@@ -1531,7 +1515,7 @@ export async function hydrateStateViaHttp(): Promise<void> {
       const m = String(res.mode || "").toUpperCase();
       const patch = prefs?.byMode?.[m];
       if (patch && Object.keys(patch).length) {
-        botShape = mergePersistedBotPatch(botShape, patch as Record<string, unknown>);
+        botShape = mergePersistedBotPreferServer(botShape, patch as Record<string, unknown>);
       }
     }
     const payload = {

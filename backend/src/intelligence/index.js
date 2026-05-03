@@ -18,6 +18,22 @@ import { saveIntelligence }      from './intelligenceService.js';
 import { refreshMultiTimeframeCandles } from './fetchMultiTimeframeKlines.js';
 import { maybeEmitFundingExtremeAlerts } from './fundingAlerts.js';
 import { refreshMarketIntelApisFromStore } from './marketIntelResolvedApis.js';
+import { listWhaleAlertsInRange } from '../db/services/whaleAlertsService.js';
+import { listMarketEventsInRange } from '../db/services/marketEventsService.js';
+
+/** @type {{ bot?: { getPublicState?: () => Record<string, unknown> } } | null} */
+let intelligenceAppStateRef = null;
+
+const intelligenceReadySymbols = new Set();
+
+/**
+ * True after the first successful composite snapshot for this futures symbol (e.g. BTCUSDT).
+ * @param {string} symbol
+ */
+export function isIntelligenceReady(symbol) {
+  const sym = String(symbol || '').trim().toUpperCase();
+  return sym.length > 0 && intelligenceReadySymbols.has(sym);
+}
 
 const INTERVALS = {
   fearGreed:    5  * 60 * 1000,
@@ -40,8 +56,12 @@ export const intelligenceCache = {
   onChain:      {},
   /** Binance USD-M forceOrder stream → rolling 4h USD notionals per futures symbol. */
   liquidations: {},
-  /** `{ GLOBAL: { sentiment, summary, ... } }` — Finnhub + `/news_impact_score`. */
+  /** `{ GLOBAL, BTC, ETH, … }` — Finnhub + `/news_impact_score` per bucket. */
   newsImpact:   {},
+  /** Per-symbol rows from `whale_alerts` (last poll window). */
+  whaleAlerts:  {},
+  /** Upcoming `market_events` rows for calendar dampening / UI. */
+  calendarEvents: [],
   confluence:   {},
   volatility:   {},
   candles:      {},
@@ -96,7 +116,39 @@ export async function computeAndBroadcastIntelligenceSnapshot(symbol, wsHub) {
   const bookData = orderBookCollector.collect([sym], intelligenceCache)[sym];
   if (bookData) intelligenceCache.orderBook[sym] = bookData;
 
-  intelligenceCache.confluence[sym] = await confluenceProcessor.compute(sym, intelligenceCache);
+  const fromWhaleIso = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+  const toNowIso = new Date().toISOString();
+  try {
+    const whales = await listWhaleAlertsInRange({
+      fromIso: fromWhaleIso,
+      toIso: toNowIso,
+      symbol: sym,
+    });
+    intelligenceCache.whaleAlerts[sym] = whales;
+  } catch (err) {
+    console.warn(`[intelligence] whale_alerts ${sym}:`, err.message);
+  }
+
+  try {
+    const fromEvIso = new Date().toISOString();
+    const toEvIso = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
+    intelligenceCache.calendarEvents = await listMarketEventsInRange({
+      fromIso: fromEvIso,
+      toIso: toEvIso,
+    });
+  } catch (err) {
+    console.warn('[intelligence] market_events:', err.message);
+  }
+
+  const botState = intelligenceAppStateRef?.bot?.getPublicState?.() ?? {};
+  const stPeriod = Number(botState.supertrendPeriod) || 10;
+  const stMult = Number(botState.supertrendMultiplier) || 3;
+  const stWilder = Boolean(botState.supertrendWilderAtr);
+  intelligenceCache.confluence[sym] = await confluenceProcessor.compute(sym, intelligenceCache, {
+    period: stPeriod,
+    multiplier: stMult,
+    wilder: stWilder,
+  });
   intelligenceCache.volatility[sym] = volatilityProcessor.compute(sym, intelligenceCache);
 
   maybeEmitFundingExtremeAlerts(
@@ -109,6 +161,17 @@ export async function computeAndBroadcastIntelligenceSnapshot(symbol, wsHub) {
   const composite = compositeScorer.score(sym, intelligenceCache);
   intelligenceCache._lastComposite[sym] = composite;
 
+  const newsBaseKey = sym.replace(/USDT$/i, '').replace(/BUSD$/i, '').toUpperCase();
+
+  if (!intelligenceReadySymbols.has(sym)) {
+    intelligenceReadySymbols.add(sym);
+    console.log(
+      `[intelligence] ${sym} ready — composite: ${composite.composite}`,
+      `bias: ${composite.bias}`,
+      `signals: ${composite.bullishSignals.length}B / ${composite.bearishSignals.length}Be`,
+    );
+  }
+
   const ts = new Date().toISOString();
   const record = {
     symbol: sym,
@@ -120,7 +183,8 @@ export async function computeAndBroadcastIntelligenceSnapshot(symbol, wsHub) {
     options:      intelligenceCache.options?.[sym],
     onChain:      intelligenceCache.onChain?.[sym],
     liquidations: intelligenceCache.liquidations?.[sym] ?? null,
-    newsImpact:   intelligenceCache.newsImpact?.GLOBAL ?? null,
+    newsImpact:
+      intelligenceCache.newsImpact?.[newsBaseKey] ?? intelligenceCache.newsImpact?.GLOBAL ?? null,
     confluence:   intelligenceCache.confluence?.[sym],
     volatility:   intelligenceCache.volatility?.[sym],
     composite,
@@ -137,7 +201,12 @@ export async function computeAndBroadcastIntelligenceSnapshot(symbol, wsHub) {
   }
 }
 
-export function startIntelligenceEngine(wsHub) {
+/**
+ * @param {{ broadcast?: (type: string, payload: unknown) => void } | null | undefined} wsHub
+ * @param {{ bot?: { getPublicState?: () => Record<string, unknown> } } | null} [appState]
+ */
+export function startIntelligenceEngine(wsHub, appState = null) {
+  intelligenceAppStateRef = appState;
   console.log('[intelligence] Starting engine...');
 
   void refreshMarketIntelApisFromStore().catch(() => {});

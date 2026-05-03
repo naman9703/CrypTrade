@@ -2652,6 +2652,39 @@ export function createBot({
       symbol: state.symbol,
     });
 
+    state._intelligenceSizeMultiplier = 1;
+    if (state.intelligenceGateEnabled) {
+      try {
+        const openingIntel =
+          pending.side === "BUY"
+            ? true
+            : pending.side === "SELL" && stFut && state.supertrendFuturesTwoWay === true
+              ? false
+              : null;
+        if (openingIntel != null) {
+          const ig = evaluateIntelligenceGateForSupertrendOpen({
+            gateEnabled: true,
+            symbol: symU,
+            openingLong: openingIntel,
+            broadcastLog: (p) =>
+              hub?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
+            logInfo: (eventName, meta) => log?.info?.(eventName, meta),
+          });
+          if (ig.veto) {
+            wsHub?.broadcast?.("log", {
+              level: "warn",
+              msg: `Pending Supertrend skipped: intelligence gate (${pending.side})`,
+              symbol: state.symbol,
+            });
+            return;
+          }
+          state._intelligenceSizeMultiplier = ig.sizeMultiplier;
+        }
+      } catch {
+        /* never block on intelligence error */
+      }
+    }
+
     if (pending.side === "BUY") {
       if (stSpot && pending.dedupeKeyBuy) {
         const buyRes = await trySupertrendSpotOrder({
@@ -5037,11 +5070,11 @@ export function createBot({
 
     try {
       state._intelligenceSizeMultiplier = 1;
-      if (state.intelligenceGateEnabled) {
+      if (state.intelligenceGateEnabled && allowBuy) {
         const ig = evaluateIntelligenceGateForSupertrendOpen({
           gateEnabled: true,
           symbol: symU,
-          openingLong: Boolean(allowBuy),
+          openingLong: true,
           broadcastLog: (p) =>
             hubLocal?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
           logInfo: (eventName, meta) => log?.info?.(eventName, meta),
@@ -5082,6 +5115,23 @@ export function createBot({
           await pushImmediateState(hubLocal);
           await refreshOpenSymsAfterTrade();
         }
+      }
+    }
+    if (allowSell && stFut && state.supertrendFuturesTwoWay === true && state.intelligenceGateEnabled) {
+      try {
+        state._intelligenceSizeMultiplier = 1;
+        const igShort = evaluateIntelligenceGateForSupertrendOpen({
+          gateEnabled: true,
+          symbol: symU,
+          openingLong: false,
+          broadcastLog: (p) =>
+            hubLocal?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
+          logInfo: (eventName, meta) => log?.info?.(eventName, meta),
+        });
+        if (igShort.veto) return gatesSweep;
+        state._intelligenceSizeMultiplier = igShort.sizeMultiplier;
+      } catch {
+        /* never block a trade on intelligence error */
       }
     }
     if (allowSell && stFut) {
@@ -5783,6 +5833,44 @@ export function createBot({
       state.pendingSupertrendBreakout = null;
 
       const symT = String(state.symbol || "").trim().toUpperCase();
+
+      state._intelligenceSizeMultiplier = 1;
+      if (state.intelligenceGateEnabled) {
+        try {
+          const openingIntel =
+            pend.side === "BUY"
+              ? true
+              : pend.side === "SELL" && pend.stFut && state.supertrendFuturesTwoWay === true
+                ? false
+                : null;
+          if (openingIntel != null) {
+            const ig = evaluateIntelligenceGateForSupertrendOpen({
+              gateEnabled: true,
+              symbol: symT,
+              openingLong: openingIntel,
+              broadcastLog: (p) =>
+                hub?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
+              logInfo: (eventName, meta) => log?.info?.(eventName, meta),
+            });
+            if (ig.veto) {
+              emitSignalActionActivity(hub, {
+                kind: "supertrend",
+                strategyKey: "SUPERTREND",
+                venue: pend.stSpot ? "SPOT" : pend.stFut ? "FUTURES" : "—",
+                side: pend.side,
+                action: "skipped",
+                reason: "intelligence_gate",
+                supertrendStrength01: supertrendStrength01 ?? undefined,
+              });
+              return { handled: true };
+            }
+            state._intelligenceSizeMultiplier = ig.sizeMultiplier;
+          }
+        } catch {
+          /* never block on intelligence error */
+        }
+      }
+
       if (idxC > 0 && symT) {
         const prevB = clean[idxC - 1];
         const curB = clean[idxC];
@@ -6121,13 +6209,14 @@ export function createBot({
       }
     }
 
-    // ── Intelligence gate (optional, non-blocking) ───────────────────────────
+    // ── Intelligence gate (optional): LONG opens only here; SHORT-open gate runs only for 2-way futures SELL ──
     try {
-      if (state.intelligenceGateEnabled) {
+      state._intelligenceSizeMultiplier = 1;
+      if (state.intelligenceGateEnabled && allowBuy) {
         const ig = evaluateIntelligenceGateForSupertrendOpen({
           gateEnabled: true,
           symbol: symTrade,
-          openingLong: Boolean(allowBuy),
+          openingLong: true,
           broadcastLog: (p) =>
             wsHubRef?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
           logInfo: (eventName, meta) => log?.info?.(eventName, meta),
@@ -6177,6 +6266,32 @@ export function createBot({
         placedBarExecution = true;
         await pushImmediateState(hub);
       } else skipReasonBar = skipReasonBar || buyRes?.reason || null;
+    }
+    if (
+      allowSell &&
+      !placedBarExecution &&
+      stFut &&
+      state.supertrendFuturesTwoWay === true &&
+      state.intelligenceGateEnabled
+    ) {
+      try {
+        state._intelligenceSizeMultiplier = 1;
+        const igShort = evaluateIntelligenceGateForSupertrendOpen({
+          gateEnabled: true,
+          symbol: symTrade,
+          openingLong: false,
+          broadcastLog: (p) =>
+            wsHubRef?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
+          logInfo: (eventName, meta) => log?.info?.(eventName, meta),
+        });
+        if (igShort.veto) {
+          state.supertrendStHandledCloseKey = barCloseKey;
+          return;
+        }
+        state._intelligenceSizeMultiplier = igShort.sizeMultiplier;
+      } catch {
+        /* never block a trade on intelligence error */
+      }
     }
     if (allowSell && !placedBarExecution) {
       let sellRes;
