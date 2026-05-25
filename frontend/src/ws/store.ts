@@ -8,13 +8,45 @@ import {
   mergePersistedBotPreferServer,
   tradingUiPersistShowMarketIntelligencePanel,
 } from "../lib/tradingUiPersistence";
+import { applyBotConfigPatchInFlight } from "../lib/configPatchInFlight";
 import type { CreateStrategyDto, Strategy, StrategyMetaPatch, StrategyVersion } from "../types/strategy";
 import type { BotInstance, CreateInstanceDto } from "../types/instance";
+import { mapApiStrategyVersion } from "../lib/strategyApiMappers";
 import type { Trade } from "../types/trade";
 import type { EquityCurvePoint, PerformanceCompareRow, StrategyPerformance } from "../types/performance";
 import type { IntelligenceData } from "../types/intelligence";
+import {
+  canonicalCfgRawFromUiBot,
+  signalBrainSnapshotFromCfgRaw,
+  signalBrainSnapshotFromUiBot,
+} from "../lib/strategyBrainSnapshot";
 import { isPlausibleCandleClose, normalizeSym } from "../lib/symbolPriceSanity";
 import { isIncomeLedgerClose, playProfitCloseSound } from "../lib/uiSounds";
+
+/**
+ * Prefer `activeStrategyVersionByMode`, but when the engine is driven by an instance
+ * the mode-level version id in prefs can stay null while `bot_instances.strategy_version_id`
+ * is authoritative — without this, `strategyConfigDirtyByMode` never turns true.
+ */
+function resolveActiveStrategyVersionId(
+  s: {
+    activeStrategyVersionByMode: Record<ApiTradingModeSlug, string | null>;
+    activeInstanceByMode: Record<ApiTradingModeSlug, string | null>;
+    instancesByMode: Partial<Record<ApiTradingModeSlug, BotInstance[]>>;
+  },
+  modeSlug: ApiTradingModeSlug,
+): string | null {
+  const direct = s.activeStrategyVersionByMode[modeSlug];
+  if (typeof direct === "string" && direct.trim().length) return direct.trim();
+  const iid = s.activeInstanceByMode[modeSlug];
+  if (typeof iid === "string" && iid.trim().length) {
+    const list = s.instancesByMode[modeSlug] ?? [];
+    const inst = list.find((i) => i.id === iid);
+    const vid = inst?.strategyVersionId;
+    if (typeof vid === "string" && vid.trim().length) return vid.trim();
+  }
+  return null;
+}
 
 type Candle = {
   ts: number;
@@ -156,14 +188,23 @@ type AppState = {
     strategySidebarCollapsed: boolean;
     instancesPanelCollapsed: boolean;
   };
-  /** Main view: 'overview' is the default landing (analytics/instances list); 'instance' is the full trading UI for a selected instance. */
-  mainView: "overview" | "instance";
+  /** Main view: 'overview' is the default landing (analytics/instances list); 'instance' is the full trading UI for a selected instance; 'backtest' is the backtest workbench. */
+  mainView: "overview" | "instance" | "backtest";
+  /** Live progress map for backtest runs, keyed by runId. WS-driven; pages refresh detail via REST on completion. */
+  backtestProgress: Record<string, { progressPct: number; status?: string; error?: string }>;
   /** Market intelligence data keyed by symbol. */
   intelligence: Record<string, IntelligenceData>;
   /** When true, Market Intelligence is shown under the chart order book (instance trading UI only). */
   showMarketIntelligencePanel: boolean;
-  /** Unsaved strategy-config edits (set on bot config change; cleared by explicit save). */
+  /** True when live bot signal-brain fields differ from the active saved strategy version. */
   strategyConfigDirtyByMode: Record<ApiTradingModeSlug, boolean>;
+
+  /** Compare stripped signal-brain vs active `strategy_versions.cfg_raw` for `modeSlug`. */
+  recomputeStrategyConfigDirtyForMode: (modeSlug: ApiTradingModeSlug) => void;
+  /** Clear dirty + sync saved cfg baseline from current bot (call right after Save). */
+  markStrategyConfigCleanForMode: (modeSlug: ApiTradingModeSlug) => void;
+  /** Patch in-memory strategy version cfg after Save so dirty clears before the next list fetch. */
+  mergeStrategyVersionFromSaveResponse: (modeSlug: ApiTradingModeSlug, versionRaw: unknown) => void;
 
   connect: () => void;
   setBot: (bot: any) => void;
@@ -176,7 +217,10 @@ type AppState = {
   updateAccount: (accountId: string, patch: UpdateAccountDto) => Promise<Account>;
   deactivateAccount: (accountId: string) => Promise<void>;
 
-  fetchStrategiesForMode: (modeSlug: ApiTradingModeSlug, opts?: { includeArchived?: boolean }) => Promise<void>;
+  fetchStrategiesForMode: (
+    modeSlug: ApiTradingModeSlug,
+    opts?: { includeArchived?: boolean; skipDirtyRecompute?: boolean },
+  ) => Promise<void>;
   fetchVersionsForStrategy: (strategyId: string) => Promise<void>;
   selectStrategy: (strategyId: string | null) => void;
   createStrategyForMode: (modeSlug: ApiTradingModeSlug, dto: CreateStrategyDto) => Promise<{ strategy: Strategy }>;
@@ -199,7 +243,8 @@ type AppState = {
   setSidebarCollapsed: (which: "accounts" | "strategy", collapsed: boolean) => void;
   setInstancesPanelCollapsed: (collapsed: boolean) => void;
   hydrateLayoutFromServer: (layout: unknown) => void;
-  setMainView: (v: "overview" | "instance") => void;
+  setMainView: (v: "overview" | "instance" | "backtest") => void;
+  setBacktestProgress: (runId: string, patch: { progressPct?: number; status?: string; error?: string }) => void;
   setShowMarketIntelligencePanel: (show: boolean) => void;
   fetchIntelligence: (symbol: string) => Promise<void>;
   /** Navigate into the full trading UI for a specific instance. */
@@ -400,13 +445,13 @@ function scheduleTradingUiSessionRestore(serverMode: string) {
 
   void (async () => {
     try {
-      if (want === "BINANCE_LIVE") {
-        const ok = window.confirm(
-          "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Restore your saved LIVE mode?",
-        );
-        if (!ok) return;
-      }
-      await api.setMode(want as "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE");
+        if (want === "BINANCE_LIVE") {
+          const ok = window.confirm(
+            "BINANCE LIVE (mainnet): real funds — losses possible. Requires BINANCE_LIVE_TRADING_ENABLED=1 on the server. Restore your saved LIVE mode?",
+          );
+          if (!ok) return;
+        }
+        await api.setMode(want as "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE");
     } catch {
       /* ignore */
     }
@@ -576,6 +621,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   strategiesError: null,
   layout: { accountsSidebarCollapsed: false, strategySidebarCollapsed: false, instancesPanelCollapsed: false },
   mainView: "overview",
+  backtestProgress: {},
   intelligence: {},
   showMarketIntelligencePanel: false,
   performanceByVersion: {},
@@ -665,16 +711,16 @@ export const useAppStore = create<AppState>((set, get) => ({
           set((s) => {
             const act = Array.isArray(p.activityLog) ? p.activityLog : [];
             const logsFromServer = act.slice(0, 500).map((row: unknown) => {
-              const r = row as Record<string, unknown>;
-              const tsIso =
-                typeof r.ts === "string" && r.ts.length >= 10
-                  ? r.ts
-                  : typeof r.serverTs === "string" && r.serverTs.length >= 10
-                    ? r.serverTs
-                    : new Date().toISOString();
+                const r = row as Record<string, unknown>;
+                const tsIso =
+                  typeof r.ts === "string" && r.ts.length >= 10
+                    ? r.ts
+                    : typeof r.serverTs === "string" && r.serverTs.length >= 10
+                      ? r.serverTs
+                      : new Date().toISOString();
               const _lid = nextActivityLogLid++;
               return { ...(r as LogPayload), ts: tsIso, _lid };
-            });
+              });
             const tagNext =
               typeof (p as HelloPayload & { uiUserTag?: string }).uiUserTag === "string" &&
               String((p as HelloPayload & { uiUserTag?: string }).uiUserTag).trim()
@@ -859,6 +905,26 @@ export const useAppStore = create<AppState>((set, get) => ({
             detail: { band: p?.band, zscore: p?.zscore },
             ts: typeof p?.ts === "string" ? p.ts : undefined,
           } as LogPayload);
+          return;
+        }
+        if (type === "backtest_progress" || type === "backtest_complete" || type === "backtest_failed") {
+          const p = payload as { runId?: string; progressPct?: number; status?: string; error?: string };
+          const runId = p?.runId != null ? String(p.runId) : "";
+          if (!runId) return;
+          let status: string | undefined = p?.status;
+          if (type === "backtest_complete") status = "done";
+          if (type === "backtest_failed") status = "failed";
+          if (type === "backtest_progress" && (status == null || status === "")) status = "running";
+          get().setBacktestProgress(runId, {
+            progressPct:
+              type === "backtest_complete"
+                ? 100
+                : p?.progressPct != null
+                  ? Number(p.progressPct)
+                  : undefined,
+            status,
+            error: p?.error,
+          });
           return;
         }
         if (type === "whale_alert") {
@@ -1051,6 +1117,113 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  recomputeStrategyConfigDirtyForMode: (modeSlug) => {
+    const s = get();
+    const vid = resolveActiveStrategyVersionId(s, modeSlug);
+    const bot = s.bot;
+    if (!vid || !bot || typeof bot !== "object") {
+      set((st) => ({
+        strategyConfigDirtyByMode: { ...st.strategyConfigDirtyByMode, [modeSlug]: false },
+      }));
+      return;
+    }
+    const strategies = s.strategiesByMode[modeSlug] ?? [];
+    let cfgRaw: Record<string, unknown> | null = null;
+    for (const st of strategies) {
+      if (st.latestVersion?.id === vid) {
+        cfgRaw = (st.latestVersion.cfgRaw ?? {}) as Record<string, unknown>;
+        break;
+      }
+      const vers = s.versionsByStrategyId[st.id];
+      const hit = vers?.find((v) => v.id === vid);
+      if (hit) {
+        cfgRaw = (hit.cfgRaw ?? {}) as Record<string, unknown>;
+        break;
+      }
+    }
+    if (cfgRaw == null) {
+      set((st) => ({
+        strategyConfigDirtyByMode: { ...st.strategyConfigDirtyByMode, [modeSlug]: false },
+      }));
+      void (async () => {
+        for (const st of strategies) {
+          await get().fetchVersionsForStrategy(st.id);
+          const hit = get().versionsByStrategyId[st.id]?.find((v) => v.id === vid);
+          if (hit) {
+            get().recomputeStrategyConfigDirtyForMode(modeSlug);
+            return;
+          }
+        }
+      })();
+      return;
+    }
+    const dirty =
+      signalBrainSnapshotFromUiBot(bot) !== signalBrainSnapshotFromCfgRaw(cfgRaw);
+    set((st) => ({
+      strategyConfigDirtyByMode: { ...st.strategyConfigDirtyByMode, [modeSlug]: dirty },
+    }));
+  },
+
+  markStrategyConfigCleanForMode: (modeSlug) => {
+    const s = get();
+    const vid = resolveActiveStrategyVersionId(s, modeSlug);
+    const cfgRaw = canonicalCfgRawFromUiBot(s.bot);
+    set((st) => {
+      const dirtyByMode = { ...st.strategyConfigDirtyByMode, [modeSlug]: false };
+      if (!vid) return { strategyConfigDirtyByMode: dirtyByMode };
+
+      const list = [...(st.strategiesByMode[modeSlug] ?? [])];
+      const versionsByStrategyId = { ...st.versionsByStrategyId };
+      for (let i = 0; i < list.length; i++) {
+        const stg = list[i];
+        if (stg.latestVersion?.id === vid) {
+          list[i] = { ...stg, latestVersion: { ...stg.latestVersion, cfgRaw } };
+        }
+        const prevVers = versionsByStrategyId[stg.id] ?? [];
+        const vidx = prevVers.findIndex((x) => x.id === vid);
+        if (vidx >= 0) {
+          versionsByStrategyId[stg.id] = prevVers.map((x, j) => (j === vidx ? { ...x, cfgRaw } : x));
+        }
+      }
+      return {
+        strategyConfigDirtyByMode: dirtyByMode,
+        strategiesByMode: { ...st.strategiesByMode, [modeSlug]: list },
+        versionsByStrategyId,
+      };
+    });
+  },
+
+  mergeStrategyVersionFromSaveResponse: (modeSlug, versionRaw) => {
+    const ver = mapApiStrategyVersion(versionRaw);
+    if (!ver?.id || !ver.strategyId) return;
+    const cfgRaw = canonicalCfgRawFromUiBot(get().bot);
+    const verSynced = { ...ver, cfgRaw };
+    set((s) => {
+      const list = [...(s.strategiesByMode[modeSlug] ?? [])];
+      const idx = list.findIndex((st) => st.id === verSynced.strategyId);
+      if (idx === -1) return {};
+      const st = list[idx];
+      if (!st) return {};
+      const prevVers = s.versionsByStrategyId[verSynced.strategyId] ?? [];
+      const vidx = prevVers.findIndex((x) => x.id === verSynced.id);
+      const nextVers =
+        vidx === -1 ? [...prevVers, verSynced] : prevVers.map((x, i) => (i === vidx ? verSynced : x));
+      const nextLatest =
+        st.latestVersion?.id === verSynced.id
+          ? verSynced
+          : st.latestVersion?.versionNumber != null &&
+              verSynced.versionNumber >= (st.latestVersion?.versionNumber ?? 0)
+            ? verSynced
+            : st.latestVersion;
+      list[idx] = { ...st, latestVersion: nextLatest ?? verSynced };
+      return {
+        strategiesByMode: { ...s.strategiesByMode, [modeSlug]: list },
+        versionsByStrategyId: { ...s.versionsByStrategyId, [verSynced.strategyId]: nextVers },
+        strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
+      };
+    });
+  },
+
   fetchStrategiesForMode: async (modeSlug, opts) => {
     set({ strategiesLoading: true, strategiesError: null });
     try {
@@ -1060,6 +1233,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         strategiesLoading: false,
         strategiesError: null,
       }));
+      if (!opts?.skipDirtyRecompute) {
+        get().recomputeStrategyConfigDirtyForMode(modeSlug);
+      }
     } catch (e) {
       set({
         strategiesLoading: false,
@@ -1074,6 +1250,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((s) => ({
         versionsByStrategyId: { ...s.versionsByStrategyId, [strategyId]: versions },
       }));
+      const mode = get().mode;
+      if (mode) get().recomputeStrategyConfigDirtyForMode(tradingModeToApiModeSlug(mode));
     } catch {
       /* ignore */
     }
@@ -1126,8 +1304,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     await api.setActiveStrategyForMode(modeSlug, versionId);
     set((s) => ({
       activeStrategyVersionByMode: { ...s.activeStrategyVersionByMode, [modeSlug]: versionId },
-      strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
     }));
+    get().recomputeStrategyConfigDirtyForMode(modeSlug);
   },
 
   fetchInstancesForMode: async (modeSlug) => {
@@ -1138,6 +1316,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         instancesByMode: { ...s.instancesByMode, [modeSlug]: list },
         instancesLoading: false,
       }));
+      get().recomputeStrategyConfigDirtyForMode(modeSlug);
     } catch {
       set({ instancesLoading: false });
     }
@@ -1196,6 +1375,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (data?.activeAccountByMode) patch.activeAccountByMode = data.activeAccountByMode;
     if (data?.activeStrategyVersionByMode) patch.activeStrategyVersionByMode = data.activeStrategyVersionByMode;
     enqueueServerUiPrefsPatch(patch);
+    get().recomputeStrategyConfigDirtyForMode(modeSlug);
   },
 
   selectInstance: (instanceId) => set({ selectedInstanceId: instanceId }),
@@ -1274,13 +1454,30 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setMainView: (v) => {
-    const safe = v === "overview" || v === "instance" ? v : "overview";
+    const safe = v === "overview" || v === "instance" || v === "backtest" ? v : "overview";
     set({ mainView: safe });
     if (safe === "overview") {
       const slug = tradingModeToApiModeSlug(get().mode || "PAPER");
       set({ analyticsModeSlug: slug });
       void get().fetchComparisonData(slug);
     }
+  },
+
+  setBacktestProgress: (runId, patch) => {
+    if (!runId) return;
+    set((s) => {
+      const prev = s.backtestProgress?.[runId] ?? { progressPct: 0 };
+      return {
+        backtestProgress: {
+          ...s.backtestProgress,
+          [runId]: {
+            progressPct: patch.progressPct != null ? Number(patch.progressPct) : prev.progressPct,
+            status: patch.status ?? prev.status,
+            error: patch.error ?? prev.error,
+          },
+        },
+      };
+    });
   },
 
   setShowMarketIntelligencePanel: (show) => {
@@ -1472,7 +1669,8 @@ export function applyWsStateSnapshot(payload: unknown) {
     if (stableTabSymbols !== undefined) {
       (botPayload as Record<string, unknown>).multiCoinSignalTabSymbols = stableTabSymbols;
     }
-    const mergedBot: Record<string, unknown> = { ...prevBot, ...botPayload, multiSymbolWatchSignals: nextMss };
+    let mergedBot: Record<string, unknown> = { ...prevBot, ...botPayload, multiSymbolWatchSignals: nextMss };
+    mergedBot = applyBotConfigPatchInFlight(mergedBot);
     const modeKeySync = String(nextMode || prev.mode || "PAPER").toUpperCase();
     if (payloadHadRunningByMode && typeof nextRb[modeKeySync] === "boolean") {
       mergedBot.running = Boolean(nextRb[modeKeySync]);
@@ -1497,6 +1695,12 @@ export function applyWsStateSnapshot(payload: unknown) {
       });
     }
     return out;
+  });
+  queueMicrotask(() => {
+    const st = useAppStore.getState();
+    const m = st.mode;
+    if (!m) return;
+    st.recomputeStrategyConfigDirtyForMode(tradingModeToApiModeSlug(String(m)));
   });
 }
 

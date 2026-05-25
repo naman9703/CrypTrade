@@ -247,7 +247,7 @@ export function surfPulseHardRules({ candles, surfPulse }) {
   const lastC = closes[last];
   const prevH = highs[prev];
   const prevL = lows[prev];
-  const atr = atr14[last] || 1e-12;
+  const lastAtr = atr14[last] || 1e-12;
   let atrMa10 = 0;
   for (let j = Math.max(0, last - 9); j <= last; j++) atrMa10 += atr14[j] || 0;
   atrMa10 /= Math.min(10, last + 1);
@@ -255,7 +255,7 @@ export function surfPulseHardRules({ candles, surfPulse }) {
   const e20 = ema20[last] ?? 0;
   const e50 = ema50[last] ?? 0;
   const adx = adx14[last] ?? 0;
-  const rsi = rsi14[last] ?? 50;
+  const lastRsi = rsi14[last] ?? 50;
 
   const { ok: regimeOk, skipped: regimeSkipped } = regime4hAdxPasses(candles);
   if (!regimeOk && !regimeSkipped) {
@@ -271,13 +271,13 @@ export function surfPulseHardRules({ candles, surfPulse }) {
     fundingShortOk = r >= -FUNDING_CAP;
   }
 
-  const pullbackLong = Math.abs(lastC - e20) / atr < PULLBACK_ATR_MAX;
-  const pullbackShort = Math.abs(lastC - e20) / atr < PULLBACK_ATR_MAX;
+  const pullbackLong = Math.abs(lastC - e20) / lastAtr < PULLBACK_ATR_MAX;
+  const pullbackShort = Math.abs(lastC - e20) / lastAtr < PULLBACK_ATR_MAX;
 
   const entryLong =
-    lastC > prevH && volRatio > VOL_RATIO_MIN && rsi > 50 && atr > atrMa10;
+    lastC > prevH && volRatio > VOL_RATIO_MIN && lastRsi > 50 && lastAtr > atrMa10;
   const entryShort =
-    lastC < prevL && volRatio > VOL_RATIO_MIN && rsi < 50 && atr > atrMa10;
+    lastC < prevL && volRatio > VOL_RATIO_MIN && lastRsi < 50 && lastAtr > atrMa10;
 
   const trendLong = e20 > e50 && adx > TREND_ADX_MIN;
   const trendShort = e20 < e50 && adx > TREND_ADX_MIN;

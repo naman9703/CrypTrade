@@ -1617,6 +1617,87 @@ def predict(req: PredictRequest) -> PredictResponse:
     )
 
 
+class PredictBatchRequest(BaseModel):
+    symbol: str = Field(..., examples=["BTCUSDT"])
+    timeframe: str = Field(..., examples=["15m"])
+    bars: list[Candle] = Field(..., min_items=60)
+    warmup: int = Field(default=60, ge=10, le=500)
+
+
+class PredictBatchResponse(BaseModel):
+    model_loaded: bool
+    probabilities: list[float]
+    training_cutoff_ts: int | None
+    model_kind: str
+    feature_columns: list[str]
+
+
+@app.post("/predict_batch", response_model=PredictBatchResponse)
+def predict_batch(req: PredictBatchRequest) -> PredictBatchResponse:
+    """
+    Backtest-friendly batch predictor: returns one probability per bar in `bars`.
+    Used by the SURF_PULSE_ML simulator adapter so a backtest can replay model
+    decisions without making one HTTP call per candle.
+
+    Look-ahead protection: returns `training_cutoff_ts` (epoch ms) extracted from
+    `meta.json["trained_at"]`; the caller refuses to use predictions before that
+    timestamp.
+    """
+    if len(req.bars) < req.warmup:
+        raise HTTPException(status_code=400, detail="not_enough_bars_for_warmup")
+
+    model = load_model()
+    if model is None:
+        raise HTTPException(status_code=503, detail="model_not_trained")
+
+    check_model = model[0] if isinstance(model, list) else model
+    n_expected = getattr(check_model, "n_features_in_", len(FEATURE_COLUMNS))
+    if n_expected != len(FEATURE_COLUMNS):
+        raise HTTPException(
+            status_code=503,
+            detail=f"model_feature_mismatch:{n_expected}!={len(FEATURE_COLUMNS)}",
+        )
+
+    df = pd.DataFrame([c.model_dump() for c in req.bars])
+    df = enrich_with_external_features(df)
+    feats = build_features(df)
+    X = feats[FEATURE_COLUMNS].replace([np.inf, -np.inf], np.nan).fillna(0.0).to_numpy()
+    if isinstance(model, list):
+        probas_per_model = np.stack([m.predict_proba(X)[:, 1] for m in model], axis=0)
+        raw = probas_per_model.mean(axis=0)
+        model_kind = f"Ensemble({len(model)}x{type(model[0]).__name__})"
+    else:
+        raw = model.predict_proba(X)[:, 1]
+        model_kind = type(model).__name__
+
+    cal = load_calibrator()
+    if cal is not None:
+        try:
+            raw = np.clip(cal.predict(raw), 0.0, 1.0)
+        except Exception:
+            pass
+
+    probs = [float(0.5)] * req.warmup + [float(v) for v in raw[req.warmup:]]
+    probs = probs[: len(req.bars)]
+
+    cutoff_ts: int | None = None
+    meta = load_meta()
+    if meta and isinstance(meta.get("trained_at"), str):
+        try:
+            dt = datetime.fromisoformat(str(meta["trained_at"]).replace("Z", "+00:00"))
+            cutoff_ts = int(dt.timestamp() * 1000)
+        except Exception:
+            cutoff_ts = None
+
+    return PredictBatchResponse(
+        model_loaded=True,
+        probabilities=probs,
+        training_cutoff_ts=cutoff_ts,
+        model_kind=model_kind,
+        feature_columns=FEATURE_COLUMNS,
+    )
+
+
 @app.post("/predict/surfpulse", response_model=SurfPulsePredictResponse)
 def predict_surfpulse(req: SurfPulsePredictRequest) -> SurfPulsePredictResponse:
     """8-feature win classifier for SurfPulse ML strategy (separate from main FEATURE_COLUMNS model)."""

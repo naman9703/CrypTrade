@@ -19,6 +19,7 @@ import { AppSidebar } from "./AppSidebar";
 import { useAuthActions } from "../authContext";
 import { hydrateStateViaHttp, useAppStore } from "../ws/store";
 import { OverviewPage } from "./analytics/OverviewPage";
+import { BacktestPage } from "./backtest/BacktestPage";
 
 function notificationsEnabledFromEnv(): boolean {
   const raw = String(import.meta.env.VITE_ACTIVITY_NOTIFICATIONS ?? "1").trim().toLowerCase();
@@ -57,6 +58,16 @@ export function App() {
       <AccountWidget />
     </>
   );
+
+  if (mainView === "backtest") {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        {shellTop}
+        <BacktestPage />
+        <TradingModeBadge />
+      </div>
+    );
+  }
 
   if (mainView !== "instance") {
     return (

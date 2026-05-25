@@ -363,6 +363,93 @@ export async function createVersion(strategyId, userId, configRaw, label = null,
   return mapVersionRow(r.rows[0]);
 }
 
+/**
+ * Overwrite an existing strategy version in place (same `id` / `version_number`).
+ * Used by Trading "Save" so the bound instance keeps one logical version instead
+ * of growing a chain of duplicate snapshots.
+ *
+ * @param {string} versionId
+ * @param {string} userId
+ * @param {Record<string, unknown>} configRaw
+ * @param {string|null|undefined} label Pass `undefined` to leave `label` unchanged.
+ */
+export async function updateVersion(versionId, userId, configRaw, label = undefined) {
+  const owned = await query(
+    `SELECT sv.id
+     FROM strategy_versions sv
+     JOIN strategies s ON s.id = sv.strategy_id
+     WHERE sv.id = $1 AND s.user_id = $2`,
+    [versionId, userId],
+  );
+  if (!owned.rows.length) return null;
+
+  const cols = extractCfgColumns(configRaw);
+  const blocks = buildSignalBrainBlocks(configRaw);
+  const cleanRaw = stripInstanceFieldsFromCfgRaw(
+    configRaw && typeof configRaw === "object" ? configRaw : {},
+  );
+
+  const vals = [];
+  const next = (v) => {
+    vals.push(v);
+    return `$${vals.length}`;
+  };
+  const sets = [];
+  if (label !== undefined) sets.push(`label = ${next(label)}`);
+  sets.push(`cfg_symbol = ${next(cols.cfg_symbol)}`);
+  sets.push(`cfg_timeframe = ${next(cols.cfg_timeframe)}`);
+  sets.push(`cfg_symbol_mode = ${next(cols.cfg_symbol_mode)}`);
+  sets.push(`cfg_market_mode = ${next(cols.cfg_market_mode)}`);
+  sets.push(`cfg_strategy_mode = ${next(cols.cfg_strategy_mode)}`);
+  sets.push(`cfg_manual_strategy = ${next(cols.cfg_manual_strategy)}`);
+  sets.push(`cfg_ai_threshold = ${next(cols.cfg_ai_threshold)}`);
+  sets.push(`cfg_risk_per_trade = ${next(cols.cfg_risk_per_trade)}`);
+  sets.push(`cfg_risk_unit = ${next(cols.cfg_risk_unit)}`);
+  sets.push(`cfg_max_daily_loss = ${next(cols.cfg_max_daily_loss)}`);
+  sets.push(`cfg_max_daily_loss_unit = ${next(cols.cfg_max_daily_loss_unit)}`);
+  sets.push(`cfg_capital_mode = ${next(cols.cfg_capital_mode)}`);
+  sets.push(`cfg_capital_fixed_usdt = ${next(cols.cfg_capital_fixed_usdt)}`);
+  sets.push(`cfg_capital_pct = ${next(cols.cfg_capital_pct)}`);
+  sets.push(`cfg_compound_pnl = ${next(cols.cfg_compound_pnl)}`);
+  sets.push(`cfg_st_period = ${next(cols.cfg_st_period)}`);
+  sets.push(`cfg_st_multiplier = ${next(cols.cfg_st_multiplier)}`);
+  sets.push(`cfg_st_wilder_atr = ${next(cols.cfg_st_wilder_atr)}`);
+  sets.push(`cfg_st_spot_auto = ${next(cols.cfg_st_spot_auto)}`);
+  sets.push(`cfg_st_futures_auto = ${next(cols.cfg_st_futures_auto)}`);
+  sets.push(`cfg_futures_leverage_mode = ${next(cols.cfg_futures_leverage_mode)}`);
+  sets.push(`cfg_futures_leverage = ${next(cols.cfg_futures_leverage)}`);
+  sets.push(`cfg_futures_fixed_sl_pct = ${next(cols.cfg_futures_fixed_sl_pct)}`);
+  sets.push(`cfg_futures_fixed_tp_pct = ${next(cols.cfg_futures_fixed_tp_pct)}`);
+  sets.push(`cfg_entry_open_style = ${next(cols.cfg_entry_open_style)}`);
+  sets.push(`cfg_max_entry_slippage_pct = ${next(cols.cfg_max_entry_slippage_pct)}`);
+  sets.push(`cfg_max_signal_lag_ms = ${next(cols.cfg_max_signal_lag_ms)}`);
+  sets.push(`cfg_trailing_auto = ${next(cols.cfg_trailing_auto)}`);
+  sets.push(`cfg_trailing_mode = ${next(cols.cfg_trailing_mode)}`);
+  sets.push(`cfg_trail_buffer_mode = ${next(cols.cfg_trail_buffer_mode)}`);
+  sets.push(`cfg_trail_buffer_rate = ${next(cols.cfg_trail_buffer_rate)}`);
+  sets.push(`cfg_trail_open_fee_rate = ${next(cols.cfg_trail_open_fee_rate)}`);
+  sets.push(`cfg_trail_close_fee_rate = ${next(cols.cfg_trail_close_fee_rate)}`);
+  sets.push(`cfg_mde = ${next(cols.cfg_mde ?? null)}`);
+  sets.push(`cfg_universe = ${next(cols.cfg_universe ?? null)}`);
+  sets.push(`cfg_signal_gates = ${next(cols.cfg_signal_gates ?? null)}`);
+  sets.push(`cfg_surf_pulse_ml_threshold = ${next(cols.cfg_surf_pulse_ml_threshold)}`);
+  sets.push(`cfg_raw = ${next(cleanRaw)}::jsonb`);
+  sets.push(`primary_signal_type = ${next(blocks.primary_signal_type)}`);
+  sets.push(`cfg_supertrend = ${next(blocks.cfg_supertrend)}::jsonb`);
+  sets.push(`cfg_surf_pulse = ${next(blocks.cfg_surf_pulse)}::jsonb`);
+  sets.push(`cfg_ema_cross = ${next(blocks.cfg_ema_cross)}::jsonb`);
+  sets.push(`cfg_rsi = ${next(blocks.cfg_rsi)}::jsonb`);
+  sets.push(`cfg_ai = ${next(blocks.cfg_ai)}::jsonb`);
+  sets.push(`cfg_entry = ${next(blocks.cfg_entry)}::jsonb`);
+  sets.push(`cfg_exit = ${next(blocks.cfg_exit)}::jsonb`);
+  sets.push(`cfg_leverage = ${next(blocks.cfg_leverage)}::jsonb`);
+  const idPh = next(versionId);
+  const sql = `UPDATE strategy_versions SET ${sets.join(", ")} WHERE id = ${idPh}`;
+  const r = await query(sql, vals);
+  if (!r.rowCount) return null;
+  return getVersion(versionId);
+}
+
 /** @param {string} versionId */
 export async function getVersion(versionId) {
   const r = await query(`SELECT * FROM strategy_versions WHERE id = $1`, [versionId]);

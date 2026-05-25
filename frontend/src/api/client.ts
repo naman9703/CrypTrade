@@ -379,6 +379,8 @@ export const api = {
     const prevBot = useAppStore.getState().bot as Record<string, unknown> | undefined;
 
     if (!ignoredOnly && patchKeys.length > 0) {
+      const { noteBotConfigPatchInFlight } = await import("../lib/configPatchInFlight");
+      noteBotConfigPatchInFlight(patchObj);
       useAppStore.setState((s) => ({
         bot: mergeOptimisticBotPatch(s.bot as Record<string, unknown> | null | undefined, patchObj),
       }));
@@ -394,6 +396,10 @@ export const api = {
         }),
       );
     } catch (e) {
+      if (!ignoredOnly && patchKeys.length > 0) {
+        const { clearBotConfigPatchInFlight } = await import("../lib/configPatchInFlight");
+        clearBotConfigPatchInFlight(patchObj);
+      }
       if (!ignoredOnly && patchKeys.length > 0 && prevBot && typeof prevBot === "object") {
         useAppStore.setState({ bot: prevBot });
       }
@@ -401,6 +407,10 @@ export const api = {
     }
 
     if (!data?.ok || !data.bot || typeof data.bot !== "object") {
+      if (!ignoredOnly && patchKeys.length > 0) {
+        const { clearBotConfigPatchInFlight } = await import("../lib/configPatchInFlight");
+        clearBotConfigPatchInFlight(patchObj);
+      }
       if (!ignoredOnly && patchKeys.length > 0 && prevBot && typeof prevBot === "object") {
         useAppStore.setState({ bot: prevBot });
       }
@@ -408,18 +418,31 @@ export const api = {
     }
 
     const botNext = data.bot as Record<string, unknown>;
-    tradingUiPersistBotSnapshot(useAppStore.getState().mode, botNext, useAppStore.getState().authUiUserTag ?? null);
-    useAppStore.setState((s) => ({
-      bot: s.bot && typeof s.bot === "object" ? { ...(s.bot as Record<string, unknown>), ...botNext } : botNext,
-    }));
+    if (!ignoredOnly && patchKeys.length > 0) {
+      const { clearBotConfigPatchInFlightWhenAcked, applyBotConfigPatchInFlight } = await import(
+        "../lib/configPatchInFlight",
+      );
+      clearBotConfigPatchInFlightWhenAcked(patchObj, botNext);
+      const merged =
+        useAppStore.getState().bot && typeof useAppStore.getState().bot === "object"
+          ? { ...(useAppStore.getState().bot as Record<string, unknown>), ...botNext }
+          : botNext;
+      tradingUiPersistBotSnapshot(useAppStore.getState().mode, merged, useAppStore.getState().authUiUserTag ?? null);
+      useAppStore.setState({
+        bot: applyBotConfigPatchInFlight(merged),
+      });
+    } else {
+      tradingUiPersistBotSnapshot(useAppStore.getState().mode, botNext, useAppStore.getState().authUiUserTag ?? null);
+      useAppStore.setState((s) => ({
+        bot: s.bot && typeof s.bot === "object" ? { ...(s.bot as Record<string, unknown>), ...botNext } : botNext,
+      }));
+    }
     const dirtyPatchKeys = Object.keys(patchObj);
     const dirtyIgnoredOnly =
       dirtyPatchKeys.length > 0 && dirtyPatchKeys.every((k) => k === "uiChartFocusSymbol");
     if (!dirtyIgnoredOnly) {
       const modeSlug = tradingModeToApiModeSlug(useAppStore.getState().mode);
-      useAppStore.setState((s) => ({
-        strategyConfigDirtyByMode: { ...(s as any).strategyConfigDirtyByMode, [modeSlug]: true },
-      }));
+      useAppStore.getState().recomputeStrategyConfigDirtyForMode(modeSlug);
     }
     return data;
   },
@@ -930,6 +953,166 @@ export const api = {
     if (opts.windowDays != null) q.set("windowDays", String(opts.windowDays));
     return json<{ ok?: boolean; metrics?: StrategyEdgeMetrics }>(
       await apiFetch(`${HTTP}/api/analytics/strategy-edge?${q.toString()}`),
+    );
+  },
+
+  async createBacktestRun(body: {
+    strategyVersionId: string;
+    botInstanceId?: string;
+    symbol: string;
+    timeframe: string;
+    from: string | number | Date;
+    to: string | number | Date;
+    startingUsdt?: number;
+    label?: string;
+    costModel?: Record<string, unknown>;
+    gateMode?: "off" | "approx";
+    walkForward?: { trainPct?: number };
+    positionSizing?: "RISK_AT_SL" | "FULL_EQUITY_MARGIN";
+  }) {
+    return json<{ ok?: boolean; runId?: string; error?: string }>(
+      await apiFetch(`${HTTP}/api/backtest/runs`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+  },
+
+  async listBacktestRuns(limit = 50) {
+    return json<{ ok?: boolean; runs?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/backtest/runs?limit=${limit}`),
+    );
+  },
+
+  async getBacktestRun(runId: string) {
+    return json<{ ok?: boolean; run?: unknown }>(
+      await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}`),
+    );
+  },
+
+  async getBacktestTrades(runId: string, opts?: { limit?: number; offset?: number }) {
+    const q = new URLSearchParams();
+    if (opts?.limit != null) q.set("limit", String(opts.limit));
+    if (opts?.offset != null) q.set("offset", String(opts.offset));
+    return json<{ ok?: boolean; trades?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}/trades?${q.toString()}`),
+    );
+  },
+
+  async getBacktestEquity(runId: string) {
+    return json<{ ok?: boolean; points?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}/equity-curve`),
+    );
+  },
+
+  async cancelBacktestRun(runId: string) {
+    return json<{ ok?: boolean }>(
+      await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }),
+    );
+  },
+
+  /** Re-enqueue a run stuck in `queued` after API restart (orphaned in DB, not in worker pool). */
+  async requeueBacktestRun(runId: string) {
+    return json<{ ok?: boolean; requeued?: boolean; reason?: string }>(
+      await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}/requeue`, { method: "POST" }),
+    );
+  },
+
+  async deleteBacktestRun(runId: string) {
+    return json<{ ok?: boolean }>(
+      await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}`, { method: "DELETE" }),
+    );
+  },
+
+  async syncHistoricalData(body: {
+    symbol: string;
+    timeframe: string;
+    from: string | number | Date;
+    to?: string | number | Date;
+    market?: "spot" | "futures";
+  }) {
+    return json<{
+      ok?: boolean;
+      klines?: { inserted?: number; gaps?: number };
+      funding?: { inserted?: number };
+      fearGreed?: { inserted?: number };
+      openInterest?: { inserted?: number };
+    }>(
+      await apiFetch(`${HTTP}/api/backtest/data/sync`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+  },
+
+  async getBacktestCandles(opts: { symbol: string; timeframe: string; from: string | number; to: string | number }) {
+    const q = new URLSearchParams({
+      symbol: opts.symbol,
+      timeframe: opts.timeframe,
+      from: String(opts.from),
+      to: String(opts.to),
+    });
+    return json<{
+      ok?: boolean;
+      candles?: Array<{ ts: number; open: number; high: number; low: number; close: number; volume: number }>;
+    }>(await apiFetch(`${HTTP}/api/backtest/data/candles?${q.toString()}`));
+  },
+
+  async getDataCoverage(opts: { symbol: string; timeframe: string; from?: string; to?: string }) {
+    const q = new URLSearchParams({ symbol: opts.symbol, timeframe: opts.timeframe });
+    if (opts.from) q.set("from", opts.from);
+    if (opts.to) q.set("to", opts.to);
+    return json<{
+      ok?: boolean;
+      coverage?: { have: number; expected: number | null; coveragePct: number | null; minTs: number | null; maxTs: number | null };
+      monthly?: Array<{ month: string; have: number; expected: number; coveragePct: number }>;
+    }>(await apiFetch(`${HTTP}/api/backtest/data/coverage?${q.toString()}`));
+  },
+
+  async startOptimization(body: {
+    strategyVersionId: string;
+    botInstanceId?: string;
+    symbol: string;
+    timeframe: string;
+    from: string | number | Date;
+    to: string | number | Date;
+    startingUsdt?: number;
+    costModel?: Record<string, unknown>;
+    gateMode?: "off" | "approx";
+    paramGrid: Record<string, number[]>;
+    walkForward?: { trainPct?: number };
+  }) {
+    return json<{ ok?: boolean; optimizationId?: string; runs?: number }>(
+      await apiFetch(`${HTTP}/api/backtest/optimize`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+  },
+
+  async getOptimization(optimizationId: string) {
+    return json<{ ok?: boolean; optimization?: unknown; runs?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/backtest/optimize/${encodeURIComponent(optimizationId)}`),
+    );
+  },
+
+  async promoteBacktestRun(runId: string, body: {
+    modeSlug: string;
+    label: string;
+    capitalMode: "FIXED" | "PCT";
+    capitalUsdt?: number;
+    capitalPct?: number;
+    ignoreThresholds?: boolean;
+  }) {
+    return json<{ ok?: boolean; strategyVersionId?: string; instanceId?: string; error?: string; message?: string }>(
+      await apiFetch(`${HTTP}/api/backtest/promote/${encodeURIComponent(runId)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
     );
   },
 

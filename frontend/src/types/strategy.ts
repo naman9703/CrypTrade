@@ -6,6 +6,7 @@ export type PrimarySignalType =
   | "SURF_PULSE_ML"
   | "EMA_CROSS"
   | "RSI"
+  | "TREND_PULLBACK"
   | "MANUAL";
 
 /**
@@ -18,6 +19,7 @@ export interface StrategyVersionBlocks {
   surfPulse: Record<string, unknown> | null;
   emaCross: Record<string, unknown> | null;
   rsi: Record<string, unknown> | null;
+  trendPullback: Record<string, unknown> | null;
   ai: Record<string, unknown> | null;
   entry: Record<string, unknown> | null;
   exit: Record<string, unknown> | null;

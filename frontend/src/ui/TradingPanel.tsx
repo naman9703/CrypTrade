@@ -17,6 +17,70 @@ import { mergeMarketDecisionConfig } from "../lib/marketDecision/configDefaults"
 import type { MarketDecisionEngineConfig } from "../lib/marketDecision/types";
 import { MarketDecisionConfigPanel } from "./MarketDecisionConfigPanel";
 import { tradingModeToApiModeSlug } from "../lib/tradingModeSlug";
+import {
+  TREND_HTF_ST_BNB_CHOP_SAFE,
+  TREND_HTF_ST_BNB_HIGH_WR,
+  TREND_HTF_ST_BNB_MAX_RETURN,
+  TREND_HTF_ST_OPTIMAL_BNB,
+  TREND_HTF_ST_OPTIMAL_BTC,
+  TREND_HTF_ST_BNB_SURGICAL,
+} from "../lib/trendHtfStPresets";
+import { SUPERTREND_INTEL_80WR, SUPERTREND_INTEL_TRAIL } from "../lib/supertrendIntelPresets";
+import {
+  SUPERTREND_ELITE_BNB_1H,
+  SUPERTREND_ELITE_BTC_1H,
+  SUPERTREND_ELITE_BTC_1H_ADX,
+} from "../lib/supertrendElitePresets";
+import {
+  INTRADAY_PRO_5M,
+  INTRADAY_PRO_15M,
+  INTRADAY_PRO_BIGMOVE_15M,
+  SR_INTRADAY_BTC_15M,
+} from "../lib/srIntradayPresets";
+import {
+  VOLUME_PROFILE_15M,
+  VOLUME_PROFILE_TIER_A_15M,
+  VOLUME_PROFILE_BALANCED_15M,
+  VOLUME_PROFILE_BTC_15M,
+  VOLUME_PROFILE_5M,
+} from "../lib/volumeProfilePresets";
+
+function TrendHtfStPresetButton({
+  label,
+  patch,
+  pushLog,
+  highlight,
+}: {
+  label: string;
+  patch: Record<string, unknown>;
+  pushLog: (msg: { level: string; msg: string }) => void;
+  highlight?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={
+        highlight
+          ? "rounded border-2 border-sky-500 bg-sky-100 dark:bg-sky-900/50 px-2 py-0.5 text-[10px] font-bold hover:bg-sky-200 dark:hover:bg-sky-800/60"
+          : "rounded border border-sky-400 dark:border-sky-600 bg-white/80 dark:bg-sky-950/50 px-2 py-0.5 text-[10px] font-semibold hover:bg-sky-100 dark:hover:bg-sky-900/50"
+      }
+      onClick={() => {
+        void api
+          .botConfig(patch)
+          .then(() => pushLog({ level: "info", msg: `Applied: ${label}` }))
+          .catch((e: unknown) => {
+            const detail =
+              e && typeof e === "object" && "message" in e
+                ? String((e as { message?: string }).message)
+                : String(e ?? "unknown");
+            pushLog({ level: "error", msg: `Failed: ${label} — ${detail}` });
+          });
+      }}
+    >
+      {label}
+    </button>
+  );
+}
 
 /** Binance kline intervals allowed by `POST /api/bot/config` (must match backend `allowedTimeframes`). */
 const BOT_TRADING_TIMEFRAMES = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"] as const;
@@ -1082,12 +1146,59 @@ function MultiBudgetCoinPctSliderRow({
   );
 }
 
-const STRATS = [
-  { key: "SURF_PULSE_ML", label: "SurfPulse ML (trend + pullback + XGBoost)" },
-  { key: "EMA_CROSS", label: "Trend (EMA crossover)" },
-  { key: "RSI_MEAN", label: "Mean Reversion (RSI)" },
-  { key: "BREAKOUT_VOL", label: "Breakout (Volume)" },
+/**
+ * Numbered reference: these are **signal generators** (indicator-style paths) used by AUTO regime
+ * rotation or as the fixed path in MANUAL — not separate named “strategies” in the product sense.
+ * The saved **strategy version** + **instance** together define autotrade behavior.
+ */
+const NUMBERED_SIGNAL_SOURCES: { n: number; key: string; label: string }[] = [
+  { n: 1, key: "SUPERTREND", label: "Supertrend (when Supertrend auto-trade is on, bar-close path)" },
+  { n: 2, key: "CONFLUENCE", label: "Multi-indicator confluence (scored 0–100)" },
+  { n: 3, key: "EMA_CROSS", label: "Trend following (EMA 12/26)" },
+  { n: 4, key: "RSI_MEAN", label: "Mean reversion (RSI 14)" },
+  { n: 5, key: "BREAKOUT_VOL", label: "Breakout (volume spike + range)" },
+  { n: 6, key: "MOMENTUM_SURGE", label: "Momentum surge (multi-signal confirmation)" },
+  { n: 7, key: "ENSEMBLE", label: "Ensemble (2+ base signals must agree)" },
+  { n: 8, key: "SURF_PULSE_ML", label: "SurfPulse (trend + pullback; optional XGBoost gate)" },
+  { n: 9, key: "TREND_PULLBACK", label: "Trend-Pullback Scalper (HTF trend + RSI oversold bounce)" },
+  { n: 10, key: "HTF_RSI", label: "HTF RSI v3 ★ BNB 15m (~50% WR, up to ~191%)" },
+  { n: 11, key: "HTF_LEG_RIDER", label: "HTF Leg Rider (trend + range breakout — big moves)" },
+  { n: 12, key: "TREND_HTF_ST", label: "HTF Trend + Supertrend flip (trend legs)" },
+  { n: 13, key: "SMART_REVERSAL", label: "Smart Reversal (liquidity sweep + HTF trend + RSI)" },
+  { n: 14, key: "BTC_CONSENSUS", label: "BTC Consensus ★ BTC 1h (trend vote — not BNB HTF RSI)" },
+  { n: 15, key: "APEX_TREND", label: "APEX Trend v2 (strict RSI zone — use HTF RSI ★ on BNB for best results)" },
+  {
+    n: 16,
+    key: "SUPERTREND_ELITE",
+    label: "Supertrend Elite ★ 1H — 4H+1H gates + ST trail (BNB ~73% WR · BTC ~64% WR Jan–May 26)",
+  },
+  {
+    n: 17,
+    key: "SR_INTRADAY",
+    label: "SR Intraday Sniper ★ 15m — session reclaim + multi-technique confluence",
+  },
+  {
+    n: 18,
+    key: "VOLUME_PROFILE",
+    label: "Volume Profile ★ 15m — POC / VAH / VAL / HVN / LVN structure setups only",
+  },
 ];
+
+/** SL/TP % fields are editable when Supertrend autotrade is on or any MANUAL signal path is selected. */
+function slTpFieldsEditable(cfg: { supertrendFuturesAuto?: boolean; strategyMode?: string }) {
+  return Boolean(cfg.supertrendFuturesAuto) || String(cfg.strategyMode || "").toUpperCase() === "MANUAL";
+}
+
+/** Explicit boolean from bot WS snapshot (avoid `undefined !== false` treating missing as on). */
+function trailToggleFromBot(
+  bot: Record<string, unknown> | null | undefined,
+  key: "futuresTrailingStFeeBreakeven" | "futuresTrailingStAdvanced",
+  defaultVal = true,
+): boolean {
+  if (!bot || typeof bot !== "object") return defaultVal;
+  const v = bot[key];
+  return typeof v === "boolean" ? v : defaultVal;
+}
 
 export function TradingPanel() {
   const mode = useAppStore((s) => s.mode);
@@ -1191,6 +1302,35 @@ export function TradingPanel() {
       supertrendFuturesAiConfidenceFilter: bot?.supertrendFuturesAiConfidenceFilter !== false,
       signalStrengthGatesTrades: bot?.signalStrengthGatesTrades === true,
       supertrendMoveQualityGate: bot?.supertrendMoveQualityGate === true,
+      supertrendHtf4hEnabled: bot?.supertrendHtf4hEnabled === true,
+      supertrendHtf4hPeriod: Math.max(2, Math.min(50, Math.round(Number(bot?.supertrendHtf4hPeriod ?? 10)))),
+      supertrendHtf4hMultiplier: Math.max(0.5, Number(bot?.supertrendHtf4hMultiplier ?? 3)),
+      volumeProfileEnabled: bot?.volumeProfileEnabled === true,
+      volumeProfileSoftGates: bot?.volumeProfileSoftGates !== false,
+      volumeProfileGatesEnabled: bot?.volumeProfileGatesEnabled === true,
+      intradayVpBrackets: bot?.intradayVpBrackets === true,
+      vpLookbackBars: Math.max(48, Math.min(2000, Math.round(Number(bot?.vpLookbackBars ?? 672)))),
+      vpMinRR: Math.max(0.8, Math.min(5, Number(bot?.vpMinRR ?? 1.5))),
+      // SUPERTREND_ELITE gate params
+      eliteStRequireHtf4hAlign: bot?.eliteStRequireHtf4hAlign === true,
+      eliteStHtf4hPeriod: Math.max(2, Math.min(50, Math.round(Number(bot?.eliteStHtf4hPeriod ?? 10)))),
+      eliteStHtf4hMultiplier: Math.max(0.5, Number(bot?.eliteStHtf4hMultiplier ?? 3)),
+      eliteStRequireHtf1hEmaAlign: bot?.eliteStRequireHtf1hEmaAlign === true,
+      eliteStHtf1hMinSep: Math.max(0, Number(bot?.eliteStHtf1hMinSep ?? 0.0003)),
+      eliteStMinAdx: clampNum(Math.round(Number(bot?.eliteStMinAdx ?? 0)), 0, 100),
+      eliteStRequireAdxRising: bot?.eliteStRequireAdxRising === true,
+      eliteStMinVolumeVsAvg: Math.max(0, Number(bot?.eliteStMinVolumeVsAvg ?? 0)),
+      eliteStRequireAtrExpansion: bot?.eliteStRequireAtrExpansion === true,
+      eliteStMinAtrExpansion: Math.max(1, Number(bot?.eliteStMinAtrExpansion ?? 1.15)),
+      eliteStLiqSweepEnabled: bot?.eliteStLiqSweepEnabled === true,
+      supertrendBigMoveGateEnabled: bot?.supertrendBigMoveGateEnabled === true,
+      supertrendBigMoveMinStrength: clampNum(Math.round(Number(bot?.supertrendBigMoveMinStrength ?? 65)), 0, 100),
+      supertrendBigMoveMinMoveSlRatio: Math.max(1, Number(bot?.supertrendBigMoveMinMoveSlRatio ?? 1.5)),
+      supertrendBigMoveMinAdx: clampNum(Math.round(Number(bot?.supertrendBigMoveMinAdx ?? 22)), 0, 100),
+      supertrendBigMoveMinScore: clampNum(Number(bot?.supertrendBigMoveMinScore ?? 0.55), 0, 1),
+      supertrendBigMoveMaxCandlesSinceFlip: Math.max(0, Math.min(20, Math.floor(Number(bot?.supertrendBigMoveMaxCandlesSinceFlip ?? 2)))),
+      supertrendBigMoveMinVolumeVsAvg: Math.max(0, Number(bot?.supertrendBigMoveMinVolumeVsAvg ?? 1.1)),
+      supertrendBigMoveExpectedMoveAtrMult: Math.max(0.1, Number(bot?.supertrendBigMoveExpectedMoveAtrMult ?? 1.8)),
       supertrendMoveQualityMinScore: clampNum(Number(bot?.supertrendMoveQualityMinScore ?? 0.6), 0, 1),
       supertrendMoveQualityMinAdx: clampNum(Math.round(Number(bot?.supertrendMoveQualityMinAdx ?? 23)), 0, 100),
       supertrendMoveQualityMinMoveSlRatio: Math.max(1, Number(bot?.supertrendMoveQualityMinMoveSlRatio ?? 1.5)),
@@ -1218,8 +1358,12 @@ export function TradingPanel() {
       trailingStopLossAuto: bot?.trailingStopLossAuto === true,
       futuresTrailingStopMode:
         String(bot?.futuresTrailingStopMode || "SUPERTREND").toUpperCase() === "FEE_LADDER" ? "FEE_LADDER" : "SUPERTREND",
-      futuresTrailingStFeeBreakeven: bot?.futuresTrailingStFeeBreakeven !== false,
-      futuresTrailingStAdvanced: bot?.futuresTrailingStAdvanced !== false,
+      futuresTrailingStFeeBreakeven: trailToggleFromBot(
+        bot as Record<string, unknown> | undefined,
+        "futuresTrailingStFeeBreakeven",
+        false,
+      ),
+      futuresTrailingStAdvanced: trailToggleFromBot(bot as Record<string, unknown> | undefined, "futuresTrailingStAdvanced"),
       trailingStopExtraScalpingPcts: parseTrailingExtraPcts(bot),
       trailOpenFeeRate: clampNum(Number(bot?.trailOpenFeeRate ?? 0.0004), 0, 0.01),
       trailCloseFeeRate: clampNum(Number(bot?.trailCloseFeeRate ?? 0.0004), 0, 0.01),
@@ -1228,7 +1372,7 @@ export function TradingPanel() {
       tradeHistoryTakerOpenFeeRate: clampNum(Number(bot?.tradeHistoryTakerOpenFeeRate ?? 0.0005), 0, 0.01),
       tradeHistoryTakerCloseFeeRate: clampNum(Number(bot?.tradeHistoryTakerCloseFeeRate ?? 0.0005), 0, 0.01),
       trailFeeBeMultiplier: clampNum(Number(bot?.trailFeeBeMultiplier ?? DEFAULT_TRAIL_FEE_BE_MULTIPLIER), 1, 2),
-      trailBufferRate: clampNum(Number(bot?.trailBufferRate ?? 0.0005), 0, 0.05),
+      trailBufferRate: clampNum(Number(bot?.trailBufferRate ?? 0.0015), 0, 0.05),
       trailActivationSlippageFrac: clampNum(Number(bot?.trailActivationSlippageFrac ?? 0), 0, 0.01),
       trailT01LockSlippageFrac: clampNum(Number(bot?.trailT01LockSlippageFrac ?? 0), 0, 0.01),
       trailBufferAtrMult: clampNum(Number(bot?.trailBufferAtrMult ?? 0), 0, 1),
@@ -2044,23 +2188,18 @@ export function TradingPanel() {
     };
   }, [cfg.strategyMode]);
 
-  /**
-   * Strategy Save mirrors operational fields server-side; this PATCH keeps `inst_timeframe`
-   * aligned with `bot.timeframe` on the active instance row and refreshes instance lists in the UI.
-   */
-  async function syncActiveInstanceTimeframeAfterStrategySave() {
-    const iid = useAppStore.getState().activeInstanceByMode[modeSlug] ?? null;
-    if (!iid) return;
-    const raw = String(useAppStore.getState().bot?.timeframe ?? "1m").trim();
-    const tf = (BOT_TRADING_TIMEFRAMES as readonly string[]).includes(raw) ? raw : "1m";
-    try {
-      const inst = await api.patchInstanceOperationalConfig(iid, { timeframe: tf });
-      useAppStore.setState((s) => ({
-        instancesByMode: patchInstanceInByMode(s.instancesByMode, iid, inst),
-      }));
-    } catch {
-      /* Server save already ran extractInstanceConfig → inst_*; ignore duplicate PATCH failures */
-    }
+  function persistBotSnapshotAfterSave() {
+    void import("../lib/tradingUiPersistence")
+      .then(({ tradingUiPersistBotSnapshot }) => {
+        tradingUiPersistBotSnapshot(
+          useAppStore.getState().mode,
+          useAppStore.getState().bot as Record<string, unknown>,
+          useAppStore.getState().authUiUserTag ?? null,
+        );
+      })
+      .catch(() => {
+        /* ignore */
+      });
   }
 
   async function saveCurrentStrategyConfig() {
@@ -2068,31 +2207,19 @@ export function TradingPanel() {
       setStrategySaveBusy(true);
       const out = await api.saveStrategyConfigForMode(modeSlug, {
         action: "save",
-        label: "Saved from config",
       });
       const vid = typeof out?.version?.id === "string" ? out.version.id : null;
       if (vid) {
         useAppStore.setState((s) => ({
           activeStrategyVersionByMode: { ...s.activeStrategyVersionByMode, [modeSlug]: vid },
-          strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
         }));
+      }
+      if (out?.version) {
+        useAppStore.getState().mergeStrategyVersionFromSaveResponse(modeSlug, out.version);
       } else {
-        useAppStore.setState((s) => ({
-          strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
-        }));
+        useAppStore.getState().markStrategyConfigCleanForMode(modeSlug);
       }
-      await useAppStore.getState().fetchStrategiesForMode(modeSlug);
-      try {
-        const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
-        tradingUiPersistBotSnapshot(
-          useAppStore.getState().mode,
-          useAppStore.getState().bot as Record<string, unknown>,
-          useAppStore.getState().authUiUserTag ?? null,
-        );
-      } catch {
-        /* ignore */
-      }
-      await syncActiveInstanceTimeframeAfterStrategySave();
+      persistBotSnapshotAfterSave();
       pushLog({ level: "info", msg: "Strategy saved", category: "config", reason: "strategy_save" });
     } catch (e) {
       pushLog({ level: "error", msg: `Failed to save strategy: ${String((e as any)?.message || e)}` });
@@ -2111,31 +2238,19 @@ export function TradingPanel() {
       const out = await api.saveStrategyConfigForMode(modeSlug, {
         action: "save_as_new",
         name: trimmed,
-        label: "v1 — saved from config",
       });
       const vid = typeof out?.version?.id === "string" ? out.version.id : null;
       if (vid) {
         useAppStore.setState((s) => ({
           activeStrategyVersionByMode: { ...s.activeStrategyVersionByMode, [modeSlug]: vid },
-          strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
         }));
+      }
+      if (out?.version) {
+        useAppStore.getState().mergeStrategyVersionFromSaveResponse(modeSlug, out.version);
       } else {
-        useAppStore.setState((s) => ({
-          strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
-        }));
+        useAppStore.getState().markStrategyConfigCleanForMode(modeSlug);
       }
-      await useAppStore.getState().fetchStrategiesForMode(modeSlug);
-      try {
-        const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
-        tradingUiPersistBotSnapshot(
-          useAppStore.getState().mode,
-          useAppStore.getState().bot as Record<string, unknown>,
-          useAppStore.getState().authUiUserTag ?? null,
-        );
-      } catch {
-        /* ignore */
-      }
-      await syncActiveInstanceTimeframeAfterStrategySave();
+      persistBotSnapshotAfterSave();
       pushLog({ level: "info", msg: `Saved as new strategy: ${trimmed}`, category: "config", reason: "strategy_save_as_new" });
     } catch (e) {
       pushLog({ level: "error", msg: `Failed to save as new strategy: ${String((e as any)?.message || e)}` });
@@ -2150,8 +2265,8 @@ export function TradingPanel() {
         <div>
           <div className="text-sm font-semibold">Trading</div>
           <div className="text-xs text-slate-600 dark:text-slate-400">
-            Toggle: bot settings vs one-off manual trades. (Strategy on/off is the <span className="text-slate-600 dark:text-slate-500">Mode</span>{" "}
-            field below.)
+            Toggle: operational bot settings vs one-off manual trades. Autotrade <span className="text-slate-600 dark:text-slate-500">signal routing</span>{" "}
+            (AUTO/MANUAL + path) lives in the strategy card below and is saved with your strategy version.
           </div>
         </div>
       </div>
@@ -2172,7 +2287,7 @@ export function TradingPanel() {
           <span className="mr-1 inline-flex items-center rounded bg-sky-500/15 px-1.5 py-[1px] font-mono text-[10px] uppercase tracking-wide text-sky-700 dark:text-sky-300">
             Strategy
           </span>
-          Signal brain — indicator params, AI/ML, MDE filter, signal gates, entry rules, exit/trailing, leverage. Reusable across instances.
+          Signal brain — routing mode &amp; fixed path (#1–#8), indicator params, AI/ML, MDE filter, signal gates, entry rules, exit/trailing, leverage. Reusable across instances.
         </div>
         <div className="mt-1">
           <span className="mr-1 inline-flex items-center rounded bg-emerald-500/15 px-1.5 py-[1px] font-mono text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
@@ -2180,13 +2295,486 @@ export function TradingPanel() {
           </span>
           Operational deployment — symbol, timeframe, market mode, universe, risk per trade, max daily loss, capital allotment. Owned by the active instance.
         </div>
+        <div className="mt-2 border-t border-slate-200 pt-2 text-[10px] text-slate-500 dark:border-slate-700">
+          The amber <span className="font-medium text-amber-700 dark:text-amber-300">Save</span> bar appears when{" "}
+          <span className="font-medium">signal-brain</span> fields differ from your bound strategy version (mode-level active version, or the active instance&apos;s strategy). Symbol, timeframe, risk, and capital tweaks alone do not show it — those live on the instance and persist when changed.
+        </div>
+      </div>
+
+      <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50/60 p-3 dark:border-sky-900/45 dark:bg-sky-950/25">
+        <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Signal source</div>
+        <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
+          Choose whether the bot <span className="font-medium text-slate-700 dark:text-slate-300">rotates strategies by regime (AUTO)</span> or{" "}
+          <span className="font-medium text-slate-700 dark:text-slate-300">always uses one listed strategy (MANUAL)</span>. This is part of your strategy
+          brain — use <span className="font-medium">Save</span> if you want it stored on the active strategy version.
+        </p>
+        <div className="mt-2 grid gap-2 text-xs">
+          <label className="grid grid-cols-[108px_1fr] items-center gap-2">
+            <span className="text-slate-600 dark:text-slate-400">Mode</span>
+            <select
+              className="rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
+              value={cfg.strategyMode}
+              onChange={(e) => {
+                const v = e.target.value;
+                deferTask(() => {
+                  void (async () => {
+                    try {
+                      await api.botConfig({ strategyMode: v });
+                    } catch {
+                      pushLog({ level: "error", msg: "Failed to set routing mode" });
+                    }
+                  })();
+                });
+              }}
+            >
+              <option value="AUTO">AUTO — regime picks among paths #1–#8</option>
+              <option value="MANUAL">MANUAL — always use the path below</option>
+            </select>
+          </label>
+          <label className="grid grid-cols-[108px_1fr] items-center gap-2">
+            <span className="text-slate-600 dark:text-slate-400">Path (MANUAL)</span>
+            {cfg.strategyMode === "AUTO" ? (
+              <div className="rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-white/80 dark:bg-slate-950/60 px-2 py-1 text-[11px] text-slate-600 dark:text-slate-500">
+                Only used in MANUAL. In AUTO the regime engine picks the path each bar.
+              </div>
+            ) : (
+              <select
+                className="rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
+                value={cfg.manualStrategy}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  deferTask(() => {
+                    void (async () => {
+                      try {
+                        await api.botConfig({ manualStrategy: v });
+                      } catch {
+                        pushLog({ level: "error", msg: "Failed to set fixed signal path" });
+                      }
+                    })();
+                  });
+                }}
+              >
+                {[...NUMBERED_SIGNAL_SOURCES].sort((a, b) => a.n - b.n).map((s) => (
+                  <option key={s.key} value={s.key}>
+                    {s.n}. {s.key} — {s.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+        </div>
+        {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "HTF_RSI" && (
+          <div className="mt-2 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-[11px] text-emerald-800 dark:text-emerald-300 space-y-1">
+            <div className="font-semibold">★ HTF RSI v3 — BNBUSDT 15m only (HTF trend sep ≥ 0.12%)</div>
+            <div className="text-amber-800 dark:text-amber-300">
+              Do <b>not</b> use on BTC. Use <b>RISK_AT_SL</b>, SL <b>0.6%</b>, TP <b>1.8%</b>, lev <b>25×</b>.
+            </div>
+            <div className="text-emerald-700 dark:text-emerald-400">
+              v3 Jan–May 2026: <b>50% WR</b> · Risk 5% → ~125% · Risk 6% → ~157% · Risk 7% → ~191%
+            </div>
+            <div className="flex flex-wrap gap-2 pt-0.5">
+              <button
+                type="button"
+                className="rounded border border-emerald-400 dark:border-emerald-600 bg-white/80 dark:bg-emerald-950/50 px-2 py-0.5 text-[10px] font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                onClick={() => {
+                  void api
+                    .botConfig({
+                      trailingStopLossAuto: false,
+                      futuresLeverage: 25,
+                      riskPerTrade: 5,
+                      riskPerTradeUnit: "PCT_EQUITY",
+                      supertrendFuturesFixedSlPct: 0.006,
+                      supertrendFuturesFixedTpPct: 0.018,
+                    })
+                    .catch(() => pushLog("Failed to apply HTF RSI v3 balanced preset"));
+                }}
+              >
+                Apply balanced v3 (~125%, 50% WR)
+              </button>
+              <button
+                type="button"
+                className="rounded border-2 border-emerald-500 dark:border-emerald-400 bg-emerald-100/90 dark:bg-emerald-900/60 px-2 py-0.5 text-[10px] font-semibold hover:bg-emerald-200 dark:hover:bg-emerald-800/60"
+                onClick={() => {
+                  void api
+                    .botConfig({
+                      trailingStopLossAuto: false,
+                      futuresLeverage: 25,
+                      riskPerTrade: 6,
+                      riskPerTradeUnit: "PCT_EQUITY",
+                      supertrendFuturesFixedSlPct: 0.006,
+                      supertrendFuturesFixedTpPct: 0.018,
+                    })
+                    .catch(() => pushLog("Failed to apply HTF RSI v3 max preset"));
+                }}
+              >
+                Apply max v3 (~157%, 50% WR) ★
+              </button>
+              <button
+                type="button"
+                className="rounded border border-emerald-400 dark:border-emerald-600 bg-white/80 dark:bg-emerald-950/50 px-2 py-0.5 text-[10px] font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                onClick={() => {
+                  void api
+                    .botConfig({
+                      trailingStopLossAuto: false,
+                      futuresLeverage: 25,
+                      riskPerTrade: 7,
+                      riskPerTradeUnit: "PCT_EQUITY",
+                      supertrendFuturesFixedSlPct: 0.006,
+                      supertrendFuturesFixedTpPct: 0.018,
+                    })
+                    .catch(() => pushLog("Failed to apply HTF RSI v3 aggressive preset"));
+                }}
+              >
+                Apply aggressive v3 (~191%, 50% WR)
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="mt-2 rounded-lg border border-violet-400 dark:border-violet-600 bg-violet-50 dark:bg-violet-950/30 px-3 py-2 text-[11px] text-violet-900 dark:text-violet-200 space-y-1.5">
+          <div className="font-semibold">Supertrend Elite — validated presets (1H only)</div>
+          {cfg.strategyMode !== "MANUAL" || cfg.manualStrategy !== "SUPERTREND_ELITE" ? (
+            <p className="text-amber-800 dark:text-amber-300">
+              Presets set <b>MANUAL</b> + <b>SUPERTREND_ELITE</b>, turn off Supertrend auto-trade, enable 4H+1H gates + ST trailing.
+              Current: <span className="font-mono">{cfg.strategyMode}</span>
+              {cfg.strategyMode === "MANUAL" ? ` / ${cfg.manualStrategy}` : ""}.
+            </p>
+          ) : (
+            <p>
+              <b>★ Use 1H chart.</b> 15m is not profitable for this path. BNB Jan–May 26: ~73% WR · BTC: ~64% WR +62%.
+              Save strategy before backtest.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <TrendHtfStPresetButton
+              label="★ BNB 1H Elite"
+              highlight
+              patch={SUPERTREND_ELITE_BNB_1H}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="BTC 1H Elite"
+              patch={SUPERTREND_ELITE_BTC_1H}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="BTC 1H + ADX20"
+              patch={SUPERTREND_ELITE_BTC_1H_ADX}
+              pushLog={pushLog}
+            />
+          </div>
+          {cfg.supertrendFuturesAuto === true && cfg.manualStrategy === "SUPERTREND_ELITE" ? (
+            <p className="text-[10px] text-amber-800 dark:text-amber-300">
+              Turn off <b>Futures Supertrend auto</b> — otherwise engine stays on plain SUPERTREND, not Elite gates.
+            </p>
+          ) : null}
+        </div>
+        <div className="mt-2 rounded-lg border border-teal-400 dark:border-teal-600 bg-teal-50 dark:bg-teal-950/30 px-3 py-2 text-[11px] text-teal-900 dark:text-teal-200 space-y-1.5">
+          <div className="font-semibold">Intraday Pro — loss vetoes + big-move tier</div>
+          {cfg.strategyMode !== "MANUAL" || cfg.manualStrategy !== "SR_INTRADAY" ? (
+            <p className="text-amber-800 dark:text-amber-300">
+              Presets set <b>MANUAL</b> + <b>SR_INTRADAY</b>. Each setup is scored (sweep, session S/R, Fib, VP,
+              CVD); <b>learned rules block loss clusters</b> one-by-one. Tier-A = big-move trail. Use{" "}
+              <b>15m</b>. Autopsy: <span className="font-mono">npm run backtest:intraday-autopsy</span>
+            </p>
+          ) : (
+            <p>
+              <b>★ BNB 15m Pro</b> — fixed TP + veto stack. <b>BNB 15m VP</b> — HVN/LVN structure gates + SL/TP at
+              nodes. <b>BNB 15m Big Move</b> — tier-A only + ST trail.
+              Run autopsy to see which losses each rule blocks.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <TrendHtfStPresetButton label="★ BNB 15m Pro" highlight patch={INTRADAY_PRO_15M} pushLog={pushLog} />
+            <TrendHtfStPresetButton label="BNB 15m Big Move" patch={INTRADAY_PRO_BIGMOVE_15M} pushLog={pushLog} />
+            <TrendHtfStPresetButton label="BNB 5m" patch={INTRADAY_PRO_5M} pushLog={pushLog} />
+            <TrendHtfStPresetButton label="BTC 15m" patch={SR_INTRADAY_BTC_15M} pushLog={pushLog} />
+          </div>
+        </div>
+        {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "VOLUME_PROFILE" && (
+          <div className="mt-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 bg-fuchsia-50 dark:bg-fuchsia-950/30 px-3 py-2 text-[11px] text-fuchsia-900 dark:text-fuchsia-200 space-y-1.5">
+            <div className="font-semibold">Volume Profile strategy — BNB 15m recommended</div>
+            <p>
+              Standalone VP path: entries only on POC bounce, LVN vacuum, VAH breakout, HVN flip, or VA rejection.
+              Backtest: <span className="font-mono">npm run backtest:volume-profile</span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <TrendHtfStPresetButton label="★ BNB 15m VP (optimized)" highlight patch={VOLUME_PROFILE_15M} pushLog={pushLog} />
+              <TrendHtfStPresetButton label="BNB Tier-A (same)" patch={VOLUME_PROFILE_TIER_A_15M} pushLog={pushLog} />
+              <TrendHtfStPresetButton label="BNB balanced (~80% WR)" patch={VOLUME_PROFILE_BALANCED_15M} pushLog={pushLog} />
+              <TrendHtfStPresetButton label="BTC 15m VP" patch={VOLUME_PROFILE_BTC_15M} pushLog={pushLog} />
+              <TrendHtfStPresetButton label="BNB 5m VP" patch={VOLUME_PROFILE_5M} pushLog={pushLog} />
+            </div>
+          </div>
+        )}
+        <div className="mt-2 rounded-lg border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/30 px-3 py-2 text-[11px] text-sky-900 dark:text-sky-200 space-y-1.5">
+          <div className="font-semibold">Trend + HTF Supertrend — research presets (15m)</div>
+          {cfg.strategyMode !== "MANUAL" || cfg.manualStrategy !== "TREND_HTF_ST" ? (
+            <p className="text-amber-800 dark:text-amber-300">
+              Presets set <b>MANUAL</b> + <b>TREND_HTF_ST</b> (not raw SUPERTREND). Current:{" "}
+              <span className="font-mono">{cfg.strategyMode}</span>
+              {cfg.strategyMode === "MANUAL" ? ` / ${cfg.manualStrategy}` : ""}.
+              {cfg.supertrendFuturesAuto === true ? (
+                <span className="block mt-1">
+                  Turn off <b>supertrendFuturesAuto</b> or use a preset — otherwise backtests may run the wrong engine.
+                </span>
+              ) : null}
+            </p>
+          ) : (
+            <p>
+              <b>★ Optimal BNB</b>: ~61% WR / ~840% Jan (best tested). <b>BTC</b>: use surgical preset (~42% WR Jan).
+              Intel gate OFF for returns. Save strategy before backtest.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <TrendHtfStPresetButton
+              label="★ BNB Optimal 10%"
+              highlight
+              patch={TREND_HTF_ST_OPTIMAL_BNB}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="BTC Optimal 10%"
+              patch={TREND_HTF_ST_OPTIMAL_BTC}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="BNB High-WR 50%"
+              patch={TREND_HTF_ST_BNB_HIGH_WR}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="BNB max return 10%"
+              patch={TREND_HTF_ST_BNB_MAX_RETURN}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="BNB surgical 10%"
+              patch={TREND_HTF_ST_BNB_SURGICAL}
+              pushLog={pushLog}
+            />
+          </div>
+          <p className="text-[10px] text-amber-800 dark:text-amber-300">
+            80%+ WR on BTC 15m was not found in exhaustive sweeps — use BNB Optimal. Avoid intel gate + 50×/40% risk on BTC (last run -98%).
+          </p>
+        </div>
+        {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "APEX_TREND" && (
+          <div className="mt-2 rounded-lg border border-emerald-400 dark:border-emerald-500 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30 px-3 py-2 text-[11px] text-emerald-900 dark:text-emerald-200 space-y-1.5">
+            <div className="font-bold text-[12px] text-amber-800 dark:text-amber-300">APEX v2 — experimental (use HTF RSI ★ on BNB instead)</div>
+            <div className="text-slate-700 dark:text-slate-300">
+              Last BTC run failed: v1 entered at RSI 67 (not a pullback). v2 fixes RSI zone 40–52. Too few trades on BTC.
+            </div>
+            <div className="text-emerald-700 dark:text-emerald-400">
+              <b>Best validated:</b> BNB 15m + HTF RSI v3 (~191%, 50% WR) or Trend+ST max (~428% Jan–May, ~61% WR @ 7% risk).
+            </div>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                className="rounded border-2 border-emerald-500 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 text-[10px] font-bold hover:bg-emerald-200 dark:hover:bg-emerald-800/60"
+                onClick={() => {
+                  void api.botConfig({
+                    manualStrategy: "APEX_TREND",
+                    symbol: "BNBUSDT",
+                    timeframe: "15m",
+                    trailingStopLossAuto: false,
+                    futuresLeverage: 25,
+                    riskPerTrade: 5,
+                    riskPerTradeUnit: "PCT_EQUITY",
+                    supertrendFuturesFixedSlPct: 0.006,
+                    supertrendFuturesFixedTpPct: 0.018,
+                  }).catch(() => pushLog("Failed to apply APEX 15m balanced"));
+                }}
+              >
+                Apply 15m balanced (SL 0.6 / TP 1.8)
+              </button>
+              <button
+                type="button"
+                className="rounded border-2 border-emerald-500 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 text-[10px] font-bold hover:bg-emerald-200 dark:hover:bg-emerald-800/60"
+                onClick={() => {
+                  void api.botConfig({
+                    manualStrategy: "APEX_TREND",
+                    trailingStopLossAuto: false,
+                    futuresLeverage: 25,
+                    riskPerTrade: 7,
+                    riskPerTradeUnit: "PCT_EQUITY",
+                    supertrendPeriod: 7,
+                    supertrendMultiplier: 2.5,
+                    supertrendFuturesFixedSlPct: 0.007,
+                    supertrendFuturesFixedTpPct: 0.021,
+                  }).catch(() => pushLog("Failed to apply APEX 15m max"));
+                }}
+              >
+                Apply 15m max (SL 0.7 / TP 2.1) ★
+              </button>
+              <button
+                type="button"
+                className="rounded border border-teal-500 dark:border-teal-400 bg-white/80 dark:bg-teal-950/40 px-2 py-0.5 text-[10px] font-semibold hover:bg-teal-50 dark:hover:bg-teal-900/40"
+                onClick={() => {
+                  void api.botConfig({
+                    manualStrategy: "APEX_TREND",
+                    timeframe: "1h",
+                    trailingStopLossAuto: false,
+                    futuresLeverage: 15,
+                    riskPerTrade: 5,
+                    riskPerTradeUnit: "PCT_EQUITY",
+                    supertrendPeriod: 7,
+                    supertrendMultiplier: 2.5,
+                    supertrendFuturesFixedSlPct: 0.012,
+                    supertrendFuturesFixedTpPct: 0.036,
+                  }).catch(() => pushLog("Failed to apply APEX 1h swing"));
+                }}
+              >
+                Apply 1h swing (SL 1.2 / TP 3.6 — big moves)
+              </button>
+            </div>
+          </div>
+        )}
+        {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "BTC_CONSENSUS" && (
+          <div className="mt-2 rounded-lg border border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-950/30 px-3 py-2 text-[11px] text-orange-900 dark:text-orange-200 space-y-1">
+            <div className="font-semibold">★ BTC Consensus — BTCUSDT 1h (2 of 3 trend signals)</div>
+            <div>Vote: Trend+ST + Leg Rider + Momentum. Do not use HTF RSI on BTC.</div>
+            <div className="flex flex-wrap gap-2 pt-0.5">
+              <button
+                type="button"
+                className="rounded border border-orange-400 px-2 py-0.5 text-[10px] font-semibold hover:bg-orange-100 dark:hover:bg-orange-900/50"
+                onClick={() => {
+                  void api
+                    .botConfig({
+                      manualStrategy: "BTC_CONSENSUS",
+                      symbol: "BTCUSDT",
+                      timeframe: "1h",
+                      trailingStopLossAuto: false,
+                      futuresLeverage: 20,
+                      riskPerTrade: 5,
+                      riskPerTradeUnit: "PCT_EQUITY",
+                      supertrendFuturesFixedSlPct: 0.01,
+                      supertrendFuturesFixedTpPct: 0.03,
+                    })
+                    .catch(() => pushLog("Failed to apply BTC Consensus 1h preset"));
+                }}
+              >
+                Apply BTC 1h consensus
+              </button>
+              <button
+                type="button"
+                className="rounded border border-orange-400 px-2 py-0.5 text-[10px] font-semibold hover:bg-orange-100 dark:hover:bg-orange-900/50"
+                onClick={() => {
+                  void api
+                    .botConfig({
+                      manualStrategy: "BTC_CONSENSUS",
+                      symbol: "BTCUSDT",
+                      timeframe: "15m",
+                      trailingStopLossAuto: false,
+                      futuresLeverage: 20,
+                      riskPerTrade: 5,
+                      supertrendFuturesFixedSlPct: 0.008,
+                      supertrendFuturesFixedTpPct: 0.024,
+                    })
+                    .catch(() => pushLog("Failed to apply BTC Consensus 15m preset"));
+                }}
+              >
+                Apply BTC 15m consensus
+              </button>
+            </div>
+          </div>
+        )}
+        {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "HTF_LEG_RIDER" && (
+          <div className="mt-2 rounded-lg border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/30 px-3 py-2 text-[11px] text-violet-900 dark:text-violet-200 space-y-1">
+            <div className="font-semibold">HTF Leg Rider — breakout in trend direction</div>
+            <div>32-bar breakout · SL 1.5% · TP 5% → ~62% return on BNB (lower WR than HTF RSI).</div>
+            <button
+              type="button"
+              className="rounded border border-violet-400 px-2 py-0.5 text-[10px] font-semibold"
+              onClick={() => {
+                void api
+                  .botConfig({
+                    manualStrategy: "HTF_LEG_RIDER",
+                    trailingStopLossAuto: false,
+                    futuresLeverage: 25,
+                    riskPerTrade: 5,
+                    supertrendFuturesFixedSlPct: 0.015,
+                    supertrendFuturesFixedTpPct: 0.05,
+                  })
+                  .catch(() => pushLog("Failed to apply Leg Rider preset"));
+              }}
+            >
+              Apply Leg Rider preset
+            </button>
+          </div>
+        )}
+        {cfg.strategyMode === "MANUAL" ? (
+          <div className="mt-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-950/40">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-3 py-2">
+              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Path scoreboard (last ~700 bars)</div>
+              <div className="text-[11px] text-slate-600 dark:text-slate-500">{btLoading ? "running…" : "refresh 30s"}</div>
+            </div>
+            <div className="max-h-[180px] overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
+                  <tr className="text-left text-slate-600 dark:text-slate-400">
+                    <th className="px-3 py-2">#</th>
+                    <th className="px-3 py-2">Key</th>
+                    <th className="px-3 py-2">Trades</th>
+                    <th className="px-3 py-2">Win%</th>
+                    <th className="px-3 py-2">PF</th>
+                    <th className="px-3 py-2">PnL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {top.length === 0 ? (
+                    <tr>
+                      <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={6}>
+                        No scoreboard rows yet
+                      </td>
+                    </tr>
+                  ) : (
+                    top.map((r) => {
+                      const num = NUMBERED_SIGNAL_SOURCES.find((x) => x.key === r.key)?.n ?? "—";
+                      return (
+                        <tr key={r.key} className="border-t border-slate-200 dark:border-slate-900">
+                          <td className="px-3 py-2 font-mono text-slate-500">{num}</td>
+                          <td className="px-3 py-2">
+                            <button
+                              type="button"
+                              className="font-semibold text-slate-800 dark:text-slate-200 hover:text-emerald-300"
+                              onClick={() => {
+                                const key = r.key;
+                                deferTask(() => {
+                                  void (async () => {
+                                    try {
+                                      await api.botConfig({ manualStrategy: key });
+                                    } catch {
+                                      pushLog({ level: "error", msg: "Failed to set fixed signal path" });
+                                    }
+                                  })();
+                                });
+                              }}
+                            >
+                              {r.key}
+                            </button>
+                            <div className="text-[11px] text-slate-600 dark:text-slate-500">{r.name}</div>
+                          </td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{r.trades}</td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{(Number(r.winRate || 0) * 100).toFixed(1)}</td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{Number(r.profitFactor || 0).toFixed(2)}</td>
+                          <td className={`px-3 py-2 ${Number(r.netPnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                            {Number(r.netPnl || 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {strategyConfigDirty ? (
-        <div className="mb-3 rounded-lg border border-amber-400/50 bg-amber-500/10 p-3 text-xs">
+        <div className="sticky top-0 z-20 mb-3 rounded-lg border border-amber-400/50 bg-amber-500/15 p-3 text-xs shadow-sm backdrop-blur-sm dark:bg-amber-950/40">
           <div className="font-semibold text-amber-300">Configuration changed</div>
           <div className="mt-1 text-slate-600 dark:text-slate-300">
-            Save routes signal-brain fields to the current strategy and operational fields to the active instance. Save as New keeps the original strategy unchanged and points the instance to the new one.
+            Save updates the current strategy version in place (same version row) and mirrors operational fields to the active instance. Save as New creates a separate strategy and points the instance at its first version.
           </div>
           <div className="mt-2 flex gap-2">
             <button
@@ -2238,30 +2826,11 @@ export function TradingPanel() {
 
       <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3">
         <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Auto trading / bot configuration</div>
+        <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-500">
+          <span className="font-medium text-slate-700 dark:text-slate-400">AUTO / MANUAL and the fixed path</span> are set in the{" "}
+          <span className="font-medium">Signal source</span> card above (part of the strategy brain — Save to persist).
+        </p>
         <div className="mt-2 grid gap-2 text-xs">
-            <label className="grid grid-cols-[110px_1fr] items-center gap-2">
-              <span className="text-slate-600 dark:text-slate-400">Mode</span>
-              <select
-                className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
-                value={cfg.strategyMode}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  deferTask(() => {
-                    void (async () => {
-                      try {
-                        await api.botConfig({ strategyMode: v });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to set strategy mode" });
-                      }
-                    })();
-                  });
-                }}
-              >
-                <option value="AUTO">AUTO (regime-based)</option>
-                <option value="MANUAL">MANUAL (pick strategy)</option>
-              </select>
-            </label>
-
             <label className="grid grid-cols-[110px_1fr] items-center gap-2">
               <span className="text-slate-600 dark:text-slate-400">Timeframe</span>
               <select
@@ -2705,18 +3274,18 @@ export function TradingPanel() {
                       "After entry, tick size rounding, mark vs fill, and trailing can move the working stop vs this nominal %."
                     }
                   >
-                    ST %
+                    SL %
                   </span>
                   <NumericTextInput
                     value={Number((cfg.supertrendFuturesFixedSlPct * 100).toFixed(8))}
                     min={0.005}
                     max={20}
-                    disabled={!cfg.supertrendFuturesAuto}
+                    disabled={!slTpFieldsEditable(cfg)}
                     onCommit={async (v) => {
                       try {
                         await api.botConfig({ supertrendFuturesFixedSlPct: v / 100 });
                       } catch {
-                        pushLog({ level: "error", msg: "Failed to set ST %" });
+                        pushLog({ level: "error", msg: "Failed to set SL %" });
                       }
                     }}
                   />
@@ -2729,7 +3298,7 @@ export function TradingPanel() {
                     value={Number((cfg.supertrendFuturesFixedTpPct * 100).toFixed(8))}
                     min={0.005}
                     max={50}
-                    disabled={!cfg.supertrendFuturesAuto}
+                    disabled={!slTpFieldsEditable(cfg)}
                     onCommit={async (v) => {
                       try {
                         await api.botConfig({ supertrendFuturesFixedTpPct: v / 100 });
@@ -2740,11 +3309,10 @@ export function TradingPanel() {
                   />
                 </div>
                 <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-500">
-                  <span className="text-slate-600 dark:text-slate-400">ST</span> / <span className="text-slate-600 dark:text-slate-400">TP</span> apply to{" "}
-                  <span className="text-slate-600 dark:text-slate-400">Autotrade with Supertrend</span> on futures when the AI confidence
-                  filter is <span className="text-slate-600 dark:text-slate-400">off</span>. Values are{" "}
-                  <span className="font-mono text-slate-600 dark:text-slate-500">percent of price</span> (e.g.{" "}
-                  <span className="font-mono text-slate-600 dark:text-slate-500">1</span> = 1% stop distance).
+                  <span className="text-slate-600 dark:text-slate-400">SL</span> / <span className="text-slate-600 dark:text-slate-400">TP</span> apply to{" "}
+                  <span className="text-slate-600 dark:text-slate-400">MANUAL</span> signal paths and backtests. Supertrend autotrade with the AI
+                  confidence filter <span className="text-slate-600 dark:text-slate-400">on</span> may use ATR brackets instead.{" "}
+                  <span className="font-mono text-slate-600 dark:text-slate-500">0.8</span> = 0.8% distance.
                 </p>
               </>
             )}
@@ -3417,101 +3985,6 @@ export function TradingPanel() {
             )}
 
             <label className="grid grid-cols-[110px_1fr] items-center gap-2">
-              <span className="text-slate-600 dark:text-slate-400">Strategy</span>
-              {cfg.strategyMode === "AUTO" ? (
-                <div className="rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-slate-100/95 dark:bg-slate-950/60 px-2 py-1 text-[11px] text-slate-600 dark:text-slate-500">
-                  Automatic: regime + model choose EMA / RSI / breakout each bar. Set Mode to MANUAL to pick a fixed
-                  strategy.
-                </div>
-              ) : (
-                <select
-                  className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
-                  value={cfg.manualStrategy}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    deferTask(() => {
-                      void (async () => {
-                        try {
-                          await api.botConfig({ manualStrategy: v });
-                        } catch {
-                          pushLog({ level: "error", msg: "Failed to set manual strategy" });
-                        }
-                      })();
-                    });
-                  }}
-                >
-                  {STRATS.map((s) => (
-                    <option key={s.key} value={s.key}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </label>
-
-            {cfg.strategyMode === "MANUAL" && (
-              <div className="mt-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40">
-                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-3 py-2">
-                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Top strategies (backtest)</div>
-                  <div className="text-[11px] text-slate-600 dark:text-slate-500">{btLoading ? "running…" : "last 700 candles"}</div>
-                </div>
-                <div className="max-h-[180px] overflow-auto">
-                  <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
-                      <tr className="text-left text-slate-600 dark:text-slate-400">
-                        <th className="px-3 py-2">Key</th>
-                        <th className="px-3 py-2">Trades</th>
-                        <th className="px-3 py-2">Win%</th>
-                        <th className="px-3 py-2">PF</th>
-                        <th className="px-3 py-2">PnL</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {top.length === 0 ? (
-                        <tr>
-                          <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={5}>
-                            No backtest results yet
-                          </td>
-                        </tr>
-                      ) : (
-                        top.map((r) => (
-                          <tr key={r.key} className="border-t border-slate-200 dark:border-slate-900">
-                            <td className="px-3 py-2">
-                              <button
-                                className="font-semibold text-slate-800 dark:text-slate-200 hover:text-emerald-300"
-                                onClick={() => {
-                                  const key = r.key;
-                                  deferTask(() => {
-                                    void (async () => {
-                                      try {
-                                        await api.botConfig({ manualStrategy: key });
-                                      } catch {
-                                        pushLog({ level: "error", msg: "Failed to set manual strategy" });
-                                      }
-                                    })();
-                                  });
-                                }}
-                              >
-                                {r.key}
-                              </button>
-                              <div className="text-[11px] text-slate-600 dark:text-slate-500">{r.name}</div>
-                            </td>
-                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{r.trades}</td>
-                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{(Number(r.winRate || 0) * 100).toFixed(1)}</td>
-                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{Number(r.profitFactor || 0).toFixed(2)}</td>
-                            <td className={`px-3 py-2 ${Number(r.netPnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                              {Number(r.netPnl || 0).toFixed(2)}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            <label className="grid grid-cols-[110px_1fr] items-center gap-2">
               <span className="text-slate-600 dark:text-slate-400">AI threshold</span>
               <NumericTextInput
                 value={cfg.aiThreshold}
@@ -3634,11 +4107,10 @@ export function TradingPanel() {
                             onChange={(e) => {
                               const on = e.currentTarget.checked;
                               if (!on && !cfg.futuresTrailingStAdvanced) {
-                                void api
-                                  .botConfig({ futuresTrailingStFeeBreakeven: false, futuresTrailingStAdvanced: true })
-                                  .catch(() => pushLog({ level: "error", msg: "Failed to update Supertrend trailing" }));
-                                pushLog({ level: "info", msg: "Supertrend trailing: kept Advanced on" });
-                                return;
+                                pushLog({
+                                  level: "info",
+                                  msg: "At least one Supertrend trail mode must stay on — Advanced will remain enabled.",
+                                });
                               }
                               void api.botConfig({ futuresTrailingStFeeBreakeven: on }).catch(() =>
                                 pushLog({ level: "error", msg: "Failed to update fee breakeven trailing" }),
@@ -3784,11 +4256,10 @@ export function TradingPanel() {
                             onChange={(e) => {
                               const on = e.currentTarget.checked;
                               if (!on && !cfg.futuresTrailingStFeeBreakeven) {
-                                void api
-                                  .botConfig({ futuresTrailingStAdvanced: false, futuresTrailingStFeeBreakeven: true })
-                                  .catch(() => pushLog({ level: "error", msg: "Failed to update Supertrend trailing" }));
-                                pushLog({ level: "info", msg: "Supertrend trailing: kept Fee breakeven on" });
-                                return;
+                                pushLog({
+                                  level: "info",
+                                  msg: "At least one Supertrend trail mode must stay on — Advanced will remain enabled.",
+                                });
                               }
                               void api.botConfig({ futuresTrailingStAdvanced: on }).catch(() =>
                                 pushLog({ level: "error", msg: "Failed to update advanced Supertrend trailing" }),
@@ -4270,11 +4741,11 @@ export function TradingPanel() {
 
                 {(cfg.strategyMode === "AUTO" || cfg.manualStrategy === "SURF_PULSE_ML") && (
                   <div className="mt-3 rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-white/85 dark:bg-slate-950/30 px-2 py-2">
-                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">SurfPulse ML gate</div>
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">SurfPulse (#8) · XGBoost gate</div>
                     <p className="mt-0.5 text-[11px] leading-snug text-slate-600 dark:text-slate-500">
-                      Minimum XGBoost win probability from <span className="text-slate-600 dark:text-slate-400">/predict/surfpulse</span> required to
-                      act on a SurfPulse signal. In <span className="text-slate-600 dark:text-slate-400">AUTO</span> mode this applies whenever the
-                      selector runs SurfPulse ML; in <span className="text-slate-600 dark:text-slate-400">MANUAL</span> when SurfPulse ML is selected.
+                      Minimum win probability from <span className="text-slate-600 dark:text-slate-400">/predict/surfpulse</span> to allow a SurfPulse
+                      setup. In <span className="text-slate-600 dark:text-slate-400">AUTO</span> this applies when the regime picks path #8; in{" "}
+                      <span className="text-slate-600 dark:text-slate-400">MANUAL</span> when #8 is your fixed path.
                     </p>
                     <div className="mt-2 flex items-center gap-2">
                       <label className="mr-2 inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-700 dark:text-slate-300">
@@ -4373,6 +4844,23 @@ export function TradingPanel() {
                       </span>
                     </span>
                   </label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <TrendHtfStPresetButton
+                      label="★ ST + Intel 80% WR"
+                      highlight
+                      patch={SUPERTREND_INTEL_80WR}
+                      pushLog={pushLog}
+                    />
+                    <TrendHtfStPresetButton
+                      label="ST + Intel + Trail"
+                      patch={SUPERTREND_INTEL_TRAIL}
+                      pushLog={pushLog}
+                    />
+                  </div>
+                  <p className="mt-1 text-[10px] text-amber-800 dark:text-amber-300">
+                    <b>80% WR preset:</b> MANUAL + SUPERTREND + intel gate + SL 1.5% / TP 0.7% — validated BNBUSDT 15m Jan–May 2026:
+                    ~87% WR, ~+18% return (15 trades). Sweep did not find 1000%+ return at WR≥80%; use for high WR, not max compounding.
+                  </p>
                 </div>
 
                 {cfg.marketMode !== "SPOT" && cfg.supertrendFuturesAuto && (
@@ -4429,6 +4917,22 @@ export function TradingPanel() {
                     </div>
                   </div>
                 )}
+
+                <div className="mt-3 space-y-2 rounded-lg border border-indigo-800/20 bg-white/85 p-2 dark:border-indigo-400/15 dark:bg-slate-950/50">
+                  <div className="text-[11px] font-semibold text-indigo-900 dark:text-indigo-100">Indicator-style signal sources</div>
+                  <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+                    Numbered paths the regime engine uses in <span className="font-medium text-slate-700 dark:text-slate-300">AUTO</span>, or the single
+                    pinned path in <span className="font-medium text-slate-700 dark:text-slate-300">MANUAL</span>. They are not separate saved strategies — your{" "}
+                    <span className="font-medium">strategy version</span> stores routing (above) plus all gates and execution settings here.
+                  </p>
+                  <ol className="list-decimal space-y-1 pl-4 text-[10px] text-slate-700 dark:text-slate-300">
+                    {[...NUMBERED_SIGNAL_SOURCES].sort((a, b) => a.n - b.n).map((s) => (
+                      <li key={s.key}>
+                        <span className="font-mono text-[10px] text-slate-600 dark:text-slate-400">{s.key}</span> — {s.label}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
 
                 <div className="mt-3 space-y-2 rounded-lg border border-violet-800/25 bg-white/85 p-2 dark:border-violet-400/20 dark:bg-slate-950/50">
                   <div className="text-[11px] font-semibold text-violet-900 dark:text-violet-100">Signal strength</div>
@@ -4605,10 +5109,10 @@ export function TradingPanel() {
                     />
                     <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
                       <span className="font-semibold text-slate-800 dark:text-slate-200">
-                        Gate Supertrend opens on move quality
+                        Gate opens on move quality
                       </span>
                       <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
-                        Uses ATR-based expected move vs estimated SL%, ADX, body vs average, optional ATR expansion, optional directional body and volume vs average.
+                        Applies to live opens and backtests. Uses ATR-based expected move vs estimated SL%, ADX, body vs average, optional ATR expansion, directional body and volume.
                         When off, MQ is still computed and shown in the chart signal list (MQ score · verdict).
                       </span>
                     </span>
@@ -4734,9 +5238,476 @@ export function TradingPanel() {
                           });
                         }}
                       />
+                  </div>
+                </div>
+                </div>
+
+                <div className="mt-3 space-y-2 rounded-lg border border-emerald-800/30 bg-white/85 p-2 dark:border-emerald-400/25 dark:bg-slate-950/50">
+                  <div className="text-[11px] font-semibold text-emerald-900 dark:text-emerald-100">
+                    Big-move filter (Supertrend + T1)
+                  </div>
+                  <label className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={cfg.supertrendBigMoveGateEnabled}
+                      onChange={(e) => {
+                        const on = e.currentTarget.checked;
+                        deferTask(() => {
+                          void (async () => {
+                            try {
+                              await api.botConfig({ supertrendBigMoveGateEnabled: on });
+                              pushLog({
+                                level: "info",
+                                msg: on
+                                  ? "Big-move gate ON — ST opens need signal strength + expected move ≥ T1 (1.5× SL); replaces separate strength/MQ gates"
+                                  : "Big-move gate OFF — use Signal strength / Move quality gates individually",
+                              });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to update big-move gate" });
+                            }
+                          })();
+                        });
+                      }}
+                    />
+                    <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        Gate Supertrend on big-move + T1 potential
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                        Indicator-section filter coupled to Supertrend (not Intelligence gate). Blocks weak flips and entries where
+                        ATR-based expected move is below T1. Backtests use the same logic.
+                      </span>
+                    </span>
+                  </label>
+                  <div className="grid gap-2 pl-6 sm:grid-cols-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min strength</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Minimum signal strength for big-move gate"
+                        serverSliderUnits={cfg.supertrendBigMoveMinStrength}
+                        formatDisplay={(u) => `${u}`}
+                        accentClassName="accent-emerald-600"
+                        onDebouncedCommit={(u) => {
+                          void api
+                            .botConfig({ supertrendBigMoveMinStrength: Math.round(clampNum(u, 0, 100)) })
+                            .catch(() => pushLog({ level: "error", msg: "Failed to set big-move min strength" }));
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Move / SL (T1)</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Min expected move vs SL ratio (1.5 = T1)"
+                        serverSliderUnits={Math.round((cfg.supertrendBigMoveMinMoveSlRatio - 1) * 100)}
+                        formatDisplay={(u) => `${(1 + u / 100).toFixed(2)}×`}
+                        accentClassName="accent-emerald-600"
+                        onDebouncedCommit={(u) => {
+                          void api
+                            .botConfig({ supertrendBigMoveMinMoveSlRatio: Math.max(1, 1 + u / 100) })
+                            .catch(() => pushLog({ level: "error", msg: "Failed to set big-move move/SL ratio" }));
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min ADX</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Minimum ADX for big-move gate"
+                        serverSliderUnits={cfg.supertrendBigMoveMinAdx}
+                        formatDisplay={(u) => `${u}`}
+                        accentClassName="accent-emerald-600"
+                        onDebouncedCommit={(u) => {
+                          void api
+                            .botConfig({ supertrendBigMoveMinAdx: Math.round(clampNum(u, 0, 100)) })
+                            .catch(() => pushLog({ level: "error", msg: "Failed to set big-move min ADX" }));
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min MQ score</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Minimum move-quality composite score"
+                        serverSliderUnits={Math.round(cfg.supertrendBigMoveMinScore * 100)}
+                        formatDisplay={(u) => `${(u / 100).toFixed(2)}`}
+                        accentClassName="accent-emerald-600"
+                        onDebouncedCommit={(u) => {
+                          const p = clampNum(u / 100, 0, 1);
+                          void api
+                            .botConfig({ supertrendBigMoveMinScore: Number(p.toFixed(3)) })
+                            .catch(() => pushLog({ level: "error", msg: "Failed to set big-move min score" }));
+                        }}
+                      />
                     </div>
                   </div>
-                  <label className="mt-2 flex cursor-pointer items-start gap-2 pl-6">
+                </div>
+
+                <div className="mt-3 space-y-2 rounded-lg border border-teal-800/30 bg-white/85 p-2 dark:border-teal-400/25 dark:bg-slate-950/50">
+                  <div className="text-[11px] font-semibold text-teal-900 dark:text-teal-100">
+                    4H Supertrend confirmation
+                  </div>
+                  <label className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={cfg.supertrendHtf4hEnabled}
+                      onChange={(e) => {
+                        const on = e.currentTarget.checked;
+                        deferTask(() => {
+                          void (async () => {
+                            try {
+                              await api.botConfig({ supertrendHtf4hEnabled: on });
+                              pushLog({
+                                level: "info",
+                                msg: on
+                                  ? "4H ST confirmation ON — BUY entries require 4H ST bullish; SELL require 4H ST bearish"
+                                  : "4H ST confirmation OFF — entries not filtered by higher timeframe direction",
+                              });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to update 4H confirmation" });
+                            }
+                          })();
+                        });
+                      }}
+                    />
+                    <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        Require 4H Supertrend alignment
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                        Blocks a Supertrend open when the 4H ST direction disagrees — e.g. no BUY if the 4H trend is
+                        bearish. Works in backtests and live. Same ST period/multiplier as below.
+                      </span>
+                    </span>
+                  </label>
+                  <div className="grid gap-2 pl-6 sm:grid-cols-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">4H ST period</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="4H Supertrend period"
+                        serverSliderUnits={cfg.supertrendHtf4hPeriod}
+                        formatDisplay={(u) => `${u}`}
+                        accentClassName="accent-teal-600"
+                        onDebouncedCommit={(u) => {
+                          void api
+                            .botConfig({ supertrendHtf4hPeriod: Math.max(2, Math.min(50, Math.round(u))) })
+                            .catch(() => pushLog({ level: "error", msg: "Failed to set 4H ST period" }));
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">4H ST multiplier</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="4H Supertrend multiplier"
+                        serverSliderUnits={Math.round(cfg.supertrendHtf4hMultiplier * 10)}
+                        formatDisplay={(u) => `${(u / 10).toFixed(1)}`}
+                        accentClassName="accent-teal-600"
+                        onDebouncedCommit={(u) => {
+                          void api
+                            .botConfig({ supertrendHtf4hMultiplier: Math.max(0.5, u / 10) })
+                            .catch(() => pushLog({ level: "error", msg: "Failed to set 4H ST multiplier" }));
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 space-y-2 rounded-lg border border-fuchsia-800/30 bg-white/85 p-2 dark:border-fuchsia-400/25 dark:bg-slate-950/50">
+                  <div className="text-[11px] font-semibold text-fuchsia-900 dark:text-fuchsia-100">
+                    Volume Profile (POC / VAH / VAL / HVN)
+                  </div>
+                  <label className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={cfg.volumeProfileEnabled}
+                      onChange={(e) => {
+                        const on = e.currentTarget.checked;
+                        deferTask(() => {
+                          void (async () => {
+                            try {
+                              await api.botConfig({ volumeProfileEnabled: on });
+                              pushLog({
+                                level: "info",
+                                msg: on
+                                  ? "Volume Profile ON — POC/VAH/VAL scoring for SR Intraday / Intraday Pro"
+                                  : "Volume Profile OFF — no VP structure filter on intraday signals",
+                              });
+                            } catch {
+                              pushLog({ level: "error", msg: "Failed to update Volume Profile" });
+                            }
+                          })();
+                        });
+                      }}
+                    />
+                    <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Enable Volume Profile</span>
+                      <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                        Primary: <span className="font-mono">VOLUME_PROFILE</span> manual strategy (#18). Optional scoring on{" "}
+                        <span className="font-mono">SR_INTRADAY</span> when enabled there too.
+                      </span>
+                    </span>
+                  </label>
+                  <div
+                    className={`space-y-2 pl-6 ${
+                      cfg.volumeProfileEnabled && cfg.manualStrategy === "VOLUME_PROFILE"
+                        ? ""
+                        : cfg.volumeProfileEnabled
+                          ? ""
+                          : "opacity-50 pointer-events-none"
+                    }`}
+                  >
+                    <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={cfg.volumeProfileSoftGates && !cfg.volumeProfileGatesEnabled}
+                        disabled={!cfg.volumeProfileEnabled}
+                        onChange={(e) => {
+                          const soft = e.currentTarget.checked;
+                          deferTask(() => {
+                            void api
+                              .botConfig({
+                                volumeProfileSoftGates: soft,
+                                volumeProfileGatesEnabled: !soft,
+                              })
+                              .then(() =>
+                                pushLog({
+                                  level: "info",
+                                  msg: soft
+                                    ? "VP soft gates — score penalties, rare hard blocks only"
+                                    : "VP strict gates — hard veto on VAH/VAL/POC/RR issues",
+                                }),
+                              )
+                              .catch(() => pushLog({ level: "error", msg: "Failed to update VP gate mode" }));
+                          });
+                        }}
+                      />
+                      Soft gates (recommended) — penalize weak structure instead of blocking every signal
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={cfg.intradayVpBrackets}
+                        disabled={!cfg.volumeProfileEnabled}
+                        onChange={(e) => {
+                          const on = e.currentTarget.checked;
+                          deferTask(() => {
+                            void api
+                              .botConfig({ intradayVpBrackets: on })
+                              .then(() =>
+                                pushLog({
+                                  level: "info",
+                                  msg: on
+                                    ? "VP structure SL/TP at HVN nodes (backtest + intraday)"
+                                    : "VP brackets off — use fixed SL/TP %",
+                                }),
+                              )
+                              .catch(() => pushLog({ level: "error", msg: "Failed to update VP brackets" }));
+                          });
+                        }}
+                      />
+                      Structure SL/TP at next HVN (instead of fixed %)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Lookback (bars)</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Volume profile lookback bars"
+                        serverSliderUnits={cfg.vpLookbackBars}
+                        formatDisplay={(u) => `${u}`}
+                        accentClassName="accent-fuchsia-600"
+                        disabled={!cfg.volumeProfileEnabled}
+                        onDebouncedCommit={(u) => {
+                          void api
+                            .botConfig({ vpLookbackBars: Math.round(clampNum(u, 48, 2000)) })
+                            .catch(() => pushLog({ level: "error", msg: "Failed to set VP lookback" }));
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[8.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min RR</span>
+                      <ThresholdSliderWithLock
+                        ariaLabel="Minimum risk-reward to next HVN"
+                        serverSliderUnits={Math.round(cfg.vpMinRR * 100)}
+                        formatDisplay={(u) => `${(u / 100).toFixed(2)}×`}
+                        accentClassName="accent-fuchsia-600"
+                        disabled={!cfg.volumeProfileEnabled}
+                        onDebouncedCommit={(u) => {
+                          void api
+                            .botConfig({ vpMinRR: Math.max(0.8, u / 100) })
+                            .catch(() => pushLog({ level: "error", msg: "Failed to set VP min RR" }));
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ─── SUPERTREND_ELITE gate controls ─── */}
+                {cfg.manualStrategy === "SUPERTREND_ELITE" && (
+                  <div className="mt-3 space-y-2 rounded-lg border border-violet-600/40 bg-white/85 p-2 dark:border-violet-400/30 dark:bg-slate-950/50">
+                    <div className="flex items-center gap-1.5">
+                      <div className="text-[11px] font-semibold text-violet-800 dark:text-violet-300">
+                        Supertrend Elite — 5-gate filters
+                      </div>
+                      <span className="rounded bg-violet-100 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                        1H TF recommended
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-500">
+                      Use on 1H timeframe. Best results: BNBUSDT 73% WR +22% · BTCUSDT 64% WR +62% (Jan–May 2026, trailing stop)
+                    </p>
+
+                    {/* Gate 4 — 4H Supertrend alignment */}
+                    <label className="flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={cfg.eliteStRequireHtf4hAlign}
+                        onChange={(e) => {
+                          const on = e.currentTarget.checked;
+                          deferTask(() => {
+                            void api.botConfig({ eliteStRequireHtf4hAlign: on }).catch(() =>
+                              pushLog({ level: "error", msg: "Failed to update 4H gate" }));
+                          });
+                        }}
+                      />
+                      <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                        <span className="font-semibold">Gate 4 — 4H ST alignment</span>
+                        <span className="mt-0.5 block text-[10px] text-slate-500">
+                          Block entries when 4H Supertrend disagrees with primary signal direction.
+                        </span>
+                      </span>
+                    </label>
+
+                    {/* Gate 3 — 1H EMA structure */}
+                    <label className="flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={cfg.eliteStRequireHtf1hEmaAlign}
+                        onChange={(e) => {
+                          const on = e.currentTarget.checked;
+                          deferTask(() => {
+                            void api.botConfig({ eliteStRequireHtf1hEmaAlign: on }).catch(() =>
+                              pushLog({ level: "error", msg: "Failed to update 1H EMA gate" }));
+                          });
+                        }}
+                      />
+                      <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                        <span className="font-semibold">Gate 3 — 1H EMA21/50 structure</span>
+                        <span className="mt-0.5 block text-[10px] text-slate-500">
+                          Block BUY when 1H EMA21 &lt; EMA50 (bearish structure). Block SELL when EMA21 &gt; EMA50.
+                        </span>
+                      </span>
+                    </label>
+
+                    {/* Gate 1 — ADX */}
+                    <label className="flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={cfg.eliteStMinAdx > 0}
+                        onChange={(e) => {
+                          const on = e.currentTarget.checked;
+                          deferTask(() => {
+                            void api.botConfig({ eliteStMinAdx: on ? 20 : 0, eliteStRequireAdxRising: on }).catch(() =>
+                              pushLog({ level: "error", msg: "Failed to update ADX gate" }));
+                          });
+                        }}
+                      />
+                      <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                        <span className="font-semibold">Gate 1 — ADX ≥ {cfg.eliteStMinAdx || 20} rising</span>
+                        <span className="mt-0.5 block text-[10px] text-slate-500">
+                          Skip entries in low-trend / choppy markets. Adds selectivity; most impactful in trending conditions.
+                        </span>
+                      </span>
+                    </label>
+                    {cfg.eliteStMinAdx > 0 && (
+                      <div className="flex items-center gap-2 pl-6">
+                        <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Min ADX</span>
+                        <ThresholdSliderWithLock
+                          ariaLabel="Elite ST min ADX"
+                          serverSliderUnits={cfg.eliteStMinAdx}
+                          formatDisplay={(u) => `${u}`}
+                          accentClassName="accent-violet-600"
+                          onDebouncedCommit={(u) => {
+                            void api
+                              .botConfig({ eliteStMinAdx: clampNum(Math.round(u), 0, 100) })
+                              .catch(() => pushLog({ level: "error", msg: "Failed to set Elite ST ADX" }));
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Gate 2 — Volume */}
+                    <label className="flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={cfg.eliteStMinVolumeVsAvg > 0}
+                        onChange={(e) => {
+                          const on = e.currentTarget.checked;
+                          deferTask(() => {
+                            void api.botConfig({ eliteStMinVolumeVsAvg: on ? 1.5 : 0 }).catch(() =>
+                              pushLog({ level: "error", msg: "Failed to update volume gate" }));
+                          });
+                        }}
+                      />
+                      <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                        <span className="font-semibold">Gate 2 — Volume ≥ {cfg.eliteStMinVolumeVsAvg > 0 ? `${cfg.eliteStMinVolumeVsAvg.toFixed(1)}×` : "1.5×"} avg</span>
+                        <span className="mt-0.5 block text-[10px] text-slate-500">
+                          Require above-average volume on signal bar. Eliminates low-conviction breakouts.
+                        </span>
+                      </span>
+                    </label>
+
+                    {/* Gate 5 — ATR expansion */}
+                    <label className="flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={cfg.eliteStRequireAtrExpansion}
+                        onChange={(e) => {
+                          const on = e.currentTarget.checked;
+                          deferTask(() => {
+                            void api.botConfig({ eliteStRequireAtrExpansion: on }).catch(() =>
+                              pushLog({ level: "error", msg: "Failed to update ATR gate" }));
+                          });
+                        }}
+                      />
+                      <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                        <span className="font-semibold">Gate 5 — ATR expansion ≥ {cfg.eliteStMinAtrExpansion.toFixed(2)}×</span>
+                        <span className="mt-0.5 block text-[10px] text-slate-500">
+                          Require volatility expansion — current ATR above recent average. Catches explosive moves.
+                        </span>
+                      </span>
+                    </label>
+
+                    {/* Liquidity sweep bonus */}
+                    <label className="flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={cfg.eliteStLiqSweepEnabled}
+                        onChange={(e) => {
+                          const on = e.currentTarget.checked;
+                          deferTask(() => {
+                            void api.botConfig({ eliteStLiqSweepEnabled: on }).catch(() =>
+                              pushLog({ level: "error", msg: "Failed to update liq sweep gate" }));
+                          });
+                        }}
+                      />
+                      <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                        <span className="font-semibold">Bonus — Liquidity sweep only</span>
+                        <span className="mt-0.5 block text-[10px] text-slate-500">
+                          When enabled, ONLY take trades that follow a recent stop-hunt sweep. Highest conviction setups.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                <div className="mt-3 space-y-2 rounded-lg border border-slate-300/60 bg-white/85 p-2 dark:border-slate-600/30 dark:bg-slate-950/50">
+                  <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">Breakout confirmation</div>
+                  <label className="flex cursor-pointer items-start gap-2">
                     <input
                       type="checkbox"
                       className="mt-0.5"

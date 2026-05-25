@@ -3,7 +3,7 @@ import { api } from "../../api/client";
 import { useAppStore } from "../../ws/store";
 import { tradingModeToApiModeSlug } from "../../lib/tradingModeSlug";
 import { EMPTY_STRATEGIES } from "../../lib/stableEmptyArrays";
-import type { Strategy, StrategyVersion } from "../../types/strategy";
+import type { Strategy } from "../../types/strategy";
 import type { StrategyPerformance } from "../../types/performance";
 import {
   toneClass,
@@ -51,17 +51,13 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
   const bot = useAppStore((s) => s.bot);
   const strategies = useAppStore((s) => s.strategiesByMode[modeSlug] ?? EMPTY_STRATEGIES);
   const activeVid = useAppStore((s) => s.activeStrategyVersionByMode[modeSlug]);
-  const fetchVersionsForStrategy = useAppStore((s) => s.fetchVersionsForStrategy);
-  const versionsByStrategyId = useAppStore((s) => s.versionsByStrategyId);
   const setActiveStrategyVersionForMode = useAppStore((s) => s.setActiveStrategyVersionForMode);
-  const saveNewStrategyVersionSnapshot = useAppStore((s) => s.saveNewStrategyVersionSnapshot);
   const cloneStrategyVersionStore = useAppStore((s) => s.cloneStrategyVersionStore);
   const updateStrategyMetaStore = useAppStore((s) => s.updateStrategyMetaStore);
   const fetchStrategiesForMode = useAppStore((s) => s.fetchStrategiesForMode);
 
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [loading, setLoading] = useState(false);
-  const [expandedVid, setExpandedVid] = useState<string | null>(null);
   const [cloneCtx, setCloneCtx] = useState<{ versionId: string } | null>(null);
   const [switchCtx, setSwitchCtx] = useState<{
     versionId: string;
@@ -71,8 +67,6 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
   const [switchBusy, setSwitchBusy] = useState(false);
   const [perfByVid, setPerfByVid] = useState<Record<string, StrategyPerformance>>({});
 
-  const versions = strategyId ? versionsByStrategyId[strategyId] : undefined;
-
   const running = Boolean(runningByMode?.[String(mode || "").toUpperCase()] ?? bot?.running);
 
   const load = useCallback(async () => {
@@ -81,7 +75,6 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
     try {
       const { strategy: st } = await api.getStrategyDetail(strategyId);
       setStrategy(st);
-      await fetchVersionsForStrategy(strategyId);
       try {
         const pr = await api.getStrategyPerformance(strategyId);
         const m: Record<string, StrategyPerformance> = {};
@@ -98,7 +91,7 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
     } finally {
       setLoading(false);
     }
-  }, [strategyId, fetchVersionsForStrategy]);
+  }, [strategyId]);
 
   useEffect(() => {
     if (open && strategyId) void load();
@@ -151,7 +144,6 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
   if (!open || !strategyId) return null;
 
   const latest = strategy?.latestVersion;
-  const list: StrategyVersion[] = versions ?? [];
 
   function perfSummaryEl(versionId: string) {
     const pm = perfByVid[versionId];
@@ -222,29 +214,32 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-          {latest ? (
-            <section className="mb-4">
-              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Active version</h3>
-              <div
-                className={`rounded-lg border p-3 ${
-                  activeVid === latest.id
-                    ? "border-sky-500 bg-sky-50/80 dark:border-sky-600 dark:bg-sky-950/40"
-                    : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
-                }`}
-              >
-                <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                  {latest.label ?? `v${latest.versionNumber}`}
-                </p>
-                <p className="text-[11px] text-slate-500">{formatAgo(latest.createdAt)}</p>
-                <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
-                  {latest.cfgSymbol ?? "—"} · {latest.cfgTimeframe ?? "—"} · {latest.cfgMarketMode ?? "—"}
-                </p>
-                <p className="text-xs text-slate-600 dark:text-slate-300">
-                  ST: {latest.cfgStPeriod ?? "—"} × {latest.cfgStMultiplier ?? "—"} · Cap: {capitalSummary(latest)}
-                </p>
-                <p className="text-xs text-slate-600 dark:text-slate-300">
-                  Trailing: {latest.cfgTrailingMode ?? "—"}
-                </p>
+          {loading ? (
+            <p className="text-xs text-slate-500">Loading…</p>
+          ) : latest ? (
+            <section>
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current strategy</h3>
+                {activeVid === latest.id && (
+                  <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300">Active</span>
+                )}
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                      {strategy?.name}
+                    </p>
+                    <p className="text-[10px] text-slate-500">Last saved {formatAgo(latest.createdAt)}</p>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-slate-600 dark:text-slate-400">
+                  <span className="text-slate-500">Market mode</span><span className="font-medium text-slate-800 dark:text-slate-200">{latest.cfgMarketMode ?? "—"}</span>
+                  <span className="text-slate-500">Timeframe</span><span className="font-medium text-slate-800 dark:text-slate-200">{latest.cfgTimeframe ?? "—"}</span>
+                  <span className="text-slate-500">ST period</span><span className="font-medium text-slate-800 dark:text-slate-200">{latest.cfgStPeriod ?? "—"} × {latest.cfgStMultiplier ?? "—"}</span>
+                  <span className="text-slate-500">Trailing</span><span className="font-medium text-slate-800 dark:text-slate-200">{latest.cfgTrailingMode ?? "—"}</span>
+                  <span className="text-slate-500">Capital</span><span className="font-medium text-slate-800 dark:text-slate-200">{capitalSummary(latest)}</span>
+                </div>
                 {perfSummaryEl(latest.id)}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
@@ -252,99 +247,25 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
                     className="rounded-md border border-slate-300 px-2 py-1 text-[11px] dark:border-slate-600"
                     onClick={() => setCloneCtx({ versionId: latest.id })}
                   >
-                    Clone
+                    Clone to new strategy
                   </button>
-                  <button
-                    type="button"
-                    className="rounded-md bg-sky-600 px-2 py-1 text-[11px] font-semibold text-white"
-                    onClick={() =>
-                      void runSetActive(
-                        latest.id,
-                        `${strategy?.name ?? "Strategy"} v${latest.versionNumber}`,
-                      )
-                    }
-                  >
-                    Set active
-                  </button>
+                  {activeVid !== latest.id && (
+                    <button
+                      type="button"
+                      className="rounded-md bg-sky-600 px-2 py-1 text-[11px] font-semibold text-white"
+                      onClick={() =>
+                        void runSetActive(latest.id, `${strategy?.name ?? "Strategy"}`)
+                      }
+                    >
+                      Set active
+                    </button>
+                  )}
                 </div>
               </div>
             </section>
-          ) : null}
-
-          <section>
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Version history</h3>
-              <button
-                type="button"
-                className="text-[11px] text-sky-600 dark:text-sky-400"
-                onClick={() => {
-                  if (!strategyId) return;
-                  void saveNewStrategyVersionSnapshot(strategyId, "Manual save").then(() => load());
-                }}
-              >
-                Save snapshot
-              </button>
-            </div>
-            <ul className="space-y-2">
-              {list
-                .slice()
-                .reverse()
-                .map((v) => (
-                  <li
-                    key={v.id}
-                    className={`rounded-lg border p-2 text-xs ${
-                      activeVid === v.id
-                        ? "border-sky-500 bg-sky-50/50 dark:border-sky-600 dark:bg-sky-950/30"
-                        : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-1">
-                      <span className="font-semibold">
-                        v{v.versionNumber}{" "}
-                        <span className="font-normal text-slate-600 dark:text-slate-400">
-                          {v.label ?? ""}
-                        </span>
-                      </span>
-                      <span className="text-[10px] text-slate-500">{formatAgo(v.createdAt)}</span>
-                    </div>
-                    <p className="text-[10px] text-slate-500">
-                      {v.cfgSymbol} · {v.cfgTimeframe} · ST {v.cfgStPeriod}×{v.cfgStMultiplier}
-                    </p>
-                    {perfSummaryEl(v.id)}
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      <button
-                        type="button"
-                        className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px] dark:border-slate-600"
-                        onClick={() => setExpandedVid((x) => (x === v.id ? null : v.id))}
-                      >
-                        {expandedVid === v.id ? "Hide" : "View JSON"}
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px] dark:border-slate-600"
-                        onClick={() => setCloneCtx({ versionId: v.id })}
-                      >
-                        Clone
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-white dark:bg-slate-200 dark:text-slate-900"
-                        onClick={() =>
-                          void runSetActive(v.id, `${strategy?.name ?? "Strategy"} v${v.versionNumber}`)
-                        }
-                      >
-                        Set active
-                      </button>
-                    </div>
-                    {expandedVid === v.id ? (
-                      <pre className="mt-2 max-h-48 overflow-auto rounded bg-slate-100 p-2 text-[10px] dark:bg-slate-950">
-                        {JSON.stringify(v.cfgRaw, null, 2)}
-                      </pre>
-                    ) : null}
-                  </li>
-                ))}
-            </ul>
-          </section>
+          ) : (
+            <p className="text-xs text-slate-500">No version saved yet. Use Save in the Trading panel to save the current config to this strategy.</p>
+          )}
         </div>
       </div>
 

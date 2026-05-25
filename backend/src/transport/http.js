@@ -52,6 +52,7 @@ import * as tradeService from "../db/services/tradeService.js";
 import * as performanceService from "../db/services/performanceService.js";
 import { getAccountAllotmentHeadroom, InsufficientCapitalError } from "../db/services/capitalAllotmentService.js";
 import { extractInstanceConfig } from "../lib/strategyInstanceSplit.js";
+import { createBacktestRouter } from "./backtestRoutes.js";
 const BOT_TARGET_MODES = z.enum(["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"]);
 
 /** Accept true/false and common JSON/proxy coercions so toggles never 400 on edge clients. */
@@ -82,6 +83,8 @@ const marketIntelProvidersPutBody = z.object({
 
 export function createRouter({ appState }) {
   const r = express.Router();
+
+  r.use("/backtest", createBacktestRouter({ appState }));
 
   /** DB `users.id` for this request: session login, or `dbActingUserId` set by `requireDbUserSession`. */
   function effectiveSessionUserId(req) {
@@ -528,7 +531,8 @@ export function createRouter({ appState }) {
       riskPerTrade: z.number().min(0).max(10_000_000).optional(),
       /** Interpretation set by `maxDailyLossUnit`: PCT = max daily drawdown 0–100 (% points); USDT = max daily loss USD per venue. */
       maxDailyLoss: z.number().min(0).max(10_000_000).optional(),
-      riskPerTradeUnit: z.enum(["PCT", "USDT"]).optional(),
+      riskPerTradeUnit: z
+        .preprocess((v) => (v === "PCT_EQUITY" ? "PCT" : v), z.enum(["PCT", "USDT"]).optional()),
       maxDailyLossUnit: z.enum(["PCT", "USDT"]).optional(),
       /** With fixed USDT risk + max daily USDT and MULTIPLE pins (2+), divide per-trade notional by pin count. */
       capitalSplitAcrossCoins: z.boolean().optional(),
@@ -562,6 +566,60 @@ export function createRouter({ appState }) {
       signalStrengthGatesTrades: z.boolean().optional(),
       /** Min composite signal strength (0–100) for opens when `signalStrengthGatesTrades` is on. */
       signalStrengthOpenMin: z.number().int().min(0).max(100).optional(),
+      /** When true, Supertrend (and backtest) opens pass `evaluateSupertrendMoveQuality` thresholds below. */
+      supertrendMoveQualityGate: z.boolean().optional(),
+      supertrendMoveQualityMinScore: z.number().min(0).max(1).optional(),
+      supertrendMoveQualityMinAdx: z.number().int().min(0).max(100).optional(),
+      supertrendMoveQualityMinMoveSlRatio: z.number().min(1).max(10).optional(),
+      supertrendMoveQualityExpectedMoveAtrMult: z.number().min(0.05).max(10).optional(),
+      supertrendMoveQualityMinAtrExpansion: z.number().min(0).max(5).optional(),
+      supertrendMoveQualityMinBodyVsAvg: z.number().min(0.05).max(1).optional(),
+      supertrendMoveQualityMinDirectionalBody: z.number().min(0).max(1).optional(),
+      supertrendMoveQualityMinVolumeVsAvg: z.number().min(0).max(10).optional(),
+      supertrendConfirmationGateEnabled: z.boolean().optional(),
+      supertrendConfirmationMinAdx: z.number().min(0).max(100).optional(),
+      supertrendConfirmationMinVolRatio: z.number().min(0).max(10).optional(),
+      supertrendConfirmationMinBodyAtrRatio: z.number().min(0).max(3).optional(),
+      supertrendConfirmationMaxAdverseWickFrac: z.number().min(0).max(3).optional(),
+      supertrendConfirmationMaxDistFromStAtr: z.number().min(0).max(10).optional(),
+      supertrendConfirmationRequireHtfAlign: z.boolean().optional(),
+      supertrendConfirmationHtfPeriod: z.number().int().min(2).max(100).optional(),
+      supertrendConfirmationHtfMultiplier: z.number().min(0.5).max(50).optional(),
+      supertrendConfirmationHtfBarsPerStrategyBar: z.number().int().min(1).max(96).optional(),
+      supertrendHtf4hEnabled: z.boolean().optional(),
+      supertrendHtf4hPeriod: z.number().int().min(2).max(50).optional(),
+      supertrendHtf4hMultiplier: z.number().min(0.5).max(20).optional(),
+      volumeProfileEnabled: z.boolean().optional(),
+      volumeProfileSoftGates: z.boolean().optional(),
+      volumeProfileGatesEnabled: z.boolean().optional(),
+      intradayVpBrackets: z.boolean().optional(),
+      vpLookbackBars: z.number().int().min(48).max(2000).optional(),
+      vpMinRR: z.number().min(0.8).max(5).optional(),
+      // SUPERTREND_ELITE gate parameters
+      eliteStRequireHtf4hAlign: z.boolean().optional(),
+      eliteStHtf4hPeriod: z.number().int().min(2).max(50).optional(),
+      eliteStHtf4hMultiplier: z.number().min(0.5).max(20).optional(),
+      eliteStRequireHtf1hEmaAlign: z.boolean().optional(),
+      eliteStHtf1hMinSep: z.number().min(0).max(1).optional(),
+      eliteStMinAdx: z.number().min(0).max(100).optional(),
+      eliteStRequireAdxRising: z.boolean().optional(),
+      eliteStAdxRisingLookback: z.number().int().min(1).max(20).optional(),
+      eliteStMinVolumeVsAvg: z.number().min(0).max(10).optional(),
+      eliteStRequireAtrExpansion: z.boolean().optional(),
+      eliteStMinAtrExpansion: z.number().min(1).max(5).optional(),
+      eliteStAtrExpansionLookback: z.number().int().min(2).max(50).optional(),
+      eliteStLiqSweepEnabled: z.boolean().optional(),
+      supertrendBigMoveGateEnabled: z.boolean().optional(),
+      supertrendBigMoveMinStrength: z.number().min(0).max(100).optional(),
+      supertrendBigMoveMinMoveSlRatio: z.number().min(0.5).max(10).optional(),
+      supertrendBigMoveMinAdx: z.number().min(0).max(100).optional(),
+      supertrendBigMoveMinScore: z.number().min(0).max(1).optional(),
+      supertrendBigMoveMaxCandlesSinceFlip: z.number().int().min(0).max(20).optional(),
+      supertrendBigMoveMinVolumeVsAvg: z.number().min(0).max(10).optional(),
+      supertrendBigMoveExpectedMoveAtrMult: z.number().min(0.1).max(10).optional(),
+      /** Defer entry until a bar closes beyond signal high/low (Supertrend paths). */
+      supertrendBreakoutConfirm: z.boolean().optional(),
+      supertrendBreakoutMaxBars: z.number().int().min(1).max(20).optional(),
       /** Min AI probability (0–1) for Supertrend futures opens when `supertrendFuturesAiConfidenceFilter` is on. */
       supertrendFuturesMinAiProb: z.number().min(0).max(1).optional(),
       /** Enable/disable SurfPulse ML gate for SURF_PULSE_ML opens. */
@@ -570,6 +628,9 @@ export function createRouter({ appState }) {
       surfPulseMlThreshold: z.number().min(0).max(1).optional(),
       /** When true, high-confidence opposing composite intelligence score can skip Supertrend opens. */
       intelligenceGateEnabled: z.boolean().optional(),
+      intelligenceGateStrict: z.boolean().optional(),
+      intelligenceGateHighWinRate: z.boolean().optional(),
+      supertrendFuturesExitOnFlip: z.boolean().optional(),
       trailingStopLossAuto: z.boolean().optional(),
       /** `SUPERTREND` vs `FEE_LADDER` — see bot `futuresTrailingStopMode`. */
       futuresTrailingStopMode: z.enum(["SUPERTREND", "FEE_LADDER"]).optional(),
@@ -579,10 +640,10 @@ export function createRouter({ appState }) {
       futuresTrailingStAdvanced: z.boolean().optional(),
       /** Up to 3 extra trailing locks after fee breakeven + fee-based first scalping; each % of entry (e.g. 0.5 = 0.5%). */
       trailingStopExtraScalpingPcts: z.array(z.number().min(0.01).max(5)).max(3).optional(),
-      /** Fixed stop fraction of price (Supertrend futures, AI filter off). */
-      supertrendFuturesFixedSlPct: z.number().min(0.00005).max(0.2).optional(),
-      /** Fixed take-profit fraction of price (Supertrend futures, AI filter off). */
-      supertrendFuturesFixedTpPct: z.number().min(0.00005).max(0.5).optional(),
+      /** Fixed stop fraction of price (Supertrend futures). 0 = no fixed bracket (trail/ATR only). */
+      supertrendFuturesFixedSlPct: z.number().min(0).max(0.2).optional(),
+      /** Fixed take-profit fraction of price. 0 = no fixed TP (trail or flip exit only). */
+      supertrendFuturesFixedTpPct: z.number().min(0).max(0.5).optional(),
       /** When true, Supertrend futures SELL opens short after closing long; BUY closes short then opens long. */
       supertrendFuturesTwoWay: z.boolean().optional(),
       /** Max adverse move vs signal candle close (percent points, e.g. 0.15 = 0.15%). 0 = off. */
@@ -654,6 +715,18 @@ export function createRouter({ appState }) {
         .optional(),
       /** Market regime + signal-quality engine (merged with server defaults). */
       marketDecision: z.record(z.string(), z.unknown()).optional(),
+      /** TREND_HTF_ST — macro regime gate (blocks ~50% entries; avoid for max return). */
+      trendHtfStRegimeGate: z.boolean().optional(),
+      /** Surgical chop-only loss filter (keeps trade count). */
+      trendHtfStSurgicalLossFilter: z.boolean().optional(),
+      trendHtfStQualityFilter: z.boolean().optional(),
+      trendHtfStFlipExitBeforeSl: z.boolean().optional(),
+      trendHtfStMaxEntryRangeAtr: z.number().min(0).max(10).optional(),
+      trendHtfStMinHtfSep: z.number().min(0).max(0.05).optional(),
+      trendHtfStRegimeTpTrend: z.number().min(0.0005).max(0.5).optional(),
+      trendHtfStRegimeTpMixed: z.number().min(0.0005).max(0.5).optional(),
+      trendHtfStRegimeTpChop: z.number().min(0.0005).max(0.5).optional(),
+      backtestBreakevenAtMfePct: z.number().min(0).max(0.1).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
@@ -1410,7 +1483,17 @@ export function createRouter({ appState }) {
       if (!payload || typeof payload !== "object") {
         return res.status(500).json({ ok: false, error: "config_snapshot_unavailable" });
       }
-      const label = parsed.data.label != null ? String(parsed.data.label) : "Saved from config";
+      const rawSaveBody = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+      const labelForSaveAsNew =
+        parsed.data.label != null && String(parsed.data.label).trim() !== ""
+          ? String(parsed.data.label)
+          : "v1 — save as new";
+      /** `undefined` = leave DB `label` unchanged (in-place save). */
+      const labelForInPlaceSave = Object.prototype.hasOwnProperty.call(rawSaveBody, "label")
+        ? parsed.data.label == null
+          ? null
+          : String(parsed.data.label)
+        : undefined;
 
       // Strategy version stores SIGNAL-BRAIN only (createVersion strips inst_* fields
       // from cfg_raw automatically). Instance-owned operational fields are routed to
@@ -1440,20 +1523,26 @@ export function createRouter({ appState }) {
       };
 
       if (parsed.data.action === "save") {
-        const nv = await strategyService.createVersion(st.id, uid, payload, label, activeVid);
+        const nv = await strategyService.updateVersion(activeVid, uid, payload, labelForInPlaceSave);
+        if (!nv) return res.status(500).json({ ok: false, error: "strategy_version_update_failed" });
         appState.setActiveStrategyVersion(modeSlug, nv.id, { rebuildEngine: false });
-        await usersService.mergeUiPrefsForUser(uid, {
-          activeStrategyVersionByMode: { [modeSlug]: nv.id },
-        });
+        const postSave = [
+          usersService.mergeUiPrefsForUser(uid, {
+            activeStrategyVersionByMode: { [modeSlug]: nv.id },
+          }),
+          persistInstanceOverrides(),
+        ];
         if (activeInstanceId) {
-          try {
-            await instanceService.updateInstanceStrategyVersion(String(activeInstanceId), uid, String(nv.id));
-          } catch (e) {
-            // eslint-disable-next-line no-console
-            console.warn("instance_strategy_version_update_failed", String(e?.message || e));
-          }
+          postSave.push(
+            instanceService
+              .updateInstanceStrategyVersion(String(activeInstanceId), uid, String(nv.id))
+              .catch((e) => {
+                // eslint-disable-next-line no-console
+                console.warn("instance_strategy_version_update_failed", String(e?.message || e));
+              }),
+          );
         }
-        await persistInstanceOverrides();
+        await Promise.all(postSave);
         return res.json({ ok: true, action: "save", strategy: st, version: nv });
       }
       const name = String(parsed.data.name || "").trim() || `${st.name} copy`;
@@ -1465,20 +1554,25 @@ export function createRouter({ appState }) {
         Array.isArray(parsed.data.tags) ? parsed.data.tags : st.tags ?? [],
       );
       if (!newStrategy) return res.status(500).json({ ok: false, error: "create_strategy_failed" });
-      const nv = await strategyService.createVersion(newStrategy.id, uid, payload, label, activeVid);
+      const nv = await strategyService.createVersion(newStrategy.id, uid, payload, labelForSaveAsNew, activeVid);
       appState.setActiveStrategyVersion(modeSlug, nv.id, { rebuildEngine: false });
-      await usersService.mergeUiPrefsForUser(uid, {
-        activeStrategyVersionByMode: { [modeSlug]: nv.id },
-      });
+      const postSaveNew = [
+        usersService.mergeUiPrefsForUser(uid, {
+          activeStrategyVersionByMode: { [modeSlug]: nv.id },
+        }),
+        persistInstanceOverrides(),
+      ];
       if (activeInstanceId) {
-        try {
-          await instanceService.updateInstanceStrategyVersion(String(activeInstanceId), uid, String(nv.id));
-        } catch (e) {
-          // eslint-disable-next-line no-console
-          console.warn("instance_strategy_version_update_failed", String(e?.message || e));
-        }
+        postSaveNew.push(
+          instanceService
+            .updateInstanceStrategyVersion(String(activeInstanceId), uid, String(nv.id))
+            .catch((e) => {
+              // eslint-disable-next-line no-console
+              console.warn("instance_strategy_version_update_failed", String(e?.message || e));
+            }),
+        );
       }
-      await persistInstanceOverrides();
+      await Promise.all(postSaveNew);
       return res.json({ ok: true, action: "save_as_new", strategy: newStrategy, version: nv });
     } catch (e) {
       return res.status(500).json({ ok: false, error: String(e?.message || e) });

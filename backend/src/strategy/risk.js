@@ -198,3 +198,34 @@ export async function riskPlan({
 
   return { ok: true, qty, stopLoss, takeProfit, tierMult, riskUsd, tradableBalance, sizingMethod };
 }
+
+/**
+ * Override ATR brackets with fixed %-of-price SL/TP (manual signal paths + backtests).
+ * Recalculates qty from `riskUsd` when per-unit risk changes.
+ */
+export function applyFixedPctBracket(plan, { entryPrice, side, slPct, tpPct, futuresLeverage }) {
+  if (!plan?.ok) return plan;
+  const px = Number(entryPrice);
+  const sl = clamp(Number(slPct), 0.00005, 0.2);
+  const tp = clamp(Number(tpPct ?? 0), 0, 0.5);
+  if (!px || px <= 0 || sl <= 0) return plan;
+
+  const isLong = side === "BUY";
+  const stopLoss = isLong ? px * (1 - sl) : px * (1 + sl);
+  const takeProfit =
+    tp > 0 ? (isLong ? px * (1 + tp) : px * (1 - tp)) : plan.takeProfit;
+
+  const perUnitRisk = Math.abs(px - stopLoss);
+  let qty = plan.qty;
+  const riskUsd = Number(plan.riskUsd);
+  if (perUnitRisk > 0 && riskUsd > 0) {
+    qty = roundTo(riskUsd / perUnitRisk, 6);
+    const lev = clamp(Number(futuresLeverage ?? 1), 1, 100);
+    const walletBp = Number(plan.tradableBalance) * lev;
+    const maxNotional = walletBp * 0.9;
+    const notional = qty * px;
+    if (notional > maxNotional && px > 0) qty = roundTo(maxNotional / px, 6);
+  }
+
+  return { ...plan, qty, stopLoss, takeProfit };
+}

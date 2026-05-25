@@ -1,5 +1,9 @@
 let lastConfirmedRegime = "SIDEWAYS";
 
+export function resetRegimeState() {
+  lastConfirmedRegime = "SIDEWAYS";
+}
+
 export function detectRegime({ candles, indicators }) {
   const last = candles[candles.length - 1];
   const atr = indicators.latest.atr_14 || 0;

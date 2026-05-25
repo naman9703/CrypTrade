@@ -122,8 +122,8 @@ export function createBinanceDemoFuturesUsdMExchange({ log, apiKey: apiKeyOverri
     const buildUrl = () => {
       const ts = timeSkew.timestampMs();
       const qp = new URLSearchParams({ ...params, timestamp: String(ts), recvWindow: String(recvWindow) });
-      const sig = hmacSha256(apiSecret, qp.toString());
-      qp.set("signature", sig);
+    const sig = hmacSha256(apiSecret, qp.toString());
+    qp.set("signature", sig);
       return `${path}?${qp.toString()}`;
     };
     let url = buildUrl();
@@ -2755,11 +2755,11 @@ export function createBinanceDemoFuturesUsdMExchange({ log, apiKey: apiKeyOverri
             const psRaw = String(p?.positionSide ?? "BOTH").trim().toUpperCase();
             const positionSide = psRaw === "LONG" || psRaw === "SHORT" ? psRaw : "BOTH";
             return {
-              symbol: p.symbol,
-              side: Number(p.positionAmt) > 0 ? "BUY" : "SELL",
-              qty: Math.abs(Number(p.positionAmt)),
-              entryPrice: Number(p.entryPrice || 0),
-              leverage: Number(p.leverage || 0),
+            symbol: p.symbol,
+            side: Number(p.positionAmt) > 0 ? "BUY" : "SELL",
+            qty: Math.abs(Number(p.positionAmt)),
+            entryPrice: Number(p.entryPrice || 0),
+            leverage: Number(p.leverage || 0),
               positionSide,
             };
           });

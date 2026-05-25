@@ -40,6 +40,7 @@ import { attachWs, setTelegramTradeHook } from "./transport/ws.js";
 import { createTelegramSidecar } from "./svc/telegram/telegramSidecar.js";
 import { startWalletSnapshotPoller } from "./lib/walletSnapshotPoller.js";
 import { startIntelligenceEngine } from "./intelligence/index.js";
+import { recoverOrphanedBacktestRuns, setBacktestWsHub } from "./backtest/engine/pool.js";
 
 const PORT = Number(process.env.PORT || 8000);
 function expandFrontendOrigins(raw) {
@@ -181,10 +182,14 @@ if (apiRateLimitOff) {
       standardHeaders: true,
       legacyHeaders: false,
       message: { ok: false, error: "rate_limited" },
-      /** Login + `/api/auth/me` bootstrap share this bucket with chart/state polling; excluding auth avoids false 429s and long retries. */
+      /**
+       * Exclude high-chatter routes from this global bucket:
+       * - `/api/auth/*` — login + `/me` bootstrap vs polling
+       * - `/api/backtest/*` — workbench polls ~800ms while runs are active + equity/trades/coverage fetches
+       */
       skip: (req) => {
         const u = String(req.originalUrl || req.url || "").split("?")[0];
-        return u.startsWith("/api/auth");
+        return u.startsWith("/api/auth") || u.startsWith("/api/backtest");
       },
     }),
   );
@@ -237,6 +242,12 @@ if (serveFrontend && fs.existsSync(distPath)) {
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 attachWs({ wss, appState });
+setBacktestWsHub(appState.wsHub);
+if (getPool()) {
+  recoverOrphanedBacktestRuns().catch((e) => {
+    log.warn("backtest_recover_orphaned_failed", { error: String(e?.message || e) });
+  });
+}
 
 server.on("upgrade", (request, socket, head) => {
   let pathname = "/";

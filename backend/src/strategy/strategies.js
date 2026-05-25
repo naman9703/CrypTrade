@@ -1,4 +1,14 @@
 import { SURF_PULSE_ML } from "./surfPulseMl.js";
+import { TREND_PULLBACK } from "./trendPullback.js";
+import { SMART_REVERSAL } from "./smartReversal.js";
+import { HTF_RSI } from "./htfRsi.js";
+import { TREND_HTF_ST } from "./trendHtfSt.js";
+import { ELITE_HTF } from "./eliteHtf.js";
+import { HTF_LEG_RIDER } from "./htfLegRider.js";
+import { APEX_TREND } from "./apexTrend.js";
+import { SUPERTREND_ELITE } from "./supertrendElite.js";
+import { SR_INTRADAY, INTRADAY_PRO } from "./intradayPro.js";
+import { VOLUME_PROFILE } from "./volumeProfileStrategy.js";
 
 const MIN_SIGNAL_SCORE = Number(process.env.MIN_SIGNAL_SCORE || 65);
 
@@ -200,6 +210,12 @@ export const strategies = {
     },
   },
   SURF_PULSE_ML,
+  TREND_PULLBACK,
+  SMART_REVERSAL,
+  HTF_RSI,
+  TREND_HTF_ST,
+  ELITE_HTF,
+  HTF_LEG_RIDER,
   ENSEMBLE: {
     name: "Ensemble (2+ signals must agree)",
     signal({ candles, indicators, regime }) {
@@ -216,4 +232,28 @@ export const strategies = {
       return { action: "HOLD", reason: "ensemble_no_consensus" };
     },
   },
+  APEX_TREND,
+  BTC_CONSENSUS: {
+    name: "BTC trend consensus (2+ of Trend+ST / Leg Rider / Momentum)",
+    signal({ candles, indicators, regime }) {
+      const base = ["TREND_HTF_ST", "HTF_LEG_RIDER", "MOMENTUM_SURGE"];
+      let buys = 0;
+      let sells = 0;
+      for (const key of base) {
+        const strat = strategies[key];
+        if (!strat?.signal) continue;
+        const sig = strat.signal({ candles, indicators, regime });
+        if (sig.action === "BUY") buys++;
+        else if (sig.action === "SELL") sells++;
+      }
+      if (buys >= 2) return { action: "BUY", reason: `btc_consensus_${buys}` };
+      if (sells >= 2) return { action: "SELL", reason: `btc_consensus_${sells}` };
+      return { action: "HOLD", reason: "btc_consensus_no_agree" };
+    },
+  },
+
+  SUPERTREND_ELITE,
+  SR_INTRADAY,
+  INTRADAY_PRO,
+  VOLUME_PROFILE,
 };

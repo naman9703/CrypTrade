@@ -13,6 +13,7 @@ const gateWarmupLoggedSymbols = new Set();
  *
  * @param {{
  *   gateEnabled: boolean,
+ *   strictMode?: boolean,
  *   symbol: string,
  *   openingLong: boolean,
  *   broadcastLog?: (p: { level: string, msg: string }) => void,
@@ -21,7 +22,8 @@ const gateWarmupLoggedSymbols = new Set();
  * @returns {{ veto: boolean, sizeMultiplier: number }}
  */
 export function evaluateIntelligenceGateForSupertrendOpen(opts) {
-  const { gateEnabled, symbol, openingLong, broadcastLog, logInfo } = opts;
+  const { gateEnabled, strictMode = false, symbol, openingLong, broadcastLog, logInfo } = opts;
+  const strict = strictMode === true;
   const none = { veto: false, sizeMultiplier: 1 };
   if (!gateEnabled) return none;
 
@@ -53,11 +55,18 @@ export function evaluateIntelligenceGateForSupertrendOpen(opts) {
   const sizeMultiplier =
     Number.isFinite(conf) && conf > 60 && Number.isFinite(rawMult) ? clamp(rawMult, 0.25, 2) : 1;
 
-  if (openingLong && intel.composite <= 35) {
+  const composite = Number(intel.composite);
+  const longVetoMax = strict ? 57 : 35;
+  const shortVetoMin = strict ? 43 : 65;
+  const longPassMin = strict ? 58 : 36;
+  const shortPassMax = strict ? 42 : 64;
+
+  if (openingLong && composite <= longVetoMax) {
     logInfo?.("intelligence_gate_skip_long", {
       composite: intel.composite,
       confidence: intel.confidence,
       symbol: sym,
+      strict,
     });
     broadcastLog?.({
       level: "warn",
@@ -65,17 +74,33 @@ export function evaluateIntelligenceGateForSupertrendOpen(opts) {
     });
     return { veto: true, sizeMultiplier: 1 };
   }
-  if (!openingLong && intel.composite >= 65) {
+  if (!openingLong && composite >= shortVetoMin) {
     logInfo?.("intelligence_gate_skip_short", {
       composite: intel.composite,
       confidence: intel.confidence,
       symbol: sym,
+      strict,
     });
     broadcastLog?.({
       level: "warn",
       msg: `[Intelligence] Bullish composite (${intel.composite}/100) opposes SHORT. Skipping.`,
     });
     return { veto: true, sizeMultiplier: 1 };
+  }
+
+  if (strict) {
+    if (openingLong && composite < longPassMin) {
+      return { veto: true, sizeMultiplier: 1 };
+    }
+    if (!openingLong && composite > shortPassMax) {
+      return { veto: true, sizeMultiplier: 1 };
+    }
+    if (composite >= 47 && composite <= 53) {
+      return { veto: true, sizeMultiplier: 1 };
+    }
+    if (Number(conf) < 55) {
+      return { veto: true, sizeMultiplier: 1 };
+    }
   }
 
   return { veto: false, sizeMultiplier };

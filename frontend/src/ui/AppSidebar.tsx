@@ -167,6 +167,21 @@ export function AppSidebar({ open, onClose }: Props) {
             Overview
           </button>
 
+          {/* Backtest workbench */}
+          <button
+            type="button"
+            onClick={() => { setMainView("backtest"); onClose(); }}
+            className={clsx(
+              "flex w-full items-center gap-2.5 px-4 py-2.5 text-sm transition-colors",
+              mainView === "backtest"
+                ? "bg-sky-50 font-semibold text-sky-700 dark:bg-sky-950/30 dark:text-sky-300"
+                : "text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900",
+            )}
+          >
+            <span className="text-base" aria-hidden>≡</span>
+            Backtest
+          </button>
+
           <div className="mx-4 my-2 border-t border-slate-100 dark:border-slate-800" />
 
           {/* Instances */}

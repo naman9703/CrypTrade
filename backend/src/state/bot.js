@@ -12,7 +12,7 @@ import { computeDecisionSnapshot } from "../strategy/decisionEngine.js";
 import { detectRegime } from "../strategy/regime.js";
 import { strategies } from "../strategy/strategies.js";
 import { pickStrategyAuto, topStrategies } from "../strategy/selector.js";
-import { riskPlan, spotBracketFromAtr } from "../strategy/risk.js";
+import { riskPlan, spotBracketFromAtr, applyFixedPctBracket } from "../strategy/risk.js";
 import { evaluateIntelligenceGateForSupertrendOpen } from "./intelligenceGate.js";
 import { createMarketFeed } from "./marketFeed.js";
 import { createBinanceUniverse } from "../svc/universe/binanceUniverse.js";
@@ -36,6 +36,7 @@ import {
 import { broadcastActivity } from "../lib/activityLog.js";
 import { mergePersistedTradesWithExchange } from "../lib/activityPersistence.js";
 import { getPool } from "../db/pool.js";
+import { scheduleArchiveLiveOhlcvCandle } from "../backtest/data/liveOhlcvArchive.js";
 import { fireAndForgetWalletSnapshot } from "../db/services/walletService.js";
 import { computeInstanceStats, updateInstanceStats } from "../db/services/instanceService.js";
 import { getAllotmentForInstance, updateReserved } from "../db/services/capitalAllotmentService.js";
@@ -64,6 +65,16 @@ import {
   evaluateSupertrendMoveQuality,
   estimateSlDistancePctForMoveQualityGate,
 } from "../strategy/supertrendMoveQuality.js";
+import {
+  evaluateSupertrendBigMoveGate,
+  readBigMoveGateCfg,
+  BIG_MOVE_DEFAULTS,
+} from "../strategy/supertrendBigMoveGate.js";
+import {
+  buildHtf4hContext,
+  evaluateHtf4hFilter,
+} from "../strategy/supertrendHtf4hFilter.js";
+import { ELITE_ST_ACTIVATION_PATCH } from "../strategy/supertrendElite.js";
 import { learnSmartSignalStrengthThreshold } from "../lib/signalStrengthSmartThreshold.js";
 import { extractSurfPulseFeatures } from "../strategy/surfPulseMl.js";
 import { mergeMarketDecisionConfig, computeMarketDecisionSnapshot } from "../lib/marketDecisionEngine.js";
@@ -706,6 +717,44 @@ export function createBot({
     supertrendMoveQualityMinMoveSlRatio: Math.max(1, Number(process.env.SUPERTREND_MOVE_QUALITY_MIN_MOVE_SL_RATIO ?? 1.5)),
     /** Multiplier on ATR% for “expected favorable move” estimate (1 = raw ATR% vs SL%). */
     supertrendMoveQualityExpectedMoveAtrMult: Math.max(0.1, Number(process.env.SUPERTREND_MOVE_QUALITY_ATR_EXPECT_MULT ?? 1.0)),
+    /**
+     * 4H Supertrend direction confirmation filter.
+     * When on, Supertrend opens are blocked unless the 4H ST trend agrees (bullish for BUY, bearish for SELL).
+     */
+    supertrendHtf4hEnabled: false,
+    supertrendHtf4hPeriod: clamp(Math.round(Number(process.env.SUPERTREND_HTF4H_PERIOD ?? 10)), 2, 50),
+    supertrendHtf4hMultiplier: Math.max(0.5, Number(process.env.SUPERTREND_HTF4H_MULTIPLIER ?? 3)),
+
+    /** Volume Profile — SR_INTRADAY / INTRADAY_PRO structure filter (Indicators section). */
+    volumeProfileEnabled: false,
+    volumeProfileSoftGates: true,
+    volumeProfileGatesEnabled: false,
+    intradayVpBrackets: false,
+    vpLookbackBars: clamp(Math.round(Number(process.env.VP_LOOKBACK_BARS ?? 672)), 48, 2000),
+    vpMinRR: clamp(Number(process.env.VP_MIN_RR ?? 1.5), 0.8, 5),
+
+    /**
+     * Unified Supertrend entry filter (indicator section): signal strength + move quality targeting T1+.
+     * Replaces separate signal-strength / move-quality gates when enabled. Not the intelligence gate.
+     */
+    supertrendBigMoveGateEnabled: false,
+    supertrendBigMoveMinStrength: clamp(
+      Math.round(Number(process.env.SUPERTREND_BIG_MOVE_MIN_STRENGTH ?? BIG_MOVE_DEFAULTS.minStrength)),
+      0,
+      100,
+    ),
+    supertrendBigMoveMinMoveSlRatio: Math.max(1, Number(process.env.SUPERTREND_BIG_MOVE_MIN_MOVE_SL_RATIO ?? BIG_MOVE_DEFAULTS.minMoveToSlRatio)),
+    supertrendBigMoveMinAdx: clamp(Math.round(Number(process.env.SUPERTREND_BIG_MOVE_MIN_ADX ?? BIG_MOVE_DEFAULTS.minAdx)), 0, 100),
+    supertrendBigMoveMinScore: clamp(Number(process.env.SUPERTREND_BIG_MOVE_MIN_SCORE ?? BIG_MOVE_DEFAULTS.minScore), 0, 1),
+    supertrendBigMoveMaxCandlesSinceFlip: Math.max(
+      0,
+      Math.min(20, Math.floor(Number(process.env.SUPERTREND_BIG_MOVE_MAX_CANDLES_SINCE_FLIP ?? BIG_MOVE_DEFAULTS.maxCandlesSinceFlip))),
+    ),
+    supertrendBigMoveMinVolumeVsAvg: Math.max(0, Number(process.env.SUPERTREND_BIG_MOVE_MIN_VOLUME_VS_AVG ?? BIG_MOVE_DEFAULTS.minVolumeVsAvg)),
+    supertrendBigMoveExpectedMoveAtrMult: Math.max(
+      0.1,
+      Number(process.env.SUPERTREND_BIG_MOVE_EXPECTED_MOVE_ATR_MULT ?? BIG_MOVE_DEFAULTS.expectedMoveAtrMult),
+    ),
     /** Min ATR/avgATR expansion; 0 = disable this hard check. */
     supertrendMoveQualityMinAtrExpansion: Math.max(0, Number(process.env.SUPERTREND_MOVE_QUALITY_MIN_ATR_EXPANSION ?? 1.08)),
     /** Skip if signal bar body vs avg body ratio is below this (noise filter). */
@@ -714,6 +763,26 @@ export function createBot({
     supertrendMoveQualityMinDirectionalBody: clamp(Number(process.env.SUPERTREND_MOVE_QUALITY_MIN_DIRECTIONAL_BODY ?? 0), 0, 1),
     /** 0 = off. Else last vol must be ≥ SMA(vol)×this (e.g. 1.2). */
     supertrendMoveQualityMinVolumeVsAvg: Math.max(0, Number(process.env.SUPERTREND_MOVE_QUALITY_MIN_VOLUME_VS_AVG ?? 0)),
+
+    /**
+     * SUPERTREND_ELITE strategy gate config.
+     * Gate 1 (ADX), Gate 2 (Volume), Gate 3 (1H EMA), Gate 4 (4H ST), Gate 5 (ATR exp), Bonus (LiqSweep).
+     * All gates are individually configurable. Default: 4H alignment only (the proven high-WR gate).
+     */
+    eliteStRequireHtf4hAlign:     ["1","true","yes"].includes(String(process.env.ELITE_ST_REQUIRE_HTF4H_ALIGN ?? "true").toLowerCase()),
+    eliteStHtf4hPeriod:           clamp(Math.round(Number(process.env.ELITE_ST_HTF4H_PERIOD ?? 10)), 2, 50),
+    eliteStHtf4hMultiplier:       Math.max(0.5, Number(process.env.ELITE_ST_HTF4H_MULTIPLIER ?? 3)),
+    eliteStRequireHtf1hEmaAlign:  ["1","true","yes"].includes(String(process.env.ELITE_ST_REQUIRE_HTF1H_EMA_ALIGN ?? "true").toLowerCase()),
+    eliteStHtf1hMinSep:           Math.max(0, Number(process.env.ELITE_ST_HTF1H_MIN_SEP ?? 0.0005)),
+    eliteStMinAdx:                Math.max(0, Number(process.env.ELITE_ST_MIN_ADX ?? 0)),
+    eliteStRequireAdxRising:      false,
+    eliteStAdxRisingLookback:     Math.max(1, Math.round(Number(process.env.ELITE_ST_ADX_RISING_LOOKBACK ?? 3))),
+    eliteStMinVolumeVsAvg:        Math.max(0, Number(process.env.ELITE_ST_MIN_VOLUME_VS_AVG ?? 0)),
+    eliteStRequireAtrExpansion:   false,
+    eliteStMinAtrExpansion:       Math.max(1, Number(process.env.ELITE_ST_MIN_ATR_EXPANSION ?? 1.15)),
+    eliteStAtrExpansionLookback:  Math.max(2, Math.round(Number(process.env.ELITE_ST_ATR_EXPANSION_LOOKBACK ?? 12))),
+    eliteStLiqSweepEnabled:       false,
+
     /**
      * When true, defer entry until a later bar **closes** beyond signal candle high (BUY) or low (SELL).
      * Single-chart `processSupertrendCandleClose` only; AUTO multi sweep still uses immediate entry.
@@ -752,14 +821,19 @@ export function createBot({
     surfPulseMlGateEnabled: String(process.env.SURF_PULSE_ML_GATE_ENABLED ?? "1").toLowerCase() !== "0",
     /** Enable market intelligence gate — skips trades when high-confidence signals oppose direction. Default off until tested. */
     intelligenceGateEnabled: String(process.env.INTELLIGENCE_GATE_ENABLED ?? "0").toLowerCase() !== "0",
+    /** Stricter composite bands + neutral chop block (mirrors backtest `intelligenceGateStrict`). */
+    intelligenceGateStrict: false,
+    intelligenceGateHighWinRate: false,
+    /** When false, skip opposite ST flip orders while a futures leg is open (exit via SL/trail/TP on exchange). */
+    supertrendFuturesExitOnFlip: true,
     /** Min XGBoost win probability (0–1) for SURF_PULSE_ML opens; default from env `SURF_PULSE_ML_THRESHOLD`. */
     surfPulseMlThreshold: clamp(Number(process.env.SURF_PULSE_ML_THRESHOLD ?? 0.6), 0, 1),
     /** Futures autotrade: fee breakeven, fee-based first scalping, then optional %-of-entry locks (see `trailingStopLoss.js`). */
     trailingStopLossAuto: false,
     /** `SUPERTREND` = ST line + fee activation (see `supertrendTrailingSl.js`). `FEE_LADDER` = discrete fee/% locks (`advanceTrailingStopState`). */
     futuresTrailingStopMode: "SUPERTREND",
-    /** Supertrend mode: fee breakeven floor / activation (see `computeSupertrendTrailingSlUpdate`). */
-    futuresTrailingStFeeBreakeven: true,
+    /** Supertrend mode: fee breakeven floor / activation (see `computeSupertrendTrailingSlUpdate`). HTF_RSI backtests: off + advanced on beats tiered T01/T02. */
+    futuresTrailingStFeeBreakeven: false,
     /** Supertrend mode: follow Supertrend line (with BE floor when fee breakeven is also on). */
     futuresTrailingStAdvanced: true,
     /** Up to 3 extra trailing locks, each % of entry (e.g. 0.5 = 0.5%). */
@@ -828,7 +902,7 @@ export function createBot({
       0.01,
     ),
     trailFeeBeMultiplier: clamp(Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.0), 1, 2),
-    trailBufferRate: clamp(Number(process.env.SUPERTREND_TRAIL_BUFFER_RATE ?? 0.0005), 0, 0.05),
+    trailBufferRate: clamp(Number(process.env.SUPERTREND_TRAIL_BUFFER_RATE ?? 0.0015), 0, 0.05),
     /** Additive fraction on padded BE rate for Supertrend tiered gates (execution vs theoretical fees). */
     trailActivationSlippageFrac: clamp(Number(process.env.FUTURES_TRAIL_ACTIVATION_SLIPPAGE_FRAC ?? 0), 0, 0.01),
     /** Tiered Supertrend T01: SL lock offset from entry. Default 0 — T01 lock = entry (zero-loss point per spec). */
@@ -848,7 +922,8 @@ export function createBot({
      */
     trailPostT02ActivationBufferRate: (() => {
       const x = Number(process.env.FUTURES_TRAIL_POST_T02_ACTIVATION_BUFFER_RATE);
-      return Number.isFinite(x) && x >= 0 ? clamp(x, 0, 0.05) : null;
+      if (Number.isFinite(x) && x >= 0) return clamp(x, 0, 0.05);
+      return 0.0014;
     })(),
     trailMinSlDistFrac: clamp(Number(process.env.SUPERTREND_TRAIL_MIN_SL_DISTANCE_FRAC ?? 0.002), 0, 0.1),
     trailMinGapFromMarkFrac: clamp(Number(process.env.SUPERTREND_TRAIL_MIN_GAP_FROM_MARK_FRAC ?? 0), 0, 0.2),
@@ -859,7 +934,7 @@ export function createBot({
      */
     trailPostT02SpacingFrac: (() => {
       const x = Number(process.env.TRAIL_POST_T02_SPACING_FRAC);
-      return Number.isFinite(x) && x > 0 ? clamp(x, 0.00001, 0.05) : null;
+      return Number.isFinite(x) && x > 0 ? clamp(x, 0.00001, 0.05) : 0.002;
     })(),
     /** Max post‑T02 tiers (T1…); total trail steps cap ≈ 3 + this (with floor/ceiling in `maxTrailStepsForConfig`). */
     trailPostT02MaxExtraTiers: Math.max(
@@ -894,6 +969,16 @@ export function createBot({
     supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(Number(process.env.SUPERTREND_FUTURES_MAX_SIGNAL_LAG_MS ?? 0))),
     supertrendPeriod: 10,
     supertrendMultiplier: 3,
+    trendHtfStRegimeGate: false,
+    trendHtfStSurgicalLossFilter: false,
+    trendHtfStQualityFilter: false,
+    trendHtfStFlipExitBeforeSl: false,
+    trendHtfStMaxEntryRangeAtr: 2,
+    trendHtfStMinHtfSep: 0.0005,
+    trendHtfStRegimeTpTrend: 0.03,
+    trendHtfStRegimeTpMixed: 0.035,
+    trendHtfStRegimeTpChop: 0.04,
+    backtestBreakevenAtMfePct: 0,
     supertrendWilderAtr: true,
     supertrendLast: null,
     supertrendLastClosedTs: null,
@@ -1573,6 +1658,23 @@ export function createBot({
         supertrendFuturesAiConfidenceFilter: state.supertrendFuturesAiConfidenceFilter,
         signalStrengthGatesTrades: state.signalStrengthGatesTrades,
         supertrendMoveQualityGate: state.supertrendMoveQualityGate === true,
+        supertrendHtf4hEnabled: state.supertrendHtf4hEnabled === true,
+        supertrendHtf4hPeriod: state.supertrendHtf4hPeriod,
+        supertrendHtf4hMultiplier: state.supertrendHtf4hMultiplier,
+        volumeProfileEnabled: state.volumeProfileEnabled === true,
+        volumeProfileSoftGates: state.volumeProfileSoftGates !== false,
+        volumeProfileGatesEnabled: state.volumeProfileGatesEnabled === true,
+        intradayVpBrackets: state.intradayVpBrackets === true,
+        vpLookbackBars: state.vpLookbackBars,
+        vpMinRR: state.vpMinRR,
+        supertrendBigMoveGateEnabled: state.supertrendBigMoveGateEnabled === true,
+        supertrendBigMoveMinStrength: state.supertrendBigMoveMinStrength,
+        supertrendBigMoveMinMoveSlRatio: state.supertrendBigMoveMinMoveSlRatio,
+        supertrendBigMoveMinAdx: state.supertrendBigMoveMinAdx,
+        supertrendBigMoveMinScore: state.supertrendBigMoveMinScore,
+        supertrendBigMoveMaxCandlesSinceFlip: state.supertrendBigMoveMaxCandlesSinceFlip,
+        supertrendBigMoveMinVolumeVsAvg: state.supertrendBigMoveMinVolumeVsAvg,
+        supertrendBigMoveExpectedMoveAtrMult: state.supertrendBigMoveExpectedMoveAtrMult,
         supertrendMoveQualityMinScore: state.supertrendMoveQualityMinScore,
         supertrendMoveQualityMinAdx: state.supertrendMoveQualityMinAdx,
         supertrendMoveQualityMinMoveSlRatio: state.supertrendMoveQualityMinMoveSlRatio,
@@ -1581,6 +1683,19 @@ export function createBot({
         supertrendMoveQualityMinBodyVsAvg: state.supertrendMoveQualityMinBodyVsAvg,
         supertrendMoveQualityMinDirectionalBody: state.supertrendMoveQualityMinDirectionalBody,
         supertrendMoveQualityMinVolumeVsAvg: state.supertrendMoveQualityMinVolumeVsAvg,
+        eliteStRequireHtf4hAlign:    state.eliteStRequireHtf4hAlign === true,
+        eliteStHtf4hPeriod:          state.eliteStHtf4hPeriod,
+        eliteStHtf4hMultiplier:      state.eliteStHtf4hMultiplier,
+        eliteStRequireHtf1hEmaAlign: state.eliteStRequireHtf1hEmaAlign === true,
+        eliteStHtf1hMinSep:          state.eliteStHtf1hMinSep,
+        eliteStMinAdx:               state.eliteStMinAdx,
+        eliteStRequireAdxRising:     state.eliteStRequireAdxRising === true,
+        eliteStAdxRisingLookback:    state.eliteStAdxRisingLookback,
+        eliteStMinVolumeVsAvg:       state.eliteStMinVolumeVsAvg,
+        eliteStRequireAtrExpansion:  state.eliteStRequireAtrExpansion === true,
+        eliteStMinAtrExpansion:      state.eliteStMinAtrExpansion,
+        eliteStAtrExpansionLookback: state.eliteStAtrExpansionLookback,
+        eliteStLiqSweepEnabled:      state.eliteStLiqSweepEnabled === true,
         marketDecision: state.marketDecision && typeof state.marketDecision === "object" ? { ...state.marketDecision } : {},
         supertrendBreakoutConfirm: state.supertrendBreakoutConfirm === true,
         supertrendBreakoutMaxBars: state.supertrendBreakoutMaxBars,
@@ -1597,6 +1712,9 @@ export function createBot({
         surfPulseMlGateEnabled: state.surfPulseMlGateEnabled !== false,
         surfPulseMlThreshold: state.surfPulseMlThreshold,
         intelligenceGateEnabled: state.intelligenceGateEnabled === true,
+        intelligenceGateStrict: state.intelligenceGateStrict === true,
+        intelligenceGateHighWinRate: state.intelligenceGateHighWinRate === true,
+        supertrendFuturesExitOnFlip: state.supertrendFuturesExitOnFlip !== false,
         trailingStopLossAuto: state.trailingStopLossAuto,
         futuresTrailingStopMode: normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode),
         futuresTrailingStFeeBreakeven: state.futuresTrailingStFeeBreakeven !== false,
@@ -1636,6 +1754,16 @@ export function createBot({
         supertrendPeriod: state.supertrendPeriod,
         supertrendMultiplier: state.supertrendMultiplier,
         supertrendWilderAtr: state.supertrendWilderAtr,
+        trendHtfStRegimeGate: state.trendHtfStRegimeGate === true,
+        trendHtfStSurgicalLossFilter: state.trendHtfStSurgicalLossFilter === true,
+        trendHtfStQualityFilter: state.trendHtfStQualityFilter === true,
+        trendHtfStFlipExitBeforeSl: state.trendHtfStFlipExitBeforeSl === true,
+        trendHtfStMaxEntryRangeAtr: Number(state.trendHtfStMaxEntryRangeAtr) || 0,
+        trendHtfStMinHtfSep: Number(state.trendHtfStMinHtfSep) || 0.0005,
+        trendHtfStRegimeTpTrend: Number(state.trendHtfStRegimeTpTrend) || 0.03,
+        trendHtfStRegimeTpMixed: Number(state.trendHtfStRegimeTpMixed) || 0.035,
+        trendHtfStRegimeTpChop: Number(state.trendHtfStRegimeTpChop) || 0.04,
+        backtestBreakevenAtMfePct: Number(state.backtestBreakevenAtMfePct) || 0,
       },
       tradingFormDefaults: { ...state.tradingFormDefaults },
     };
@@ -1806,6 +1934,45 @@ export function createBot({
         state.signalStrengthGatesTrades = b.signalStrengthGatesTrades;
       }
       if (typeof b.supertrendMoveQualityGate === "boolean") state.supertrendMoveQualityGate = b.supertrendMoveQualityGate;
+      if (typeof b.supertrendHtf4hEnabled === "boolean") state.supertrendHtf4hEnabled = b.supertrendHtf4hEnabled;
+      if (b.supertrendHtf4hPeriod != null && Number.isFinite(Number(b.supertrendHtf4hPeriod))) {
+        state.supertrendHtf4hPeriod = clamp(Math.round(Number(b.supertrendHtf4hPeriod)), 2, 50);
+      }
+      if (b.supertrendHtf4hMultiplier != null && Number.isFinite(Number(b.supertrendHtf4hMultiplier))) {
+        state.supertrendHtf4hMultiplier = Math.max(0.5, Number(b.supertrendHtf4hMultiplier));
+      }
+      if (typeof b.volumeProfileEnabled === "boolean") state.volumeProfileEnabled = b.volumeProfileEnabled;
+      if (typeof b.volumeProfileSoftGates === "boolean") state.volumeProfileSoftGates = b.volumeProfileSoftGates;
+      if (typeof b.volumeProfileGatesEnabled === "boolean") state.volumeProfileGatesEnabled = b.volumeProfileGatesEnabled;
+      if (typeof b.intradayVpBrackets === "boolean") state.intradayVpBrackets = b.intradayVpBrackets;
+      if (b.vpLookbackBars != null && Number.isFinite(Number(b.vpLookbackBars))) {
+        state.vpLookbackBars = clamp(Math.round(Number(b.vpLookbackBars)), 48, 2000);
+      }
+      if (b.vpMinRR != null && Number.isFinite(Number(b.vpMinRR))) {
+        state.vpMinRR = clamp(Number(b.vpMinRR), 0.8, 5);
+      }
+      if (typeof b.supertrendBigMoveGateEnabled === "boolean") state.supertrendBigMoveGateEnabled = b.supertrendBigMoveGateEnabled;
+      if (b.supertrendBigMoveMinStrength != null && Number.isFinite(Number(b.supertrendBigMoveMinStrength))) {
+        state.supertrendBigMoveMinStrength = clamp(Math.round(Number(b.supertrendBigMoveMinStrength)), 0, 100);
+      }
+      if (b.supertrendBigMoveMinMoveSlRatio != null && Number.isFinite(Number(b.supertrendBigMoveMinMoveSlRatio))) {
+        state.supertrendBigMoveMinMoveSlRatio = Math.max(1, Number(b.supertrendBigMoveMinMoveSlRatio));
+      }
+      if (b.supertrendBigMoveMinAdx != null && Number.isFinite(Number(b.supertrendBigMoveMinAdx))) {
+        state.supertrendBigMoveMinAdx = clamp(Math.round(Number(b.supertrendBigMoveMinAdx)), 0, 100);
+      }
+      if (b.supertrendBigMoveMinScore != null && Number.isFinite(Number(b.supertrendBigMoveMinScore))) {
+        state.supertrendBigMoveMinScore = clamp(Number(b.supertrendBigMoveMinScore), 0, 1);
+      }
+      if (b.supertrendBigMoveMaxCandlesSinceFlip != null && Number.isFinite(Number(b.supertrendBigMoveMaxCandlesSinceFlip))) {
+        state.supertrendBigMoveMaxCandlesSinceFlip = Math.max(0, Math.min(20, Math.floor(Number(b.supertrendBigMoveMaxCandlesSinceFlip))));
+      }
+      if (b.supertrendBigMoveMinVolumeVsAvg != null && Number.isFinite(Number(b.supertrendBigMoveMinVolumeVsAvg))) {
+        state.supertrendBigMoveMinVolumeVsAvg = Math.max(0, Number(b.supertrendBigMoveMinVolumeVsAvg));
+      }
+      if (b.supertrendBigMoveExpectedMoveAtrMult != null && Number.isFinite(Number(b.supertrendBigMoveExpectedMoveAtrMult))) {
+        state.supertrendBigMoveExpectedMoveAtrMult = Math.max(0.1, Number(b.supertrendBigMoveExpectedMoveAtrMult));
+      }
       if (b.supertrendMoveQualityMinScore != null && Number.isFinite(Number(b.supertrendMoveQualityMinScore))) {
         state.supertrendMoveQualityMinScore = clamp(Number(b.supertrendMoveQualityMinScore), 0, 1);
       }
@@ -1857,6 +2024,15 @@ export function createBot({
       }
       if (b.intelligenceGateEnabled != null) {
         state.intelligenceGateEnabled = Boolean(b.intelligenceGateEnabled);
+      }
+      if (b.intelligenceGateStrict != null) {
+        state.intelligenceGateStrict = Boolean(b.intelligenceGateStrict);
+      }
+      if (b.intelligenceGateHighWinRate != null) {
+        state.intelligenceGateHighWinRate = Boolean(b.intelligenceGateHighWinRate);
+      }
+      if (b.supertrendFuturesExitOnFlip != null) {
+        state.supertrendFuturesExitOnFlip = Boolean(b.supertrendFuturesExitOnFlip);
       }
       if (typeof b.trailingStopLossAuto === "boolean") state.trailingStopLossAuto = b.trailingStopLossAuto;
       if (b.futuresTrailingStopMode != null) state.futuresTrailingStopMode = normalizeFuturesTrailingStopMode(b.futuresTrailingStopMode);
@@ -1954,6 +2130,32 @@ export function createBot({
         state.supertrendMultiplier = clamp(Number(b.supertrendMultiplier), 0.5, 20);
       }
       if (typeof b.supertrendWilderAtr === "boolean") state.supertrendWilderAtr = b.supertrendWilderAtr;
+      if (typeof b.trendHtfStRegimeGate === "boolean") state.trendHtfStRegimeGate = b.trendHtfStRegimeGate;
+      if (typeof b.trendHtfStSurgicalLossFilter === "boolean") {
+        state.trendHtfStSurgicalLossFilter = b.trendHtfStSurgicalLossFilter;
+      }
+      if (typeof b.trendHtfStQualityFilter === "boolean") state.trendHtfStQualityFilter = b.trendHtfStQualityFilter;
+      if (typeof b.trendHtfStFlipExitBeforeSl === "boolean") {
+        state.trendHtfStFlipExitBeforeSl = b.trendHtfStFlipExitBeforeSl;
+      }
+      if (b.trendHtfStMaxEntryRangeAtr != null && Number.isFinite(Number(b.trendHtfStMaxEntryRangeAtr))) {
+        state.trendHtfStMaxEntryRangeAtr = clamp(Number(b.trendHtfStMaxEntryRangeAtr), 0, 10);
+      }
+      if (b.trendHtfStMinHtfSep != null && Number.isFinite(Number(b.trendHtfStMinHtfSep))) {
+        state.trendHtfStMinHtfSep = clamp(Number(b.trendHtfStMinHtfSep), 0, 0.05);
+      }
+      if (b.trendHtfStRegimeTpTrend != null && Number.isFinite(Number(b.trendHtfStRegimeTpTrend))) {
+        state.trendHtfStRegimeTpTrend = clamp(Number(b.trendHtfStRegimeTpTrend), 0.0005, 0.5);
+      }
+      if (b.trendHtfStRegimeTpMixed != null && Number.isFinite(Number(b.trendHtfStRegimeTpMixed))) {
+        state.trendHtfStRegimeTpMixed = clamp(Number(b.trendHtfStRegimeTpMixed), 0.0005, 0.5);
+      }
+      if (b.trendHtfStRegimeTpChop != null && Number.isFinite(Number(b.trendHtfStRegimeTpChop))) {
+        state.trendHtfStRegimeTpChop = clamp(Number(b.trendHtfStRegimeTpChop), 0.0005, 0.5);
+      }
+      if (b.backtestBreakevenAtMfePct != null && Number.isFinite(Number(b.backtestBreakevenAtMfePct))) {
+        state.backtestBreakevenAtMfePct = clamp(Number(b.backtestBreakevenAtMfePct), 0, 0.1);
+      }
     }
     const tf = raw.tradingFormDefaults;
     if (tf && typeof tf === "object") {
@@ -2115,6 +2317,62 @@ export function createBot({
       };
     }
     return null;
+  }
+
+  /** When `supertrendHtf4hEnabled` OR SUPERTREND_ELITE with 4H gate, block misaligned opens. */
+  function htf4hBlocksOpen({ openingSide, candles }) {
+    const eliteActive = state.manualStrategy === "SUPERTREND_ELITE" && state.eliteStRequireHtf4hAlign === true;
+    if (!state.supertrendHtf4hEnabled && !eliteActive) return null;
+    if (openingSide !== "BUY" && openingSide !== "SELL") return null;
+    const clean = sanitizeCandlesForSt(candles);
+    if (!clean.length) return { reason: "htf4h_no_candles", htf4hTrend: 0 };
+    const ctx = buildHtf4hContext(clean, {
+      period: state.supertrendHtf4hPeriod,
+      multiplier: state.supertrendHtf4hMultiplier,
+    });
+    const result = evaluateHtf4hFilter(ctx, clean[clean.length - 1], openingSide);
+    if (result.pass) return null;
+    return { reason: result.reason, htf4hTrend: result.htf4hTrend };
+  }
+
+  function bigMoveGateCfgFromState() {
+    return readBigMoveGateCfg({
+      supertrendBigMoveGateEnabled: state.supertrendBigMoveGateEnabled === true,
+      supertrendBigMoveMinStrength: state.supertrendBigMoveMinStrength,
+      supertrendBigMoveMinMoveSlRatio: state.supertrendBigMoveMinMoveSlRatio,
+      supertrendBigMoveMinAdx: state.supertrendBigMoveMinAdx,
+      supertrendBigMoveMinScore: state.supertrendBigMoveMinScore,
+      supertrendBigMoveMaxCandlesSinceFlip: state.supertrendBigMoveMaxCandlesSinceFlip,
+      supertrendBigMoveMinVolumeVsAvg: state.supertrendBigMoveMinVolumeVsAvg,
+      supertrendBigMoveExpectedMoveAtrMult: state.supertrendBigMoveExpectedMoveAtrMult,
+    });
+  }
+
+  /** When `supertrendBigMoveGateEnabled`, require strength + expected move ≥ T1 on the signal bar. */
+  function bigMoveBlocksOpen({ openingSide, candles, latest, venue }) {
+    const opts = bigMoveGateCfgFromState();
+    if (!opts) return null;
+    if (openingSide !== "BUY" && openingSide !== "SELL") return null;
+    const clean = sanitizeCandlesForSt(candles);
+    if (!clean.length) return { reason: "big_move_gate", detail: { pass: false, reason: "no_candles" } };
+    const stSeries = computeSupertrendSeries(clean, {
+      period: state.supertrendPeriod,
+      multiplier: state.supertrendMultiplier,
+      wilder: state.supertrendWilderAtr !== false,
+    });
+    const idx = clean.length - 1;
+    const slEst = estimateSlDistancePctForMoveQualityGate(state, latest, venue);
+    const bm = evaluateSupertrendBigMoveGate({
+      candles: clean,
+      idx,
+      barSignal: { action: openingSide },
+      stSeries,
+      lastFlipIdx: idx,
+      slDistancePct: slEst,
+      opts,
+    });
+    if (bm.pass) return null;
+    return { reason: "big_move_gate", detail: bm };
   }
 
   /** When `supertrendMoveQualityGate` is on, require ATR/ADX/body/expansion + composite score (futures/spot opens). */
@@ -2664,6 +2922,7 @@ export function createBot({
         if (openingIntel != null) {
           const ig = evaluateIntelligenceGateForSupertrendOpen({
             gateEnabled: true,
+            strictMode: state.intelligenceGateStrict === true,
             symbol: symU,
             openingLong: openingIntel,
             broadcastLog: (p) =>
@@ -2875,7 +3134,44 @@ export function createBot({
     let decisionSnapSpot = decisionSnapshot;
     if (side === "BUY") {
       decisionSnapSpot = decisionSnapshot ?? resolveSupertrendDecisionSnapshot(null);
-      const gate = signalStrengthBlocksOpen({ openingSide: "BUY", decisionSnapshot: decisionSnapSpot });
+      const htf4hSpot = htf4hBlocksOpen({ openingSide: "BUY", candles });
+      if (htf4hSpot) {
+        wsHub?.broadcast?.("log", {
+          level: "info",
+          msg: `Supertrend spot BUY skipped: 4H ST confirmation (${htf4hSpot.reason}) — 4H trend ${htf4hSpot.htf4hTrend > 0 ? "bullish" : htf4hSpot.htf4hTrend < 0 ? "bearish" : "unknown"}`,
+          symbol: orderSymbol,
+        });
+        return {
+          venue: "SPOT",
+          side,
+          action: "skipped",
+          reason: htf4hSpot.reason,
+          htf4hTrend: htf4hSpot.htf4hTrend,
+        };
+      }
+      const bmSpot = bigMoveBlocksOpen({
+        openingSide: "BUY",
+        candles,
+        latest: indicators.latest,
+        venue: "SPOT",
+      });
+      if (bmSpot) {
+        wsHub?.broadcast?.("log", {
+          level: "info",
+          msg: `Supertrend spot BUY skipped: big-move gate — ${bmSpot.detail?.reason ?? "fail"}`,
+          symbol: orderSymbol,
+        });
+        return {
+          venue: "SPOT",
+          side,
+          action: "skipped",
+          reason: bmSpot.reason,
+          bigMoveGate: bmSpot.detail,
+        };
+      }
+      const gate = state.supertrendBigMoveGateEnabled
+        ? null
+        : signalStrengthBlocksOpen({ openingSide: "BUY", decisionSnapshot: decisionSnapSpot });
       if (gate) {
         const ss = decisionSnapSpot?.signalStrength;
         wsHub?.broadcast?.("log", {
@@ -2920,12 +3216,14 @@ export function createBot({
           ...(sn ? { marketDecisionSnapshot: sn } : {}),
         };
       }
-      const mqSpot = moveQualityBlocksOpen({
-        openingSide: "BUY",
-        candles,
-        latest: indicators.latest,
-        venue: "SPOT",
-      });
+      const mqSpot = state.supertrendBigMoveGateEnabled
+        ? null
+        : moveQualityBlocksOpen({
+            openingSide: "BUY",
+            candles,
+            latest: indicators.latest,
+            venue: "SPOT",
+          });
       if (mqSpot) {
         const mq = mqSpot.detail?.mq;
         wsHub?.broadcast?.("log", {
@@ -3559,7 +3857,46 @@ export function createBot({
     }
 
     let snapUsedForOpen = decisionSnapshot ?? resolveSupertrendDecisionSnapshot(null);
-    const gate = signalStrengthBlocksOpen({ openingSide, decisionSnapshot: snapUsedForOpen });
+
+    const htf4hFut = htf4hBlocksOpen({ openingSide, candles });
+    if (htf4hFut) {
+      wsHub?.broadcast?.("log", {
+        level: "info",
+        msg: `Supertrend futures ${openingSide} skipped: 4H ST confirmation (${htf4hFut.reason}) — 4H trend ${htf4hFut.htf4hTrend > 0 ? "bullish" : htf4hFut.htf4hTrend < 0 ? "bearish" : "unknown"}`,
+        symbol: orderSymbol,
+      });
+      return {
+        venue: "FUTURES",
+        side,
+        action: "skipped",
+        reason: htf4hFut.reason,
+        htf4hTrend: htf4hFut.htf4hTrend,
+      };
+    }
+
+    const bmFut = bigMoveBlocksOpen({
+      openingSide,
+      candles,
+      latest: indicators.latest,
+      venue: "FUTURES",
+    });
+    if (bmFut) {
+      wsHub?.broadcast?.("log", {
+        level: "info",
+        msg: `Supertrend futures ${openingSide} skipped: big-move gate — ${bmFut.detail?.reason ?? "fail"} str=${bmFut.detail?.strength ?? "—"} move/SL=${bmFut.detail?.moveToSlRatio ?? "—"}`,
+        symbol: orderSymbol,
+      });
+      return {
+        venue: "FUTURES",
+        side,
+        action: "skipped",
+        reason: bmFut.reason,
+        bigMoveGate: bmFut.detail,
+      };
+    }
+    const gate = state.supertrendBigMoveGateEnabled
+      ? null
+      : signalStrengthBlocksOpen({ openingSide, decisionSnapshot: snapUsedForOpen });
     if (gate) {
       const ss = snapUsedForOpen?.signalStrength;
       wsHub?.broadcast?.("log", {
@@ -3606,12 +3943,14 @@ export function createBot({
           ...(sn ? { marketDecisionSnapshot: sn } : {}),
         };
       }
-      const mqFut = moveQualityBlocksOpen({
-        openingSide,
-        candles,
-        latest: indicators.latest,
-        venue: "FUTURES",
-      });
+      const mqFut = state.supertrendBigMoveGateEnabled
+        ? null
+        : moveQualityBlocksOpen({
+            openingSide,
+            candles,
+            latest: indicators.latest,
+            venue: "FUTURES",
+          });
       if (mqFut) {
         const mq = mqFut.detail?.mq;
         wsHub?.broadcast?.("log", {
@@ -5072,8 +5411,9 @@ export function createBot({
       state._intelligenceSizeMultiplier = 1;
       if (state.intelligenceGateEnabled && allowBuy) {
         const ig = evaluateIntelligenceGateForSupertrendOpen({
-          gateEnabled: true,
-          symbol: symU,
+            gateEnabled: true,
+            strictMode: state.intelligenceGateStrict === true,
+            symbol: symU,
           openingLong: true,
           broadcastLog: (p) =>
             hubLocal?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
@@ -5121,8 +5461,9 @@ export function createBot({
       try {
         state._intelligenceSizeMultiplier = 1;
         const igShort = evaluateIntelligenceGateForSupertrendOpen({
-          gateEnabled: true,
-          symbol: symU,
+            gateEnabled: true,
+            strictMode: state.intelligenceGateStrict === true,
+            symbol: symU,
           openingLong: false,
           broadcastLog: (p) =>
             hubLocal?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
@@ -5845,8 +6186,9 @@ export function createBot({
                 : null;
           if (openingIntel != null) {
             const ig = evaluateIntelligenceGateForSupertrendOpen({
-              gateEnabled: true,
-              symbol: symT,
+            gateEnabled: true,
+            strictMode: state.intelligenceGateStrict === true,
+            symbol: symT,
               openingLong: openingIntel,
               broadcastLog: (p) =>
                 hub?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
@@ -6214,8 +6556,9 @@ export function createBot({
       state._intelligenceSizeMultiplier = 1;
       if (state.intelligenceGateEnabled && allowBuy) {
         const ig = evaluateIntelligenceGateForSupertrendOpen({
-          gateEnabled: true,
-          symbol: symTrade,
+            gateEnabled: true,
+            strictMode: state.intelligenceGateStrict === true,
+            symbol: symTrade,
           openingLong: true,
           broadcastLog: (p) =>
             wsHubRef?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
@@ -6233,7 +6576,22 @@ export function createBot({
 
     let placedBarExecution = false;
     let skipReasonBar = null;
-    if (allowBuy) {
+    const skipFlipEntry = (orderSide) => {
+      if (state.supertrendFuturesExitOnFlip !== false || !stFut) return false;
+      const symU = String(symTrade || state.symbol || "").trim().toUpperCase();
+      const leg = (_cachedPositions || []).find(
+        (p) =>
+          String(p?.symbol || "").toUpperCase() === symU &&
+          Number.isFinite(Number(p?.positionAmt)) &&
+          Math.abs(Number(p.positionAmt)) > 1e-12,
+      );
+      if (!leg) return false;
+      const amt = Number(leg.positionAmt);
+      if (orderSide === "BUY" && amt < 0) return true;
+      if (orderSide === "SELL" && amt > 0) return true;
+      return false;
+    };
+    if (allowBuy && !skipFlipEntry("BUY")) {
       let buyRes;
       if (stSpot) {
         buyRes = await trySupertrendSpotOrder({
@@ -6277,8 +6635,9 @@ export function createBot({
       try {
         state._intelligenceSizeMultiplier = 1;
         const igShort = evaluateIntelligenceGateForSupertrendOpen({
-          gateEnabled: true,
-          symbol: symTrade,
+            gateEnabled: true,
+            strictMode: state.intelligenceGateStrict === true,
+            symbol: symTrade,
           openingLong: false,
           broadcastLog: (p) =>
             wsHubRef?.broadcast?.("log", { ...p, tradingMode: runtimeTradingMode() }),
@@ -6293,7 +6652,7 @@ export function createBot({
         /* never block a trade on intelligence error */
       }
     }
-    if (allowSell && !placedBarExecution) {
+    if (allowSell && !placedBarExecution && !skipFlipEntry("SELL")) {
       let sellRes;
       if (stSpot) {
         sellRes = await trySupertrendSpotOrder({
@@ -6527,6 +6886,30 @@ export function createBot({
     feedKind: effectiveMarketFeedKind(),
     tradingMode: runtimeTradingMode(),
     onCandleClose: async (c) => {
+      try {
+        if (marketFeedUsesLiveBinance() && getPool()) {
+          const symArc = String(c.symbol || state.symbol || "")
+            .replace(/[^A-Za-z0-9]/g, "")
+            .toUpperCase();
+          const tfArc = String(state.timeframe || "15m").trim();
+          if (symArc && tfArc) {
+            scheduleArchiveLiveOhlcvCandle({
+              symbol: symArc,
+              timeframe: tfArc,
+              candle: {
+                ts: Number(c.ts),
+                open: Number(c.open),
+                high: Number(c.high),
+                low: Number(c.low),
+                close: Number(c.close),
+                volume: c.volume != null ? Number(c.volume) : 0,
+              },
+            });
+          }
+        }
+      } catch {
+        /* never block trading on OHLC archive */
+      }
       try {
         const sym = String(c.symbol || state.symbol || "").toUpperCase();
         const tf = String(state.timeframe || "15m");
@@ -7687,6 +8070,26 @@ export function createBot({
       supertrendFuturesAiConfidenceFilter: state.supertrendFuturesAiConfidenceFilter,
       signalStrengthGatesTrades: state.signalStrengthGatesTrades === true,
       supertrendMoveQualityGate: state.supertrendMoveQualityGate === true,
+      supertrendHtf4hEnabled: state.supertrendHtf4hEnabled === true,
+      supertrendHtf4hPeriod: clamp(Math.round(Number(state.supertrendHtf4hPeriod ?? 10)), 2, 50),
+      supertrendHtf4hMultiplier: Math.max(0.5, Number(state.supertrendHtf4hMultiplier ?? 3)),
+      volumeProfileEnabled: state.volumeProfileEnabled === true,
+      volumeProfileSoftGates: state.volumeProfileSoftGates !== false,
+      volumeProfileGatesEnabled: state.volumeProfileGatesEnabled === true,
+      intradayVpBrackets: state.intradayVpBrackets === true,
+      vpLookbackBars: clamp(Math.round(Number(state.vpLookbackBars ?? 672)), 48, 2000),
+      vpMinRR: clamp(Number(state.vpMinRR ?? 1.5), 0.8, 5),
+      supertrendBigMoveGateEnabled: state.supertrendBigMoveGateEnabled === true,
+      supertrendBigMoveMinStrength: clamp(Math.round(Number(state.supertrendBigMoveMinStrength ?? 65)), 0, 100),
+      supertrendBigMoveMinMoveSlRatio: Math.max(1, Number(state.supertrendBigMoveMinMoveSlRatio ?? 1.5)),
+      supertrendBigMoveMinAdx: clamp(Math.round(Number(state.supertrendBigMoveMinAdx ?? 22)), 0, 100),
+      supertrendBigMoveMinScore: clamp(Number(state.supertrendBigMoveMinScore ?? 0.55), 0, 1),
+      supertrendBigMoveMaxCandlesSinceFlip: Math.max(
+        0,
+        Math.min(20, Math.floor(Number(state.supertrendBigMoveMaxCandlesSinceFlip ?? 2))),
+      ),
+      supertrendBigMoveMinVolumeVsAvg: Math.max(0, Number(state.supertrendBigMoveMinVolumeVsAvg ?? 1.1)),
+      supertrendBigMoveExpectedMoveAtrMult: Math.max(0.1, Number(state.supertrendBigMoveExpectedMoveAtrMult ?? 1.8)),
       supertrendMoveQualityMinScore: clamp(Number(state.supertrendMoveQualityMinScore ?? 0.6), 0, 1),
       supertrendMoveQualityMinAdx: clamp(Math.round(Number(state.supertrendMoveQualityMinAdx ?? 23)), 0, 100),
       supertrendMoveQualityMinMoveSlRatio: Math.max(1, Number(state.supertrendMoveQualityMinMoveSlRatio ?? 1.5)),
@@ -7711,6 +8114,9 @@ export function createBot({
       surfPulseMlGateEnabled: state.surfPulseMlGateEnabled !== false,
       surfPulseMlThreshold: clamp(Number(state.surfPulseMlThreshold ?? 0.6), 0, 1),
       intelligenceGateEnabled: state.intelligenceGateEnabled === true,
+      intelligenceGateStrict: state.intelligenceGateStrict === true,
+      intelligenceGateHighWinRate: state.intelligenceGateHighWinRate === true,
+      supertrendFuturesExitOnFlip: state.supertrendFuturesExitOnFlip !== false,
       trailingStopLossAuto: state.trailingStopLossAuto === true,
       futuresTrailingStopMode: normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode),
       futuresTrailingStFeeBreakeven: state.futuresTrailingStFeeBreakeven !== false,
@@ -7768,6 +8174,16 @@ export function createBot({
       supertrendPeriod: state.supertrendPeriod,
       supertrendMultiplier: state.supertrendMultiplier,
       supertrendWilderAtr: state.supertrendWilderAtr,
+      trendHtfStRegimeGate: state.trendHtfStRegimeGate === true,
+      trendHtfStSurgicalLossFilter: state.trendHtfStSurgicalLossFilter === true,
+      trendHtfStQualityFilter: state.trendHtfStQualityFilter === true,
+      trendHtfStFlipExitBeforeSl: state.trendHtfStFlipExitBeforeSl === true,
+      trendHtfStMaxEntryRangeAtr: Number(state.trendHtfStMaxEntryRangeAtr) || 0,
+      trendHtfStMinHtfSep: Number(state.trendHtfStMinHtfSep) || 0.0005,
+      trendHtfStRegimeTpTrend: Number(state.trendHtfStRegimeTpTrend) || 0.03,
+      trendHtfStRegimeTpMixed: Number(state.trendHtfStRegimeTpMixed) || 0.035,
+      trendHtfStRegimeTpChop: Number(state.trendHtfStRegimeTpChop) || 0.04,
+      backtestBreakevenAtMfePct: Number(state.backtestBreakevenAtMfePct) || 0,
       supertrendLast: state.supertrendLast,
       supertrendLastBarClose: state.supertrendLastBarClose,
       supertrendLastFlipBarClose: state.supertrendLastFlipBarClose,
@@ -8493,7 +8909,7 @@ export function createBot({
       );
       const trailBufAtrMult = clamp(Number(state.trailBufferAtrMult ?? process.env.FUTURES_TRAIL_BUFFER_ATR_MULT ?? 0), 0, 1);
       const trailBufMode = normalizeTrailBufferMode(state.trailBufferMode);
-      const trailBuf = clamp(Number(state.trailBufferRate ?? process.env.SUPERTREND_TRAIL_BUFFER_RATE ?? 0.0005), 0, 0.05);
+      const trailBuf = clamp(Number(state.trailBufferRate ?? process.env.SUPERTREND_TRAIL_BUFFER_RATE ?? 0.0015), 0, 0.05);
       const trailMm = clamp(Number(state.trailMaintMarginRate ?? process.env.SUPERTREND_TRAIL_MAINTENANCE_MARGIN_RATE ?? 0.005), 0, 0.1);
       const trailMinSlFrac = clamp(Number(state.trailMinSlDistFrac ?? process.env.SUPERTREND_TRAIL_MIN_SL_DISTANCE_FRAC ?? 0.002), 0, 0.1);
       const trailMinGapMarkFrac = clamp(
@@ -9471,6 +9887,26 @@ export function createBot({
       return;
     }
 
+    /** MANUAL signal paths: use fixed SL/TP % (same fields as backtest / Supertrend-no-AI). */
+    if (
+      isFuturesVenue &&
+      String(state.strategyMode || "").toUpperCase() === "MANUAL" &&
+      !supertrendPausesAi
+    ) {
+      const slPct = clamp(Number(state.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2);
+      const tpPct = clamp(Number(state.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5);
+      Object.assign(
+        plan,
+        applyFixedPctBracket(plan, {
+          entryPrice: last.close,
+          side: tradeAction,
+          slPct,
+          tpPct,
+          futuresLeverage,
+        }),
+      );
+    }
+
     const trailMmStrat = clamp(Number(state.trailMaintMarginRate ?? process.env.SUPERTREND_TRAIL_MAINTENANCE_MARGIN_RATE ?? 0.005), 0, 0.1);
     if (
       isFuturesVenue &&
@@ -10081,7 +10517,14 @@ export function createBot({
     normalizeRiskLimits(state);
     normalizeCapitalBudgetFields(state, SYM_RE);
     if (patch.strategyMode) state.strategyMode = patch.strategyMode;
-    if (patch.manualStrategy) state.manualStrategy = patch.manualStrategy;
+    if (patch.manualStrategy) {
+      state.manualStrategy = patch.manualStrategy;
+      if (String(patch.manualStrategy).toUpperCase() === "SUPERTREND_ELITE") {
+        for (const [k, v] of Object.entries(ELITE_ST_ACTIVATION_PATCH)) {
+          if (patch[k] === undefined) state[k] = v;
+        }
+      }
+    }
     if (patch.marketMode) {
       const v = String(patch.marketMode).toUpperCase();
       if (v === "SPOT" || v === "FUTURES" || v === "AUTO") state.marketMode = v;
@@ -10125,6 +10568,68 @@ export function createBot({
     if (patch.supertrendMoveQualityMinVolumeVsAvg != null && Number.isFinite(Number(patch.supertrendMoveQualityMinVolumeVsAvg))) {
       state.supertrendMoveQualityMinVolumeVsAvg = Math.max(0, Number(patch.supertrendMoveQualityMinVolumeVsAvg));
     }
+    if (patch.supertrendHtf4hEnabled != null) state.supertrendHtf4hEnabled = Boolean(patch.supertrendHtf4hEnabled);
+    if (patch.supertrendHtf4hPeriod != null && Number.isFinite(Number(patch.supertrendHtf4hPeriod))) {
+      state.supertrendHtf4hPeriod = clamp(Math.round(Number(patch.supertrendHtf4hPeriod)), 2, 50);
+    }
+    if (patch.supertrendHtf4hMultiplier != null && Number.isFinite(Number(patch.supertrendHtf4hMultiplier))) {
+      state.supertrendHtf4hMultiplier = Math.max(0.5, Number(patch.supertrendHtf4hMultiplier));
+    }
+    if (patch.volumeProfileEnabled != null) state.volumeProfileEnabled = Boolean(patch.volumeProfileEnabled);
+    if (patch.volumeProfileSoftGates != null) state.volumeProfileSoftGates = Boolean(patch.volumeProfileSoftGates);
+    if (patch.volumeProfileGatesEnabled != null) state.volumeProfileGatesEnabled = Boolean(patch.volumeProfileGatesEnabled);
+    if (patch.intradayVpBrackets != null) state.intradayVpBrackets = Boolean(patch.intradayVpBrackets);
+    if (patch.vpLookbackBars != null && Number.isFinite(Number(patch.vpLookbackBars))) {
+      state.vpLookbackBars = clamp(Math.round(Number(patch.vpLookbackBars)), 48, 2000);
+    }
+    if (patch.vpMinRR != null && Number.isFinite(Number(patch.vpMinRR))) {
+      state.vpMinRR = clamp(Number(patch.vpMinRR), 0.8, 5);
+    }
+    if (patch.supertrendBigMoveGateEnabled != null) state.supertrendBigMoveGateEnabled = Boolean(patch.supertrendBigMoveGateEnabled);
+    if (patch.supertrendBigMoveMinStrength != null && Number.isFinite(Number(patch.supertrendBigMoveMinStrength))) {
+      state.supertrendBigMoveMinStrength = clamp(Math.round(Number(patch.supertrendBigMoveMinStrength)), 0, 100);
+    }
+    if (patch.supertrendBigMoveMinMoveSlRatio != null && Number.isFinite(Number(patch.supertrendBigMoveMinMoveSlRatio))) {
+      state.supertrendBigMoveMinMoveSlRatio = Math.max(1, Number(patch.supertrendBigMoveMinMoveSlRatio));
+    }
+    if (patch.supertrendBigMoveMinAdx != null && Number.isFinite(Number(patch.supertrendBigMoveMinAdx))) {
+      state.supertrendBigMoveMinAdx = clamp(Math.round(Number(patch.supertrendBigMoveMinAdx)), 0, 100);
+    }
+    if (patch.supertrendBigMoveMinScore != null && Number.isFinite(Number(patch.supertrendBigMoveMinScore))) {
+      state.supertrendBigMoveMinScore = clamp(Number(patch.supertrendBigMoveMinScore), 0, 1);
+    }
+    if (patch.supertrendBigMoveMaxCandlesSinceFlip != null && Number.isFinite(Number(patch.supertrendBigMoveMaxCandlesSinceFlip))) {
+      state.supertrendBigMoveMaxCandlesSinceFlip = Math.max(0, Math.round(Number(patch.supertrendBigMoveMaxCandlesSinceFlip)));
+    }
+    if (patch.supertrendBigMoveMinVolumeVsAvg != null && Number.isFinite(Number(patch.supertrendBigMoveMinVolumeVsAvg))) {
+      state.supertrendBigMoveMinVolumeVsAvg = Math.max(0, Number(patch.supertrendBigMoveMinVolumeVsAvg));
+    }
+    if (patch.supertrendBigMoveExpectedMoveAtrMult != null && Number.isFinite(Number(patch.supertrendBigMoveExpectedMoveAtrMult))) {
+      state.supertrendBigMoveExpectedMoveAtrMult = Math.max(0.1, Number(patch.supertrendBigMoveExpectedMoveAtrMult));
+    }
+    // ── SUPERTREND_ELITE gate config ─────────────────────────────────────────
+    if (patch.eliteStRequireHtf4hAlign   != null) state.eliteStRequireHtf4hAlign   = Boolean(patch.eliteStRequireHtf4hAlign);
+    if (patch.eliteStHtf4hPeriod         != null && Number.isFinite(Number(patch.eliteStHtf4hPeriod)))
+      state.eliteStHtf4hPeriod = clamp(Math.round(Number(patch.eliteStHtf4hPeriod)), 2, 50);
+    if (patch.eliteStHtf4hMultiplier     != null && Number.isFinite(Number(patch.eliteStHtf4hMultiplier)))
+      state.eliteStHtf4hMultiplier = Math.max(0.5, Number(patch.eliteStHtf4hMultiplier));
+    if (patch.eliteStRequireHtf1hEmaAlign != null) state.eliteStRequireHtf1hEmaAlign = Boolean(patch.eliteStRequireHtf1hEmaAlign);
+    if (patch.eliteStHtf1hMinSep         != null && Number.isFinite(Number(patch.eliteStHtf1hMinSep)))
+      state.eliteStHtf1hMinSep = Math.max(0, Number(patch.eliteStHtf1hMinSep));
+    if (patch.eliteStMinAdx              != null && Number.isFinite(Number(patch.eliteStMinAdx)))
+      state.eliteStMinAdx = clamp(Math.round(Number(patch.eliteStMinAdx)), 0, 100);
+    if (patch.eliteStRequireAdxRising    != null) state.eliteStRequireAdxRising    = Boolean(patch.eliteStRequireAdxRising);
+    if (patch.eliteStAdxRisingLookback   != null && Number.isFinite(Number(patch.eliteStAdxRisingLookback)))
+      state.eliteStAdxRisingLookback = Math.max(1, Math.round(Number(patch.eliteStAdxRisingLookback)));
+    if (patch.eliteStMinVolumeVsAvg      != null && Number.isFinite(Number(patch.eliteStMinVolumeVsAvg)))
+      state.eliteStMinVolumeVsAvg = Math.max(0, Number(patch.eliteStMinVolumeVsAvg));
+    if (patch.eliteStRequireAtrExpansion != null) state.eliteStRequireAtrExpansion = Boolean(patch.eliteStRequireAtrExpansion);
+    if (patch.eliteStMinAtrExpansion     != null && Number.isFinite(Number(patch.eliteStMinAtrExpansion)))
+      state.eliteStMinAtrExpansion = Math.max(1, Number(patch.eliteStMinAtrExpansion));
+    if (patch.eliteStAtrExpansionLookback != null && Number.isFinite(Number(patch.eliteStAtrExpansionLookback)))
+      state.eliteStAtrExpansionLookback = Math.max(2, Math.round(Number(patch.eliteStAtrExpansionLookback)));
+    if (patch.eliteStLiqSweepEnabled     != null) state.eliteStLiqSweepEnabled     = Boolean(patch.eliteStLiqSweepEnabled);
+    // ─────────────────────────────────────────────────────────────────────────
     if (patch.supertrendBreakoutConfirm != null) {
       state.supertrendBreakoutConfirm = Boolean(patch.supertrendBreakoutConfirm);
       if (!state.supertrendBreakoutConfirm) state.pendingSupertrendBreakout = null;
@@ -10143,6 +10648,15 @@ export function createBot({
     }
     if (patch.intelligenceGateEnabled != null) {
       state.intelligenceGateEnabled = Boolean(patch.intelligenceGateEnabled);
+    }
+    if (patch.intelligenceGateStrict != null) {
+      state.intelligenceGateStrict = Boolean(patch.intelligenceGateStrict);
+    }
+    if (patch.intelligenceGateHighWinRate != null) {
+      state.intelligenceGateHighWinRate = Boolean(patch.intelligenceGateHighWinRate);
+    }
+    if (patch.supertrendFuturesExitOnFlip != null) {
+      state.supertrendFuturesExitOnFlip = Boolean(patch.supertrendFuturesExitOnFlip);
     }
     if (patch.surfPulseMlThreshold != null && Number.isFinite(Number(patch.surfPulseMlThreshold))) {
       state.surfPulseMlThreshold = clamp(Number(patch.surfPulseMlThreshold), 0, 1);
@@ -10164,10 +10678,12 @@ export function createBot({
       state.trailingStopExtraScalpingPcts = normalizeTrailingExtraPcts(patch.trailingStopExtraScalpingPcts);
     }
     if (patch.supertrendFuturesFixedSlPct != null && Number.isFinite(Number(patch.supertrendFuturesFixedSlPct))) {
-      state.supertrendFuturesFixedSlPct = clamp(Number(patch.supertrendFuturesFixedSlPct), 0.00005, 0.2);
+      const v = Number(patch.supertrendFuturesFixedSlPct);
+      state.supertrendFuturesFixedSlPct = v <= 0 ? 0 : clamp(v, 0.00005, 0.2);
     }
     if (patch.supertrendFuturesFixedTpPct != null && Number.isFinite(Number(patch.supertrendFuturesFixedTpPct))) {
-      state.supertrendFuturesFixedTpPct = clamp(Number(patch.supertrendFuturesFixedTpPct), 0.00005, 0.5);
+      const v = Number(patch.supertrendFuturesFixedTpPct);
+      state.supertrendFuturesFixedTpPct = v <= 0 ? 0 : clamp(v, 0.00005, 0.5);
     }
     if (patch.supertrendFuturesTwoWay != null) state.supertrendFuturesTwoWay = Boolean(patch.supertrendFuturesTwoWay);
     if (patch.supertrendFuturesMaxEntrySlippagePct != null && Number.isFinite(Number(patch.supertrendFuturesMaxEntrySlippagePct))) {
@@ -10277,6 +10793,33 @@ export function createBot({
 
     if (patch.marketDecision != null && typeof patch.marketDecision === "object") {
       state.marketDecision = { ...(state.marketDecision || {}), ...patch.marketDecision };
+    }
+
+    if (patch.trendHtfStRegimeGate != null) state.trendHtfStRegimeGate = Boolean(patch.trendHtfStRegimeGate);
+    if (patch.trendHtfStSurgicalLossFilter != null) {
+      state.trendHtfStSurgicalLossFilter = Boolean(patch.trendHtfStSurgicalLossFilter);
+    }
+    if (patch.trendHtfStQualityFilter != null) state.trendHtfStQualityFilter = Boolean(patch.trendHtfStQualityFilter);
+    if (patch.trendHtfStFlipExitBeforeSl != null) {
+      state.trendHtfStFlipExitBeforeSl = Boolean(patch.trendHtfStFlipExitBeforeSl);
+    }
+    if (patch.trendHtfStMaxEntryRangeAtr != null && Number.isFinite(Number(patch.trendHtfStMaxEntryRangeAtr))) {
+      state.trendHtfStMaxEntryRangeAtr = clamp(Number(patch.trendHtfStMaxEntryRangeAtr), 0, 10);
+    }
+    if (patch.trendHtfStMinHtfSep != null && Number.isFinite(Number(patch.trendHtfStMinHtfSep))) {
+      state.trendHtfStMinHtfSep = clamp(Number(patch.trendHtfStMinHtfSep), 0, 0.05);
+    }
+    if (patch.trendHtfStRegimeTpTrend != null && Number.isFinite(Number(patch.trendHtfStRegimeTpTrend))) {
+      state.trendHtfStRegimeTpTrend = clamp(Number(patch.trendHtfStRegimeTpTrend), 0.0005, 0.5);
+    }
+    if (patch.trendHtfStRegimeTpMixed != null && Number.isFinite(Number(patch.trendHtfStRegimeTpMixed))) {
+      state.trendHtfStRegimeTpMixed = clamp(Number(patch.trendHtfStRegimeTpMixed), 0.0005, 0.5);
+    }
+    if (patch.trendHtfStRegimeTpChop != null && Number.isFinite(Number(patch.trendHtfStRegimeTpChop))) {
+      state.trendHtfStRegimeTpChop = clamp(Number(patch.trendHtfStRegimeTpChop), 0.0005, 0.5);
+    }
+    if (patch.backtestBreakevenAtMfePct != null && Number.isFinite(Number(patch.backtestBreakevenAtMfePct))) {
+      state.backtestBreakevenAtMfePct = clamp(Number(patch.backtestBreakevenAtMfePct), 0, 0.1);
     }
 
     // Futures Supertrend AI filter only applies when futures autotrade is on; otherwise reset to default.
