@@ -20,7 +20,10 @@ deploy/backend.env.VPS-template.env
 .venv
 __pycache__
 *.pyc
-data
+# Runtime / local state — never use bare `data` (ignores backend/src/backtest/data source)
+/backend/data/
+/data/
+/ai-service/data/
 logs
 *.pem
 *.key
