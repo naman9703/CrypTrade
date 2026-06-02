@@ -1,0 +1,737 @@
+{
+  "window": {
+    "symbol": "BNBUSDT",
+    "tf": "15m",
+    "from": "2026-01-01",
+    "to": "2026-05-27"
+  },
+  "layers": {
+    "sweepBaseline": {
+      "entries": 69,
+      "winRatePct": 47.8,
+      "returnPct": 32.02
+    },
+    "layer1_forensics": {
+      "samples": [
+        {
+          "kind": "winner_1",
+          "tradeId": "2026-01-31T03:45:00.000Z",
+          "side": "SELL",
+          "levelType": "session_high",
+          "level": 856.46,
+          "wick": 861.11,
+          "opposing": 0,
+          "sl": 861.4222734000001,
+          "tp": 0,
+          "entryIdx": 3374,
+          "reclaimIdx": 3365,
+          "sweepWickIdx": 3362,
+          "netPnl": 1330.5408193149242,
+          "checks": {
+            "sweepWickAboveLevel": true,
+            "levelTypePdh": false,
+            "reclaimCloseBelowLevel": true,
+            "reclaimSameBarAsEntry": false,
+            "reclaimWithinOneBarOfEntry": false,
+            "slBeyondWick": true,
+            "slHasBuffer": false,
+            "tpAtOpposingPool": false,
+            "tpCappedByMaxRr": false,
+            "tpUsesOpposingNotFixedMultiple": false,
+            "metaEntryIdx": 3374,
+            "entryTsBarIdx": 3375,
+            "entryIdxMatches": true
+          },
+          "issues": [
+            "entry_not_on_reclaim_bar",
+            "TP_neither_opposing_nor_maxRr_cap"
+          ],
+          "pass": false,
+          "metaComplete": true
+        },
+        {
+          "kind": "winner_2",
+          "tradeId": "2026-02-03T06:15:00.000Z",
+          "side": "SELL",
+          "levelType": "session_high",
+          "level": 775.49,
+          "wick": 775.62,
+          "opposing": 0,
+          "sl": 784.6602736,
+          "tp": 0,
+          "entryIdx": 3672,
+          "reclaimIdx": 3672,
+          "sweepWickIdx": 3672,
+          "netPnl": 1209.4462913167827,
+          "checks": {
+            "sweepWickAboveLevel": true,
+            "levelTypePdh": false,
+            "reclaimCloseBelowLevel": true,
+            "reclaimSameBarAsEntry": true,
+            "reclaimWithinOneBarOfEntry": true,
+            "slBeyondWick": true,
+            "slHasBuffer": true,
+            "tpAtOpposingPool": false,
+            "tpCappedByMaxRr": false,
+            "tpUsesOpposingNotFixedMultiple": false,
+            "metaEntryIdx": 3672,
+            "entryTsBarIdx": 3673,
+            "entryIdxMatches": true
+          },
+          "issues": [
+            "TP_neither_opposing_nor_maxRr_cap"
+          ],
+          "pass": false,
+          "metaComplete": true
+        },
+        {
+          "kind": "loser_1",
+          "tradeId": "2026-02-22T10:15:00.000Z",
+          "side": "BUY",
+          "levelType": "pdl",
+          "level": 624.26,
+          "wick": 618.85,
+          "opposing": 0,
+          "sl": 618.29669385,
+          "tp": 0,
+          "entryIdx": 5512,
+          "reclaimIdx": 5512,
+          "sweepWickIdx": 5495,
+          "netPnl": -461.22441808997394,
+          "checks": {
+            "sweepWickBelowLevel": true,
+            "levelTypePdl": true,
+            "reclaimCloseAboveLevel": true,
+            "reclaimSameBarAsEntry": true,
+            "reclaimWithinOneBarOfEntry": true,
+            "slBeyondWick": true,
+            "slHasBuffer": true,
+            "tpAtOpposingPool": false,
+            "tpCappedByMaxRr": true,
+            "tpUsesOpposingNotFixedMultiple": false,
+            "tpNote": "TP capped at 3R (intradaySmcMaxTpRr), not raw PDH/PDL",
+            "metaEntryIdx": 5512,
+            "entryTsBarIdx": 5513,
+            "entryIdxMatches": true
+          },
+          "issues": [],
+          "pass": true,
+          "metaComplete": true
+        },
+        {
+          "kind": "loser_2",
+          "tradeId": "2026-02-16T11:15:00.000Z",
+          "side": "SELL",
+          "levelType": "session_high",
+          "level": 619.09,
+          "wick": 619.87,
+          "opposing": 0,
+          "sl": 622.8079402500001,
+          "tp": 0,
+          "entryIdx": 4940,
+          "reclaimIdx": 4940,
+          "sweepWickIdx": 4940,
+          "netPnl": -462.08287975313976,
+          "checks": {
+            "sweepWickAboveLevel": true,
+            "levelTypePdh": false,
+            "reclaimCloseBelowLevel": true,
+            "reclaimSameBarAsEntry": true,
+            "reclaimWithinOneBarOfEntry": true,
+            "slBeyondWick": true,
+            "slHasBuffer": true,
+            "tpAtOpposingPool": false,
+            "tpCappedByMaxRr": false,
+            "tpUsesOpposingNotFixedMultiple": false,
+            "metaEntryIdx": 4940,
+            "entryTsBarIdx": 4941,
+            "entryIdxMatches": true
+          },
+          "issues": [
+            "TP_neither_opposing_nor_maxRr_cap"
+          ],
+          "pass": false,
+          "metaComplete": true
+        },
+        {
+          "kind": "near_miss_rejected",
+          "ts": "2026-01-01T01:00:00.000Z",
+          "idx": 484,
+          "side": "SELL",
+          "reason": "setup_eval_null",
+          "funnel": {
+            "passHtf": true,
+            "passKz": true,
+            "passVol": true,
+            "hasCycle": true,
+            "passChoch": true,
+            "passMss": true,
+            "hasPd": false,
+            "inZone": false,
+            "passSetup": false
+          },
+          "hadCycle": false,
+          "cycleReclaimIdx": null,
+          "rejectReason": "setup_eval_null"
+        }
+      ],
+      "passRate": "1/4",
+      "nearMissStats": {
+        "funnelRejectSample": [
+          {
+            "ts": "2026-01-01T01:00:00.000Z",
+            "idx": 484,
+            "side": "SELL",
+            "reason": "setup_eval_null",
+            "funnel": {
+              "passHtf": true,
+              "passKz": true,
+              "passVol": true,
+              "hasCycle": true,
+              "passChoch": true,
+              "passMss": true,
+              "hasPd": false,
+              "inZone": false,
+              "passSetup": false
+            }
+          },
+          {
+            "ts": "2026-01-01T01:15:00.000Z",
+            "idx": 485,
+            "side": "SELL",
+            "reason": "setup_eval_null",
+            "funnel": {
+              "passHtf": true,
+              "passKz": true,
+              "passVol": true,
+              "hasCycle": true,
+              "passChoch": true,
+              "passMss": true,
+              "hasPd": false,
+              "inZone": false,
+              "passSetup": false
+            }
+          },
+          {
+            "ts": "2026-01-01T01:30:00.000Z",
+            "idx": 486,
+            "side": "SELL",
+            "reason": "setup_eval_null",
+            "funnel": {
+              "passHtf": true,
+              "passKz": true,
+              "passVol": true,
+              "hasCycle": true,
+              "passChoch": true,
+              "passMss": true,
+              "hasPd": false,
+              "inZone": false,
+              "passSetup": false
+            }
+          }
+        ],
+        "notPickedSample": [
+          {
+            "ts": "2026-01-03T11:00:00.000Z",
+            "idx": 716,
+            "side": "BUY",
+            "score": 9,
+            "reason": "valid_setup_not_picked"
+          },
+          {
+            "ts": "2026-01-03T11:15:00.000Z",
+            "idx": 717,
+            "side": "BUY",
+            "score": 9,
+            "reason": "valid_setup_not_picked"
+          },
+          {
+            "ts": "2026-01-03T11:30:00.000Z",
+            "idx": 718,
+            "side": "BUY",
+            "score": 9,
+            "reason": "valid_setup_not_picked"
+          }
+        ],
+        "totalFunnelRejects": 200,
+        "totalValidNotPicked": 191
+      },
+      "finding": "Signal-level issues found — see issues[] per trade",
+      "tpCapNote": "Preset uses intradaySmcMaxTpRr=3 — TP is often capped at 3R, not raw opposing PDH/PDL (by design for intraday hold horizon)"
+    },
+    "layer2_expectancy": {
+      "trades": 69,
+      "winRatePct": 47.8,
+      "avgWinRoiPct": 4.12,
+      "avgLossRoiPct": 2.89,
+      "expectancyPerTradePct": 0.46,
+      "totalReturnPct": 32.02,
+      "top3TradesShareOfGrossWinPct": 27.5,
+      "edgeFragile": false,
+      "pnlDistribution": [
+        {
+          "ts": "2026-01-31T03:45",
+          "roiPct": 13.31
+        },
+        {
+          "ts": "2026-02-03T06:15",
+          "roiPct": 12.09
+        },
+        {
+          "ts": "2026-02-04T03:30",
+          "roiPct": 11.99
+        },
+        {
+          "ts": "2026-02-01T04:30",
+          "roiPct": 10.32
+        },
+        {
+          "ts": "2026-04-07T14:30",
+          "roiPct": 10.14
+        },
+        {
+          "ts": "2026-02-15T08:30",
+          "roiPct": 9.6
+        },
+        {
+          "ts": "2026-02-10T06:15",
+          "roiPct": 9.46
+        },
+        {
+          "ts": "2026-05-11T08:45",
+          "roiPct": 5.49
+        },
+        {
+          "ts": "2026-04-08T05:15",
+          "roiPct": 5.37
+        },
+        {
+          "ts": "2026-02-21T15:30",
+          "roiPct": 4.61
+        },
+        {
+          "ts": "2026-04-29T11:15",
+          "roiPct": 4.22
+        },
+        {
+          "ts": "2026-02-28T04:30",
+          "roiPct": 4.22
+        },
+        {
+          "ts": "2026-04-09T20:30",
+          "roiPct": 4.18
+        },
+        {
+          "ts": "2026-02-07T04:30",
+          "roiPct": 4.16
+        },
+        {
+          "ts": "2026-05-22T14:30",
+          "roiPct": 3.54
+        },
+        {
+          "ts": "2026-04-01T07:00",
+          "roiPct": 3.11
+        },
+        {
+          "ts": "2026-02-25T22:45",
+          "roiPct": 2.9
+        },
+        {
+          "ts": "2026-04-06T17:15",
+          "roiPct": 2.75
+        },
+        {
+          "ts": "2026-01-14T10:30",
+          "roiPct": 1.91
+        },
+        {
+          "ts": "2026-05-01T14:45",
+          "roiPct": 1.84
+        },
+        {
+          "ts": "2026-01-08T15:00",
+          "roiPct": 1.64
+        },
+        {
+          "ts": "2026-03-28T21:30",
+          "roiPct": 1.31
+        },
+        {
+          "ts": "2026-01-15T21:30",
+          "roiPct": 1.13
+        },
+        {
+          "ts": "2026-01-22T11:30",
+          "roiPct": 1.03
+        },
+        {
+          "ts": "2026-04-25T19:15",
+          "roiPct": 1.02
+        },
+        {
+          "ts": "2026-01-03T10:45",
+          "roiPct": 0.94
+        },
+        {
+          "ts": "2026-01-12T14:45",
+          "roiPct": 0.9
+        },
+        {
+          "ts": "2026-05-19T08:15",
+          "roiPct": 0.69
+        },
+        {
+          "ts": "2026-05-24T03:15",
+          "roiPct": 0.63
+        },
+        {
+          "ts": "2026-03-22T03:00",
+          "roiPct": 0.56
+        },
+        {
+          "ts": "2026-01-28T15:15",
+          "roiPct": 0.55
+        },
+        {
+          "ts": "2026-02-12T13:00",
+          "roiPct": 0.21
+        },
+        {
+          "ts": "2026-03-21T06:45",
+          "roiPct": 0.16
+        },
+        {
+          "ts": "2026-01-23T19:30",
+          "roiPct": -0.02
+        },
+        {
+          "ts": "2026-03-23T23:15",
+          "roiPct": -0.02
+        },
+        {
+          "ts": "2026-01-26T08:15",
+          "roiPct": -0.07
+        },
+        {
+          "ts": "2026-02-14T14:00",
+          "roiPct": -0.13
+        },
+        {
+          "ts": "2026-04-04T23:00",
+          "roiPct": -0.57
+        },
+        {
+          "ts": "2026-03-25T12:30",
+          "roiPct": -0.7
+        },
+        {
+          "ts": "2026-01-09T08:15",
+          "roiPct": -0.74
+        },
+        {
+          "ts": "2026-03-30T03:15",
+          "roiPct": -0.87
+        },
+        {
+          "ts": "2026-04-19T08:30",
+          "roiPct": -1.08
+        },
+        {
+          "ts": "2026-04-03T05:15",
+          "roiPct": -1.48
+        },
+        {
+          "ts": "2026-05-04T13:00",
+          "roiPct": -1.64
+        },
+        {
+          "ts": "2026-01-27T10:00",
+          "roiPct": -2.76
+        },
+        {
+          "ts": "2026-01-06T06:15",
+          "roiPct": -2.83
+        },
+        {
+          "ts": "2026-01-24T18:15",
+          "roiPct": -2.84
+        },
+        {
+          "ts": "2026-01-20T04:00",
+          "roiPct": -2.89
+        },
+        {
+          "ts": "2026-01-04T07:30",
+          "roiPct": -2.92
+        },
+        {
+          "ts": "2026-03-19T07:45",
+          "roiPct": -3.61
+        },
+        {
+          "ts": "2026-03-17T06:15",
+          "roiPct": -3.72
+        },
+        {
+          "ts": "2026-05-21T06:45",
+          "roiPct": -3.81
+        },
+        {
+          "ts": "2026-03-09T06:45",
+          "roiPct": -3.83
+        },
+        {
+          "ts": "2026-05-20T04:15",
+          "roiPct": -3.92
+        },
+        {
+          "ts": "2026-04-20T03:00",
+          "roiPct": -3.93
+        },
+        {
+          "ts": "2026-03-08T05:30",
+          "roiPct": -3.94
+        },
+        {
+          "ts": "2026-05-18T02:00",
+          "roiPct": -4.01
+        },
+        {
+          "ts": "2026-03-07T17:30",
+          "roiPct": -4.06
+        },
+        {
+          "ts": "2026-02-06T10:45",
+          "roiPct": -4.07
+        },
+        {
+          "ts": "2026-04-13T09:45",
+          "roiPct": -4.08
+        },
+        {
+          "ts": "2026-05-15T15:00",
+          "roiPct": -4.13
+        },
+        {
+          "ts": "2026-03-06T13:15",
+          "roiPct": -4.18
+        },
+        {
+          "ts": "2026-04-12T05:45",
+          "roiPct": -4.19
+        },
+        {
+          "ts": "2026-03-05T07:15",
+          "roiPct": -4.3
+        },
+        {
+          "ts": "2026-03-03T05:15",
+          "roiPct": -4.43
+        },
+        {
+          "ts": "2026-02-27T14:15",
+          "roiPct": -4.43
+        },
+        {
+          "ts": "2026-02-26T11:00",
+          "roiPct": -4.56
+        },
+        {
+          "ts": "2026-02-22T10:15",
+          "roiPct": -4.61
+        },
+        {
+          "ts": "2026-02-16T11:15",
+          "roiPct": -4.62
+        }
+      ]
+    },
+    "layer3_randomness": {
+      "actualReturnPct": 32.02,
+      "randomIterations": 200,
+      "randomMedianPct": 1.08,
+      "randomP5Pct": -31.42,
+      "randomP95Pct": 44.93,
+      "actualPercentile": 86,
+      "passes95th": false,
+      "interpretation": "Actual return elevated but may partly reflect market drift"
+    },
+    "layer6_killzone": {
+      "london": {
+        "trades": 11,
+        "winRatePct": 36.4,
+        "returnPct": 2.09
+      },
+      "ny": {
+        "trades": 10,
+        "winRatePct": 70,
+        "returnPct": 14.53
+      },
+      "other": {
+        "trades": 48,
+        "winRatePct": 45.8,
+        "returnPct": 15.4
+      },
+      "recommendKillzoneFilter": true
+    },
+    "layer4_oos": [
+      {
+        "label": "BNB_15m_2025H2_OOS",
+        "entries": 103,
+        "winRatePct": 34,
+        "returnPct": -28.46,
+        "wrCi95": {
+          "lo": 25.6,
+          "hi": 43.6
+        }
+      },
+      {
+        "label": "ETH_15m_same_window",
+        "entries": 69,
+        "winRatePct": 27.5,
+        "returnPct": -33.8,
+        "wrCi95": {
+          "lo": 18.4,
+          "hi": 39
+        }
+      },
+      {
+        "label": "BNB_5m_same_window",
+        "entries": 110,
+        "winRatePct": 35.5,
+        "returnPct": -22.82,
+        "wrCi95": {
+          "lo": 27.1,
+          "hi": 44.7
+        }
+      },
+      {
+        "label": "BNB_1h_same_window",
+        "entries": 22,
+        "winRatePct": 18.2,
+        "returnPct": 18.25,
+        "wrCi95": {
+          "lo": 7.3,
+          "hi": 38.5
+        }
+      }
+    ],
+    "layer4_oosVerdict": "Edge transfers across at least one OOS slice",
+    "layer5_choch": {
+      "configs": [
+        {
+          "label": "sweep_base",
+          "entries": 69,
+          "winRatePct": 47.8,
+          "returnPct": 32.02,
+          "wrCi95": {
+            "lo": 36.5,
+            "hi": 59.4
+          }
+        },
+        {
+          "label": "sweep_choch_only",
+          "entries": 61,
+          "winRatePct": 36.1,
+          "returnPct": -36.31,
+          "wrCi95": {
+            "lo": 25.2,
+            "hi": 48.6
+          }
+        },
+        {
+          "label": "sweep_choch_retrace",
+          "entries": 26,
+          "winRatePct": 38.5,
+          "returnPct": -14.93,
+          "wrCi95": {
+            "lo": 22.4,
+            "hi": 57.5
+          }
+        }
+      ],
+      "chochForensicsSample": [
+        {
+          "n": 1,
+          "chochIdx": 650,
+          "chochLevel": 884.55,
+          "chochType": "bearish_choch",
+          "bodyCloseBreak": true,
+          "redetectOk": true,
+          "redetectIdx": 650,
+          "idxMatch": true,
+          "pass": true,
+          "netPnl": 144.2434141221442,
+          "entryTs": "2026-01-02T18:45:00.000Z"
+        },
+        {
+          "n": 2,
+          "chochIdx": 721,
+          "chochLevel": 874.93,
+          "chochType": "bullish_choch",
+          "bodyCloseBreak": true,
+          "redetectOk": true,
+          "redetectIdx": 721,
+          "idxMatch": true,
+          "pass": true,
+          "netPnl": 83.84664557258583,
+          "entryTs": "2026-01-03T12:30:00.000Z"
+        },
+        {
+          "n": 3,
+          "chochIdx": 995,
+          "chochLevel": 906.99,
+          "chochType": "bullish_choch",
+          "bodyCloseBreak": true,
+          "redetectOk": true,
+          "redetectIdx": 995,
+          "idxMatch": true,
+          "pass": true,
+          "netPnl": -300.0615773467482,
+          "entryTs": "2026-01-06T09:00:00.000Z"
+        },
+        {
+          "n": 4,
+          "chochIdx": 1213,
+          "chochLevel": 886.28,
+          "chochType": "bullish_choch",
+          "bodyCloseBreak": true,
+          "redetectOk": true,
+          "redetectIdx": 1213,
+          "idxMatch": true,
+          "pass": true,
+          "netPnl": 187.41345105258637,
+          "entryTs": "2026-01-08T15:30:00.000Z"
+        },
+        {
+          "n": 5,
+          "chochIdx": 1279,
+          "chochLevel": 894.86,
+          "chochType": "bearish_choch",
+          "bodyCloseBreak": true,
+          "redetectOk": true,
+          "redetectIdx": 1279,
+          "idxMatch": true,
+          "pass": true,
+          "netPnl": -103.81451789422171,
+          "entryTs": "2026-01-09T08:00:00.000Z"
+        }
+      ],
+      "interpretation": "Interpretation C likely — CHoCH+Retrace partially recovers vs CHoCH alone (entry timing)"
+    },
+    "layer7_liveTracking": {
+      "status": "not_applicable_offline",
+      "trackOnLive": [
+        "entryPrice vs signalBar nextOpen (slippage gap)",
+        "actual SL distance % vs liqBrackets.slPct logged in backtest",
+        "days to TP/SL vs backtest avg barsHeld"
+      ],
+      "thresholds": {
+        "slippageGapWarnPct": 0.3,
+        "slDistanceDriftWarnPct": 15,
+        "holdTimeDriftWarnFactor": 1.5
+      }
+    }
+  }
+}

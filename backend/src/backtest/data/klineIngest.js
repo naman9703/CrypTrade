@@ -10,35 +10,37 @@ function normalizeSymbol(symbol) {
   return String(symbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 }
 
+const UPSERT_CHUNK = 400;
+
 async function upsertCandles(symbol, tf, rows, source = "binance") {
   const pool = getPool();
   if (!pool || !rows.length) return 0;
-  const sql = `
-    INSERT INTO ohlcv_candles (symbol, timeframe, open_time, open, high, low, close, volume, source)
-    VALUES ($1, $2, to_timestamp($3 / 1000.0), $4, $5, $6, $7, $8, $9)
-    ON CONFLICT (symbol, timeframe, open_time)
-    DO UPDATE SET
-      open = EXCLUDED.open,
-      high = EXCLUDED.high,
-      low = EXCLUDED.low,
-      close = EXCLUDED.close,
-      volume = EXCLUDED.volume,
-      source = EXCLUDED.source
-  `;
   let inserted = 0;
-  for (const c of rows) {
-    const res = await pool.query(sql, [
-      symbol,
-      tf,
-      c.ts,
-      c.open,
-      c.high,
-      c.low,
-      c.close,
-      c.volume ?? 0,
-      source,
-    ]);
-    inserted += res.rowCount > 0 ? 1 : 0;
+  for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
+    const chunk = rows.slice(i, i + UPSERT_CHUNK);
+    const values = [];
+    const params = [];
+    let p = 1;
+    for (const c of chunk) {
+      values.push(
+        `($${p++}, $${p++}, to_timestamp($${p++} / 1000.0), $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++})`,
+      );
+      params.push(symbol, tf, c.ts, c.open, c.high, c.low, c.close, c.volume ?? 0, source);
+    }
+    const sql = `
+      INSERT INTO ohlcv_candles (symbol, timeframe, open_time, open, high, low, close, volume, source)
+      VALUES ${values.join(", ")}
+      ON CONFLICT (symbol, timeframe, open_time)
+      DO UPDATE SET
+        open = EXCLUDED.open,
+        high = EXCLUDED.high,
+        low = EXCLUDED.low,
+        close = EXCLUDED.close,
+        volume = EXCLUDED.volume,
+        source = EXCLUDED.source
+    `;
+    const res = await pool.query(sql, params);
+    inserted += res.rowCount > 0 ? res.rowCount : chunk.length;
   }
   return inserted;
 }

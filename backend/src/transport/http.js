@@ -593,6 +593,109 @@ export function createRouter({ appState }) {
       volumeProfileSoftGates: z.boolean().optional(),
       volumeProfileGatesEnabled: z.boolean().optional(),
       intradayVpBrackets: z.boolean().optional(),
+      /** SR_INTRADAY / Intraday Pro per-technique toggles (default on when omitted). */
+      intradayGateLiquidity: z.boolean().optional(),
+      intradayGateSession: z.boolean().optional(),
+      intradayGateFib: z.boolean().optional(),
+      intradayGateVp: z.boolean().optional(),
+      intradayGateOrderFlow: z.boolean().optional(),
+      intradayGateHtfRegime: z.boolean().optional(),
+      intradayGateInstitutionalSr: z.boolean().optional(),
+      intradayGateSmcIct: z.boolean().optional(),
+      intradaySmcIctMode: z.boolean().optional(),
+      intradaySmcMinScore: z.number().min(1).max(20).optional(),
+      intradaySmcIctProfile: z.enum(["full", "sweep", "ict2022", "lite", "balanced", "daily"]).optional(),
+      intradaySmcPickMode: z.enum(["daily_sniper", "daily_best", "per_signal"]).optional(),
+      intradaySmcOneTradePerDay: z.boolean().optional(),
+      intradaySmcRequireHtfBias: z.boolean().optional(),
+      intradaySmcChochStrict: z.boolean().optional(),
+      intradaySmcRequirePremiumDiscount: z.boolean().optional(),
+      intradaySmcPremiumDiscountOte: z.boolean().optional(),
+      intradaySmcDealingRangeLookback: z.number().int().min(10).max(200).optional(),
+      intradaySmcRequireMss: z.boolean().optional(),
+      intradaySmcRequireRetrace: z.boolean().optional(),
+      intradaySmcRequireChoch: z.boolean().optional(),
+      intradaySmcRequireBos: z.boolean().optional(),
+      intradaySmcRequireConfirm: z.boolean().optional(),
+      intradaySmcLookbackBars: z.number().int().min(3).max(200).optional(),
+      intradaySmcMinRr: z.number().min(0).max(10).optional(),
+      intradaySmcBosMaxBars: z.number().int().min(1).max(20).optional(),
+      intradaySmcChochMaxBars: z.number().int().min(1).max(30).optional(),
+      intradaySmcEntryZoneMode: z.enum(["FVG", "OB", "EITHER"]).optional(),
+      /** FVG CE (`midpoint`) vs full-zone retrace — required for frozen SMC research preset. */
+      intradaySmcFvgEntryMode: z.enum(["midpoint", "ce", "zone"]).optional(),
+      /** TP2 at internal swing vs opposing pool — required for frozen SMC research preset. */
+      intradaySmcTp2Mode: z.enum(["internal", "opposing", "tiered"]).optional(),
+      intradaySmcRequireFvgRetrace: z.boolean().optional(),
+      intradaySmcKillzoneMode: z.enum(["LONDON", "NY", "LONDON_NY", "OVERLAP", "SILVER_BULLET", "ASIA", "ALL", "CUSTOM"]).optional(),
+      intradaySmcMinAdx: z.number().min(0).max(100).optional(),
+      intradaySmcHtfStrictness: z.enum(["both", "4h", "1h", "either"]).optional(),
+      intradaySmcHtfBiasMode: z.enum(["ema", "structure", "parallel"]).optional(),
+      intradaySmcSlMode: z.enum(["sweep", "structure"]).optional(),
+      intradaySmcMaxTpRr: z.number().min(0).max(20).optional(),
+      intradaySmcMaxHoldBars: z.number().int().min(0).max(2000).optional(),
+      intradaySrAPlusMode: z.boolean().optional(),
+      intradaySrMinVolRatio: z.number().min(0).max(5).optional(),
+      intradaySrMinHtfSep: z.number().min(0).max(0.01).optional(),
+      intradaySrZoneWidthPct: z.number().min(0.0001).max(0.02).optional(),
+      intradaySrBosMaxBarsAfterReclaim: z.number().int().min(0).max(10).optional(),
+      intradaySrMinConfirmWick: z.number().min(0).max(1).optional(),
+      intradaySrRequireBos: z.boolean().optional(),
+      intradaySrRequireConfirm: z.boolean().optional(),
+      intradaySrRequireVolume: z.boolean().optional(),
+      intradaySrRequireHtfTrend: z.boolean().optional(),
+      intradayLiqTp1Enabled: z.boolean().optional(),
+      intradayLiqTp2Enabled: z.boolean().optional(),
+      intradayLiqBreakevenAfterPartial: z.boolean().optional(),
+      intradayLiqPartialTp: z.boolean().optional(),
+      intradayLiqMinRr: z.number().min(0).max(5).optional(),
+      intradayLiqOnePickPerDay: z.boolean().optional(),
+      intradayLiqSessionExtreme: z.boolean().optional(),
+      intradayLiqMinSweepExtensionPct: z.number().min(0).max(0.05).optional(),
+      intradayLiqStrictMode: z.boolean().optional(),
+      srIntradayMaxTradesPerDay: z.number().int().min(1).max(50).optional(),
+      srIntradayMinBarGap: z.number().int().min(1).max(100).optional(),
+      srIntradayMinScore: z.number().min(1).max(20).optional(),
+      intradayMinTechniqueCount: z.number().int().min(1).max(10).optional(),
+      intradayRequireSessionReclaim: z.boolean().optional(),
+      intradayRequireFibOrVp: z.boolean().optional(),
+      intradayLearnedRulesEnabled: z.boolean().optional(),
+      intradaySoloGateMinScore: z.number().min(1).max(20).optional(),
+      intradayFibStrictMode: z.boolean().optional(),
+      intradayFibConfirmNextBar: z.boolean().optional(),
+      intradayFibRequireRsiAlign: z.boolean().optional(),
+      intradayFibRequireHtfAlign: z.boolean().optional(),
+      intradayFibMinScore: z.number().min(1).max(20).optional(),
+      intradayFibTpMode: z.enum(["leg", "scalp", "partial_leg", "extension"]).optional(),
+      intradayFibExtensionFrac: z.number().min(0.1).max(0.9).optional(),
+      intradayFibBracketSource: z.enum(["signal", "ui_fixed", "scalp"]).optional(),
+      intradayFibScalpTpPct: z.number().min(0.0005).max(0.05).optional(),
+      intradayFibScalpSlPct: z.number().min(0.0005).max(0.02).optional(),
+      intradayFibAllowedRatios: z.array(z.number().min(0.1).max(0.9)).optional(),
+      intradayFibMinRetraceRatio: z.number().min(0.2).max(0.9).optional(),
+      intradayFibMaxRetraceRatio: z.number().min(0.2).max(0.95).optional(),
+      intradayFibMinWickRatio: z.number().min(0.1).max(1).optional(),
+      intradayFibMinAdx: z.number().min(0).max(100).optional(),
+      intradayFibMinLegAtrMult: z.number().min(0.5).max(10).optional(),
+      intradayFibLookback: z.number().int().min(20).max(300).optional(),
+      intradayFibLearnedRulesEnabled: z.boolean().optional(),
+      intradayFibRequireRetraceCoherence: z.boolean().optional(),
+      intradayFibGoldenRetraceMin: z.number().min(0.2).max(0.9).optional(),
+      intradayFibGoldenRetraceMax: z.number().min(0.2).max(0.95).optional(),
+      intradayFibMidRetraceMin: z.number().min(0.2).max(0.9).optional(),
+      intradayFibMidRetraceMax: z.number().min(0.2).max(0.95).optional(),
+      intradayFibGoldenScalpTpPct: z.number().min(0.0005).max(0.05).optional(),
+      intradayFibGoldenScalpSlPct: z.number().min(0.0005).max(0.02).optional(),
+      intradayFibMidScalpTpPct: z.number().min(0.0005).max(0.05).optional(),
+      intradayFibMidScalpSlPct: z.number().min(0.0005).max(0.02).optional(),
+      intradayFibMinHtfSep: z.number().min(0).max(0.01).optional(),
+      intradayFibMaxBarsSinceSwing: z.number().int().min(8).max(80).optional(),
+      intradayFibTolPct: z.number().min(0.0005).max(0.01).optional(),
+      intradayFibMinRr: z.number().min(0.8).max(5).optional(),
+      intradayFibMaxSlPct: z.number().min(0.0005).max(0.02).optional(),
+      intradayFibMaxTpPct: z.number().min(0.0005).max(0.05).optional(),
+      intradayFibEntryAtSignalClose: z.boolean().optional(),
+      intradayTierMode: z.enum(["all", "A", "B"]).optional(),
       vpLookbackBars: z.number().int().min(48).max(2000).optional(),
       vpMinRR: z.number().min(0.8).max(5).optional(),
       // SUPERTREND_ELITE gate parameters
@@ -644,6 +747,10 @@ export function createRouter({ appState }) {
       supertrendFuturesFixedSlPct: z.number().min(0).max(0.2).optional(),
       /** Fixed take-profit fraction of price. 0 = no fixed TP (trail or flip exit only). */
       supertrendFuturesFixedTpPct: z.number().min(0).max(0.5).optional(),
+      /** When false, Supertrend futures opens without fixed-% stop brackets. */
+      supertrendFuturesUseFixedSl: z.boolean().optional(),
+      /** When false, Supertrend futures opens without fixed-% take-profit brackets. */
+      supertrendFuturesUseFixedTp: z.boolean().optional(),
       /** When true, Supertrend futures SELL opens short after closing long; BUY closes short then opens long. */
       supertrendFuturesTwoWay: z.boolean().optional(),
       /** Max adverse move vs signal candle close (percent points, e.g. 0.15 = 0.15%). 0 = off. */
@@ -711,6 +818,8 @@ export function createRouter({ appState }) {
           amountUsdStr: z.string().max(32).optional(),
           slPctStr: z.string().max(32).optional(),
           tpPctStr: z.string().max(32).optional(),
+          manualUseSl: z.boolean().optional(),
+          manualUseTp: z.boolean().optional(),
         })
         .optional(),
       /** Market regime + signal-quality engine (merged with server defaults). */
@@ -890,8 +999,8 @@ export function createRouter({ appState }) {
     const schema = z.object({
       side: z.enum(["BUY", "SELL"]),
       amountUsd: z.number().positive(),
-      stopLossPct: z.number().min(0.001).max(0.2),
-      takeProfitPct: z.number().min(0.001).max(0.5),
+      stopLossPct: z.number().min(0.001).max(0.2).optional().nullable(),
+      takeProfitPct: z.number().min(0.001).max(0.5).optional().nullable(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
@@ -1345,7 +1454,6 @@ export function createRouter({ appState }) {
     try {
       const uid = effectiveSessionUserId(req);
       let strategies = await strategyService.listStrategiesWithLatest(uid, {
-        modeSlug,
         includeArchived,
       });
       if (!strategies.length) {
@@ -1356,7 +1464,7 @@ export function createRouter({ appState }) {
             : { v: 1, bot: {}, tradingFormDefaults: { amountUsdStr: "", slPctStr: "", tpPctStr: "" } };
         const def = await strategyService.createStrategy(
           uid,
-          modeSlug,
+          null,
           "Default Strategy",
           "Default starter strategy. Use Save As New to branch.",
           ["default-strategy", "auto-migrated"],
@@ -1364,7 +1472,6 @@ export function createRouter({ appState }) {
         if (def?.id) {
           await strategyService.createVersion(def.id, uid, configRaw, "v1 — starter", null);
           strategies = await strategyService.listStrategiesWithLatest(uid, {
-            modeSlug,
             includeArchived,
           });
         }
@@ -1394,7 +1501,7 @@ export function createRouter({ appState }) {
           : { v: 1, bot: {}, tradingFormDefaults: { amountUsdStr: "", slPctStr: "", tpPctStr: "" } };
       const strategy = await strategyService.createStrategy(
         effectiveSessionUserId(req),
-        modeSlug,
+        null,
         parsed.data.name,
         parsed.data.description ?? null,
         parsed.data.tags ?? [],
@@ -1548,7 +1655,7 @@ export function createRouter({ appState }) {
       const name = String(parsed.data.name || "").trim() || `${st.name} copy`;
       const newStrategy = await strategyService.createStrategy(
         uid,
-        modeSlug,
+        null,
         name,
         parsed.data.description ?? st.description ?? null,
         Array.isArray(parsed.data.tags) ? parsed.data.tags : st.tags ?? [],
@@ -2254,9 +2361,6 @@ export function createRouter({ appState }) {
       if (!strategy) return res.status(404).json({ ok: false, error: "strategy_not_found" });
       const viewM = resolveViewTradingMode(req, undefined);
       const sessionSlug = tradingModeToPersistenceSlug(viewM);
-      if (strategy.modeSlug !== sessionSlug) {
-        return res.status(400).json({ ok: false, error: "strategy_mode_mismatch_session" });
-      }
       await appState.ensureEngine(viewM);
       const row = appState.getEngine(viewM);
       if (!row?.bot?.getTradingConfigPersistPayload) {

@@ -329,6 +329,95 @@ export function mergeInstanceIntoCfgRaw(strategyCfgRaw, instConfig) {
   return root;
 }
 
+/** UI operational patch → `inst_*` columns (matches PATCH /instances/:id/operational-config). */
+export function uiOperationalPatchToInstColumns(op = {}) {
+  if (!op || typeof op !== "object") return {};
+  const out = {};
+  if ("symbol" in op) out.inst_symbol = op.symbol;
+  if ("timeframe" in op) out.inst_timeframe = op.timeframe;
+  if ("symbolMode" in op) out.inst_symbol_mode = op.symbolMode;
+  if ("marketMode" in op) out.inst_market_mode = op.marketMode;
+  if ("universe" in op) out.inst_universe = op.universe;
+  if ("riskPerTrade" in op) out.inst_risk_per_trade = op.riskPerTrade;
+  if ("riskUnit" in op) out.inst_risk_unit = op.riskUnit;
+  if ("maxDailyLoss" in op) out.inst_max_daily_loss = op.maxDailyLoss;
+  if ("maxDailyLossUnit" in op) out.inst_max_daily_loss_unit = op.maxDailyLossUnit;
+  if ("compoundPnl" in op) out.inst_compound_pnl = op.compoundPnl;
+  return out;
+}
+
+/**
+ * Apply instance `inst_*` operational overrides onto a flat bot cfg object (in place).
+ * Used after intraday materialization so preset fills cannot clobber deployment fields.
+ */
+export function applyInstanceOperationalToBot(bot, instConfig) {
+  if (!bot || typeof bot !== "object" || !instConfig || typeof instConfig !== "object") return bot;
+  const setIf = (key, v) => {
+    if (v == null) return;
+    bot[key] = v;
+  };
+  setIf("symbol", instConfig.inst_symbol);
+  setIf("timeframe", instConfig.inst_timeframe);
+  setIf("symbolMode", instConfig.inst_symbol_mode);
+  setIf("marketMode", instConfig.inst_market_mode);
+  setIf("riskPerTrade", instConfig.inst_risk_per_trade);
+  setIf("riskPerTradeUnit", instConfig.inst_risk_unit);
+  setIf("maxDailyLoss", instConfig.inst_max_daily_loss);
+  setIf("maxDailyLossUnit", instConfig.inst_max_daily_loss_unit);
+  setIf("allowedBudgetInputMode", instConfig.inst_capital_mode);
+  setIf("allowedBudgetUsdt", instConfig.inst_capital_usdt);
+  setIf("allowedBudgetWalletPct", instConfig.inst_capital_pct);
+  setIf("capitalAllotmentCompoundPnlUi", instConfig.inst_compound_pnl);
+  if (instConfig.inst_universe && typeof instConfig.inst_universe === "object") {
+    bot.universe = instConfig.inst_universe;
+    const u = instConfig.inst_universe;
+    setIf("universeCoinSelectMode", u.mode);
+    setIf("universePinnedSymbols", u.pinnedSymbols);
+    setIf("universeCoinBase", u.coinBase);
+    setIf("universeCustomSymbols", u.customSymbols);
+  }
+  return bot;
+}
+
+/** Map persisted `inst_*` snapshot columns to flat bot field names (for UI / API display). */
+export function instOperationalSnapshotToBotFields(instConfig) {
+  if (!instConfig || typeof instConfig !== "object") return {};
+  const out = {};
+  if (instConfig.inst_risk_per_trade != null) out.riskPerTrade = Number(instConfig.inst_risk_per_trade);
+  if (instConfig.inst_risk_unit != null) out.riskPerTradeUnit = instConfig.inst_risk_unit;
+  if (instConfig.inst_max_daily_loss != null) out.maxDailyLoss = Number(instConfig.inst_max_daily_loss);
+  if (instConfig.inst_max_daily_loss_unit != null) out.maxDailyLossUnit = instConfig.inst_max_daily_loss_unit;
+  if (instConfig.inst_market_mode != null) out.marketMode = instConfig.inst_market_mode;
+  if (instConfig.inst_timeframe != null) out.timeframe = instConfig.inst_timeframe;
+  if (instConfig.inst_symbol != null) out.symbol = instConfig.inst_symbol;
+  return out;
+}
+
+/** Apply instance operational overrides on a `{ bot }` config snapshot envelope. */
+export function applyInstanceOperationalToConfigSnapshot(configSnapshot, instConfig) {
+  if (!configSnapshot || typeof configSnapshot !== "object" || !instConfig) return configSnapshot;
+  if (configSnapshot.bot && typeof configSnapshot.bot === "object") {
+    applyInstanceOperationalToBot(configSnapshot.bot, instConfig);
+  } else {
+    applyInstanceOperationalToBot(configSnapshot, instConfig);
+  }
+  return configSnapshot;
+}
+
+/** Strategy snapshots omit instance `marketMode`; intraday futures sim needs it or SELL signals are blocked. */
+export function ensureBacktestMarketMode(cfg = {}) {
+  if (String(cfg.marketMode ?? cfg.market ?? "").trim()) return cfg;
+  const strat = String(cfg.manualStrategy ?? "").toUpperCase();
+  if (strat === "SR_INTRADAY" || strat === "INTRADAY_PRO") {
+    return {
+      ...cfg,
+      marketMode: "FUTURES",
+      futuresLeverage: cfg.futuresLeverage ?? cfg.leverage ?? 12,
+    };
+  }
+  return cfg;
+}
+
 /**
  * Predicate: is this flat-config key owned by the instance?
  * Useful for partial PATCH endpoints that route updates to the right table.

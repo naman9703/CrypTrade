@@ -1,11 +1,8 @@
 /**
- * Single-warm-worker pool for backtests.
+ * Backtest worker pool — serial warm worker by default.
  *
- * Spawns a Node `worker_thread` on demand, runs queued jobs serially, and
- * recycles the worker if it crashes. Concurrency is intentionally bounded to
- * a small number (default 3, override `BACKTEST_WORKER_CONCURRENCY`) so a
- * misconfigured optimization sweep can't
- * starve the API event loop.
+ * Reuses one persistent worker_thread across runs (DB pool + signal cache stay warm).
+ * Override concurrency via BACKTEST_WORKER_CONCURRENCY (default 1).
  */
 
 import { Worker } from "worker_threads";
@@ -20,17 +17,28 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const WORKER_PATH = path.join(__dirname, "worker.js");
 
-const MAX_CONCURRENCY = Math.max(1, Number(process.env.BACKTEST_WORKER_CONCURRENCY || 3));
+/** Serial by default — parallel workers thrash CPU and stall SR_INTRADAY signal builds. */
+const MAX_CONCURRENCY = Math.max(1, Number(process.env.BACKTEST_WORKER_CONCURRENCY || 1));
+const USE_WARM_WORKER = process.env.BACKTEST_DISABLE_WARM_WORKER !== "true" && MAX_CONCURRENCY === 1;
 
-/** @type {Set<{ runId:string, worker:Worker }>} */
+/** @type {Set<{ runId:string, worker:Worker, warm?: boolean }>} */
 const active = new Set();
 /** @type {Array<{ runId:string, resolve:Function, reject:Function }>} */
 const queue = [];
 const events = new EventEmitter();
 
 let wsHubRef = null;
+/** @type {Worker | null} */
+let warmWorker = null;
+/** @type {Promise<void> | null} */
+let warmReady = null;
+/** @type {((v?: void) => void) | null} */
+let warmReadyResolve = null;
+/** @type {((err: Error) => void) | null} */
+let warmReadyReject = null;
+/** @type {{ runId: string, resolve: Function, reject: Function } | null} */
+let warmJob = null;
 
-/** Wire wsHub once at boot so progress events can be broadcast. */
 export function setBacktestWsHub(hub) {
   wsHubRef = hub;
 }
@@ -44,13 +52,9 @@ function backtestActivity(payload) {
   }
 }
 
-/**
- * @param {string} runId
- * @param {{ priority?: "high" }} [opts] Manual POST /runs uses `high` so a user backtest is not stuck behind a large optimization sweep.
- */
-/** True when this run is already in the in-memory worker queue or executing. */
 export function isRunInPool(runId) {
   const id = String(runId);
+  if (warmJob?.runId === id) return true;
   for (const entry of active) {
     if (entry.runId === id) return true;
   }
@@ -70,11 +74,6 @@ export function enqueueRun(runId, opts = {}) {
   });
 }
 
-/**
- * After API restart the DB may still have `queued` / `running` rows while the
- * in-memory queue is empty — those runs show "Waiting in queue…" forever.
- * Re-enqueue them once at boot (and via POST /runs/:id/requeue).
- */
 export async function recoverOrphanedBacktestRuns() {
   if (!getPool()) return { resetRunning: 0, requeued: 0 };
 
@@ -87,10 +86,23 @@ export async function recoverOrphanedBacktestRuns() {
       RETURNING id`,
   );
 
+  const maxRequeue = Math.max(1, Number(process.env.BACKTEST_MAX_RECOVER_REQUEUE || 8));
   const pending = await query(
     `SELECT id FROM backtest_runs
       WHERE status = 'queued'
-      ORDER BY created_at ASC`,
+        AND created_at > NOW() - INTERVAL '48 hours'
+      ORDER BY created_at ASC
+      LIMIT $1`,
+    [maxRequeue],
+  );
+
+  await query(
+    `UPDATE backtest_runs
+        SET status = 'failed',
+            error_message = 'stale_queued_run_cleared',
+            finished_at = NOW()
+      WHERE status = 'queued'
+        AND created_at <= NOW() - INTERVAL '48 hours'`,
   );
 
   let requeued = 0;
@@ -113,10 +125,23 @@ export async function recoverOrphanedBacktestRuns() {
   return { resetRunning: reset.rowCount, requeued };
 }
 
-/** Cancels a running job by sending a `cancel` message. The worker resolves cooperatively. */
 export function cancelRun(runId) {
+  const id = String(runId);
+  if (warmJob?.runId === id && warmWorker) {
+    try {
+      warmWorker.postMessage({ type: "cancel" });
+    } catch {
+      /* ignore */
+    }
+    scheduleWarmWorkerRecycle(id);
+    return true;
+  }
+  if (warmJob?.runId === id) {
+    finishWarmJob(new Error("cancelled"));
+    return true;
+  }
   for (const job of active) {
-    if (job.runId === String(runId)) {
+    if (job.runId === id) {
       try {
         job.worker.postMessage({ type: "cancel" });
       } catch {
@@ -126,7 +151,7 @@ export function cancelRun(runId) {
     }
   }
   for (let i = 0; i < queue.length; i++) {
-    if (queue[i].runId === String(runId)) {
+    if (queue[i].runId === id) {
       queue[i].reject(new Error("cancelled_before_start"));
       queue.splice(i, 1);
       return true;
@@ -140,7 +165,8 @@ function drain() {
     const next = queue.shift();
     if (!next) break;
     try {
-      spawn(next);
+      if (USE_WARM_WORKER) spawnWarm(next);
+      else spawn(next);
     } catch (err) {
       console.error("[backtest:pool] spawn failed", err);
       try {
@@ -154,6 +180,249 @@ function drain() {
       next.reject(err);
     }
   }
+}
+
+function wireWorkerEvents(worker, job, entry, onDone) {
+  const runShort = job.runId.length > 8 ? `${job.runId.slice(0, 8)}…` : job.runId;
+
+  worker.on("message", (msg) => {
+    if (!msg) return;
+    if (msg.type === "ready") return;
+    if (msg.type === "progress") {
+      events.emit("progress", { runId: job.runId, pct: Number(msg.pct) });
+      try {
+        wsHubRef?.broadcast?.("backtest_progress", {
+          runId: job.runId,
+          progressPct: Number(msg.pct),
+          status: "running",
+        });
+      } catch {
+        /* must not break worker */
+      }
+    } else if (msg.type === "complete") {
+      if (String(msg.runId) !== job.runId) return;
+      events.emit("complete", { runId: job.runId });
+      backtestActivity({
+        level: "info",
+        reason: "backtest_complete",
+        msg: `Backtest completed · ${runShort}`,
+        detail: { runId: job.runId },
+      });
+      try {
+        wsHubRef?.broadcast?.("backtest_complete", { runId: job.runId });
+      } catch {
+        /* ignore */
+      }
+      onDone(null);
+    } else if (msg.type === "failed") {
+      if (msg.runId && String(msg.runId) !== job.runId) return;
+      const errStr = String(msg.error || "");
+      events.emit("failed", { runId: job.runId, error: errStr });
+      backtestActivity({
+        level: "error",
+        reason: "backtest_failed",
+        msg: `Backtest failed · ${runShort}${errStr ? ` — ${errStr.slice(0, 220)}` : ""}`,
+        detail: { runId: job.runId, error: errStr },
+      });
+      try {
+        wsHubRef?.broadcast?.("backtest_failed", {
+          runId: job.runId,
+          error: errStr,
+        });
+      } catch {
+        /* ignore */
+      }
+      onDone(new Error(errStr || "backtest_failed"));
+    }
+  });
+
+  worker.on("error", (err) => {
+    console.error("[backtest:pool] worker error", err);
+    onDone(err);
+  });
+}
+
+function rejectWarmReady(err) {
+  if (warmReadyReject) warmReadyReject(err);
+  warmReadyResolve = null;
+  warmReadyReject = null;
+  warmReady = null;
+}
+
+function terminateWarmWorker(err) {
+  const w = warmWorker;
+  warmWorker = null;
+  rejectWarmReady(err ?? new Error("warm_worker_recycled"));
+  if (w) {
+    try {
+      w.terminate();
+    } catch {
+      /* ignore */
+    }
+  }
+  finishWarmJob(err ?? new Error("warm_worker_recycled"));
+}
+
+function scheduleWarmWorkerRecycle(runId, ms = 2500) {
+  setTimeout(() => {
+    if (warmJob?.runId !== String(runId)) return;
+    console.warn("[backtest:pool] recycling warm worker after cancel", runId);
+    terminateWarmWorker(new Error("cancelled"));
+  }, ms);
+}
+
+function finishWarmJob(err) {
+  const job = warmJob;
+  if (!job) return;
+  warmJob = null;
+  for (const entry of active) {
+    if (entry.warm && entry.runId === job.runId) {
+      active.delete(entry);
+      break;
+    }
+  }
+  if (err) job.reject(err);
+  else job.resolve({ runId: job.runId });
+  drain();
+}
+
+function ensureWarmWorker() {
+  if (warmWorker) return warmReady ?? Promise.resolve();
+
+  warmReady = new Promise((resolve, reject) => {
+    warmReadyResolve = resolve;
+    warmReadyReject = reject;
+    const worker = new Worker(WORKER_PATH, { workerData: { persistent: true } });
+    warmWorker = worker;
+    let settled = false;
+    const settle = (fn, val) => {
+      if (settled) return;
+      settled = true;
+      warmReadyResolve = null;
+      warmReadyReject = null;
+      fn(val);
+    };
+
+    worker.on("message", (msg) => {
+      if (!msg) return;
+      if (msg.type === "ready") {
+        settle(resolve, undefined);
+        return;
+      }
+      const job = warmJob;
+      if (!job || (msg.runId && String(msg.runId) !== job.runId)) return;
+
+      if (msg.type === "progress") {
+        events.emit("progress", { runId: job.runId, pct: Number(msg.pct) });
+        try {
+          wsHubRef?.broadcast?.("backtest_progress", {
+            runId: job.runId,
+            progressPct: Number(msg.pct),
+            status: "running",
+          });
+        } catch {
+          /* ignore */
+        }
+      } else if (msg.type === "complete") {
+        const runShort = job.runId.length > 8 ? `${job.runId.slice(0, 8)}…` : job.runId;
+        events.emit("complete", { runId: job.runId });
+        backtestActivity({
+          level: "info",
+          reason: "backtest_complete",
+          msg: `Backtest completed · ${runShort}`,
+          detail: { runId: job.runId },
+        });
+        try {
+          wsHubRef?.broadcast?.("backtest_complete", { runId: job.runId });
+        } catch {
+          /* ignore */
+        }
+        finishWarmJob(null);
+      } else if (msg.type === "failed") {
+        const errStr = String(msg.error || "");
+        const runShort = job.runId.length > 8 ? `${job.runId.slice(0, 8)}…` : job.runId;
+        events.emit("failed", { runId: job.runId, error: errStr });
+        backtestActivity({
+          level: "error",
+          reason: "backtest_failed",
+          msg: `Backtest failed · ${runShort}${errStr ? ` — ${errStr.slice(0, 220)}` : ""}`,
+          detail: { runId: job.runId, error: errStr },
+        });
+        try {
+          wsHubRef?.broadcast?.("backtest_failed", { runId: job.runId, error: errStr });
+        } catch {
+          /* ignore */
+        }
+        finishWarmJob(new Error(errStr || "backtest_failed"));
+      }
+    });
+
+    worker.on("error", (err) => {
+      console.error("[backtest:pool] warm worker error", err);
+      if (!settled) settle(reject, err);
+      const w = warmWorker;
+      warmWorker = null;
+      warmReady = null;
+      warmReadyResolve = null;
+      warmReadyReject = null;
+      finishWarmJob(err);
+      if (w) {
+        try {
+          w.terminate();
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+
+    worker.on("exit", (code) => {
+      if (!settled) settle(reject, new Error(`backtest_worker_exit_${code}`));
+      if (warmWorker === worker) {
+        warmWorker = null;
+        warmReady = null;
+        warmReadyResolve = null;
+        warmReadyReject = null;
+      }
+      if (warmJob) finishWarmJob(new Error(`backtest_worker_exit_${code}`));
+      drain();
+    });
+  });
+
+  return warmReady;
+}
+
+function spawnWarm(job) {
+  const entry = { runId: job.runId, worker: warmWorker, warm: true };
+  active.add(entry);
+  warmJob = job;
+
+  const runShort = job.runId.length > 8 ? `${job.runId.slice(0, 8)}…` : job.runId;
+  backtestActivity({
+    level: "info",
+    reason: "backtest_started",
+    msg: `Backtest started · ${runShort}`,
+    detail: { runId: job.runId },
+  });
+
+  try {
+    wsHubRef?.broadcast?.("backtest_progress", {
+      runId: job.runId,
+      progressPct: 0,
+      status: "running",
+    });
+  } catch {
+    /* ignore */
+  }
+
+  ensureWarmWorker()
+    .then(() => {
+      if (!warmWorker) throw new Error("warm_worker_unavailable");
+      if (warmJob?.runId !== job.runId) return;
+      warmWorker.postMessage({ type: "run", runId: job.runId });
+    })
+    .catch((err) => {
+      finishWarmJob(err);
+    });
 }
 
 function spawn(job) {
@@ -180,62 +449,17 @@ function spawn(job) {
     /* ignore */
   }
 
-  worker.on("message", (msg) => {
-    if (!msg) return;
-    if (msg.type === "progress") {
-      events.emit("progress", { runId: job.runId, pct: Number(msg.pct) });
-      try {
-        wsHubRef?.broadcast?.("backtest_progress", {
-          runId: job.runId,
-          progressPct: Number(msg.pct),
-          status: "running",
-        });
-      } catch {
-        /* must not break worker */
-      }
-    } else if (msg.type === "complete") {
-      events.emit("complete", { runId: job.runId });
-      backtestActivity({
-        level: "info",
-        reason: "backtest_complete",
-        msg: `Backtest completed · ${runShort}`,
-        detail: { runId: job.runId },
-      });
-      try {
-        wsHubRef?.broadcast?.("backtest_complete", { runId: job.runId });
-      } catch {
-        /* ignore */
-      }
-    } else if (msg.type === "failed") {
-      const errStr = String(msg.error || "");
-      events.emit("failed", { runId: job.runId, error: errStr });
-      backtestActivity({
-        level: "error",
-        reason: "backtest_failed",
-        msg: `Backtest failed · ${runShort}${errStr ? ` — ${errStr.slice(0, 220)}` : ""}`,
-        detail: { runId: job.runId, error: errStr },
-      });
-      try {
-        wsHubRef?.broadcast?.("backtest_failed", {
-          runId: job.runId,
-          error: errStr,
-        });
-      } catch {
-        /* ignore */
-      }
-    }
-  });
-
-  worker.on("error", (err) => {
-    console.error("[backtest:pool] worker error", err);
-    job.reject(err);
+  const finish = (err) => {
     cleanup(entry);
-  });
+    if (err) job.reject(err);
+    else job.resolve({ runId: job.runId });
+  };
+
+  wireWorkerEvents(worker, job, entry, finish);
 
   worker.on("exit", (code) => {
     cleanup(entry);
-    if (code === 0) job.resolve({ runId: job.runId });
-    else job.reject(new Error(`backtest_worker_exit_${code}`));
+    if (code !== 0) job.reject(new Error(`backtest_worker_exit_${code}`));
   });
 }
 

@@ -332,7 +332,7 @@ export async function getPerformanceRowsForStrategy(strategyId) {
  * @param {string} userId
  * @param {string} modeSlug normalized e.g. paper | demo_api
  */
-export async function listPerformanceCompareForUserMode(userId, modeSlug) {
+export async function listPerformanceCompareForUserMode(userId, _modeSlug) {
   const r = await query(
     `SELECT s.id AS strategy_id, s.name AS strategy_name,
             sv.id AS version_id, sv.version_number, sv.label,
@@ -342,13 +342,11 @@ export async function listPerformanceCompareForUserMode(userId, modeSlug) {
             sp.rr_ratio, sp.last_calculated_at
      FROM strategies s
      JOIN strategy_versions sv ON sv.strategy_id = s.id
-     LEFT JOIN trading_modes tm ON tm.id = s.mode_id
      LEFT JOIN strategy_performance sp ON sp.strategy_version_id = sv.id
      WHERE s.user_id = $1
-       AND (tm.slug = $2 OR s.mode_id IS NULL)
        AND s.is_archived = false
      ORDER BY s.name ASC, sv.version_number ASC`,
-    [userId, modeSlug],
+    [userId],
   );
   return r.rows.map((row) => ({
     strategyId: String(row.strategy_id),

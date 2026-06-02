@@ -4,6 +4,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
+import { effectiveBacktestBotCfg } from "../../lib/backtestEffectiveCfg";
 import type {
   BacktestEquityPoint,
   BacktestMetrics,
@@ -54,6 +55,7 @@ function metricsLooksComplete(m: BacktestMetrics | null): boolean {
 export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
   const [tab, setTab] = useState<Tab>("kpis");
   const [trades, setTrades] = useState<BacktestTrade[] | null>(null);
+  const [selectedTrade, setSelectedTrade] = useState<BacktestTrade | null>(null);
   const [curve, setCurve] = useState<BacktestEquityPoint[] | null>(null);
   const [hydratedRun, setHydratedRun] = useState<BacktestRunSummary | null>(null);
   const [promoteOpen, setPromoteOpen] = useState<boolean>(false);
@@ -102,6 +104,7 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
     setTrades(null);
     setCurve(null);
     setHydratedRun(null);
+    setSelectedTrade(null);
   }, [run?.id]);
 
   /** One-shot GET when the list row has no metrics payload yet (race after completion). */
@@ -137,7 +140,8 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
         ]);
         if (cancelled) return;
         setCurve((eq?.points ?? []) as BacktestEquityPoint[]);
-        setTrades((tr?.trades ?? []) as BacktestTrade[]);
+        const loaded = (tr?.trades ?? []) as BacktestTrade[];
+        setTrades(loaded);
       } catch {
         if (!cancelled) {
           setCurve([]);
@@ -266,7 +270,13 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
           (trades == null ? (
             <Loading />
           ) : (
-            <TradeListTable trades={trades} futuresLeverage={futuresLeverage} variant="detailed" />
+            <TradeListTable
+              trades={trades}
+              futuresLeverage={futuresLeverage}
+              variant="detailed"
+              selectedTradeNumber={selectedTrade?.tradeNumber ?? null}
+              onSelectTrade={setSelectedTrade}
+            />
           ))}
         {tab === "distributions" && (
           trades == null ? <Loading /> : (
@@ -292,7 +302,13 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
         <div className="space-y-3">
           <ChartErrorBoundary>
             {/* Remount per run so chart TF + fetch state reset; avoids stale loading from aborted fetches */}
-            <BacktestTradeChart key={displayRun.id} run={displayRun} trades={trades ?? []} />
+            <BacktestTradeChart
+              key={displayRun.id}
+              run={displayRun}
+              trades={trades ?? []}
+              selectedTrade={selectedTrade}
+              onSelectTrade={setSelectedTrade}
+            />
           </ChartErrorBoundary>
           <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/60">
             <div className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -304,7 +320,12 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
             {trades == null ? (
               <Loading />
             ) : (
-              <TradeListTable trades={trades} futuresLeverage={futuresLeverage} />
+              <TradeListTable
+                trades={trades}
+                futuresLeverage={futuresLeverage}
+                selectedTradeNumber={selectedTrade?.tradeNumber ?? null}
+                onSelectTrade={setSelectedTrade}
+              />
             )}
           </div>
         </div>
@@ -398,6 +419,15 @@ function leverageSummary(cfg: Record<string, unknown>): string {
 function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: BacktestTrade[] | null }) {
   const [showCfgJson, setShowCfgJson] = useState(false);
 
+  const cfg: Record<string, unknown> = useMemo(
+    () =>
+      effectiveBacktestBotCfg(
+        run.configSnapshot,
+        run.instanceOperationalSnapshot as Record<string, unknown> | null | undefined,
+      ),
+    [run.configSnapshot, run.instanceOperationalSnapshot],
+  );
+
   const exitBreakdown = useMemo(() => {
     if (!trades || !trades.length) return null;
     const counts: Record<string, number> = {};
@@ -416,13 +446,7 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
     const v = Number(n);
     return Number.isFinite(v) ? v.toFixed(digits) : "—";
   };
-  const cfg: Record<string, unknown> = (() => {
-    const snap = run.configSnapshot;
-    if (!snap) return {};
-    if (snap && typeof snap === "object" && "bot" in snap && snap.bot && typeof snap.bot === "object") return snap.bot as Record<string, unknown>;
-    return snap;
-  })();
-  const cfgVal = (key: string) => cfg[key] != null ? String(cfg[key]) : "—";
+  const cfgVal = (key: string) => (cfg[key] != null ? String(cfg[key]) : "—");
 
   return (
     <div className="space-y-3">
@@ -526,7 +550,14 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Strategy config used</span>
               <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-mono text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                {run.configSource === "instance_merged" ? "instance merged" : "strategy only"}
+                {run.configSource === "instance_snapshot_with_live_panel"
+                  || run.configSource === "instance_merged_live_panel"
+                  || run.configSource === "strategy_with_live_panel"
+                  ? "live panel merged"
+                  : run.configSource === "instance_snapshot"
+                    || run.configSource === "instance_merged"
+                    ? "instance snapshot"
+                    : "strategy only"}
               </span>
             </div>
             <button type="button" className="text-[11px] text-sky-600 dark:text-sky-400" onClick={() => setShowCfgJson((v) => !v)}>
@@ -542,6 +573,14 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
             <Row k="Trail buffer" v={cfgVal("trailBufferRate")} />
             <Row k="Fixed SL %" v={cfgVal("supertrendFuturesFixedSlPct")} />
             <Row k="Fixed TP %" v={cfgVal("supertrendFuturesFixedTpPct")} />
+            <Row
+              k="SL bracket"
+              v={cfgVal("supertrendFuturesUseFixedSl") === false ? "Off" : "On"}
+            />
+            <Row
+              k="TP bracket"
+              v={cfgVal("supertrendFuturesUseFixedTp") === false ? "Off" : "On"}
+            />
             <Row k="Risk/trade" v={cfgVal("riskPerTrade")} />
             <Row k="Risk unit" v={cfgVal("riskPerTradeUnit")} />
             <Row k="Leverage" v={leverageSummary(cfg)} />
@@ -551,6 +590,26 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
             <Row k="Signal strength gate" v={String(cfg.signalStrengthGatesTrades ?? "—")} />
             <Row k="Breakout confirm" v={String(cfg.supertrendBreakoutConfirm ?? "—")} />
             <Row k="Max daily loss" v={cfgVal("maxDailyLoss")} />
+            <Row k="SMC / ICT gate" v={String(cfg.intradayGateSmcIct === true || cfg.intradaySmcIctMode === true)} />
+            <Row k="ICT profile" v={cfgVal("intradaySmcIctProfile")} />
+            <Row k="Pick mode" v={cfgVal("intradaySmcPickMode")} />
+            <Row k="Require MSS" v={String(cfg.intradaySmcRequireMss === true)} />
+            <Row k="Require retrace" v={String(cfg.intradaySmcRequireRetrace === true)} />
+            <Row k="Require CHoCH" v={String(cfg.intradaySmcRequireChoch === true)} />
+            <Row k="Min R:R" v={cfgVal("intradaySmcMinRr")} />
+            <Row k="Require BOS" v={String(cfg.intradaySmcRequireBos === true)} />
+            <Row k="Require confirm" v={String(cfg.intradaySmcRequireConfirm === true)} />
+            <Row k="Kill-zone" v={cfgVal("intradaySmcKillzoneMode")} />
+            <Row k="HTF strictness" v={cfgVal("intradaySmcHtfStrictness")} />
+            <Row k="HTF bias mode" v={cfgVal("intradaySmcHtfBiasMode")} />
+            <Row k="Engine materialized" v={cfg._intradayEngineMaterialized === true ? "yes" : "no"} />
+            {(cfg.intradayGateSmcIct === true || cfg.intradaySmcIctMode === true) &&
+            String(cfg.intradaySmcIctProfile ?? "").toLowerCase() === "balanced" ? (
+              <div className="col-span-2 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                Ran with <b>balanced</b> ICT (MSS + retrace, ~1/day) — not the tuned{" "}
+                <b>sweep / per_signal</b> audit preset (CHoCH + London/NY). Apply <b>BNB 15m SMC/ICT</b> in Trading, then re-run.
+              </div>
+            ) : null}
           </div>
           {showCfgJson && (
             <pre className="mt-2 max-h-60 overflow-auto rounded bg-slate-100 p-2 text-[10px] dark:bg-slate-950">

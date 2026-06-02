@@ -118,6 +118,10 @@ export type BacktestTrade = {
   entryQuality?: TrendHtfStEntryQuality | null;
   /** Post-close loss/win pattern label (e.g. WHIPSAW_GAVE_BACK, INSTANT_SL). */
   lossPattern?: string | null;
+  /** Signal reason at entry (e.g. smc_ict, ipro_liq_sweep). */
+  entryReason?: string | null;
+  /** Liquidity / SMC context persisted from the simulator. */
+  liqContext?: Record<string, unknown> | null;
 };
 
 export type TrendHtfStEntryQuality = {

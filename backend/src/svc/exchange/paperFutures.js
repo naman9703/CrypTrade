@@ -719,8 +719,8 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         side,
         qty: Number(qty),
         entryPrice: Number(filledPrice),
-        stopLoss: Number(stopLoss),
-        takeProfit: Number(takeProfit),
+        stopLoss: Number.isFinite(Number(stopLoss)) && Number(stopLoss) > 0 ? Number(stopLoss) : null,
+        takeProfit: Number.isFinite(Number(takeProfit)) && Number(takeProfit) > 0 ? Number(takeProfit) : null,
         leverage,
         openedAt: new Date().toISOString(),
         strategy,
@@ -749,24 +749,27 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         side,
         qty: Number(qty),
         price: Number(filledPrice),
-        stopLoss: Number(stopLoss),
-        takeProfit: Number(takeProfit),
+        stopLoss: pos.stopLoss,
+        takeProfit: pos.takeProfit,
         strategy,
         fee: roundTo(fee, 6),
         meta: { ...(meta || {}), leverage, openFee: fee, fee },
       });
 
-      // Attach synthetic bracket orders
-      state.openOrders.push({ posId: id, symbol, type: "SL", side: side === "BUY" ? "SELL" : "BUY", stopPx: Number(stopLoss) });
-      state.openOrders.push({ posId: id, symbol, type: "TP", side: side === "BUY" ? "SELL" : "BUY", stopPx: Number(takeProfit) });
+      if (pos.stopLoss != null) {
+        state.openOrders.push({ posId: id, symbol, type: "SL", side: side === "BUY" ? "SELL" : "BUY", stopPx: pos.stopLoss });
+      }
+      if (pos.takeProfit != null) {
+        state.openOrders.push({ posId: id, symbol, type: "TP", side: side === "BUY" ? "SELL" : "BUY", stopPx: pos.takeProfit });
+      }
 
       persistSoon();
       return {
         id,
         filledPrice: Number(filledPrice),
         leverage,
-        stopLoss: Number(stopLoss),
-        takeProfit: Number(takeProfit),
+        stopLoss: pos.stopLoss,
+        takeProfit: pos.takeProfit,
       };
     },
     async markToMarket({ symbol, price, markPxBySymbol, trailingStopLoss, onTrailingSlAdvance, notifyActivity } = {}) {

@@ -196,7 +196,7 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
               {loading ? "…" : strategy?.name ?? "Strategy"}
             </h2>
             <p className="text-[10px] text-slate-500">
-              {strategy?.modeSlug?.toUpperCase()}{" "}
+              {strategy?.modeSlug ? strategy.modeSlug.toUpperCase() : "All modes"}{" "}
               {strategy?.tags?.length ? `· ${strategy.tags.join(", ")}` : ""}
             </p>
           </div>

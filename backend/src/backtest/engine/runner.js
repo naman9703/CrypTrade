@@ -28,6 +28,8 @@ import {
   isTrendHtfStRegimeGateEnabled,
   isTrendHtfStSurgicalLossFilterEnabled,
 } from "../../strategy/trendHtfStRegime.js";
+import { fixedBracketSlEnabled, fixedBracketTpEnabled } from "../../strategy/bracketToggles.js";
+import { resolveSizingStopPrice } from "../../strategy/sizingStop.js";
 import {
   buildSupertrendConfirmationContext,
   evaluateSupertrendConfirmationGate,
@@ -43,6 +45,12 @@ import {
   readHtf4hFilterCfg,
 } from "../../strategy/supertrendHtf4hFilter.js";
 import { normalizeEliteStRunCfg } from "../../strategy/supertrendElite.js";
+import { resolveFibEntryBrackets } from "../../strategy/techniques/fibonacci.js";
+import {
+  liqBreakevenStopPx,
+  mapLiquidityEntryLegs,
+  resolveLiquidityEntryBrackets,
+} from "../../strategy/techniques/liquidity.js";
 
 const SUPERTREND_KEY = "SUPERTREND";
 const SUPERTREND_ELITE_KEY = "SUPERTREND_ELITE";
@@ -55,6 +63,7 @@ function finalizeTradeRecord(pos, row) {
     entryQuality: pos?.entryQuality ?? null,
     vpSetup: pos?.vpSetup ?? null,
     entryReason: pos?.entryReason ?? null,
+    liqContext: pos?.liqContext ?? null,
     lossPattern: classifyTrendHtfStTradeOutcome(row),
   };
 }
@@ -170,6 +179,8 @@ export async function runSimulation(args) {
   const startEq = Math.max(1, Number(startingUsdt));
   const fixedSlPct = Number(cfg?.supertrendFuturesFixedSlPct ?? 0);
   const fixedTpPct = Number(cfg?.supertrendFuturesFixedTpPct ?? 0);
+  const bracketSlOn = fixedBracketSlEnabled(cfg);
+  const bracketTpOn = fixedBracketTpEnabled(cfg);
   /** Live futures: `trailingStopLossAuto` must be on for any trailing SL; see `bot.js` + `trailingStopLoss.js`. */
   const trailingStopLossAuto = cfg?.trailingStopLossAuto === true;
   const futuresTrailMode = String(cfg?.futuresTrailingStopMode ?? "SUPERTREND").toUpperCase();
@@ -357,7 +368,17 @@ export async function runSimulation(args) {
       const isLong = pos.side === "BUY";
       const adv = adverseExtreme(bar, isLong);
       const fav = isLong ? bar.high : bar.low;
-      const hitTP = pos.tp > 0 && (isLong ? bar.high >= pos.tp : bar.low <= pos.tp);
+      const liqStages = pos.liqExitStages ?? null;
+      const hitTp1 =
+        (liqStages?.tp1On !== false) &&
+        pos.partialTp &&
+        !pos.partialTaken &&
+        pos.tp1 > 0 &&
+        (isLong ? bar.high >= pos.tp1 : bar.low <= pos.tp1);
+      const hitTP =
+        pos.tp > 0 &&
+        (pos.partialTaken || !pos.partialTp) &&
+        (isLong ? bar.high >= pos.tp : bar.low <= pos.tp);
       const hitLiq = isFutures && (isLong ? bar.low <= pos.liqPx : bar.high >= pos.liqPx);
       pos.mae = Math.min(pos.mae, computePctMove(pos.entryFill, adv, isLong));
       pos.mfe = Math.max(pos.mfe, computePctMove(pos.entryFill, fav, isLong));
@@ -366,23 +387,40 @@ export async function runSimulation(args) {
       const beAtMfePct = Number(
         cfg?.backtestBreakevenAtMfePct ?? cfg?.supertrendFuturesBreakevenAtMfePct ?? 0,
       );
-      if (beAtMfePct > 0 && pos.mfe >= beAtMfePct && !pos.beLocked) {
+      if (beAtMfePct > 0 && pos.mfe >= beAtMfePct && !pos.beLocked && pos.sl > 0) {
         const feeBuf =
           Number(cfg?.backtestBreakevenFeeBufferPct) ||
           (Number(cm.openFeeRate) + Number(cm.closeFeeRate)) * 1.2 ||
           0.001;
-        const bePx = isLong
-          ? pos.entryFill * (1 + feeBuf)
-          : pos.entryFill * (1 - feeBuf);
+        const bePx = liqBreakevenStopPx(pos.entryFill, isLong, feeBuf);
         if (isLong ? bePx > pos.sl : bePx < pos.sl) {
           pos.sl = bePx;
           pos.beLocked = true;
         }
       }
 
+      /** TP1 off + BE on: lock SL to breakeven once price reaches 1R (full size, then aim for TP2). */
+      if (pos.liqBeAt1R && !pos.beLocked && liqStages?.beOn !== false && pos.sl > 0) {
+        const trigger = Number(pos.liqBeTriggerPx);
+        const hit1R =
+          trigger > 0 && (isLong ? bar.high >= trigger : bar.low <= trigger);
+        if (hit1R) {
+          const feeBuf =
+            Number(cfg?.backtestBreakevenFeeBufferPct) ||
+            (Number(cm.openFeeRate) + Number(cm.closeFeeRate)) * 1.2 ||
+            0.001;
+          const bePx = liqBreakevenStopPx(pos.entryFill, isLong, feeBuf);
+          if (isLong ? bePx > pos.sl : bePx < pos.sl) {
+            pos.sl = bePx;
+            pos.beLocked = true;
+          }
+        }
+      }
+
       let exitReason = null;
       let exitPrice = null;
-      const hitSLAfterBe = isLong ? bar.low <= pos.sl : bar.high >= pos.sl;
+      const hitSLAfterBe =
+        pos.sl > 0 && (isLong ? bar.low <= pos.sl : bar.high >= pos.sl);
       const flipBeforeSl = cfg?.trendHtfStFlipExitBeforeSl === true;
       /** When false, hold through opposite Supertrend flips — exit only on SL/TP/trail/liq (higher WR, live must match). */
       const exitOnFlip = cfg?.supertrendFuturesExitOnFlip !== false;
@@ -413,8 +451,77 @@ export async function runSimulation(args) {
       if (!exitReason && hitLiq) {
         exitReason = "liq";
         exitPrice = pos.liqPx;
+      } else if (!exitReason && hitTp1) {
+        const frac = Math.min(0.75, Math.max(0.1, Number(pos.partialFrac) || 0.5));
+        const closeQty = pos.qty * frac;
+        const rawTp1 = clampBracketFillToBar(pos.tp1, bar);
+        const exitFillPartial = applySlippage(isLong ? "SELL" : "BUY", rawTp1, cm.slippagePct);
+        const breakdownP = tradeBreakdown({
+          side: pos.side,
+          entryFill: pos.entryFill,
+          exitFill: exitFillPartial,
+          qty: closeQty,
+          leverage: cm.leverage,
+          model: cm,
+        });
+        const fundingP = isFutures
+          ? fundingPaidBetween(pos, fundingRates, pos.entryTs, bar.ts) * frac
+          : 0;
+        const netPnlP = breakdownP.gross - breakdownP.fees - fundingP;
+        equity += netPnlP;
+        const entryNotionalP = closeQty * pos.entryFill;
+        const marginP =
+          isFutures && cm.leverage > 0 ? entryNotionalP / cm.leverage : entryNotionalP;
+        trades.push(
+          finalizeTradeRecord(pos, {
+            tradeNumber: trades.length + 1,
+            direction: pos.side,
+            entryTs: pos.entryTs,
+            entryPrice: pos.entryFill,
+            exitTs: bar.ts,
+            exitPrice: exitFillPartial,
+            qty: closeQty,
+            slPrice: pos.sl,
+            tpPrice: pos.tp1,
+            exitReason: "tp1_partial",
+            trailStep: pos.trailStep || 0,
+            trailTierLabel: pos.trailTierLabel || null,
+            grossPnl: breakdownP.gross,
+            fees: breakdownP.fees,
+            fundingPaid: fundingP,
+            slippageCost:
+              closeQty *
+              (Math.abs(pos.entryFill * cm.slippagePct) + Math.abs(exitFillPartial * cm.slippagePct)),
+            netPnl: netPnlP,
+            maePct: pos.mae,
+            mfePct: pos.mfe,
+            barsHeld: i - pos.entryIdx,
+            intelScoreAtEntry: pos.intelAtEntry,
+            gateAction: pos.gateAction,
+            equityAtEntry: pos.entryEquity ?? equity - netPnlP,
+            marginUsdt: marginP,
+          }),
+        );
+        pos.qty -= closeQty;
+        pos.partialTaken = true;
+        /** After 1R partial on liquidity trades, protect runner with BE (manual analysis assumes this). */
+        if (
+          pos.partialTp &&
+          (liqStages?.beOn !== false) &&
+          cfg?.intradayLiqBreakevenAfterPartial !== false
+        ) {
+          const feeBuf =
+            Number(cfg?.backtestBreakevenFeeBufferPct) ||
+            (Number(cm.openFeeRate) + Number(cm.closeFeeRate)) * 1.2 ||
+            0.001;
+          const bePx = liqBreakevenStopPx(pos.entryFill, isLong, feeBuf);
+          if (isLong ? bePx > pos.sl : bePx < pos.sl) {
+            pos.sl = bePx;
+            pos.beLocked = true;
+          }
+        }
       } else if (!exitReason && hitTP) {
-        exitReason = "tp";
+        exitReason = pos.partialTaken ? "tp2" : "tp";
         exitPrice = pos.tp;
       }
 
@@ -475,6 +582,16 @@ export async function runSimulation(args) {
         exitPrice = next
           ? applySlippage(isLong ? "SELL" : "BUY", next.open, cm.slippagePct)
           : applySlippage(isLong ? "SELL" : "BUY", bar.close, cm.slippagePct);
+      }
+
+      /**
+       * Intraday time stop (lowest priority — only if no SL/TP/trail/flip fired this
+       * bar). Forces intraday trades to close within a bounded horizon so a single
+       * runner can't ride for weeks and starve every subsequent setup.
+       */
+      if (!exitReason && pos.maxHoldBars > 0 && i - pos.entryIdx >= pos.maxHoldBars) {
+        exitReason = "time_stop";
+        exitPrice = bar.close; // finalizer applies slippage once for non-flip exits
       }
 
       if (exitReason) {
@@ -761,37 +878,123 @@ export async function runSimulation(args) {
       }
 
       const next = candles[i + 1];
-      const entryFill = applySlippage(barSignal.action, next.open, cm.slippagePct);
+      /** Fib signals fire at bar close in live — optional same-bar fill (default on when fib brackets set). */
+      const fibSameBarEntry =
+        barSignal?.fibBrackets?.slPct > 0 && cfg?.intradayFibEntryAtSignalClose !== false;
+      const liqSameBarEntry =
+        barSignal?.liqBrackets?.slPct > 0 && cfg?.intradayLiqEntryAtSignalClose !== false;
+      const fillBar = fibSameBarEntry || liqSameBarEntry ? bar : next;
+      const entryFill = applySlippage(barSignal.action, fillBar.close, cm.slippagePct);
       const atrInfoEntry = atrSeries[i];
       const atrPctEntry =
         atrInfoEntry && Number.isFinite(atrInfoEntry.atr) && bar.close > 0
           ? atrInfoEntry.atr / bar.close
           : null;
-      let stopPct = computeStopPct({ cfg, fixedSlPct, isFutures, atrPct: atrPctEntry });
-      let tpPct = fixedTpPct;
+      let stopPct = computeStopPct({
+        cfg,
+        fixedSlPct: bracketSlOn ? fixedSlPct : 0,
+        isFutures,
+        atrPct: atrPctEntry,
+        allowFallback: bracketSlOn,
+      });
+      let tpPct = bracketTpOn ? fixedTpPct : 0;
       if (entryQuality?.brackets && isTrendHtfStRegimeGateEnabled(cfg)) {
-        stopPct = entryQuality.brackets.slPct;
-        tpPct = entryQuality.brackets.tpPct;
+        if (bracketSlOn) stopPct = entryQuality.brackets.slPct;
+        if (bracketTpOn) tpPct = entryQuality.brackets.tpPct;
       }
       if (barSignal?.vpBrackets?.slPct > 0 && cfg.intradayVpBrackets === true) {
-        stopPct = barSignal.vpBrackets.slPct;
-        tpPct = barSignal.vpBrackets.tpPct ?? tpPct;
+        if (bracketSlOn) stopPct = barSignal.vpBrackets.slPct;
+        if (bracketTpOn) tpPct = barSignal.vpBrackets.tpPct ?? tpPct;
+      }
+      let fibStructureSl = null;
+      let fibStructureTp = null;
+      if (barSignal?.fibBrackets?.slPct > 0) {
+        const fibBr = resolveFibEntryBrackets(cfg, barSignal, entryFill, barSignal.action);
+        if (fibBr) {
+          if (bracketSlOn) stopPct = fibBr.slPct;
+          if (bracketTpOn) tpPct = fibBr.tpPct ?? tpPct;
+          if (bracketSlOn && fibBr.slPrice > 0) fibStructureSl = fibBr.slPrice;
+          if (bracketTpOn && fibBr.tpPrice > 0) fibStructureTp = fibBr.tpPrice;
+        } else {
+          if (bracketSlOn) stopPct = barSignal.fibBrackets.slPct;
+          if (bracketTpOn) tpPct = barSignal.fibBrackets.tpPct ?? tpPct;
+        }
+      }
+      let liqStructureSl = null;
+      let liqStructureTp = null;
+      let liqStructureTp1 = null;
+      let liqPartial = false;
+      let liqPartialFrac = 0.5;
+      let liqExitStages = null;
+      let liqBeAt1R = false;
+      let liqBeTriggerPx = 0;
+      if (barSignal?.liqBrackets?.slPct > 0) {
+        const liqBr = resolveLiquidityEntryBrackets(cfg, barSignal, entryFill, barSignal.action);
+        if (liqBr) {
+          if (bracketSlOn) stopPct = liqBr.slPct;
+          if (bracketTpOn) tpPct = liqBr.tpPct ?? tpPct;
+          const legs = mapLiquidityEntryLegs(liqBr, cfg);
+          if (legs) {
+            if (bracketSlOn) liqStructureSl = legs.slPrice;
+            if (bracketTpOn) {
+              liqStructureTp = legs.tp;
+              liqStructureTp1 = legs.tp1;
+              liqPartial = legs.partialTp;
+              liqPartialFrac = legs.partialFrac;
+              liqExitStages = legs.stages;
+              liqBeAt1R = legs.beAt1R;
+              liqBeTriggerPx = legs.beTriggerPx;
+            }
+          }
+        } else {
+          if (bracketSlOn) stopPct = barSignal.liqBrackets.slPct;
+          if (bracketTpOn) tpPct = barSignal.liqBrackets.tpPct ?? tpPct;
+        }
+      }
+      if (!bracketSlOn) {
+        stopPct = 0;
+        fibStructureSl = null;
+        liqStructureSl = null;
+        liqBeAt1R = false;
+      }
+      if (!bracketTpOn) {
+        tpPct = 0;
+        fibStructureTp = null;
+        liqStructureTp = null;
+        liqStructureTp1 = null;
+        liqPartial = false;
+        liqExitStages = null;
       }
       if (barSignal?.sizeMult > 1 && Number.isFinite(barSignal.sizeMult)) {
         sizeMult *= barSignal.sizeMult;
       }
+      const structureSl = fibStructureSl ?? liqStructureSl;
+      const structureTp = fibStructureTp ?? liqStructureTp;
       const sl =
-        barSignal.action === "BUY" ? entryFill * (1 - stopPct) : entryFill * (1 + stopPct);
+        structureSl != null && structureSl > 0
+          ? structureSl
+          : stopPct > 0
+            ? barSignal.action === "BUY"
+              ? entryFill * (1 - stopPct)
+              : entryFill * (1 + stopPct)
+            : 0;
       const tp =
-        tpPct > 0
-          ? barSignal.action === "BUY"
-            ? entryFill * (1 + tpPct)
-            : entryFill * (1 - tpPct)
-          : 0;
+        structureTp != null && structureTp > 0
+          ? structureTp
+          : tpPct > 0
+            ? barSignal.action === "BUY"
+              ? entryFill * (1 + tpPct)
+              : entryFill * (1 - tpPct)
+            : 0;
       const qty = computeEntryQty({
         equity,
         entryFill,
-        sl,
+        sl: resolveSizingStopPrice({
+          entryFill,
+          exitSl: sl > 0 ? sl : 0,
+          side: barSignal.action,
+          cfg,
+        }),
         cfg,
         cm,
         isFutures,
@@ -810,8 +1013,8 @@ export async function runSimulation(args) {
       pos = {
         side: barSignal.action,
         entryFill,
-        entryTs: next.ts,
-        entryIdx: i + 1,
+        entryTs: fillBar.ts,
+        entryIdx: fibSameBarEntry ? i : i + 1,
         qty,
         sl,
         tp,
@@ -830,8 +1033,32 @@ export async function runSimulation(args) {
         entryQuality,
         vpSetup,
         entryReason: barSignal.reason ?? null,
+        liqContext: barSignal?.liqBrackets
+          ? {
+              levelType: barSignal.liqBrackets.levelType,
+              level: barSignal.liqBrackets.level,
+              sweepWick: barSignal.liqBrackets.sweepWick,
+              opposingLevel: barSignal.liqBrackets.opposingLevel,
+              liqQuality: barSignal.liqBrackets.liqQuality,
+              rr: barSignal.liqBrackets.rr,
+              partialTp: liqPartial,
+              tp1Price: liqStructureTp1 > 0 ? liqStructureTp1 : null,
+              smcMeta: barSignal.smcMeta ?? null,
+              techniques: barSignal.techniques ?? null,
+            }
+          : null,
+        partialTp: liqPartial,
+        tp1: liqStructureTp1 ?? 0,
+        partialFrac: liqPartialFrac,
+        partialTaken: false,
+        liqExitStages,
+        liqBeAt1R,
+        liqBeTriggerPx,
+        maxHoldBars: Math.max(0, Number(cfg?.intradaySmcMaxHoldBars ?? cfg?.intradayLiqMaxHoldBars ?? 0)),
       };
-      i++; // bar[i+1] is the fill bar — skip it so we don't re-signal on the entry bar
+      if (!fibSameBarEntry) {
+        i++; // bar[i+1] is the fill bar — skip it so we don't re-signal on the entry bar
+      }
     }
 
     equityCurve.push({ ts: bar.ts, equity, drawdownPct: drawdownAt(equityCurve, equity) });
@@ -975,14 +1202,15 @@ function finalizeGateReplay(stats) {
   };
 }
 
-function computeStopPct({ cfg, fixedSlPct, isFutures, atrPct }) {
+function computeStopPct({ cfg, fixedSlPct, isFutures, atrPct, allowFallback = true }) {
   // ATR-based dynamic SL: slAtrMultiplier × ATR% of price (e.g. 3 × 0.1% ATR = 0.3% SL).
   // Only used when slAtrMultiplier > 0 AND we have a valid ATR reading.
   const atrMult = Number(cfg?.slAtrMultiplier ?? 0);
-  if (atrMult > 0 && atrPct != null && atrPct > 0) {
+  if (allowFallback && atrMult > 0 && atrPct != null && atrPct > 0) {
     return Math.max(0.001, Math.min(0.1, atrMult * atrPct));
   }
   if (fixedSlPct > 0) return fixedSlPct;
+  if (!allowFallback) return 0;
   const fallback = isFutures ? 0.01 : 0.02;
   return Math.max(0.001, Number(cfg?.spotFixedSlPct ?? fallback));
 }

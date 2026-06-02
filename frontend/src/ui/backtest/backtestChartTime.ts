@@ -49,7 +49,14 @@ export function chartTimeForTrade(
     return chartTimesSec[idx] as UTCTimestamp;
   }
   const rawSec = Math.floor(tms / 1000);
-  if (chartTimesSec.includes(rawSec)) return rawSec as UTCTimestamp;
+  let lo = 0;
+  let hi = chartTimesSec.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (chartTimesSec[mid] === rawSec) return rawSec as UTCTimestamp;
+    if (chartTimesSec[mid] < rawSec) lo = mid + 1;
+    else hi = mid - 1;
+  }
   let bestIdx = 0;
   let bestDist = Math.abs(candles[0].ts - tms);
   for (let i = 1; i < candles.length; i++) {
@@ -67,6 +74,23 @@ export function nextChartTime(candidateSec: number, lastSec: number): UTCTimesta
   const t = Math.floor(candidateSec);
   const next = t <= lastSec ? lastSec + 1 : t;
   return next as UTCTimestamp;
+}
+
+/** Nearest bar index for a candle open_time (ms). */
+export function barIndexForMs(candles: OhlcCandle[], tsMs: number): number {
+  if (!candles.length) return 0;
+  let idx = candles.findIndex((c) => c.ts === tsMs);
+  if (idx >= 0) return idx;
+  let best = 0;
+  let bestD = Math.abs(candles[0].ts - tsMs);
+  for (let i = 1; i < candles.length; i++) {
+    const d = Math.abs(candles[i].ts - tsMs);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  return best;
 }
 
 export function barAtTradeTime(

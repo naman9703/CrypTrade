@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { fibLevels, nearFibLevel, swingHighLow } from "./techniques/fibonacci.js";
 import { rollingVolumeProfile } from "./techniques/volumeProfile.js";
 import { computeAdaptiveIntradayParams } from "./adaptiveIntraday.js";
-import { selectIntradayPicks, evaluateIntradayBar } from "./intradayPro.js";
+import { selectIntradayPicks, evaluateIntradayBar, signal, buildIntradayBacktestAdapter } from "./intradayPro.js";
+import { INTRADAY_PRO_ICT_15M, fillSmcSoloPresetDefaults } from "./presets/srIntradayOptimized.js";
 
 function bar(ts, o, h, l, c, vol = 1000) {
   return { ts, open: o, high: h, low: l, close: c, volume: vol };
@@ -48,4 +49,65 @@ test("selectIntradayPicks returns series length match", () => {
 test("evaluateIntradayBar null during warmup", () => {
   const candles = Array.from({ length: 50 }, (_, i) => bar(i * 60_000, 100, 101, 99, 100));
   assert.equal(evaluateIntradayBar(candles, 40), null);
+});
+
+test("SMC solo signal() matches selectIntradayPicks at last bar (live/backtest parity)", () => {
+  const candles = [];
+  const baseTs = Date.UTC(2026, 1, 10, 8, 0, 0);
+  for (let i = 0; i < 200; i++) {
+    const c = 580 + Math.sin(i / 10) * 8 + (i > 100 ? (i - 100) * 0.02 : 0);
+    candles.push(bar(baseTs + i * 15 * 60 * 1000, c - 0.5, c + 2, c - 2, c));
+  }
+  const cfg = fillSmcSoloPresetDefaults({
+    ...INTRADAY_PRO_ICT_15M,
+    symbol: "BNBUSDT",
+    timeframe: "15m",
+    intradaySmcVolFilterEnabled: false,
+    intradaySmcMinAdx: 0,
+    intradaySmcPickMode: "daily_sniper",
+    intradaySmcOneTradePerDay: true,
+  });
+  const { series } = selectIntradayPicks(candles, cfg);
+  const idx = candles.length - 1;
+  const live = signal({ candles, timeframe: "15m", cfg });
+  const expected = series[idx] ?? { action: "HOLD", reason: "no_setup" };
+  assert.equal(live?.action ?? "HOLD", expected?.action ?? "HOLD");
+  if (live?.action && live.action !== "HOLD" && expected?.action) {
+    assert.equal(live.reason, expected.reason);
+  }
+});
+
+test("buildIntradayBacktestAdapter forwards smcMeta and techniques from pick series", () => {
+  const candles = [];
+  const baseTs = Date.UTC(2026, 1, 10, 8, 0, 0);
+  for (let i = 0; i < 200; i++) {
+    const c = 580 + Math.sin(i / 10) * 8 + (i > 100 ? (i - 100) * 0.02 : 0);
+    candles.push(bar(baseTs + i * 15 * 60 * 1000, c - 0.5, c + 2, c - 2, c));
+  }
+  const cfg = fillSmcSoloPresetDefaults({
+    ...INTRADAY_PRO_ICT_15M,
+    symbol: "BNBUSDT",
+    timeframe: "15m",
+    intradaySmcVolFilterEnabled: false,
+    intradaySmcMinAdx: 0,
+  });
+  const { series } = selectIntradayPicks(candles, cfg);
+  const pickIdx = series.findIndex((s) => s?.action === "BUY" || s?.action === "SELL");
+  if (pickIdx < 0) return;
+  const adapter = buildIntradayBacktestAdapter(candles, cfg, "15m");
+  const sig = adapter(candles[pickIdx], pickIdx);
+  assert.ok(sig);
+  assert.ok(Array.isArray(sig.techniques));
+  if (series[pickIdx]?.smcMeta) {
+    assert.ok(sig.smcMeta);
+    assert.equal(sig.smcMeta.levelType, series[pickIdx].smcMeta.levelType);
+  }
+  if (sig.liqBrackets) {
+    assert.ok(Number(sig.liqBrackets.slPct) > 0, "SMC liqBrackets.slPct should be forwarded");
+    assert.ok(Number(sig.liqBrackets.opposingLevel) > 0, "SMC liqBrackets.opposingLevel should be forwarded");
+    assert.ok(Number(sig.liqBrackets.rr) > 0, "SMC liqBrackets.rr should be forwarded");
+    if (sig.smcMeta?.opposingLevel != null) {
+      assert.equal(sig.smcMeta.opposingLevel, sig.liqBrackets.opposingLevel);
+    }
+  }
 });

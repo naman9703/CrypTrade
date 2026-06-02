@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { deferTask } from "../lib/deferTask";
 import { patchInstanceInByMode, useAppStore } from "../ws/store";
@@ -17,6 +17,7 @@ import { mergeMarketDecisionConfig } from "../lib/marketDecision/configDefaults"
 import type { MarketDecisionEngineConfig } from "../lib/marketDecision/types";
 import { MarketDecisionConfigPanel } from "./MarketDecisionConfigPanel";
 import { tradingModeToApiModeSlug } from "../lib/tradingModeSlug";
+import type { InstanceOperationalPatch } from "../types/instance";
 import {
   TREND_HTF_ST_BNB_CHOP_SAFE,
   TREND_HTF_ST_BNB_HIGH_WR,
@@ -34,7 +35,13 @@ import {
 import {
   INTRADAY_PRO_5M,
   INTRADAY_PRO_15M,
+  INTRADAY_PRO_FIB_15M,
   INTRADAY_PRO_BIGMOVE_15M,
+  INTRADAY_PRO_SR_APLUS_15M,
+  INTRADAY_PRO_ICT_15M,
+  INTRADAY_PRO_ICT_FULL_15M,
+  INTRADAY_PRO_ICT_RESEARCH_15M,
+  INTRADAY_PRO_ICT_RESEARCH_1H,
   SR_INTRADAY_BTC_15M,
 } from "../lib/srIntradayPresets";
 import {
@@ -44,6 +51,9 @@ import {
   VOLUME_PROFILE_BTC_15M,
   VOLUME_PROFILE_5M,
 } from "../lib/volumeProfilePresets";
+import { IntradayGatesPanel } from "./IntradayGatesPanel";
+import { isIntradayGateChecked } from "../lib/intradayGatesUi";
+import { useGuardedCheckbox } from "./useGuardedCheckbox";
 
 function TrendHtfStPresetButton({
   label,
@@ -1184,8 +1194,37 @@ const NUMBERED_SIGNAL_SOURCES: { n: number; key: string; label: string }[] = [
   },
 ];
 
+/** Fib gate only — brackets come from impulse swing, not fixed %. */
+function isFibSoloGateOnly(cfg: {
+  intradayGateFib?: boolean;
+  intradayGateLiquidity?: boolean;
+  intradayGateSession?: boolean;
+  intradayGateVp?: boolean;
+  intradayGateOrderFlow?: boolean;
+  intradayGateHtfRegime?: boolean;
+}) {
+  return (
+    cfg.intradayGateFib === true &&
+    !cfg.intradayGateLiquidity &&
+    !cfg.intradayGateSession &&
+    !cfg.intradayGateVp &&
+    !cfg.intradayGateOrderFlow &&
+    !cfg.intradayGateHtfRegime
+  );
+}
+
 /** SL/TP % fields are editable when Supertrend autotrade is on or any MANUAL signal path is selected. */
-function slTpFieldsEditable(cfg: { supertrendFuturesAuto?: boolean; strategyMode?: string }) {
+function slTpFieldsEditable(cfg: {
+  supertrendFuturesAuto?: boolean;
+  strategyMode?: string;
+  intradayGateFib?: boolean;
+  intradayGateLiquidity?: boolean;
+  intradayGateSession?: boolean;
+  intradayGateVp?: boolean;
+  intradayGateOrderFlow?: boolean;
+  intradayGateHtfRegime?: boolean;
+}) {
+  if (isFibSoloGateOnly(cfg)) return false;
   return Boolean(cfg.supertrendFuturesAuto) || String(cfg.strategyMode || "").toUpperCase() === "MANUAL";
 }
 
@@ -1209,6 +1248,23 @@ export function TradingPanel() {
   const positions = useAppStore((s) => s.positions);
   const trades = useAppStore((s) => s.trades);
   const pushLog = useAppStore((s) => s.pushLog);
+  const syncActiveInstanceOperational = useCallback(
+    async (patch: InstanceOperationalPatch) => {
+      if (!activeInstanceId) return;
+      try {
+        const inst = await api.patchInstanceOperationalConfig(activeInstanceId, patch);
+        useAppStore.setState((s) => ({
+          instancesByMode: patchInstanceInByMode(s.instancesByMode, activeInstanceId, inst),
+        }));
+      } catch (err) {
+        pushLog({
+          level: "warn",
+          msg: `Instance DB not synced: ${String((err as Error)?.message || err)}`,
+        });
+      }
+    },
+    [activeInstanceId, pushLog],
+  );
   const showMarketIntelligencePanel = useAppStore((s) => s.showMarketIntelligencePanel);
   const setShowMarketIntelligencePanel = useAppStore((s) => s.setShowMarketIntelligencePanel);
   const chartCandles = useAppStore((s) => s.candles);
@@ -1236,6 +1292,8 @@ export function TradingPanel() {
   const [amountUsdStr, setAmountUsdStr] = useState("200");
   const [slPctStr, setSlPctStr] = useState("0.2");
   const [tpPctStr, setTpPctStr] = useState("1.5");
+  const [manualUseSl, setManualUseSl] = useState(true);
+  const [manualUseTp, setManualUseTp] = useState(true);
   const [manualOrderBusy, setManualOrderBusy] = useState(false);
   const [mqTuneBusy, setMqTuneBusy] = useState(false);
   const [strategySaveBusy, setStrategySaveBusy] = useState(false);
@@ -1245,10 +1303,21 @@ export function TradingPanel() {
   const [capitalSliderPreviewPct, setCapitalSliderPreviewPct] = useState<number | null>(null);
   const [multiTradePctPreview, setMultiTradePctPreview] = useState<number | null>(null);
 
+  const [futuresUseFixedSl, setFuturesUseFixedSl] = useGuardedCheckbox(bot?.supertrendFuturesUseFixedSl !== false);
+  const [futuresUseFixedTp, setFuturesUseFixedTp] = useGuardedCheckbox(bot?.supertrendFuturesUseFixedTp !== false);
+
   useEffect(() => {
-    const d = bot?.tradingFormDefaults as { amountUsdStr?: string; slPctStr?: string; tpPctStr?: string } | undefined;
+    const d = bot?.tradingFormDefaults as {
+      amountUsdStr?: string;
+      slPctStr?: string;
+      tpPctStr?: string;
+      manualUseSl?: boolean;
+      manualUseTp?: boolean;
+    } | undefined;
     if (!d || manualFormHydratedRef.current) return;
     if (typeof d.amountUsdStr === "string") setAmountUsdStr(d.amountUsdStr);
+    if (typeof d.manualUseSl === "boolean") setManualUseSl(d.manualUseSl);
+    if (typeof d.manualUseTp === "boolean") setManualUseTp(d.manualUseTp);
     if (typeof d.slPctStr === "string" && typeof d.tpPctStr === "string") {
       const m = migrateManualSlTpFractionToPercentStrings(d.slPctStr, d.tpPctStr);
       setSlPctStr(m.sl);
@@ -1269,12 +1338,12 @@ export function TradingPanel() {
     const t = window.setTimeout(() => {
       void api
         .botConfig({
-          tradingFormDefaults: { amountUsdStr, slPctStr, tpPctStr },
+          tradingFormDefaults: { amountUsdStr, slPctStr, tpPctStr, manualUseSl, manualUseTp },
         })
         .catch(() => {});
     }, 600);
     return () => clearTimeout(t);
-  }, [amountUsdStr, slPctStr, tpPctStr]);
+  }, [amountUsdStr, slPctStr, tpPctStr, manualUseSl, manualUseTp]);
 
   const cfg = useMemo(() => {
     return {
@@ -1309,6 +1378,49 @@ export function TradingPanel() {
       volumeProfileSoftGates: bot?.volumeProfileSoftGates !== false,
       volumeProfileGatesEnabled: bot?.volumeProfileGatesEnabled === true,
       intradayVpBrackets: bot?.intradayVpBrackets === true,
+      intradayGateLiquidity: isIntradayGateChecked(bot as Record<string, unknown>, "intradayGateLiquidity"),
+      intradayGateSession: isIntradayGateChecked(bot as Record<string, unknown>, "intradayGateSession"),
+      intradayGateFib: isIntradayGateChecked(bot as Record<string, unknown>, "intradayGateFib"),
+      intradayGateVp: isIntradayGateChecked(bot as Record<string, unknown>, "intradayGateVp"),
+      intradayGateOrderFlow: isIntradayGateChecked(bot as Record<string, unknown>, "intradayGateOrderFlow"),
+      intradayGateHtfRegime: isIntradayGateChecked(bot as Record<string, unknown>, "intradayGateHtfRegime"),
+      intradayGateInstitutionalSr: isIntradayGateChecked(bot as Record<string, unknown>, "intradayGateInstitutionalSr"),
+      intradayGateSmcIct: isIntradayGateChecked(bot as Record<string, unknown>, "intradayGateSmcIct"),
+      intradaySmcIctProfile: String(bot?.intradaySmcIctProfile ?? "sweep"),
+      intradaySmcPickMode: String(bot?.intradaySmcPickMode ?? "per_signal"),
+      intradaySmcOneTradePerDay: bot?.intradaySmcOneTradePerDay === true,
+      intradaySmcKillzoneMode: String(bot?.intradaySmcKillzoneMode ?? "LONDON_NY"),
+      intradaySmcEntryZoneMode: String(bot?.intradaySmcEntryZoneMode ?? "EITHER"),
+      intradaySmcHtfStrictness: String(bot?.intradaySmcHtfStrictness ?? "either"),
+      intradaySmcMinAdx: Math.max(0, Math.min(100, Math.round(Number(bot?.intradaySmcMinAdx ?? 15)))),
+      intradaySmcMinRr: Math.max(0, Math.min(10, Number(bot?.intradaySmcMinRr ?? 1.5))),
+      intradaySmcSlMode: String(bot?.intradaySmcSlMode ?? "structure"),
+      intradaySmcMaxTpRr: Math.max(0, Math.min(20, Number(bot?.intradaySmcMaxTpRr ?? 3))),
+      intradaySmcMaxHoldBars: Math.max(0, Math.min(2000, Math.round(Number(bot?.intradaySmcMaxHoldBars ?? 48)))),
+      intradaySmcRequireMss: bot?.intradaySmcRequireMss === true,
+      intradaySmcRequireRetrace: bot?.intradaySmcRequireRetrace === true,
+      intradaySmcRequireHtfBias: bot?.intradaySmcRequireHtfBias !== false,
+      intradaySmcRequireChoch: bot?.intradaySmcRequireChoch === true,
+      intradaySmcRequireBos: bot?.intradaySmcRequireBos === true,
+      intradaySmcRequireConfirm: bot?.intradaySmcRequireConfirm === true,
+      intradaySmcRequireFvgRetrace: bot?.intradaySmcRequireFvgRetrace === true,
+      intradaySrAPlusMode: bot?.intradaySrAPlusMode === true,
+      intradaySrMinVolRatio: Math.max(0, Math.min(5, Number(bot?.intradaySrMinVolRatio ?? 1.2))),
+      intradaySrMinHtfSep: Math.max(0, Math.min(0.01, Number(bot?.intradaySrMinHtfSep ?? 0.0004))),
+      intradaySrZoneWidthPct: Math.max(0.0001, Math.min(0.02, Number(bot?.intradaySrZoneWidthPct ?? 0.002))),
+      intradaySrBosMaxBarsAfterReclaim: Math.max(
+        0,
+        Math.min(10, Math.round(Number(bot?.intradaySrBosMaxBarsAfterReclaim ?? 3))),
+      ),
+      intradaySrMinConfirmWick: Math.max(0, Math.min(1, Number(bot?.intradaySrMinConfirmWick ?? 0.38))),
+      intradayLiqMinSweepExtensionPct: Math.max(
+        0,
+        Math.min(0.02, Number(bot?.intradayLiqMinSweepExtensionPct ?? 0.008)),
+      ),
+      intradayLiqTp1Enabled: bot?.intradayLiqTp1Enabled !== false,
+      intradayLiqTp2Enabled: bot?.intradayLiqTp2Enabled !== false,
+      intradayLiqBreakevenAfterPartial: bot?.intradayLiqBreakevenAfterPartial !== false,
+      intradayLiqMinRr: Math.max(0, Math.min(5, Number(bot?.intradayLiqMinRr ?? 1.5))),
       vpLookbackBars: Math.max(48, Math.min(2000, Math.round(Number(bot?.vpLookbackBars ?? 672)))),
       vpMinRR: Math.max(0.8, Math.min(5, Number(bot?.vpMinRR ?? 1.5))),
       // SUPERTREND_ELITE gate params
@@ -1399,6 +1511,8 @@ export function TradingPanel() {
           : 0,
       supertrendFuturesFixedSlPct: clampNum(Number(bot?.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2),
       supertrendFuturesFixedTpPct: clampNum(Number(bot?.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5),
+      supertrendFuturesUseFixedSl: bot?.supertrendFuturesUseFixedSl !== false,
+      supertrendFuturesUseFixedTp: bot?.supertrendFuturesUseFixedTp !== false,
       supertrendFuturesTwoWay: bot?.supertrendFuturesTwoWay === true,
       supertrendFuturesMaxEntrySlippagePct: clampNum(Number(bot?.supertrendFuturesMaxEntrySlippagePct ?? 0.15), 0, 5),
       supertrendFuturesEntryOpenStyle: (() => {
@@ -2013,11 +2127,18 @@ export function TradingPanel() {
     if (mm === "SPOT" || !showManualOrders) return null;
     if (!marketClose || marketClose <= 0) return null;
     if (manualAmountUsd == null || manualAmountUsd <= 0) return null;
-    const sl = parseManualPercentField(slPctStr);
-    const tp = parseManualPercentField(tpPctStr);
-    if (sl == null || tp == null) return null;
+    const sl = manualUseSl ? parseManualPercentField(slPctStr) : null;
+    const tp = manualUseTp ? parseManualPercentField(tpPctStr) : null;
+    if (manualUseSl && sl == null) return null;
+    if (manualUseTp && tp == null) return null;
+    if (!manualUseSl && !manualUseTp) {
+      // still show lev preview without liq distance
+    }
+    if (!manualUseSl) {
+      return { buy: null, sell: null, lev: futuresLeverageUsedForMarginCap(bot, cfg, futuresLevDraft, { manualTrade: true }) };
+    }
     const lev = futuresLeverageUsedForMarginCap(bot, cfg, futuresLevDraft, { manualTrade: true });
-    const slFrac = sl / 100;
+    const slFrac = (sl ?? 0) / 100;
     const buy = manualMarketLiquidationPreview({
       entryPx: marketClose,
       notionalUsd: manualAmountUsd,
@@ -2040,6 +2161,8 @@ export function TradingPanel() {
     manualAmountUsd,
     slPctStr,
     tpPctStr,
+    manualUseSl,
+    manualUseTp,
     bot,
     cfg,
     futuresLevDraft,
@@ -2485,10 +2608,23 @@ export function TradingPanel() {
           )}
           <div className="flex flex-wrap gap-2">
             <TrendHtfStPresetButton label="★ BNB 15m Pro" highlight patch={INTRADAY_PRO_15M} pushLog={pushLog} />
+            <TrendHtfStPresetButton label="BNB 15m Fib" patch={INTRADAY_PRO_FIB_15M} pushLog={pushLog} />
+            <TrendHtfStPresetButton label="BNB 15m Inst. A+" patch={INTRADAY_PRO_SR_APLUS_15M} pushLog={pushLog} />
+            <TrendHtfStPresetButton label="BNB 15m SMC Sweep" patch={INTRADAY_PRO_ICT_15M} pushLog={pushLog} />
+            <TrendHtfStPresetButton
+              label="BNB 15m SMC Research (frozen)"
+              patch={INTRADAY_PRO_ICT_RESEARCH_15M}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton label="BNB 1H SMC Research (frozen)" patch={INTRADAY_PRO_ICT_RESEARCH_1H} pushLog={pushLog} />
+            <TrendHtfStPresetButton label="BNB 15m SMC ICT Full" patch={INTRADAY_PRO_ICT_FULL_15M} pushLog={pushLog} />
             <TrendHtfStPresetButton label="BNB 15m Big Move" patch={INTRADAY_PRO_BIGMOVE_15M} pushLog={pushLog} />
             <TrendHtfStPresetButton label="BNB 5m" patch={INTRADAY_PRO_5M} pushLog={pushLog} />
             <TrendHtfStPresetButton label="BTC 15m" patch={SR_INTRADAY_BTC_15M} pushLog={pushLog} />
           </div>
+          <p className="text-[10px] text-teal-800/90 dark:text-teal-200/80">
+            Per-technique on/off toggles live in <b>Indicators</b> → <b>Intraday gates (8 techniques)</b> (first block in that section).
+          </p>
         </div>
         {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "VOLUME_PROFILE" && (
           <div className="mt-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 bg-fuchsia-50 dark:bg-fuchsia-950/30 px-3 py-2 text-[11px] text-fuchsia-900 dark:text-fuchsia-200 space-y-1.5">
@@ -2843,21 +2979,7 @@ export function TradingPanel() {
                     void (async () => {
                       try {
                         await api.botConfig({ timeframe: v });
-                        if (activeInstanceId) {
-                          try {
-                            const inst = await api.patchInstanceOperationalConfig(activeInstanceId, {
-                              timeframe: v,
-                            });
-                            useAppStore.setState((s) => ({
-                              instancesByMode: patchInstanceInByMode(s.instancesByMode, activeInstanceId, inst),
-                            }));
-                          } catch (err) {
-                            pushLog({
-                              level: "warn",
-                              msg: `Timeframe updated on bot; instance DB not synced: ${String((err as Error)?.message || err)}`,
-                            });
-                          }
-                        }
+                        await syncActiveInstanceOperational({ timeframe: v });
                         pushLog({ level: "info", msg: "Trading timeframe set", timeframe: v });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set timeframe" });
@@ -2912,6 +3034,7 @@ export function TradingPanel() {
                     void (async () => {
                       try {
                         await api.botConfig({ marketMode: mode });
+                        await syncActiveInstanceOperational({ marketMode: mode });
                         pushLog({ level: "info", msg: "Market mode set", marketMode: mode });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set market mode" });
@@ -3269,47 +3392,99 @@ export function TradingPanel() {
                   <span
                     className="text-slate-600 dark:text-slate-400"
                     title={
-                      "Default stop distance for Supertrend futures when the AI confidence filter is OFF — maps to supertrendFuturesFixedSlPct (e.g. 0.2 = 0.2%). " +
+                      (isFibSoloGateOnly(cfg)
+                        ? "Fibonacci-only: SL/TP are set from the impulse swing (beyond swing extreme / leg target), not this field. "
+                        : "Default stop distance for Supertrend futures when the AI confidence filter is OFF — maps to supertrendFuturesFixedSlPct (e.g. 0.2 = 0.2%). ") +
                       "When the AI filter is ON, the risk engine uses ATR/regime-based brackets instead, so displayed SL distance can differ from this field. " +
                       "After entry, tick size rounding, mark vs fill, and trailing can move the working stop vs this nominal %."
                     }
                   >
                     SL %
                   </span>
-                  <NumericTextInput
-                    value={Number((cfg.supertrendFuturesFixedSlPct * 100).toFixed(8))}
-                    min={0.005}
-                    max={20}
-                    disabled={!slTpFieldsEditable(cfg)}
-                    onCommit={async (v) => {
-                      try {
-                        await api.botConfig({ supertrendFuturesFixedSlPct: v / 100 });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to set SL %" });
-                      }
-                    }}
-                  />
+                  <div className="flex min-w-0 items-center gap-2">
+                    <label
+                      className="flex shrink-0 items-center gap-1 text-[10px] text-slate-600 dark:text-slate-400"
+                      title="Check to open without a stop-loss bracket (exit via flip/trail/manual close)"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!futuresUseFixedSl}
+                        disabled={!slTpFieldsEditable(cfg)}
+                        onChange={(e) => {
+                          const off = e.target.checked;
+                          setFuturesUseFixedSl(!off);
+                          void api.botConfig({ supertrendFuturesUseFixedSl: !off }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to update SL bracket toggle" });
+                          });
+                        }}
+                      />
+                      Off
+                    </label>
+                    <NumericTextInput
+                      value={Number((cfg.supertrendFuturesFixedSlPct * 100).toFixed(8))}
+                      min={0.005}
+                      max={20}
+                      disabled={!slTpFieldsEditable(cfg) || !futuresUseFixedSl}
+                      onCommit={async (v) => {
+                        try {
+                          await api.botConfig({ supertrendFuturesFixedSlPct: v / 100, supertrendFuturesUseFixedSl: true });
+                          setFuturesUseFixedSl(true);
+                        } catch {
+                          pushLog({ level: "error", msg: "Failed to set SL %" });
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
                 <div className="grid grid-cols-[110px_1fr] items-center gap-2">
-                  <span className="text-slate-600 dark:text-slate-400" title="Take-profit distance as % of price (e.g. 1.5 = 1.5%).">
+                  <span
+                    className="text-slate-600 dark:text-slate-400"
+                    title={
+                      isFibSoloGateOnly(cfg)
+                        ? "Fibonacci-only: take-profit is the impulse leg target (swing high/low), not this field."
+                        : "Take-profit distance as % of price (e.g. 1.5 = 1.5%)."
+                    }
+                  >
                     TP %
                   </span>
-                  <NumericTextInput
-                    value={Number((cfg.supertrendFuturesFixedTpPct * 100).toFixed(8))}
-                    min={0.005}
-                    max={50}
-                    disabled={!slTpFieldsEditable(cfg)}
-                    onCommit={async (v) => {
-                      try {
-                        await api.botConfig({ supertrendFuturesFixedTpPct: v / 100 });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to set TP %" });
-                      }
-                    }}
-                  />
+                  <div className="flex min-w-0 items-center gap-2">
+                    <label
+                      className="flex shrink-0 items-center gap-1 text-[10px] text-slate-600 dark:text-slate-400"
+                      title="Check to open without a take-profit bracket"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!futuresUseFixedTp}
+                        disabled={!slTpFieldsEditable(cfg)}
+                        onChange={(e) => {
+                          const off = e.target.checked;
+                          setFuturesUseFixedTp(!off);
+                          void api.botConfig({ supertrendFuturesUseFixedTp: !off }).catch(() => {
+                            pushLog({ level: "error", msg: "Failed to update TP bracket toggle" });
+                          });
+                        }}
+                      />
+                      Off
+                    </label>
+                    <NumericTextInput
+                      value={Number((cfg.supertrendFuturesFixedTpPct * 100).toFixed(8))}
+                      min={0.005}
+                      max={50}
+                      disabled={!slTpFieldsEditable(cfg) || !futuresUseFixedTp}
+                      onCommit={async (v) => {
+                        try {
+                          await api.botConfig({ supertrendFuturesFixedTpPct: v / 100, supertrendFuturesUseFixedTp: true });
+                          setFuturesUseFixedTp(true);
+                        } catch {
+                          pushLog({ level: "error", msg: "Failed to set TP %" });
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
                 <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-500">
-                  <span className="text-slate-600 dark:text-slate-400">SL</span> / <span className="text-slate-600 dark:text-slate-400">TP</span> apply to{" "}
+                  <span className="text-slate-600 dark:text-slate-400">Off</span> = no exchange SL/TP on open (use flip, trail, or manual close).{" "}
+                  <span className="text-slate-600 dark:text-slate-400">SL</span> / <span className="text-slate-600 dark:text-slate-400">TP</span> % apply to{" "}
                   <span className="text-slate-600 dark:text-slate-400">MANUAL</span> signal paths and backtests. Supertrend autotrade with the AI
                   confidence filter <span className="text-slate-600 dark:text-slate-400">on</span> may use ATR brackets instead.{" "}
                   <span className="font-mono text-slate-600 dark:text-slate-500">0.8</span> = 0.8% distance.
@@ -4448,11 +4623,58 @@ export function TradingPanel() {
                   <div className="min-w-0">
                     <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-50">Indicators</h3>
                     <p className="mt-0.5 max-w-[28rem] text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-                      Optional gates for <span className="font-semibold text-violet-900 dark:text-violet-200">Supertrend autotrade opens</span>:
-                      minimum AI probability on USD-M futures, and minimum composite signal strength on spot and futures. Closes are unchanged.
+                      Supertrend autotrade filters (AI confidence, signal strength) plus{" "}
+                      <span className="font-semibold text-amber-800 dark:text-amber-200">six intraday technique toggles</span> for
+                      SR_INTRADAY — first block below.
                     </p>
                   </div>
                 </div>
+
+                <IntradayGatesPanel
+                  id="intraday-gates"
+                  cfg={{
+                    intradayGateLiquidity: cfg.intradayGateLiquidity,
+                    intradayGateSession: cfg.intradayGateSession,
+                    intradayGateInstitutionalSr: cfg.intradayGateInstitutionalSr,
+                    intradayGateSmcIct: cfg.intradayGateSmcIct,
+                    intradayGateFib: cfg.intradayGateFib,
+                    intradayGateVp: cfg.intradayGateVp,
+                    intradayGateOrderFlow: cfg.intradayGateOrderFlow,
+                    intradayGateHtfRegime: cfg.intradayGateHtfRegime,
+                  }}
+                  liq={{
+                    intradayLiqTp1Enabled: cfg.intradayLiqTp1Enabled,
+                    intradayLiqTp2Enabled: cfg.intradayLiqTp2Enabled,
+                    intradayLiqBreakevenAfterPartial: cfg.intradayLiqBreakevenAfterPartial,
+                    intradayLiqMinRr: cfg.intradayLiqMinRr,
+                  }}
+                  sr={{
+                    intradaySrAPlusMode: cfg.intradaySrAPlusMode,
+                    intradaySrMinVolRatio: cfg.intradaySrMinVolRatio,
+                    intradaySrMinHtfSep: cfg.intradaySrMinHtfSep,
+                    intradaySrZoneWidthPct: cfg.intradaySrZoneWidthPct,
+                    intradaySrBosMaxBarsAfterReclaim: cfg.intradaySrBosMaxBarsAfterReclaim,
+                    intradaySrMinConfirmWick: cfg.intradaySrMinConfirmWick,
+                    intradayLiqMinSweepExtensionPct: cfg.intradayLiqMinSweepExtensionPct,
+                  }}
+                  smc={{
+                    intradaySmcIctProfile: cfg.intradaySmcIctProfile,
+                    intradaySmcPickMode: cfg.intradaySmcPickMode,
+                    intradaySmcKillzoneMode: cfg.intradaySmcKillzoneMode,
+                    intradaySmcEntryZoneMode: cfg.intradaySmcEntryZoneMode,
+                    intradaySmcHtfStrictness: cfg.intradaySmcHtfStrictness,
+                    intradaySmcMinAdx: cfg.intradaySmcMinAdx,
+                    intradaySmcMinRr: cfg.intradaySmcMinRr,
+                    intradaySmcRequireMss: cfg.intradaySmcRequireMss,
+                    intradaySmcRequireRetrace: cfg.intradaySmcRequireRetrace,
+                    intradaySmcRequireHtfBias: cfg.intradaySmcRequireHtfBias,
+                    intradaySmcRequireChoch: cfg.intradaySmcRequireChoch,
+                    intradaySmcRequireBos: cfg.intradaySmcRequireBos,
+                    intradaySmcRequireConfirm: cfg.intradaySmcRequireConfirm,
+                    intradaySmcRequireFvgRetrace: cfg.intradaySmcRequireFvgRetrace,
+                  }}
+                  pushLog={pushLog}
+                />
 
                 {(cfg.marketMode === "SPOT" || cfg.marketMode === "FUTURES" || cfg.marketMode === "AUTO") && (
                   <div
@@ -5442,8 +5664,8 @@ export function TradingPanel() {
                     <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
                       <span className="font-semibold text-slate-800 dark:text-slate-200">Enable Volume Profile</span>
                       <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
-                        Primary: <span className="font-mono">VOLUME_PROFILE</span> manual strategy (#18). Optional scoring on{" "}
-                        <span className="font-mono">SR_INTRADAY</span> when enabled there too.
+                        Primary: <span className="font-mono">VOLUME_PROFILE</span> manual strategy (#18). For intraday confluence use{" "}
+                        <span className="font-semibold">Intraday gates → Volume profile filter</span> above.
                       </span>
                     </span>
                   </label>
@@ -5487,7 +5709,7 @@ export function TradingPanel() {
                       <input
                         type="checkbox"
                         checked={cfg.intradayVpBrackets}
-                        disabled={!cfg.volumeProfileEnabled}
+                        disabled={!cfg.intradayGateVp && !cfg.volumeProfileEnabled}
                         onChange={(e) => {
                           const on = e.currentTarget.checked;
                           deferTask(() => {
@@ -6478,6 +6700,7 @@ export function TradingPanel() {
                         void (async () => {
                           try {
                             await api.botConfig({ riskPerTradeUnit: u });
+                            await syncActiveInstanceOperational({ riskUnit: u });
                           } catch {
                             pushLog({ level: "error", msg: "Failed to set risk unit" });
                           }
@@ -6542,7 +6765,9 @@ export function TradingPanel() {
                     onCommit={async (v) => {
                       try {
                         const cap = cfg.riskPerTradeUnit === "USDT" ? capitalFieldCaps.maxRiskUsdt : 100;
-                        await api.botConfig({ riskPerTrade: clampNum(v, 0, cap) });
+                        const val = clampNum(v, 0, cap);
+                        await api.botConfig({ riskPerTrade: val });
+                        await syncActiveInstanceOperational({ riskPerTrade: val });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set risk per trade" });
                       }
@@ -6616,6 +6841,7 @@ export function TradingPanel() {
                         void (async () => {
                           try {
                             await api.botConfig({ maxDailyLossUnit: u });
+                            await syncActiveInstanceOperational({ maxDailyLossUnit: u });
                           } catch {
                             pushLog({ level: "error", msg: "Failed to set max daily loss unit" });
                           }
@@ -6633,7 +6859,9 @@ export function TradingPanel() {
                     onCommit={async (v) => {
                       try {
                         const cap = cfg.maxDailyLossUnit === "USDT" ? capitalFieldCaps.maxDailyUsdt : 100;
-                        await api.botConfig({ maxDailyLoss: clampNum(v, 0, cap) });
+                        const val = clampNum(v, 0, cap);
+                        await api.botConfig({ maxDailyLoss: val });
+                        await syncActiveInstanceOperational({ maxDailyLoss: val });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set max daily loss" });
                       }
@@ -6796,29 +7024,51 @@ export function TradingPanel() {
             </label>
             <label className="grid grid-cols-[110px_1fr] items-center gap-2">
               <span className="text-slate-600 dark:text-slate-400">Stop-loss %</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                spellCheck={false}
-                className={numericInputClass}
-                value={slPctStr}
-                onChange={(e) => setSlPctStr(e.target.value)}
-                title="Percent from entry (e.g. 1 = 1%)"
-              />
+              <div className="flex min-w-0 items-center gap-2">
+                <label className="flex shrink-0 items-center gap-1 text-[10px] text-slate-600 dark:text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={!manualUseSl}
+                    onChange={(e) => setManualUseSl(!e.target.checked)}
+                  />
+                  Off
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className={numericInputClass}
+                  value={slPctStr}
+                  disabled={!manualUseSl}
+                  onChange={(e) => setSlPctStr(e.target.value)}
+                  title="Percent from entry (e.g. 1 = 1%)"
+                />
+              </div>
             </label>
             <label className="grid grid-cols-[110px_1fr] items-center gap-2">
               <span className="text-slate-600 dark:text-slate-400">Take-profit %</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                spellCheck={false}
-                className={numericInputClass}
-                value={tpPctStr}
-                onChange={(e) => setTpPctStr(e.target.value)}
-                title="Percent from entry (e.g. 1.5 = 1.5%)"
-              />
+              <div className="flex min-w-0 items-center gap-2">
+                <label className="flex shrink-0 items-center gap-1 text-[10px] text-slate-600 dark:text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={!manualUseTp}
+                    onChange={(e) => setManualUseTp(!e.target.checked)}
+                  />
+                  Off
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className={numericInputClass}
+                  value={tpPctStr}
+                  disabled={!manualUseTp}
+                  onChange={(e) => setTpPctStr(e.target.value)}
+                  title="Percent from entry (e.g. 1.5 = 1.5%)"
+                />
+              </div>
             </label>
             <div className="mt-2 flex gap-2">
               <button
@@ -6827,23 +7077,32 @@ export function TradingPanel() {
                 onClick={() => {
                   if (manualOrderBusy) return;
                   const amountUsd = parseFloat(amountUsdStr.replace(/,/g, "."));
-                  const slPctUi = parseManualPercentField(slPctStr);
-                  const tpPctUi = parseManualPercentField(tpPctStr);
+                  const slPctUi = manualUseSl ? parseManualPercentField(slPctStr) : null;
+                  const tpPctUi = manualUseTp ? parseManualPercentField(tpPctStr) : null;
                   if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
                     pushLog({ level: "warn", msg: "Enter a valid amount (USD)" });
                     return;
                   }
-                  if (slPctUi == null || tpPctUi == null) {
-                    pushLog({ level: "warn", msg: "Enter valid stop-loss and take-profit %" });
+                  const mm = String(cfg.marketMode || "AUTO").toUpperCase();
+                  if (mm === "SPOT" && (!manualUseSl || !manualUseTp)) {
+                    pushLog({ level: "warn", msg: "Spot manual orders require both SL and TP" });
                     return;
                   }
-                  const stopLossPct = slPctUi / 100;
-                  const takeProfitPct = tpPctUi / 100;
-                  if (stopLossPct < 0.001 || stopLossPct > 0.2) {
+                  if (manualUseSl && slPctUi == null) {
+                    pushLog({ level: "warn", msg: "Enter a valid stop-loss %" });
+                    return;
+                  }
+                  if (manualUseTp && tpPctUi == null) {
+                    pushLog({ level: "warn", msg: "Enter a valid take-profit %" });
+                    return;
+                  }
+                  const stopLossPct = manualUseSl && slPctUi != null ? slPctUi / 100 : null;
+                  const takeProfitPct = manualUseTp && tpPctUi != null ? tpPctUi / 100 : null;
+                  if (stopLossPct != null && (stopLossPct < 0.001 || stopLossPct > 0.2)) {
                     pushLog({ level: "warn", msg: "Stop-loss: use ~0.1%–20% of price (e.g. 0.1–20 in the % fields)" });
                     return;
                   }
-                  if (takeProfitPct < 0.001 || takeProfitPct > 0.5) {
+                  if (takeProfitPct != null && (takeProfitPct < 0.001 || takeProfitPct > 0.5)) {
                     pushLog({ level: "warn", msg: "Take-profit: use ~0.1%–50% of price (e.g. 0.1–50 in the % fields)" });
                     return;
                   }
@@ -6875,23 +7134,32 @@ export function TradingPanel() {
                 onClick={() => {
                   if (manualOrderBusy) return;
                   const amountUsd = parseFloat(amountUsdStr.replace(/,/g, "."));
-                  const slPctUi = parseManualPercentField(slPctStr);
-                  const tpPctUi = parseManualPercentField(tpPctStr);
+                  const slPctUi = manualUseSl ? parseManualPercentField(slPctStr) : null;
+                  const tpPctUi = manualUseTp ? parseManualPercentField(tpPctStr) : null;
                   if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
                     pushLog({ level: "warn", msg: "Enter a valid amount (USD)" });
                     return;
                   }
-                  if (slPctUi == null || tpPctUi == null) {
-                    pushLog({ level: "warn", msg: "Enter valid stop-loss and take-profit %" });
+                  const mm = String(cfg.marketMode || "AUTO").toUpperCase();
+                  if (mm === "SPOT" && (!manualUseSl || !manualUseTp)) {
+                    pushLog({ level: "warn", msg: "Spot manual orders require both SL and TP" });
                     return;
                   }
-                  const stopLossPct = slPctUi / 100;
-                  const takeProfitPct = tpPctUi / 100;
-                  if (stopLossPct < 0.001 || stopLossPct > 0.2) {
+                  if (manualUseSl && slPctUi == null) {
+                    pushLog({ level: "warn", msg: "Enter a valid stop-loss %" });
+                    return;
+                  }
+                  if (manualUseTp && tpPctUi == null) {
+                    pushLog({ level: "warn", msg: "Enter a valid take-profit %" });
+                    return;
+                  }
+                  const stopLossPct = manualUseSl && slPctUi != null ? slPctUi / 100 : null;
+                  const takeProfitPct = manualUseTp && tpPctUi != null ? tpPctUi / 100 : null;
+                  if (stopLossPct != null && (stopLossPct < 0.001 || stopLossPct > 0.2)) {
                     pushLog({ level: "warn", msg: "Stop-loss: use ~0.1%–20% of price (e.g. 0.1–20 in the % fields)" });
                     return;
                   }
-                  if (takeProfitPct < 0.001 || takeProfitPct > 0.5) {
+                  if (takeProfitPct != null && (takeProfitPct < 0.001 || takeProfitPct > 0.5)) {
                     pushLog({ level: "warn", msg: "Take-profit: use ~0.1%–50% of price (e.g. 0.1–50 in the % fields)" });
                     return;
                   }

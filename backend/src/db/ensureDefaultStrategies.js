@@ -7,7 +7,7 @@ import { readBotTradingConfig } from "../lib/botTradingConfigStore.js";
 const MODE_SLUGS = ["paper", "demo_api", "testnet", "live"];
 
 /**
- * Idempotent: one auto-migrated strategy + initial version per mode per active user.
+ * Idempotent: one auto-migrated global strategy + initial version per user (not per mode).
  * @param {{ log?: { info?: Function, warn?: Function } }} opts
  */
 export async function ensureDefaultStrategies(opts = {}) {
@@ -20,67 +20,62 @@ export async function ensureDefaultStrategies(opts = {}) {
     return { ok: false, skipped: true, reason: "no_active_user" };
   }
 
-  for (const slug of MODE_SLUGS) {
-    const modeId = await query(`SELECT id FROM trading_modes WHERE slug = $1`, [slug]).then((r) => r.rows[0]?.id);
-    if (!modeId) {
-      log?.warn?.("ensure_default_strategies_mode_missing", { slug });
-      continue;
-    }
-    /** Match legacy rows: `mode_id` was added in 018; old auto-migrated rows may still have NULL. */
-    const existing = await query(
-      `SELECT s.id, s.mode_id
-       FROM strategies s
-       WHERE s.user_id = $1
-         AND s.is_archived = false
-         AND COALESCE(s.tags, ARRAY[]::text[]) @> ARRAY['auto-migrated', $2]::text[]
-       ORDER BY s.created_at ASC
-       LIMIT 1`,
-      [userId, slug],
-    );
-    const fileRaw = readBotTradingConfig(slug);
+  const existing = await query(
+    `SELECT s.id
+     FROM strategies s
+     WHERE s.user_id = $1 AND s.is_archived = false
+     ORDER BY s.created_at ASC
+     LIMIT 1`,
+    [userId],
+  );
+
+  if (existing.rows.length) {
+    const strategyId = String(existing.rows[0].id);
+    await query(`UPDATE strategies SET mode_id = NULL WHERE id = $1 AND mode_id IS NOT NULL`, [strategyId]);
+    const cnt = await query(`SELECT COUNT(*)::int AS c FROM strategy_versions WHERE strategy_id = $1`, [strategyId]);
+    if (Number(cnt.rows[0]?.c ?? 0) > 0) return { ok: true, skipped: true, reason: "already_seeded" };
+    const fileRaw = readBotTradingConfig("paper");
     const configRaw =
       fileRaw && typeof fileRaw === "object"
         ? fileRaw
         : { v: 1, bot: {}, tradingFormDefaults: { amountUsdStr: "", slPctStr: "", tpPctStr: "" } };
-
-    if (existing.rows.length) {
-      const strategyId = String(existing.rows[0].id);
-      const mid = existing.rows[0].mode_id;
-      if (mid == null) {
-        await query(`UPDATE strategies SET mode_id = $2 WHERE id = $1`, [strategyId, modeId]);
-      }
-      const cnt = await query(`SELECT COUNT(*)::int AS c FROM strategy_versions WHERE strategy_id = $1`, [
-        strategyId,
-      ]);
-      const n = Number(cnt.rows[0]?.c ?? 0);
-      if (n > 0) continue;
-      const ver = await strategyService.createVersion(
-        strategyId,
-        userId,
-        configRaw,
-        "v1 — initial import (repair)",
-        null,
-      );
-      log?.info?.("strategy_auto_version_repair", { slug, strategyId, versionId: ver.id });
-      continue;
-    }
-
-    const strategy = await strategyService.createStrategy(
-      userId,
-      slug,
-      `Default Strategy (${slug})`,
-      "Auto-imported from bot-trading-config.json",
-      ["auto-migrated", slug],
-    );
     const ver = await strategyService.createVersion(
-      strategy.id,
+      strategyId,
       userId,
       configRaw,
-      "v1 — initial import",
+      "v1 — initial import (repair)",
       null,
     );
-    log?.info?.("strategy_auto_migrated", { slug, strategyId: strategy.id, versionId: ver.id });
+    log?.info?.("strategy_auto_version_repair", { strategyId, versionId: ver.id });
+    return { ok: true };
   }
 
+  let configRaw = null;
+  for (const slug of MODE_SLUGS) {
+    const fileRaw = readBotTradingConfig(slug);
+    if (fileRaw && typeof fileRaw === "object") {
+      configRaw = fileRaw;
+      break;
+    }
+  }
+  if (!configRaw) {
+    configRaw = { v: 1, bot: {}, tradingFormDefaults: { amountUsdStr: "", slPctStr: "", tpPctStr: "" } };
+  }
+
+  const strategy = await strategyService.createStrategy(
+    userId,
+    null,
+    "Default Strategy",
+    "Auto-imported from bot-trading-config.json",
+    ["auto-migrated", "default-strategy"],
+  );
+  const ver = await strategyService.createVersion(
+    strategy.id,
+    userId,
+    configRaw,
+    "v1 — initial import",
+    null,
+  );
+  log?.info?.("strategy_auto_migrated", { strategyId: strategy.id, versionId: ver.id });
   return { ok: true };
 }

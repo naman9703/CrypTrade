@@ -120,6 +120,11 @@ export async function insertTrades(runId, symbol, trades) {
         marginUsdt: t.marginUsdt ?? null,
         entryQuality: t.entryQuality ?? null,
         lossPattern: t.lossPattern ?? null,
+        entryReason: t.entryReason ?? null,
+        liq:
+          t.liqContext && typeof t.liqContext === "object"
+            ? t.liqContext
+            : null,
       }),
       Number(t.fundingPaid ?? 0),
       Number(t.slippageCost ?? 0),
@@ -267,6 +272,11 @@ async function insertTradesInTx(client, runId, symbol, trades) {
         marginUsdt: t.marginUsdt ?? null,
         entryQuality: t.entryQuality ?? null,
         lossPattern: t.lossPattern ?? null,
+        entryReason: t.entryReason ?? null,
+        liq:
+          t.liqContext && typeof t.liqContext === "object"
+            ? t.liqContext
+            : null,
       }),
       Number(t.fundingPaid ?? 0),
       Number(t.slippageCost ?? 0),

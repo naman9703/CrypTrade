@@ -1,0 +1,112 @@
+{
+  "window": {
+    "symbol": "BNBUSDT",
+    "tf": "15m",
+    "from": "2026-01-01",
+    "to": "2026-05-27"
+  },
+  "baseline": {
+    "label": "sweep_base",
+    "entries": 72,
+    "winRatePct": 50,
+    "returnPct": -41.63,
+    "expectancyPerTradePct": -0.58,
+    "profitFactor": 0.55
+  },
+  "levelTypeSegments": {
+    "pdhPdl": {
+      "label": "pdh_pdl",
+      "entries": 25,
+      "winRatePct": 56,
+      "returnPct": -4.48,
+      "expectancyPerTradePct": -0.18,
+      "profitFactor": 0.82
+    },
+    "sessionExtreme": {
+      "label": "session_extreme",
+      "entries": 47,
+      "winRatePct": 46.8,
+      "returnPct": -37.15,
+      "expectancyPerTradePct": -0.79,
+      "profitFactor": 0.46
+    },
+    "levelMix": {
+      "session_low": 19,
+      "pdh": 17,
+      "session_high": 28,
+      "pdl": 8
+    }
+  },
+  "barsAfterReclaim": [
+    {
+      "bucket": "0-2_bars",
+      "entries": 62,
+      "winRatePct": 48.4,
+      "returnPct": -0.41,
+      "expectancyPerTradePct": -0.66
+    },
+    {
+      "bucket": "3-10_bars",
+      "entries": 10,
+      "winRatePct": 60,
+      "returnPct": -0.01,
+      "expectancyPerTradePct": -0.07
+    },
+    {
+      "bucket": "10+_bars",
+      "entries": 0,
+      "winRatePct": 0,
+      "returnPct": 0,
+      "expectancyPerTradePct": 0
+    }
+  ],
+  "chochEntryVariants": [
+    {
+      "label": "choch_only",
+      "entries": 61,
+      "winRatePct": 41,
+      "returnPct": -40.84,
+      "expectancyPerTradePct": -0.67,
+      "profitFactor": 0.51
+    },
+    {
+      "label": "choch_retrace",
+      "entries": 27,
+      "winRatePct": 44.4,
+      "returnPct": -19.4,
+      "expectancyPerTradePct": -0.72,
+      "profitFactor": 0.57
+    },
+    {
+      "label": "choch_fvg_midpoint",
+      "entries": 22,
+      "winRatePct": 59.1,
+      "returnPct": -2.5,
+      "expectancyPerTradePct": -0.11,
+      "profitFactor": 0.91
+    }
+  ],
+  "regimeAndTiming": {
+    "regimeFilter": {
+      "label": "sweep_regime_filter",
+      "entries": 72,
+      "winRatePct": 50,
+      "returnPct": -41.63,
+      "expectancyPerTradePct": -0.58,
+      "profitFactor": 0.55
+    },
+    "tightReclaimWindow": {
+      "label": "sweep_tight_reclaim",
+      "entries": 68,
+      "winRatePct": 48.5,
+      "returnPct": -42.23,
+      "expectancyPerTradePct": -0.62,
+      "profitFactor": 0.52
+    }
+  },
+  "interpretation": {
+    "conditionalEdge": "In-sample +32% is regime-conditional on BNB 15m — not structural across OOS slices",
+    "killzone": "ALL correct for BNB 15m — do not force London/NY from forex ICT guidance",
+    "choch": "Detector OK; FVG-midpoint entry is the ICT-prescribed timing fix to test"
+  }
+}

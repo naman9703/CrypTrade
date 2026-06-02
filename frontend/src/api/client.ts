@@ -379,10 +379,11 @@ export const api = {
     const prevBot = useAppStore.getState().bot as Record<string, unknown> | undefined;
 
     if (!ignoredOnly && patchKeys.length > 0) {
-      const { noteBotConfigPatchInFlight } = await import("../lib/configPatchInFlight");
+      const { noteBotConfigPatchInFlight, expandBotConfigPatch } = await import("../lib/configPatchInFlight");
+      const patchExpanded = expandBotConfigPatch(patchObj);
       noteBotConfigPatchInFlight(patchObj);
       useAppStore.setState((s) => ({
-        bot: mergeOptimisticBotPatch(s.bot as Record<string, unknown> | null | undefined, patchObj),
+        bot: mergeOptimisticBotPatch(s.bot as Record<string, unknown> | null | undefined, patchExpanded),
       }));
     }
 
@@ -427,9 +428,10 @@ export const api = {
         useAppStore.getState().bot && typeof useAppStore.getState().bot === "object"
           ? { ...(useAppStore.getState().bot as Record<string, unknown>), ...botNext }
           : botNext;
+      const { normalizeIntradayGatesOnBot } = await import("../lib/intradayGatesUi");
       tradingUiPersistBotSnapshot(useAppStore.getState().mode, merged, useAppStore.getState().authUiUserTag ?? null);
       useAppStore.setState({
-        bot: applyBotConfigPatchInFlight(merged),
+        bot: normalizeIntradayGatesOnBot(applyBotConfigPatchInFlight(merged)),
       });
     } else {
       tradingUiPersistBotSnapshot(useAppStore.getState().mode, botNext, useAppStore.getState().authUiUserTag ?? null);
@@ -501,7 +503,12 @@ export const api = {
     }
     return data ?? {};
   },
-  async manualTrade(payload: { side: "BUY" | "SELL"; amountUsd: number; stopLossPct: number; takeProfitPct: number }) {
+  async manualTrade(payload: {
+    side: "BUY" | "SELL";
+    amountUsd: number;
+    stopLossPct?: number | null;
+    takeProfitPct?: number | null;
+  }) {
     return json<any>(
       await apiFetch(`${HTTP}/api/trade/manual`, {
         method: "POST",
@@ -969,6 +976,17 @@ export const api = {
     gateMode?: "off" | "approx";
     walkForward?: { trainPct?: number };
     positionSizing?: "RISK_AT_SL" | "FULL_EQUITY_MARGIN";
+    useLivePanelOverrides?: boolean;
+    instanceOperational?: {
+      symbol?: string | null;
+      timeframe?: string | null;
+      symbolMode?: string | null;
+      marketMode?: string | null;
+      riskPerTrade?: number | null;
+      riskUnit?: string | null;
+      maxDailyLoss?: number | null;
+      maxDailyLossUnit?: string | null;
+    };
   }) {
     return json<{ ok?: boolean; runId?: string; error?: string }>(
       await apiFetch(`${HTTP}/api/backtest/runs`, {

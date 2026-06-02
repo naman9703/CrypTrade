@@ -1,0 +1,124 @@
+{
+  "note": "+32% was phantom (opposingLevel=0); −41.6% sweep is corrected baseline with real brackets",
+  "windows": {
+    "inSample": {
+      "from": "2026-01-01",
+      "to": "2026-05-27"
+    },
+    "oos": {
+      "from": "2025-06-01",
+      "to": "2025-12-31"
+    }
+  },
+  "inSample": [
+    {
+      "label": "sweep_broken_baseline",
+      "entries": 72,
+      "winRatePct": 50,
+      "returnPct": -41.63,
+      "avgWinR": 1.42,
+      "avgLossR": 2.57,
+      "expectancyPerTradePct": -0.58,
+      "profitFactor": 0.55
+    },
+    {
+      "label": "choch_fvg_mid_all_levels",
+      "entries": 22,
+      "winRatePct": 59.1,
+      "returnPct": -2.5,
+      "avgWinR": 1.93,
+      "avgLossR": 3.07,
+      "expectancyPerTradePct": -0.11,
+      "profitFactor": 0.91
+    },
+    {
+      "label": "pdh_pdl_choch_fvg_mid",
+      "entries": 5,
+      "winRatePct": 60,
+      "returnPct": -0.61,
+      "avgWinR": 1.7,
+      "avgLossR": 2.85,
+      "expectancyPerTradePct": -0.12,
+      "profitFactor": 0.89
+    },
+    {
+      "label": "pdh_pdl_choch_fvg_mid_internal_tp2",
+      "entries": 5,
+      "winRatePct": 60,
+      "returnPct": -0.61,
+      "avgWinR": 1.7,
+      "avgLossR": 2.85,
+      "expectancyPerTradePct": -0.12,
+      "profitFactor": 0.89
+    },
+    {
+      "label": "pdh_pdl_choch_fvg_mid_regime_40_80",
+      "entries": 5,
+      "winRatePct": 60,
+      "returnPct": -0.61,
+      "avgWinR": 1.7,
+      "avgLossR": 2.85,
+      "expectancyPerTradePct": -0.12,
+      "profitFactor": 0.89
+    }
+  ],
+  "oos": [
+    {
+      "label": "pdh_pdl_choch_fvg_mid_internal_tp2_oos",
+      "entries": 4,
+      "winRatePct": 25,
+      "returnPct": -7,
+      "avgWinR": 1.53,
+      "avgLossR": 2.84,
+      "expectancyPerTradePct": -1.75,
+      "profitFactor": 0.18
+    },
+    {
+      "label": "pdh_pdl_choch_fvg_mid_regime_40_80_oos",
+      "entries": 4,
+      "winRatePct": 25,
+      "returnPct": -7,
+      "avgWinR": 1.53,
+      "avgLossR": 2.84,
+      "expectancyPerTradePct": -1.75,
+      "profitFactor": 0.18
+    }
+  ],
+  "atrCalibration": {
+    "inSampleBaselineEntries": {
+      "n": 105,
+      "median": 51.9,
+      "p25": 25.2,
+      "p75": 68.1,
+      "mean": 48.1
+    },
+    "inSamplePivotEntries": {
+      "n": 8,
+      "median": 44.2,
+      "p25": 32,
+      "p75": 51.3,
+      "mean": 40.7
+    },
+    "oosBaselineProxy": {
+      "n": 151,
+      "median": 44.3,
+      "p25": 23.9,
+      "p75": 71.5,
+      "mean": 46
+    }
+  },
+  "verdict": {
+    "bestInSample": {
+      "label": "pdh_pdl_choch_fvg_mid",
+      "entries": 5,
+      "winRatePct": 60,
+      "returnPct": -0.61,
+      "avgWinR": 1.7,
+      "avgLossR": 2.85,
+      "expectancyPerTradePct": -0.12,
+      "profitFactor": 0.89
+    },
+    "phantomBaseline": "Prior +32% used broken TP2 (opposingLevel=0); all absolute returns must use corrected brackets",
+    "nextStep": "TP2 internal + regime gate calibration; extend CHoCH+FVG-mid sample on longer history"
+  }
+}

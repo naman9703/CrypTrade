@@ -36,9 +36,27 @@ const { buildBacktestAdapters } = await import("./signals/baselines.js").catch((
 }));
 
 let cancelFlag = false;
+const persistent = workerData?.persistent === true;
+
 parentPort?.on("message", (msg) => {
   if (msg && msg.type === "cancel") cancelFlag = true;
 });
+
+async function runOnce(runId) {
+  cancelFlag = false;
+  try {
+    await execute({ runId });
+    parentPort?.postMessage({ type: "complete", runId });
+  } catch (err) {
+    console.error("[backtest:worker] failed", err?.stack || err);
+    try {
+      await failRun(runId, err);
+    } catch {
+      /* ignore */
+    }
+    parentPort?.postMessage({ type: "failed", runId, error: String(err?.message || err) });
+  }
+}
 
 try {
   await initPool({
@@ -56,22 +74,28 @@ try {
   process.exit(1);
 }
 
-try {
-  await execute(workerData);
-  parentPort?.postMessage({ type: "complete", runId: workerData.runId });
-} catch (err) {
-  console.error("[backtest:worker] failed", err?.stack || err);
+if (persistent) {
+  parentPort?.on("message", (msg) => {
+    if (msg?.type === "run" && msg.runId) {
+      runOnce(String(msg.runId)).catch((err) => {
+        parentPort?.postMessage({
+          type: "failed",
+          runId: msg.runId,
+          error: String(err?.message || err),
+        });
+      });
+    }
+  });
+  parentPort?.postMessage({ type: "ready" });
+} else {
   try {
-    await failRun(workerData.runId, err);
-  } catch {
-    /* ignore — worker exit will signal failure to pool */
-  }
-  parentPort?.postMessage({ type: "failed", runId: workerData.runId, error: String(err?.message || err) });
-} finally {
-  try {
-    await closePool();
-  } catch {
-    /* ignore */
+    await runOnce(workerData.runId);
+  } finally {
+    try {
+      await closePool();
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -93,12 +117,31 @@ async function execute({ runId }) {
   parentPort?.postMessage({ type: "progress", runId, pct: 0 });
   void updateProgress(runId, 0).catch(() => {});
 
+  try {
+    const { clearIntradayAdapterCache } = await import("./intradayAdapterCache.js");
+    clearIntradayAdapterCache();
+  } catch {
+    /* optional */
+  }
+
   const symbol = String(run.symbol);
   const tf = String(run.timeframe);
   const fromMs = new Date(run.start_date).getTime();
   const toMs = new Date(run.end_date).getTime();
   const startingUsdt = Number(run.initial_capital);
-  const cfg = pickBotCfg(run.config_snapshot, run.strategy_cfg_raw);
+  let cfg = pickBotCfg(run.config_snapshot, run.strategy_cfg_raw);
+  try {
+    const { materializeIntradayEngineCfgSync } = await import("../../strategy/presets/srIntradayOptimized.js");
+    const { materializeIntradayPanelOnCfg } = await import("../../strategy/intradayPanelKeys.js");
+    const { ensureBacktestMarketMode, applyInstanceOperationalToBot } = await import("../../lib/strategyInstanceSplit.js");
+    cfg = materializeIntradayEngineCfgSync(cfg, materializeIntradayPanelOnCfg);
+    if (run.instance_operational_snapshot && typeof run.instance_operational_snapshot === "object") {
+      applyInstanceOperationalToBot(cfg, run.instance_operational_snapshot);
+    }
+    cfg = ensureBacktestMarketMode(cfg);
+  } catch {
+    /* optional */
+  }
   const costModelOverride = run.cost_model && typeof run.cost_model === "object" ? run.cost_model : {};
   // `gate_mode` is stored at run creation time. Fall back to checking the strategy cfg
   // directly so that old runs or API calls without the UI still activate the replay gate.
@@ -109,19 +152,31 @@ async function execute({ runId }) {
   const market = isFutures ? "futures" : "spot";
   const strategyKey = pickStrategyKey(cfg, run.engine_type);
 
-  await ensureKlines(symbol, tf, { from: fromMs, to: toMs, market }).catch((err) => {
-    console.warn("[backtest:worker] ensureKlines failed:", err?.message || err);
-  });
+  const reportPrep = (pct) => {
+    parentPort?.postMessage({ type: "progress", runId, pct });
+    void updateProgress(runId, pct).catch(() => {});
+  };
+
+  reportPrep(0.5);
+  const covPre = await getCoverage(symbol, tf, { from: fromMs, to: toMs }).catch(() => ({
+    coveragePct: null,
+  }));
+  if (covPre.coveragePct == null || covPre.coveragePct < 98) {
+    await ensureKlines(symbol, tf, { from: fromMs, to: toMs, market }).catch((err) => {
+      console.warn("[backtest:worker] ensureKlines failed:", err?.message || err);
+    });
+  }
+  reportPrep(2);
   if (isFutures) {
     await ensureFunding(symbol, { from: fromMs, to: toMs }).catch((err) => {
       console.warn("[backtest:worker] ensureFunding failed:", err?.message || err);
     });
   }
+  reportPrep(3);
 
   const candles = await readCandles(symbol, tf, fromMs, toMs);
   if (!candles.length) throw new Error("worker:no_candles");
-  parentPort?.postMessage({ type: "progress", runId, pct: 1 });
-  void updateProgress(runId, 1).catch(() => {});
+  reportPrep(5);
 
   const fundingRates = isFutures ? await readFundingRates(symbol, fromMs, toMs).catch(() => []) : [];
 
@@ -151,7 +206,9 @@ async function execute({ runId }) {
   let adapters = {};
   if (typeof buildBacktestAdapters === "function") {
     try {
+      reportPrep(8);
       adapters = await buildBacktestAdapters({ strategyKey, cfg, symbol, tf, candles, fromMs });
+      reportPrep(12);
     } catch (err) {
       console.warn("[backtest:worker] buildBacktestAdapters failed:", err?.message || err);
     }

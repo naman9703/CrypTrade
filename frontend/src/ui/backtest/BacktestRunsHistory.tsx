@@ -161,9 +161,11 @@ function RunProgressRow({
   const phaseLabel =
     status === "queued"
       ? "Waiting in queue…"
-      : pct < 2
+      : pct < 5
         ? "Loading data & signals…"
-        : "Simulating…";
+        : pct < 12
+          ? "Building strategy signals…"
+          : "Simulating…";
   const barFill = indeterminate ? 100 : Math.min(100, Math.max(0, pct));
   /** Tiny visible sliver when there is progress but &lt; ~1% so the bar still reads as "live". */
   const barW = indeterminate ? 100 : barFill < 0.15 && barFill > 0 ? 0.15 : barFill;

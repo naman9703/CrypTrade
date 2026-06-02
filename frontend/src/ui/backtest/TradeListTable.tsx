@@ -10,6 +10,8 @@ type Props = {
   /** From run config; used to estimate margin on legacy runs missing `marginUsdt`. */
   futuresLeverage?: number;
   variant?: "compact" | "detailed";
+  selectedTradeNumber?: number | null;
+  onSelectTrade?: (trade: BacktestTrade | null) => void;
 };
 
 function marginForTrade(t: BacktestTrade, lev: number): number | null {
@@ -27,7 +29,13 @@ function fmtPrice(n: number | null | undefined): string {
   return v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toFixed(6);
 }
 
-export function TradeListTable({ trades, futuresLeverage = 5, variant = "compact" }: Props) {
+export function TradeListTable({
+  trades,
+  futuresLeverage = 5,
+  variant = "compact",
+  selectedTradeNumber = null,
+  onSelectTrade,
+}: Props) {
   if (!trades.length) return <div className="py-8 text-center text-sm text-slate-500">No trades.</div>;
 
   const lev = Math.max(1, Number(futuresLeverage) || 5);
@@ -49,8 +57,15 @@ export function TradeListTable({ trades, futuresLeverage = 5, variant = "compact
           <tbody>
             {trades.map((t) => {
               const sign = t.netPnl >= 0 ? "text-emerald-600" : "text-rose-600";
+              const selected = selectedTradeNumber === t.tradeNumber;
               return (
-                <tr key={t.tradeNumber} className="border-t border-slate-100 dark:border-slate-800">
+                <tr
+                  key={t.tradeNumber}
+                  className={`border-t border-slate-100 dark:border-slate-800 ${
+                    onSelectTrade ? "cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900/60" : ""
+                  } ${selected ? "bg-sky-50 dark:bg-sky-950/40" : ""}`}
+                  onClick={() => onSelectTrade?.(selected ? null : t)}
+                >
                   <td className="px-2 py-1 font-mono">{t.tradeNumber}</td>
                   <td
                     className={`px-2 py-1 font-semibold ${t.direction === "BUY" ? "text-emerald-600" : "text-rose-600"}`}
@@ -109,8 +124,15 @@ export function TradeListTable({ trades, futuresLeverage = 5, variant = "compact
             const sign = t.netPnl >= 0 ? "text-emerald-600" : "text-rose-600";
             const margin = marginForTrade(t, lev);
             const eq = t.entryQuality;
+            const selected = selectedTradeNumber === t.tradeNumber;
             return (
-              <tr key={t.tradeNumber} className="border-t border-slate-100 dark:border-slate-800">
+              <tr
+                key={t.tradeNumber}
+                className={`border-t border-slate-100 dark:border-slate-800 ${
+                  onSelectTrade ? "cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900/60" : ""
+                } ${selected ? "bg-sky-50 dark:bg-sky-950/40" : ""}`}
+                onClick={() => onSelectTrade?.(selected ? null : t)}
+              >
                 <td className="px-2 py-1 font-mono">{t.tradeNumber}</td>
                 <td className={`px-2 py-1 font-semibold ${t.direction === "BUY" ? "text-emerald-600" : "text-rose-600"}`}>
                   {t.direction}

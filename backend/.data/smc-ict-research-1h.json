@@ -1,0 +1,95 @@
+{
+  "frozenConfig": {
+    "stack": "CHoCH + FVG-mid + internal TP2 + minRr 1.5 + session extreme ON",
+    "status": "research_only — do not tune; collect live trades at minimal size"
+  },
+  "results": {
+    "m15In": {
+      "label": "15m_in",
+      "entries": 11,
+      "winRatePct": 72.7,
+      "returnPct": 0.08,
+      "avgWinR": 0.93,
+      "avgLossR": 1.48,
+      "expectancyR": 0.27,
+      "pnlDistribution": [
+        420.93,
+        347.41,
+        279.02,
+        234.33,
+        197.78,
+        160.96,
+        125.79,
+        97.85,
+        -314.74,
+        -362.51,
+        -431.9
+      ]
+    },
+    "m15Oos": {
+      "label": "15m_oos",
+      "entries": 21,
+      "winRatePct": 33.3,
+      "returnPct": -0.24,
+      "avgWinR": 0.46,
+      "avgLossR": 0.91,
+      "expectancyR": -0.46,
+      "pnlDistribution": [
+        162.93,
+        134.2,
+        130.01,
+        125.41,
+        93.59,
+        82.29,
+        75.65,
+        -109.43,
+        -115.04,
+        -127.94,
+        -232.31,
+        -233.49,
+        -236.6,
+        -243.03,
+        -243.22,
+        -246.41,
+        -248.05,
+        -263.82,
+        -270.2,
+        -277.21,
+        -352.78
+      ]
+    },
+    "h1In": {
+      "label": "1h_in",
+      "entries": 8,
+      "winRatePct": 50,
+      "returnPct": -0.02,
+      "avgWinR": 0.89,
+      "avgLossR": 1.12,
+      "expectancyR": -0.12,
+      "pnlDistribution": [
+        288.74,
+        275.49,
+        251.04,
+        76.24,
+        -267.79,
+        -274.62,
+        -286.92,
+        -289.05
+      ]
+    },
+    "h1Oos": {
+      "label": "1h_oos",
+      "entries": 0,
+      "winRatePct": 0,
+      "returnPct": 0,
+      "avgWinR": null,
+      "avgLossR": null,
+      "expectancyR": null,
+      "pnlDistribution": []
+    }
+  },
+  "verdict": {
+    "confirmed15m": "+0.27R/trade n=11 (pilot, not confirmed)",
+    "h1BetterGeometry": "1H did not improve on frozen stack — stay on 15m data collection"
+  }
+}

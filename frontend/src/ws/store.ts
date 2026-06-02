@@ -9,6 +9,7 @@ import {
   tradingUiPersistShowMarketIntelligencePanel,
 } from "../lib/tradingUiPersistence";
 import { applyBotConfigPatchInFlight } from "../lib/configPatchInFlight";
+import { normalizeIntradayGatesOnBot } from "../lib/intradayGatesUi";
 import type { CreateStrategyDto, Strategy, StrategyMetaPatch, StrategyVersion } from "../types/strategy";
 import type { BotInstance, CreateInstanceDto } from "../types/instance";
 import { mapApiStrategyVersion } from "../lib/strategyApiMappers";
@@ -408,6 +409,20 @@ let chartFocusSyncTimer: ReturnType<typeof setTimeout> | null = null;
 /** One-shot: push saved mode + /api/bot/config after load (hello or first HTTP hydrate). */
 let tradingUiSessionRestoreStarted = false;
 
+let strategyDirtyRecomputeTimer: ReturnType<typeof setTimeout> | null = null;
+let strategyDirtyRecomputeSlug: ApiTradingModeSlug | null = null;
+
+function scheduleStrategyConfigDirtyRecompute(modeSlug: ApiTradingModeSlug) {
+  strategyDirtyRecomputeSlug = modeSlug;
+  if (strategyDirtyRecomputeTimer) clearTimeout(strategyDirtyRecomputeTimer);
+  strategyDirtyRecomputeTimer = setTimeout(() => {
+    strategyDirtyRecomputeTimer = null;
+    const slug = strategyDirtyRecomputeSlug;
+    strategyDirtyRecomputeSlug = null;
+    if (slug) useAppStore.getState().recomputeStrategyConfigDirtyForMode(slug);
+  }, 250);
+}
+
 function scheduleWsStateFlush() {
   if (pendingStateFlushScheduled) return;
   pendingStateFlushScheduled = true;
@@ -763,7 +778,13 @@ export const useAppStore = create<AppState>((set, get) => ({
                       (p as HelloPayload & { activeInstanceByMode?: unknown }).activeInstanceByMode,
                     )
                   : s.activeInstanceByMode,
-              bot: mergedHelloBot,
+              bot: normalizeIntradayGatesOnBot(
+                applyBotConfigPatchInFlight(
+                  (mergedHelloBot && typeof mergedHelloBot === "object"
+                    ? mergedHelloBot
+                    : {}) as Record<string, unknown>,
+                ),
+              ),
               account:
                 (p as any).account !== undefined
                   ? mergeHybridAccountSnapshot(s.account, (p as any).account)
@@ -1228,11 +1249,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ strategiesLoading: true, strategiesError: null });
     try {
       const list = await api.getStrategiesForMode(modeSlug, opts);
-      set((s) => ({
-        strategiesByMode: { ...s.strategiesByMode, [modeSlug]: list },
-        strategiesLoading: false,
-        strategiesError: null,
-      }));
+      const allModeSlugs: ApiTradingModeSlug[] = ["paper", "demo_api", "testnet", "live"];
+      set((s) => {
+        const strategiesByMode = { ...s.strategiesByMode };
+        for (const slug of allModeSlugs) strategiesByMode[slug] = list;
+        return {
+          strategiesByMode,
+          strategiesLoading: false,
+          strategiesError: null,
+        };
+      });
       if (!opts?.skipDirtyRecompute) {
         get().recomputeStrategyConfigDirtyForMode(modeSlug);
       }
@@ -1670,7 +1696,7 @@ export function applyWsStateSnapshot(payload: unknown) {
       (botPayload as Record<string, unknown>).multiCoinSignalTabSymbols = stableTabSymbols;
     }
     let mergedBot: Record<string, unknown> = { ...prevBot, ...botPayload, multiSymbolWatchSignals: nextMss };
-    mergedBot = applyBotConfigPatchInFlight(mergedBot);
+    mergedBot = normalizeIntradayGatesOnBot(applyBotConfigPatchInFlight(mergedBot));
     const modeKeySync = String(nextMode || prev.mode || "PAPER").toUpperCase();
     if (payloadHadRunningByMode && typeof nextRb[modeKeySync] === "boolean") {
       mergedBot.running = Boolean(nextRb[modeKeySync]);
@@ -1696,12 +1722,8 @@ export function applyWsStateSnapshot(payload: unknown) {
     }
     return out;
   });
-  queueMicrotask(() => {
-    const st = useAppStore.getState();
-    const m = st.mode;
-    if (!m) return;
-    st.recomputeStrategyConfigDirtyForMode(tradingModeToApiModeSlug(String(m)));
-  });
+  const m = useAppStore.getState().mode;
+  if (m) scheduleStrategyConfigDirtyRecompute(tradingModeToApiModeSlug(String(m)));
 }
 
 /**

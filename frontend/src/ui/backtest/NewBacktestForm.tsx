@@ -82,7 +82,6 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
     const active = activeInstanceId ? instances.find((i) => i.id === activeInstanceId) : null;
     const fallback = active ?? instances.find((i) => i.status === "running") ?? instances[0];
     if (fallback) {
-      setConfigSource("instance");
       setInstanceId(fallback.id);
     }
   }, [activeInstanceId, instanceId, instances]);
@@ -121,21 +120,8 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
   ]);
 
   const selectedVersion: StrategyVersion | null = useMemo(() => {
-    if (configSource === "instance" && selectedInstance?.strategyId) {
-      const list = versionsByStrategyId[selectedInstance.strategyId] ?? [];
-      return (
-        list.find((v) => v.id === selectedInstance.strategyVersionId) ??
-        (selectedStrategy?.latestVersion?.id === selectedInstance.strategyVersionId ? selectedStrategy.latestVersion : null)
-      );
-    }
     return selectedStrategy?.latestVersion ?? null;
-  }, [
-    configSource,
-    selectedInstance?.strategyId,
-    selectedInstance?.strategyVersionId,
-    selectedStrategy?.latestVersion,
-    versionsByStrategyId,
-  ]);
+  }, [selectedStrategy?.latestVersion]);
 
   /**
    * Mirrors the live-bot's strategy key priority:
@@ -144,9 +130,17 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
    *   3. strategyMode AUTO → "AUTO" (regime rotation)
    *   4. fallback → SUPERTREND
    */
+  const liveBot = useAppStore((s) => s.bot);
   const effectiveCfgRaw = useMemo(
-    () => mergeCfgForUi(selectedVersion?.cfgRaw, configSource === "instance" ? selectedInstance : null, symbol, timeframe),
-    [configSource, selectedInstance, selectedVersion?.cfgRaw, symbol, timeframe],
+    () =>
+      mergeCfgForUi(
+        selectedVersion?.cfgRaw,
+        configSource === "instance" ? selectedInstance : null,
+        symbol,
+        timeframe,
+        configSource === "instance" ? (liveBot as Record<string, unknown> | null) : null,
+      ),
+    [configSource, liveBot, selectedInstance, selectedVersion?.cfgRaw, symbol, timeframe],
   );
   const backtestEngineBadge = useMemo(() => effectiveEngineKey(effectiveCfgRaw), [effectiveCfgRaw]);
 
@@ -161,13 +155,23 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
   }, [effectiveCfgRaw]);
 
   useEffect(() => {
-    const vid =
-      configSource === "instance"
-        ? selectedInstance?.strategyVersionId
-        : selectedStrategy?.latestVersion?.id;
+    if (configSource === "instance" && selectedInstance?.strategyVersionId) {
+      setVersionId(String(selectedInstance.strategyVersionId));
+      return;
+    }
+    const stratId = strategyId;
+    const strat = strategies.find((s) => s.id === stratId) ?? selectedStrategy;
+    const vid = strat?.latestVersion?.id;
     if (vid) setVersionId(vid);
     else setVersionId("");
-  }, [configSource, selectedInstance?.strategyVersionId, selectedStrategy?.latestVersion?.id, strategyId]);
+  }, [
+    configSource,
+    selectedInstance?.strategyId,
+    selectedInstance?.strategyVersionId,
+    selectedStrategy?.latestVersion?.id,
+    strategyId,
+    strategies,
+  ]);
 
   useEffect(() => {
     if (configSource !== "instance" || !selectedInstance) return;
@@ -235,10 +239,23 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
     setErr(null);
     setSubmitting(true);
     try {
+      await fetchStrategies(slug, { includeArchived: false });
+      await fetchInstances(slug);
+      const freshInstances = useAppStore.getState().instancesByMode[slug] ?? [];
+      const freshStrategies = useAppStore.getState().strategiesByMode[slug] ?? [];
+      let runVersionId = versionId;
+      if (configSource === "instance" && instanceId) {
+        const inst = freshInstances.find((i) => i.id === instanceId);
+        if (inst?.strategyVersionId) runVersionId = String(inst.strategyVersionId);
+      } else if (strategyId) {
+        const strat = freshStrategies.find((s) => s.id === strategyId);
+        if (strat?.latestVersion?.id) runVersionId = String(strat.latestVersion.id);
+      }
+      if (!runVersionId) throw new Error("strategy_version_required");
       /** Hint only — server persists gate_mode from merged strategy snapshot (`intelligenceGateEnabled`). */
       const gateMode: "off" | "approx" = intelligenceGateEnabledInCfgRaw(effectiveCfgRaw) ? "approx" : "off";
       const res = await api.createBacktestRun({
-        strategyVersionId: versionId,
+        strategyVersionId: runVersionId,
         botInstanceId: configSource === "instance" ? instanceId : undefined,
         symbol: symbol.toUpperCase(),
         timeframe,
@@ -249,6 +266,10 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
         costModel: { slippagePct: slippagePct / 100 },
         walkForward: walkForwardOn ? { trainPct } : undefined,
         positionSizing: fullEquityMargin ? "FULL_EQUITY_MARGIN" : "RISK_AT_SL",
+        instanceOperational:
+          configSource === "instance"
+            ? instanceOperationalFromLiveBot(useAppStore.getState().bot, symbol, timeframe)
+            : undefined,
       });
       if (!res?.ok || !res.runId) throw new Error(res?.error || "create_failed");
       useAppStore.getState().setBacktestProgress(String(res.runId), { status: "queued", progressPct: 0 });
@@ -288,21 +309,27 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
           ))}
         </select>
       </Field>
-      {configSource === "instance" && selectedInstance ? (
-        <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-          Uses live-equivalent runtime config: strategy brain plus instance overrides for{" "}
-          <span className="font-mono">{selectedInstance.operational.marketMode ?? "market?"}</span>, risk{" "}
-          <span className="font-mono">
-            {selectedInstance.operational.riskPerTrade ?? "?"}
-            {selectedInstance.operational.riskUnit ? ` ${selectedInstance.operational.riskUnit}` : ""}
-          </span>
-          , symbol and timeframe.
-        </p>
-      ) : (
-        <p className="text-[10px] leading-snug text-amber-700 dark:text-amber-300">
-          Strategy-only runs omit instance-owned live settings like market mode and risk. Use an instance for live parity.
-        </p>
-      )}
+      <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
+        {configSource === "instance" && selectedInstance ? (
+          <>
+            Uses the <b>saved</b> strategy version bound to this instance plus instance operational overrides (
+            <span className="font-mono">{String((effectiveCfgRaw as any)?.bot?.marketMode ?? selectedInstance.operational.marketMode ?? "market?")}</span>
+            , risk{" "}
+            <span className="font-mono">
+              {String((effectiveCfgRaw as any)?.bot?.riskPerTrade ?? selectedInstance.operational.riskPerTrade ?? "?")}
+              {(effectiveCfgRaw as any)?.bot?.riskPerTradeUnit || selectedInstance.operational.riskUnit
+                ? ` ${(effectiveCfgRaw as any)?.bot?.riskPerTradeUnit ?? selectedInstance.operational.riskUnit}`
+                : ""}
+            </span>
+            ).
+          </>
+        ) : (
+          <>
+            Uses the <b>last saved</b> strategy snapshot. Change SMC/ICT in Trading, then <b>Save</b> before
+            backtesting — unsaved panel changes are not included.
+          </>
+        )}
+      </p>
       <div className="space-y-1">
         <Field label="Strategy">
           <select
@@ -391,7 +418,8 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
 
       <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
         OHLC for the symbol and timeframe you choose is loaded from <span className="font-mono">ohlcv_candles</span> (Binance): gaps are backfilled from
-        Binance REST using the <span className="font-medium">{configSource === "instance" ? "merged instance" : "strategy snapshot"}</span> spot vs futures market mode. With Postgres enabled, finalized
+        Binance REST using the <span className="font-medium">{configSource === "instance" ? "merged instance" : "strategy snapshot"}</span> plus{" "}
+        <span className="font-medium">live intraday / SMC panel toggles</span> from the active trading mode. Spot vs futures follows market mode. With Postgres enabled, finalized
         Binance kline closes from the running server are also stored there so recent bars stay aligned with real exchange prints.
       </p>
       {coveragePct != null && coveragePct < 99 ? (
@@ -598,8 +626,12 @@ function eliteStConfigIssues(cfgRaw: unknown, runTf: string): string[] {
   if (tf && tf !== "1h") issues.push(`timeframe is ${tf} (use 1h)`);
   if (b.eliteStRequireHtf1hEmaAlign !== true) issues.push("1H EMA gate off");
   if (Number(b.supertrendMultiplier ?? 3) < 3) issues.push(`ST mult ${b.supertrendMultiplier} (need ≥3)`);
-  if (Number(b.supertrendFuturesFixedSlPct ?? 0) > 0) issues.push(`fixed SL ${(Number(b.supertrendFuturesFixedSlPct) * 100).toFixed(1)}%`);
-  if (Number(b.supertrendFuturesFixedTpPct ?? 0) > 0) issues.push(`fixed TP ${(Number(b.supertrendFuturesFixedTpPct) * 100).toFixed(1)}%`);
+  if (Number(b.supertrendFuturesFixedSlPct ?? 0) > 0 && b.supertrendFuturesUseFixedSl !== false) {
+    issues.push(`fixed SL ${(Number(b.supertrendFuturesFixedSlPct) * 100).toFixed(1)}%`);
+  }
+  if (Number(b.supertrendFuturesFixedTpPct ?? 0) > 0 && b.supertrendFuturesUseFixedTp !== false) {
+    issues.push(`fixed TP ${(Number(b.supertrendFuturesFixedTpPct) * 100).toFixed(1)}%`);
+  }
   if (Number(b.riskPerTrade ?? 0) > 10) issues.push(`risk ${b.riskPerTrade}% (validated 5%)`);
   if (b.supertrendFuturesAuto === true) issues.push("ST auto-trade on");
   return issues;
@@ -618,6 +650,7 @@ function mergeCfgForUi(
   instance: BotInstance | null,
   symbol: string,
   timeframe: string,
+  liveBot?: Record<string, unknown> | null,
 ): Record<string, unknown> | null {
   if (!cfgRaw || typeof cfgRaw !== "object") return null;
   const root = JSON.parse(JSON.stringify(cfgRaw)) as Record<string, unknown>;
@@ -631,9 +664,41 @@ function mergeCfgForUi(
     if (op.maxDailyLoss != null) b.maxDailyLoss = op.maxDailyLoss;
     if (op.maxDailyLossUnit != null) b.maxDailyLossUnit = op.maxDailyLossUnit;
   }
+  if (liveBot) {
+    if (b.riskPerTrade == null && liveBot.riskPerTrade != null) b.riskPerTrade = liveBot.riskPerTrade;
+    if (b.riskPerTradeUnit == null && liveBot.riskPerTradeUnit != null) b.riskPerTradeUnit = liveBot.riskPerTradeUnit;
+    if (b.maxDailyLoss == null && liveBot.maxDailyLoss != null) b.maxDailyLoss = liveBot.maxDailyLoss;
+    if (b.maxDailyLossUnit == null && liveBot.maxDailyLossUnit != null) b.maxDailyLossUnit = liveBot.maxDailyLossUnit;
+    if (b.marketMode == null && liveBot.marketMode != null) b.marketMode = liveBot.marketMode;
+  }
   if (symbol) b.symbol = symbol.toUpperCase();
   if (timeframe) b.timeframe = timeframe;
   return root;
+}
+
+function normalizeRiskUnit(raw: string): "USDT" | "PCT" | null {
+  const u = raw.toUpperCase();
+  if (u === "USDT") return "USDT";
+  if (u === "PCT" || u === "PCT_EQUITY" || u.startsWith("PCT_")) return "PCT";
+  return null;
+}
+
+/** Instance-owned deployment fields sent with each instance backtest (not SMC strategy brain). */
+function instanceOperationalFromLiveBot(
+  liveBot: Record<string, unknown> | null | undefined,
+  symbol: string,
+  timeframe: string,
+) {
+  const b = liveBot && typeof liveBot === "object" ? liveBot : {};
+  return {
+    symbol: symbol.toUpperCase(),
+    timeframe,
+    marketMode: b.marketMode != null ? String(b.marketMode) : null,
+    riskPerTrade: b.riskPerTrade != null ? Number(b.riskPerTrade) : null,
+    riskUnit: normalizeRiskUnit(String(b.riskPerTradeUnit ?? "")),
+    maxDailyLoss: b.maxDailyLoss != null ? Number(b.maxDailyLoss) : null,
+    maxDailyLossUnit: normalizeRiskUnit(String(b.maxDailyLossUnit ?? "")),
+  };
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

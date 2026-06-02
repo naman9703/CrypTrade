@@ -13,7 +13,7 @@ import {
 import { swingHighLow, fibLevels, nearFibLevel } from "./techniques/fibonacci.js";
 import { cvdMomentum, deltaImbalance } from "./techniques/orderFlow.js";
 import {
-  liquiditySweep,
+  evaluateSessionLiquiditySweep,
   sweepReclaim,
   rejectionWickRatio,
 } from "./techniques/liquidity.js";
@@ -88,7 +88,12 @@ export function buildIntradayEntryContext(candles, idx, pre, sig, opts = {}) {
     rangeAtr,
     volRatio,
     wick: rejectionWickRatio(bar, side),
-    hasLiqSweep: liquiditySweep(candles, i, side, 15),
+    hasLiqSweep: Boolean(
+      evaluateSessionLiquiditySweep(candles, i, side, pre, {
+        ...opts,
+        sweepPct,
+      }),
+    ),
     hasSession: Boolean(pdl || pdh || asian),
     pdl: Boolean(pdl),
     pdh: Boolean(pdh),

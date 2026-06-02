@@ -1,5 +1,4 @@
 import { query } from "../query.js";
-import { normalizeModeSlugParam } from "../../lib/modeSlug.js";
 import {
   buildSignalBrainBlocks,
   stripInstanceFieldsFromCfgRaw,
@@ -153,22 +152,13 @@ function mapStrategyRow(row) {
   };
 }
 
-async function getModeIdForSlug(modeSlug) {
-  const slug = normalizeModeSlugParam(modeSlug);
-  if (!slug) return null;
-  const r = await query(`SELECT id FROM trading_modes WHERE slug = $1`, [slug]);
-  return r.rows[0]?.id ?? null;
-}
-
-/** @param {string} userId @param {string|null|undefined} modeSlug @param {string} name @param {string|null} [description] @param {string[]} [tags] */
-export async function createStrategy(userId, modeSlug, name, description = null, tags = []) {
-  const modeId = modeSlug ? await getModeIdForSlug(modeSlug) : null;
-  if (modeSlug && !modeId) throw new Error("invalid_mode_slug");
+/** @param {string} userId @param {string|null|undefined} [_modeSlug] ignored — strategies are mode-agnostic @param {string} name @param {string|null} [description] @param {string[]} [tags] */
+export async function createStrategy(userId, _modeSlug, name, description = null, tags = []) {
   const ins = await query(
     `INSERT INTO strategies (user_id, mode_id, name, description, tags)
-     VALUES ($1, $2, $3, $4, $5)
+     VALUES ($1, NULL, $2, $3, $4)
      RETURNING id`,
-    [userId, modeId, String(name || "").trim() || "Untitled", description, Array.isArray(tags) ? tags : []],
+    [userId, String(name || "").trim() || "Untitled", description, Array.isArray(tags) ? tags : []],
   );
   const id = ins.rows[0]?.id;
   return id ? getStrategy(String(id)) : null;
@@ -189,10 +179,10 @@ export async function getStrategy(strategyId) {
 /**
  * @param {string} userId
  * @param {{ includeArchived?: boolean, modeSlug?: string }} [opts]
+ * modeSlug is ignored — signal-brain strategies are shared across all trading modes.
  */
 export async function listStrategies(userId, opts = {}) {
   const includeArchived = opts.includeArchived === true;
-  const modeSlug = normalizeModeSlugParam(opts.modeSlug);
   const params = [userId];
   let sql = `
     SELECT s.*, tm.slug AS mode_slug
@@ -200,12 +190,6 @@ export async function listStrategies(userId, opts = {}) {
     LEFT JOIN trading_modes tm ON tm.id = s.mode_id
     WHERE s.user_id = $1`;
   if (!includeArchived) sql += ` AND s.is_archived = false`;
-  // Scope to trading mode when requested (matches performance/compare). Legacy rows with mode_id NULL
-  // remain visible in every mode until backfilled.
-  if (modeSlug) {
-    params.push(modeSlug);
-    sql += ` AND (tm.slug = $${params.length} OR s.mode_id IS NULL)`;
-  }
   sql += ` ORDER BY s.created_at ASC`;
   const r = await query(sql, params);
   return r.rows.map(mapStrategyRow);

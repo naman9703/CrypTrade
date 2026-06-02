@@ -1,0 +1,532 @@
+{"ts":"2026-05-31T11:51:27.518Z","level":"info","event":"db_connected","time":"2026-05-31T11:51:27.514Z"}
+{"ts":"2026-05-31T11:51:27.547Z","level":"info","event":"backfill_strategy_instance_split_done","strategyVersions":{"patched":0,"skipped":0},"botInstances":{"patched":0,"skipped":0}}
+{"ts":"2026-05-31T11:51:27.609Z","level":"info","event":"session_store_pg","table":"express_sessions"}
+{"ts":"2026-05-31T11:51:27.614Z","level":"info","event":"server_listening","port":8000,"host":"default","wsPath":"/ws","marketFeed":"BINANCE","serveFrontend":false}
+[intelligence] Starting engine...
+[liquidations] Binance forceOrder stream starting...
+[intelligence] All pollers scheduled
+{"ts":"2026-05-31T11:51:27.615Z","level":"info","event":"telegram_sidecar_started","chatConfigured":true}
+[liquidations] Connected to Binance forceOrder stream
+{"ts":"2026-05-31T11:51:28.310Z","level":"info","event":"telegram_polling_mode","note":"webhook cleared so getUpdates works"}
+{"ts":"2026-05-31T11:51:28.380Z","level":"info","event":"binance_depth_ws_open","stream":"linkusdt@depth20@100ms"}
+{"ts":"2026-05-31T11:51:28.510Z","level":"info","event":"telegram_bot_identity","username":"Albus_pingbot","id":8081515966}
+{"ts":"2026-05-31T11:51:28.612Z","level":"warn","event":"feed_execution_paused","symbol":"LINKUSDT","pauseReason":"feed_ws","wsOk":false,"minActivityRef":null,"maxActivityRef":null,"primaryKlineExchangeEventMs":null,"thresholdMs":600000,"staleMs":null}
+{"ts":"2026-05-31T11:51:28.784Z","level":"info","event":"binance_aggtrade_multiplex","stream":"linkusdt@aggTrade","note":"trades on kline WebSocket"}
+{"ts":"2026-05-31T11:51:29.521Z","level":"info","event":"binance_demo_futures_symbol_meta","symbol":"LINKUSDT","stepSize":"0.01","qtyStepSize":"0.01","tickSize":"0.001","quantityPrecision":2,"pricePrecision":3,"minNotional":5}
+{"ts":"2026-05-31T11:51:29.692Z","level":"info","event":"binance_ws_open","url":"wss://fstream.binancefuture.com/market/stream?streams=linkusdt%40kline_15m%2Flinkusdt%40aggTrade","klineSymbols":1,"streamCount":2,"aggTradeMultiplex":true,"combined":true}
+{"ts":"2026-05-31T11:51:29.919Z","level":"info","event":"binance_demo_udf_skipped","status":410,"note":"rest_polling_only"}
+{"ts":"2026-05-31T11:51:31.583Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","pendingRegime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:31.585Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:51:31.585Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:32.146Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:51:32.583Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:51:33.162Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","pendingRegime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:34.170Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","pendingRegime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:35.588Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:35.990Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:51:36.531Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:51:37.111Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:37.343Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:37.345Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:51:37.345Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:38.315Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:51:39.080Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:39.836Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:51:40.123Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:41.347Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:42.301Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:51:42.495Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:42.718Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:42.720Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:51:42.720Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:43.677Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:51:43.722Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:51:44.096Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:45.131Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:46.722Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:47.521Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:51:47.643Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:51:47.728Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:47.956Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:47.956Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:51:47.957Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:48.915Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:51:49.141Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:50.347Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:51.369Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:51:51.959Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:52.157Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:52.901Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:51:54.398Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:54.618Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:54.619Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:51:54.619Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:55.207Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:51:55.559Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:51:56.300Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:58.101Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:58.621Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:59.043Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:51:59.606Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:51:59.733Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:51:59.953Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:51:59.954Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:51:59.954Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:00.937Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:01.141Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:02.294Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:02.926Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:03.955Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:04.099Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:04.905Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:05.612Z","level":"warn","event":"auto_train_failed","error":"timeout of 30000ms exceeded"}
+{"ts":"2026-05-31T11:52:06.318Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:06.537Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:06.539Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:52:06.539Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:06.779Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:07.528Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:08.380Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:10.132Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:10.543Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:10.616Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:11.492Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:12.360Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:12.570Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:12.572Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:52:12.572Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:13.528Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:14.433Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:14.456Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:16.148Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:16.574Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:17.540Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:18.286Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:18.339Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:18.543Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:19.287Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:20.341Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:22.127Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:22.161Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:22.342Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:23.382Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:24.483Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:24.697Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:25.502Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:26.002Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:26.383Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:28.187Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:28.487Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+[news_impact] ai-service GLOBAL: timeout of 45000ms exceeded
+{"ts":"2026-05-31T11:52:29.572Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:29.947Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:31.293Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:31.659Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:31.660Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:52:31.660Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:32.840Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:33.242Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:33.781Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:35.664Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:36.541Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:36.543Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:52:36.543Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:36.720Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:37.533Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:37.642Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:38.744Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:40.380Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:40.545Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:41.468Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:41.473Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:43.370Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:43.607Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:44.766Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:45.184Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:45.316Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:46.171Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:47.372Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:48.331Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:48.599Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:48.949Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:48.949Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:52:48.949Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:49.166Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:50.022Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:50.175Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:51.193Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:52.403Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:52.952Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:52.997Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:53.950Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:55.191Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:55.860Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:55.862Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:52:55.862Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:52:56.840Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:52:56.867Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:52:57.196Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:58.231Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:52:58.582Z","level":"warn","event":"universe_ai_score_failed","symbol":"BNBUSDT","error":"timeout of 60000ms exceeded"}
+{"ts":"2026-05-31T11:52:58.585Z","level":"warn","event":"universe_ai_score_failed","symbol":"LINKUSDT","error":"timeout of 60000ms exceeded"}
+{"ts":"2026-05-31T11:52:59.864Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:00.672Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:00.830Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:02.136Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:02.358Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:02.359Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:53:02.359Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:03.314Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:04.240Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:04.514Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:05.199Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:06.362Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:07.356Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:08.121Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:08.359Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:08.360Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:53:08.360Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:08.362Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:09.372Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:10.233Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:11.231Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:12.208Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:12.364Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+[news_impact] ai-service XRP: timeout of 45000ms exceeded
+{"ts":"2026-05-31T11:53:13.700Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:14.220Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:14.468Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:14.470Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:53:14.470Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:15.452Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:16.061Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:16.255Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:17.232Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:18.474Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:19.463Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:19.899Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:20.222Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:20.468Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:20.469Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:53:20.469Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:21.456Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:22.186Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:23.771Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:24.471Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:25.026Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:53:25.026Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:25.340Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:25.341Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:53:25.341Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:26.424Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:27.615Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:27.628Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:29.344Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:29.390Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:30.335Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:31.458Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:33.143Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:33.378Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:34.477Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:35.288Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:35.422Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:37.144Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:38.087Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:53:38.089Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:38.307Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:39.241Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:39.337Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:40.595Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:42.091Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:42.437Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:43.081Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:43.196Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:45.431Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:45.636Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:46.943Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:47.363Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:47.725Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:49.434Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:50.099Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:53:50.100Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:50.317Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:50.782Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:51.157Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:52.542Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:54.102Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:53:54.448Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:53:54.608Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:53:55.793Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:53:58.109Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+[news_impact] ai-service BTC: timeout of 45000ms exceeded
+{"ts":"2026-05-31T11:53:58.630Z","level":"warn","event":"universe_ai_score_failed","symbol":"ADAUSDT","error":"timeout of 60000ms exceeded"}
+{"ts":"2026-05-31T11:53:58.632Z","level":"warn","event":"universe_ai_score_failed","symbol":"ETHUSDT","error":"timeout of 60000ms exceeded"}
+{"ts":"2026-05-31T11:53:58.812Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:00.940Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:02.018Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:02.350Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:02.351Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:54:02.351Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:02.642Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:03.404Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:04.239Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:06.359Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:06.505Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:07.271Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:54:07.271Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:07.527Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:08.319Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:09.577Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:10.347Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:11.272Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:11.438Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:12.824Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:14.286Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:14.468Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:14.821Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:14.821Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:54:14.821Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:15.947Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:16.437Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:18.823Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:19.469Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:19.754Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:21.549Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:21.764Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:22.617Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:23.307Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:23.764Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:25.551Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:25.765Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:54:25.765Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:26.097Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:26.098Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:54:26.098Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:27.181Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:27.715Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:28.272Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:30.100Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:30.945Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:54:30.945Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:31.161Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:31.162Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:54:31.162Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:31.555Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:32.115Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:32.259Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:33.489Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:35.166Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:35.315Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:35.411Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:36.104Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:37.693Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:37.900Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:37.901Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:54:37.902Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:38.868Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:39.247Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:39.479Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:41.281Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:41.903Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:42.885Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:54:42.885Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:43.094Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:43.101Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+[news_impact] ai-service BNB: timeout of 45000ms exceeded
+{"ts":"2026-05-31T11:54:43.857Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:44.278Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:45.482Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:46.887Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:46.980Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:47.251Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:47.852Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:49.476Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:49.693Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:49.694Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:54:49.694Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:50.662Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:50.864Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:51.550Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:53.308Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:53.697Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:54.665Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:54.701Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:55.488Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:55.720Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:55.722Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:54:55.722Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:54:56.687Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:54:57.573Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:58.542Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:54:58.634Z","level":"warn","event":"universe_ai_score_failed","symbol":"DOGEUSDT","error":"timeout of 60000ms exceeded"}
+{"ts":"2026-05-31T11:54:58.637Z","level":"warn","event":"universe_ai_score_failed","symbol":"XRPUSDT","error":"timeout of 60000ms exceeded"}
+{"ts":"2026-05-31T11:54:59.319Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:54:59.749Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:00.656Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:02.311Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:02.384Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:02.573Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:02.574Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:55:02.575Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:03.593Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:04.337Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:05.316Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:06.240Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:06.577Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:07.534Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:08.278Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:08.845Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:08.845Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:55:08.845Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:09.764Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:10.073Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:10.349Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:11.349Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:12.879Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:13.819Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:13.965Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:14.255Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:14.458Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:14.459Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:55:14.459Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:15.408Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:16.313Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:17.286Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:17.805Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:18.463Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:19.398Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:20.266Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:20.900Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:20.901Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:55:20.901Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:21.646Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:21.903Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:22.312Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:23.490Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:24.910Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:25.484Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:25.891Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:26.293Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:26.529Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:26.530Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:55:26.530Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:27.512Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:28.559Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+[news_impact] ai-service SOL: timeout of 45000ms exceeded
+{"ts":"2026-05-31T11:55:29.308Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:30.537Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:31.162Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:31.163Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:55:31.163Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:31.916Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:32.141Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:32.360Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:33.229Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:33.554Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:35.167Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:35.330Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:36.122Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:37.066Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:37.891Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:38.120Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:38.121Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:55:38.121Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:39.150Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:39.544Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:40.922Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:41.361Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:42.125Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:43.124Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:44.338Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:44.561Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:44.562Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:55:44.562Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:44.762Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:45.521Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:46.403Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:47.353Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:48.564Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:48.596Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:49.547Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:50.371Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:50.604Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:50.605Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:55:50.605Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:51.575Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:52.338Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:52.435Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:53.504Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:54.607Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:56.116Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:56.283Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:55:57.414Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:57.623Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:57.623Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:55:57.623Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:58.638Z","level":"warn","event":"universe_ai_score_failed","symbol":"BTCUSDT","error":"timeout of 60000ms exceeded"}
+{"ts":"2026-05-31T11:55:58.713Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:55:59.028Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:55:59.560Z","level":"info","event":"decision_made","symbol":"LINKUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:55:59.619Z","level":"info","event":"feed_symbol_set","symbol":"BNBUSDT"}
+{"ts":"2026-05-31T11:55:59.621Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:55:59.621Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:00.355Z","level":"info","event":"binance_demo_futures_symbol_meta","symbol":"BNBUSDT","stepSize":"0.01","qtyStepSize":"0.01","tickSize":"0.010","quantityPrecision":2,"pricePrecision":3,"minNotional":5}
+{"ts":"2026-05-31T11:56:00.377Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:56:00.595Z","level":"info","event":"binance_demo_futures_symbol_meta","symbol":"ETHUSDT","stepSize":"0.001","qtyStepSize":"0.001","tickSize":"0.01","quantityPrecision":3,"pricePrecision":2,"minNotional":20}
+{"ts":"2026-05-31T11:56:00.778Z","level":"info","event":"binance_demo_futures_symbol_meta","symbol":"XRPUSDT","stepSize":"0.1","qtyStepSize":"0.1","tickSize":"0.0001","quantityPrecision":1,"pricePrecision":4,"minNotional":5}
+{"ts":"2026-05-31T11:56:01.001Z","level":"info","event":"binance_demo_futures_symbol_meta","symbol":"DOGEUSDT","stepSize":"1","qtyStepSize":"1","tickSize":"0.000010","quantityPrecision":0,"pricePrecision":6,"minNotional":5}
+{"ts":"2026-05-31T11:56:01.158Z","level":"info","event":"binance_demo_futures_symbol_meta","symbol":"BTCUSDT","stepSize":"0.0001","qtyStepSize":"0.0001","tickSize":"0.10","quantityPrecision":4,"pricePrecision":2,"minNotional":50}
+{"ts":"2026-05-31T11:56:01.263Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:56:01.293Z","level":"info","event":"binance_demo_futures_symbol_meta","symbol":"ADAUSDT","stepSize":"1","qtyStepSize":"1","tickSize":"0.00010","quantityPrecision":0,"pricePrecision":5,"minNotional":5}
+{"ts":"2026-05-31T11:56:01.556Z","level":"info","event":"binance_depth_ws_open","stream":"bnbusdt@depth20@100ms"}
+{"ts":"2026-05-31T11:56:03.410Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:03.710Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:03.710Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:56:03.710Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:04.210Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:56:04.612Z","level":"info","event":"binance_ws_open","url":"wss://fstream.binancefuture.com/market/stream?streams=bnbusdt%40kline_15m%2Flinkusdt%40kline_15m%2Fbtcusdt%40kline_15m%2","klineSymbols":7,"streamCount":8,"aggTradeMultiplex":true,"combined":true}
+{"ts":"2026-05-31T11:56:04.799Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:56:05.564Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:07.713Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:07.736Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:08.049Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:56:08.919Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:56:10.357Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:10.565Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:10.566Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:56:10.566Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:11.563Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:56:11.946Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:56:12.389Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:13.401Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+[news_impact] ai-service ETH: timeout of 45000ms exceeded
+{"ts":"2026-05-31T11:56:14.568Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:15.489Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:56:15.768Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:56:15.786Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:16.004Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:16.005Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:56:16.005Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:16.961Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:56:17.395Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:18.380Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:19.597Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:56:19.617Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:20.007Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:21.000Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:56:22.315Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:22.531Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:22.532Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:56:22.532Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:23.435Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:56:23.495Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:56:24.402Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:25.402Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:26.534Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:27.264Z","level":"warn","event":"telegram_get_updates_failed","error":"Conflict: terminated by other getUpdates request; make sure that only one bot instance is running","status":409,"hint":"If a webhook is set on this bot, call deleteWebhook or delete it via @BotFather so getUpdates (long poll) can receive commands."}
+{"ts":"2026-05-31T11:56:27.549Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}
+{"ts":"2026-05-31T11:56:28.446Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:29.313Z","level":"info","event":"decision_made","symbol":"BNBUSDT","timeframe":"15m","regime":"TRENDING","strategyKey":"SR_INTRADAY","action":"HOLD"}
+{"ts":"2026-05-31T11:56:29.314Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_error","error":"WebSocket was closed before the connection was established"}
+{"ts":"2026-05-31T11:56:29.314Z","level":"warn","event":"binance_demo_futures_usdm_user_stream_ws_close"}
+{"ts":"2026-05-31T11:56:30.307Z","level":"info","event":"binance_demo_futures_usdm_user_stream_open","urlHost":"fstream.binancefuture.com"}

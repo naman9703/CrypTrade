@@ -145,7 +145,9 @@ export function StrategySidebar() {
         </div>
       </div>
       <div className="px-3 py-2 text-[11px] text-slate-600 dark:text-slate-400">
-        Mode: <span className="font-semibold text-slate-800 dark:text-slate-200">{modeLabel}</span>
+        Active in{" "}
+        <span className="font-semibold text-slate-800 dark:text-slate-200">{modeLabel}</span>
+        <span className="text-slate-500"> · strategies shared across modes</span>
         <label className="mt-2 flex cursor-pointer items-center gap-2">
           <input
             type="checkbox"
@@ -197,20 +199,6 @@ export function StrategySidebar() {
                     <span className="truncate">{s.name}</span>
                     {v ? <span className="shrink-0 text-slate-500">v{v.versionNumber}</span> : null}
                   </div>
-                  <span
-                    className={clsx(
-                      "mt-0.5 inline-block rounded px-1 text-[9px] font-medium uppercase",
-                      modeSlug === "live"
-                        ? "bg-emerald-600/90 text-white"
-                        : modeSlug === "testnet"
-                          ? "bg-sky-600/90 text-white"
-                          : modeSlug === "demo_api"
-                            ? "bg-amber-500/95 text-amber-950"
-                            : "bg-slate-600/90 text-white",
-                    )}
-                  >
-                    {modeSlug}
-                  </span>
                   <p className="mt-1 text-[10px] text-slate-600 dark:text-slate-400">
                     {v?.cfgSymbol ?? "—"} · {v?.cfgTimeframe ?? "—"}
                   </p>

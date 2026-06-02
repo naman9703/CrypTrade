@@ -29,8 +29,10 @@ export function approxBarCount(startDateIso: string, endDateIso: string, timefra
 /** Order-of-magnitude total runtime (seconds) before we have meaningful %. */
 export function roughTotalSeconds(bars: number, engineType: string | null | undefined): number {
   const et = String(engineType ?? "").toUpperCase();
-  const prep = et === "SURF_PULSE_ML" ? 45 : 10;
-  const per1k = et === "SURF_PULSE_ML" ? 3.2 : 0.2;
+  const prep =
+    et === "SURF_PULSE_ML" ? 45 : et === "SR_INTRADAY" || et === "INTRADAY_PRO" ? 18 : 10;
+  const per1k =
+    et === "SURF_PULSE_ML" ? 3.2 : et === "SR_INTRADAY" || et === "INTRADAY_PRO" ? 0.55 : 0.2;
   const sim = (bars / 1000) * per1k;
   return Math.max(15, prep + sim);
 }

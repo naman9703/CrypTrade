@@ -6,7 +6,12 @@ import WsModule from "ws";
 import { resolveDefaultLiveFuturesIncomeSyncPath } from "../../lib/tradingModePersistence.js";
 import { tradeCloseFeeUsdtFromNotional } from "../../lib/tradeCloseFee.js";
 import { refineUsdMTriggersVsMark, usdmBracketPriceStrings } from "../../lib/binanceFuturesBracketPrices.js";
-import { placeUsdMSlTpAfterMarketEntry, futuresOrderIs4120 } from "../../lib/binanceFuturesSlTpBracket.js";
+import {
+  placeUsdMSlTpAfterMarketEntry,
+  placeUsdMPartialLiqBrackets,
+  futuresOrderIs4120,
+} from "../../lib/binanceFuturesSlTpBracket.js";
+import { maybeMoveLiqSlToBreakevenAfterPartial } from "../../lib/binanceUsdMLiqPartialBe.js";
 import { applyTrailingStopBinanceMemory } from "../../lib/trailingStopLoss.js";
 import {
   inferSlTpFromMark,
@@ -94,9 +99,13 @@ function trailingSeedFromLastOpenTrade(trades, symU) {
 export function createBinanceLiveFuturesUsdMExchange({ log, apiKey: apiKeyOverride, apiSecret: apiSecretOverride } = {}) {
   // Prefer BINANCE_LIVE_FUTURES_*; else same BINANCE_LIVE_* as spot.
   const apiKey =
-    (apiKeyOverride ?? process.env.BINANCE_LIVE_FUTURES_API_KEY ?? process.env.BINANCE_LIVE_API_KEY) || "";
+    String(apiKeyOverride ?? "").trim() ||
+    String(process.env.BINANCE_LIVE_FUTURES_API_KEY ?? "").trim() ||
+    String(process.env.BINANCE_LIVE_API_KEY ?? "").trim();
   const apiSecret =
-    (apiSecretOverride ?? process.env.BINANCE_LIVE_FUTURES_API_SECRET ?? process.env.BINANCE_LIVE_API_SECRET) || "";
+    String(apiSecretOverride ?? "").trim() ||
+    String(process.env.BINANCE_LIVE_FUTURES_API_SECRET ?? "").trim() ||
+    String(process.env.BINANCE_LIVE_API_SECRET ?? "").trim();
   const baseURL = process.env.BINANCE_LIVE_FUTURES_REST_BASE || "https://fapi.binance.com";
   const defaultLeverage = Math.max(1, Math.min(100, Number(process.env.FUTURES_DEFAULT_LEVERAGE || 5)));
 
@@ -1910,7 +1919,18 @@ export function createBinanceLiveFuturesUsdMExchange({ log, apiKey: apiKeyOverri
 
       let stopPx = Number(stopLoss);
       let tpPx = Number(takeProfit);
-      if (!stopPx || !tpPx) throw new Error("stoploss_takeprofit_required");
+      const skipSl = meta?.skipStopLoss === true || !(stopPx > 0);
+      const skipTp = meta?.skipTakeProfit === true || !(tpPx > 0);
+      if (skipSl) stopPx = 0;
+      if (skipTp) tpPx = 0;
+      const tp1PxMeta = Number(meta?.takeProfitPartial);
+      const useLiqPartialEntry = tp1PxMeta > 0 && meta?.liqPartialTp !== false;
+      const entryOnlyBrackets = !stopPx && !tpPx && !useLiqPartialEntry;
+      if (!entryOnlyBrackets) {
+        if (!stopPx && !useLiqPartialEntry) throw new Error("stoploss_takeprofit_required");
+        if (!tpPx && !useLiqPartialEntry) throw new Error("stoploss_takeprofit_required");
+        if (!tpPx && useLiqPartialEntry) tpPx = tp1PxMeta;
+      }
 
       const leverage = await ensureLeverage(symNorm, meta?.futuresLeverage || meta?.leverage || defaultLeverage);
       const hedgeExtras = await hedgePositionSideExtras(isLong);
@@ -1997,6 +2017,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log, apiKey: apiKeyOverri
       // Use executed qty for bracket legs (handles partial fills)
       const executedQty = formatToStep(Number(out?.executedQty || out?.origQty || qty), m) || qtyStr;
 
+      if (!entryOnlyBrackets) {
       const anchorPx = Number.isFinite(markPx) && markPx > 0 ? markPx : filledPrice;
       const r2 = reanchorSlTpToFill({ isLong, anchorPx, filledPx: filledPrice, stopPx, tpPx });
       stopPx = r2.stopPx;
@@ -2024,6 +2045,15 @@ export function createBinanceLiveFuturesUsdMExchange({ log, apiKey: apiKeyOverri
       }
       stopPx = refined.stopPx;
       tpPx = refined.tpPx;
+      const tp1PxPlan = Number(meta?.takeProfitPartial);
+      const useLiqPartial = tp1PxPlan > 0 && meta?.liqPartialTp !== false;
+      const liqTp2On = meta?.liqTp2Enabled !== false;
+      let tp1Px = tp1PxPlan;
+      if (useLiqPartial) {
+        const risk = Math.abs(filledPrice - stopPx);
+        if (risk > 0) tp1Px = isLong ? filledPrice + risk : filledPrice - risk;
+      }
+      const partialFrac = Math.min(0.75, Math.max(0.25, Number(meta?.takeProfitPartialFrac ?? 0.5)));
       const { stopStr, tpStr, slLimitStr, tpLimitStr } = usdmBracketPriceStrings({
         isLong,
         stopPx,
@@ -2031,30 +2061,89 @@ export function createBinanceLiveFuturesUsdMExchange({ log, apiKey: apiKeyOverri
         meta: m,
         closeSide,
       });
-      if (!stopStr || !tpStr || !slLimitStr || !tpLimitStr) throw new Error("bad_bracket_prices");
+      const tp1Bracket = useLiqPartial
+        ? usdmBracketPriceStrings({
+            isLong,
+            stopPx: tp1Px,
+            tpPx: tp1Px,
+            meta: m,
+            closeSide,
+          })
+        : null;
+      if (stopPx > 0 && (!stopStr || !slLimitStr)) throw new Error("bad_bracket_prices");
+      if (!useLiqPartial && tpPx > 0 && (!tpStr || !tpLimitStr)) throw new Error("bad_bracket_prices");
+      if (useLiqPartial && liqTp2On && (!tpStr || !tpLimitStr)) throw new Error("bad_bracket_prices");
 
       let bracketsPlaced = false;
       try {
-        await placeUsdMSlTpAfterMarketEntry({
-          signed,
-          symbol: symNorm,
-          closeSide,
-          stopStr,
-          tpStr,
-          slLimitStr,
-          tpLimitStr,
-          executedQty,
-          hedgeExtras,
-          log,
-          logPrefix: "binance_live_futures",
-        });
+        if (useLiqPartial && tp1Bracket?.tpStr) {
+          await placeUsdMPartialLiqBrackets({
+            signed,
+            symbol: symNorm,
+            closeSide,
+            stopStr,
+            tpStr: liqTp2On ? tpStr : tp1Bracket.tpStr,
+            tp1Str: tp1Bracket.tpStr,
+            slLimitStr,
+            tpLimitStr: liqTp2On ? tpLimitStr : tp1Bracket.tpLimitStr ?? tpLimitStr,
+            tp1LimitStr: tp1Bracket.tpLimitStr ?? tpLimitStr,
+            executedQty,
+            partialFrac,
+            tp2Enabled: liqTp2On,
+            formatQty: (q) => formatToStep(q, m),
+            hedgeExtras,
+            log,
+            logPrefix: "binance_live_futures",
+          });
+        } else {
+          await placeUsdMSlTpAfterMarketEntry({
+            signed,
+            symbol: symNorm,
+            closeSide,
+            stopStr,
+            tpStr,
+            slLimitStr,
+            tpLimitStr,
+            executedQty,
+            hedgeExtras,
+            log,
+            logPrefix: "binance_live_futures",
+          });
+        }
         bracketsPlaced = true;
+        const runnerQty = formatToStep(Number(executedQty) * (1 - partialFrac), m) || executedQty;
+        const liqBeAt1R = meta?.liqBeAt1R === true && !useLiqPartial;
+        const beTriggerPx = Number(meta?.liqBeTriggerPx);
         mem.placedBracketTargets[symNorm] = {
           stopLoss: stopPx,
           takeProfit: tpPx,
+          tp1Price: liqBeAt1R && beTriggerPx > 0 ? beTriggerPx : tp1Px,
           closeSide,
           hedgeExtras: { ...hedgeExtras },
           qty: executedQty,
+          qtyRunner: runnerQty,
+          ...(useLiqPartial
+            ? {
+                liqPartial: true,
+                partialFrac,
+                partialTaken: false,
+                beAfterPartial: meta?.liqBreakevenAfterPartial !== false,
+                entryPrice: filledPrice,
+                initialQty: executedQty,
+                isLong,
+                feeBuf: Number(meta?.liqBreakevenFeeBuf) || 0.001,
+              }
+            : liqBeAt1R
+              ? {
+                  liqBeAt1R: true,
+                  beAfterPartial: meta?.liqBreakevenAfterPartial !== false,
+                  beMoved: false,
+                  entryPrice: filledPrice,
+                  initialQty: executedQty,
+                  isLong,
+                  feeBuf: Number(meta?.liqBreakevenFeeBuf) || 0.001,
+                }
+              : {}),
         };
       } catch (e) {
         const is4120 = futuresOrderIs4120(e);
@@ -2091,6 +2180,7 @@ export function createBinanceLiveFuturesUsdMExchange({ log, apiKey: apiKeyOverri
           throw e;
         }
       }
+      }
 
       const clientOid = out?.clientOrderId != null && String(out.clientOrderId).trim() !== "" ? String(out.clientOrderId) : null;
       mem.trades.push({
@@ -2101,8 +2191,8 @@ export function createBinanceLiveFuturesUsdMExchange({ log, apiKey: apiKeyOverri
         side,
         qty: Number(qtyStr),
         price: filledPrice,
-        stopLoss: stopPx,
-        takeProfit: tpPx,
+        stopLoss: entryOnlyBrackets ? null : stopPx,
+        takeProfit: entryOnlyBrackets ? null : tpPx,
         leverage,
         strategy: strategy || "AUTO",
         meta: {
@@ -2274,6 +2364,35 @@ export function createBinanceLiveFuturesUsdMExchange({ log, apiKey: apiKeyOverri
       await backfillMissingOpenCommissionsUsdM();
 
       const primarySymU = String(symbol || "").toUpperCase();
+
+      if (Array.isArray(mem.lastPositionSnapshot)) {
+        const liqSyms = Object.keys(mem.placedBracketTargets || {}).filter(
+          (s) => mem.placedBracketTargets[s]?.liqPartial,
+        );
+        for (const symU of liqSyms) {
+          await maybeMoveLiqSlToBreakevenAfterPartial({
+            mem,
+            symU,
+            positions: mem.lastPositionSnapshot,
+            markPxForSymbol: async (s) => {
+              const cached = _getMarkPxFromCache(s);
+              if (cached != null) return cached;
+              try {
+                const d = await publicGet("/fapi/v1/premiumIndex", { symbol: s });
+                const mp = Number(d?.markPrice);
+                return Number.isFinite(mp) && mp > 0 ? mp : NaN;
+              } catch {
+                return NaN;
+              }
+            },
+            signed,
+            getOrLoadSymbolMeta,
+            normalizeAlgoOrdersPayload,
+            log,
+            logPrefix: "binance_live_futures_liq_be",
+          });
+        }
+      }
 
       async function markPxForSymbol(sym) {
         const u = String(sym || "").toUpperCase();

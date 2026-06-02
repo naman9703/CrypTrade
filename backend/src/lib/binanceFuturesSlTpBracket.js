@@ -160,8 +160,140 @@ export async function placeUsdMSlTpAfterMarketEntry(opts) {
     }
   }
 
-  await placeLeg("STOP", stopStr, slLimitStr, "sl");
-  await placeLeg("TAKE_PROFIT", tpStr, tpLimitStr, "tp");
+  if (stopStr && slLimitStr) await placeLeg("STOP", stopStr, slLimitStr, "sl");
+  if (tpStr && tpLimitStr) await placeLeg("TAKE_PROFIT", tpStr, tpLimitStr, "tp");
+}
+
+/**
+ * Liquidity partial: SL full size, TP1 @ 1R (partial qty), TP2 @ opposing liquidity (runner).
+ * @param {object} opts — same as placeUsdMSlTpAfterMarketEntry plus tp1Str, tp1LimitStr, partialFrac, formatQty(qtyNum)=>string
+ */
+export async function placeUsdMPartialLiqBrackets(opts) {
+  const {
+    signed,
+    symbol,
+    closeSide,
+    stopStr,
+    tpStr,
+    tp1Str,
+    slLimitStr,
+    tpLimitStr,
+    tp1LimitStr,
+    executedQty,
+    partialFrac = 0.5,
+    formatQty,
+    hedgeExtras = {},
+    log,
+    logPrefix = "binance_usdm",
+  } = opts;
+
+  if (!tp1Str || !formatQty) {
+    await placeUsdMSlTpAfterMarketEntry(opts);
+    return;
+  }
+
+  const isHedge = Boolean(hedgeExtras?.positionSide);
+  const algoReduceOnly = isHedge ? {} : { reduceOnly: "true" };
+  const frac = Math.min(0.75, Math.max(0.25, Number(partialFrac) || 0.5));
+  const total = Number(executedQty);
+  const qty1Str = formatQty(total * frac);
+  const qty2Str = formatQty(Math.max(0, total - Number(qty1Str)));
+  if (!qty1Str || !qty2Str || Number(qty2Str) <= 0) {
+    await placeUsdMSlTpAfterMarketEntry(opts);
+    return;
+  }
+
+  async function tryClassicThen4120Algo(classicFn, algoFn) {
+    try {
+      await classicFn();
+    } catch (e) {
+      if (!futuresOrderIs4120(e)) throw e;
+      await algoFn();
+    }
+  }
+
+  async function placeLegQty(type, triggerPrice, limitPrice, idTag, qtyStr) {
+    const marketType = `${type}_MARKET`;
+    const common = {
+      symbol,
+      side: closeSide,
+      stopPrice: String(triggerPrice),
+      workingType: "MARK_PRICE",
+      newClientOrderId: `${idTag}_${Date.now()}`,
+      ...hedgeExtras,
+    };
+    const algoBase = {
+      algoType: "CONDITIONAL",
+      symbol,
+      side: closeSide,
+      triggerPrice: String(triggerPrice),
+      workingType: "MARK_PRICE",
+      clientAlgoId: makeClientAlgoId(idTag),
+      ...hedgeExtras,
+    };
+
+    const postRoQty = async () => {
+      await signed("POST", "/fapi/v1/order", {
+        ...common,
+        type: marketType,
+        reduceOnly: "true",
+        quantity: String(qtyStr),
+      });
+    };
+    const postRoQtyAlgo = async () => {
+      await signed("POST", "/fapi/v1/algoOrder", {
+        ...algoBase,
+        type: marketType,
+        quantity: String(qtyStr),
+        ...algoReduceOnly,
+      });
+    };
+    const postRoLimit = async () => {
+      await signed("POST", "/fapi/v1/order", {
+        ...common,
+        type,
+        price: String(limitPrice),
+        timeInForce: "GTC",
+        reduceOnly: "true",
+        quantity: String(qtyStr),
+      });
+    };
+    const postRoLimitAlgo = async () => {
+      await signed("POST", "/fapi/v1/algoOrder", {
+        ...algoBase,
+        type,
+        triggerPrice: String(triggerPrice),
+        price: String(limitPrice),
+        timeInForce: "GTC",
+        quantity: String(qtyStr),
+        ...algoReduceOnly,
+      });
+    };
+
+    try {
+      await tryClassicThen4120Algo(postRoQty, postRoQtyAlgo);
+    } catch (e2) {
+      const c2 = futuresOrderErrCode(e2);
+      if (c2 === -4120 || String(e2?.message || "").includes("-4120")) {
+        await tryClassicThen4120Algo(postRoLimit, postRoLimitAlgo);
+      } else {
+        throw e2;
+      }
+    }
+  }
+
+  await placeLegQty("STOP", stopStr, slLimitStr, "sl", executedQty);
+  await placeLegQty("TAKE_PROFIT", tp1Str, tp1LimitStr ?? tpLimitStr, "tp1", qty1Str);
+  if (opts.tp2Enabled !== false && tpStr && Number(tpStr) > 0) {
+    await placeLegQty("TAKE_PROFIT", tpStr, tpLimitStr, "tp2", qty2Str);
+  }
+  log?.info?.(`${logPrefix}_partial_liq_brackets`, {
+    symbol,
+    qty1: qty1Str,
+    qty2: qty2Str,
+    frac,
+    tp2: opts.tp2Enabled !== false,
+  });
 }
 
 export function futuresOrderIs4120(e) {

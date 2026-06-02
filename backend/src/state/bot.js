@@ -13,6 +13,12 @@ import { detectRegime } from "../strategy/regime.js";
 import { strategies } from "../strategy/strategies.js";
 import { pickStrategyAuto, topStrategies } from "../strategy/selector.js";
 import { riskPlan, spotBracketFromAtr, applyFixedPctBracket } from "../strategy/risk.js";
+import { resolveFibEntryBrackets } from "../strategy/techniques/fibonacci.js";
+import {
+  mapLiquidityEntryLegs,
+  resolveLiquidityEntryBrackets,
+} from "../strategy/techniques/liquidity.js";
+import { resolveSizingStopPrice } from "../strategy/sizingStop.js";
 import { evaluateIntelligenceGateForSupertrendOpen } from "./intelligenceGate.js";
 import { createMarketFeed } from "./marketFeed.js";
 import { createBinanceUniverse } from "../svc/universe/binanceUniverse.js";
@@ -730,6 +736,64 @@ export function createBot({
     volumeProfileSoftGates: true,
     volumeProfileGatesEnabled: false,
     intradayVpBrackets: false,
+    intradayGateLiquidity: true,
+    intradayGateSession: true,
+    intradayGateFib: true,
+    intradayGateVp: true,
+    intradayGateOrderFlow: true,
+    intradayGateHtfRegime: true,
+    intradayGateInstitutionalSr: false,
+    intradayGateSmcIct: false,
+    intradaySmcIctMode: false,
+    intradaySmcIctProfile: "sweep",
+    intradaySmcPickMode: "per_signal",
+    intradaySmcOneTradePerDay: false,
+    intradaySmcMinScore: 7,
+    intradaySmcRequireHtfBias: true,
+    intradaySmcChochStrict: false,
+    intradaySmcRequireMss: false,
+    intradaySmcRequireRetrace: false,
+    intradaySmcRequireChoch: false,
+    intradaySmcRequireBos: false,
+    intradaySmcRequireConfirm: false,
+    intradaySmcRequireFvgRetrace: false,
+    intradaySmcRequirePremiumDiscount: false,
+    intradaySmcPremiumDiscountOte: false,
+    intradaySmcDealingRangeLookback: 48,
+    intradaySmcLookbackBars: 30,
+    intradaySmcMinRr: 1.5,
+    intradaySmcBosMaxBars: 5,
+    intradaySmcChochMaxBars: 8,
+    intradaySmcEntryZoneMode: "EITHER",
+    intradaySmcFvgEntryMode: "zone",
+    intradaySmcTp2Mode: "opposing",
+    intradaySmcKillzoneMode: "LONDON_NY",
+    intradaySmcMinAdx: 15,
+    intradaySmcHtfStrictness: "either",
+    intradaySmcHtfBiasMode: "parallel",
+    intradaySmcSlMode: "structure",
+    intradaySmcMaxTpRr: 3,
+    intradaySmcMaxHoldBars: 48,
+    intradaySrAPlusMode: false,
+    intradaySrMinVolRatio: clamp(Number(process.env.INTRADAY_SR_MIN_VOL_RATIO ?? 1.2), 0, 5),
+    intradaySrMinHtfSep: clamp(Number(process.env.INTRADAY_SR_MIN_HTF_SEP ?? 0.0004), 0, 0.01),
+    intradaySrZoneWidthPct: clamp(Number(process.env.INTRADAY_SR_ZONE_WIDTH_PCT ?? 0.002), 0.0001, 0.02),
+    intradaySrBosMaxBarsAfterReclaim: clamp(
+      Math.round(Number(process.env.INTRADAY_SR_BOS_MAX_BARS ?? 3)),
+      0,
+      10,
+    ),
+    intradaySrMinConfirmWick: clamp(Number(process.env.INTRADAY_SR_MIN_CONFIRM_WICK ?? 0.38), 0, 1),
+    intradaySrRequireBos: true,
+    intradaySrRequireConfirm: true,
+    intradaySrRequireVolume: true,
+    intradaySrRequireHtfTrend: true,
+    /** Liquidity sweep exit legs (INTRADAY_PRO liq solo). */
+    intradayLiqTp1Enabled: true,
+    intradayLiqTp2Enabled: true,
+    intradayLiqBreakevenAfterPartial: true,
+    intradayLiqPartialTp: true,
+    intradayLiqMinRr: clamp(Number(process.env.INTRADAY_LIQ_MIN_RR ?? 1.5), 0, 5),
     vpLookbackBars: clamp(Math.round(Number(process.env.VP_LOOKBACK_BARS ?? 672)), 48, 2000),
     vpMinRR: clamp(Number(process.env.VP_MIN_RR ?? 1.5), 0.8, 5),
 
@@ -817,6 +881,10 @@ export function createBot({
       0.00005,
       0.5,
     ),
+    /** When false, autotrade opens without a fixed-% stop (exit via flip/trail/time only). */
+    supertrendFuturesUseFixedSl: true,
+    /** When false, autotrade opens without a fixed-% take-profit. */
+    supertrendFuturesUseFixedTp: true,
     /** Enable/disable SurfPulse ML probability gate for SURF_PULSE_ML opens. */
     surfPulseMlGateEnabled: String(process.env.SURF_PULSE_ML_GATE_ENABLED ?? "1").toLowerCase() !== "0",
     /** Enable market intelligence gate — skips trades when high-confidence signals oppose direction. Default off until tested. */
@@ -1665,6 +1733,78 @@ export function createBot({
         volumeProfileSoftGates: state.volumeProfileSoftGates !== false,
         volumeProfileGatesEnabled: state.volumeProfileGatesEnabled === true,
         intradayVpBrackets: state.intradayVpBrackets === true,
+        intradayGateLiquidity: state.intradayGateLiquidity !== false,
+        intradayGateSession: state.intradayGateSession !== false,
+        intradayGateFib: state.intradayGateFib !== false,
+        intradayGateVp: state.intradayGateVp !== false,
+        intradayGateOrderFlow: state.intradayGateOrderFlow !== false,
+        intradayGateHtfRegime: state.intradayGateHtfRegime !== false,
+        intradayGateInstitutionalSr: state.intradayGateInstitutionalSr === true,
+        intradayGateSmcIct: state.intradayGateSmcIct === true,
+        intradaySmcIctMode: state.intradaySmcIctMode === true,
+        intradaySmcIctProfile: String(state.intradaySmcIctProfile ?? "sweep").toLowerCase(),
+        intradaySmcPickMode: String(state.intradaySmcPickMode ?? "per_signal").toLowerCase(),
+        intradaySmcOneTradePerDay: state.intradaySmcOneTradePerDay === true,
+        intradaySmcMinScore: clamp(Math.round(Number(state.intradaySmcMinScore ?? 7)), 1, 20),
+        intradaySmcRequireMss: state.intradaySmcRequireMss === true,
+        intradaySmcRequireRetrace: state.intradaySmcRequireRetrace === true,
+        intradaySmcRequireChoch: state.intradaySmcRequireChoch === true,
+        intradaySmcRequireBos: state.intradaySmcRequireBos === true,
+        intradaySmcRequireConfirm: state.intradaySmcRequireConfirm === true,
+        intradaySmcRequireFvgRetrace: state.intradaySmcRequireFvgRetrace === true,
+        intradaySmcRequireHtfBias: state.intradaySmcRequireHtfBias !== false,
+        intradaySmcLookbackBars: clamp(Math.round(Number(state.intradaySmcLookbackBars ?? 30)), 3, 200),
+        intradaySmcMinRr: clamp(Number(state.intradaySmcMinRr ?? 2), 0, 10),
+        intradaySmcBosMaxBars: clamp(Math.round(Number(state.intradaySmcBosMaxBars ?? 5)), 1, 20),
+        intradaySmcChochMaxBars: clamp(Math.round(Number(state.intradaySmcChochMaxBars ?? 8)), 1, 20),
+        intradaySmcEntryZoneMode:
+          state.intradaySmcEntryZoneMode === "FVG" || state.intradaySmcEntryZoneMode === "OB"
+            ? state.intradaySmcEntryZoneMode
+            : "EITHER",
+        intradaySmcFvgEntryMode:
+          state.intradaySmcFvgEntryMode === "midpoint" ? "midpoint" : "zone",
+        intradaySmcTp2Mode:
+          state.intradaySmcTp2Mode === "internal" || state.intradaySmcTp2Mode === "tiered"
+            ? state.intradaySmcTp2Mode
+            : "opposing",
+        intradaySmcKillzoneMode: String(state.intradaySmcKillzoneMode ?? "LONDON_NY").toUpperCase(),
+        intradaySmcMinAdx: clamp(Math.round(Number(state.intradaySmcMinAdx ?? 18)), 0, 100),
+        intradaySmcHtfStrictness: String(state.intradaySmcHtfStrictness ?? "either").toLowerCase(),
+        intradaySmcHtfBiasMode: (() => {
+          const m = String(state.intradaySmcHtfBiasMode ?? "parallel").toLowerCase();
+          return m === "ema" || m === "structure" ? m : "parallel";
+        })(),
+        intradaySmcChochStrict: state.intradaySmcChochStrict === true,
+        intradaySmcRequirePremiumDiscount: state.intradaySmcRequirePremiumDiscount === true,
+        intradaySmcPremiumDiscountOte: state.intradaySmcPremiumDiscountOte === true,
+        intradaySmcDealingRangeLookback: clamp(
+          Math.round(Number(state.intradaySmcDealingRangeLookback ?? 48)),
+          10,
+          200,
+        ),
+        intradaySmcSlMode: state.intradaySmcSlMode === "structure" ? "structure" : "sweep",
+        intradaySmcMaxTpRr: clamp(Number(state.intradaySmcMaxTpRr ?? 3), 0, 20),
+        intradaySmcMaxHoldBars: clamp(Math.round(Number(state.intradaySmcMaxHoldBars ?? 48)), 0, 2000),
+        intradaySrAPlusMode: state.intradaySrAPlusMode === true,
+        intradaySrMinVolRatio: Number(state.intradaySrMinVolRatio ?? 1.2),
+        intradaySrMinHtfSep: Number(state.intradaySrMinHtfSep ?? 0.0004),
+        intradaySrZoneWidthPct: Number(state.intradaySrZoneWidthPct ?? 0.002),
+        intradaySrBosMaxBarsAfterReclaim: Number(state.intradaySrBosMaxBarsAfterReclaim ?? 3),
+        intradaySrMinConfirmWick: Number(state.intradaySrMinConfirmWick ?? 0.38),
+        intradaySrRequireBos: state.intradaySrRequireBos !== false,
+        intradaySrRequireConfirm: state.intradaySrRequireConfirm !== false,
+        intradaySrRequireVolume: state.intradaySrRequireVolume !== false,
+        intradaySrRequireHtfTrend: state.intradaySrRequireHtfTrend !== false,
+        intradayLiqTp1Enabled: state.intradayLiqTp1Enabled !== false,
+        intradayLiqTp2Enabled: state.intradayLiqTp2Enabled !== false,
+        intradayLiqBreakevenAfterPartial: state.intradayLiqBreakevenAfterPartial !== false,
+        intradayLiqPartialTp: state.intradayLiqPartialTp !== false,
+        intradayLiqMinRr: Number(state.intradayLiqMinRr ?? 1.5),
+        intradayLiqStrictMode: state.intradayLiqStrictMode !== false,
+        intradayLiqMinSweepExtensionPct: Number(state.intradayLiqMinSweepExtensionPct ?? 0.003),
+        intradayLiqSessionExtreme: state.intradayLiqSessionExtreme === true,
+        srIntradayMaxTradesPerDay: clamp(Math.round(Number(state.srIntradayMaxTradesPerDay ?? 5)), 1, 50),
+        srIntradayMinBarGap: clamp(Math.round(Number(state.srIntradayMinBarGap ?? 4)), 1, 200),
         vpLookbackBars: state.vpLookbackBars,
         vpMinRR: state.vpMinRR,
         supertrendBigMoveGateEnabled: state.supertrendBigMoveGateEnabled === true,
@@ -1740,6 +1880,8 @@ export function createBot({
         trailPostT02MaxExtraTiers: state.trailPostT02MaxExtraTiers,
         supertrendFuturesFixedSlPct: state.supertrendFuturesFixedSlPct,
         supertrendFuturesFixedTpPct: state.supertrendFuturesFixedTpPct,
+        supertrendFuturesUseFixedSl: state.supertrendFuturesUseFixedSl !== false,
+        supertrendFuturesUseFixedTp: state.supertrendFuturesUseFixedTp !== false,
         supertrendFuturesTwoWay: state.supertrendFuturesTwoWay,
         supertrendFuturesMaxEntrySlippagePct: clamp(Number(state.supertrendFuturesMaxEntrySlippagePct ?? 0.15), 0, 5),
         supertrendFuturesEntryOpenStyle: (() => {
@@ -1945,6 +2087,153 @@ export function createBot({
       if (typeof b.volumeProfileSoftGates === "boolean") state.volumeProfileSoftGates = b.volumeProfileSoftGates;
       if (typeof b.volumeProfileGatesEnabled === "boolean") state.volumeProfileGatesEnabled = b.volumeProfileGatesEnabled;
       if (typeof b.intradayVpBrackets === "boolean") state.intradayVpBrackets = b.intradayVpBrackets;
+      for (const gk of [
+        "intradayGateLiquidity",
+        "intradayGateSession",
+        "intradayGateFib",
+        "intradayGateVp",
+        "intradayGateOrderFlow",
+        "intradayGateHtfRegime",
+        "intradayGateInstitutionalSr",
+        "intradaySrAPlusMode",
+        "intradaySrRequireBos",
+        "intradaySrRequireConfirm",
+        "intradaySrRequireVolume",
+        "intradaySrRequireHtfTrend",
+        "intradayLiqTp1Enabled",
+        "intradayLiqTp2Enabled",
+        "intradayLiqBreakevenAfterPartial",
+        "intradayLiqPartialTp",
+      ]) {
+        if (typeof b[gk] === "boolean") state[gk] = b[gk];
+      }
+      for (const gk of [
+        "intradayGateSmcIct",
+        "intradaySmcIctMode",
+        "intradaySmcOneTradePerDay",
+        "intradaySmcRequireMss",
+        "intradaySmcRequireRetrace",
+        "intradaySmcRequireChoch",
+        "intradaySmcRequireBos",
+        "intradaySmcRequireConfirm",
+        "intradaySmcRequireFvgRetrace",
+        "intradaySmcRequireHtfBias",
+        "intradaySmcChochStrict",
+        "intradaySmcRequirePremiumDiscount",
+        "intradaySmcPremiumDiscountOte",
+        "intradayLiqOnePickPerDay",
+        "intradayLiqSessionExtreme",
+        "intradayLiqStrictMode",
+        "intradayRequireSessionReclaim",
+        "intradayRequireFibOrVp",
+        "intradayLearnedRulesEnabled",
+      ]) {
+        if (typeof b[gk] === "boolean") state[gk] = b[gk];
+      }
+      if (b.intradaySmcIctProfile != null) {
+        const p = String(b.intradaySmcIctProfile).toLowerCase();
+        const valid = ["full", "sweep", "ict2022", "lite", "balanced", "daily"];
+        if (valid.includes(p)) state.intradaySmcIctProfile = p;
+      }
+      if (b.intradaySmcPickMode != null) {
+        const pm = String(b.intradaySmcPickMode).toLowerCase();
+        if (pm === "per_signal" || pm === "daily_best" || pm === "daily_sniper") {
+          state.intradaySmcPickMode = pm;
+        }
+      }
+      if (b.intradaySmcMinScore != null && Number.isFinite(Number(b.intradaySmcMinScore))) {
+        state.intradaySmcMinScore = clamp(Math.round(Number(b.intradaySmcMinScore)), 1, 20);
+      }
+      if (b.intradaySmcLookbackBars != null && Number.isFinite(Number(b.intradaySmcLookbackBars))) {
+        state.intradaySmcLookbackBars = clamp(Math.round(Number(b.intradaySmcLookbackBars)), 3, 200);
+      }
+      if (b.intradaySmcDealingRangeLookback != null && Number.isFinite(Number(b.intradaySmcDealingRangeLookback))) {
+        state.intradaySmcDealingRangeLookback = clamp(
+          Math.round(Number(b.intradaySmcDealingRangeLookback)),
+          10,
+          200,
+        );
+      }
+      if (b.intradaySmcMinRr != null && Number.isFinite(Number(b.intradaySmcMinRr))) {
+        state.intradaySmcMinRr = clamp(Number(b.intradaySmcMinRr), 0, 10);
+      }
+      if (b.intradaySmcBosMaxBars != null && Number.isFinite(Number(b.intradaySmcBosMaxBars))) {
+        state.intradaySmcBosMaxBars = clamp(Math.round(Number(b.intradaySmcBosMaxBars)), 1, 20);
+      }
+      if (b.intradaySmcChochMaxBars != null && Number.isFinite(Number(b.intradaySmcChochMaxBars))) {
+        state.intradaySmcChochMaxBars = clamp(Math.round(Number(b.intradaySmcChochMaxBars)), 1, 30);
+      }
+      if (b.intradaySmcEntryZoneMode != null) {
+        const m = String(b.intradaySmcEntryZoneMode).toUpperCase();
+        if (m === "FVG" || m === "OB" || m === "EITHER") state.intradaySmcEntryZoneMode = m;
+      }
+      if (b.intradaySmcFvgEntryMode != null) {
+        const m = String(b.intradaySmcFvgEntryMode).toLowerCase();
+        state.intradaySmcFvgEntryMode = m === "midpoint" || m === "ce" ? "midpoint" : "zone";
+      }
+      if (b.intradaySmcTp2Mode != null) {
+        const m = String(b.intradaySmcTp2Mode).toLowerCase();
+        state.intradaySmcTp2Mode =
+          m === "internal" || m === "tiered" ? m : "opposing";
+      }
+      if (b.intradaySmcKillzoneMode != null) {
+        const kz = String(b.intradaySmcKillzoneMode).toUpperCase();
+        const valid = ["LONDON", "NY", "LONDON_NY", "OVERLAP", "SILVER_BULLET", "ASIA", "ALL", "CUSTOM"];
+        if (valid.includes(kz)) state.intradaySmcKillzoneMode = kz;
+      }
+      if (b.intradaySmcMinAdx != null && Number.isFinite(Number(b.intradaySmcMinAdx))) {
+        state.intradaySmcMinAdx = clamp(Math.round(Number(b.intradaySmcMinAdx)), 0, 100);
+      }
+      if (b.intradaySmcHtfStrictness != null) {
+        const s = String(b.intradaySmcHtfStrictness).toLowerCase();
+        if (s === "both" || s === "4h" || s === "1h" || s === "either") state.intradaySmcHtfStrictness = s;
+      }
+      if (b.intradaySmcHtfBiasMode != null) {
+        const m = String(b.intradaySmcHtfBiasMode).toLowerCase();
+        if (m === "ema" || m === "structure" || m === "parallel") state.intradaySmcHtfBiasMode = m;
+      }
+      if (b.intradaySmcSlMode != null) {
+        state.intradaySmcSlMode = String(b.intradaySmcSlMode).toLowerCase() === "structure" ? "structure" : "sweep";
+      }
+      if (b.intradaySmcMaxTpRr != null && Number.isFinite(Number(b.intradaySmcMaxTpRr))) {
+        state.intradaySmcMaxTpRr = clamp(Number(b.intradaySmcMaxTpRr), 0, 20);
+      }
+      if (b.intradaySmcMaxHoldBars != null && Number.isFinite(Number(b.intradaySmcMaxHoldBars))) {
+        state.intradaySmcMaxHoldBars = clamp(Math.round(Number(b.intradaySmcMaxHoldBars)), 0, 2000);
+      }
+      if (b.intradayLiqMinSweepExtensionPct != null && Number.isFinite(Number(b.intradayLiqMinSweepExtensionPct))) {
+        state.intradayLiqMinSweepExtensionPct = clamp(Number(b.intradayLiqMinSweepExtensionPct), 0, 0.05);
+      }
+      if (b.srIntradayMaxTradesPerDay != null && Number.isFinite(Number(b.srIntradayMaxTradesPerDay))) {
+        state.srIntradayMaxTradesPerDay = clamp(Math.round(Number(b.srIntradayMaxTradesPerDay)), 1, 50);
+      }
+      if (b.srIntradayMinBarGap != null && Number.isFinite(Number(b.srIntradayMinBarGap))) {
+        state.srIntradayMinBarGap = clamp(Math.round(Number(b.srIntradayMinBarGap)), 1, 100);
+      }
+      if (b.srIntradayMinScore != null && Number.isFinite(Number(b.srIntradayMinScore))) {
+        state.srIntradayMinScore = clamp(Number(b.srIntradayMinScore), 1, 20);
+      }
+      if (b.intradayMinTechniqueCount != null && Number.isFinite(Number(b.intradayMinTechniqueCount))) {
+        state.intradayMinTechniqueCount = clamp(Math.round(Number(b.intradayMinTechniqueCount)), 1, 10);
+      }
+      if (b.intradaySrMinVolRatio != null && Number.isFinite(Number(b.intradaySrMinVolRatio))) {
+        state.intradaySrMinVolRatio = clamp(Number(b.intradaySrMinVolRatio), 0, 5);
+      }
+      if (b.intradaySrMinHtfSep != null && Number.isFinite(Number(b.intradaySrMinHtfSep))) {
+        state.intradaySrMinHtfSep = clamp(Number(b.intradaySrMinHtfSep), 0, 0.01);
+      }
+      if (b.intradaySrZoneWidthPct != null && Number.isFinite(Number(b.intradaySrZoneWidthPct))) {
+        state.intradaySrZoneWidthPct = clamp(Number(b.intradaySrZoneWidthPct), 0.0001, 0.02);
+      }
+      if (b.intradaySrBosMaxBarsAfterReclaim != null && Number.isFinite(Number(b.intradaySrBosMaxBarsAfterReclaim))) {
+        state.intradaySrBosMaxBarsAfterReclaim = clamp(Math.round(Number(b.intradaySrBosMaxBarsAfterReclaim)), 0, 10);
+      }
+      if (b.intradaySrMinConfirmWick != null && Number.isFinite(Number(b.intradaySrMinConfirmWick))) {
+        state.intradaySrMinConfirmWick = clamp(Number(b.intradaySrMinConfirmWick), 0, 1);
+      }
+      if (b.intradayLiqMinRr != null && Number.isFinite(Number(b.intradayLiqMinRr))) {
+        state.intradayLiqMinRr = clamp(Number(b.intradayLiqMinRr), 0, 5);
+      }
       if (b.vpLookbackBars != null && Number.isFinite(Number(b.vpLookbackBars))) {
         state.vpLookbackBars = clamp(Math.round(Number(b.vpLookbackBars)), 48, 2000);
       }
@@ -4180,16 +4469,21 @@ export function createBot({
 
     /** With AI confidence filter off: fixed %-based SL/TP for indicator entries. */
     if (!aiFilterOn) {
-      const slPct = clamp(Number(state.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2);
-      const tpPct = clamp(Number(state.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5);
-      if (openingSide === "BUY") {
-        stopLoss = pxEntry * (1 - slPct);
-        takeProfit = pxEntry * (1 + tpPct);
+      const useSl = state.supertrendFuturesUseFixedSl !== false;
+      const useTp = state.supertrendFuturesUseFixedTp !== false;
+      const slPct = useSl ? clamp(Number(state.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2) : 0;
+      const tpPct = useTp ? clamp(Number(state.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5) : 0;
+      if (useSl) {
+        stopLoss = openingSide === "BUY" ? pxEntry * (1 - slPct) : pxEntry * (1 + slPct);
       } else {
-        stopLoss = pxEntry * (1 + slPct);
-        takeProfit = pxEntry * (1 - tpPct);
+        stopLoss = null;
       }
-      const perUnitRisk = Math.abs(pxEntry - stopLoss);
+      if (useTp) {
+        takeProfit = openingSide === "BUY" ? pxEntry * (1 + tpPct) : pxEntry * (1 - tpPct);
+      } else {
+        takeProfit = null;
+      }
+      const perUnitRisk = useSl && stopLoss != null ? Math.abs(pxEntry - stopLoss) : 0;
       const riskUsd = Number(plan.riskUsd);
       if (perUnitRisk > 0 && riskUsd > 0) {
         qty = roundTo(riskUsd / perUnitRisk, 6);
@@ -4343,22 +4637,27 @@ export function createBot({
         Number.isFinite(pxEntryOpen) &&
         pxEntryOpen > 0 &&
         (openingSide === "BUY" ? tpN0 > pxEntryOpen : tpN0 < pxEntryOpen);
-      if (!slOk || !tpOk) {
-        const slPctFb = clamp(Number(state.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2);
-        const tpPctFb = clamp(Number(state.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5);
-        if (openingSide === "BUY") {
-          stopLoss = pxEntryOpen * (1 - slPctFb);
-          takeProfit = pxEntryOpen * (1 + tpPctFb);
-        } else {
-          stopLoss = pxEntryOpen * (1 + slPctFb);
-          takeProfit = pxEntryOpen * (1 - tpPctFb);
+      const useSlFb = state.supertrendFuturesUseFixedSl !== false;
+      const useTpFb = state.supertrendFuturesUseFixedTp !== false;
+      if ((!slOk && useSlFb) || (!tpOk && useTpFb)) {
+        const slPctFb = useSlFb ? clamp(Number(state.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2) : 0;
+        const tpPctFb = useTpFb ? clamp(Number(state.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5) : 0;
+        if (useSlFb && !slOk) {
+          stopLoss = openingSide === "BUY" ? pxEntryOpen * (1 - slPctFb) : pxEntryOpen * (1 + slPctFb);
         }
-        wsHub?.broadcast?.("log", {
-          level: "warn",
-          msg: `Supertrend futures ${openingSide}: invalid or missing SL/TP vs entry — using configured default SL/TP % (sl=${slPctFb}, tp=${tpPctFb})`,
-          symbol: orderSymbol,
-        });
+        if (useTpFb && !tpOk) {
+          takeProfit = openingSide === "BUY" ? pxEntryOpen * (1 + tpPctFb) : pxEntryOpen * (1 - tpPctFb);
+        }
+        if ((useSlFb && !slOk) || (useTpFb && !tpOk)) {
+          wsHub?.broadcast?.("log", {
+            level: "warn",
+            msg: `Supertrend futures ${openingSide}: invalid or missing SL/TP vs entry — using configured default SL/TP % (sl=${useSlFb ? slPctFb : "off"}, tp=${useTpFb ? tpPctFb : "off"})`,
+            symbol: orderSymbol,
+          });
+        }
       }
+      if (!useSlFb) stopLoss = null;
+      if (!useTpFb) takeProfit = null;
 
       const tfMs = binanceIntervalMs(state.timeframe);
       const barOpenMs = Number(last?.ts);
@@ -4621,6 +4920,8 @@ export function createBot({
         signalBarCloseForEntry:
           Number.isFinite(slipSignalRef) && slipSignalRef > 0 ? slipSignalRef : undefined,
         ...(mqAtEntryFutures ? { mqAtEntry: mqAtEntryFutures } : {}),
+        skipStopLoss: state.supertrendFuturesUseFixedSl === false,
+        skipTakeProfit: state.supertrendFuturesUseFixedTp === false,
         ...entryMetaExtra,
       };
 
@@ -8077,6 +8378,77 @@ export function createBot({
       volumeProfileSoftGates: state.volumeProfileSoftGates !== false,
       volumeProfileGatesEnabled: state.volumeProfileGatesEnabled === true,
       intradayVpBrackets: state.intradayVpBrackets === true,
+      intradayGateLiquidity: state.intradayGateLiquidity !== false,
+      intradayGateSession: state.intradayGateSession !== false,
+      intradayGateFib: state.intradayGateFib !== false,
+      intradayGateVp: state.intradayGateVp !== false,
+      intradayGateOrderFlow: state.intradayGateOrderFlow !== false,
+      intradayGateHtfRegime: state.intradayGateHtfRegime !== false,
+      intradayGateInstitutionalSr: state.intradayGateInstitutionalSr === true,
+      intradayGateSmcIct: state.intradayGateSmcIct === true,
+      intradaySmcIctMode: state.intradaySmcIctMode === true,
+      intradaySmcIctProfile: String(state.intradaySmcIctProfile ?? "sweep").toLowerCase(),
+      intradaySmcPickMode: String(state.intradaySmcPickMode ?? "per_signal").toLowerCase(),
+      intradaySmcOneTradePerDay: state.intradaySmcOneTradePerDay === true,
+      intradaySmcMinScore: clamp(Math.round(Number(state.intradaySmcMinScore ?? 7)), 1, 20),
+      intradaySmcRequireMss: state.intradaySmcRequireMss === true,
+      intradaySmcRequireRetrace: state.intradaySmcRequireRetrace === true,
+      intradaySmcRequireChoch: state.intradaySmcRequireChoch === true,
+      intradaySmcRequireBos: state.intradaySmcRequireBos === true,
+      intradaySmcRequireConfirm: state.intradaySmcRequireConfirm === true,
+      intradaySmcRequireFvgRetrace: state.intradaySmcRequireFvgRetrace === true,
+      intradaySmcRequireHtfBias: state.intradaySmcRequireHtfBias !== false,
+      intradaySmcLookbackBars: clamp(Math.round(Number(state.intradaySmcLookbackBars ?? 30)), 3, 200),
+      intradaySmcMinRr: clamp(Number(state.intradaySmcMinRr ?? 2), 0, 10),
+      intradaySmcBosMaxBars: clamp(Math.round(Number(state.intradaySmcBosMaxBars ?? 5)), 1, 20),
+      intradaySmcChochMaxBars: clamp(Math.round(Number(state.intradaySmcChochMaxBars ?? 8)), 1, 20),
+      intradaySmcEntryZoneMode:
+        state.intradaySmcEntryZoneMode === "FVG" || state.intradaySmcEntryZoneMode === "OB"
+          ? state.intradaySmcEntryZoneMode
+          : "EITHER",
+      intradaySmcFvgEntryMode:
+        state.intradaySmcFvgEntryMode === "midpoint" ? "midpoint" : "zone",
+      intradaySmcTp2Mode:
+        state.intradaySmcTp2Mode === "internal" || state.intradaySmcTp2Mode === "tiered"
+          ? state.intradaySmcTp2Mode
+          : "opposing",
+      intradaySmcKillzoneMode: String(state.intradaySmcKillzoneMode ?? "LONDON_NY").toUpperCase(),
+      intradaySmcMinAdx: clamp(Math.round(Number(state.intradaySmcMinAdx ?? 18)), 0, 100),
+      intradaySmcHtfStrictness: String(state.intradaySmcHtfStrictness ?? "either").toLowerCase(),
+      intradaySmcHtfBiasMode: (() => {
+        const m = String(state.intradaySmcHtfBiasMode ?? "parallel").toLowerCase();
+        return m === "ema" || m === "structure" ? m : "parallel";
+      })(),
+      intradaySmcChochStrict: state.intradaySmcChochStrict === true,
+      intradaySmcRequirePremiumDiscount: state.intradaySmcRequirePremiumDiscount === true,
+      intradaySmcPremiumDiscountOte: state.intradaySmcPremiumDiscountOte === true,
+      intradaySmcDealingRangeLookback: clamp(
+        Math.round(Number(state.intradaySmcDealingRangeLookback ?? 48)),
+        10,
+        200,
+      ),
+      intradaySmcSlMode: state.intradaySmcSlMode === "structure" ? "structure" : "sweep",
+      intradaySmcMaxTpRr: clamp(Number(state.intradaySmcMaxTpRr ?? 3), 0, 20),
+      intradaySmcMaxHoldBars: clamp(Math.round(Number(state.intradaySmcMaxHoldBars ?? 48)), 0, 2000),
+      intradaySrAPlusMode: state.intradaySrAPlusMode === true,
+      intradaySrMinVolRatio: clamp(Number(state.intradaySrMinVolRatio ?? 1.2), 0, 5),
+      intradaySrMinHtfSep: clamp(Number(state.intradaySrMinHtfSep ?? 0.0004), 0, 0.01),
+      intradaySrZoneWidthPct: clamp(Number(state.intradaySrZoneWidthPct ?? 0.002), 0.0001, 0.02),
+      intradaySrBosMaxBarsAfterReclaim: clamp(
+        Math.round(Number(state.intradaySrBosMaxBarsAfterReclaim ?? 3)),
+        0,
+        10,
+      ),
+      intradaySrMinConfirmWick: clamp(Number(state.intradaySrMinConfirmWick ?? 0.38), 0, 1),
+      intradaySrRequireBos: state.intradaySrRequireBos !== false,
+      intradaySrRequireConfirm: state.intradaySrRequireConfirm !== false,
+      intradaySrRequireVolume: state.intradaySrRequireVolume !== false,
+      intradaySrRequireHtfTrend: state.intradaySrRequireHtfTrend !== false,
+      intradayLiqTp1Enabled: state.intradayLiqTp1Enabled !== false,
+      intradayLiqTp2Enabled: state.intradayLiqTp2Enabled !== false,
+      intradayLiqBreakevenAfterPartial: state.intradayLiqBreakevenAfterPartial !== false,
+      intradayLiqPartialTp: state.intradayLiqPartialTp !== false,
+      intradayLiqMinRr: clamp(Number(state.intradayLiqMinRr ?? 1.5), 0, 5),
       vpLookbackBars: clamp(Math.round(Number(state.vpLookbackBars ?? 672)), 48, 2000),
       vpMinRR: clamp(Number(state.vpMinRR ?? 1.5), 0.8, 5),
       supertrendBigMoveGateEnabled: state.supertrendBigMoveGateEnabled === true,
@@ -8160,6 +8532,8 @@ export function createBot({
       ),
       supertrendFuturesFixedSlPct: clamp(Number(state.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2),
       supertrendFuturesFixedTpPct: clamp(Number(state.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5),
+      supertrendFuturesUseFixedSl: state.supertrendFuturesUseFixedSl !== false,
+      supertrendFuturesUseFixedTp: state.supertrendFuturesUseFixedTp !== false,
       supertrendFuturesTwoWay: state.supertrendFuturesTwoWay === true,
       supertrendFuturesMaxEntrySlippagePct: clamp(Number(state.supertrendFuturesMaxEntrySlippagePct ?? 0.15), 0, 5),
       supertrendFuturesEntryOpenStyle: (() => {
@@ -9339,6 +9713,8 @@ export function createBot({
           }
         }
       }
+    } else if (strategyKey === "SR_INTRADAY" || strategyKey === "INTRADAY_PRO") {
+      signal = strat.signal({ candles, indicators, regime, cfg: state, timeframe: state.timeframe });
     } else {
       signal = strat.signal({ candles, indicators, regime });
     }
@@ -9887,24 +10263,84 @@ export function createBot({
       return;
     }
 
-    /** MANUAL signal paths: use fixed SL/TP % (same fields as backtest / Supertrend-no-AI). */
+    let liqLegs = null;
+
+    /** MANUAL signal paths: fib structure brackets or fixed SL/TP % (backtest parity). */
     if (
       isFuturesVenue &&
       String(state.strategyMode || "").toUpperCase() === "MANUAL" &&
       !supertrendPausesAi
     ) {
-      const slPct = clamp(Number(state.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2);
-      const tpPct = clamp(Number(state.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5);
-      Object.assign(
-        plan,
-        applyFixedPctBracket(plan, {
-          entryPrice: last.close,
+      const fibBr = signal?.fibBrackets?.slPct > 0
+        ? resolveFibEntryBrackets(state, signal, last.close, tradeAction)
+        : null;
+      const liqBr =
+        !fibBr && signal?.liqBrackets?.slPct > 0
+          ? resolveLiquidityEntryBrackets(state, signal, last.close, tradeAction)
+          : null;
+      const structBr = fibBr || liqBr;
+      liqLegs = liqBr ? mapLiquidityEntryLegs(liqBr, state) : null;
+      if (structBr?.slPrice > 0 && state.supertrendFuturesUseFixedSl !== false) {
+        plan.stopLoss = structBr.slPrice;
+        if (liqLegs && state.supertrendFuturesUseFixedTp !== false) {
+          if (liqLegs.tp > 0) plan.takeProfit = liqLegs.tp;
+          if (liqLegs.partialTp && liqLegs.tp1 > 0) {
+            plan.takeProfitPartial = liqLegs.tp1;
+            plan.takeProfitPartialFrac = liqLegs.partialFrac ?? 0.5;
+          }
+        } else if (structBr.tpPrice > 0 && state.supertrendFuturesUseFixedTp !== false) {
+          plan.takeProfit = structBr.tp2Price ?? structBr.tpPrice;
+        }
+        const perUnitRisk = Math.abs(last.close - plan.stopLoss);
+        const riskUsd = Number(plan.riskUsd);
+        if (perUnitRisk > 0 && riskUsd > 0) {
+          plan.qty = roundTo(riskUsd / perUnitRisk, 6);
+        }
+      } else if (structBr && state.supertrendFuturesUseFixedSl !== false) {
+        Object.assign(
+          plan,
+          applyFixedPctBracket(plan, {
+            entryPrice: last.close,
+            side: tradeAction,
+            slPct: structBr.slPct,
+            tpPct: state.supertrendFuturesUseFixedTp !== false ? structBr.tpPct : 0,
+            futuresLeverage,
+          }),
+        );
+      } else {
+        const useSl = state.supertrendFuturesUseFixedSl !== false;
+        const useTp = state.supertrendFuturesUseFixedTp !== false;
+        const slPct = useSl ? clamp(Number(state.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2) : 0;
+        const tpPct = useTp ? clamp(Number(state.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5) : 0;
+        if (slPct > 0) {
+          Object.assign(
+            plan,
+            applyFixedPctBracket(plan, {
+              entryPrice: last.close,
+              side: tradeAction,
+              slPct,
+              tpPct,
+              futuresLeverage,
+            }),
+          );
+        } else {
+          plan.stopLoss = null;
+          plan.takeProfit = useTp && tpPct > 0 ? (tradeAction === "BUY" ? last.close * (1 + tpPct) : last.close * (1 - tpPct)) : null;
+        }
+      }
+      const riskUsdManual = Number(plan.riskUsd);
+      if (riskUsdManual > 0) {
+        const sizingSl = resolveSizingStopPrice({
+          entryFill: last.close,
+          exitSl: plan.stopLoss ?? structBr?.slPrice ?? 0,
           side: tradeAction,
-          slPct,
-          tpPct,
-          futuresLeverage,
-        }),
-      );
+          cfg: state,
+        });
+        const perUnitRisk = Math.abs(last.close - sizingSl);
+        if (perUnitRisk > 0) {
+          plan.qty = roundTo(riskUsdManual / perUnitRisk, 6);
+        }
+      }
     }
 
     const trailMmStrat = clamp(Number(state.trailMaintMarginRate ?? process.env.SUPERTREND_TRAIL_MAINTENANCE_MARGIN_RATE ?? 0.005), 0, 0.1);
@@ -10015,6 +10451,13 @@ export function createBot({
             futuresLeverage,
             futuresLeverageMode: state.futuresLeverageMode,
             autoTradeTrailing: isFuturesVenue && Boolean(state.trailingStopLossAuto),
+            takeProfitPartial: plan.takeProfitPartial,
+            takeProfitPartialFrac: plan.takeProfitPartialFrac,
+            liqPartialTp: plan.takeProfitPartial != null,
+            liqTp2Enabled: state.intradayLiqTp2Enabled !== false,
+            liqBreakevenAfterPartial: state.intradayLiqBreakevenAfterPartial !== false,
+            liqBeAt1R: liqLegs?.beAt1R === true,
+            liqBeTriggerPx: liqLegs?.beTriggerPx > 0 ? liqLegs.beTriggerPx : undefined,
           },
         }),
       );
@@ -10579,6 +11022,193 @@ export function createBot({
     if (patch.volumeProfileSoftGates != null) state.volumeProfileSoftGates = Boolean(patch.volumeProfileSoftGates);
     if (patch.volumeProfileGatesEnabled != null) state.volumeProfileGatesEnabled = Boolean(patch.volumeProfileGatesEnabled);
     if (patch.intradayVpBrackets != null) state.intradayVpBrackets = Boolean(patch.intradayVpBrackets);
+    for (const gk of [
+      "intradayGateLiquidity",
+      "intradayGateSession",
+      "intradayGateFib",
+      "intradayGateVp",
+      "intradayGateOrderFlow",
+      "intradayGateHtfRegime",
+      "intradayGateInstitutionalSr",
+      "intradayGateSmcIct",
+      "intradaySmcIctMode",
+      "intradaySmcRequireMss",
+      "intradaySmcRequireRetrace",
+      "intradaySmcRequireChoch",
+      "intradaySmcRequireBos",
+      "intradaySmcRequireConfirm",
+      "intradaySmcRequireFvgRetrace",
+      "intradaySrAPlusMode",
+      "intradaySrRequireBos",
+      "intradaySrRequireConfirm",
+      "intradaySrRequireVolume",
+      "intradaySrRequireHtfTrend",
+      "intradayLiqTp1Enabled",
+      "intradayLiqTp2Enabled",
+      "intradayLiqBreakevenAfterPartial",
+      "intradayLiqPartialTp",
+    ]) {
+      if (patch[gk] != null) state[gk] = Boolean(patch[gk]);
+    }
+    if (patch.intradayGateSmcIct != null || patch.intradaySmcIctMode != null) {
+      const smcOn =
+        patch.intradayGateSmcIct != null
+          ? Boolean(patch.intradayGateSmcIct)
+          : patch.intradaySmcIctMode != null
+            ? Boolean(patch.intradaySmcIctMode)
+            : state.intradayGateSmcIct === true || state.intradaySmcIctMode === true;
+      state.intradayGateSmcIct = smcOn;
+      state.intradaySmcIctMode = smcOn;
+    }
+    if (patch.intradayGateInstitutionalSr != null || patch.intradaySrAPlusMode != null) {
+      const instOn =
+        patch.intradayGateInstitutionalSr != null
+          ? Boolean(patch.intradayGateInstitutionalSr)
+          : patch.intradaySrAPlusMode != null
+            ? Boolean(patch.intradaySrAPlusMode)
+            : state.intradayGateInstitutionalSr === true || state.intradaySrAPlusMode === true;
+      state.intradayGateInstitutionalSr = instOn;
+      state.intradaySrAPlusMode = instOn;
+    }
+    if (patch.intradaySmcMinScore != null && Number.isFinite(Number(patch.intradaySmcMinScore))) {
+      state.intradaySmcMinScore = clamp(Math.round(Number(patch.intradaySmcMinScore)), 1, 20);
+    }
+    if (patch.intradaySmcBosMaxBars != null && Number.isFinite(Number(patch.intradaySmcBosMaxBars))) {
+      state.intradaySmcBosMaxBars = clamp(Math.round(Number(patch.intradaySmcBosMaxBars)), 1, 20);
+    }
+    if (patch.intradaySmcChochMaxBars != null && Number.isFinite(Number(patch.intradaySmcChochMaxBars))) {
+      state.intradaySmcChochMaxBars = clamp(Math.round(Number(patch.intradaySmcChochMaxBars)), 1, 30);
+    }
+    if (patch.intradaySmcEntryZoneMode != null) {
+      const m = String(patch.intradaySmcEntryZoneMode).toUpperCase();
+      state.intradaySmcEntryZoneMode = m === "FVG" || m === "OB" ? m : "EITHER";
+    }
+    if (patch.intradaySmcFvgEntryMode != null) {
+      const m = String(patch.intradaySmcFvgEntryMode).toLowerCase();
+      state.intradaySmcFvgEntryMode = m === "midpoint" || m === "ce" ? "midpoint" : "zone";
+    }
+    if (patch.intradaySmcTp2Mode != null) {
+      const m = String(patch.intradaySmcTp2Mode).toLowerCase();
+      state.intradaySmcTp2Mode =
+        m === "internal" || m === "tiered" ? m : "opposing";
+    }
+    if (patch.intradaySmcKillzoneMode != null) {
+      const kz = String(patch.intradaySmcKillzoneMode).toUpperCase();
+      const valid = ["LONDON", "NY", "LONDON_NY", "OVERLAP", "SILVER_BULLET", "ASIA", "ALL", "CUSTOM"];
+      state.intradaySmcKillzoneMode = valid.includes(kz) ? kz : "LONDON_NY";
+    }
+    if (patch.intradaySmcLookbackBars != null && Number.isFinite(Number(patch.intradaySmcLookbackBars))) {
+      state.intradaySmcLookbackBars = clamp(Math.round(Number(patch.intradaySmcLookbackBars)), 3, 200);
+    }
+    if (patch.intradaySmcDealingRangeLookback != null && Number.isFinite(Number(patch.intradaySmcDealingRangeLookback))) {
+      state.intradaySmcDealingRangeLookback = clamp(
+        Math.round(Number(patch.intradaySmcDealingRangeLookback)),
+        10,
+        200,
+      );
+    }
+    if (patch.intradaySmcRequirePremiumDiscount != null) {
+      state.intradaySmcRequirePremiumDiscount = Boolean(patch.intradaySmcRequirePremiumDiscount);
+    }
+    if (patch.intradaySmcPremiumDiscountOte != null) {
+      state.intradaySmcPremiumDiscountOte = Boolean(patch.intradaySmcPremiumDiscountOte);
+    }
+    if (patch.intradaySmcMinRr != null && Number.isFinite(Number(patch.intradaySmcMinRr))) {
+      state.intradaySmcMinRr = clamp(Number(patch.intradaySmcMinRr), 0, 10);
+    }
+    if (patch.intradaySmcMinAdx != null && Number.isFinite(Number(patch.intradaySmcMinAdx))) {
+      state.intradaySmcMinAdx = clamp(Math.round(Number(patch.intradaySmcMinAdx)), 0, 100);
+    }
+    if (patch.intradaySmcHtfStrictness != null) {
+      const s = String(patch.intradaySmcHtfStrictness).toLowerCase();
+      state.intradaySmcHtfStrictness =
+        s === "both" || s === "4h" || s === "1h" || s === "either" ? s : "both";
+    }
+    if (patch.intradaySmcHtfBiasMode != null) {
+      const m = String(patch.intradaySmcHtfBiasMode).toLowerCase();
+      state.intradaySmcHtfBiasMode =
+        m === "ema" || m === "structure" || m === "parallel" ? m : "parallel";
+    }
+    if (patch.intradaySmcRequireHtfBias != null) {
+      state.intradaySmcRequireHtfBias = Boolean(patch.intradaySmcRequireHtfBias);
+    }
+    if (patch.intradaySmcSlMode != null) {
+      const slm = String(patch.intradaySmcSlMode).toLowerCase();
+      state.intradaySmcSlMode = slm === "structure" ? "structure" : "sweep";
+    }
+    if (patch.intradaySmcMaxTpRr != null && Number.isFinite(Number(patch.intradaySmcMaxTpRr))) {
+      state.intradaySmcMaxTpRr = clamp(Number(patch.intradaySmcMaxTpRr), 0, 20);
+    }
+    if (patch.intradaySmcMaxHoldBars != null && Number.isFinite(Number(patch.intradaySmcMaxHoldBars))) {
+      state.intradaySmcMaxHoldBars = clamp(Math.round(Number(patch.intradaySmcMaxHoldBars)), 0, 2000);
+    }
+    if (patch.intradaySmcIctProfile != null) {
+      const p = String(patch.intradaySmcIctProfile).toLowerCase();
+      const valid = ["full", "sweep", "ict2022", "lite", "balanced", "daily"];
+      state.intradaySmcIctProfile = valid.includes(p) ? p : "sweep";
+    }
+    if (patch.intradaySmcPickMode != null) {
+      const pm = String(patch.intradaySmcPickMode).toLowerCase();
+      state.intradaySmcPickMode =
+        pm === "per_signal" || pm === "daily_best" ? pm : "daily_sniper";
+    }
+    if (patch.intradaySmcOneTradePerDay != null) {
+      state.intradaySmcOneTradePerDay = Boolean(patch.intradaySmcOneTradePerDay);
+    }
+    if (patch.intradaySmcChochStrict != null) {
+      state.intradaySmcChochStrict = Boolean(patch.intradaySmcChochStrict);
+    }
+    if (patch.intradayLiqOnePickPerDay != null) {
+      state.intradayLiqOnePickPerDay = Boolean(patch.intradayLiqOnePickPerDay);
+    }
+    if (patch.intradayLiqSessionExtreme != null) {
+      state.intradayLiqSessionExtreme = Boolean(patch.intradayLiqSessionExtreme);
+    }
+    if (patch.intradayLiqMinSweepExtensionPct != null && Number.isFinite(Number(patch.intradayLiqMinSweepExtensionPct))) {
+      state.intradayLiqMinSweepExtensionPct = clamp(Number(patch.intradayLiqMinSweepExtensionPct), 0, 0.05);
+    }
+    if (patch.intradayLiqStrictMode != null) {
+      state.intradayLiqStrictMode = Boolean(patch.intradayLiqStrictMode);
+    }
+    if (patch.srIntradayMaxTradesPerDay != null && Number.isFinite(Number(patch.srIntradayMaxTradesPerDay))) {
+      state.srIntradayMaxTradesPerDay = clamp(Math.round(Number(patch.srIntradayMaxTradesPerDay)), 1, 50);
+    }
+    if (patch.srIntradayMinBarGap != null && Number.isFinite(Number(patch.srIntradayMinBarGap))) {
+      state.srIntradayMinBarGap = clamp(Math.round(Number(patch.srIntradayMinBarGap)), 1, 100);
+    }
+    if (patch.srIntradayMinScore != null && Number.isFinite(Number(patch.srIntradayMinScore))) {
+      state.srIntradayMinScore = clamp(Number(patch.srIntradayMinScore), 1, 20);
+    }
+    if (patch.intradayMinTechniqueCount != null && Number.isFinite(Number(patch.intradayMinTechniqueCount))) {
+      state.intradayMinTechniqueCount = clamp(Math.round(Number(patch.intradayMinTechniqueCount)), 1, 10);
+    }
+    if (patch.intradayRequireSessionReclaim != null) {
+      state.intradayRequireSessionReclaim = Boolean(patch.intradayRequireSessionReclaim);
+    }
+    if (patch.intradayRequireFibOrVp != null) {
+      state.intradayRequireFibOrVp = Boolean(patch.intradayRequireFibOrVp);
+    }
+    if (patch.intradayLearnedRulesEnabled != null) {
+      state.intradayLearnedRulesEnabled = Boolean(patch.intradayLearnedRulesEnabled);
+    }
+    if (patch.intradaySrMinVolRatio != null && Number.isFinite(Number(patch.intradaySrMinVolRatio))) {
+      state.intradaySrMinVolRatio = clamp(Number(patch.intradaySrMinVolRatio), 0, 5);
+    }
+    if (patch.intradaySrMinHtfSep != null && Number.isFinite(Number(patch.intradaySrMinHtfSep))) {
+      state.intradaySrMinHtfSep = clamp(Number(patch.intradaySrMinHtfSep), 0, 0.01);
+    }
+    if (patch.intradaySrZoneWidthPct != null && Number.isFinite(Number(patch.intradaySrZoneWidthPct))) {
+      state.intradaySrZoneWidthPct = clamp(Number(patch.intradaySrZoneWidthPct), 0.0001, 0.02);
+    }
+    if (patch.intradaySrBosMaxBarsAfterReclaim != null && Number.isFinite(Number(patch.intradaySrBosMaxBarsAfterReclaim))) {
+      state.intradaySrBosMaxBarsAfterReclaim = clamp(Math.round(Number(patch.intradaySrBosMaxBarsAfterReclaim)), 0, 10);
+    }
+    if (patch.intradaySrMinConfirmWick != null && Number.isFinite(Number(patch.intradaySrMinConfirmWick))) {
+      state.intradaySrMinConfirmWick = clamp(Number(patch.intradaySrMinConfirmWick), 0, 1);
+    }
+    if (patch.intradayLiqMinRr != null && Number.isFinite(Number(patch.intradayLiqMinRr))) {
+      state.intradayLiqMinRr = clamp(Number(patch.intradayLiqMinRr), 0, 5);
+    }
     if (patch.vpLookbackBars != null && Number.isFinite(Number(patch.vpLookbackBars))) {
       state.vpLookbackBars = clamp(Math.round(Number(patch.vpLookbackBars)), 48, 2000);
     }
@@ -10684,6 +11314,12 @@ export function createBot({
     if (patch.supertrendFuturesFixedTpPct != null && Number.isFinite(Number(patch.supertrendFuturesFixedTpPct))) {
       const v = Number(patch.supertrendFuturesFixedTpPct);
       state.supertrendFuturesFixedTpPct = v <= 0 ? 0 : clamp(v, 0.00005, 0.5);
+    }
+    if (patch.supertrendFuturesUseFixedSl != null) {
+      state.supertrendFuturesUseFixedSl = Boolean(patch.supertrendFuturesUseFixedSl);
+    }
+    if (patch.supertrendFuturesUseFixedTp != null) {
+      state.supertrendFuturesUseFixedTp = Boolean(patch.supertrendFuturesUseFixedTp);
     }
     if (patch.supertrendFuturesTwoWay != null) state.supertrendFuturesTwoWay = Boolean(patch.supertrendFuturesTwoWay);
     if (patch.supertrendFuturesMaxEntrySlippagePct != null && Number.isFinite(Number(patch.supertrendFuturesMaxEntrySlippagePct))) {
@@ -10867,8 +11503,18 @@ export function createBot({
     const px = last.close;
     let qty = roundTo(Number(amountUsd) / px, 6);
     const isLong = side === "BUY";
-    const stopLoss = isLong ? px * (1 - Math.abs(stopLossPct)) : px * (1 + Math.abs(stopLossPct));
-    const takeProfit = isLong ? px * (1 + Math.abs(takeProfitPct)) : px * (1 - Math.abs(takeProfitPct));
+    const useSl = stopLossPct != null && Number.isFinite(Number(stopLossPct)) && Number(stopLossPct) > 0;
+    const useTp = takeProfitPct != null && Number.isFinite(Number(takeProfitPct)) && Number(takeProfitPct) > 0;
+    const stopLoss = useSl
+      ? isLong
+        ? px * (1 - Math.abs(Number(stopLossPct)))
+        : px * (1 + Math.abs(Number(stopLossPct)))
+      : null;
+    const takeProfit = useTp
+      ? isLong
+        ? px * (1 + Math.abs(Number(takeProfitPct)))
+        : px * (1 - Math.abs(Number(takeProfitPct)))
+      : null;
 
     const venueEx =
       pickVenueExchange({
@@ -10931,6 +11577,8 @@ export function createBot({
           marketMode: state.marketMode,
           futuresLeverage: manualLev ?? state.futuresLeverage,
           futuresLeverageMode: state.futuresLeverageMode,
+          skipStopLoss: !useSl,
+          skipTakeProfit: !useTp,
         },
       }),
     );

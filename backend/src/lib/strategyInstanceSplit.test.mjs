@@ -7,8 +7,11 @@ import {
   extractInstanceConfig,
   isInstanceFieldKey,
   mergeInstanceIntoCfgRaw,
+  ensureBacktestMarketMode,
   resolvePrimarySignalType,
   stripInstanceFieldsFromCfgRaw,
+  applyInstanceOperationalToBot,
+  uiOperationalPatchToInstColumns,
 } from "./strategyInstanceSplit.js";
 
 const SAMPLE_FLAT = {
@@ -202,6 +205,25 @@ test("mergeInstanceIntoCfgRaw: works with `{ bot }` envelope", () => {
   const merged = mergeInstanceIntoCfgRaw(stripped, inst);
   assert.equal(merged.bot.symbol, "SOLUSDT");
   assert.equal(merged.bot.supertrendPeriod, 10);
+});
+
+test("ensureBacktestMarketMode: defaults SR_INTRADAY to FUTURES when missing", () => {
+  assert.equal(ensureBacktestMarketMode({ manualStrategy: "SR_INTRADAY" }).marketMode, "FUTURES");
+  assert.equal(ensureBacktestMarketMode({ marketMode: "SPOT" }).marketMode, "SPOT");
+  assert.equal(ensureBacktestMarketMode({ manualStrategy: "SUPERTREND" }).marketMode, undefined);
+});
+
+test("applyInstanceOperationalToBot: overlays inst_* onto flat bot", () => {
+  const bot = { manualStrategy: "SR_INTRADAY", riskPerTrade: 2.5 };
+  applyInstanceOperationalToBot(bot, { inst_risk_per_trade: 10, inst_risk_unit: "PCT" });
+  assert.equal(bot.riskPerTrade, 10);
+  assert.equal(bot.riskPerTradeUnit, "PCT");
+});
+
+test("uiOperationalPatchToInstColumns: maps UI patch", () => {
+  const cols = uiOperationalPatchToInstColumns({ riskPerTrade: 10, riskUnit: "PCT" });
+  assert.equal(cols.inst_risk_per_trade, 10);
+  assert.equal(cols.inst_risk_unit, "PCT");
 });
 
 test("end-to-end: same strategy reused across two instance overlays", () => {

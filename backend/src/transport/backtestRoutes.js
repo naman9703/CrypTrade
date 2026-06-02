@@ -26,7 +26,10 @@ import * as strategyService from "../db/services/strategyService.js";
 import * as instanceService from "../db/services/instanceService.js";
 import { getPaperSystemAccountId } from "../db/services/walletService.js";
 import { normalizeModeSlugParam } from "../lib/modeSlug.js";
-import { mergeInstanceIntoCfgRaw } from "../lib/strategyInstanceSplit.js";
+import { normalizeTradingMode } from "../state/appState.js";
+import { pickRawIntradayPanelFromBot, materializeIntradayPanelOnCfg } from "../strategy/intradayPanelKeys.js";
+import { fillSmcSoloPresetDefaults, materializeIntradayEngineCfgSync } from "../strategy/presets/srIntradayOptimized.js";
+import { mergeInstanceIntoCfgRaw, ensureBacktestMarketMode, stripInstanceFieldsFromCfgRaw, uiOperationalPatchToInstColumns, applyInstanceOperationalToConfigSnapshot, applyInstanceOperationalToBot, INSTANCE_FIELD_KEYS } from "../lib/strategyInstanceSplit.js";
 import { normalizeEliteStRunCfg } from "../strategy/supertrendElite.js";
 import { InsufficientCapitalError } from "../db/services/capitalAllotmentService.js";
 import {
@@ -42,6 +45,7 @@ import { ensureFearGreed } from "../backtest/data/fearGreedIngest.js";
 import { ensureOpenInterest } from "../backtest/data/openInterestIngest.js";
 import { getCoverage, getMonthlyCoverage } from "../backtest/data/dataCoverage.js";
 import { SUPPORTED_TIMEFRAMES } from "../backtest/data/timeframe.js";
+import { BACKTEST_ENGINE_VERSION } from "../backtest/engine/version.js";
 
 const SYMBOL_RE = /^[A-Z0-9]{5,20}$/;
 
@@ -70,6 +74,21 @@ const createRunBody = z
       .optional(),
     /** `FULL_EQUITY_MARGIN` = each trade uses all equity as futures margin (compounded). */
     positionSizing: z.enum(["RISK_AT_SL", "FULL_EQUITY_MARGIN"]).optional(),
+    /** When true (default), merge live engine intraday/SMC panel fields into the snapshot. */
+    useLivePanelOverrides: z.boolean().optional(),
+    /** Instance-owned operational fields from the UI at submit time (risk, market mode, etc.). */
+    instanceOperational: z
+      .object({
+        symbol: z.string().min(1).max(64).nullable().optional(),
+        timeframe: z.string().min(1).max(8).nullable().optional(),
+        symbolMode: z.string().min(1).max(32).nullable().optional(),
+        marketMode: z.string().min(1).max(32).nullable().optional(),
+        riskPerTrade: z.number().nullable().optional(),
+        riskUnit: z.string().min(1).max(8).nullable().optional(),
+        maxDailyLoss: z.number().nullable().optional(),
+        maxDailyLossUnit: z.string().min(1).max(8).nullable().optional(),
+      })
+      .optional(),
   })
   .superRefine((d, ctx) => {
     const f = toMs(d.from);
@@ -124,9 +143,18 @@ export function createBacktestRouter({ appState }) {
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
     const data = parsed.data;
     try {
-      const ver = await strategyService.getVersion(data.strategyVersionId);
+      let strategyVersionId = data.strategyVersionId;
+      if (data.botInstanceId) {
+        const binding = await instanceService.getInstanceEngineBinding(String(data.botInstanceId));
+        if (!binding || binding.isDeleted) {
+          return res.status(404).json({ ok: false, error: "bot_instance_not_found" });
+        }
+        await assertBotInstanceOwned(String(data.botInstanceId), userId);
+        strategyVersionId = String(binding.strategyVersionId);
+      }
+      const ver = await strategyService.getVersion(strategyVersionId);
       if (!ver) return res.status(404).json({ ok: false, error: "strategy_version_not_found" });
-      const st = await strategyService.getStrategyByVersionId(data.strategyVersionId);
+      const st = await strategyService.getStrategyByVersionId(strategyVersionId);
       if (!st || String(st.userId) !== userId) {
         return res.status(404).json({ ok: false, error: "strategy_version_not_found" });
       }
@@ -135,12 +163,27 @@ export function createBacktestRouter({ appState }) {
       const snapshot = await buildRunConfigSnapshot({
         ver,
         userId,
-        strategyVersionId: data.strategyVersionId,
+        strategyVersionId,
         botInstanceId: data.botInstanceId,
         symbol: data.symbol,
         timeframe: data.timeframe,
         positionSizing: data.positionSizing,
+        useLivePanelOverrides: data.useLivePanelOverrides === true,
+        instanceOperational: data.instanceOperational,
+        req,
+        appState,
       });
+      if (data.botInstanceId && data.instanceOperational) {
+        try {
+          await instanceService.updateInstanceOperationalConfig(
+            String(data.botInstanceId),
+            userId,
+            uiOperationalPatchToInstColumns(data.instanceOperational),
+          );
+        } catch (err) {
+          console.warn("backtest_instance_operational_persist_failed", String(err?.message || err));
+        }
+      }
       /** Intelligence replay mode follows saved strategy snapshot only (live parity); ignore client gateMode. */
       const snapBot = pickBotFromConfigSnapshot(snapshot.configSnapshot);
       const gateModeEffective = snapBot.intelligenceGateEnabled === true ? "approx" : "off";
@@ -159,7 +202,7 @@ export function createBacktestRouter({ appState }) {
          )
          RETURNING id`,
         [
-          data.strategyVersionId,
+          strategyVersionId,
           userId,
           data.label ?? null,
           data.symbol,
@@ -178,6 +221,17 @@ export function createBacktestRouter({ appState }) {
         ],
       );
       const runId = String(ins.rows[0].id);
+      await query(
+        `UPDATE backtest_runs
+            SET status = 'failed',
+                error_message = 'superseded_by_new_run',
+                finished_at = NOW()
+          WHERE user_id = $1
+            AND status = 'queued'
+            AND id <> $2
+            AND created_at < NOW() - INTERVAL '2 minutes'`,
+        [userId, runId],
+      ).catch(() => {});
       enqueueRun(runId, { priority: "high" }).catch((e) => {
         console.error("[backtest] enqueue/run failed", runId, e?.message || e);
         void failRun(runId, e);
@@ -754,6 +808,104 @@ function cloneStrategyCfgSnapshot(cfgRaw) {
   return cfgRaw && typeof cfgRaw === "object" ? JSON.parse(JSON.stringify(cfgRaw)) : {};
 }
 
+function resolveBacktestLiveEngineMode(req, appState) {
+  if (req?.session?.uiAuthOk && req.session?.uiTradingMode) {
+    return normalizeTradingMode(req.session.uiTradingMode);
+  }
+  if (appState?.mode) return normalizeTradingMode(appState.mode);
+  return null;
+}
+
+/**
+ * Strategy versions omit instance fields (symbol, marketMode, capital). Strategy-only
+ * backtests must still stamp market mode or the simulator runs spot (blocks SELL / shorts).
+ */
+async function overlayOperationalDefaultsOnSnapshot(configSnapshot, { req, appState, botInstanceId }) {
+  const bot = pickBotFromConfigSnapshot(configSnapshot);
+  await overlayMissingOperationalFromLive(bot, { req, appState, botInstanceId });
+
+  if (!String(bot.marketMode ?? bot.market ?? "").trim()) {
+    const strat = String(bot.manualStrategy ?? "").toUpperCase();
+    if (strat === "SR_INTRADAY" || strat === "INTRADAY_PRO") {
+      bot.marketMode = "FUTURES";
+      if (bot.futuresLeverage == null) bot.futuresLeverage = 12;
+      bot._backtestOperationalOverlayAt = new Date().toISOString();
+    }
+  }
+  syncLeverageAliasOnBot(bot);
+  return configSnapshot;
+}
+
+/** Fill instance-owned bot fields from the live engine when absent on the snapshot. */
+async function overlayMissingOperationalFromLive(bot, { req, appState, botInstanceId, accountModeSlug }) {
+  if (!bot || typeof bot !== "object" || !appState) return;
+  const needs =
+    bot.riskPerTrade == null ||
+    bot.riskPerTradeUnit == null ||
+    bot.maxDailyLoss == null ||
+    bot.maxDailyLossUnit == null ||
+    !String(bot.marketMode ?? bot.market ?? "").trim();
+  if (!needs) return;
+
+  let mode = accountModeSlug ? normalizeTradingMode(accountModeSlug) : null;
+  if (!mode && botInstanceId) {
+    try {
+      const binding = await instanceService.getInstanceEngineBinding(String(botInstanceId));
+      if (binding?.accountModeSlug) mode = normalizeTradingMode(binding.accountModeSlug);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!mode) mode = resolveBacktestLiveEngineMode(req, appState);
+  if (!mode) return;
+
+  try {
+    await appState.ensureEngine(mode, botInstanceId ?? undefined);
+    const live = appState.getEngine(mode)?.bot?.getPublicState?.();
+    if (!live || typeof live !== "object") return;
+    if (bot.riskPerTrade == null && live.riskPerTrade != null) bot.riskPerTrade = Number(live.riskPerTrade);
+    if (bot.riskPerTradeUnit == null && live.riskPerTradeUnit != null) {
+      bot.riskPerTradeUnit = String(live.riskPerTradeUnit);
+    }
+    if (bot.maxDailyLoss == null && live.maxDailyLoss != null) bot.maxDailyLoss = Number(live.maxDailyLoss);
+    if (bot.maxDailyLossUnit == null && live.maxDailyLossUnit != null) {
+      bot.maxDailyLossUnit = String(live.maxDailyLossUnit);
+    }
+    if (!String(bot.marketMode ?? bot.market ?? "").trim() && live.marketMode != null) {
+      bot.marketMode = String(live.marketMode);
+    }
+    if (live.futuresLeverage != null && bot.futuresLeverage == null) {
+      bot.futuresLeverage = live.futuresLeverage;
+    }
+    bot._backtestOperationalOverlayAt = new Date().toISOString();
+  } catch {
+    /* engine not ready */
+  }
+}
+
+async function overlayLiveIntradayPanelOnSnapshot(configSnapshot, { appState, req, botInstanceId }) {
+  let mode = null;
+  if (botInstanceId) {
+    const binding = await instanceService.getInstanceEngineBinding(String(botInstanceId));
+    if (binding?.accountModeSlug) mode = normalizeTradingMode(binding.accountModeSlug);
+  }
+  if (!mode) mode = resolveBacktestLiveEngineMode(req, appState);
+  if (!mode || !appState) return configSnapshot;
+  try {
+    await appState.ensureEngine(mode);
+    const row = appState.getEngine(mode);
+    const live = row?.bot?.getPublicState?.();
+    if (!live || typeof live !== "object") return configSnapshot;
+    const overlay = pickRawIntradayPanelFromBot(live);
+    const bot = pickBotFromConfigSnapshot(configSnapshot);
+    Object.assign(bot, overlay);
+    bot._livePanelOverlayAt = new Date().toISOString();
+  } catch {
+    /* engine not ready — use strategy snapshot only */
+  }
+  return configSnapshot;
+}
+
 async function buildRunConfigSnapshot({
   ver,
   userId,
@@ -762,17 +914,29 @@ async function buildRunConfigSnapshot({
   symbol,
   timeframe,
   positionSizing,
+  useLivePanelOverrides = false,
+  instanceOperational,
+  req,
+  appState,
 }) {
-  const base = cloneStrategyCfgSnapshot(ver?.cfgRaw);
+  const base = stripInstanceFieldsFromCfgRaw(cloneStrategyCfgSnapshot(ver?.cfgRaw));
   if (!botInstanceId) {
-    const configSnapshot = withBacktestRunOptions(withRequestedMarket(base, symbol, timeframe), {
+    let configSnapshot = withBacktestRunOptions(withRequestedMarket(base, symbol, timeframe), {
       positionSizing,
     });
+    configSnapshot = await overlayOperationalDefaultsOnSnapshot(configSnapshot, { req, appState });
+    if (useLivePanelOverrides) {
+      configSnapshot = await overlayLiveIntradayPanelOnSnapshot(configSnapshot, {
+        appState,
+        req,
+        botInstanceId: null,
+      });
+    }
     return {
       configSnapshot,
       botInstanceId: null,
       instanceOperationalSnapshot: null,
-      configSource: "strategy_only",
+      configSource: useLivePanelOverrides ? "strategy_with_live_panel" : "strategy_only",
     };
   }
 
@@ -785,23 +949,122 @@ async function buildRunConfigSnapshot({
   // The strategy version has already been ownership-checked for this user. Matching
   // version ids plus account ownership make the instance a valid runtime binding.
   await assertBotInstanceOwned(String(botInstanceId), userId);
-  const merged = mergeInstanceIntoCfgRaw(base, binding.operationalConfig);
-  const configSnapshot = withBacktestRunOptions(withRequestedMarket(merged, symbol, timeframe), {
+  const operationalConfig = await resolveInstanceOperationalForBacktest(binding, {
+    instanceOperational,
+    req,
+    appState,
+    botInstanceId: String(botInstanceId),
+  });
+  const merged = mergeInstanceIntoCfgRaw(base, operationalConfig);
+  let configSnapshot = withBacktestRunOptions(withRequestedMarket(merged, symbol, timeframe), {
     positionSizing,
   });
+  applyInstanceOperationalToConfigSnapshot(configSnapshot, operationalConfig);
+  await overlayMissingOperationalFromLive(pickBotFromConfigSnapshot(configSnapshot), {
+    req,
+    appState,
+    botInstanceId: String(botInstanceId),
+    accountModeSlug: binding.accountModeSlug,
+  });
+  applyInstanceOperationalToConfigSnapshot(configSnapshot, operationalConfig);
+  if (useLivePanelOverrides) {
+    configSnapshot = await overlayLiveIntradayPanelOnSnapshot(configSnapshot, {
+      appState,
+      req,
+      botInstanceId,
+    });
+  }
   return {
     configSnapshot,
     botInstanceId: String(botInstanceId),
-    instanceOperationalSnapshot: binding.operationalConfig ?? null,
-    configSource: "instance_merged",
+    instanceOperationalSnapshot: operationalConfig ?? null,
+    configSource: useLivePanelOverrides ? "instance_snapshot_with_live_panel" : "instance_snapshot",
   };
+}
+
+/** Merge DB instance ops + UI submit patch + live engine null-fill (instance-owned fields only). */
+async function resolveInstanceOperationalForBacktest(binding, { instanceOperational, req, appState, botInstanceId }) {
+  const op = { ...(binding.operationalConfig ?? {}) };
+  const clientPatch = uiOperationalPatchToInstColumns(instanceOperational);
+  for (const [k, v] of Object.entries(clientPatch)) {
+    if (v != null) op[k] = v;
+  }
+  await fillNullInstanceOperationalFromLiveEngine(op, {
+    appState,
+    accountModeSlug: binding.accountModeSlug,
+    botInstanceId,
+    req,
+  });
+  return op;
+}
+
+async function fillNullInstanceOperationalFromLiveEngine(op, { appState, accountModeSlug, botInstanceId, req }) {
+  const needs =
+    op.inst_risk_per_trade == null ||
+    op.inst_risk_unit == null ||
+    op.inst_max_daily_loss == null ||
+    op.inst_max_daily_loss_unit == null ||
+    op.inst_market_mode == null;
+  if (!needs || !appState) return op;
+
+  let mode = accountModeSlug ? normalizeTradingMode(accountModeSlug) : null;
+  if (!mode) mode = resolveBacktestLiveEngineMode(req, appState);
+  if (!mode) return op;
+
+  try {
+    await appState.ensureEngine(mode, botInstanceId ?? undefined);
+    const live = appState.getEngine(mode)?.bot?.getPublicState?.();
+    if (!live || typeof live !== "object") return op;
+    if (op.inst_risk_per_trade == null && live.riskPerTrade != null) {
+      op.inst_risk_per_trade = Number(live.riskPerTrade);
+    }
+    if (op.inst_risk_unit == null && live.riskPerTradeUnit != null) {
+      op.inst_risk_unit = String(live.riskPerTradeUnit);
+    }
+    if (op.inst_max_daily_loss == null && live.maxDailyLoss != null) {
+      op.inst_max_daily_loss = Number(live.maxDailyLoss);
+    }
+    if (op.inst_max_daily_loss_unit == null && live.maxDailyLossUnit != null) {
+      op.inst_max_daily_loss_unit = String(live.maxDailyLossUnit);
+    }
+    if (op.inst_market_mode == null && live.marketMode != null) {
+      op.inst_market_mode = String(live.marketMode);
+    }
+    if (op.inst_timeframe == null && live.timeframe != null) {
+      op.inst_timeframe = String(live.timeframe);
+    }
+  } catch {
+    /* engine not ready */
+  }
+  return op;
+}
+
+/** Materialize intraday/SMC engine cfg on the snapshot so backtest = saved panel values. */
+function materializeBacktestEngineSnapshot(cfgRaw) {
+  const root = cloneStrategyCfgSnapshot(cfgRaw);
+  const b = pickBotFromConfigSnapshot(root);
+  const preserved = {};
+  for (const key of INSTANCE_FIELD_KEYS) {
+    if (b[key] !== undefined) preserved[key] = b[key];
+  }
+  const engine = materializeIntradayEngineCfgSync(b, materializeIntradayPanelOnCfg);
+  Object.assign(engine, preserved);
+  engine._intradayEngineMaterialized = true;
+  engine._intradayEngineMaterializedAt = new Date().toISOString();
+  if (root.bot && typeof root.bot === "object") {
+    root.bot = { ...root.bot, ...engine };
+  } else {
+    return { v: root.v ?? 1, bot: engine };
+  }
+  return root;
 }
 
 /** Per-run simulator options stored on the strategy snapshot (`config_snapshot.bot`). */
 function withBacktestRunOptions(cfgRaw, { positionSizing } = {}) {
-  const root = cloneStrategyCfgSnapshot(cfgRaw);
+  const root = materializeBacktestEngineSnapshot(cfgRaw);
   const b = pickBotFromConfigSnapshot(root);
   if (positionSizing) b.backtestPositionSizing = positionSizing;
+  b._engineVersion = BACKTEST_ENGINE_VERSION;
   if (String(b.manualStrategy ?? "").toUpperCase() === "SUPERTREND_ELITE") {
     Object.assign(b, normalizeEliteStRunCfg(b));
   }
@@ -1033,6 +1296,19 @@ function mapTradeRow(row) {
       if (!sc) return null;
       const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
       return obj?.lossPattern != null ? String(obj.lossPattern) : null;
+    })(),
+    entryReason: (() => {
+      const sc = row.signal_context;
+      if (!sc) return null;
+      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
+      return obj?.entryReason != null ? String(obj.entryReason) : null;
+    })(),
+    liqContext: (() => {
+      const sc = row.signal_context;
+      if (!sc) return null;
+      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
+      const liq = obj?.liq;
+      return liq && typeof liq === "object" ? liq : null;
     })(),
   };
 }
