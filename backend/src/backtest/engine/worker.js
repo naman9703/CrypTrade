@@ -26,7 +26,7 @@ const { readCandles, ensureKlines } = await import("../data/klineIngest.js");
 const { ensureFunding, readFundingRates } = await import("../data/fundingIngest.js");
 const { getCoverage } = await import("../data/dataCoverage.js");
 const { runSimulation } = await import("./runner.js");
-const { computeAllMetrics } = await import("./metrics.js");
+const { computeAllMetrics, attachWalkForwardMetrics } = await import("./metrics.js");
 const { finalizeRun, failRun, markRunning, updateProgress, cancelRun } = await import("./persistence.js");
 const { buildIntelligenceReplay } = await import("./intelligenceReplay.js").catch(() => ({
   buildIntelligenceReplay: null,
@@ -42,8 +42,41 @@ parentPort?.on("message", (msg) => {
   if (msg && msg.type === "cancel") cancelFlag = true;
 });
 
+/** Strategy-test jobs ride the same pool queue with a prefixed job id. */
+const STRATEGY_TEST_PREFIX = "strategy-test:";
+
+async function runStrategyTestOnce(jobId, testId) {
+  const { executeStrategyTest, failTest, cancelTest } = await import("./strategyTest.js");
+  try {
+    await executeStrategyTest({
+      testId,
+      onProgress: (pct) => {
+        parentPort?.postMessage({ type: "progress", runId: jobId, pct });
+      },
+      shouldCancel: () => cancelFlag,
+    });
+    if (cancelFlag) await cancelTest(testId);
+    parentPort?.postMessage({ type: "complete", runId: jobId });
+  } catch (err) {
+    const msg = String(err?.message || err);
+    if (cancelFlag || msg === "cancelled") {
+      await cancelTest(testId).catch(() => {});
+      parentPort?.postMessage({ type: "complete", runId: jobId });
+      return;
+    }
+    console.error("[backtest:worker] strategy test failed", err?.stack || err);
+    await failTest(testId, err).catch(() => {});
+    parentPort?.postMessage({ type: "failed", runId: jobId, error: msg });
+  }
+}
+
 async function runOnce(runId) {
   cancelFlag = false;
+  const jobId = String(runId);
+  if (jobId.startsWith(STRATEGY_TEST_PREFIX)) {
+    await runStrategyTestOnce(jobId, jobId.slice(STRATEGY_TEST_PREFIX.length));
+    return;
+  }
   try {
     await execute({ runId });
     parentPort?.postMessage({ type: "complete", runId });
@@ -134,11 +167,34 @@ async function execute({ runId }) {
     const { materializeIntradayEngineCfgSync } = await import("../../strategy/presets/srIntradayOptimized.js");
     const { materializeIntradayPanelOnCfg } = await import("../../strategy/intradayPanelKeys.js");
     const { ensureBacktestMarketMode, applyInstanceOperationalToBot } = await import("../../lib/strategyInstanceSplit.js");
-    cfg = materializeIntradayEngineCfgSync(cfg, materializeIntradayPanelOnCfg);
+    const { normalizeEliteStRunCfg } = await import("../../strategy/supertrendElite.js");
+    const stratEarly = String(cfg.manualStrategy ?? "").toUpperCase();
+    if (stratEarly === "SITUATION_INTRADAY") {
+      const { resolveSituationRouterCfg } = await import("../../strategy/situationIntraday.js");
+      cfg = resolveSituationRouterCfg(cfg);
+      cfg._intradayEngineMaterialized = true;
+    } else if (stratEarly === "CRT_TBS") {
+      const { resolveCrtTbsCfg } = await import("../../strategy/crtTbsIntraday.js");
+      cfg = resolveCrtTbsCfg(cfg);
+      cfg._intradayEngineMaterialized = true;
+    } else if (stratEarly === "TOKYO_SESSION") {
+      const { resolveTokyoSessionCfg } = await import("../../strategy/tokyoSessionIntraday.js");
+      cfg = resolveTokyoSessionCfg(cfg);
+      cfg._intradayEngineMaterialized = true;
+    } else if (stratEarly === "SUPERTREND_ELITE" || stratEarly === "UNIFIED_ELITE") {
+      // Skip intraday materialization — injects max-hold bars and liq defaults that break 1H Elite.
+      cfg._intradayEngineMaterialized = true;
+    } else if (!cfg._intradayEngineMaterialized) {
+      cfg = materializeIntradayEngineCfgSync(cfg, materializeIntradayPanelOnCfg);
+    }
     if (run.instance_operational_snapshot && typeof run.instance_operational_snapshot === "object") {
       applyInstanceOperationalToBot(cfg, run.instance_operational_snapshot);
     }
     cfg = ensureBacktestMarketMode(cfg);
+    const strat = String(cfg.manualStrategy ?? "").toUpperCase();
+    if (strat === "SUPERTREND_ELITE" || strat === "UNIFIED_ELITE") {
+      Object.assign(cfg, normalizeEliteStRunCfg(cfg));
+    }
   } catch {
     /* optional */
   }
@@ -157,6 +213,38 @@ async function execute({ runId }) {
     void updateProgress(runId, pct).catch(() => {});
   };
 
+  const isPortfolio = run.is_portfolio === true;
+  const portfolioSymbols =
+    isPortfolio && Array.isArray(run.symbols)
+      ? run.symbols.map((s) => String(s).toUpperCase()).filter(Boolean)
+      : [];
+  if (isPortfolio && portfolioSymbols.length >= 2) {
+    const wfSplit =
+      run.walk_forward_split && typeof run.walk_forward_split === "object" ? run.walk_forward_split : null;
+    const portfolioTrainPct =
+      wfSplit && Number.isFinite(Number(wfSplit.trainPct))
+        ? Math.max(0.1, Math.min(0.9, Number(wfSplit.trainPct)))
+        : null;
+    await executePortfolio({
+      runId,
+      run,
+      cfg,
+      costModelOverride,
+      gateMode,
+      isFutures,
+      market,
+      strategyKey,
+      symbols: portfolioSymbols,
+      fromMs,
+      toMs,
+      tf,
+      startingUsdt,
+      trainPct: portfolioTrainPct,
+      reportPrep,
+    });
+    return;
+  }
+
   reportPrep(0.5);
   const covPre = await getCoverage(symbol, tf, { from: fromMs, to: toMs }).catch(() => ({
     coveragePct: null,
@@ -174,9 +262,23 @@ async function execute({ runId }) {
   }
   reportPrep(3);
 
-  const candles = await readCandles(symbol, tf, fromMs, toMs);
+  let candleFromMs = fromMs;
+  if (strategyKey === "CRT_TBS") {
+    const { crtTbsPadFromMs } = await import("../../strategy/crtTbsIntraday.js");
+    candleFromMs = crtTbsPadFromMs(fromMs, tf);
+  } else if (strategyKey === "TOKYO_SESSION") {
+    const { tokyoSessionPadFromMs } = await import("../../strategy/tokyoSessionIntraday.js");
+    candleFromMs = tokyoSessionPadFromMs(fromMs, tf);
+  }
+  const candles = await readCandles(symbol, tf, candleFromMs, toMs, { market });
   if (!candles.length) throw new Error("worker:no_candles");
   reportPrep(5);
+
+  const stratKey = String(cfg.manualStrategy ?? "").toUpperCase();
+  if (stratKey === "SUPERTREND_ELITE" || stratKey === "UNIFIED_ELITE") {
+    const { prepareEliteRunCfg } = await import("../../strategy/supertrendElite.js");
+    cfg = prepareEliteRunCfg(cfg, symbol, candles);
+  }
 
   const fundingRates = isFutures ? await readFundingRates(symbol, fromMs, toMs).catch(() => []) : [];
 
@@ -253,7 +355,7 @@ async function execute({ runId }) {
     return;
   }
 
-  const metrics = computeAllMetrics({
+  let metrics = computeAllMetrics({
     trades: sim.trades,
     equityCurve: sim.equityCurve,
     tf,
@@ -269,33 +371,14 @@ async function execute({ runId }) {
     avgIntelScore: null,
   };
 
-  if (trainPct != null && sim.trades.length) {
-    const splitIdx = Math.floor(candles.length * trainPct);
-    const splitTs = splitIdx > 0 && splitIdx < candles.length ? Number(candles[splitIdx].ts) : null;
-    if (splitTs != null) {
-      const trainTrades = sim.trades.filter((t) => Number(t.exitTs) <= splitTs);
-      const testTrades = sim.trades.filter((t) => Number(t.exitTs) > splitTs);
-      const trainCurve = sim.equityCurve.filter((p) => Number(p.ts) <= splitTs);
-      const testCurve = sim.equityCurve.filter((p) => Number(p.ts) > splitTs);
-      const startingTest = trainCurve.length ? trainCurve[trainCurve.length - 1].equity : startingUsdt;
-      metrics.walkForward = {
-        trainPct,
-        splitTs,
-        train: computeAllMetrics({
-          trades: trainTrades,
-          equityCurve: trainCurve,
-          tf,
-          startingEquity: startingUsdt,
-        }),
-        test: computeAllMetrics({
-          trades: testTrades,
-          equityCurve: testCurve,
-          tf,
-          startingEquity: startingTest,
-        }),
-      };
-    }
-  }
+  metrics = attachWalkForwardMetrics(metrics, {
+    trades: sim.trades,
+    equityCurve: sim.equityCurve,
+    timelineCandles: candles,
+    trainPct,
+    tf,
+    startingEquity: startingUsdt,
+  });
 
   await finalizeRun({
     runId,
@@ -305,6 +388,211 @@ async function execute({ runId }) {
     equityCurve: sim.equityCurve,
     finalEquity: sim.finalEquity,
     coveragePct: cov.coveragePct,
+  });
+}
+
+/**
+ * Multi-coin portfolio: per-symbol simulation → R-multiples → shared-account replay.
+ */
+async function executePortfolio({
+  runId,
+  run,
+  cfg,
+  costModelOverride,
+  gateMode,
+  isFutures,
+  market,
+  strategyKey,
+  symbols,
+  fromMs,
+  toMs,
+  tf,
+  startingUsdt,
+  trainPct = null,
+  reportPrep,
+}) {
+  const { portfolioReplay, tradesToREvents } = await import("./portfolioReplay.js");
+  const { prepareEliteRunCfg } = await import("../../strategy/supertrendElite.js");
+  const UNIT_START = 1000;
+  const riskPct = Math.max(0.01, Number(cfg?.riskPerTrade ?? 5));
+  const riskFrac = riskPct / 100;
+
+  reportPrep(1);
+  const coveragePcts = [];
+  for (const sym of symbols) {
+    const covPre = await getCoverage(sym, tf, { from: fromMs, to: toMs }).catch(() => ({
+      coveragePct: null,
+    }));
+    if (covPre.coveragePct != null) coveragePcts.push(covPre.coveragePct);
+    if (covPre.coveragePct == null || covPre.coveragePct < 98) {
+      await ensureKlines(sym, tf, { from: fromMs, to: toMs, market }).catch((err) => {
+        console.warn(`[backtest:worker] ensureKlines ${sym} failed:`, err?.message || err);
+      });
+    }
+    if (isFutures) {
+      await ensureFunding(sym, { from: fromMs, to: toMs }).catch(() => {});
+    }
+  }
+  reportPrep(3);
+
+  let candleFromMs = fromMs;
+  if (strategyKey === "CRT_TBS") {
+    const { crtTbsPadFromMs } = await import("../../strategy/crtTbsIntraday.js");
+    candleFromMs = crtTbsPadFromMs(fromMs, tf);
+  } else if (strategyKey === "TOKYO_SESSION") {
+    const { tokyoSessionPadFromMs } = await import("../../strategy/tokyoSessionIntraday.js");
+    candleFromMs = tokyoSessionPadFromMs(fromMs, tf);
+  }
+
+  const allEvents = [];
+  const gateReplayAgg = {
+    mode: gateMode,
+    evaluated: 0,
+    pass: 0,
+    vetoed: 0,
+    sizeScaled: 0,
+    noGate: 0,
+    intelScoreSum: 0,
+  };
+  const nSyms = symbols.length;
+  let timelineCandles = [];
+
+  for (let si = 0; si < nSyms; si++) {
+    if (cancelFlag) {
+      await cancelRun(runId);
+      return;
+    }
+    const sym = symbols[si];
+    const pctBase = 5 + (si / nSyms) * 85;
+    reportPrep(pctBase);
+
+    const candles = await readCandles(sym, tf, candleFromMs, toMs, { market });
+    if (!candles.length) {
+      console.warn(`[backtest:worker] portfolio skip ${sym}: no candles`);
+      continue;
+    }
+    if (!timelineCandles.length) timelineCandles = candles;
+
+    const stratKey = String(cfg.manualStrategy ?? "").toUpperCase();
+    const symCfg =
+      stratKey === "SUPERTREND_ELITE" || stratKey === "UNIFIED_ELITE"
+        ? prepareEliteRunCfg(cfg, sym, candles)
+        : { ...cfg, symbol: sym };
+
+    const fundingRates = isFutures ? await readFundingRates(sym, fromMs, toMs).catch(() => []) : [];
+
+    let gateFn = null;
+    if (gateMode === "approx" && typeof buildIntelligenceReplay === "function") {
+      try {
+        gateFn = await buildIntelligenceReplay({
+          symbol: sym,
+          fromMs,
+          toMs,
+          candles,
+          timeframe: tf,
+          strictMode: cfg?.intelligenceGateStrict === true,
+          highWinRateMode: cfg?.intelligenceGateHighWinRate === true,
+        });
+      } catch {
+        /* optional */
+      }
+    }
+
+    let adapters = {};
+    if (typeof buildBacktestAdapters === "function") {
+      try {
+        adapters = await buildBacktestAdapters({ strategyKey, cfg: symCfg, symbol: sym, tf, candles, fromMs });
+      } catch (err) {
+        console.warn(`[backtest:worker] adapters ${sym} failed:`, err?.message || err);
+      }
+    }
+
+    const sim = await runSimulation({
+      strategyKey,
+      candles,
+      cfg: symCfg,
+      costModelOverride,
+      gateMode,
+      gateFn,
+      fundingRates,
+      startingUsdt: UNIT_START,
+      timeframe: tf,
+      symbol: sym,
+      adapters,
+      shouldCancel: () => cancelFlag,
+    });
+
+    const gr = sim.gateReplay;
+    if (gr) {
+      gateReplayAgg.evaluated += Number(gr.evaluated ?? 0);
+      gateReplayAgg.pass += Number(gr.pass ?? 0);
+      gateReplayAgg.vetoed += Number(gr.vetoed ?? 0);
+      gateReplayAgg.sizeScaled += Number(gr.sizeScaled ?? 0);
+      gateReplayAgg.noGate += Number(gr.noGate ?? 0);
+      if (gr.intelScoreSum != null) gateReplayAgg.intelScoreSum += Number(gr.intelScoreSum);
+    }
+
+    allEvents.push(...tradesToREvents(sym, sim.trades, riskPct));
+  }
+
+  if (cancelFlag) {
+    await cancelRun(runId);
+    return;
+  }
+
+  reportPrep(92);
+  const replay = portfolioReplay({
+    events: allEvents,
+    startingUsdt,
+    riskFrac,
+    startTs: fromMs,
+  });
+
+  let metrics = computeAllMetrics({
+    trades: replay.trades,
+    equityCurve: replay.equityCurve,
+    tf,
+    startingEquity: startingUsdt,
+  });
+  metrics = attachWalkForwardMetrics(metrics, {
+    trades: replay.trades,
+    equityCurve: replay.equityCurve,
+    timelineCandles,
+    trainPct,
+    tf,
+    startingEquity: startingUsdt,
+  });
+  metrics.gateReplay = {
+    ...gateReplayAgg,
+    avgIntelScore:
+      gateReplayAgg.evaluated > 0 ? gateReplayAgg.intelScoreSum / gateReplayAgg.evaluated : null,
+  };
+  metrics.portfolio = {
+    symbols,
+    perCoin: Object.fromEntries(
+      Object.entries(replay.perCoin).map(([sym, v]) => [
+        sym,
+        {
+          trades: v.n,
+          wins: v.wins,
+          winRate: v.n ? (v.wins / v.n) * 100 : 0,
+          netPnl: v.netPnl,
+        },
+      ]),
+    ),
+  };
+
+  const coveragePct =
+    coveragePcts.length > 0 ? Math.min(...coveragePcts) : null;
+
+  await finalizeRun({
+    runId,
+    symbol: "PORTFOLIO",
+    metrics,
+    trades: replay.trades,
+    equityCurve: replay.equityCurve,
+    finalEquity: replay.finalEquity,
+    coveragePct,
   });
 }
 

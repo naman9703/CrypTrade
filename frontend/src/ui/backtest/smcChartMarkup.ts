@@ -5,6 +5,7 @@ import { LineStyle, type LineData, type SeriesMarker, type UTCTimestamp } from "
 import type { BacktestTrade } from "../../types/backtest";
 import { barIndexForMs, type OhlcCandle } from "./backtestChartTime";
 import type { BacktestLiqContext } from "./backtestChartOverlays";
+import type { ChartOverlayLayerId } from "./backtestChartOverlayLayers";
 
 export type SmcSwingPoint = {
   kind: "swing_high" | "swing_low";
@@ -39,6 +40,7 @@ export type SmcChartMarkup = {
     color: string;
     label: string;
     lineStyle: "solid" | "dashed" | "dotted";
+    layer?: ChartOverlayLayerId;
   }>;
   events: Array<{ kind: string; idx: number; timeSec: number | null; price: number; label: string }>;
   legend: string[];
@@ -247,6 +249,7 @@ export function buildSmcChartMarkup(
       color: "#f472b6",
       label: `Sweep ${meta.levelType ?? liq?.levelType ?? "liq"}`,
       lineStyle: "dotted",
+      layer: "sweep_level",
     });
   }
   if (sweepWick > 0) {
@@ -257,6 +260,7 @@ export function buildSmcChartMarkup(
       color: "#fb7185",
       label: "Sweep wick (SL ref)",
       lineStyle: "dashed",
+      layer: "liq_sweep_wick",
     });
   }
   if (opposing > 0) {
@@ -267,6 +271,7 @@ export function buildSmcChartMarkup(
       color: "#c084fc",
       label: "Opposing liquidity",
       lineStyle: "dotted",
+      layer: "liq_opposing",
     });
   }
   if (chochLevel > 0 && chochIdx != null && chochIdx >= 0) {
@@ -277,6 +282,7 @@ export function buildSmcChartMarkup(
       color: "#e879f9",
       label: meta.chochType ? String(meta.chochType).replace(/_/g, " ").toUpperCase() : "CHoCH",
       lineStyle: "dashed",
+      layer: "smc_choch",
     });
   }
   if (bosLevel > 0 && mssIdx != null && mssIdx >= 0) {
@@ -287,6 +293,7 @@ export function buildSmcChartMarkup(
       color: "#38bdf8",
       label: meta.bosType ? String(meta.bosType).replace(/_/g, " ").toUpperCase() : "BOS/MSS",
       lineStyle: "solid",
+      layer: "smc_bos",
     });
   }
 
@@ -299,6 +306,7 @@ export function buildSmcChartMarkup(
       color: "#0ea5e9",
       label: "Entry fill",
       lineStyle: "dashed",
+      layer: "strategy_entry",
     });
   }
   const tp1 = Number(liq?.tp1Price ?? 0);
@@ -310,6 +318,7 @@ export function buildSmcChartMarkup(
       color: "#c084fc",
       label: "TP1 partial",
       lineStyle: "dotted",
+      layer: "strategy_tp1",
     });
   }
   if (trade.slPrice != null && Number.isFinite(trade.slPrice)) {
@@ -320,6 +329,7 @@ export function buildSmcChartMarkup(
       color: "#f87171",
       label: "Stop loss",
       lineStyle: "dashed",
+      layer: "strategy_sl",
     });
   }
   if (trade.tpPrice != null && Number.isFinite(trade.tpPrice)) {
@@ -330,6 +340,7 @@ export function buildSmcChartMarkup(
       color: "#a855f7",
       label: "Take profit",
       lineStyle: "dotted",
+      layer: "strategy_tp",
     });
   }
 
@@ -417,6 +428,206 @@ export function buildSmcChartMarkup(
   };
 }
 
+/**
+ * Liquidity + S/R (institutional A+) markup for trades WITHOUT smcMeta. Reconstructs
+ * the anatomy from the persisted liqContext (level, sweep wick, opposing pool) + the
+ * trade brackets, and marks the support/resistance zone the sweep happened at.
+ */
+export function buildLiquidityChartMarkup(
+  candles: OhlcCandle[],
+  trade: BacktestTrade,
+  botOpts: Record<string, unknown> = {},
+): SmcChartMarkup | null {
+  if (!candles.length || !trade) return null;
+
+  const entryIdx = barIndexForIso(candles, trade.entryTs);
+  const exitIdx = barIndexForIso(candles, trade.exitTs);
+  const lo = Math.min(entryIdx, exitIdx);
+  const hi = Math.max(entryIdx, exitIdx);
+  const pad = 40;
+  const windowStart = Math.max(0, lo - pad);
+  const windowEnd = Math.min(candles.length - 1, hi + pad);
+
+  const liq = (trade.liqContext ?? null) as BacktestLiqContext | null;
+  const side = trade.direction === "SELL" ? "SELL" : "BUY";
+  const level = Number(liq?.level ?? 0);
+  const wick = Number(liq?.sweepWick ?? 0);
+  const opposing = Number(liq?.opposingLevel ?? 0);
+  const isSupport = side === "BUY"; // longs fade a sweep of support; shorts fade resistance
+  const zoneWidthPct = Math.max(0.0005, Number(botOpts.intradaySrZoneWidthPct ?? 0.002));
+
+  // Reconstruct sweep wick bar + sweep start by scanning the window before entry.
+  const lookback = 48;
+  const scanFrom = Math.max(0, entryIdx - lookback);
+  let sweepWickIdx = entryIdx;
+  let sweepStartIdx = entryIdx;
+  if (wick > 0) {
+    for (let j = scanFrom; j <= entryIdx; j++) {
+      if (side === "BUY" ? candles[j].low <= wick : candles[j].high >= wick) sweepWickIdx = j;
+    }
+  }
+  if (level > 0) {
+    for (let j = scanFrom; j <= entryIdx; j++) {
+      const pierced = side === "BUY" ? candles[j].low < level : candles[j].high > level;
+      if (pierced) {
+        sweepStartIdx = j;
+        break;
+      }
+    }
+  }
+  const reclaimIdx = entryIdx;
+
+  const swingOpts = resolveSwingOpts(botOpts);
+  const { highs, lows } = getConfirmedSwings(candles, windowStart, Math.min(candles.length - 1, entryIdx), swingOpts);
+  const swings = [
+    ...highs.filter((s) => s.pivotIdx >= windowStart && s.pivotIdx <= windowEnd).slice(-6),
+    ...lows.filter((s) => s.pivotIdx >= windowStart && s.pivotIdx <= windowEnd).slice(-6),
+  ];
+
+  const hlines: SmcChartMarkup["hlines"] = [];
+  const srColor = isSupport ? "#2dd4bf" : "#fb923c";
+  if (level > 0) {
+    const band = level * zoneWidthPct;
+    hlines.push({
+      price: level,
+      fromIdx: windowStart,
+      toIdx: windowEnd,
+      color: srColor,
+      label: `${isSupport ? "SUPPORT" : "RESISTANCE"} ${(liq?.levelType ?? "").toUpperCase()}`,
+      lineStyle: "solid",
+      layer: "liq_sr_zone",
+    });
+    hlines.push({
+      price: level + band,
+      fromIdx: windowStart,
+      toIdx: windowEnd,
+      color: srColor,
+      label: "",
+      lineStyle: "dotted",
+      layer: "liq_sr_zone",
+    });
+    hlines.push({
+      price: level - band,
+      fromIdx: windowStart,
+      toIdx: windowEnd,
+      color: srColor,
+      label: "",
+      lineStyle: "dotted",
+      layer: "liq_sr_zone",
+    });
+  }
+  if (wick > 0) {
+    hlines.push({
+      price: wick,
+      fromIdx: sweepWickIdx,
+      toIdx: entryIdx,
+      color: "#fb7185",
+      label: "Sweep wick (SL ref)",
+      lineStyle: "dashed",
+      layer: "liq_sweep_wick",
+    });
+  }
+  if (opposing > 0) {
+    hlines.push({
+      price: opposing,
+      fromIdx: reclaimIdx,
+      toIdx: exitIdx,
+      color: "#c084fc",
+      label: `Opposing liquidity (${isSupport ? "resistance" : "support"} TP pool)`,
+      lineStyle: "dotted",
+      layer: "liq_opposing",
+    });
+  }
+  const entryPrice = Number(trade.entryPrice);
+  if (entryPrice > 0) {
+    hlines.push({
+      price: entryPrice,
+      fromIdx: entryIdx,
+      toIdx: exitIdx,
+      color: "#0ea5e9",
+      label: "Entry fill",
+      lineStyle: "dashed",
+      layer: "strategy_entry",
+    });
+  }
+  const tp1 = Number(liq?.tp1Price ?? 0);
+  if (tp1 > 0) {
+    hlines.push({
+      price: tp1,
+      fromIdx: entryIdx,
+      toIdx: exitIdx,
+      color: "#a3e635",
+      label: "TP1 (1R partial)",
+      lineStyle: "dotted",
+      layer: "strategy_tp1",
+    });
+  }
+  if (trade.slPrice != null && Number.isFinite(trade.slPrice)) {
+    hlines.push({
+      price: trade.slPrice,
+      fromIdx: entryIdx,
+      toIdx: exitIdx,
+      color: "#f87171",
+      label: "Stop loss",
+      lineStyle: "dashed",
+      layer: "strategy_sl",
+    });
+  }
+  if (trade.tpPrice != null && Number.isFinite(trade.tpPrice)) {
+    hlines.push({
+      price: trade.tpPrice,
+      fromIdx: entryIdx,
+      toIdx: exitIdx,
+      color: "#a855f7",
+      label: "Take profit",
+      lineStyle: "dotted",
+      layer: "strategy_tp",
+    });
+  }
+
+  const events: SmcChartMarkup["events"] = [];
+  if (wick > 0 && sweepWickIdx >= 0) {
+    events.push({
+      kind: "sweep",
+      idx: sweepWickIdx,
+      timeSec: sec(candles, sweepWickIdx),
+      price: side === "BUY" ? candles[sweepWickIdx].low : candles[sweepWickIdx].high,
+      label: "Sweep",
+    });
+  }
+  events.push({ kind: "reclaim", idx: reclaimIdx, timeSec: sec(candles, reclaimIdx), price: candles[reclaimIdx]?.close ?? entryPrice, label: "Reclaim" });
+  events.push({ kind: "entry", idx: entryIdx, timeSec: sec(candles, entryIdx), price: entryPrice > 0 ? entryPrice : candles[entryIdx]?.close ?? 0, label: "Entry" });
+
+  return {
+    side,
+    entryIdx,
+    exitIdx,
+    focusFromIdx: windowStart,
+    focusToIdx: windowEnd,
+    swings,
+    sweep: {
+      level,
+      wick,
+      levelType: (liq?.levelType ?? null) as string | null,
+      sweepStartIdx,
+      sweepWickIdx,
+      reclaimIdx,
+    },
+    bos: null,
+    fvg: null,
+    ob: null,
+    hlines,
+    events,
+    legend: [
+      isSupport ? "Teal — support zone (swept)" : "Orange — resistance zone (swept)",
+      "Rose — sweep wick (SL ref)",
+      "Purple — opposing liquidity (TP pool)",
+      "Cyan — entry · Red — SL · Violet — TP · Lime — TP1",
+      "SH/SL — confirmed swings",
+    ],
+  };
+}
+
 function segmentByIdx(
   fromIdx: number,
   toIdx: number,
@@ -441,7 +652,13 @@ const lineStyleMap = {
 } as const;
 
 export type SmcChartLayers = {
-  taLines: Array<{ data: LineData[]; color: string; lineStyle?: LineStyle; lineWidth?: number }>;
+  taLines: Array<{
+    data: LineData[];
+    color: string;
+    lineStyle?: LineStyle;
+    lineWidth?: number;
+    layer?: ChartOverlayLayerId;
+  }>;
   markers: SeriesMarker<UTCTimestamp>[];
   legend: string[];
 };
@@ -458,6 +675,7 @@ export function smcMarkupToChartLayers(
       color: hl.color,
       lineStyle: lineStyleMap[hl.lineStyle],
       lineWidth: hl.lineStyle === "solid" ? 2 : 1,
+      layer: hl.layer,
     });
   }
 
@@ -466,12 +684,14 @@ export function smcMarkupToChartLayers(
       data: segmentByIdx(markup.fvg.fromIdx, markup.fvg.toIdx, chartTimesSec, markup.fvg.top),
       color: "#a78bfa",
       lineWidth: 2,
+      layer: "smc_fvg",
     });
     taLines.push({
       data: segmentByIdx(markup.fvg.fromIdx, markup.fvg.toIdx, chartTimesSec, markup.fvg.bottom),
       color: "#a78bfa",
       lineStyle: LineStyle.Dotted,
       lineWidth: 1,
+      layer: "smc_fvg",
     });
   }
 
@@ -480,12 +700,14 @@ export function smcMarkupToChartLayers(
       data: segmentByIdx(markup.ob.fromIdx, markup.ob.toIdx, chartTimesSec, markup.ob.top),
       color: "#fbbf24",
       lineWidth: 2,
+      layer: "smc_ob",
     });
     taLines.push({
       data: segmentByIdx(markup.ob.fromIdx, markup.ob.toIdx, chartTimesSec, markup.ob.bottom),
       color: "#fbbf24",
       lineStyle: LineStyle.Dotted,
       lineWidth: 1,
+      layer: "smc_ob",
     });
   }
 

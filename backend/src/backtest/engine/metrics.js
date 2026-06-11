@@ -150,13 +150,130 @@ export function monthlyReturns(trades) {
   return map;
 }
 
-export function computeAllMetrics({ trades, equityCurve, tf, startingEquity }) {
+/**
+ * R-multiple distribution. Each trade's R = netPnl / riskAtEntry, where risk is
+ * the dollar amount risked to the stop (entry-to-SL distance × qty). Falls back
+ * to `t.riskUsd`/`t.rMultiple` if the runner already recorded them.
+ * @param {Array<object>} trades
+ */
+export function rMultipleStats(trades) {
+  const rs = [];
+  for (const t of trades) {
+    let r = null;
+    if (Number.isFinite(Number(t.rMultiple))) {
+      r = Number(t.rMultiple);
+    } else {
+      // Prefer the entry-time dollar risk. The live stop is trailed to breakeven,
+      // so `slPrice` on the final leg can equal the entry and blow R up to infinity.
+      const entry = Number(t.entryPrice ?? t.entryFill);
+      const stop = Number(t.initialSlPrice ?? t.slPrice ?? t.stopPrice);
+      const risk =
+        Number(t.initialRiskUsd) ||
+        Number(t.riskUsd) ||
+        (Number.isFinite(entry) && Number.isFinite(stop) && Number(t.qty)
+          ? Math.abs(entry - stop) * Math.abs(Number(t.qty))
+          : 0);
+      if (risk > 0) r = Number(t.netPnl ?? 0) / risk;
+    }
+    if (r != null && Number.isFinite(r)) rs.push(r);
+  }
+  if (!rs.length) {
+    return { rCount: 0, rMean: 0, rMedian: 0, rStd: 0, rMin: 0, rMax: 0, expectancyR: 0, rValues: [] };
+  }
+  const sorted = [...rs].sort((a, b) => a - b);
+  const mean = rs.reduce((a, b) => a + b, 0) / rs.length;
+  const variance = rs.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, rs.length - 1);
+  const median =
+    sorted.length % 2
+      ? sorted[(sorted.length - 1) / 2]
+      : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+  return {
+    rCount: rs.length,
+    rMean: mean,
+    rMedian: median,
+    rStd: Math.sqrt(variance),
+    rMin: sorted[0],
+    rMax: sorted[sorted.length - 1],
+    expectancyR: mean,
+    rValues: rs,
+  };
+}
+
+/**
+ * Rolling Sharpe over per-bar equity returns within a window. Returns the array
+ * plus the min/last so we can see stability over the run (not just the average).
+ */
+export function rollingSharpe(curve, tf, windowBars = 480) {
+  if (!curve.length) return { series: [], min: 0, last: 0 };
+  const stepMs = tfToMs(tf);
+  const barsPerYear = (365 * 24 * 60 * 60 * 1000) / stepMs;
+  const rets = [];
+  for (let i = 1; i < curve.length; i++) {
+    const prev = curve[i - 1].equity;
+    rets.push(prev > 0 ? (curve[i].equity - prev) / prev : 0);
+  }
+  const series = [];
+  for (let i = windowBars; i <= rets.length; i++) {
+    const win = rets.slice(i - windowBars, i);
+    const mean = win.reduce((a, b) => a + b, 0) / win.length;
+    const variance = win.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, win.length - 1);
+    const std = Math.sqrt(variance);
+    series.push(std > 0 ? (mean / std) * Math.sqrt(barsPerYear) : 0);
+  }
+  return {
+    series,
+    min: series.length ? Math.min(...series) : 0,
+    last: series.length ? series[series.length - 1] : 0,
+  };
+}
+
+/**
+ * Per-regime metric breakdown. `regimeOf(trade)` must return a label string (or
+ * null). Aggregates net PnL, win rate, count and expectancy per regime.
+ */
+export function perRegimeBreakdown(trades, regimeOf) {
+  if (typeof regimeOf !== "function") return {};
+  const map = {};
+  for (const t of trades) {
+    const reg = regimeOf(t) || "UNKNOWN";
+    if (!map[reg]) map[reg] = { regime: reg, trades: 0, wins: 0, netPnl: 0, grossPnl: 0 };
+    const net = Number(t.netPnl ?? 0);
+    map[reg].trades += 1;
+    map[reg].netPnl += net;
+    map[reg].grossPnl += Number(t.grossPnl ?? 0);
+    if (net > 0) map[reg].wins += 1;
+  }
+  for (const reg of Object.keys(map)) {
+    const m = map[reg];
+    m.winRate = m.trades ? m.wins / m.trades : 0;
+    m.expectancy = m.trades ? m.netPnl / m.trades : 0;
+  }
+  return map;
+}
+
+/**
+ * @param {object} args
+ * @param {(trade:object)=>string|null} [args.regimeOf] optional per-trade regime classifier
+ */
+export function computeAllMetrics({ trades, equityCurve, tf, startingEquity, regimeOf }) {
   const ts = tradeStats(trades);
   const mdd = maxDrawdown(equityCurve);
   const sr = sharpeAndSortino(equityCurve, tf);
+  const rmult = rMultipleStats(trades);
   const finalEquity = equityCurve.length ? equityCurve[equityCurve.length - 1].equity : startingEquity;
   const totalReturnPct = startingEquity > 0 ? ((finalEquity - startingEquity) / startingEquity) * 100 : 0;
   const romd = mdd.maxDrawdownPct > 0 ? totalReturnPct / mdd.maxDrawdownPct : null;
+
+  // CAGR + Calmar from the equity curve timespan.
+  const spanMs =
+    equityCurve.length > 1 ? equityCurve[equityCurve.length - 1].ts - equityCurve[0].ts : 0;
+  const years = spanMs > 0 ? spanMs / (365 * 24 * 60 * 60 * 1000) : 0;
+  const growth = startingEquity > 0 ? finalEquity / startingEquity : 1;
+  const cagrPct =
+    years > 0 && growth > 0 ? (Math.pow(growth, 1 / years) - 1) * 100 : totalReturnPct;
+  const calmar = mdd.maxDrawdownPct > 0 ? cagrPct / mdd.maxDrawdownPct : null;
+  const rollSharpe = rollingSharpe(equityCurve, tf);
+
   return {
     ...ts,
     ...mdd,
@@ -164,6 +281,73 @@ export function computeAllMetrics({ trades, equityCurve, tf, startingEquity }) {
     finalEquity,
     totalReturnPct,
     romd,
+    cagrPct,
+    calmar,
+    rMean: rmult.rMean,
+    rMedian: rmult.rMedian,
+    rStd: rmult.rStd,
+    rMin: rmult.rMin,
+    rMax: rmult.rMax,
+    expectancyR: rmult.expectancyR,
+    rollingSharpeMin: rollSharpe.min,
+    rollingSharpeLast: rollSharpe.last,
     monthlyReturns: monthlyReturns(trades),
+    ...(typeof regimeOf === "function" ? { perRegime: perRegimeBreakdown(trades, regimeOf) } : {}),
+  };
+}
+
+/**
+ * Attach train/test metrics for UI walk-forward (single split by bar index).
+ * Simulator still runs on the full window; this only splits the report.
+ *
+ * @param {object} metrics base metrics from computeAllMetrics
+ * @param {object} args
+ * @param {object[]} args.trades
+ * @param {object[]} args.equityCurve
+ * @param {Array<{ts:number}>} args.timelineCandles bar series used for the split index
+ * @param {number|null|undefined} args.trainPct 0.1–0.9
+ * @param {string} args.tf
+ * @param {number} args.startingEquity
+ */
+export function attachWalkForwardMetrics(metrics, {
+  trades,
+  equityCurve,
+  timelineCandles,
+  trainPct,
+  tf,
+  startingEquity,
+}) {
+  if (trainPct == null || !trades?.length || !timelineCandles?.length) return metrics;
+  const pct = Math.max(0.1, Math.min(0.9, Number(trainPct)));
+  if (!Number.isFinite(pct)) return metrics;
+  const splitIdx = Math.floor(timelineCandles.length * pct);
+  const splitTs =
+    splitIdx > 0 && splitIdx < timelineCandles.length ? Number(timelineCandles[splitIdx].ts) : null;
+  if (splitTs == null) return metrics;
+
+  const trainTrades = trades.filter((t) => Number(t.exitTs) <= splitTs);
+  const testTrades = trades.filter((t) => Number(t.exitTs) > splitTs);
+  const trainCurve = equityCurve.filter((p) => Number(p.ts) <= splitTs);
+  const testCurve = equityCurve.filter((p) => Number(p.ts) > splitTs);
+  const startingTest = trainCurve.length ? trainCurve[trainCurve.length - 1].equity : startingEquity;
+
+  return {
+    ...metrics,
+    walkForward: {
+      trainPct: pct,
+      splitTs,
+      train: computeAllMetrics({
+        trades: trainTrades,
+        equityCurve: trainCurve,
+        tf,
+        startingEquity,
+      }),
+      test: computeAllMetrics({
+        trades: testTrades,
+        equityCurve: testCurve,
+        tf,
+        startingEquity: startingTest,
+      }),
+    },
   };
 }

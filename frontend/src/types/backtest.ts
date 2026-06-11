@@ -15,6 +15,9 @@ export type BacktestRunSummary = {
   botInstanceId: string | null;
   label: string | null;
   symbol: string;
+  /** Multi-coin portfolio run: list of symbols traded. */
+  symbols?: string[] | null;
+  isPortfolio?: boolean;
   timeframe: string;
   startDate: string;
   endDate: string;
@@ -33,6 +36,8 @@ export type BacktestRunSummary = {
   error: string | null;
   coveragePct: number | null;
   metrics: BacktestMetrics | null;
+  /** Set when walk-forward was requested at run creation ({ trainPct }). */
+  walkForwardSplit?: { trainPct?: number } | null;
   costModel: Record<string, unknown> | null;
   configSnapshot: Record<string, unknown> | null;
   instanceOperationalSnapshot: Record<string, unknown> | null;
@@ -85,10 +90,19 @@ export type BacktestMetrics = {
     train: BacktestMetrics;
     test: BacktestMetrics;
   };
+  portfolio?: {
+    symbols: string[];
+    perCoin: Record<
+      string,
+      { trades: number; wins: number; winRate: number; netPnl: number }
+    >;
+  };
 };
 
 export type BacktestTrade = {
   tradeNumber: number;
+  /** Set on portfolio runs; omitted on legacy single-coin runs. */
+  symbol?: string | null;
   direction: "BUY" | "SELL" | string;
   entryTs: string;
   exitTs: string;
@@ -191,4 +205,177 @@ export type BacktestOptimizationRun = {
   sharpeRatio: number | null;
   profitFactor: number | null;
   metrics: BacktestMetrics | null;
+};
+
+/* ───────────────────────── strategy testing battery ───────────────────────── */
+
+export type StrategyTestStatus = "queued" | "running" | "done" | "failed" | "cancelled";
+
+export type StrategyTestSlimMetrics = {
+  totalTrades: number;
+  winRate: number;
+  profitFactor: number | null;
+  expectancy: number;
+  totalReturnPct: number;
+  maxDrawdownPct: number;
+  sharpe: number;
+  calmar: number | null;
+  cagrPct: number;
+  totalFees: number;
+  totalGrossPnl: number;
+  totalNetPnl: number;
+  finalEquity: number | null;
+};
+
+export type StrategyTestGate = { pass: boolean; value: number; threshold: string };
+
+export type StrategyTestReport = {
+  engineVersion?: string;
+  seedRunId: string;
+  strategyKey: string;
+  symbols: string[];
+  isPortfolio: boolean;
+  timeframe: string;
+  window: { from: number; to: number; bars: number; note?: string | null };
+  baseline: {
+    metrics: StrategyTestSlimMetrics | null;
+    reproducibility: {
+      seedReturnPct: number | null;
+      seedTrades: number;
+      batteryReturnPct: number;
+      batteryTrades: number;
+      sameWindow: boolean;
+      note: string;
+    };
+  };
+  walkForward: {
+    folds: Array<{
+      fold: number;
+      train: { trades: number; expectancy: number; returnPct: number };
+      test: { trades: number; expectancy: number; returnPct: number; profitFactor: number | null };
+    }>;
+    avgTrainExpectancy: number;
+    avgTestExpectancy: number;
+    degradationPct: number;
+    oosSumReturnPct: number;
+    embargoBars: number;
+    scope: string;
+    note: string | null;
+  };
+  monteCarlo: {
+    paths: number;
+    p5ReturnPct: number;
+    p50ReturnPct: number;
+    p95ReturnPct: number;
+    meanReturnPct: number;
+    medianMaxDdPct: number;
+    p95MaxDdPct: number;
+    riskOfRuinPct: number;
+    insufficient?: boolean;
+    riskFracPct: number;
+    rCount: number;
+  };
+  sensitivity: {
+    params: Array<{
+      key: string;
+      base: number;
+      variants: Array<{
+        delta: string;
+        value: number;
+        returnPct: number | null;
+        profitFactor: number | null;
+        trades: number;
+        maxDrawdownPct: number | null;
+        breaks: boolean;
+        /** Engine clamped/ignored the perturbed value — variant tested nothing. */
+        noEffect?: boolean;
+      }>;
+    }>;
+    variantCount: number;
+    breakCount: number;
+    breakRatePct: number | null;
+    stable: boolean | null;
+  };
+  costStress: Array<{
+    id: string;
+    label: string;
+    returnPct: number | null;
+    deltaVsBasePct: number | null;
+    trades: number;
+    survived: boolean;
+  }>;
+  feesOverGrossPct: number | null;
+  stress: Array<{
+    id: string;
+    label: string;
+    kind: "synthetic" | "historical";
+    window?: string;
+    returnPct?: number | null;
+    maxDrawdownPct?: number | null;
+    trades?: number;
+    survived?: boolean;
+    skipped?: boolean;
+    reason?: string;
+  }>;
+  stressSurvivedAll: boolean;
+  gates: { allPass: boolean; gates: Record<string, StrategyTestGate> };
+  fidelity: {
+    score: number;
+    factors: Array<{ id: string; label: string; score: number; max: number; note: string }>;
+  };
+  grade: { grade: "A" | "B" | "C" | "F"; reasons: string[] };
+};
+
+export type StrategyTestSuggestion = {
+  safetyLimits: { maxDrawdownPct: number; mcP5ReturnPct: number; riskOfRuinPct: number };
+  candidates: Array<{
+    label: string;
+    cfgPatch: Record<string, number>;
+    totalReturnPct: number;
+    maxDrawdownPct: number;
+    profitFactor: number | null;
+    trades: number;
+    sharpe: number;
+    mcP5ReturnPct: number;
+    riskOfRuinPct: number;
+    withinLimits: boolean;
+  }>;
+  best: {
+    label: string;
+    cfgPatch: Record<string, number>;
+    metrics: {
+      totalReturnPct: number;
+      maxDrawdownPct: number;
+      profitFactor: number | null;
+      sharpe: number;
+      trades: number;
+      mcP5ReturnPct: number;
+      riskOfRuinPct: number;
+    };
+  } | null;
+  note: string | null;
+  instanceConfig: Record<string, number | string>;
+  coinSuitability?: "PASS" | "MARGINAL" | "SKIP";
+  recommendedSepMode?: string;
+};
+
+export type StrategyTestSummary = {
+  id: string;
+  seedRunId: string;
+  seedLabel: string | null;
+  seedSymbol: string | null;
+  seedSymbols: string[] | null;
+  seedTimeframe: string | null;
+  seedEngineType: string | null;
+  status: StrategyTestStatus;
+  progressPct: number;
+  currentPhase: string | null;
+  grade: "A" | "B" | "C" | "F" | null;
+  liveFidelityScore: number | null;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  report?: StrategyTestReport | null;
+  suggestion?: StrategyTestSuggestion | null;
 };

@@ -39,6 +39,7 @@ export function TradeListTable({
   if (!trades.length) return <div className="py-8 text-center text-sm text-slate-500">No trades.</div>;
 
   const lev = Math.max(1, Number(futuresLeverage) || 5);
+  const showCoinCol = trades.some((t) => t.symbol != null && String(t.symbol).trim() !== "");
 
   if (variant === "compact") {
     return (
@@ -47,7 +48,9 @@ export function TradeListTable({
           <thead className="sticky top-0 bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-900">
             <tr>
               <th className="px-2 py-1.5">#</th>
+              {showCoinCol ? <th className="px-2 py-1.5">Coin</th> : null}
               <th className="px-2 py-1.5">Side</th>
+              <th className="px-2 py-1.5">Entry (UTC)</th>
               <th className="px-2 py-1.5">Entry (price)</th>
               <th className="px-2 py-1.5">Exit (price)</th>
               <th className="px-2 py-1.5 text-right">Net</th>
@@ -67,10 +70,18 @@ export function TradeListTable({
                   onClick={() => onSelectTrade?.(selected ? null : t)}
                 >
                   <td className="px-2 py-1 font-mono">{t.tradeNumber}</td>
+                  {showCoinCol ? (
+                    <td className="px-2 py-1 font-mono text-[10px] font-semibold text-sky-700 dark:text-sky-300">
+                      {t.symbol?.replace("USDT", "") ?? "—"}
+                    </td>
+                  ) : null}
                   <td
                     className={`px-2 py-1 font-semibold ${t.direction === "BUY" ? "text-emerald-600" : "text-rose-600"}`}
                   >
                     {t.direction}
+                  </td>
+                  <td className="px-2 py-1 font-mono text-[10px] text-slate-600 dark:text-slate-400">
+                    {fmtTsShort(t.entryTs)}
                   </td>
                   <td className="px-2 py-1 font-mono" title={fmtTs(t.entryTs)}>
                     {fmtPrice(t.entryPrice)}
@@ -95,9 +106,10 @@ export function TradeListTable({
         <thead className="sticky top-0 bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-900">
           <tr>
             <th className="px-2 py-1.5">#</th>
+            {showCoinCol ? <th className="px-2 py-1.5">Coin</th> : null}
             <th className="px-2 py-1.5">Side</th>
             <th className="px-2 py-1.5">Entry</th>
-            <th className="px-2 py-1.5">Exit</th>
+            <th className="px-2 py-1.5">Exit (UTC)</th>
             <th className="px-2 py-1.5">Bars</th>
             <th className="px-2 py-1.5" title="Initial margin at entry (notional ÷ leverage)">
               Margin
@@ -134,6 +146,11 @@ export function TradeListTable({
                 onClick={() => onSelectTrade?.(selected ? null : t)}
               >
                 <td className="px-2 py-1 font-mono">{t.tradeNumber}</td>
+                {showCoinCol ? (
+                  <td className="px-2 py-1 font-mono text-[10px] font-semibold text-sky-700 dark:text-sky-300">
+                    {t.symbol?.replace("USDT", "") ?? "—"}
+                  </td>
+                ) : null}
                 <td className={`px-2 py-1 font-semibold ${t.direction === "BUY" ? "text-emerald-600" : "text-rose-600"}`}>
                   {t.direction}
                 </td>
@@ -196,10 +213,27 @@ function structureClass(risk: string): string {
 function fmtTs(s: string) {
   try {
     const d = new Date(s);
-    return d.toLocaleString("en-IN", {
-      timeZone: "Asia/Kolkata",
+    return d.toLocaleString("en-GB", {
+      timeZone: "UTC",
       month: "2-digit",
       day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return s;
+  }
+}
+
+/** Compact trade list — UTC so entries are not mistaken for same-bar pairs. */
+function fmtTsShort(s: string) {
+  try {
+    const d = new Date(s);
+    return d.toLocaleString("en-GB", {
+      timeZone: "UTC",
+      day: "2-digit",
+      month: "short",
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,

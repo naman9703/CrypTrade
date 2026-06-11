@@ -146,7 +146,11 @@ type AppState = {
   perSessionTradingMode?: boolean;
   /** Server: bot `running` flag per TRADING_MODE (parallel engines). */
   runningByMode?: Record<string, boolean>;
+  /** Server/engine truth from WS/HTTP snapshots. */
+  liveBot?: any;
   bot?: any;
+  /** Unsaved strategy draft patches per mode. */
+  draftBotPatchByMode: Record<ApiTradingModeSlug, Record<string, unknown>>;
   account?: any;
   positions?: any[];
   market?: MarketPayload;
@@ -209,6 +213,10 @@ type AppState = {
 
   connect: () => void;
   setBot: (bot: any) => void;
+  stageDraftBotPatch: (modeSlug: ApiTradingModeSlug, patch: Record<string, unknown>) => void;
+  clearDraftBotPatch: (modeSlug: ApiTradingModeSlug) => void;
+  getDraftBotPatch: (modeSlug: ApiTradingModeSlug) => Record<string, unknown>;
+  hasDraftBotPatch: (modeSlug: ApiTradingModeSlug) => boolean;
   setChartDisplaySymbol: (sym: string | null) => void;
   pushLog: (p: LogPayload) => void;
   fetchAccountsForMode: (modeSlug: ApiTradingModeSlug) => Promise<void>;
@@ -421,6 +429,27 @@ function scheduleStrategyConfigDirtyRecompute(modeSlug: ApiTradingModeSlug) {
     strategyDirtyRecomputeSlug = null;
     if (slug) useAppStore.getState().recomputeStrategyConfigDirtyForMode(slug);
   }, 250);
+}
+
+function mergeLiveBotWithDraft(
+  mode: string | undefined,
+  liveBot: Record<string, unknown> | undefined,
+  draftByMode: Record<ApiTradingModeSlug, Record<string, unknown>>,
+): Record<string, unknown> {
+  const modeSlug = tradingModeToApiModeSlug(String(mode ?? ""));
+  const draft = draftByMode[modeSlug] ?? {};
+  return { ...(liveBot ?? {}), ...draft };
+}
+
+/** Authoritative UI bot: live WS/HTTP truth + unsaved draft + in-flight patch guards. */
+export function deriveViewBot(
+  mode: string | undefined,
+  liveBot: Record<string, unknown> | undefined,
+  draftByMode: Record<ApiTradingModeSlug, Record<string, unknown>>,
+): Record<string, unknown> {
+  return normalizeIntradayGatesOnBot(
+    applyBotConfigPatchInFlight(mergeLiveBotWithDraft(mode, liveBot, draftByMode)),
+  );
 }
 
 function scheduleWsStateFlush() {
@@ -647,6 +676,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   analyticsSelectedVersionId: null,
   analyticsModeSlug: "paper",
   runningByMode: {},
+  liveBot: undefined,
+  draftBotPatchByMode: { paper: {}, demo_api: {}, testnet: {}, live: {} },
   strategyConfigDirtyByMode: { paper: false, demo_api: false, testnet: false, live: false },
   account: undefined,
   positions: [],
@@ -778,12 +809,16 @@ export const useAppStore = create<AppState>((set, get) => ({
                       (p as HelloPayload & { activeInstanceByMode?: unknown }).activeInstanceByMode,
                     )
                   : s.activeInstanceByMode,
-              bot: normalizeIntradayGatesOnBot(
-                applyBotConfigPatchInFlight(
-                  (mergedHelloBot && typeof mergedHelloBot === "object"
-                    ? mergedHelloBot
-                    : {}) as Record<string, unknown>,
-                ),
+              liveBot:
+                mergedHelloBot && typeof mergedHelloBot === "object"
+                  ? ({ ...(mergedHelloBot as Record<string, unknown>) } as Record<string, unknown>)
+                  : {},
+              bot: deriveViewBot(
+                p.mode,
+                (mergedHelloBot && typeof mergedHelloBot === "object"
+                  ? (mergedHelloBot as Record<string, unknown>)
+                  : {}) as Record<string, unknown>,
+                s.draftBotPatchByMode,
               ),
               account:
                 (p as any).account !== undefined
@@ -1044,7 +1079,44 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
   },
 
-  setBot: (bot) => set({ bot }),
+  setBot: (bot) => set({ bot, liveBot: bot }),
+  stageDraftBotPatch: (modeSlug, patch) => {
+    if (!patch || typeof patch !== "object") return;
+    set((s) => {
+      const prevModePatch = s.draftBotPatchByMode[modeSlug] ?? {};
+      const nextModePatch = { ...prevModePatch, ...patch };
+      const draftBotPatchByMode = { ...s.draftBotPatchByMode, [modeSlug]: nextModePatch };
+      const live =
+        s.liveBot && typeof s.liveBot === "object" && !Array.isArray(s.liveBot)
+          ? (s.liveBot as Record<string, unknown>)
+          : s.bot && typeof s.bot === "object" && !Array.isArray(s.bot)
+            ? (s.bot as Record<string, unknown>)
+            : {};
+      return {
+        draftBotPatchByMode,
+        bot: deriveViewBot(s.mode, live, draftBotPatchByMode),
+      };
+    });
+    get().recomputeStrategyConfigDirtyForMode(modeSlug);
+  },
+  clearDraftBotPatch: (modeSlug) => {
+    set((s) => {
+      const draftBotPatchByMode = { ...s.draftBotPatchByMode, [modeSlug]: {} };
+      const live =
+        s.liveBot && typeof s.liveBot === "object" && !Array.isArray(s.liveBot)
+          ? (s.liveBot as Record<string, unknown>)
+          : s.bot && typeof s.bot === "object" && !Array.isArray(s.bot)
+            ? (s.bot as Record<string, unknown>)
+            : {};
+      return {
+        draftBotPatchByMode,
+        bot: deriveViewBot(s.mode, live, draftBotPatchByMode),
+      };
+    });
+    get().recomputeStrategyConfigDirtyForMode(modeSlug);
+  },
+  getDraftBotPatch: (modeSlug) => ({ ...(get().draftBotPatchByMode[modeSlug] ?? {}) }),
+  hasDraftBotPatch: (modeSlug) => Object.keys(get().draftBotPatchByMode[modeSlug] ?? {}).length > 0,
 
   setChartDisplaySymbol: (sym) => {
     const next = sym == null || String(sym).trim() === "" ? null : normWsSym(String(sym));
@@ -1493,14 +1565,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!runId) return;
     set((s) => {
       const prev = s.backtestProgress?.[runId] ?? { progressPct: 0 };
+      const next = {
+        progressPct: patch.progressPct != null ? Number(patch.progressPct) : prev.progressPct,
+        status: patch.status ?? prev.status,
+        error: patch.error ?? prev.error,
+      };
+      if (
+        prev.progressPct === next.progressPct &&
+        prev.status === next.status &&
+        prev.error === next.error
+      ) {
+        return s;
+      }
       return {
         backtestProgress: {
           ...s.backtestProgress,
-          [runId]: {
-            progressPct: patch.progressPct != null ? Number(patch.progressPct) : prev.progressPct,
-            status: patch.status ?? prev.status,
-            error: patch.error ?? prev.error,
-          },
+          [runId]: next,
         },
       };
     });
@@ -1638,8 +1718,8 @@ export function applyWsStateSnapshot(payload: unknown) {
         ? parseActiveInstanceByModeFromServer(p.activeInstanceByMode)
         : undefined;
     const prevBot =
-      prev.bot && typeof prev.bot === "object" && !Array.isArray(prev.bot)
-        ? (prev.bot as Record<string, unknown>)
+      prev.liveBot && typeof prev.liveBot === "object" && !Array.isArray(prev.liveBot)
+        ? (prev.liveBot as Record<string, unknown>)
         : {};
     const incMssRaw = (botPayload as Record<string, unknown>).multiSymbolWatchSignals;
     delete (botPayload as { multiSymbolWatchSignals?: unknown }).multiSymbolWatchSignals;
@@ -1695,8 +1775,8 @@ export function applyWsStateSnapshot(payload: unknown) {
     if (stableTabSymbols !== undefined) {
       (botPayload as Record<string, unknown>).multiCoinSignalTabSymbols = stableTabSymbols;
     }
-    let mergedBot: Record<string, unknown> = { ...prevBot, ...botPayload, multiSymbolWatchSignals: nextMss };
-    mergedBot = normalizeIntradayGatesOnBot(applyBotConfigPatchInFlight(mergedBot));
+    const liveBotNext: Record<string, unknown> = { ...prevBot, ...botPayload, multiSymbolWatchSignals: nextMss };
+    let mergedBot: Record<string, unknown> = deriveViewBot(nextMode, liveBotNext, prev.draftBotPatchByMode);
     const modeKeySync = String(nextMode || prev.mode || "PAPER").toUpperCase();
     if (payloadHadRunningByMode && typeof nextRb[modeKeySync] === "boolean") {
       mergedBot.running = Boolean(nextRb[modeKeySync]);
@@ -1704,6 +1784,7 @@ export function applyWsStateSnapshot(payload: unknown) {
     const out = {
       mode: nextMode,
       runningByMode: nextRb,
+      liveBot: liveBotNext,
       bot: mergedBot,
       account: nextAccount,
       positions: nextPositions,

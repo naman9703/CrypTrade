@@ -112,6 +112,78 @@ export const INTRADAY_PRO_VP_15M = {
   srIntradayMinScore: 9,
 };
 
+/** LIQ solo — PDH/PDL sweep+reclaim (strict classical) */
+export const INTRADAY_PRO_LIQ_15M = {
+  ...INTRADAY_PRO_BASE,
+  symbol: "BNBUSDT",
+  timeframe: "15m",
+  intradayGateLiquidity: true,
+  intradayGateSession: false,
+  intradayGateFib: false,
+  intradayGateVp: false,
+  intradayGateOrderFlow: false,
+  intradayGateHtfRegime: false,
+  intradayLearnedRulesEnabled: false,
+  supertrendHtf4hEnabled: false,
+  intradayLiqStrictMode: true,
+  intradayLiqMinScore: 6,
+  intradayLiqMinRr: 1.5,
+  intradayLiqRejectSameBarReclaim: true,
+  intradayLiqMinReclaimBodyRatio: 0.35,
+  intradayLiqMinSweepExtensionPct: 0.008,
+  intradayLiqPartialTp: true,
+  intradayLiqTp1Enabled: true,
+  intradayLiqTp2Enabled: true,
+  intradayLiqOnePickPerDay: true,
+  intradayLiqRequireHtfAlign: true,
+  intradayLiqMaxTpRr: 5,
+  srIntradayMaxTradesPerDay: 3,
+  intradayMinTechniqueCount: 1,
+  supertrendFuturesFixedTpPct: 0,
+  supertrendFuturesFixedSlPct: 0,
+};
+
+/** Situation router — data-driven multi-playbook (year study route table) */
+export const BNB_SITUATION_ROUTER_15M = {
+  symbol: "BNBUSDT",
+  timeframe: "15m",
+  strategyMode: "MANUAL" as const,
+  manualStrategy: "SITUATION_INTRADAY",
+  marketMode: "FUTURES" as const,
+  futuresLeverage: 12,
+  backtestPositionSizing: "RISK_AT_SL" as const,
+  riskPerTrade: 2,
+  riskPerTradeUnit: "PCT" as const,
+  situationMaxTradesPerDay: 2,
+  situationMinBarGap: 4,
+  situationMinScore: 7,
+  situationMaxLossStreak: 2,
+  situationMaxExhaustionPerDay: 2,
+  situationExhaustionMinBarsFromOpen: 20,
+  intradayLiqPartialTp: true,
+  intradayLiqTp1Enabled: true,
+  intradayLiqTp2Enabled: true,
+  intradayLiqBreakevenAfterPartial: true,
+};
+
+/** LIQ daily — classical + breakdown-day trend continuation (LH-fade / displacement) */
+export const INTRADAY_PRO_LIQ_DAILY_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  intradayLiqTrendContinuation: true,
+  intradayLiqTrendOnlyBreakdownDays: true,
+  intradayLiqClassicOnTrendDays: false,
+  intradayLiqVetoCounterTrend: true,
+  intradayLiqBreakdownDayBias: true,
+  intradayLiqTrendFadeEma: 21,
+  intradayLiqTrendMinAdx: 18,
+  intradayLiqTrendMinRvol: 1.0,
+  intradayLiqTrendFadeMinRvol: 0.65,
+  intradayLiqTrendMinBarsBeyondLevel: 2,
+  intradayLiqTrendMinDispAtr: 0.4,
+  intradayLiqTrendRsiMinShort: 34,
+  intradayLiqTrendRsiMaxShort: 55,
+};
+
 /** Institutional A+ S/R — HTF trend + zones + sweep + BOS + confirmation + volume */
 export const INTRADAY_PRO_SR_APLUS_15M = {
   ...INTRADAY_PRO_BASE,
@@ -204,7 +276,7 @@ export const INTRADAY_PRO_ICT_15M = {
   intradaySmcHtfStrictness: "either",
   intradaySmcRequireHtfBias: true,
   intradaySmcSlMode: "structure",
-  intradaySmcMaxTpRr: 3,
+  intradaySmcMaxTpRr: 5,
   intradaySmcMaxHoldBars: 48,
   srIntradayMaxTradesPerDay: 5,
   srIntradayMinScore: 7,

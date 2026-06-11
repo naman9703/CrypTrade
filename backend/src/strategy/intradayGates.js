@@ -191,6 +191,10 @@ export function countGatedTechniques(techniques, gates) {
       if (gates.orderFlow) n += 1;
       continue;
     }
+    if (t.startsWith("of_")) {
+      if (gates.orderFlow) n += 1;
+      continue;
+    }
     if (t === "sr_htf_zone" || t === "sr_bos" || t === "sr_confirm") {
       if (gates.institutionalSr) n += 1;
     }

@@ -4,6 +4,7 @@ import {
   updateIntelligenceAdx,
   updateIntelligenceOrderBook,
   computeAndBroadcastIntelligenceSnapshot,
+  intelligenceCache,
 } from "../intelligence/index.js";
 import { tradeCloseFeeUsdtFromNotional, tradeCloseFeeRate } from "../lib/tradeCloseFee.js";
 import { maxBarsForHistory } from "../lib/chartWindow.js";
@@ -568,6 +569,48 @@ export function createBot({
     /** `"PCT"` = max daily drawdown as fraction of day's start equity; `"USDT"` = max loss in USD from day baseline per venue. */
     maxDailyLossUnit: "PCT",
     /**
+     * Institutional risk overlay (regime-adaptive strategy + reusable globally).
+     * Backtest enforcement lives in runner.js; live enforcement in the entry path.
+     */
+    /** Single aggressiveness dial — scales risk-per-trade ~1:1 with return AND drawdown (0.1–5). */
+    riskScale: 1,
+    /** Vol-targeted sizing: size by referenceATR%/currentATR% so per-trade risk is constant across regimes. */
+    volTargetSizing: false,
+    volTargetAtrPct: 0.005,
+    volTargetMaxMult: 2,
+    volTargetMinMult: 0.4,
+    /** Account-drawdown kill switch: halt NEW entries once equity is this % below peak (0 = off). */
+    riskKillSwitchDdPct: 0,
+    /** Consecutive-loss cooldown: stop new entries for the rest of the UTC day after N losses in a row (0 = off). */
+    riskConsecutiveLossLimit: 0,
+    /** Weekly drawdown cap: halt new entries once the rolling 7-day equity is down this % (0 = off). */
+    riskWeeklyMaxLossPct: 0,
+
+    // ── Regime-adaptive strategy (REGIME_ADAPTIVE) ──────────────────────────
+    /** Per-regime playbook enables. */
+    regimeAdaptiveEnableTrend: true,
+    regimeAdaptiveEnableRange: true,
+    regimeAdaptiveEnableBreakout: true,
+    /** Minimum setup grade to trade: "A" (top only) or "B" (A or B). */
+    regimeAdaptiveMinGrade: "A",
+    /** Skip bars where the regime label confidence is below this floor (0–1). */
+    regimeAdaptiveConfidenceFloor: 0.45,
+    /** Trade-frequency controls (the #1 cost lever). */
+    regimeAdaptiveMaxTradesPerDay: 2,
+    regimeAdaptiveMinBarGap: 8,
+    /** Session filter: "LONDON_NY" (default) or "ALL". */
+    regimeAdaptiveKillzoneMode: "LONDON_NY",
+    /** Reward:risk (TP2 in R) per playbook. */
+    regimeAdaptiveTrendRR: 2.0,
+    regimeAdaptiveRangeRR: 1.5,
+    regimeAdaptiveBreakoutRR: 2.0,
+    /** Structure-stop ATR buffer. */
+    regimeAdaptiveAtrSlMult: 1.1,
+    /** Optional regime-engine threshold overrides (0/unset = use defaults). */
+    regimeAdaptiveTrendAdx: 25,
+    regimeAdaptiveSqueezePctile: 0.2,
+    regimeAdaptiveVolatileAtrPct: 0.012,
+    /**
      * With fixed USDT capital (risk + max daily both USDT) and MULTIPLE pins (2+), divide `riskPerTrade` by pin count
      * so each active coin gets an equal slice of the per-trade budget.
      */
@@ -741,6 +784,37 @@ export function createBot({
     intradayGateFib: true,
     intradayGateVp: true,
     intradayGateOrderFlow: true,
+    intradayOfKillzoneMode: "LONDON_NY",
+    intradayOfRequireKeyLevel: true,
+    intradayOfRequireConfirmation: true,
+    intradayOfMinStackBars: 3,
+    intradayOfMinConfluence: 2,
+    intradayOfUseOrderBook: true,
+    intradayOfAllowProxy: false,
+    intradayOfLevelProximityPct: 0.0006,
+    intradayOfDivergenceLookback: 12,
+    intradayOfAbsorptionVolMult: 1.5,
+    intradayOfAbsorptionRangeAtrMult: 1.0,
+    intradayOfStackDeltaRatio: 0.75,
+    intradayOfBookImbalanceMin: 0.65,
+    intradayOfSoloMinScore: 7,
+    intradayOfVetoMode: false,
+    intradayOfMinPartialScore: 6,
+    intradayOfConfluenceMode: "full",
+    intradayOfAllowCvdOnly: false,
+    intradayOfRequirePremiumDiscount: true,
+    intradayOfTp1Enabled: true,
+    intradayOfTp2Enabled: true,
+    intradayOfPartialFrac: 0.4,
+    intradayOfMinRr: 1.5,
+    intradayOfBreakevenAfterPartial: true,
+    intradayOfApproachLookback: 8,
+    intradayOfEntryAtSignalClose: false,
+    intradayOfExitOnDeltaAgainst: true,
+    intradayOfExitGraceBars: 3,
+    intradayOfExitMinDeltaRatio: 0.4,
+    intradayOfMaxHoldBars: 48,
+    intradaySmcUseOrderFlow: false,
     intradayGateHtfRegime: true,
     intradayGateInstitutionalSr: false,
     intradayGateSmcIct: false,
@@ -772,7 +846,7 @@ export function createBot({
     intradaySmcHtfStrictness: "either",
     intradaySmcHtfBiasMode: "parallel",
     intradaySmcSlMode: "structure",
-    intradaySmcMaxTpRr: 3,
+    intradaySmcMaxTpRr: 5,
     intradaySmcMaxHoldBars: 48,
     intradaySrAPlusMode: false,
     intradaySrMinVolRatio: clamp(Number(process.env.INTRADAY_SR_MIN_VOL_RATIO ?? 1.2), 0, 5),
@@ -794,6 +868,8 @@ export function createBot({
     intradayLiqBreakevenAfterPartial: true,
     intradayLiqPartialTp: true,
     intradayLiqMinRr: clamp(Number(process.env.INTRADAY_LIQ_MIN_RR ?? 1.5), 0, 5),
+    intradayLiqMaxTpRr: clamp(Number(process.env.INTRADAY_LIQ_MAX_TP_RR ?? 5), 0, 20),
+    intradayLiqMaxHoldBars: 48,
     vpLookbackBars: clamp(Math.round(Number(process.env.VP_LOOKBACK_BARS ?? 672)), 48, 2000),
     vpMinRR: clamp(Number(process.env.VP_MIN_RR ?? 1.5), 0.8, 5),
 
@@ -838,6 +914,18 @@ export function createBot({
     eliteStHtf4hMultiplier:       Math.max(0.5, Number(process.env.ELITE_ST_HTF4H_MULTIPLIER ?? 3)),
     eliteStRequireHtf1hEmaAlign:  ["1","true","yes"].includes(String(process.env.ELITE_ST_REQUIRE_HTF1H_EMA_ALIGN ?? "true").toLowerCase()),
     eliteStHtf1hMinSep:           Math.max(0, Number(process.env.ELITE_ST_HTF1H_MIN_SEP ?? 0.0005)),
+    /** FIXED | ATR | PERCENTILE | ADX | CALIBRATED — Gate 3 dynamic EMA min-separation */
+    eliteStHtf1hSepMode:          String(process.env.ELITE_ST_HTF1H_SEP_MODE ?? "FIXED").toUpperCase(),
+    eliteStHtf1hMinSepAtrMult:    clamp(Number(process.env.ELITE_ST_HTF1H_MIN_SEP_ATR_MULT ?? 0.25), 0.05, 2),
+    eliteStHtf1hMinSepFloor:      clamp(Number(process.env.ELITE_ST_HTF1H_MIN_SEP_FLOOR ?? 0.0002), 0, 0.01),
+    eliteStHtf1hMinSepCeil:       clamp(Number(process.env.ELITE_ST_HTF1H_MIN_SEP_CEIL ?? 0.0012), 0, 0.01),
+    eliteStHtf1hSepPercentileLookback: clamp(Math.round(Number(process.env.ELITE_ST_HTF1H_SEP_PCT_LOOKBACK ?? 90)), 20, 200),
+    eliteStHtf1hSepPercentileMult:     clamp(Number(process.env.ELITE_ST_HTF1H_SEP_PCT_MULT ?? 1), 0.5, 3),
+    eliteStHtf1hSepAdxBase:       clamp(Number(process.env.ELITE_ST_HTF1H_SEP_ADX_BASE ?? 0.0003), 0, 0.01),
+    eliteStHtf1hSepAdxAlpha:      clamp(Number(process.env.ELITE_ST_HTF1H_SEP_ADX_ALPHA ?? 1.5), 0, 5),
+    eliteStHtf1hSepAdxRef:        clamp(Math.round(Number(process.env.ELITE_ST_HTF1H_SEP_ADX_REF ?? 25)), 1, 100),
+    eliteStHtf1hSepCalibratePct:  clamp(Math.round(Number(process.env.ELITE_ST_HTF1H_SEP_CALIB_PCT ?? 40)), 1, 99),
+    eliteStHtf1hSepCalibrateBars: clamp(Math.round(Number(process.env.ELITE_ST_HTF1H_SEP_CALIB_BARS ?? 90)), 20, 200),
     eliteStMinAdx:                Math.max(0, Number(process.env.ELITE_ST_MIN_ADX ?? 0)),
     eliteStRequireAdxRising:      false,
     eliteStAdxRisingLookback:     Math.max(1, Math.round(Number(process.env.ELITE_ST_ADX_RISING_LOOKBACK ?? 3))),
@@ -846,6 +934,13 @@ export function createBot({
     eliteStMinAtrExpansion:       Math.max(1, Number(process.env.ELITE_ST_MIN_ATR_EXPANSION ?? 1.15)),
     eliteStAtrExpansionLookback:  Math.max(2, Math.round(Number(process.env.ELITE_ST_ATR_EXPANSION_LOOKBACK ?? 12))),
     eliteStLiqSweepEnabled:       false,
+    /** Auto-calibrate gate thresholds + brackets per symbol from warmup bars. */
+    eliteStAutoCalibrate:         false,
+    eliteStAutoProfileBars:       clamp(Math.round(Number(process.env.ELITE_ST_AUTO_PROFILE_BARS ?? 90)), 40, 200),
+    /** ATR = vol-scaled SL/TP; OFF = trail-only; FIXED = manual panel brackets */
+    eliteStAutoBracketMode:       String(process.env.ELITE_ST_AUTO_BRACKET_MODE ?? "ATR").toUpperCase(),
+    eliteStAutoMinAdxFloor:       clamp(Math.round(Number(process.env.ELITE_ST_AUTO_MIN_ADX_FLOOR ?? 15)), 0, 100),
+    eliteStAutoMinAdxCeil:        clamp(Math.round(Number(process.env.ELITE_ST_AUTO_MIN_ADX_CEIL ?? 30)), 1, 100),
 
     /**
      * When true, defer entry until a later bar **closes** beyond signal candle high (BUY) or low (SELL).
@@ -1783,7 +1878,7 @@ export function createBot({
           200,
         ),
         intradaySmcSlMode: state.intradaySmcSlMode === "structure" ? "structure" : "sweep",
-        intradaySmcMaxTpRr: clamp(Number(state.intradaySmcMaxTpRr ?? 3), 0, 20),
+        intradaySmcMaxTpRr: clamp(Number(state.intradaySmcMaxTpRr ?? 5), 0, 20),
         intradaySmcMaxHoldBars: clamp(Math.round(Number(state.intradaySmcMaxHoldBars ?? 48)), 0, 2000),
         intradaySrAPlusMode: state.intradaySrAPlusMode === true,
         intradaySrMinVolRatio: Number(state.intradaySrMinVolRatio ?? 1.2),
@@ -1803,6 +1898,34 @@ export function createBot({
         intradayLiqStrictMode: state.intradayLiqStrictMode !== false,
         intradayLiqMinSweepExtensionPct: Number(state.intradayLiqMinSweepExtensionPct ?? 0.003),
         intradayLiqSessionExtreme: state.intradayLiqSessionExtreme === true,
+        intradayLiqMinScore: clamp(Math.round(Number(state.intradayLiqMinScore ?? 6)), 0, 20),
+        intradayLiqMinQuality: Number(state.intradayLiqMinQuality ?? 0),
+        intradayLiqMinWickRatio: Number(state.intradayLiqMinWickRatio ?? 0),
+        intradayLiqMinReclaimBodyRatio: Number(state.intradayLiqMinReclaimBodyRatio ?? 0),
+        intradayLiqMinReclaimClosePct: Number(state.intradayLiqMinReclaimClosePct ?? 0),
+        intradayLiqRejectSameBarReclaim: state.intradayLiqRejectSameBarReclaim !== false,
+        intradayLiqOnePickPerDay: state.intradayLiqOnePickPerDay !== false,
+        intradayLiqMaxTradesPerSidePerDay: clamp(
+          Math.round(Number(state.intradayLiqMaxTradesPerSidePerDay ?? 1)),
+          1,
+          10,
+        ),
+        intradayLiqRequireHtfAlign: state.intradayLiqRequireHtfAlign !== false,
+        intradayLiqMinHtfSep: Number(state.intradayLiqMinHtfSep ?? 0.0008),
+        intradayLiqMaxTpRr: clamp(
+          Number(
+            Object.prototype.hasOwnProperty.call(state, "intradayLiqMaxTpRr")
+              ? state.intradayLiqMaxTpRr
+              : (state.intradaySmcMaxTpRr ?? 5),
+          ),
+          0,
+          20,
+        ),
+        intradayLiqMaxSlPct: Number(state.intradayLiqMaxSlPct ?? 0.035),
+        intradayLiqMaxSweepBars: clamp(Math.round(Number(state.intradayLiqMaxSweepBars ?? 40)), 4, 200),
+        intradayLiqFirstCycleOnly: state.intradayLiqFirstCycleOnly === true,
+        intradayLiqEntryAtSignalClose: state.intradayLiqEntryAtSignalClose !== false,
+        intradayLiqMaxHoldBars: clamp(Math.round(Number(state.intradayLiqMaxHoldBars ?? 48)), 0, 2000),
         srIntradayMaxTradesPerDay: clamp(Math.round(Number(state.srIntradayMaxTradesPerDay ?? 5)), 1, 50),
         srIntradayMinBarGap: clamp(Math.round(Number(state.srIntradayMinBarGap ?? 4)), 1, 200),
         vpLookbackBars: state.vpLookbackBars,
@@ -1828,6 +1951,17 @@ export function createBot({
         eliteStHtf4hMultiplier:      state.eliteStHtf4hMultiplier,
         eliteStRequireHtf1hEmaAlign: state.eliteStRequireHtf1hEmaAlign === true,
         eliteStHtf1hMinSep:          state.eliteStHtf1hMinSep,
+        eliteStHtf1hSepMode:         state.eliteStHtf1hSepMode,
+        eliteStHtf1hMinSepAtrMult:   state.eliteStHtf1hMinSepAtrMult,
+        eliteStHtf1hMinSepFloor:     state.eliteStHtf1hMinSepFloor,
+        eliteStHtf1hMinSepCeil:      state.eliteStHtf1hMinSepCeil,
+        eliteStHtf1hSepPercentileLookback: state.eliteStHtf1hSepPercentileLookback,
+        eliteStHtf1hSepPercentileMult:     state.eliteStHtf1hSepPercentileMult,
+        eliteStHtf1hSepAdxBase:      state.eliteStHtf1hSepAdxBase,
+        eliteStHtf1hSepAdxAlpha:     state.eliteStHtf1hSepAdxAlpha,
+        eliteStHtf1hSepAdxRef:       state.eliteStHtf1hSepAdxRef,
+        eliteStHtf1hSepCalibratePct: state.eliteStHtf1hSepCalibratePct,
+        eliteStHtf1hSepCalibrateBars: state.eliteStHtf1hSepCalibrateBars,
         eliteStMinAdx:               state.eliteStMinAdx,
         eliteStRequireAdxRising:     state.eliteStRequireAdxRising === true,
         eliteStAdxRisingLookback:    state.eliteStAdxRisingLookback,
@@ -1836,6 +1970,11 @@ export function createBot({
         eliteStMinAtrExpansion:      state.eliteStMinAtrExpansion,
         eliteStAtrExpansionLookback: state.eliteStAtrExpansionLookback,
         eliteStLiqSweepEnabled:      state.eliteStLiqSweepEnabled === true,
+        eliteStAutoCalibrate:        state.eliteStAutoCalibrate === true,
+        eliteStAutoProfileBars:      state.eliteStAutoProfileBars,
+        eliteStAutoBracketMode:      state.eliteStAutoBracketMode,
+        eliteStAutoMinAdxFloor:      state.eliteStAutoMinAdxFloor,
+        eliteStAutoMinAdxCeil:       state.eliteStAutoMinAdxCeil,
         marketDecision: state.marketDecision && typeof state.marketDecision === "object" ? { ...state.marketDecision } : {},
         supertrendBreakoutConfirm: state.supertrendBreakoutConfirm === true,
         supertrendBreakoutMaxBars: state.supertrendBreakoutMaxBars,
@@ -2233,6 +2372,12 @@ export function createBot({
       }
       if (b.intradayLiqMinRr != null && Number.isFinite(Number(b.intradayLiqMinRr))) {
         state.intradayLiqMinRr = clamp(Number(b.intradayLiqMinRr), 0, 5);
+      }
+      if (b.intradayLiqMaxTpRr != null && Number.isFinite(Number(b.intradayLiqMaxTpRr))) {
+        state.intradayLiqMaxTpRr = clamp(Number(b.intradayLiqMaxTpRr), 0, 20);
+      }
+      if (b.intradayLiqMaxHoldBars != null && Number.isFinite(Number(b.intradayLiqMaxHoldBars))) {
+        state.intradayLiqMaxHoldBars = clamp(Math.round(Number(b.intradayLiqMaxHoldBars)), 0, 2000);
       }
       if (b.vpLookbackBars != null && Number.isFinite(Number(b.vpLookbackBars))) {
         state.vpLookbackBars = clamp(Math.round(Number(b.vpLookbackBars)), 48, 2000);
@@ -7197,6 +7342,7 @@ export function createBot({
             scheduleArchiveLiveOhlcvCandle({
               symbol: symArc,
               timeframe: tfArc,
+              feedKind: effectiveMarketFeedKind(),
               candle: {
                 ts: Number(c.ts),
                 open: Number(c.open),
@@ -8428,7 +8574,7 @@ export function createBot({
         200,
       ),
       intradaySmcSlMode: state.intradaySmcSlMode === "structure" ? "structure" : "sweep",
-      intradaySmcMaxTpRr: clamp(Number(state.intradaySmcMaxTpRr ?? 3), 0, 20),
+      intradaySmcMaxTpRr: clamp(Number(state.intradaySmcMaxTpRr ?? 5), 0, 20),
       intradaySmcMaxHoldBars: clamp(Math.round(Number(state.intradaySmcMaxHoldBars ?? 48)), 0, 2000),
       intradaySrAPlusMode: state.intradaySrAPlusMode === true,
       intradaySrMinVolRatio: clamp(Number(state.intradaySrMinVolRatio ?? 1.2), 0, 5),
@@ -8449,6 +8595,16 @@ export function createBot({
       intradayLiqBreakevenAfterPartial: state.intradayLiqBreakevenAfterPartial !== false,
       intradayLiqPartialTp: state.intradayLiqPartialTp !== false,
       intradayLiqMinRr: clamp(Number(state.intradayLiqMinRr ?? 1.5), 0, 5),
+      intradayLiqMaxTpRr: clamp(
+        Number(
+          Object.prototype.hasOwnProperty.call(state, "intradayLiqMaxTpRr")
+            ? state.intradayLiqMaxTpRr
+            : (state.intradaySmcMaxTpRr ?? 5),
+        ),
+        0,
+        20,
+      ),
+      intradayLiqMaxHoldBars: clamp(Math.round(Number(state.intradayLiqMaxHoldBars ?? 48)), 0, 2000),
       vpLookbackBars: clamp(Math.round(Number(state.vpLookbackBars ?? 672)), 48, 2000),
       vpMinRR: clamp(Number(state.vpMinRR ?? 1.5), 0.8, 5),
       supertrendBigMoveGateEnabled: state.supertrendBigMoveGateEnabled === true,
@@ -9713,8 +9869,19 @@ export function createBot({
           }
         }
       }
-    } else if (strategyKey === "SR_INTRADAY" || strategyKey === "INTRADAY_PRO") {
-      signal = strat.signal({ candles, indicators, regime, cfg: state, timeframe: state.timeframe });
+    } else if (
+      strategyKey === "SR_INTRADAY" ||
+      strategyKey === "INTRADAY_PRO" ||
+      strategyKey === "SITUATION_INTRADAY" ||
+      strategyKey === "CRT_TBS" ||
+      strategyKey === "TOKYO_SESSION"
+    ) {
+      const symKey = String(state.symbol || "")
+        .replace(/[^A-Za-z0-9]/g, "")
+        .toUpperCase();
+      const obSnap = intelligenceCache.orderBook?.[symKey] ?? null;
+      const cfgWithBook = obSnap ? { ...state, orderBookSnapshot: obSnap } : state;
+      signal = strat.signal({ candles, indicators, regime, cfg: cfgWithBook, timeframe: state.timeframe });
     } else {
       signal = strat.signal({ candles, indicators, regime });
     }
@@ -11209,6 +11376,12 @@ export function createBot({
     if (patch.intradayLiqMinRr != null && Number.isFinite(Number(patch.intradayLiqMinRr))) {
       state.intradayLiqMinRr = clamp(Number(patch.intradayLiqMinRr), 0, 5);
     }
+    if (patch.intradayLiqMaxTpRr != null && Number.isFinite(Number(patch.intradayLiqMaxTpRr))) {
+      state.intradayLiqMaxTpRr = clamp(Number(patch.intradayLiqMaxTpRr), 0, 20);
+    }
+    if (patch.intradayLiqMaxHoldBars != null && Number.isFinite(Number(patch.intradayLiqMaxHoldBars))) {
+      state.intradayLiqMaxHoldBars = clamp(Math.round(Number(patch.intradayLiqMaxHoldBars)), 0, 2000);
+    }
     if (patch.vpLookbackBars != null && Number.isFinite(Number(patch.vpLookbackBars))) {
       state.vpLookbackBars = clamp(Math.round(Number(patch.vpLookbackBars)), 48, 2000);
     }
@@ -11246,6 +11419,30 @@ export function createBot({
     if (patch.eliteStRequireHtf1hEmaAlign != null) state.eliteStRequireHtf1hEmaAlign = Boolean(patch.eliteStRequireHtf1hEmaAlign);
     if (patch.eliteStHtf1hMinSep         != null && Number.isFinite(Number(patch.eliteStHtf1hMinSep)))
       state.eliteStHtf1hMinSep = Math.max(0, Number(patch.eliteStHtf1hMinSep));
+    if (patch.eliteStHtf1hSepMode != null) {
+      const m = String(patch.eliteStHtf1hSepMode).toUpperCase();
+      if (["FIXED", "ATR", "PERCENTILE", "ADX", "CALIBRATED"].includes(m)) state.eliteStHtf1hSepMode = m;
+    }
+    if (patch.eliteStHtf1hMinSepAtrMult != null && Number.isFinite(Number(patch.eliteStHtf1hMinSepAtrMult)))
+      state.eliteStHtf1hMinSepAtrMult = clamp(Number(patch.eliteStHtf1hMinSepAtrMult), 0.05, 2);
+    if (patch.eliteStHtf1hMinSepFloor != null && Number.isFinite(Number(patch.eliteStHtf1hMinSepFloor)))
+      state.eliteStHtf1hMinSepFloor = clamp(Number(patch.eliteStHtf1hMinSepFloor), 0, 0.01);
+    if (patch.eliteStHtf1hMinSepCeil != null && Number.isFinite(Number(patch.eliteStHtf1hMinSepCeil)))
+      state.eliteStHtf1hMinSepCeil = clamp(Number(patch.eliteStHtf1hMinSepCeil), 0, 0.01);
+    if (patch.eliteStHtf1hSepPercentileLookback != null && Number.isFinite(Number(patch.eliteStHtf1hSepPercentileLookback)))
+      state.eliteStHtf1hSepPercentileLookback = clamp(Math.round(Number(patch.eliteStHtf1hSepPercentileLookback)), 20, 200);
+    if (patch.eliteStHtf1hSepPercentileMult != null && Number.isFinite(Number(patch.eliteStHtf1hSepPercentileMult)))
+      state.eliteStHtf1hSepPercentileMult = clamp(Number(patch.eliteStHtf1hSepPercentileMult), 0.5, 3);
+    if (patch.eliteStHtf1hSepAdxBase != null && Number.isFinite(Number(patch.eliteStHtf1hSepAdxBase)))
+      state.eliteStHtf1hSepAdxBase = clamp(Number(patch.eliteStHtf1hSepAdxBase), 0, 0.01);
+    if (patch.eliteStHtf1hSepAdxAlpha != null && Number.isFinite(Number(patch.eliteStHtf1hSepAdxAlpha)))
+      state.eliteStHtf1hSepAdxAlpha = clamp(Number(patch.eliteStHtf1hSepAdxAlpha), 0, 5);
+    if (patch.eliteStHtf1hSepAdxRef != null && Number.isFinite(Number(patch.eliteStHtf1hSepAdxRef)))
+      state.eliteStHtf1hSepAdxRef = clamp(Math.round(Number(patch.eliteStHtf1hSepAdxRef)), 1, 100);
+    if (patch.eliteStHtf1hSepCalibratePct != null && Number.isFinite(Number(patch.eliteStHtf1hSepCalibratePct)))
+      state.eliteStHtf1hSepCalibratePct = clamp(Math.round(Number(patch.eliteStHtf1hSepCalibratePct)), 1, 99);
+    if (patch.eliteStHtf1hSepCalibrateBars != null && Number.isFinite(Number(patch.eliteStHtf1hSepCalibrateBars)))
+      state.eliteStHtf1hSepCalibrateBars = clamp(Math.round(Number(patch.eliteStHtf1hSepCalibrateBars)), 20, 200);
     if (patch.eliteStMinAdx              != null && Number.isFinite(Number(patch.eliteStMinAdx)))
       state.eliteStMinAdx = clamp(Math.round(Number(patch.eliteStMinAdx)), 0, 100);
     if (patch.eliteStRequireAdxRising    != null) state.eliteStRequireAdxRising    = Boolean(patch.eliteStRequireAdxRising);
@@ -11259,6 +11456,17 @@ export function createBot({
     if (patch.eliteStAtrExpansionLookback != null && Number.isFinite(Number(patch.eliteStAtrExpansionLookback)))
       state.eliteStAtrExpansionLookback = Math.max(2, Math.round(Number(patch.eliteStAtrExpansionLookback)));
     if (patch.eliteStLiqSweepEnabled     != null) state.eliteStLiqSweepEnabled     = Boolean(patch.eliteStLiqSweepEnabled);
+    if (patch.eliteStAutoCalibrate       != null) state.eliteStAutoCalibrate       = Boolean(patch.eliteStAutoCalibrate);
+    if (patch.eliteStAutoProfileBars != null && Number.isFinite(Number(patch.eliteStAutoProfileBars)))
+      state.eliteStAutoProfileBars = clamp(Math.round(Number(patch.eliteStAutoProfileBars)), 40, 200);
+    if (patch.eliteStAutoBracketMode != null) {
+      const bm = String(patch.eliteStAutoBracketMode).toUpperCase();
+      if (["ATR", "OFF", "FIXED"].includes(bm)) state.eliteStAutoBracketMode = bm;
+    }
+    if (patch.eliteStAutoMinAdxFloor != null && Number.isFinite(Number(patch.eliteStAutoMinAdxFloor)))
+      state.eliteStAutoMinAdxFloor = clamp(Math.round(Number(patch.eliteStAutoMinAdxFloor)), 0, 100);
+    if (patch.eliteStAutoMinAdxCeil != null && Number.isFinite(Number(patch.eliteStAutoMinAdxCeil)))
+      state.eliteStAutoMinAdxCeil = clamp(Math.round(Number(patch.eliteStAutoMinAdxCeil)), 1, 100);
     // ─────────────────────────────────────────────────────────────────────────
     if (patch.supertrendBreakoutConfirm != null) {
       state.supertrendBreakoutConfirm = Boolean(patch.supertrendBreakoutConfirm);

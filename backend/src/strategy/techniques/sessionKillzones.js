@@ -64,3 +64,12 @@ export function inSmcKillzone(ts, opts = {}) {
 export function killzoneLabel(opts = {}) {
   return String(opts.intradaySmcKillzoneMode ?? "LONDON_NY").toUpperCase();
 }
+
+/** Order-flow entries: London + NY only by default (guide — avoid thin Asian session). */
+export function inOrderFlowKillzone(ts, opts = {}) {
+  const mode = String(opts.intradayOfKillzoneMode ?? opts.killzoneMode ?? "LONDON_NY").toUpperCase();
+  return inSmcKillzone(ts, {
+    intradaySmcKillzoneEnabled: true,
+    intradaySmcKillzoneMode: mode === "ORDERFLOW_LONDON_NY" ? "LONDON_NY" : mode,
+  });
+}

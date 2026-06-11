@@ -11,6 +11,14 @@ import { api } from "../../api/client";
 import type { BacktestCoverage, BacktestMonthlyCoverage } from "../../types/backtest";
 
 const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"];
+const HISTORY_YEARS = [1, 2, 3, 4, 5] as const;
+type HistoryYears = (typeof HISTORY_YEARS)[number];
+
+function dateYearsAgo(years: number): Date {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - years);
+  return d;
+}
 
 type Props = {
   symbol: string;
@@ -23,6 +31,7 @@ export function DataCoverageCalendar({ symbol, timeframe, onSymbolChange, onTfCh
   const [coverage, setCoverage] = useState<BacktestCoverage | null>(null);
   const [monthly, setMonthly] = useState<BacktestMonthlyCoverage[]>([]);
   const [syncing, setSyncing] = useState<boolean>(false);
+  const [historyYears, setHistoryYears] = useState<HistoryYears>(1);
   const [err, setErr] = useState<string | null>(null);
   /** Must match strategy market mode: futures vs spot use different Binance kline endpoints. */
   const [market, setMarket] = useState<"futures" | "spot">("futures");
@@ -30,8 +39,7 @@ export function DataCoverageCalendar({ symbol, timeframe, onSymbolChange, onTfCh
   const refresh = useCallback(async () => {
     if (!symbol || !timeframe) return;
     try {
-      const from = new Date();
-      from.setMonth(from.getMonth() - 12);
+      const from = dateYearsAgo(historyYears);
       const to = new Date();
       const r = await api.getDataCoverage({
         symbol,
@@ -44,7 +52,7 @@ export function DataCoverageCalendar({ symbol, timeframe, onSymbolChange, onTfCh
     } catch {
       /* ignore */
     }
-  }, [symbol, timeframe]);
+  }, [symbol, timeframe, historyYears]);
 
   useEffect(() => {
     void refresh();
@@ -54,8 +62,7 @@ export function DataCoverageCalendar({ symbol, timeframe, onSymbolChange, onTfCh
     setErr(null);
     setSyncing(true);
     try {
-      const from = new Date();
-      from.setFullYear(from.getFullYear() - 1);
+      const from = dateYearsAgo(historyYears);
       await api.syncHistoricalData({
         symbol,
         timeframe,
@@ -107,10 +114,32 @@ export function DataCoverageCalendar({ symbol, timeframe, onSymbolChange, onTfCh
             <option value="spot">Spot klines</option>
           </select>
         </label>
+        <div className="col-span-2">
+          <span className="block pb-0.5 text-[10px] uppercase tracking-wide text-slate-500">History window</span>
+          <div className="flex flex-wrap gap-1">
+            {HISTORY_YEARS.map((y) => (
+              <button
+                key={y}
+                type="button"
+                onClick={() => setHistoryYears(y)}
+                className={`rounded px-2 py-1 text-[11px] font-semibold ${
+                  historyYears === y
+                    ? "bg-sky-600 text-white"
+                    : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                }`}
+              >
+                {y}y
+              </button>
+            ))}
+          </div>
+          <span className="mt-0.5 block text-[10px] text-slate-500">
+            Coverage grid and sync use the last {historyYears} year{historyYears > 1 ? "s" : ""}.
+          </span>
+        </div>
       </div>
       <div className="text-[11px] text-slate-500">
         {coverage
-          ? `${coverage.have.toLocaleString()} bars · ${coverage.coveragePct != null ? coverage.coveragePct.toFixed(1) + "%" : "—"}`
+          ? `${coverage.have.toLocaleString()} bars · ${coverage.coveragePct != null ? coverage.coveragePct.toFixed(1) + "%" : "—"} · ${historyYears}y window`
           : "—"}
       </div>
       <div className="mt-2 grid grid-cols-6 gap-1">
@@ -138,7 +167,7 @@ export function DataCoverageCalendar({ symbol, timeframe, onSymbolChange, onTfCh
         disabled={syncing}
         className="mt-3 w-full rounded bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-500 disabled:opacity-60"
       >
-        {syncing ? "Syncing…" : "Sync 1y backfill"}
+        {syncing ? "Syncing…" : `Sync ${historyYears}y backfill`}
       </button>
       {err && <div className="mt-2 rounded bg-rose-50 px-2 py-1 text-[11px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{err}</div>}
     </div>

@@ -12,6 +12,7 @@ import { EventEmitter } from "events";
 import { broadcastActivity } from "../../lib/activityLog.js";
 import { query } from "../../db/query.js";
 import { getPool } from "../../db/pool.js";
+import { BACKTEST_ENGINE_VERSION } from "./version.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +31,8 @@ const events = new EventEmitter();
 let wsHubRef = null;
 /** @type {Worker | null} */
 let warmWorker = null;
+/** Engine build loaded in the warm worker — recycle when this changes. */
+let warmWorkerEngineVersion = null;
 /** @type {Promise<void> | null} */
 let warmReady = null;
 /** @type {((v?: void) => void) | null} */
@@ -76,6 +79,13 @@ export function enqueueRun(runId, opts = {}) {
 
 export async function recoverOrphanedBacktestRuns() {
   if (!getPool()) return { resetRunning: 0, requeued: 0 };
+
+  // Strategy tests don't survive a restart (battery state is in-memory) — fail them.
+  await query(
+    `UPDATE backtest_strategy_tests
+        SET status = 'failed', error_message = 'orphaned_after_restart', finished_at = NOW()
+      WHERE status IN ('queued','running')`,
+  ).catch(() => {});
 
   const reset = await query(
     `UPDATE backtest_runs
@@ -252,6 +262,7 @@ function rejectWarmReady(err) {
 function terminateWarmWorker(err) {
   const w = warmWorker;
   warmWorker = null;
+  warmWorkerEngineVersion = null;
   rejectWarmReady(err ?? new Error("warm_worker_recycled"));
   if (w) {
     try {
@@ -287,8 +298,15 @@ function finishWarmJob(err) {
 }
 
 function ensureWarmWorker() {
+  if (warmWorker && warmWorkerEngineVersion !== BACKTEST_ENGINE_VERSION) {
+    console.info(
+      `[backtest:pool] recycling warm worker (${warmWorkerEngineVersion} → ${BACKTEST_ENGINE_VERSION})`,
+    );
+    terminateWarmWorker(new Error("engine_version_changed"));
+  }
   if (warmWorker) return warmReady ?? Promise.resolve();
 
+  warmWorkerEngineVersion = BACKTEST_ENGINE_VERSION;
   warmReady = new Promise((resolve, reject) => {
     warmReadyResolve = resolve;
     warmReadyReject = reject;

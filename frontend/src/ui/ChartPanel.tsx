@@ -2506,22 +2506,22 @@ export function ChartPanel() {
       }
     } else {
       r = computeSupertrendTrailingSlUpdate({
-        entryPrice: entry,
-        currentPrice: cur,
-        supertrend: stPx,
-        previousSl: prevSlForCompute,
-        isLong,
-        leverage: lev,
+      entryPrice: entry,
+      currentPrice: cur,
+      supertrend: stPx,
+      previousSl: prevSlForCompute,
+      isLong,
+      leverage: lev,
         feeRate: paddedFeeStActive,
         bufferRate: bufTieredActive,
-        maintenanceMarginRate,
-        minSlDistanceFrac: minSlDist,
+      maintenanceMarginRate,
+      minSlDistanceFrac: minSlDist,
         minTrailGapFromMarkFrac: minGapMark,
         useFeeBreakeven: useFeeBeTrail,
         useAdvancedTrail: useAdvancedTrail,
         activationPrice: tierAct.activationPx,
         breakevenPrice: breakeven,
-      });
+    });
     }
 
     if (r.status === "NO_SUPERTREND" || r.status === "INVALID" || r.status === "REJECT_TRADE") {
@@ -3475,7 +3475,7 @@ export function ChartPanel() {
                   }`}
                 >
                   Trailing
-                </span>
+                    </span>
                 <span
                   className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm ${
                     trailingChipTrailedHighlight
@@ -3488,38 +3488,38 @@ export function ChartPanel() {
                     : trailingChipTrailedHighlight && chartTrailingPreview.badge?.tierLabel
                       ? `Trailed · ${chartTrailingPreview.badge.tierLabel}`
                       : "Trailed"}
-                </span>
-              </div>
+                    </span>
+                  </div>
               {chartTrailingPreview.badge?.trailExchangePending ? (
                 <div className="max-w-[14rem] rounded border border-amber-600/40 bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-medium text-amber-100/95 shadow-sm">
                   Waiting for exchange to confirm the new stop…
-                </div>
+              </div>
               ) : null}
             </div>
           ) : null}
         </div>
         {shouldShowFuturesBracketLegend || (chartTrailingPreview.trailHud && inferFuturesBracketLinesActive(bot)) ? (
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {chartTrailingPreview.trailHud && inferFuturesBracketLinesActive(bot) ? (
-              <div
+          {chartTrailingPreview.trailHud && inferFuturesBracketLinesActive(bot) ? (
+            <div
                 className="max-w-full space-y-0.5 rounded-md border border-amber-700/40 bg-slate-950/88 px-2 py-1.5 text-[10px] leading-tight text-amber-100/95 shadow-lg backdrop-blur-sm dark:border-amber-600/35 dark:bg-slate-950/90"
-                aria-label="Trail summary"
-              >
-                <div className="text-[9px] font-semibold uppercase tracking-wide text-amber-200/90">Trail</div>
-                {chartTrailingPreview.trailHud.currentSl != null ? (
-                  <div className="font-mono text-slate-100">
-                    SL now: {chartTrailingPreview.trailHud.currentSl.toLocaleString("en-US", { maximumFractionDigits: 6 })}
-                  </div>
-                ) : (
-                  <div className="text-slate-400">SL now: —</div>
-                )}
-                {chartTrailingPreview.trailHud.takeProfit != null ? (
-                  <div className="font-mono text-slate-100">
-                    TP: {chartTrailingPreview.trailHud.takeProfit.toLocaleString("en-US", { maximumFractionDigits: 6 })}
-                  </div>
-                ) : (
-                  <div className="text-slate-400">TP: —</div>
-                )}
+              aria-label="Trail summary"
+            >
+              <div className="text-[9px] font-semibold uppercase tracking-wide text-amber-200/90">Trail</div>
+              {chartTrailingPreview.trailHud.currentSl != null ? (
+                <div className="font-mono text-slate-100">
+                  SL now: {chartTrailingPreview.trailHud.currentSl.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : (
+                <div className="text-slate-400">SL now: —</div>
+              )}
+              {chartTrailingPreview.trailHud.takeProfit != null ? (
+                <div className="font-mono text-slate-100">
+                  TP: {chartTrailingPreview.trailHud.takeProfit.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : (
+                <div className="text-slate-400">TP: —</div>
+              )}
                 {chartTrailingPreview.trailHud.currentTrailedTierLabel ? (
                   <div className="font-mono text-emerald-200/90">
                     Trailed at: {chartTrailingPreview.trailHud.currentTrailedTierLabel}
@@ -3528,11 +3528,11 @@ export function ChartPanel() {
                 {chartTrailingPreview.trailHud.nextActivationPx != null &&
                 chartTrailingPreview.trailHud.nextTierLabel &&
                 !(Array.isArray(chartTrailingPreview.trailHud.nextTwoTierLocks) && chartTrailingPreview.trailHud.nextTwoTierLocks.length) ? (
-                  <div className="font-mono text-amber-100/90">
+                <div className="font-mono text-amber-100/90">
                     Next {chartTrailingPreview.trailHud.nextTierLabel} activation:{" "}
-                    {chartTrailingPreview.trailHud.nextActivationPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
-                  </div>
-                ) : null}
+                  {chartTrailingPreview.trailHud.nextActivationPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : null}
                 {Array.isArray(chartTrailingPreview.trailHud.nextTwoTierLocks) && chartTrailingPreview.trailHud.nextTwoTierLocks.length ? (
                   <div className="space-y-0.5">
                     {chartTrailingPreview.trailHud.nextTwoTierLocks.slice(0, 2).map((r, i) => {
@@ -3545,15 +3545,15 @@ export function ChartPanel() {
                     })}
                   </div>
                 ) : null}
-                {chartTrailingPreview.trailHud.liveTrailSlPx != null ? (
-                  <div className="font-mono text-emerald-200/90">
+              {chartTrailingPreview.trailHud.liveTrailSlPx != null ? (
+                <div className="font-mono text-emerald-200/90">
                     Live trail SL:{" "}
-                    {chartTrailingPreview.trailHud.liveTrailSlPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
-                  </div>
-                ) : (
+                  {chartTrailingPreview.trailHud.liveTrailSlPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : (
                   <div className="text-slate-500">Live trail SL: (not in trail zone)</div>
-                )}
-              </div>
+              )}
+            </div>
             ) : (
               <div />
             )}
@@ -3568,20 +3568,20 @@ export function ChartPanel() {
                     <div key={idx} className="flex min-h-0 flex-nowrap items-baseline justify-between gap-2">
                       <span className="min-w-0 flex-1 truncate font-medium" style={{ color: row.color }}>
                         {row.title}
-                      </span>
+                </span>
                       <span className="shrink-0 font-mono tabular-nums text-slate-100">
                         {Number.isFinite(row.px) && row.px > 0
                           ? row.px.toLocaleString("en-US", { maximumFractionDigits: 6 })
                           : "—"}
-                      </span>
-                    </div>
+                </span>
+              </div>
                   ))}
                 </div>
-              </div>
+            </div>
             ) : (
               <div />
             )}
-          </div>
+        </div>
         ) : null}
         {isMultiCoinMode && Array.isArray(positions) && positions.length > 0 ? (
           <PositionMiniChartsRow
@@ -3701,17 +3701,17 @@ export function ChartPanel() {
                       <span className="inline-block w-4 shrink-0 text-[10px] text-slate-500">
                         {openSignalAccordionKey === rowKey ? "▾" : "▸"}
                       </span>
-                      <span
-                        className="text-slate-600 dark:text-slate-500"
-                        title="Bar close (order window); was bar open — aligns with execution on 1m+ TF"
-                      >
-                        {formatHistTimeIst(displayTs)}
-                      </span>{" "}
-                      <span className="font-mono text-[10px] font-semibold text-slate-700 dark:text-slate-300">{pair}</span>{" "}
-                      <span className="font-semibold">{h.side}</span>
-                      <span className="text-slate-600 dark:text-slate-400"> · @ {entryStr}</span>
-                      <span className="text-slate-600 dark:text-slate-400"> · AI {ai}</span>
-                      <span className="text-slate-600 dark:text-slate-400"> · SS {ss}</span>
+                    <span
+                      className="text-slate-600 dark:text-slate-500"
+                      title="Bar close (order window); was bar open — aligns with execution on 1m+ TF"
+                    >
+                      {formatHistTimeIst(displayTs)}
+                    </span>{" "}
+                    <span className="font-mono text-[10px] font-semibold text-slate-700 dark:text-slate-300">{pair}</span>{" "}
+                    <span className="font-semibold">{h.side}</span>
+                    <span className="text-slate-600 dark:text-slate-400"> · @ {entryStr}</span>
+                    <span className="text-slate-600 dark:text-slate-400"> · AI {ai}</span>
+                    <span className="text-slate-600 dark:text-slate-400"> · SS {ss}</span>
                       {ssGateMin != null ? (
                         <span
                           className="text-slate-500 dark:text-slate-500"
@@ -3721,14 +3721,14 @@ export function ChartPanel() {
                           [≥{ssGateMin}]
                         </span>
                       ) : null}
-                      <span className="text-slate-600 dark:text-slate-400"> · SP {sp}</span>
-                      <span
-                        className="text-slate-600 dark:text-slate-400"
-                        title="Move quality: ATR vs SL, ADX, body vs avg, ATR expansion — composite 0–1 + PASS/BORDER/WEAK"
-                      >
-                        {" "}
-                        · MQ {mq} {mqV !== "—" ? `(${mqV})` : ""}
-                      </span>
+                    <span className="text-slate-600 dark:text-slate-400"> · SP {sp}</span>
+                    <span
+                      className="text-slate-600 dark:text-slate-400"
+                      title="Move quality: ATR vs SL, ADX, body vs avg, ATR expansion — composite 0–1 + PASS/BORDER/WEAK"
+                    >
+                      {" "}
+                      · MQ {mq} {mqV !== "—" ? `(${mqV})` : ""}
+                    </span>
                       {mqGateMin != null ? (
                         <span
                           className="text-slate-500 dark:text-slate-500"
@@ -3738,8 +3738,8 @@ export function ChartPanel() {
                           [≥{mqGateMin.toFixed(2)}]
                         </span>
                       ) : null}
-                      <span className="text-slate-600 dark:text-slate-500"> · {act}</span>
-                      <span className={`font-medium ${vCls}`}> · {vLabel}</span>
+                    <span className="text-slate-600 dark:text-slate-500"> · {act}</span>
+                    <span className={`font-medium ${vCls}`}> · {vLabel}</span>
                       {mdVerdict ? (
                         <span
                           className="text-violet-600/95 dark:text-violet-300/90"

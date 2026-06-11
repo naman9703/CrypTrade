@@ -92,7 +92,12 @@ export function OptimizationPanel({ runs, onSelectRun }: Props) {
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-950/60">
-      <div className="text-sm font-semibold">Walk-forward optimization</div>
+      <div className="text-sm font-semibold">Parameter sweep</div>
+      <p className="text-[10px] text-slate-500">
+        Grid search over ST period × multiplier. The table below (incl. WF train→test) appears only after you click{" "}
+        <span className="font-semibold">Run sweep</span>. Single backtests with walk-forward show train/test on the{" "}
+        <span className="font-semibold">Results</span> tab instead.
+      </p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Field label="Strategy version">
           <input

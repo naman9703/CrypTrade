@@ -1,0 +1,1248 @@
+{
+  "generatedAt": "2026-06-11T14:34:30.272Z",
+  "window": {
+    "from": "2025-06-01",
+    "to": "2026-06-11",
+    "h1End": "2025-12-31",
+    "h2Start": "2026-01-01"
+  },
+  "risk": 5,
+  "leverage": 10,
+  "startingUsdt": 100,
+  "coins": {
+    "BTCUSDT": {
+      "profile": {
+        "medianAtrPct": 0.004390757433673054,
+        "medianAdx": 17.562178479412104,
+        "p40Adx": 16.799832796501747,
+        "medianVolRatio": 0.8945927887651519,
+        "p40H1EmaSep": 0.002109786113502709,
+        "medianH1EmaSep": 0.002276507357724906
+      },
+      "winner": {
+        "sep": "PERCENTILE",
+        "stM": 3,
+        "bracket": "TIGHT",
+        "ret": 16.829439791075515,
+        "dd": 51.907527706591296,
+        "n": 15,
+        "h1Ret": -35.694047898054606,
+        "h2Ret": 81.67749014253567,
+        "h1Rank": 6,
+        "h2Rank": 1,
+        "fragile": true
+      },
+      "runnerUp": {
+        "sep": "FIXED",
+        "stM": 3,
+        "bracket": "TIGHT",
+        "ret": -2.709245797463666
+      },
+      "referenceRow": {
+        "symbol": "BTCUSDT",
+        "atr": 0.004390757433673054,
+        "adx": 17.562178479412104,
+        "p40Adx": 16.799832796501747,
+        "vol": 0.8945927887651519,
+        "p40EmaSep": 0.002109786113502709,
+        "sep": "PERCENTILE",
+        "stM": 3,
+        "bracket": "TIGHT"
+      },
+      "top5": [
+        {
+          "sep": "PERCENTILE",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 16.829439791075515,
+          "n": 15
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": -2.709245797463666,
+          "n": 17
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -11.047087973117954,
+          "n": 14
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -13.359830870089311,
+          "n": 12
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -15.61244330493615,
+          "n": 10
+        }
+      ]
+    },
+    "ETHUSDT": {
+      "profile": {
+        "medianAtrPct": 0.008549477312110303,
+        "medianAdx": 26.044067690511454,
+        "p40Adx": 23.7808687382376,
+        "medianVolRatio": 0.9207426658435832,
+        "p40H1EmaSep": 0.009010434624930334,
+        "medianH1EmaSep": 0.009394943344436838
+      },
+      "winner": {
+        "sep": "FIXED",
+        "stM": 3.5,
+        "bracket": "TRAIL",
+        "ret": 170.98089833739175,
+        "dd": 59.29104233152211,
+        "n": 4,
+        "h1Ret": 132.88297896311667,
+        "h2Ret": -55.31372846987982,
+        "h1Rank": 1,
+        "h2Rank": 13,
+        "fragile": true
+      },
+      "runnerUp": {
+        "sep": "ADX",
+        "stM": 3.5,
+        "bracket": "TRAIL",
+        "ret": 153.3081822398051
+      },
+      "referenceRow": {
+        "symbol": "ETHUSDT",
+        "atr": 0.008549477312110303,
+        "adx": 26.044067690511454,
+        "p40Adx": 23.7808687382376,
+        "vol": 0.9207426658435832,
+        "p40EmaSep": 0.009010434624930334,
+        "sep": "FIXED",
+        "stM": 3.5,
+        "bracket": "TRAIL"
+      },
+      "top5": [
+        {
+          "sep": "FIXED",
+          "stM": 3.5,
+          "bracket": "TRAIL",
+          "ret": 170.98089833739175,
+          "n": 4
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "TRAIL",
+          "ret": 153.3081822398051,
+          "n": 4
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3,
+          "bracket": "ATR",
+          "ret": 5.21455351194588,
+          "n": 15
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3,
+          "bracket": "ATR",
+          "ret": -0.6044702034060663,
+          "n": 16
+        },
+        {
+          "sep": "ADX",
+          "stM": 3,
+          "bracket": "ATR",
+          "ret": -0.6044702034060663,
+          "n": 16
+        }
+      ]
+    },
+    "BNBUSDT": {
+      "profile": {
+        "medianAtrPct": 0.004565676684067051,
+        "medianAdx": 26.950916496545315,
+        "p40Adx": 24.373031150944126,
+        "medianVolRatio": 0.9570659659153394,
+        "p40H1EmaSep": 0.0037424305849617016,
+        "medianH1EmaSep": 0.003946255367572343
+      },
+      "winner": {
+        "sep": "FIXED",
+        "stM": 3,
+        "bracket": "ATR",
+        "ret": 51.35265428805883,
+        "dd": 16.916166042172616,
+        "n": 25,
+        "h1Ret": 13.669549796731003,
+        "h2Ret": 21.82498568187397,
+        "h1Rank": 12,
+        "h2Rank": 1,
+        "fragile": true
+      },
+      "runnerUp": {
+        "sep": "ADX",
+        "stM": 3,
+        "bracket": "ATR",
+        "ret": 51.35265428805883
+      },
+      "referenceRow": {
+        "symbol": "BNBUSDT",
+        "atr": 0.004565676684067051,
+        "adx": 26.950916496545315,
+        "p40Adx": 24.373031150944126,
+        "vol": 0.9570659659153394,
+        "p40EmaSep": 0.0037424305849617016,
+        "sep": "FIXED",
+        "stM": 3,
+        "bracket": "ATR"
+      },
+      "top5": [
+        {
+          "sep": "FIXED",
+          "stM": 3,
+          "bracket": "ATR",
+          "ret": 51.35265428805883,
+          "n": 25
+        },
+        {
+          "sep": "ADX",
+          "stM": 3,
+          "bracket": "ATR",
+          "ret": 51.35265428805883,
+          "n": 25
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "TRAIL",
+          "ret": 45.95338609755632,
+          "n": 5
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3.5,
+          "bracket": "TRAIL",
+          "ret": 45.227271208683305,
+          "n": 6
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "TRAIL",
+          "ret": 45.227271208683305,
+          "n": 6
+        }
+      ]
+    },
+    "SOLUSDT": {
+      "profile": {
+        "medianAtrPct": 0.010659955642573967,
+        "medianAdx": 33.38141259804772,
+        "p40Adx": 31.084017617111403,
+        "medianVolRatio": 0.941094009153284,
+        "p40H1EmaSep": 0.0034534649655271893,
+        "medianH1EmaSep": 0.004707412996423445
+      },
+      "winner": {
+        "sep": "ADX",
+        "stM": 3.5,
+        "bracket": "TIGHT",
+        "ret": 68.46657342109086,
+        "dd": 24.00606836994696,
+        "n": 11,
+        "h1Ret": -7.271631015530758,
+        "h2Ret": 81.67749014253314,
+        "h1Rank": 7,
+        "h2Rank": 1,
+        "fragile": true
+      },
+      "runnerUp": {
+        "sep": "FIXED",
+        "stM": 3.5,
+        "bracket": "TIGHT",
+        "ret": 53.735222385668145
+      },
+      "referenceRow": {
+        "symbol": "SOLUSDT",
+        "atr": 0.010659955642573967,
+        "adx": 33.38141259804772,
+        "p40Adx": 31.084017617111403,
+        "vol": 0.941094009153284,
+        "p40EmaSep": 0.0034534649655271893,
+        "sep": "ADX",
+        "stM": 3.5,
+        "bracket": "TIGHT"
+      },
+      "top5": [
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 68.46657342109086,
+          "n": 11
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 53.735222385668145,
+          "n": 12
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 51.29354441140765,
+          "n": 8
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 42.556164272878505,
+          "n": 17
+        },
+        {
+          "sep": "ADX",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 42.556164272878505,
+          "n": 17
+        }
+      ]
+    },
+    "XRPUSDT": {
+      "profile": {
+        "medianAtrPct": 0.007596462479667436,
+        "medianAdx": 20.4116018855248,
+        "p40Adx": 18.165341054842564,
+        "medianVolRatio": 0.917693195135802,
+        "p40H1EmaSep": 0.008203783941829546,
+        "medianH1EmaSep": 0.009009282380553003
+      },
+      "winner": {
+        "sep": "ADX",
+        "stM": 3,
+        "bracket": "TIGHT",
+        "ret": 51.29354441140964,
+        "dd": 24.00606836994692,
+        "n": 8,
+        "h1Ret": 51.29354441140964,
+        "h2Ret": 0,
+        "h1Rank": 1,
+        "h2Rank": 1,
+        "fragile": false
+      },
+      "runnerUp": {
+        "sep": "PERCENTILE",
+        "stM": 3,
+        "bracket": "TIGHT",
+        "ret": 51.29354441140964
+      },
+      "referenceRow": {
+        "symbol": "XRPUSDT",
+        "atr": 0.007596462479667436,
+        "adx": 20.4116018855248,
+        "p40Adx": 18.165341054842564,
+        "vol": 0.917693195135802,
+        "p40EmaSep": 0.008203783941829546,
+        "sep": "ADX",
+        "stM": 3,
+        "bracket": "TIGHT"
+      },
+      "top5": [
+        {
+          "sep": "ADX",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 51.29354441140964,
+          "n": 8
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 51.29354441140964,
+          "n": 8
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 38.06386764611557,
+          "n": 9
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -10.873686063588622,
+          "n": 2
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -10.873686063588622,
+          "n": 2
+        }
+      ]
+    },
+    "DOGEUSDT": {
+      "profile": {
+        "medianAtrPct": 0.01089369807836732,
+        "medianAdx": 17.9955854067777,
+        "p40Adx": 16.886861505137574,
+        "medianVolRatio": 0.9490941252570303,
+        "p40H1EmaSep": 0.0042885754035300785,
+        "medianH1EmaSep": 0.0056795527824940375
+      },
+      "winner": {
+        "sep": "PERCENTILE",
+        "stM": 3.5,
+        "bracket": "ATR",
+        "ret": -15.841105473670849,
+        "dd": 20.424825070652698,
+        "n": 9,
+        "h1Ret": -10.83477100688512,
+        "h2Ret": -5.6146712382383015,
+        "h1Rank": 1,
+        "h2Rank": 4,
+        "fragile": true
+      },
+      "runnerUp": {
+        "sep": "FIXED",
+        "stM": 3.5,
+        "bracket": "ATR",
+        "ret": -20.495619386053818
+      },
+      "referenceRow": {
+        "symbol": "DOGEUSDT",
+        "atr": 0.01089369807836732,
+        "adx": 17.9955854067777,
+        "p40Adx": 16.886861505137574,
+        "vol": 0.9490941252570303,
+        "p40EmaSep": 0.0042885754035300785,
+        "sep": "PERCENTILE",
+        "stM": 3.5,
+        "bracket": "ATR"
+      },
+      "top5": [
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -15.841105473670849,
+          "n": 9
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -20.495619386053818,
+          "n": 10
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -20.495619386053818,
+          "n": 10
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": -21.53339185771877,
+          "n": 11
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3,
+          "bracket": "ATR",
+          "ret": -24.89270953018861,
+          "n": 11
+        }
+      ]
+    },
+    "ADAUSDT": {
+      "profile": {
+        "medianAtrPct": 0.010641543718831683,
+        "medianAdx": 24.375884585487107,
+        "p40Adx": 21.62554597085836,
+        "medianVolRatio": 0.9181447256043296,
+        "p40H1EmaSep": 0.004862488759318998,
+        "medianH1EmaSep": 0.005319929568128389
+      },
+      "winner": {
+        "sep": "PERCENTILE",
+        "stM": 3.5,
+        "bracket": "TIGHT",
+        "ret": 11.350800905941597,
+        "dd": 16.724111339983946,
+        "n": 3,
+        "h1Ret": 11.350800905941597,
+        "h2Ret": 0,
+        "h1Rank": 1,
+        "h2Rank": 3,
+        "fragile": false
+      },
+      "runnerUp": {
+        "sep": "ADX",
+        "stM": 3.5,
+        "bracket": "TIGHT",
+        "ret": 1.613867917337487
+      },
+      "referenceRow": {
+        "symbol": "ADAUSDT",
+        "atr": 0.010641543718831683,
+        "adx": 24.375884585487107,
+        "p40Adx": 21.62554597085836,
+        "vol": 0.9181447256043296,
+        "p40EmaSep": 0.004862488759318998,
+        "sep": "PERCENTILE",
+        "stM": 3.5,
+        "bracket": "TIGHT"
+      },
+      "top5": [
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 11.350800905941597,
+          "n": 3
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 1.613867917337487,
+          "n": 4
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -5.614671238238316,
+          "n": 4
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": -7.271631015532436,
+          "n": 5
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -10.834771006885092,
+          "n": 5
+        }
+      ]
+    },
+    "LINKUSDT": {
+      "profile": {
+        "medianAtrPct": 0.010101338825869843,
+        "medianAdx": 21.843233553239088,
+        "p40Adx": 18.258008187681718,
+        "medianVolRatio": 0.894184786184744,
+        "p40H1EmaSep": 0.005895426843096811,
+        "medianH1EmaSep": 0.006728703271335741
+      },
+      "winner": {
+        "sep": "PERCENTILE",
+        "stM": 3.5,
+        "bracket": "ATR",
+        "ret": 83.66673262535107,
+        "dd": 5.530626250000003,
+        "n": 7,
+        "h1Ret": 64.40206040989383,
+        "h2Ret": 11.718023586459793,
+        "h1Rank": 2,
+        "h2Rank": 7,
+        "fragile": true
+      },
+      "runnerUp": {
+        "sep": "ADX",
+        "stM": 3.5,
+        "bracket": "ATR",
+        "ret": 83.12001565362493
+      },
+      "referenceRow": {
+        "symbol": "LINKUSDT",
+        "atr": 0.010101338825869843,
+        "adx": 21.843233553239088,
+        "p40Adx": 18.258008187681718,
+        "vol": 0.894184786184744,
+        "p40EmaSep": 0.005895426843096811,
+        "sep": "PERCENTILE",
+        "stM": 3.5,
+        "bracket": "ATR"
+      },
+      "top5": [
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": 83.66673262535107,
+          "n": 7
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": 83.12001565362493,
+          "n": 10
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 65.79092684291251,
+          "n": 7
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": 63.42477267486427,
+          "n": 12
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3,
+          "bracket": "ATR",
+          "ret": 38.192884498019,
+          "n": 12
+        }
+      ]
+    },
+    "AVAXUSDT": {
+      "profile": {
+        "medianAtrPct": 0.010759587184315484,
+        "medianAdx": 17.432398180205848,
+        "p40Adx": 15.172995188854278,
+        "medianVolRatio": 0.9455389044029598,
+        "p40H1EmaSep": 0.00805067086712921,
+        "medianH1EmaSep": 0.008170586183131833
+      },
+      "winner": {
+        "sep": "PERCENTILE",
+        "stM": 3,
+        "bracket": "TIGHT",
+        "ret": 267.5323641037594,
+        "dd": 24.006068369946878,
+        "n": 15,
+        "h1Ret": 261.69508319744637,
+        "h2Ret": 1.6138679173381263,
+        "h1Rank": 1,
+        "h2Rank": 7,
+        "fragile": true
+      },
+      "runnerUp": {
+        "sep": "ADX",
+        "stM": 3,
+        "bracket": "TIGHT",
+        "ret": 235.39395134600665
+      },
+      "referenceRow": {
+        "symbol": "AVAXUSDT",
+        "atr": 0.010759587184315484,
+        "adx": 17.432398180205848,
+        "p40Adx": 15.172995188854278,
+        "vol": 0.9455389044029598,
+        "p40EmaSep": 0.00805067086712921,
+        "sep": "PERCENTILE",
+        "stM": 3,
+        "bracket": "TIGHT"
+      },
+      "top5": [
+        {
+          "sep": "PERCENTILE",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 267.5323641037594,
+          "n": 15
+        },
+        {
+          "sep": "ADX",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 235.39395134600665,
+          "n": 16
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 179.30229349532743,
+          "n": 18
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 68.46657342108844,
+          "n": 11
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 68.46657342108844,
+          "n": 11
+        }
+      ]
+    },
+    "DOTUSDT": {
+      "profile": {
+        "medianAtrPct": 0.009278515104161882,
+        "medianAdx": 22.972724682061518,
+        "p40Adx": 20.8448603792968,
+        "medianVolRatio": 0.9700018798276007,
+        "p40H1EmaSep": 0.0075992503181681595,
+        "medianH1EmaSep": 0.007722722225108604
+      },
+      "winner": {
+        "sep": "FIXED",
+        "stM": 3,
+        "bracket": "ATR",
+        "ret": 19.692396220841616,
+        "dd": 20.3539677167743,
+        "n": 8,
+        "h1Ret": 3.353292680519232,
+        "h2Ret": 22.588916919411446,
+        "h1Rank": 3,
+        "h2Rank": 1,
+        "fragile": false
+      },
+      "runnerUp": {
+        "sep": "ADX",
+        "stM": 3,
+        "bracket": "ATR",
+        "ret": 19.692396220841616
+      },
+      "referenceRow": {
+        "symbol": "DOTUSDT",
+        "atr": 0.009278515104161882,
+        "adx": 22.972724682061518,
+        "p40Adx": 20.8448603792968,
+        "vol": 0.9700018798276007,
+        "p40EmaSep": 0.0075992503181681595,
+        "sep": "FIXED",
+        "stM": 3,
+        "bracket": "ATR"
+      },
+      "top5": [
+        {
+          "sep": "FIXED",
+          "stM": 3,
+          "bracket": "ATR",
+          "ret": 19.692396220841616,
+          "n": 8
+        },
+        {
+          "sep": "ADX",
+          "stM": 3,
+          "bracket": "ATR",
+          "ret": 19.692396220841616,
+          "n": 8
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3,
+          "bracket": "ATR",
+          "ret": 19.692396220841616,
+          "n": 8
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 1.6138679173382682,
+          "n": 4
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 1.6138679173382682,
+          "n": 4
+        }
+      ]
+    },
+    "LTCUSDT": {
+      "profile": {
+        "medianAtrPct": 0.007863837946236685,
+        "medianAdx": 15.331208000309436,
+        "p40Adx": 13.985679692084144,
+        "medianVolRatio": 0.9073051234514733,
+        "p40H1EmaSep": 0.006439678815752955,
+        "medianH1EmaSep": 0.006504171208344345
+      },
+      "winner": {
+        "sep": "PERCENTILE",
+        "stM": 3.5,
+        "bracket": "ATR",
+        "ret": -19.423899054737802,
+        "dd": 33.06153230393957,
+        "n": 9,
+        "h1Ret": -33.06153230393957,
+        "h2Ret": 20.373387259362687,
+        "h1Rank": 3,
+        "h2Rank": 2,
+        "fragile": true
+      },
+      "runnerUp": {
+        "sep": "FIXED",
+        "stM": 3.5,
+        "bracket": "ATR",
+        "ret": -21.17489369247052
+      },
+      "referenceRow": {
+        "symbol": "LTCUSDT",
+        "atr": 0.007863837946236685,
+        "adx": 15.331208000309436,
+        "p40Adx": 13.985679692084144,
+        "vol": 0.9073051234514733,
+        "p40EmaSep": 0.006439678815752955,
+        "sep": "PERCENTILE",
+        "stM": 3.5,
+        "bracket": "ATR"
+      },
+      "top5": [
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -19.423899054737802,
+          "n": 9
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -21.17489369247052,
+          "n": 12
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -23.914344549481783,
+          "n": 10
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3,
+          "bracket": "ATR",
+          "ret": -33.06153230393954,
+          "n": 7
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3,
+          "bracket": "ATR",
+          "ret": -35.939193712395536,
+          "n": 13
+        }
+      ]
+    },
+    "TRXUSDT": {
+      "profile": {
+        "medianAtrPct": 0.003946336861093353,
+        "medianAdx": 32.0525853916316,
+        "p40Adx": 28.85388492739846,
+        "medianVolRatio": 0.98387856472498,
+        "p40H1EmaSep": 0.0023843797233777868,
+        "medianH1EmaSep": 0.0025582274245770026
+      },
+      "winner": {
+        "sep": "FIXED",
+        "stM": 3,
+        "bracket": "TRAIL",
+        "ret": 112.25279112347026,
+        "dd": 46.42749241772203,
+        "n": 8,
+        "h1Ret": -1.8446439769200822,
+        "h2Ret": 56.04901882536708,
+        "h1Rank": 5,
+        "h2Rank": 1,
+        "fragile": true
+      },
+      "runnerUp": {
+        "sep": "ADX",
+        "stM": 3,
+        "bracket": "TRAIL",
+        "ret": 112.25279112347026
+      },
+      "referenceRow": {
+        "symbol": "TRXUSDT",
+        "atr": 0.003946336861093353,
+        "adx": 32.0525853916316,
+        "p40Adx": 28.85388492739846,
+        "vol": 0.98387856472498,
+        "p40EmaSep": 0.0023843797233777868,
+        "sep": "FIXED",
+        "stM": 3,
+        "bracket": "TRAIL"
+      },
+      "top5": [
+        {
+          "sep": "FIXED",
+          "stM": 3,
+          "bracket": "TRAIL",
+          "ret": 112.25279112347026,
+          "n": 8
+        },
+        {
+          "sep": "ADX",
+          "stM": 3,
+          "bracket": "TRAIL",
+          "ret": 112.25279112347026,
+          "n": 8
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "TRAIL",
+          "ret": 91.69675641697478,
+          "n": 7
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3.5,
+          "bracket": "TRAIL",
+          "ret": 78.0775207458943,
+          "n": 6
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "ATR",
+          "ret": -3.0265711023007498,
+          "n": 10
+        }
+      ]
+    },
+    "INJUSDT": {
+      "profile": {
+        "medianAtrPct": 0.01744577925484357,
+        "medianAdx": 25.904296181748073,
+        "p40Adx": 21.15938373453242,
+        "medianVolRatio": 0.9433437740322109,
+        "p40H1EmaSep": 0.013624653173957032,
+        "medianH1EmaSep": 0.016665493202786368
+      },
+      "winner": {
+        "sep": "PERCENTILE",
+        "stM": 3.5,
+        "bracket": "TIGHT",
+        "ret": 146.84718205709459,
+        "dd": 24.006068369946917,
+        "n": 11,
+        "h1Ret": 23.99000862394857,
+        "h2Ret": 99.08634961528364,
+        "h1Rank": 4,
+        "h2Rank": 7,
+        "fragile": true
+      },
+      "runnerUp": {
+        "sep": "PERCENTILE",
+        "stM": 3,
+        "bracket": "TIGHT",
+        "ret": 146.8471820570941
+      },
+      "referenceRow": {
+        "symbol": "INJUSDT",
+        "atr": 0.01744577925484357,
+        "adx": 25.904296181748073,
+        "p40Adx": 21.15938373453242,
+        "vol": 0.9433437740322109,
+        "p40EmaSep": 0.013624653173957032,
+        "sep": "PERCENTILE",
+        "stM": 3.5,
+        "bracket": "TIGHT"
+      },
+      "top5": [
+        {
+          "sep": "PERCENTILE",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 146.84718205709459,
+          "n": 11
+        },
+        {
+          "sep": "PERCENTILE",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 146.8471820570941,
+          "n": 11
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 125.26193569549974,
+          "n": 12
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 125.26193569549974,
+          "n": 12
+        },
+        {
+          "sep": "ADX",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 125.26193569549957,
+          "n": 12
+        }
+      ]
+    },
+    "TIAUSDT": {
+      "profile": {
+        "medianAtrPct": 0.012241090788818607,
+        "medianAdx": 19.962646721627294,
+        "p40Adx": 18.724565778239075,
+        "medianVolRatio": 0.9769616357110127,
+        "p40H1EmaSep": 0.008399971321834532,
+        "medianH1EmaSep": 0.008954246674419547
+      },
+      "winner": {
+        "sep": "PERCENTILE",
+        "stM": 3,
+        "bracket": "TIGHT",
+        "ret": 230.0671042448984,
+        "dd": 24.0060683699466,
+        "n": 12,
+        "h1Ret": 121.68424479102183,
+        "h2Ret": 48.890646043000174,
+        "h1Rank": 1,
+        "h2Rank": 1,
+        "fragile": false
+      },
+      "runnerUp": {
+        "sep": "FIXED",
+        "stM": 3,
+        "bracket": "TIGHT",
+        "ret": 174.86631423432038
+      },
+      "referenceRow": {
+        "symbol": "TIAUSDT",
+        "atr": 0.012241090788818607,
+        "adx": 19.962646721627294,
+        "p40Adx": 18.724565778239075,
+        "vol": 0.9769616357110127,
+        "p40EmaSep": 0.008399971321834532,
+        "sep": "PERCENTILE",
+        "stM": 3,
+        "bracket": "TIGHT"
+      },
+      "top5": [
+        {
+          "sep": "PERCENTILE",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 230.0671042448984,
+          "n": 12
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 174.86631423432038,
+          "n": 14
+        },
+        {
+          "sep": "ADX",
+          "stM": 3,
+          "bracket": "TIGHT",
+          "ret": 174.86631423432038,
+          "n": 14
+        },
+        {
+          "sep": "FIXED",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 68.46657342109023,
+          "n": 11
+        },
+        {
+          "sep": "ADX",
+          "stM": 3.5,
+          "bracket": "TIGHT",
+          "ret": 68.46657342109023,
+          "n": 11
+        }
+      ]
+    }
+  },
+  "referenceTable": [
+    {
+      "symbol": "BTCUSDT",
+      "atr": 0.004390757433673054,
+      "adx": 17.562178479412104,
+      "p40Adx": 16.799832796501747,
+      "vol": 0.8945927887651519,
+      "p40EmaSep": 0.002109786113502709,
+      "sep": "PERCENTILE",
+      "stM": 3,
+      "bracket": "TIGHT"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "atr": 0.008549477312110303,
+      "adx": 26.044067690511454,
+      "p40Adx": 23.7808687382376,
+      "vol": 0.9207426658435832,
+      "p40EmaSep": 0.009010434624930334,
+      "sep": "FIXED",
+      "stM": 3.5,
+      "bracket": "TRAIL"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "atr": 0.004565676684067051,
+      "adx": 26.950916496545315,
+      "p40Adx": 24.373031150944126,
+      "vol": 0.9570659659153394,
+      "p40EmaSep": 0.0037424305849617016,
+      "sep": "FIXED",
+      "stM": 3,
+      "bracket": "ATR"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "atr": 0.010659955642573967,
+      "adx": 33.38141259804772,
+      "p40Adx": 31.084017617111403,
+      "vol": 0.941094009153284,
+      "p40EmaSep": 0.0034534649655271893,
+      "sep": "ADX",
+      "stM": 3.5,
+      "bracket": "TIGHT"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "atr": 0.007596462479667436,
+      "adx": 20.4116018855248,
+      "p40Adx": 18.165341054842564,
+      "vol": 0.917693195135802,
+      "p40EmaSep": 0.008203783941829546,
+      "sep": "ADX",
+      "stM": 3,
+      "bracket": "TIGHT"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "atr": 0.01089369807836732,
+      "adx": 17.9955854067777,
+      "p40Adx": 16.886861505137574,
+      "vol": 0.9490941252570303,
+      "p40EmaSep": 0.0042885754035300785,
+      "sep": "PERCENTILE",
+      "stM": 3.5,
+      "bracket": "ATR"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "atr": 0.010641543718831683,
+      "adx": 24.375884585487107,
+      "p40Adx": 21.62554597085836,
+      "vol": 0.9181447256043296,
+      "p40EmaSep": 0.004862488759318998,
+      "sep": "PERCENTILE",
+      "stM": 3.5,
+      "bracket": "TIGHT"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "atr": 0.010101338825869843,
+      "adx": 21.843233553239088,
+      "p40Adx": 18.258008187681718,
+      "vol": 0.894184786184744,
+      "p40EmaSep": 0.005895426843096811,
+      "sep": "PERCENTILE",
+      "stM": 3.5,
+      "bracket": "ATR"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "atr": 0.010759587184315484,
+      "adx": 17.432398180205848,
+      "p40Adx": 15.172995188854278,
+      "vol": 0.9455389044029598,
+      "p40EmaSep": 0.00805067086712921,
+      "sep": "PERCENTILE",
+      "stM": 3,
+      "bracket": "TIGHT"
+    },
+    {
+      "symbol": "DOTUSDT",
+      "atr": 0.009278515104161882,
+      "adx": 22.972724682061518,
+      "p40Adx": 20.8448603792968,
+      "vol": 0.9700018798276007,
+      "p40EmaSep": 0.0075992503181681595,
+      "sep": "FIXED",
+      "stM": 3,
+      "bracket": "ATR"
+    },
+    {
+      "symbol": "LTCUSDT",
+      "atr": 0.007863837946236685,
+      "adx": 15.331208000309436,
+      "p40Adx": 13.985679692084144,
+      "vol": 0.9073051234514733,
+      "p40EmaSep": 0.006439678815752955,
+      "sep": "PERCENTILE",
+      "stM": 3.5,
+      "bracket": "ATR"
+    },
+    {
+      "symbol": "TRXUSDT",
+      "atr": 0.003946336861093353,
+      "adx": 32.0525853916316,
+      "p40Adx": 28.85388492739846,
+      "vol": 0.98387856472498,
+      "p40EmaSep": 0.0023843797233777868,
+      "sep": "FIXED",
+      "stM": 3,
+      "bracket": "TRAIL"
+    },
+    {
+      "symbol": "INJUSDT",
+      "atr": 0.01744577925484357,
+      "adx": 25.904296181748073,
+      "p40Adx": 21.15938373453242,
+      "vol": 0.9433437740322109,
+      "p40EmaSep": 0.013624653173957032,
+      "sep": "PERCENTILE",
+      "stM": 3.5,
+      "bracket": "TIGHT"
+    },
+    {
+      "symbol": "TIAUSDT",
+      "atr": 0.012241090788818607,
+      "adx": 19.962646721627294,
+      "p40Adx": 18.724565778239075,
+      "vol": 0.9769616357110127,
+      "p40EmaSep": 0.008399971321834532,
+      "sep": "PERCENTILE",
+      "stM": 3,
+      "bracket": "TIGHT"
+    }
+  ]
+}

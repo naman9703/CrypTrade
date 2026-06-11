@@ -51,11 +51,36 @@ import {
   mapLiquidityEntryLegs,
   resolveLiquidityEntryBrackets,
 } from "../../strategy/techniques/liquidity.js";
+import {
+  mapOrderFlowEntryLegs,
+  resolveOrderFlowEntryBrackets,
+} from "../../strategy/techniques/orderFlowBrackets.js";
+import { orderFlowExitSignal } from "../../strategy/techniques/orderFlowPatterns.js";
 
 const SUPERTREND_KEY = "SUPERTREND";
 const SUPERTREND_ELITE_KEY = "SUPERTREND_ELITE";
 const TREND_HTF_ST_KEY = "TREND_HTF_ST";
 const ELITE_HTF_KEY = "ELITE_HTF";
+
+/** Max closed bars before `time_stop` exit (0 = disabled). LIQ+S/R uses liq hold when SMC gate is off. */
+export function resolveMaxHoldBars(cfg = {}) {
+  const liqOn =
+    cfg.intradayGateLiquidity !== false ||
+    cfg.intradayGateInstitutionalSr === true ||
+    cfg.intradaySrAPlusMode === true;
+  const smcOn = cfg.intradayGateSmcIct === true || cfg.intradaySmcIctMode === true;
+  const pick = (...keys) => {
+    for (const k of keys) {
+      const v = Number(cfg[k]);
+      if (Number.isFinite(v) && v >= 0) return Math.floor(v);
+    }
+    return 0;
+  };
+  if (liqOn && !smcOn) {
+    return Math.max(0, pick("intradayLiqMaxHoldBars", "intradaySmcMaxHoldBars", "intradayOfMaxHoldBars"));
+  }
+  return Math.max(0, pick("intradaySmcMaxHoldBars", "intradayLiqMaxHoldBars", "intradayOfMaxHoldBars"));
+}
 
 function finalizeTradeRecord(pos, row) {
   return {
@@ -64,6 +89,13 @@ function finalizeTradeRecord(pos, row) {
     vpSetup: pos?.vpSetup ?? null,
     entryReason: pos?.entryReason ?? null,
     liqContext: pos?.liqContext ?? null,
+    regime: pos?.regime ?? null,
+    situation: pos?.situation ?? null,
+    playbook: pos?.playbook ?? null,
+    trigger: pos?.trigger ?? null,
+    // Entry-time stop distance so R-multiples stay honest after breakeven trailing.
+    initialSlPrice: pos?.initialSl ?? null,
+    initialRiskUsd: pos?.initialRiskUsd ?? null,
     lossPattern: classifyTrendHtfStTradeOutcome(row),
   };
 }
@@ -170,7 +202,20 @@ export async function runSimulation(args) {
   } = args;
 
   let cfg = args.cfg;
-  if (strategyKey === SUPERTREND_ELITE_KEY && cfg && typeof cfg === "object") {
+  if (strategyKey === "SITUATION_INTRADAY" && cfg && typeof cfg === "object") {
+    const { resolveSituationRouterCfg } = await import("../../strategy/situationIntraday.js");
+    cfg = resolveSituationRouterCfg(cfg);
+  } else if (strategyKey === "CRT_TBS" && cfg && typeof cfg === "object") {
+    const { resolveCrtTbsCfg } = await import("../../strategy/crtTbsIntraday.js");
+    cfg = resolveCrtTbsCfg(cfg);
+  } else if (strategyKey === "TOKYO_SESSION" && cfg && typeof cfg === "object") {
+    const { resolveTokyoSessionCfg } = await import("../../strategy/tokyoSessionIntraday.js");
+    cfg = resolveTokyoSessionCfg(cfg);
+  } else if (
+    (strategyKey === SUPERTREND_ELITE_KEY || strategyKey === "UNIFIED_ELITE") &&
+    cfg &&
+    typeof cfg === "object"
+  ) {
     cfg = normalizeEliteStRunCfg(cfg);
   }
 
@@ -220,6 +265,26 @@ export async function runSimulation(args) {
   const maxDailyLossVal = Number(cfg?.maxDailyLoss ?? 0);
   /** Live bot defaults maxDailyLossUnit to "PCT" not "USDT". */
   const maxDailyLossIsUsdt = String(cfg?.maxDailyLossUnit ?? "PCT").toUpperCase() === "USDT";
+
+  // ── Institutional risk overlay (regime-adaptive + reusable by any strategy) ──
+  const clampNum = (v, lo, hi, dflt) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : dflt;
+  };
+  /** Single user-facing aggressiveness dial: scales risk-per-trade ~1:1 with return AND drawdown. */
+  const riskScale = clampNum(cfg?.riskScale, 0.1, 5, 1);
+  /** Vol-targeted sizing: scale size by referenceATR%/currentATR% so risk is constant across regimes. */
+  const volTargetEnabled = cfg?.volTargetSizing === true;
+  const volTargetAtrPct = clampNum(cfg?.volTargetAtrPct, 0.0005, 0.1, 0.005);
+  const volTargetMaxMult = clampNum(cfg?.volTargetMaxMult, 1, 5, 2);
+  const volTargetMinMult = clampNum(cfg?.volTargetMinMult, 0.05, 1, 0.4);
+  /** Account-drawdown kill switch: halt NEW entries once equity is this far below peak. 0 = off. */
+  const killSwitchDdPct = clampNum(cfg?.riskKillSwitchDdPct, 0, 100, 0);
+  /** Consecutive-loss cooldown: stop new entries for the rest of the UTC day after N losses in a row. 0 = off. */
+  const consecLossLimit = Math.max(0, Math.floor(Number(cfg?.riskConsecutiveLossLimit ?? 0)));
+  /** Weekly drawdown cap: halt new entries once the rolling 7-day equity is down this %. 0 = off. */
+  const weeklyDdCapPct = clampNum(cfg?.riskWeeklyMaxLossPct, 0, 100, 0);
+  const riskOverlayReplay = { killSwitch: 0, weeklyCap: 0, consecCooldown: 0, dailyCap: 0 };
 
   /**
    * Build the Supertrend series whenever the strategy key OR the trailing
@@ -324,6 +389,10 @@ export async function runSimulation(args) {
   let equity = startEq;
   let dayStartEquity = startEq;
   let dayStartMs = candles.length ? Math.floor(candles[0].ts / 86400000) * 86400000 : 0;
+  // Risk-overlay running state.
+  let peakEquity = startEq;
+  let weekStartEquity = startEq;
+  let weekStartMs = dayStartMs;
   /**
    * Pending breakout state: when `supertrendBreakoutConfirm` is on, on a signal bar
    * we record the signal and wait up to `breakoutMaxBars` bars for a confirming close
@@ -344,12 +413,17 @@ export async function runSimulation(args) {
     if (shouldCancel?.()) break;
     const bar = candles[i];
 
-    // ── Daily loss reset ──────────────────────────────────────────────────────
+    // ── Daily / weekly loss reset + peak tracking ───────────────────────────────
     const barDayMs = Math.floor(bar.ts / 86400000) * 86400000;
     if (barDayMs > dayStartMs) {
       dayStartEquity = equity;
       dayStartMs = barDayMs;
     }
+    if (barDayMs - weekStartMs >= 7 * 86400000) {
+      weekStartEquity = equity;
+      weekStartMs = barDayMs;
+    }
+    if (equity > peakEquity) peakEquity = equity;
 
     // ── Pre-compute this bar's signal ONCE (reused for both exit flip and entry) ──
     // Adapters may be async (e.g. SURF_PULSE_ML ML gate). We await here so the
@@ -504,12 +578,8 @@ export async function runSimulation(args) {
         );
         pos.qty -= closeQty;
         pos.partialTaken = true;
-        /** After 1R partial on liquidity trades, protect runner with BE (manual analysis assumes this). */
-        if (
-          pos.partialTp &&
-          (liqStages?.beOn !== false) &&
-          cfg?.intradayLiqBreakevenAfterPartial !== false
-        ) {
+        /** After 1R partial, protect runner with BE when stage config allows it. */
+        if (pos.partialTp && liqStages?.beOn !== false) {
           const feeBuf =
             Number(cfg?.backtestBreakevenFeeBufferPct) ||
             (Number(cm.openFeeRate) + Number(cm.closeFeeRate)) * 1.2 ||
@@ -556,6 +626,20 @@ export async function runSimulation(args) {
       if (!exitReason && hitSLAfterBe) {
         exitReason = pos.beLocked ? "be" : "sl";
         exitPrice = pos.sl;
+      }
+
+      /** Order-flow guide exit: two consecutive bars delta against position. */
+      if (
+        !exitReason &&
+        pos.ofMonitor &&
+        cfg?.intradayOfExitOnDeltaAgainst !== false &&
+        orderFlowExitSignal(candles, i, pos.side, cfg, pos.entryIdx)
+      ) {
+        exitReason = "of_exit";
+        const next = candles[i + 1];
+        exitPrice = next
+          ? applySlippage(isLong ? "SELL" : "BUY", next.open, cm.slippagePct)
+          : applySlippage(isLong ? "SELL" : "BUY", bar.close, cm.slippagePct);
       }
 
       // Close-only exit — adapters can emit action:"EXIT" to close the current
@@ -697,6 +781,42 @@ export async function runSimulation(args) {
         const dailyLoss = dayStartEquity - equity;
         const limit = maxDailyLossIsUsdt ? maxDailyLossVal : dayStartEquity * (maxDailyLossVal / 100);
         if (dailyLoss >= limit) {
+          riskOverlayReplay.dailyCap++;
+          equityCurve.push({ ts: bar.ts, equity, drawdownPct: drawdownAt(equityCurve, equity) });
+          if (onProgress && candles.length) reportProgress(i, candles.length, equity, bar.ts, onProgress);
+          continue;
+        }
+      }
+
+      // ── Institutional risk overlay — halt NEW entries on risk breach ─────────
+      {
+        let blocked = null;
+        // Account-DD kill switch.
+        if (killSwitchDdPct > 0 && peakEquity > 0 && ((peakEquity - equity) / peakEquity) * 100 >= killSwitchDdPct) {
+          blocked = "killSwitch";
+        }
+        // Weekly drawdown cap.
+        if (!blocked && weeklyDdCapPct > 0 && weekStartEquity > 0 && ((weekStartEquity - equity) / weekStartEquity) * 100 >= weeklyDdCapPct) {
+          blocked = "weeklyCap";
+        }
+        // Consecutive-loss cooldown — stop for the rest of the UTC day after N losses in a row.
+        if (!blocked && consecLossLimit > 0 && trades.length) {
+          let tcl = 0;
+          let lastExitTs = 0;
+          for (let k = trades.length - 1; k >= 0; k--) {
+            if (trades[k].exitReason === "tp1_partial") continue; // partial leg is not a distinct outcome
+            if (Number(trades[k].netPnl ?? 0) < 0) {
+              if (!lastExitTs) lastExitTs = Number(trades[k].exitTs ?? 0);
+              tcl++;
+            } else break;
+          }
+          if (tcl >= consecLossLimit) {
+            const lastLossDay = Math.floor(lastExitTs / 86400000) * 86400000;
+            if (lastLossDay === barDayMs) blocked = "consecCooldown";
+          }
+        }
+        if (blocked) {
+          riskOverlayReplay[blocked]++;
           equityCurve.push({ ts: bar.ts, equity, drawdownPct: drawdownAt(equityCurve, equity) });
           if (onProgress && candles.length) reportProgress(i, candles.length, equity, bar.ts, onProgress);
           continue;
@@ -752,7 +872,9 @@ export async function runSimulation(args) {
       }
 
       // 4H Supertrend confirmation filter — block entries where 4H ST disagrees.
-      if (htf4hCtx) {
+      // Order-flow solo uses VP premium/discount as HTF filter (guide Layer 1), not ST.
+      const ofSoloEntry = String(barSignal?.reason ?? "").startsWith("ipro_of_");
+      if (htf4hCtx && !ofSoloEntry) {
         const htf4h = evaluateHtf4hFilter(htf4hCtx, bar, barSignal.action);
         if (!htf4h.pass) {
           htf4hReplay.veto++;
@@ -823,7 +945,11 @@ export async function runSimulation(args) {
       // Intelligence gate veto / size scaling
       let gateAction = "pass";
       let intelAtEntry = 50;
-      let sizeMult = 1;
+      // Per-signal risk scaling — strategy adapters can attach a `riskScale` to their
+      // signal to scale position size up (e.g. 1.5× for high-confluence liq entries)
+      // or down (e.g. 0.5× for supplemental lower-conviction trades).
+      let sizeMult = Number(barSignal.riskScale ?? 1);
+      if (!Number.isFinite(sizeMult) || sizeMult <= 0) sizeMult = 1;
       if (gateMode === "approx" && typeof gateFn === "function") {
         const gate =
           typeof gateFn === "function"
@@ -831,7 +957,8 @@ export async function runSimulation(args) {
             : { intelScore: 50, action: "pass", sizeMult: 1 };
         gateAction = gate.action;
         intelAtEntry = gate.intelScore;
-        sizeMult = gate.sizeMult;
+        // Multiply gate sizeMult with per-signal riskScale so both can coexist.
+        sizeMult *= (Number(gate.sizeMult) || 1);
         noteGateReplay(gateReplay, gateAction, intelAtEntry);
         if (gateAction === "vetoed") {
           equityCurve.push({ ts: bar.ts, equity, drawdownPct: drawdownAt(equityCurve, equity) });
@@ -883,8 +1010,18 @@ export async function runSimulation(args) {
         barSignal?.fibBrackets?.slPct > 0 && cfg?.intradayFibEntryAtSignalClose !== false;
       const liqSameBarEntry =
         barSignal?.liqBrackets?.slPct > 0 && cfg?.intradayLiqEntryAtSignalClose !== false;
-      const fillBar = fibSameBarEntry || liqSameBarEntry ? bar : next;
-      const entryFill = applySlippage(barSignal.action, fillBar.close, cm.slippagePct);
+      const ofSameBarEntry =
+        barSignal?.ofBrackets?.slPct > 0 && cfg?.intradayOfEntryAtSignalClose !== false;
+      /** Live Supertrend Elite fills at signal bar close (market on candle close), not next bar. */
+      const eliteSameBarEntry =
+        strategyKey === SUPERTREND_ELITE_KEY || strategyKey === "UNIFIED_ELITE";
+      const fillBar =
+        fibSameBarEntry || liqSameBarEntry || ofSameBarEntry || eliteSameBarEntry ? bar : next;
+      const fillPx =
+        !ofSameBarEntry && barSignal?.ofBrackets?.slPct > 0 && next
+          ? next.open
+          : fillBar.close;
+      const entryFill = applySlippage(barSignal.action, fillPx, cm.slippagePct);
       const atrInfoEntry = atrSeries[i];
       const atrPctEntry =
         atrInfoEntry && Number.isFinite(atrInfoEntry.atr) && bar.close > 0
@@ -928,7 +1065,29 @@ export async function runSimulation(args) {
       let liqExitStages = null;
       let liqBeAt1R = false;
       let liqBeTriggerPx = 0;
-      if (barSignal?.liqBrackets?.slPct > 0) {
+      if (barSignal?.ofBrackets?.slPct > 0) {
+        const ofBr = resolveOrderFlowEntryBrackets(cfg, barSignal, entryFill, barSignal.action);
+        if (ofBr) {
+          if (bracketSlOn) stopPct = ofBr.slPct;
+          if (bracketTpOn) tpPct = ofBr.tp2Pct ?? tpPct;
+          const legs = mapOrderFlowEntryLegs(ofBr, cfg);
+          if (legs) {
+            if (bracketSlOn) liqStructureSl = legs.slPrice;
+            if (bracketTpOn) {
+              liqStructureTp = legs.tp;
+              liqStructureTp1 = legs.tp1;
+              liqPartial = legs.partialTp;
+              liqPartialFrac = legs.partialFrac;
+              liqExitStages = legs.stages;
+              liqBeAt1R = legs.beAt1R;
+              liqBeTriggerPx = legs.beTriggerPx;
+            }
+          }
+        } else if (bracketSlOn) {
+          stopPct = barSignal.ofBrackets.slPct;
+          if (bracketTpOn) tpPct = barSignal.ofBrackets.tp2Pct ?? barSignal.ofBrackets.tpPct ?? tpPct;
+        }
+      } else if (barSignal?.liqBrackets?.slPct > 0) {
         const liqBr = resolveLiquidityEntryBrackets(cfg, barSignal, entryFill, barSignal.action);
         if (liqBr) {
           if (bracketSlOn) stopPct = liqBr.slPct;
@@ -978,6 +1137,12 @@ export async function runSimulation(args) {
               ? entryFill * (1 - stopPct)
               : entryFill * (1 + stopPct)
             : 0;
+      const sizingSl = resolveSizingStopPrice({
+        entryFill,
+        exitSl: sl,
+        side: barSignal.action,
+        cfg,
+      });
       const tp =
         structureTp != null && structureTp > 0
           ? structureTp
@@ -986,19 +1151,21 @@ export async function runSimulation(args) {
               ? entryFill * (1 + tpPct)
               : entryFill * (1 - tpPct)
             : 0;
+      // Risk-overlay sizing: riskScale dial × vol-target (referenceATR%/currentATR%).
+      let riskMult = riskScale;
+      if (volTargetEnabled && atrPctEntry > 0) {
+        const vtm = volTargetAtrPct / atrPctEntry;
+        riskMult *= Math.max(volTargetMinMult, Math.min(volTargetMaxMult, vtm));
+      }
+      const sizeMultFinal = sizeMult * riskMult;
       const qty = computeEntryQty({
         equity,
         entryFill,
-        sl: resolveSizingStopPrice({
-          entryFill,
-          exitSl: sl > 0 ? sl : 0,
-          side: barSignal.action,
-          cfg,
-        }),
+        sl: sizingSl,
         cfg,
         cm,
         isFutures,
-        sizeMult,
+        sizeMult: sizeMultFinal,
       });
       const liqPx = isFutures
         ? liquidationPrice({ side: barSignal.action, entryFill, leverage: cm.leverage })
@@ -1010,11 +1177,13 @@ export async function runSimulation(args) {
         (typeof barSignal.reason === "string" && barSignal.reason.startsWith("vp_")
           ? barSignal.reason.slice(3)
           : null);
+      const sameBarEntry =
+        fibSameBarEntry || liqSameBarEntry || ofSameBarEntry || eliteSameBarEntry;
       pos = {
         side: barSignal.action,
         entryFill,
         entryTs: fillBar.ts,
-        entryIdx: fibSameBarEntry ? i : i + 1,
+        entryIdx: sameBarEntry ? i : i + 1,
         qty,
         sl,
         tp,
@@ -1025,7 +1194,16 @@ export async function runSimulation(args) {
         entryEquity: equity,
         intelAtEntry,
         gateAction,
-        sizeMult,
+        sizeMult: sizeMultFinal,
+        // Initial (entry-time) stop + dollar risk — preserved for honest R-multiple
+        // stats even after the live stop is trailed to breakeven. When exit SL is
+        // off (trail-only Elite), use the sizing stop (default 1% or backtestSizingStopPct).
+        initialSl: sl > 0 ? sl : sizingSl,
+        initialRiskUsd: Math.abs(entryFill - sizingSl) * qty,
+        regime: barSignal?.regime ?? null,
+        situation: barSignal?.situation ?? null,
+        playbook: barSignal?.playbook ?? null,
+        trigger: barSignal?.trigger ?? null,
         mae: 0,
         mfe: 0,
         liqPx,
@@ -1045,6 +1223,7 @@ export async function runSimulation(args) {
               tp1Price: liqStructureTp1 > 0 ? liqStructureTp1 : null,
               smcMeta: barSignal.smcMeta ?? null,
               techniques: barSignal.techniques ?? null,
+              tokyoMeta: barSignal.liqBrackets.tokyoMeta ?? null,
             }
           : null,
         partialTp: liqPartial,
@@ -1054,9 +1233,10 @@ export async function runSimulation(args) {
         liqExitStages,
         liqBeAt1R,
         liqBeTriggerPx,
-        maxHoldBars: Math.max(0, Number(cfg?.intradaySmcMaxHoldBars ?? cfg?.intradayLiqMaxHoldBars ?? 0)),
+        maxHoldBars: resolveMaxHoldBars(cfg),
+        ofMonitor: Boolean(barSignal?.ofBrackets || barSignal?.ofMeta),
       };
-      if (!fibSameBarEntry) {
+      if (!sameBarEntry) {
         i++; // bar[i+1] is the fill bar — skip it so we don't re-signal on the entry bar
       }
     }
@@ -1127,6 +1307,7 @@ export async function runSimulation(args) {
     confirmationReplay,
     bigMoveReplay,
     htf4hReplay,
+    riskOverlayReplay,
   };
 }
 

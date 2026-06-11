@@ -45,6 +45,7 @@ import {
   getDealingRangeMeta,
 } from "./techniques/dealingRange.js";
 import { rankSmcCycle, reclaimBodyStrength } from "./smcCandidateRank.js";
+import { applyOrderFlowGate } from "./techniques/orderFlowPatterns.js";
 
 /**
  * @param {object} [opts]
@@ -351,6 +352,15 @@ export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
     );
     if (!brackets) continue;
 
+    let smcOfTechniques = [];
+    if (opts.intradaySmcUseOrderFlow === true) {
+      const of = applyOrderFlowGate(candles, idx, side, pre, opts, {
+        orderBookSnapshot: opts.orderBookSnapshot ?? opts._orderBookSnapshot,
+      });
+      if (!of.ok) continue;
+      smcOfTechniques = of.techniques;
+    }
+
     const liqQuality = cycleLiqQuality(cyc);
     const reclaimBodyRatio = reclaimBodyStrength(candles, sweepReclaimIdx, side);
     const rank = rankSmcCycle(candles, side, cyc, {
@@ -370,6 +380,7 @@ export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
     if (ob) techniques.push("smc_ob");
     if (requireRetrace) techniques.push("smc_retrace");
     if (requirePremiumDiscount) techniques.push("smc_premium_discount");
+    techniques.push(...smcOfTechniques);
 
     const sweepStartIdx = cyc.sweepStartIdx ?? Math.max(0, sweepReclaimIdx - 8);
     let sweepWickIdx = sweepStartIdx;

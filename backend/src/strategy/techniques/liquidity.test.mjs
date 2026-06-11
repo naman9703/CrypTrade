@@ -192,6 +192,71 @@ test("listSessionLiquiditySetups — first cycle only removes later reclaims", (
   assert.equal(firstOnly.length, 0);
 });
 
+test("session cluster — bare touch no longer counts as a sweep (needs pierce)", () => {
+  const day = Date.parse("2026-05-26T00:00:00Z");
+  const candles = [];
+  for (let i = 0; i < 60; i++) candles.push(bar(day + i * 900_000, 655, 656, 654.0, 655));
+  const i = candles.length;
+  // Touches the 654.0 cluster exactly (low === level) then closes back up.
+  candles.push(bar(day + i * 900_000, 654.2, 655.5, 654.0, 655.2));
+  const pre = {
+    prevDayHigh: new Array(candles.length).fill(664),
+    prevDayLow: new Array(candles.length).fill(640),
+  };
+  const opts = {
+    sweepPct: 0.001,
+    intradayLiqSessionExtreme: true,
+    intradayLiqSessionExtremeMinTouches: 2,
+    intradayLiqMinSweepExtensionPct: 0.0005,
+  };
+  const touchOnly = listSessionLiquiditySetups(candles, candles.length - 1, "BUY", pre, opts);
+  assert.equal(touchOnly.filter((s) => s.levelType === "session_low").length, 0, "bare touch must not sweep");
+});
+
+test("sweep volume gate — low-volume poke is rejected when ratio set", () => {
+  const day = Date.parse("2026-05-27T00:00:00Z");
+  const mk = (ts, o, h, l, c, v) => ({ ts, open: o, high: h, low: l, close: c, volume: v });
+  const candles = [];
+  for (let i = 0; i < 6; i++) candles.push(mk(day + i * 900_000, 100, 100.4, 99.7, 100, 100));
+  // SELL: pokes pdh 101 with a tiny-volume wick, reclaims below.
+  candles.push(mk(day + 6 * 900_000, 100.5, 101.5, 100.4, 100.2, 5));
+  const pre = {
+    prevDayHigh: new Array(candles.length).fill(101),
+    prevDayLow: new Array(candles.length).fill(98),
+  };
+  const noGate = scanSessionLiquidityCycles(candles, candles.length - 1, "SELL", 101, 98, "pdh", 0.001, 0, {
+    intradayLiqMinSweepExtensionPct: 0.001,
+  });
+  const gated = scanSessionLiquidityCycles(candles, candles.length - 1, "SELL", 101, 98, "pdh", 0.001, 0, {
+    intradayLiqMinSweepExtensionPct: 0.001,
+    intradayLiqSweepMinVolRatio: 1.5,
+    intradayLiqSweepVolLookback: 5,
+  });
+  assert.equal(noGate.length, 1);
+  assert.equal(gated.length, 0, "low-volume sweep should be filtered when vol gate on");
+});
+
+test("timeframe max-sweep-minutes overrides the bar-count window", () => {
+  const day = Date.parse("2026-05-28T00:00:00Z");
+  const candles = [
+    bar(day, 100, 100.5, 99.8, 100),
+    bar(day + 900_000, 100, 101.5, 99.9, 101.2), // poke pdh 101
+  ];
+  for (let i = 2; i < 7; i++) candles.push(bar(day + i * 900_000, 101, 101.2, 100.9, 101.1));
+  candles.push(bar(day + 7 * 900_000, 101, 101.1, 100.2, 100.5)); // reclaim 6 bars after poke
+  const pre = { prevDayHigh: new Array(candles.length).fill(101), prevDayLow: new Array(candles.length).fill(98) };
+  const within = scanSessionLiquidityCycles(candles, candles.length - 1, "SELL", 101, 98, "pdh", 0.001, 0, {
+    intradayLiqMinSweepExtensionPct: 0.001,
+    intradayLiqMaxSweepMinutes: 180, // 12 × 15m bars allowed
+  });
+  const tooTight = scanSessionLiquidityCycles(candles, candles.length - 1, "SELL", 101, 98, "pdh", 0.001, 0, {
+    intradayLiqMinSweepExtensionPct: 0.001,
+    intradayLiqMaxSweepMinutes: 30, // 2 × 15m bars — reclaim is too late
+  });
+  assert.equal(within.length, 1);
+  assert.equal(tooTight.length, 0);
+});
+
 test("listSessionLiquiditySetups — reclaim body filter blocks weak close", () => {
   const day = Date.parse("2026-05-22T00:00:00Z");
   const candles = [

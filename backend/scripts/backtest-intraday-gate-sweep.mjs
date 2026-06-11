@@ -76,6 +76,12 @@ function gateCfg(scenario) {
     intradayGateVp: Boolean(scenario.gates.vp),
     intradayGateOrderFlow: Boolean(scenario.gates.orderFlow),
     intradayGateHtfRegime: Boolean(scenario.gates.htfRegime),
+    ...(scenario.gates.orderFlow
+      ? {
+          /** Backtest Tier B/C until taker_buy_volume is backfilled in ohlcv_candles. */
+          intradayOfAllowProxy: true,
+        }
+      : {}),
   };
 }
 

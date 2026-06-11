@@ -23,6 +23,7 @@ function mapKlineRow(k) {
     low: Number(k[3]),
     close: Number(k[4]),
     volume: Number(k[5]),
+    taker_buy_volume: Number(k[9]) || 0,
   };
 }
 

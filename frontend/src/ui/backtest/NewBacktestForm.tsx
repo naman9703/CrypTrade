@@ -8,7 +8,13 @@ import type { ApiTradingModeSlug } from "../../lib/tradingModeSlug";
 import type { Strategy, StrategyVersion } from "../../types/strategy";
 import type { BotInstance } from "../../types/instance";
 import { tradingModeToApiModeSlug } from "../../lib/tradingModeSlug";
+import {
+  instanceOperationalFromSaved,
+  mergeCfgForBacktestPreview,
+  resolveBacktestStrategyVersion,
+} from "../../lib/backtestInstanceConfig";
 import { useAppStore } from "../../ws/store";
+import { MultiCoinSelector } from "./MultiCoinSelector";
 
 const TIMEFRAMES = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"];
 
@@ -57,7 +63,9 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
   const [instanceId, setInstanceId] = useState<string>("");
   const [strategyId, setStrategyId] = useState<string>("");
   const [versionId, setVersionId] = useState<string>("");
+  const [coinMode, setCoinMode] = useState<"single" | "multiple">("single");
   const [symbol, setSymbol] = useState<string>("BTCUSDT");
+  const [portfolioSymbols, setPortfolioSymbols] = useState<string[]>([]);
   const [customSymbolMode, setCustomSymbolMode] = useState<boolean>(false);
   const [timeframe, setTimeframe] = useState<string>("15m");
   const [from, setFrom] = useState<string>(() => defaultFromDate());
@@ -119,30 +127,35 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
     versionsByStrategyId,
   ]);
 
-  const selectedVersion: StrategyVersion | null = useMemo(() => {
-    return selectedStrategy?.latestVersion ?? null;
-  }, [selectedStrategy?.latestVersion]);
+  const selectedVersion: StrategyVersion | null = useMemo(
+    () =>
+      resolveBacktestStrategyVersion(
+        configSource,
+        selectedInstance,
+        selectedStrategy,
+        versionsByStrategyId,
+      ),
+    [configSource, selectedInstance, selectedStrategy, versionsByStrategyId],
+  );
 
-  /**
-   * Mirrors the live-bot's strategy key priority:
-   *   1. supertrendAuto on → SUPERTREND
-   *   2. strategyMode MANUAL → manualStrategy
-   *   3. strategyMode AUTO → "AUTO" (regime rotation)
-   *   4. fallback → SUPERTREND
-   */
-  const liveBot = useAppStore((s) => s.bot);
   const effectiveCfgRaw = useMemo(
     () =>
-      mergeCfgForUi(
+      mergeCfgForBacktestPreview(
         selectedVersion?.cfgRaw,
         configSource === "instance" ? selectedInstance : null,
         symbol,
         timeframe,
-        configSource === "instance" ? (liveBot as Record<string, unknown> | null) : null,
       ),
-    [configSource, liveBot, selectedInstance, selectedVersion?.cfgRaw, symbol, timeframe],
+    [configSource, selectedInstance, selectedVersion?.cfgRaw, symbol, timeframe],
   );
   const backtestEngineBadge = useMemo(() => effectiveEngineKey(effectiveCfgRaw), [effectiveCfgRaw]);
+  const requires1hChart =
+    backtestEngineBadge === "UNIFIED_ELITE" || backtestEngineBadge === "SUPERTREND_ELITE";
+
+  /** Elite / Unified paths are validated on 1H only — backtest form defaults to 15m otherwise. */
+  useEffect(() => {
+    if (requires1hChart && timeframe !== "1h") setTimeframe("1h");
+  }, [requires1hChart, timeframe]);
 
   /** Merged, de-duped symbol list: strategy config first, then popular defaults. */
   const availableSymbols = useMemo(() => {
@@ -197,6 +210,11 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
   }, [timeframe, onTfChange]);
 
   useEffect(() => {
+    if (coinMode === "multiple") {
+      setCoveragePct(null);
+      setCoverageChecking(false);
+      return;
+    }
     if (!symbol || !timeframe || !from || !to) return;
     let cancelled = false;
     setCoverageChecking(true);
@@ -216,7 +234,15 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
       cancelled = true;
       clearTimeout(t);
     };
-  }, [symbol, timeframe, from, to]);
+  }, [coinMode, symbol, timeframe, from, to]);
+
+  useEffect(() => {
+    if (coinMode !== "multiple") return;
+    const fromCfg = symbolsFromCfg(effectiveCfgRaw);
+    if (fromCfg.length >= 2 && portfolioSymbols.length === 0) {
+      setPortfolioSymbols(fromCfg.slice(0, 10));
+    }
+  }, [coinMode, effectiveCfgRaw, portfolioSymbols.length]);
 
   const canSubmit = useMemo(
     () =>
@@ -224,18 +250,35 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
         versionId &&
           (configSource !== "instance" || effectiveCfgRaw != null) &&
           (configSource !== "instance" || instanceId) &&
-          symbol &&
+          (coinMode === "multiple" ? portfolioSymbols.length >= 2 : symbol) &&
           timeframe &&
           from &&
           to &&
           startingUsdt > 0 &&
           !submitting,
       ),
-    [configSource, effectiveCfgRaw, instanceId, versionId, symbol, timeframe, from, to, startingUsdt, submitting],
+    [
+      coinMode,
+      configSource,
+      effectiveCfgRaw,
+      instanceId,
+      portfolioSymbols.length,
+      versionId,
+      symbol,
+      timeframe,
+      from,
+      to,
+      startingUsdt,
+      submitting,
+    ],
   );
 
   async function submit() {
     if (!canSubmit) return;
+    if (requires1hChart && timeframe !== "1h") {
+      setErr(`${backtestEngineBadge} backtests must use the 1h timeframe (not ${timeframe}).`);
+      return;
+    }
     setErr(null);
     setSubmitting(true);
     try {
@@ -244,9 +287,12 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
       const freshInstances = useAppStore.getState().instancesByMode[slug] ?? [];
       const freshStrategies = useAppStore.getState().strategiesByMode[slug] ?? [];
       let runVersionId = versionId;
-      if (configSource === "instance" && instanceId) {
-        const inst = freshInstances.find((i) => i.id === instanceId);
-        if (inst?.strategyVersionId) runVersionId = String(inst.strategyVersionId);
+      const runInstance =
+        configSource === "instance" && instanceId
+          ? freshInstances.find((i) => i.id === instanceId)
+          : undefined;
+      if (runInstance?.strategyVersionId) {
+        runVersionId = String(runInstance.strategyVersionId);
       } else if (strategyId) {
         const strat = freshStrategies.find((s) => s.id === strategyId);
         if (strat?.latestVersion?.id) runVersionId = String(strat.latestVersion.id);
@@ -257,7 +303,9 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
       const res = await api.createBacktestRun({
         strategyVersionId: runVersionId,
         botInstanceId: configSource === "instance" ? instanceId : undefined,
-        symbol: symbol.toUpperCase(),
+        ...(coinMode === "multiple"
+          ? { symbols: portfolioSymbols.map((s) => s.toUpperCase()) }
+          : { symbol: symbol.toUpperCase() }),
         timeframe,
         from,
         to,
@@ -267,8 +315,8 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
         walkForward: walkForwardOn ? { trainPct } : undefined,
         positionSizing: fullEquityMargin ? "FULL_EQUITY_MARGIN" : "RISK_AT_SL",
         instanceOperational:
-          configSource === "instance"
-            ? instanceOperationalFromLiveBot(useAppStore.getState().bot, symbol, timeframe)
+          runInstance?.operational
+            ? instanceOperationalFromSaved(runInstance.operational, symbol, timeframe)
             : undefined,
       });
       if (!res?.ok || !res.runId) throw new Error(res?.error || "create_failed");
@@ -352,7 +400,8 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
           <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
             {configSource === "instance" ? (
               <>
-                Uses the instance-bound strategy version plus current instance operational fields.
+                Uses the instance-bound strategy version (v{selectedInstance?.strategyVersionNumber ?? "?"}) and saved
+                instance operational fields — not the live trading panel.
               </>
             ) : (
               <>
@@ -394,20 +443,25 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
               <span className="font-mono">BNBUSDT</span> 15m (~87% WR, ~+18% Jan–May 2026). Apply via Trading tab → ★ ST + Intel 80% WR, then Save strategy.
             </p>
           ) : null}
-          {backtestEngineBadge === "SUPERTREND_ELITE" ? (
+          {backtestEngineBadge === "SUPERTREND_ELITE" || backtestEngineBadge === "UNIFIED_ELITE" ? (
             (() => {
               const issues = eliteStConfigIssues(effectiveCfgRaw, timeframe);
+              const label = backtestEngineBadge === "UNIFIED_ELITE" ? "Unified Elite" : "Supertrend Elite";
+              const presetHint =
+                backtestEngineBadge === "UNIFIED_ELITE"
+                  ? "cyan ★ BNB 1H Unified"
+                  : "violet BTC 1H Elite";
               if (!issues.length) {
                 return (
                   <p className="text-[10px] text-emerald-800 dark:text-emerald-300">
-                    <b>Supertrend Elite:</b> config looks valid for 1H. Simulator auto-corrects legacy fixed SL/TP and ST mult &lt; 3 on each run.
+                    <b>{label}:</b> config looks valid for 1H. Simulator auto-corrects legacy fixed SL/TP and ST mult &lt; 3 on each run.
                   </p>
                 );
               }
               return (
                 <p className="text-[10px] text-amber-800 dark:text-amber-300">
-                  <b>Supertrend Elite — config issues in saved strategy:</b> {issues.join(" · ")}.{" "}
-                  Trading tab → violet <b>BTC 1H Elite</b> preset → <b>Save strategy</b>. Backtests will auto-fix mult/SL/TP, but{" "}
+                  <b>{label} — config issues in saved strategy:</b> {issues.join(" · ")}.{" "}
+                  Trading tab → <b>{presetHint}</b> preset → <b>Save strategy</b>. Backtests will auto-fix mult/SL/TP, but{" "}
                   <b>1H timeframe</b> and <b>1H EMA gate</b> must be saved in your strategy.
                 </p>
               );
@@ -418,8 +472,8 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
 
       <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
         OHLC for the symbol and timeframe you choose is loaded from <span className="font-mono">ohlcv_candles</span> (Binance): gaps are backfilled from
-        Binance REST using the <span className="font-medium">{configSource === "instance" ? "merged instance" : "strategy snapshot"}</span> plus{" "}
-        <span className="font-medium">live intraday / SMC panel toggles</span> from the active trading mode. Spot vs futures follows market mode. With Postgres enabled, finalized
+        Binance REST using the <span className="font-medium">{configSource === "instance" ? "saved instance + bound strategy version" : "saved strategy snapshot"}</span>.
+        Exits (fixed SL/TP vs trailing ST vs intraday structure brackets) come from the <span className="font-medium">strategy config</span>; instance only supplies symbol, timeframe, market mode, and risk. Spot vs futures follows market mode. With Postgres enabled, finalized
         Binance kline closes from the running server are also stored there so recent bars stay aligned with real exchange prints.
       </p>
       {coveragePct != null && coveragePct < 99 ? (
@@ -430,6 +484,42 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
         <div className="text-[10px] text-slate-500">Checking data coverage…</div>
       ) : null}
 
+      <Field label="Coin mode">
+        <div className="flex gap-1">
+          {(["single", "multiple"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setCoinMode(mode)}
+              className={`flex-1 rounded px-2 py-1 text-[11px] font-semibold ${
+                coinMode === mode
+                  ? "bg-sky-600 text-white"
+                  : "border border-slate-300 text-slate-700 dark:border-slate-600 dark:text-slate-200"
+              }`}
+            >
+              {mode === "single" ? "Single coin" : "Multiple coins"}
+            </button>
+          ))}
+        </div>
+        {coinMode === "multiple" ? (
+          <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+            Shared-account portfolio replay — same strategy on each coin, one compounded equity curve (like live multi-coin).
+          </p>
+        ) : null}
+      </Field>
+
+      {coinMode === "multiple" ? (
+        <Field label="Portfolio coins">
+          <MultiCoinSelector
+            candidates={availableSymbols}
+            selected={portfolioSymbols}
+            timeframe={timeframe}
+            from={from}
+            to={to}
+            onChange={setPortfolioSymbols}
+          />
+        </Field>
+      ) : (
       <div className="grid grid-cols-2 gap-2">
         <Field label="Symbol">
           {customSymbolMode ? (
@@ -481,8 +571,31 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
               </option>
             ))}
           </select>
+          {requires1hChart ? (
+            <p className="mt-1 text-[10px] font-medium text-amber-800 dark:text-amber-300">
+              <b>{backtestEngineBadge}</b> requires <b>1h</b> candles (15m is not profitable for this path). Timeframe was set to 1h automatically.
+            </p>
+          ) : null}
         </Field>
       </div>
+      )}
+
+      {coinMode === "multiple" ? (
+        <Field label="Timeframe">
+          <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)} className="select-base">
+            {TIMEFRAMES.map((tf) => (
+              <option key={tf} value={tf}>
+                {tf}
+              </option>
+            ))}
+          </select>
+          {requires1hChart ? (
+            <p className="mt-1 text-[10px] font-medium text-amber-800 dark:text-amber-300">
+              <b>{backtestEngineBadge}</b> requires <b>1h</b> candles.
+            </p>
+          ) : null}
+        </Field>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-2">
         <Field label="From">
@@ -547,6 +660,11 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
             <span className="text-[11px] text-slate-500">In-sample only</span>
           )}
         </div>
+        {walkForwardOn ? (
+          <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+            Train/test Sharpe appears on the <span className="font-semibold">Results</span> tab after the run completes (not under Optimization).
+          </p>
+        ) : null}
       </Field>
 
       {err && <div className="rounded bg-rose-50 px-2 py-1 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{err}</div>}
@@ -626,6 +744,13 @@ function eliteStConfigIssues(cfgRaw: unknown, runTf: string): string[] {
   if (tf && tf !== "1h") issues.push(`timeframe is ${tf} (use 1h)`);
   if (b.eliteStRequireHtf1hEmaAlign !== true) issues.push("1H EMA gate off");
   if (Number(b.supertrendMultiplier ?? 3) < 3) issues.push(`ST mult ${b.supertrendMultiplier} (need ≥3)`);
+  if (
+    b.trailingStopLossAuto === true &&
+    Number(b.supertrendFuturesFixedSlPct ?? 0) === 0 &&
+    b.supertrendFuturesUseFixedSl !== false
+  ) {
+    issues.push("fixed SL bracket ON with 0% SL — breaks ST trail (turn SL bracket off)");
+  }
   if (Number(b.supertrendFuturesFixedSlPct ?? 0) > 0 && b.supertrendFuturesUseFixedSl !== false) {
     issues.push(`fixed SL ${(Number(b.supertrendFuturesFixedSlPct) * 100).toFixed(1)}%`);
   }
@@ -634,6 +759,15 @@ function eliteStConfigIssues(cfgRaw: unknown, runTf: string): string[] {
   }
   if (Number(b.riskPerTrade ?? 0) > 10) issues.push(`risk ${b.riskPerTrade}% (validated 5%)`);
   if (b.supertrendFuturesAuto === true) issues.push("ST auto-trade on");
+  if (b.trailingStopLossAuto !== true) {
+    issues.push("trailing ST off (Elite requires trail — auto-fixed on run)");
+  }
+  if (String(b.trailBufferMode ?? "").toUpperCase() === "ATR") {
+    issues.push("trail buffer ATR mode (Elite uses PERCENT 0.05% — auto-fixed on run)");
+  }
+  if (Number(b.trailBufferRate ?? 0.0005) > 0.001) {
+    issues.push(`trail buffer ${(Number(b.trailBufferRate) * 100).toFixed(2)}% (Elite uses 0.05% — auto-fixed on run)`);
+  }
   return issues;
 }
 
@@ -643,62 +777,6 @@ function boolFromCfg(cfgRaw: unknown, key: string): boolean {
   const bot = r.bot;
   const b = bot && typeof bot === "object" ? (bot as Record<string, unknown>) : r;
   return b[key] === true;
-}
-
-function mergeCfgForUi(
-  cfgRaw: unknown,
-  instance: BotInstance | null,
-  symbol: string,
-  timeframe: string,
-  liveBot?: Record<string, unknown> | null,
-): Record<string, unknown> | null {
-  if (!cfgRaw || typeof cfgRaw !== "object") return null;
-  const root = JSON.parse(JSON.stringify(cfgRaw)) as Record<string, unknown>;
-  const bot = root.bot;
-  const b = bot && typeof bot === "object" ? (bot as Record<string, unknown>) : root;
-  if (instance?.operational) {
-    const op = instance.operational;
-    if (op.marketMode != null) b.marketMode = op.marketMode;
-    if (op.riskPerTrade != null) b.riskPerTrade = op.riskPerTrade;
-    if (op.riskUnit != null) b.riskPerTradeUnit = op.riskUnit;
-    if (op.maxDailyLoss != null) b.maxDailyLoss = op.maxDailyLoss;
-    if (op.maxDailyLossUnit != null) b.maxDailyLossUnit = op.maxDailyLossUnit;
-  }
-  if (liveBot) {
-    if (b.riskPerTrade == null && liveBot.riskPerTrade != null) b.riskPerTrade = liveBot.riskPerTrade;
-    if (b.riskPerTradeUnit == null && liveBot.riskPerTradeUnit != null) b.riskPerTradeUnit = liveBot.riskPerTradeUnit;
-    if (b.maxDailyLoss == null && liveBot.maxDailyLoss != null) b.maxDailyLoss = liveBot.maxDailyLoss;
-    if (b.maxDailyLossUnit == null && liveBot.maxDailyLossUnit != null) b.maxDailyLossUnit = liveBot.maxDailyLossUnit;
-    if (b.marketMode == null && liveBot.marketMode != null) b.marketMode = liveBot.marketMode;
-  }
-  if (symbol) b.symbol = symbol.toUpperCase();
-  if (timeframe) b.timeframe = timeframe;
-  return root;
-}
-
-function normalizeRiskUnit(raw: string): "USDT" | "PCT" | null {
-  const u = raw.toUpperCase();
-  if (u === "USDT") return "USDT";
-  if (u === "PCT" || u === "PCT_EQUITY" || u.startsWith("PCT_")) return "PCT";
-  return null;
-}
-
-/** Instance-owned deployment fields sent with each instance backtest (not SMC strategy brain). */
-function instanceOperationalFromLiveBot(
-  liveBot: Record<string, unknown> | null | undefined,
-  symbol: string,
-  timeframe: string,
-) {
-  const b = liveBot && typeof liveBot === "object" ? liveBot : {};
-  return {
-    symbol: symbol.toUpperCase(),
-    timeframe,
-    marketMode: b.marketMode != null ? String(b.marketMode) : null,
-    riskPerTrade: b.riskPerTrade != null ? Number(b.riskPerTrade) : null,
-    riskUnit: normalizeRiskUnit(String(b.riskPerTradeUnit ?? "")),
-    maxDailyLoss: b.maxDailyLoss != null ? Number(b.maxDailyLoss) : null,
-    maxDailyLossUnit: normalizeRiskUnit(String(b.maxDailyLossUnit ?? "")),
-  };
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

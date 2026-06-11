@@ -123,7 +123,11 @@ export function InsightsPanel() {
   const [aiTrainMeta, setAiTrainMeta] = useState<{ symbolsCount?: number; source?: string }>({});
   useEffect(() => {
     let alive = true;
+    let inFlight = false;
     const run = async () => {
+      if (inFlight) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      inFlight = true;
       try {
         const r = await api.aiHealth();
         if (!alive) return;
@@ -133,10 +137,12 @@ export function InsightsPanel() {
       } catch {
         if (!alive) return;
         setAiTrainMeta({});
+      } finally {
+        inFlight = false;
       }
     };
     run();
-    const id = setInterval(run, 12_000);
+    const id = setInterval(run, 30_000);
     return () => {
       alive = false;
       clearInterval(id);

@@ -80,11 +80,47 @@ function isSessionClusterLevel(levelType) {
   return levelType === "session_low" || levelType === "session_high";
 }
 
-function sweepPoked(side, bar, level, sweepPct, levelType) {
+/**
+ * A poke requires price to pierce BEYOND the level. PDH/PDL use `sweepPct`;
+ * session clusters (EQH/EQL) use their own `clusterPct` — equal highs/lows are
+ * at least as significant as PDH/PDL, so they require a real (small) pierce too,
+ * not a bare touch, which otherwise fires on spread alone in ranges.
+ */
+function sweepPoked(side, bar, level, sweepPct, levelType, clusterPct = 0) {
   if (isSessionClusterLevel(levelType)) {
-    return side === "BUY" ? bar.low <= level : bar.high >= level;
+    const cp = clusterPct > 0 ? clusterPct : 0;
+    return side === "BUY" ? bar.low < level * (1 - cp) : bar.high > level * (1 + cp);
   }
   return side === "BUY" ? bar.low < level * (1 - sweepPct) : bar.high > level * (1 + sweepPct);
+}
+
+/** Mean volume over the `lookback` bars before idx (excludes idx). 0 → unknown. */
+function trailingAvgVolume(candles, idx, lookback) {
+  let sum = 0;
+  let n = 0;
+  for (let j = Math.max(0, idx - lookback); j < idx; j++) {
+    const v = Number(candles[j]?.volume);
+    if (Number.isFinite(v) && v > 0) {
+      sum += v;
+      n++;
+    }
+  }
+  return n > 0 ? sum / n : 0;
+}
+
+/**
+ * Genuine stop-hunts usually spike volume at the sweep candle itself. When
+ * `minVolRatio > 0`, require the poke bar's volume to exceed `minVolRatio` × the
+ * trailing average. Missing/zero volume data → pass (don't block backtests that
+ * lack volume). Default off, so this never changes existing behaviour.
+ */
+function sweepBarVolumeOk(candles, idx, minVolRatio, lookback) {
+  if (!(minVolRatio > 0)) return true;
+  const v = Number(candles[idx]?.volume);
+  if (!Number.isFinite(v) || v <= 0) return true;
+  const avg = trailingAvgVolume(candles, idx, lookback);
+  if (avg <= 0) return true;
+  return v >= minVolRatio * avg;
 }
 
 function passesSweepFilters(side, level, wick, sweepStartIdx, reclaimIdx, opts, levelType = "") {
@@ -110,6 +146,22 @@ function passesSweepFilters(side, level, wick, sweepStartIdx, reclaimIdx, opts, 
 export function scanSessionLiquidityCycles(candles, idx, side, level, opposing, levelType, sweepPct, dayStart, opts = {}) {
   if (!level || level <= 0 || !opposing || opposing <= 0) return [];
 
+  const clusterPct = Number(opts.intradayLiqSessionExtremeSweepPct ?? 0.0005);
+  const minSweepVol = Number(opts.intradayLiqSweepMinVolRatio ?? 0);
+  const volLookback = Math.max(2, Number(opts.intradayLiqSweepVolLookback ?? 20));
+  const poked = (j) =>
+    sweepPoked(side, candles[j], level, sweepPct, levelType, clusterPct) &&
+    sweepBarVolumeOk(candles, j, minSweepVol, volLookback);
+
+  // Optional timeframe-proportional reclaim window: express the limit in minutes
+  // (independent of bar count) so 40 bars doesn't mean 40m on 1m and 10h on 15m.
+  let scanOpts = opts;
+  const maxMinutes = Number(opts.intradayLiqMaxSweepMinutes ?? 0);
+  if (maxMinutes > 0 && candles.length > 1) {
+    const barMs = Math.abs(candles[1].ts - candles[0].ts) || 900_000;
+    scanOpts = { ...opts, intradayLiqMaxSweepBars: Math.max(1, Math.round((maxMinutes * 60_000) / barMs)) };
+  }
+
   const cycles = [];
   let sweepActive = false;
   let extreme = side === "BUY" ? Infinity : -Infinity;
@@ -120,7 +172,7 @@ export function scanSessionLiquidityCycles(candles, idx, side, level, opposing, 
     const b = candles[j];
 
     if (side === "BUY") {
-      if (sweepPoked(side, b, level, sweepPct, levelType)) {
+      if (poked(j)) {
         sweepActive = true;
         awaitingFailure = false;
         if (sweepStartIdx < 0) sweepStartIdx = j;
@@ -129,7 +181,7 @@ export function scanSessionLiquidityCycles(candles, idx, side, level, opposing, 
       if (sweepActive) extreme = Math.min(extreme, b.low);
 
       if (sweepActive && b.close > level) {
-        if (passesSweepFilters(side, level, extreme, sweepStartIdx, j, opts, levelType)) {
+        if (passesSweepFilters(side, level, extreme, sweepStartIdx, j, scanOpts, levelType)) {
           cycles.push({
             reclaimIdx: j,
             wick: extreme,
@@ -148,7 +200,7 @@ export function scanSessionLiquidityCycles(candles, idx, side, level, opposing, 
         awaitingFailure = false;
       }
     } else {
-      if (sweepPoked(side, b, level, sweepPct, levelType)) {
+      if (poked(j)) {
         sweepActive = true;
         awaitingFailure = false;
         if (sweepStartIdx < 0) sweepStartIdx = j;
@@ -157,7 +209,7 @@ export function scanSessionLiquidityCycles(candles, idx, side, level, opposing, 
       if (sweepActive) extreme = Math.max(extreme, b.high);
 
       if (sweepActive && b.close < level) {
-        if (passesSweepFilters(side, level, extreme, sweepStartIdx, j, opts, levelType)) {
+        if (passesSweepFilters(side, level, extreme, sweepStartIdx, j, scanOpts, levelType)) {
           cycles.push({
             reclaimIdx: j,
             wick: extreme,
@@ -249,12 +301,27 @@ function passesLiqHtfAlign(side, reclaimIdx, pre, opts = {}, levelType = "") {
   return true;
 }
 
-function cycleQualityScore(cycle, brackets, dayStart = 0, opts = {}) {
+function cycleQualityScore(cycle, brackets, dayStart = 0, opts = {}, reclaimBar = null, side = "BUY") {
   const ext = cycle.extension * 1000;
   const rr = (brackets?.rr ?? 0) * 100;
   let q = ext + rr;
   if (cycle.levelType === "pdh" || cycle.levelType === "pdl") q += 20;
-  if (cycle.reclaimIdx === cycle.sweepStartIdx) q -= 40;
+  if (cycle.reclaimIdx === cycle.sweepStartIdx) {
+    // Same-bar sweep+reclaim is usually low quality — UNLESS it's a genuine
+    // stop-hunt pinbar (long rejection wick vs tiny body), which is a textbook
+    // high-quality setup. Waive the penalty when wick ≥ ratio × body.
+    const pinRatio = Number(opts.intradayLiqSameBarPinbarWickBody ?? 2.5);
+    let waive = false;
+    if (reclaimBar && pinRatio > 0) {
+      const body = Math.abs(Number(reclaimBar.close) - Number(reclaimBar.open)) || 1e-9;
+      const wick =
+        side === "BUY"
+          ? Math.min(reclaimBar.open, reclaimBar.close) - reclaimBar.low
+          : reclaimBar.high - Math.max(reclaimBar.open, reclaimBar.close);
+      if (wick / body >= pinRatio) waive = true;
+    }
+    if (!waive) q -= 40;
+  }
   const minExtQ = Number(opts.intradayLiqMinSweepExtensionPct ?? 0.008);
   if (cycle.extension + 1e-6 < minExtQ) q -= 25;
   const barsIntoDay = cycle.reclaimIdx - dayStart;
@@ -422,7 +489,7 @@ function buildSetupFromCycle(candles, cycle, side, opts, dayStart = 0) {
   const brackets = computeLiquidityBrackets(side, bar.close, cycle.wick, cycle.opposing, opts);
   if (!brackets) return null;
 
-  const q = cycleQualityScore(cycle, brackets, dayStart, setupOpts);
+  const q = cycleQualityScore(cycle, brackets, dayStart, setupOpts, bar, side);
   const minQ = Number(opts.intradayLiqMinQuality ?? 0);
   if (minQ > 0 && q < minQ) return null;
   const techniques = ["liq_sweep", cycle.levelType];
@@ -652,17 +719,27 @@ export function resolveLiquidityEntryBrackets(_cfg = {}, barSignal = null, entry
   const { tp1On, tp2On } = stages;
   const bakedTp1 = baked.partialTp !== false;
   const bakedTp2 = baked.tp2Enabled !== false;
-  let beTriggerPx = 0;
-  if (stages.beAt1RWithoutPartial && risk > 0) {
+  let beTriggerPx = Number(baked.beTriggerPx) || 0;
+  if (stages.beAt1RWithoutPartial && risk > 0 && !beTriggerPx) {
     beTriggerPx = tradeSide === "BUY" ? fill + risk : fill - risk;
   }
 
-  if (bakedTp1 && tp1On && Number.isFinite(tp1Price) && risk > 0) {
+  const preserveTp1 =
+    baked.tpMode === "situation_structure" ||
+    String(baked.tpMode ?? "").startsWith("tokyo_dynamic") ||
+    baked.tpMode === "tokyo_sweep_fade";
+  if (bakedTp1 && tp1On && Number.isFinite(tp1Price) && risk > 0 && !preserveTp1) {
     if (tradeSide === "BUY") {
       tp1Price = fill + risk;
       tp1Pct = (tp1Price - fill) / fill;
     } else {
       tp1Price = fill - risk;
+      tp1Pct = (fill - tp1Price) / fill;
+    }
+  } else if (preserveTp1 && bakedTp1 && tp1On && Number.isFinite(tp1Price) && risk > 0) {
+    if (tradeSide === "BUY") {
+      tp1Pct = (tp1Price - fill) / fill;
+    } else {
       tp1Pct = (fill - tp1Price) / fill;
     }
   } else {

@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import { effectiveBacktestBotCfg } from "../../lib/backtestEffectiveCfg";
+import { computeWalkForwardClient } from "../../lib/backtestWalkForward";
 import type {
   BacktestEquityPoint,
   BacktestMetrics,
@@ -21,6 +22,7 @@ import { WithVsWithoutGatePanel } from "./WithVsWithoutGatePanel";
 import { PromoteToInstanceModal } from "./PromoteToInstanceModal";
 import { BacktestTradeChart } from "./BacktestTradeChart";
 import { TrendHtfStChopSummary } from "./TrendHtfStChopSummary";
+import { SessionWeekdayHeatmap } from "./SessionWeekdayHeatmap";
 
 type Tab = "kpis" | "equity" | "drawdown" | "monthly" | "trades" | "distributions" | "gate";
 
@@ -52,6 +54,20 @@ function metricsLooksComplete(m: BacktestMetrics | null): boolean {
   return m != null && typeof m === "object" && Object.keys(m).length > 0;
 }
 
+/** List endpoint omits config_snapshot; detail GET returns JSONB (sometimes a string). */
+function normalizeConfigSnapshot(raw: unknown): Record<string, unknown> | null {
+  if (raw == null) return null;
+  if (typeof raw === "string") {
+    try {
+      const p = JSON.parse(raw) as unknown;
+      return p && typeof p === "object" && !Array.isArray(p) ? (p as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }
+  return typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+}
+
 export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
   const [tab, setTab] = useState<Tab>("kpis");
   const [trades, setTrades] = useState<BacktestTrade[] | null>(null);
@@ -73,21 +89,18 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
     return run.status === "done" || progress?.status === "done" || metricsLooksComplete(mx);
   }, [run?.id, run?.status, run?.metrics, progress?.status]);
 
-  const needsMetricsHydration = useMemo(() => {
-    if (!run?.id || !doneEnoughForDetails) return false;
-    if (run.metrics == null) return true;
-    if (typeof run.metrics === "string") return true;
-    if (typeof run.metrics === "object" && !Array.isArray(run.metrics) && Object.keys(run.metrics).length === 0) {
-      return true;
-    }
-    return false;
-  }, [run?.id, run?.metrics, doneEnoughForDetails]);
-
   const displayRun: BacktestRunSummary | null = useMemo(() => {
     if (!run) return null;
     const merged = hydratedRun ? { ...run, ...hydratedRun } : { ...run };
     const mx = normalizeClientMetrics(merged.metrics);
-    return mx != null ? { ...merged, metrics: mx } : merged;
+    const snap = normalizeConfigSnapshot(merged.configSnapshot);
+    const inst = normalizeConfigSnapshot(merged.instanceOperationalSnapshot);
+    const base = mx != null ? { ...merged, metrics: mx } : merged;
+    return {
+      ...base,
+      configSnapshot: snap,
+      instanceOperationalSnapshot: inst,
+    };
   }, [run, hydratedRun]);
 
   const futuresLeverage = useMemo(() => {
@@ -107,10 +120,16 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
     setSelectedTrade(null);
   }, [run?.id]);
 
-  /** One-shot GET when the list row has no metrics payload yet (race after completion). */
+  /**
+   * List GET omits config_snapshot (mapRunRow list:true). Always load run detail on select
+   * so "Strategy config used" and raw JSON are available — not only when metrics are empty.
+   */
   useEffect(() => {
     const rid = run?.id;
-    if (!rid || !needsMetricsHydration) return;
+    if (!rid) {
+      setHydratedRun(null);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       try {
@@ -125,22 +144,26 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [run?.id, needsMetricsHydration]);
+  }, [run?.id]);
 
-  /** Load equity + trades as soon as the run is finished — not tied to active tab (avoids stuck Loading). */
+  /** Load equity + all trades as soon as the run is finished — not tied to active tab. */
   useEffect(() => {
     if (!doneEnoughForDetails || !run?.id) return;
     const runId = run.id;
     let cancelled = false;
     void (async () => {
       try {
-        const [eq, tr] = await Promise.all([
-          api.getBacktestEquity(runId),
-          api.getBacktestTrades(runId, { limit: 2000 }),
-        ]);
+        const eq = await api.getBacktestEquity(runId);
+        const loaded: BacktestTrade[] = [];
+        const pageSize = 2000;
+        for (let offset = 0; ; offset += pageSize) {
+          const tr = await api.getBacktestTrades(runId, { limit: pageSize, offset });
+          const batch = (tr?.trades ?? []) as BacktestTrade[];
+          loaded.push(...batch);
+          if (batch.length < pageSize) break;
+        }
         if (cancelled) return;
         setCurve((eq?.points ?? []) as BacktestEquityPoint[]);
-        const loaded = (tr?.trades ?? []) as BacktestTrade[];
         setTrades(loaded);
       } catch {
         if (!cancelled) {
@@ -155,6 +178,12 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
   }, [run?.id, doneEnoughForDetails]);
 
   const metrics = displayRun?.metrics ?? null;
+
+  const walkForward = useMemo(
+    () => (displayRun ? computeWalkForwardClient(displayRun, trades, curve) : null),
+    [displayRun, trades, curve],
+  );
+
   const failMsg =
     displayRun?.status === "failed" ? String(progress?.error ?? displayRun.error ?? "").trim() : "";
 
@@ -172,7 +201,22 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
         <div>
           <div className="text-sm font-semibold">
             {displayRun.label || displayRun.engineType || "Backtest"}{" "}
-            <span className="text-slate-500">· {displayRun.symbol} · {displayRun.timeframe}</span>
+            {displayRun.isPortfolio && displayRun.symbols?.length ? (
+              <span className="inline-flex flex-wrap items-center gap-1 text-slate-500">
+                · Portfolio ·
+                {displayRun.symbols.map((sym) => (
+                  <span
+                    key={sym}
+                    className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-sky-800 dark:bg-sky-900/50 dark:text-sky-200"
+                  >
+                    {sym.replace("USDT", "")}
+                  </span>
+                ))}
+                · {displayRun.timeframe}
+              </span>
+            ) : (
+              <span className="text-slate-500">· {displayRun.symbol} · {displayRun.timeframe}</span>
+            )}
           </div>
           <div className="text-[11px] text-slate-500">
             {fmtRange(displayRun.startDate, displayRun.endDate)} · gate: {displayRun.gateMode}
@@ -216,6 +260,8 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
       ) : null}
 
       <KpiGrid run={displayRun} />
+
+      <WalkForwardSummary run={displayRun} walkForward={walkForward} tradesLoaded={trades != null} />
 
       <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 text-xs dark:border-slate-800 dark:bg-slate-950/60">
         {(
@@ -262,7 +308,12 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
         )}
         {tab === "monthly" &&
           (metrics ? (
-            <MonthlyHeatmapTable monthly={metrics.monthlyReturns ?? {}} />
+            <MonthlyHeatmapTable
+              monthly={metrics.monthlyReturns ?? {}}
+              trades={trades}
+              curve={curve}
+              initialCapital={displayRun.initialCapital}
+            />
           ) : (
             <Empty />
           ))}
@@ -363,6 +414,94 @@ function num(n: unknown, digits?: number): string {
   const v = Number(n);
   if (!Number.isFinite(v)) return "—";
   return digits != null ? v.toFixed(digits) : String(v);
+}
+
+function WalkForwardSummary({
+  run,
+  walkForward,
+  tradesLoaded,
+}: {
+  run: BacktestRunSummary;
+  walkForward: BacktestMetrics["walkForward"] | null | undefined;
+  tradesLoaded: boolean;
+}) {
+  const wf = walkForward ?? run.metrics?.walkForward;
+  const splitPct = run.walkForwardSplit?.trainPct ?? wf?.trainPct;
+  const wfRequested = splitPct != null && Number.isFinite(Number(splitPct));
+
+  if (!wfRequested || run.status !== "done") return null;
+
+  if (!wf?.train || !wf?.test) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+        <div className="font-semibold">Walk-forward ({Math.round(Number(splitPct) * 100)}% train)</div>
+        <p className="mt-1 text-[10px]">
+          {tradesLoaded
+            ? "Could not compute train/test split — check that the run has trades in both windows."
+            : "Loading train/test breakdown…"}
+        </p>
+      </div>
+    );
+  }
+
+  const trainSharpe = wf.train.sharpe;
+  const testSharpe = wf.test.sharpe;
+  const stable =
+    trainSharpe != null &&
+    testSharpe != null &&
+    Number.isFinite(trainSharpe) &&
+    Number.isFinite(testSharpe) &&
+    Math.sign(trainSharpe) === Math.sign(testSharpe);
+
+  const splitLabel =
+    wf.splitTs != null && Number.isFinite(Number(wf.splitTs))
+      ? new Date(Number(wf.splitTs)).toISOString().slice(0, 10)
+      : "—";
+
+  const fmtPct = (n: unknown) => {
+    const v = Number(n);
+    return Number.isFinite(v) ? `${v.toFixed(1)}%` : "—";
+  };
+  const fmtNum = (n: unknown, d = 2) => {
+    const v = Number(n);
+    return Number.isFinite(v) ? v.toFixed(d) : "—";
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-950/60">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-semibold text-slate-800 dark:text-slate-100">
+          Walk-forward split ({Math.round((wf.trainPct ?? 0.7) * 100)}% train)
+        </div>
+        <div className="text-[10px] text-slate-500">Split date: {splitLabel}</div>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div>
+          <div className="text-[10px] uppercase text-slate-500">WF train→test Sharpe</div>
+          <div className={`font-mono font-semibold ${stable ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+            {fmtNum(trainSharpe)} → {fmtNum(testSharpe)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase text-slate-500">Train return</div>
+          <div className="font-mono">{fmtPct(wf.train.totalReturnPct)}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase text-slate-500">Test return</div>
+          <div className="font-mono">{fmtPct(wf.test.totalReturnPct)}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase text-slate-500">Train / test trades</div>
+          <div className="font-mono">
+            {wf.train.totalTrades ?? 0} / {wf.test.totalTrades ?? 0}
+          </div>
+        </div>
+      </div>
+      <p className="mt-2 text-[10px] text-slate-500">
+        Same full-window simulation; train/test rows split by trade exit time. Headline KPIs above are the full window.
+      </p>
+    </div>
+  );
 }
 
 function KpiGrid({ run }: { run: BacktestRunSummary }) {
@@ -492,6 +631,31 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
             ))
           )}
         </Card>
+        {run.isPortfolio && trades && trades.length > 0 ? (
+          <Card title="Per-coin breakdown">
+            <PortfolioPerCoinTable run={run} trades={trades} initialCapital={run.initialCapital} />
+          </Card>
+        ) : null}
+        {trades && trades.length > 0 ? (
+          <Card title="Session × weekday (UTC)">
+            <SessionWeekdayHeatmap trades={trades} />
+            {run.isPortfolio && run.symbols?.length ? (
+              <div className="mt-3 space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
+                {run.symbols.map((sym) => {
+                  const symTrades = trades.filter((t) => t.symbol === sym);
+                  if (!symTrades.length) return null;
+                  return (
+                    <SessionWeekdayHeatmap
+                      key={sym}
+                      trades={symTrades}
+                      title={sym.replace("USDT", "")}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
+          </Card>
+        ) : null}
         <Card title="Gate replay (intelligence)">
           <Row k="Mode" v={String(m.gateReplay?.mode ?? run.gateMode ?? "off")} />
           <Row k="Evaluated" v={String(m.gateReplay?.evaluated ?? 0)} />
@@ -543,8 +707,8 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
           );
         })()}
       </div>
-      {/* Strategy config snapshot used for this run */}
-      {run.configSnapshot && (
+      {/* Strategy config snapshot used for this run (from GET /runs/:id — not on list rows) */}
+      {run.configSnapshot ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-800 dark:bg-slate-900/40">
           <div className="mb-1.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -581,6 +745,65 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
               k="TP bracket"
               v={cfgVal("supertrendFuturesUseFixedTp") === false ? "Off" : "On"}
             />
+            {(cfg.intradayGateLiquidity === true ||
+              cfg.intradayGateInstitutionalSr === true ||
+              cfg.intradaySrAPlusMode === true) && (
+              <>
+                <Row
+                  k="Liq structure SL"
+                  v={
+                    cfg.supertrendFuturesUseFixedSl === false
+                      ? "Off (no per-trade stop)"
+                      : "On (sweep / level)"
+                  }
+                />
+                <Row
+                  k="Liq max SL cap"
+                  v={
+                    Number(cfg.intradayLiqMaxSlPct) > 0
+                      ? `${(Number(cfg.intradayLiqMaxSlPct) * 100).toFixed(2)}%`
+                      : "—"
+                  }
+                />
+                <Row
+                  k="Liq min R:R"
+                  v={cfgVal("intradayLiqMinRr")}
+                />
+                <Row
+                  k="Liq max TP R:R"
+                  v={
+                    Number(cfg.intradayLiqMaxTpRr) > 0
+                      ? String(cfg.intradayLiqMaxTpRr)
+                      : Number(cfg.intradaySmcMaxTpRr) > 0
+                        ? `${cfg.intradaySmcMaxTpRr} (SMC fallback)`
+                        : "off"
+                  }
+                />
+                <Row
+                  k="Liq TP2"
+                  v={cfg.intradayLiqTp2Enabled === false ? "Off" : "On"}
+                />
+                <Row
+                  k="Max hold (bars)"
+                  v={String(
+                    cfg.intradayLiqMaxHoldBars ??
+                      cfg.intradaySmcMaxHoldBars ??
+                      0,
+                  )}
+                />
+              </>
+            )}
+            {Number(cfg.supertrendFuturesFixedSlPct) === 0 &&
+            Number(cfg.supertrendFuturesFixedTpPct) === 0 &&
+            (cfg.intradayGateLiquidity === true ||
+              cfg.intradayGateInstitutionalSr === true) ? (
+              <div className="col-span-2 rounded bg-slate-100 px-2 py-1 text-[10px] text-slate-700 dark:bg-slate-950/60 dark:text-slate-300 sm:col-span-4">
+                <b>Fixed SL/TP 0%</b> is the global Supertrend % bracket (unused here). Trade exits labeled{" "}
+                <span className="font-mono">sl</span> are hits on the <b>per-trade structure stop</b> placed beyond
+                the liquidity sweep (see each trade&apos;s SL price), not a 0% stop.{" "}
+                <span className="font-mono">time_stop</span> = max hold bars without TP.
+              </div>
+            ) : null}
             <Row k="Risk/trade" v={cfgVal("riskPerTrade")} />
             <Row k="Risk unit" v={cfgVal("riskPerTradeUnit")} />
             <Row k="Leverage" v={leverageSummary(cfg)} />
@@ -617,8 +840,68 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
             </pre>
           )}
         </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
+          <span className="font-semibold uppercase tracking-wide text-slate-500">Strategy config used</span>
+          <p className="mt-1">
+            No config snapshot on this run (common for runs created before config_snapshot was saved, or if detail load
+            failed). Queue a new backtest to capture the full strategy + intraday panel settings used by the engine.
+          </p>
+        </div>
       )}
     </div>
+  );
+}
+
+function PortfolioPerCoinTable({
+  run,
+  trades,
+  initialCapital,
+}: {
+  run: BacktestRunSummary;
+  trades: BacktestTrade[];
+  initialCapital: number;
+}) {
+  const fromMetrics = run.metrics?.portfolio?.perCoin;
+  const symbols =
+    run.symbols?.length ? run.symbols : [...new Set(trades.map((t) => t.symbol).filter(Boolean))];
+
+  const rows = symbols.map((sym) => {
+    const symTrades = trades.filter((t) => t.symbol === sym);
+    const m = fromMetrics?.[sym];
+    const net = m?.netPnl ?? symTrades.reduce((s, t) => s + Number(t.netPnl), 0);
+    const n = m?.trades ?? symTrades.length;
+    const wins = m?.wins ?? symTrades.filter((t) => Number(t.netPnl) > 0).length;
+    const wr = m?.winRate ?? (n ? (wins / n) * 100 : 0);
+    const retPct = initialCapital > 0 ? (net / initialCapital) * 100 : 0;
+    return { sym, n, wr, net, retPct };
+  });
+
+  return (
+    <table className="w-full text-[11px]">
+      <thead>
+        <tr className="text-left text-slate-500">
+          <th className="pb-1">Coin</th>
+          <th className="pb-1 text-right">Trades</th>
+          <th className="pb-1 text-right">WR%</th>
+          <th className="pb-1 text-right">Net PnL</th>
+          <th className="pb-1 text-right">Contrib%</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.sym} className="border-t border-slate-100 dark:border-slate-800">
+            <td className="py-1 font-mono font-semibold">{String(r.sym).replace("USDT", "")}</td>
+            <td className="py-1 text-right font-mono">{r.n}</td>
+            <td className="py-1 text-right font-mono">{r.wr.toFixed(1)}</td>
+            <td className={`py-1 text-right font-mono ${r.net >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+              {r.net.toFixed(2)}
+            </td>
+            <td className="py-1 text-right font-mono text-slate-500">{r.retPct.toFixed(1)}%</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

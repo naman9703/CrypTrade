@@ -32,11 +32,13 @@ const DEFAULT_SLIPPAGE_PCT = 0.0005;
 export function resolveCostModel(cfg, override = {}) {
   const o = override && typeof override === "object" ? override : {};
   const c = cfg && typeof cfg === "object" ? cfg : {};
+  // Honor generic `openFeeRate`/`closeFeeRate` overrides (used by many CLI scripts)
+  // as taker-rate aliases so cost modeling is not silently dropped.
   return {
     makerOpenFeeRate: pickRate(o.makerOpenFeeRate, c.tradeHistoryMakerOpenFeeRate, DEFAULT_MAKER),
     makerCloseFeeRate: pickRate(o.makerCloseFeeRate, c.tradeHistoryMakerCloseFeeRate, DEFAULT_MAKER),
-    takerOpenFeeRate: pickRate(o.takerOpenFeeRate, c.tradeHistoryTakerOpenFeeRate, DEFAULT_TAKER),
-    takerCloseFeeRate: pickRate(o.takerCloseFeeRate, c.tradeHistoryTakerCloseFeeRate, DEFAULT_TAKER),
+    takerOpenFeeRate: pickRate(o.takerOpenFeeRate, o.openFeeRate, c.tradeHistoryTakerOpenFeeRate, DEFAULT_TAKER),
+    takerCloseFeeRate: pickRate(o.takerCloseFeeRate, o.closeFeeRate, c.tradeHistoryTakerCloseFeeRate, DEFAULT_TAKER),
     slippagePct: pickRate(o.slippagePct, c.slippagePct, DEFAULT_SLIPPAGE_PCT),
     isFutures: Boolean(o.isFutures ?? (c.marketMode === "FUTURES" || c.market === "FUTURES")),
     /** Mirrors live: `futuresLeverage` (manual) or `leverage` (instance / UI). */

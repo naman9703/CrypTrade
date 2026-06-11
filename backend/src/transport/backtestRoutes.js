@@ -31,6 +31,9 @@ import { pickRawIntradayPanelFromBot, materializeIntradayPanelOnCfg } from "../s
 import { fillSmcSoloPresetDefaults, materializeIntradayEngineCfgSync } from "../strategy/presets/srIntradayOptimized.js";
 import { mergeInstanceIntoCfgRaw, ensureBacktestMarketMode, stripInstanceFieldsFromCfgRaw, uiOperationalPatchToInstColumns, applyInstanceOperationalToConfigSnapshot, applyInstanceOperationalToBot, INSTANCE_FIELD_KEYS } from "../lib/strategyInstanceSplit.js";
 import { normalizeEliteStRunCfg } from "../strategy/supertrendElite.js";
+import { resolveSituationRouterCfg } from "../strategy/situationIntraday.js";
+import { resolveCrtTbsCfg } from "../strategy/crtTbsIntraday.js";
+import { resolveTokyoSessionCfg } from "../strategy/tokyoSessionIntraday.js";
 import { InsufficientCapitalError } from "../db/services/capitalAllotmentService.js";
 import {
   enqueueRun,
@@ -59,7 +62,9 @@ const createRunBody = z
   .object({
     strategyVersionId: z.string().uuid(),
     botInstanceId: z.string().uuid().optional(),
-    symbol: z.string().regex(SYMBOL_RE),
+    symbol: z.string().regex(SYMBOL_RE).optional(),
+    /** Multi-coin portfolio mode: 2–10 symbols; server sets symbol=PORTFOLIO. */
+    symbols: z.array(z.string().regex(SYMBOL_RE)).min(2).max(10).optional(),
     timeframe: z.string().refine((tf) => SUPPORTED_TIMEFRAMES.includes(tf), "invalid_timeframe"),
     from: isoDate,
     to: isoDate,
@@ -94,6 +99,10 @@ const createRunBody = z
     const f = toMs(d.from);
     const t = toMs(d.to);
     if (!(f < t)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "to_must_be_after_from", path: ["to"] });
+    const multi = Array.isArray(d.symbols) && d.symbols.length >= 2;
+    if (!multi && !d.symbol) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "symbol_or_symbols_required", path: ["symbol"] });
+    }
   });
 
 const optimizeBody = z.object({
@@ -160,12 +169,17 @@ export function createBacktestRouter({ appState }) {
       }
       const fromDate = new Date(toMs(data.from));
       const toDate = new Date(toMs(data.to));
+      const portfolioSymbols = Array.isArray(data.symbols)
+        ? [...new Set(data.symbols.map((s) => String(s).toUpperCase()))]
+        : null;
+      const isPortfolio = portfolioSymbols != null && portfolioSymbols.length >= 2;
+      const runSymbol = isPortfolio ? "PORTFOLIO" : String(data.symbol).toUpperCase();
       const snapshot = await buildRunConfigSnapshot({
         ver,
         userId,
         strategyVersionId,
         botInstanceId: data.botInstanceId,
-        symbol: data.symbol,
+        symbol: isPortfolio ? portfolioSymbols[0] : runSymbol,
         timeframe: data.timeframe,
         positionSizing: data.positionSizing,
         useLivePanelOverrides: data.useLivePanelOverrides === true,
@@ -195,17 +209,18 @@ export function createBacktestRouter({ appState }) {
             initial_capital, engine_type,
             cost_model, gate_mode, config_snapshot, walk_forward_split,
             bot_instance_id, instance_operational_snapshot, config_source,
+            symbols, is_portfolio,
             status, progress_pct
          ) VALUES (
             $1,$2,$3, $4,$5,$6,$7, $8,$9, $10::jsonb,$11,$12::jsonb,$13::jsonb,
-            $14,$15::jsonb,$16, 'queued', 0
+            $14,$15::jsonb,$16, $17, $18, 'queued', 0
          )
          RETURNING id`,
         [
           strategyVersionId,
           userId,
-          data.label ?? null,
-          data.symbol,
+          data.label ?? (isPortfolio ? `Portfolio ${portfolioSymbols.join(",")}` : null),
+          runSymbol,
           data.timeframe,
           fromDate,
           toDate,
@@ -218,6 +233,8 @@ export function createBacktestRouter({ appState }) {
           snapshot.botInstanceId,
           snapshot.instanceOperationalSnapshot ? JSON.stringify(snapshot.instanceOperationalSnapshot) : null,
           snapshot.configSource,
+          isPortfolio ? portfolioSymbols : null,
+          isPortfolio,
         ],
       );
       const runId = String(ins.rows[0].id);
@@ -267,8 +284,9 @@ export function createBacktestRouter({ appState }) {
                 engine_type, status, progress_pct, total_trades,
                 win_rate_pct, total_pnl_usdt, max_drawdown_pct,
                 sharpe_ratio, profit_factor, gate_mode, error_message,
-                data_coverage_pct, metrics, cost_model, config_snapshot,
-                bot_instance_id, instance_operational_snapshot, config_source,
+                data_coverage_pct, metrics,
+                bot_instance_id, config_source,
+                symbols, is_portfolio,
                 created_at, started_at, finished_at
            FROM backtest_runs
           WHERE user_id = $1
@@ -276,7 +294,7 @@ export function createBacktestRouter({ appState }) {
           LIMIT $2`,
         [userId, limit],
       );
-      res.json({ ok: true, runs: r2.rows.map(mapRunRow) });
+      res.json({ ok: true, runs: r2.rows.map((row) => mapRunRow(row, { list: true })) });
     } catch (e) {
       res.status(statusForError(e)).json({ ok: false, error: String(e?.message || e) });
     }
@@ -291,8 +309,14 @@ export function createBacktestRouter({ appState }) {
         `SELECT * FROM backtest_runs WHERE id = $1 AND user_id = $2`,
         [String(req.params.id), userId],
       );
-      const row = r2.rows[0];
+      let row = r2.rows[0];
       if (!row) return res.status(404).json({ ok: false, error: "run_not_found" });
+      try {
+        const { backfillWalkForwardMetrics } = await import("../backtest/engine/walkForwardBackfill.js");
+        row = await backfillWalkForwardMetrics(row);
+      } catch {
+        /* optional */
+      }
       res.json({ ok: true, run: mapRunRow(row) });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e?.message || e) });
@@ -439,6 +463,136 @@ export function createBacktestRouter({ appState }) {
     }
   });
 
+  /* ───────────── strategy testing battery (validation + grading) ───────────── */
+
+  const STRATEGY_TEST_JOB_PREFIX = "strategy-test:";
+
+  r.post("/strategy-tests", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const userId = uid(req);
+    if (!userId) return res.status(403).json({ ok: false, error: "db_user_required" });
+    const seedRunId = String(req.body?.seedRunId ?? "").trim();
+    if (!seedRunId) return res.status(400).json({ ok: false, error: "seed_run_id_required" });
+    try {
+      const seed = await query(
+        `SELECT id, status FROM backtest_runs WHERE id = $1 AND user_id = $2`,
+        [seedRunId, userId],
+      );
+      if (!seed.rows.length) return res.status(404).json({ ok: false, error: "run_not_found" });
+      if (String(seed.rows[0].status) !== "done") {
+        return res.status(400).json({ ok: false, error: "seed_run_not_done" });
+      }
+      const dupe = await query(
+        `SELECT 1 FROM backtest_strategy_tests
+          WHERE user_id = $1 AND status IN ('queued','running')`,
+        [userId],
+      );
+      if (dupe.rows.length) {
+        return res.status(409).json({ ok: false, error: "strategy_test_already_running" });
+      }
+      const ins = await query(
+        `INSERT INTO backtest_strategy_tests (user_id, seed_run_id, status, progress_pct)
+         VALUES ($1, $2, 'queued', 0)
+         RETURNING id`,
+        [userId, seedRunId],
+      );
+      const testId = String(ins.rows[0].id);
+      enqueueRun(`${STRATEGY_TEST_JOB_PREFIX}${testId}`).catch(async (e) => {
+        console.error("[backtest] strategy test enqueue failed", testId, e?.message || e);
+        const { failTest } = await import("../backtest/engine/strategyTest.js");
+        void failTest(testId, e);
+      });
+      res.json({ ok: true, testId });
+    } catch (e) {
+      res.status(statusForError(e)).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/strategy-tests", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const userId = uid(req);
+    if (!userId) return res.status(403).json({ ok: false, error: "db_user_required" });
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit ?? 20)));
+    try {
+      const r2 = await query(
+        `SELECT st.id, st.seed_run_id, st.status, st.progress_pct, st.current_phase,
+                st.grade, st.live_fidelity_score, st.error_message,
+                st.created_at, st.started_at, st.finished_at,
+                br.symbol AS seed_symbol, br.symbols AS seed_symbols, br.timeframe AS seed_timeframe,
+                br.label AS seed_label, br.engine_type AS seed_engine_type
+           FROM backtest_strategy_tests st
+           JOIN backtest_runs br ON br.id = st.seed_run_id
+          WHERE st.user_id = $1
+          ORDER BY st.created_at DESC
+          LIMIT $2`,
+        [userId, limit],
+      );
+      res.json({ ok: true, tests: r2.rows.map(mapStrategyTestRow) });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/strategy-tests/:id", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const userId = uid(req);
+    if (!userId) return res.status(403).json({ ok: false, error: "db_user_required" });
+    try {
+      const r2 = await query(
+        `SELECT st.*, br.symbol AS seed_symbol, br.symbols AS seed_symbols, br.timeframe AS seed_timeframe,
+                br.label AS seed_label, br.engine_type AS seed_engine_type
+           FROM backtest_strategy_tests st
+           JOIN backtest_runs br ON br.id = st.seed_run_id
+          WHERE st.id = $1 AND st.user_id = $2`,
+        [String(req.params.id), userId],
+      );
+      const row = r2.rows[0];
+      if (!row) return res.status(404).json({ ok: false, error: "strategy_test_not_found" });
+      res.json({ ok: true, test: mapStrategyTestRow(row, { detail: true }) });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.post("/strategy-tests/:id/cancel", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const userId = uid(req);
+    if (!userId) return res.status(403).json({ ok: false, error: "db_user_required" });
+    try {
+      const owned = await query(
+        `SELECT 1 FROM backtest_strategy_tests WHERE id = $1 AND user_id = $2`,
+        [String(req.params.id), userId],
+      );
+      if (!owned.rows.length) return res.status(404).json({ ok: false, error: "strategy_test_not_found" });
+      const cancelled = poolCancel(`${STRATEGY_TEST_JOB_PREFIX}${String(req.params.id)}`);
+      await query(
+        `UPDATE backtest_strategy_tests
+            SET status = 'cancelled', finished_at = NOW()
+          WHERE id = $1 AND status IN ('queued','running')`,
+        [String(req.params.id)],
+      );
+      res.json({ ok: true, cancelled });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.delete("/strategy-tests/:id", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const userId = uid(req);
+    if (!userId) return res.status(403).json({ ok: false, error: "db_user_required" });
+    try {
+      poolCancel(`${STRATEGY_TEST_JOB_PREFIX}${String(req.params.id)}`);
+      await query(`DELETE FROM backtest_strategy_tests WHERE id = $1 AND user_id = $2`, [
+        String(req.params.id),
+        userId,
+      ]);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
   /** Read stored OHLCV candles for the backtest chart (no live Binance call — DB only). */
   r.get("/data/candles", requireDbUserSession, async (req, res) => {
     if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
@@ -454,8 +608,10 @@ export function createBacktestRouter({ appState }) {
       return res.status(400).json({ ok: false, error: "invalid_date_params" });
     }
     if (from == null || to == null) return res.status(400).json({ ok: false, error: "from_and_to_required" });
+    const marketQ = String(req.query.market ?? req.query.marketMode ?? "futures").toLowerCase();
+    const market = marketQ === "spot" ? "spot" : "futures";
     try {
-      const candles = await readCandles(symbol, tf, from, to);
+      const candles = await readCandles(symbol, tf, from, to, { market });
       res.json({ ok: true, candles });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e?.message || e) });
@@ -477,6 +633,36 @@ export function createBacktestRouter({ appState }) {
         monthly = await getMonthlyCoverage(symbol, tf, from, to);
       }
       res.json({ ok: true, coverage: summary, monthly });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  /** Batch coverage for multi-coin selector: ?symbols=BTC,ETH&timeframe=1h&from=&to= */
+  r.get("/data/coverage-batch", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const raw = String(req.query.symbols ?? "");
+    const symbols = raw
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter((s) => SYMBOL_RE.test(s));
+    if (!symbols.length) return res.status(400).json({ ok: false, error: "symbols_required" });
+    const tf = String(req.query.timeframe ?? req.query.tf ?? "");
+    if (!SUPPORTED_TIMEFRAMES.includes(tf)) return res.status(400).json({ ok: false, error: "invalid_timeframe" });
+    const from = req.query.from != null ? toMs(req.query.from) : null;
+    const to = req.query.to != null ? toMs(req.query.to) : null;
+    try {
+      const out = {};
+      await Promise.all(
+        symbols.map(async (sym) => {
+          const summary = await getCoverage(sym, tf, {
+            from: from ?? undefined,
+            to: to ?? undefined,
+          });
+          out[sym] = summary;
+        }),
+      );
+      res.json({ ok: true, coverageBySymbol: out });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
@@ -949,22 +1135,10 @@ async function buildRunConfigSnapshot({
   // The strategy version has already been ownership-checked for this user. Matching
   // version ids plus account ownership make the instance a valid runtime binding.
   await assertBotInstanceOwned(String(botInstanceId), userId);
-  const operationalConfig = await resolveInstanceOperationalForBacktest(binding, {
-    instanceOperational,
-    req,
-    appState,
-    botInstanceId: String(botInstanceId),
-  });
+  const operationalConfig = resolveInstanceOperationalForBacktest(binding, { instanceOperational });
   const merged = mergeInstanceIntoCfgRaw(base, operationalConfig);
   let configSnapshot = withBacktestRunOptions(withRequestedMarket(merged, symbol, timeframe), {
     positionSizing,
-  });
-  applyInstanceOperationalToConfigSnapshot(configSnapshot, operationalConfig);
-  await overlayMissingOperationalFromLive(pickBotFromConfigSnapshot(configSnapshot), {
-    req,
-    appState,
-    botInstanceId: String(botInstanceId),
-    accountModeSlug: binding.accountModeSlug,
   });
   applyInstanceOperationalToConfigSnapshot(configSnapshot, operationalConfig);
   if (useLivePanelOverrides) {
@@ -982,59 +1156,12 @@ async function buildRunConfigSnapshot({
   };
 }
 
-/** Merge DB instance ops + UI submit patch + live engine null-fill (instance-owned fields only). */
-async function resolveInstanceOperationalForBacktest(binding, { instanceOperational, req, appState, botInstanceId }) {
+/** Merge DB instance ops + UI submit patch (instance-owned fields only; no live engine fill). */
+function resolveInstanceOperationalForBacktest(binding, { instanceOperational }) {
   const op = { ...(binding.operationalConfig ?? {}) };
   const clientPatch = uiOperationalPatchToInstColumns(instanceOperational);
   for (const [k, v] of Object.entries(clientPatch)) {
     if (v != null) op[k] = v;
-  }
-  await fillNullInstanceOperationalFromLiveEngine(op, {
-    appState,
-    accountModeSlug: binding.accountModeSlug,
-    botInstanceId,
-    req,
-  });
-  return op;
-}
-
-async function fillNullInstanceOperationalFromLiveEngine(op, { appState, accountModeSlug, botInstanceId, req }) {
-  const needs =
-    op.inst_risk_per_trade == null ||
-    op.inst_risk_unit == null ||
-    op.inst_max_daily_loss == null ||
-    op.inst_max_daily_loss_unit == null ||
-    op.inst_market_mode == null;
-  if (!needs || !appState) return op;
-
-  let mode = accountModeSlug ? normalizeTradingMode(accountModeSlug) : null;
-  if (!mode) mode = resolveBacktestLiveEngineMode(req, appState);
-  if (!mode) return op;
-
-  try {
-    await appState.ensureEngine(mode, botInstanceId ?? undefined);
-    const live = appState.getEngine(mode)?.bot?.getPublicState?.();
-    if (!live || typeof live !== "object") return op;
-    if (op.inst_risk_per_trade == null && live.riskPerTrade != null) {
-      op.inst_risk_per_trade = Number(live.riskPerTrade);
-    }
-    if (op.inst_risk_unit == null && live.riskPerTradeUnit != null) {
-      op.inst_risk_unit = String(live.riskPerTradeUnit);
-    }
-    if (op.inst_max_daily_loss == null && live.maxDailyLoss != null) {
-      op.inst_max_daily_loss = Number(live.maxDailyLoss);
-    }
-    if (op.inst_max_daily_loss_unit == null && live.maxDailyLossUnit != null) {
-      op.inst_max_daily_loss_unit = String(live.maxDailyLossUnit);
-    }
-    if (op.inst_market_mode == null && live.marketMode != null) {
-      op.inst_market_mode = String(live.marketMode);
-    }
-    if (op.inst_timeframe == null && live.timeframe != null) {
-      op.inst_timeframe = String(live.timeframe);
-    }
-  } catch {
-    /* engine not ready */
   }
   return op;
 }
@@ -1047,11 +1174,29 @@ function materializeBacktestEngineSnapshot(cfgRaw) {
   for (const key of INSTANCE_FIELD_KEYS) {
     if (b[key] !== undefined) preserved[key] = b[key];
   }
-  const engine = materializeIntradayEngineCfgSync(b, materializeIntradayPanelOnCfg);
-  Object.assign(engine, preserved);
+  const strat = String(b.manualStrategy ?? "").toUpperCase();
+  let engine = b;
+  if (strat === "SITUATION_INTRADAY") {
+    // SR_INTRADAY materialized keys pollute situation bracket simulation.
+    engine = { ...resolveSituationRouterCfg(b), ...preserved };
+  } else if (strat === "CRT_TBS") {
+    engine = { ...resolveCrtTbsCfg(b), ...preserved };
+  } else if (strat === "TOKYO_SESSION") {
+    engine = { ...resolveTokyoSessionCfg(b), ...preserved };
+  } else {
+    engine = materializeIntradayEngineCfgSync(b, materializeIntradayPanelOnCfg);
+    Object.assign(engine, preserved);
+  }
   engine._intradayEngineMaterialized = true;
   engine._intradayEngineMaterializedAt = new Date().toISOString();
-  if (root.bot && typeof root.bot === "object") {
+  if (strat === "SITUATION_INTRADAY" || strat === "CRT_TBS" || strat === "TOKYO_SESSION") {
+    // Replace bot cfg — merging leaves stale intradayLiq* keys that break simulation.
+    if (root.bot && typeof root.bot === "object") {
+      root.bot = engine;
+    } else {
+      return { v: root.v ?? 1, bot: engine };
+    }
+  } else if (root.bot && typeof root.bot === "object") {
     root.bot = { ...root.bot, ...engine };
   } else {
     return { v: root.v ?? 1, bot: engine };
@@ -1065,7 +1210,8 @@ function withBacktestRunOptions(cfgRaw, { positionSizing } = {}) {
   const b = pickBotFromConfigSnapshot(root);
   if (positionSizing) b.backtestPositionSizing = positionSizing;
   b._engineVersion = BACKTEST_ENGINE_VERSION;
-  if (String(b.manualStrategy ?? "").toUpperCase() === "SUPERTREND_ELITE") {
+  const strat = String(b.manualStrategy ?? "").toUpperCase();
+  if (strat === "SUPERTREND_ELITE" || strat === "UNIFIED_ELITE") {
     Object.assign(b, normalizeEliteStRunCfg(b));
   }
   return root;
@@ -1168,6 +1314,42 @@ async function assertRunOwned(runId, userId) {
   if (!r.rows.length) throw new Error("run_not_found");
 }
 
+function mapStrategyTestRow(row, { detail = false } = {}) {
+  const parseJson = (v) => {
+    if (v == null) return null;
+    if (typeof v === "object") return v;
+    try {
+      return JSON.parse(String(v));
+    } catch {
+      return null;
+    }
+  };
+  return {
+    id: String(row.id),
+    seedRunId: String(row.seed_run_id),
+    seedLabel: row.seed_label != null ? String(row.seed_label) : null,
+    seedSymbol: row.seed_symbol != null ? String(row.seed_symbol) : null,
+    seedSymbols: Array.isArray(row.seed_symbols) ? row.seed_symbols.map(String) : null,
+    seedTimeframe: row.seed_timeframe != null ? String(row.seed_timeframe) : null,
+    seedEngineType: row.seed_engine_type != null ? String(row.seed_engine_type) : null,
+    status: String(row.status),
+    progressPct: Number(row.progress_pct ?? 0),
+    currentPhase: row.current_phase != null ? String(row.current_phase) : null,
+    grade: row.grade != null ? String(row.grade) : null,
+    liveFidelityScore: row.live_fidelity_score != null ? Number(row.live_fidelity_score) : null,
+    error: row.error_message != null ? String(row.error_message) : null,
+    createdAt: row.created_at,
+    startedAt: row.started_at ?? null,
+    finishedAt: row.finished_at ?? null,
+    ...(detail
+      ? {
+          report: parseJson(row.report),
+          suggestion: parseJson(row.suggestion),
+        }
+      : {}),
+  };
+}
+
 function notFoundFor(e) {
   return String(e?.message || e) === "run_not_found" ? 404 : 500;
 }
@@ -1202,13 +1384,28 @@ function normalizeBacktestMetrics(raw) {
   return m;
 }
 
-function mapRunRow(row) {
+function parseJsonColumn(raw) {
+  if (raw == null) return null;
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  return raw;
+}
+
+function mapRunRow(row, opts = {}) {
+  const list = opts.list === true;
   return {
     id: String(row.id),
     strategyVersionId: row.strategy_version_id != null ? String(row.strategy_version_id) : null,
     botInstanceId: row.bot_instance_id != null ? String(row.bot_instance_id) : null,
     label: row.label != null ? String(row.label) : null,
     symbol: String(row.symbol),
+    isPortfolio: row.is_portfolio === true,
+    symbols: Array.isArray(row.symbols) ? row.symbols.map((s) => String(s)) : null,
     timeframe: String(row.timeframe),
     startDate: row.start_date,
     endDate: row.end_date,
@@ -1227,9 +1424,10 @@ function mapRunRow(row) {
     error: row.error_message != null ? String(row.error_message) : null,
     coveragePct: row.data_coverage_pct != null ? Number(row.data_coverage_pct) : null,
     metrics: normalizeBacktestMetrics(row.metrics),
-    costModel: row.cost_model ?? null,
-    configSnapshot: row.config_snapshot ?? null,
-    instanceOperationalSnapshot: row.instance_operational_snapshot ?? null,
+    walkForwardSplit: parseJsonColumn(row.walk_forward_split),
+    costModel: list ? null : (row.cost_model ?? null),
+    configSnapshot: list ? null : parseJsonColumn(row.config_snapshot),
+    instanceOperationalSnapshot: list ? null : parseJsonColumn(row.instance_operational_snapshot),
     configSource: row.config_source != null ? String(row.config_source) : "strategy_only",
     createdAt: row.created_at,
     startedAt: row.started_at ?? null,
@@ -1240,6 +1438,7 @@ function mapRunRow(row) {
 function mapTradeRow(row) {
   return {
     tradeNumber: Number(row.trade_number),
+    symbol: row.symbol != null ? String(row.symbol) : null,
     direction: String(row.direction),
     entryTs: row.entry_time,
     exitTs: row.exit_time,

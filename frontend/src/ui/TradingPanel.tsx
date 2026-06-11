@@ -28,16 +28,30 @@ import {
 } from "../lib/trendHtfStPresets";
 import { SUPERTREND_INTEL_80WR, SUPERTREND_INTEL_TRAIL } from "../lib/supertrendIntelPresets";
 import {
+  SUPERTREND_ELITE_AUTO_1H,
+  SUPERTREND_ELITE_ADX_1H,
+  SUPERTREND_ELITE_ATR_1H,
   SUPERTREND_ELITE_BNB_1H,
   SUPERTREND_ELITE_BTC_1H,
   SUPERTREND_ELITE_BTC_1H_ADX,
+  SUPERTREND_ELITE_LINK_1H,
+  SUPERTREND_ELITE_CALIBRATED_1H,
+  SUPERTREND_ELITE_PERCENTILE_1H,
+  UNIFIED_ELITE_ADX_1H,
+  UNIFIED_ELITE_BNB_1H,
+  UNIFIED_ELITE_BTC_1H,
 } from "../lib/supertrendElitePresets";
+import { SAFE_INTRADAY_BNB_15M } from "../lib/safeIntradayPresets";
+import { CRT_TBS_BNB_15M } from "../lib/crtTbsPresets";
+import { TOKYO_SESSION_BNB_15M } from "../lib/tokyoSessionPresets";
 import {
   INTRADAY_PRO_5M,
   INTRADAY_PRO_15M,
   INTRADAY_PRO_FIB_15M,
   INTRADAY_PRO_BIGMOVE_15M,
   INTRADAY_PRO_SR_APLUS_15M,
+  INTRADAY_PRO_LIQ_DAILY_15M,
+  BNB_SITUATION_ROUTER_15M,
   INTRADAY_PRO_ICT_15M,
   INTRADAY_PRO_ICT_FULL_15M,
   INTRADAY_PRO_ICT_RESEARCH_15M,
@@ -52,7 +66,12 @@ import {
   VOLUME_PROFILE_5M,
 } from "../lib/volumeProfilePresets";
 import { IntradayGatesPanel } from "./IntradayGatesPanel";
-import { isIntradayGateChecked } from "../lib/intradayGatesUi";
+import { isIntradayGateChecked, normalizeIntradayGatesOnBot } from "../lib/intradayGatesUi";
+import {
+  clearStagedStrategyBotPatch,
+  flushStagedStrategyBotPatch,
+  stageStrategyBotPatch,
+} from "../lib/stagedStrategyBotPatch";
 import { useGuardedCheckbox } from "./useGuardedCheckbox";
 
 function TrendHtfStPresetButton({
@@ -1122,12 +1141,12 @@ function MultiBudgetCoinPctSliderRow({
   sym,
   pctVal,
   multiBudgetCoinPct,
-  onLogError,
+  onCommitPatch,
 }: {
   sym: string;
   pctVal: number;
   multiBudgetCoinPct: Record<string, number>;
-  onLogError: (msg: string) => void;
+  onCommitPatch: (patch: Record<string, unknown>) => void;
 }) {
   const [preview, setPreview] = useState<number | null>(null);
   const display = preview ?? pctVal;
@@ -1142,13 +1161,9 @@ function MultiBudgetCoinPctSliderRow({
         onPreviewValue={setPreview}
         onCommit={(v) => {
           setPreview(null);
-          void api
-            .botConfig({
-              multiBudgetCoinPct: { ...multiBudgetCoinPct, [sym]: v },
-            })
-            .catch(() => {
-              onLogError(`Failed to set % for ${sym}`);
-            });
+          onCommitPatch({
+            multiBudgetCoinPct: { ...multiBudgetCoinPct, [sym]: v },
+          });
         }}
       />
       <span className="w-8 shrink-0 text-right tabular-nums">{display}%</span>
@@ -1183,14 +1198,44 @@ const NUMBERED_SIGNAL_SOURCES: { n: number; key: string; label: string }[] = [
     label: "Supertrend Elite ★ 1H — 4H+1H gates + ST trail (BNB ~73% WR · BTC ~64% WR Jan–May 26)",
   },
   {
+    n: 20,
+    key: "SAFE_INTRADAY",
+    label: "Safe Intraday ★ 15m — Elite gates + session cap + 1% risk (~1%/mo target, not 1%/day)",
+  },
+  {
     n: 17,
     key: "SR_INTRADAY",
     label: "SR Intraday Sniper ★ 15m — session reclaim + multi-technique confluence",
   },
   {
+    n: 22,
+    key: "SITUATION_INTRADAY",
+    label: "Situation Router ★ 15m — data-driven multi-playbook per market situation (BNB)",
+  },
+  {
     n: 18,
     key: "VOLUME_PROFILE",
     label: "Volume Profile ★ 15m — POC / VAH / VAL / HVN / LVN structure setups only",
+  },
+  {
+    n: 19,
+    key: "REGIME_ADAPTIVE",
+    label: "Regime-Adaptive ★ 15m — one playbook per regime (trend/range/breakout) + risk overlay",
+  },
+  {
+    n: 23,
+    key: "CRT_TBS",
+    label: "CRT + TBS ★ 15m — 4H candle range + turtle body soup (ICT reversal)",
+  },
+  {
+    n: 24,
+    key: "TOKYO_SESSION",
+    label: "Tokyo Session ★ 15m — first-two-candle Asia bias + fixed R:R",
+  },
+  {
+    n: 21,
+    key: "UNIFIED_ELITE",
+    label: "Unified Elite ★ 1H — Elite + regime gate + liq scale-up + RANGE LIQ/SR supplement",
   },
 ];
 
@@ -1243,7 +1288,17 @@ export function TradingPanel() {
   const mode = useAppStore((s) => s.mode);
   const modeSlug = tradingModeToApiModeSlug(mode);
   const activeInstanceId = useAppStore((s) => s.activeInstanceByMode[modeSlug] ?? null);
-  const bot = useAppStore((s) => s.bot);
+  /** Store `bot` is liveBot + draft + WS in-flight guards — do not merge `liveBot` locally (stale WS reverts saved values). */
+  const botRaw = useAppStore((s) => s.bot);
+  const bot = useMemo(
+    () =>
+      normalizeIntradayGatesOnBot(
+        botRaw && typeof botRaw === "object" && !Array.isArray(botRaw)
+          ? (botRaw as Record<string, unknown>)
+          : {},
+      ),
+    [botRaw],
+  );
   const account = useAppStore((s) => s.account);
   const positions = useAppStore((s) => s.positions);
   const trades = useAppStore((s) => s.trades);
@@ -1299,12 +1354,17 @@ export function TradingPanel() {
   const [strategySaveBusy, setStrategySaveBusy] = useState(false);
   const manualFormHydratedRef = useRef(false);
   const skipManualFormPersistRef = useRef(true);
-  /** Live % label while dragging allowed-budget wallet slider (API commits on release only). */
-  const [capitalSliderPreviewPct, setCapitalSliderPreviewPct] = useState<number | null>(null);
-  const [multiTradePctPreview, setMultiTradePctPreview] = useState<number | null>(null);
+  const saveGatedBotConfig = useCallback(async (patch: Record<string, unknown>) => {
+    stageStrategyBotPatch(patch);
+    return { ok: true };
+  }, []);
 
   const [futuresUseFixedSl, setFuturesUseFixedSl] = useGuardedCheckbox(bot?.supertrendFuturesUseFixedSl !== false);
   const [futuresUseFixedTp, setFuturesUseFixedTp] = useGuardedCheckbox(bot?.supertrendFuturesUseFixedTp !== false);
+
+  useEffect(() => {
+    clearStagedStrategyBotPatch();
+  }, [modeSlug]);
 
   useEffect(() => {
     const d = bot?.tradingFormDefaults as {
@@ -1395,7 +1455,7 @@ export function TradingPanel() {
       intradaySmcMinAdx: Math.max(0, Math.min(100, Math.round(Number(bot?.intradaySmcMinAdx ?? 15)))),
       intradaySmcMinRr: Math.max(0, Math.min(10, Number(bot?.intradaySmcMinRr ?? 1.5))),
       intradaySmcSlMode: String(bot?.intradaySmcSlMode ?? "structure"),
-      intradaySmcMaxTpRr: Math.max(0, Math.min(20, Number(bot?.intradaySmcMaxTpRr ?? 3))),
+      intradaySmcMaxTpRr: Math.max(0, Math.min(20, Number(bot?.intradaySmcMaxTpRr ?? 5))),
       intradaySmcMaxHoldBars: Math.max(0, Math.min(2000, Math.round(Number(bot?.intradaySmcMaxHoldBars ?? 48)))),
       intradaySmcRequireMss: bot?.intradaySmcRequireMss === true,
       intradaySmcRequireRetrace: bot?.intradaySmcRequireRetrace === true,
@@ -1421,6 +1481,16 @@ export function TradingPanel() {
       intradayLiqTp2Enabled: bot?.intradayLiqTp2Enabled !== false,
       intradayLiqBreakevenAfterPartial: bot?.intradayLiqBreakevenAfterPartial !== false,
       intradayLiqMinRr: Math.max(0, Math.min(5, Number(bot?.intradayLiqMinRr ?? 1.5))),
+      intradayLiqMaxTpRr: (() => {
+        if (bot != null && Object.prototype.hasOwnProperty.call(bot, "intradayLiqMaxTpRr")) {
+          return Math.max(0, Math.min(20, Number(bot.intradayLiqMaxTpRr)));
+        }
+        return Math.max(0, Math.min(20, Number(bot?.intradaySmcMaxTpRr ?? 5)));
+      })(),
+      intradayLiqMaxHoldBars: Math.max(
+        0,
+        Math.min(2000, Math.round(Number(bot?.intradayLiqMaxHoldBars ?? 48))),
+      ),
       vpLookbackBars: Math.max(48, Math.min(2000, Math.round(Number(bot?.vpLookbackBars ?? 672)))),
       vpMinRR: Math.max(0.8, Math.min(5, Number(bot?.vpMinRR ?? 1.5))),
       // SUPERTREND_ELITE gate params
@@ -1429,6 +1499,37 @@ export function TradingPanel() {
       eliteStHtf4hMultiplier: Math.max(0.5, Number(bot?.eliteStHtf4hMultiplier ?? 3)),
       eliteStRequireHtf1hEmaAlign: bot?.eliteStRequireHtf1hEmaAlign === true,
       eliteStHtf1hMinSep: Math.max(0, Number(bot?.eliteStHtf1hMinSep ?? 0.0003)),
+      eliteStHtf1hSepMode: (() => {
+        const m = String(bot?.eliteStHtf1hSepMode ?? "FIXED").toUpperCase();
+        return ["FIXED", "ATR", "PERCENTILE", "ADX", "CALIBRATED"].includes(m) ? m : "FIXED";
+      })(),
+      eliteStHtf1hMinSepAtrMult: clampNum(Number(bot?.eliteStHtf1hMinSepAtrMult ?? 0.25), 0.05, 2),
+      eliteStHtf1hMinSepFloor: clampNum(Number(bot?.eliteStHtf1hMinSepFloor ?? 0.0002), 0, 0.01),
+      eliteStHtf1hMinSepCeil: clampNum(Number(bot?.eliteStHtf1hMinSepCeil ?? 0.0012), 0, 0.01),
+      eliteStHtf1hSepPercentileLookback: clampNum(
+        Math.round(Number(bot?.eliteStHtf1hSepPercentileLookback ?? 90)),
+        20,
+        200,
+      ),
+      eliteStHtf1hSepPercentileMult: clampNum(Number(bot?.eliteStHtf1hSepPercentileMult ?? 1), 0.5, 3),
+      eliteStHtf1hSepAdxBase: clampNum(Number(bot?.eliteStHtf1hSepAdxBase ?? 0.0003), 0, 0.01),
+      eliteStHtf1hSepAdxAlpha: clampNum(Number(bot?.eliteStHtf1hSepAdxAlpha ?? 1.5), 0, 5),
+      eliteStHtf1hSepAdxRef: clampNum(Math.round(Number(bot?.eliteStHtf1hSepAdxRef ?? 25)), 1, 100),
+      eliteStHtf1hSepCalibratePct: clampNum(Math.round(Number(bot?.eliteStHtf1hSepCalibratePct ?? 40)), 1, 99),
+      eliteStHtf1hSepCalibrateBars: clampNum(
+        Math.round(Number(bot?.eliteStHtf1hSepCalibrateBars ?? 90)),
+        20,
+        200,
+      ),
+      eliteStAutoCalibrate: bot?.eliteStAutoCalibrate === true,
+      eliteStAutoFullTune: bot?.eliteStAutoFullTune !== false,
+      eliteStAutoProfileBars: clampNum(Math.round(Number(bot?.eliteStAutoProfileBars ?? 90)), 40, 200),
+      eliteStAutoBracketMode: (() => {
+        const m = String(bot?.eliteStAutoBracketMode ?? "ATR").toUpperCase();
+        return ["ATR", "OFF", "FIXED"].includes(m) ? m : "ATR";
+      })(),
+      eliteStAutoMinAdxFloor: clampNum(Math.round(Number(bot?.eliteStAutoMinAdxFloor ?? 15)), 0, 100),
+      eliteStAutoMinAdxCeil: clampNum(Math.round(Number(bot?.eliteStAutoMinAdxCeil ?? 30)), 1, 100),
       eliteStMinAdx: clampNum(Math.round(Number(bot?.eliteStMinAdx ?? 0)), 0, 100),
       eliteStRequireAdxRising: bot?.eliteStRequireAdxRising === true,
       eliteStMinVolumeVsAvg: Math.max(0, Number(bot?.eliteStMinVolumeVsAvg ?? 0)),
@@ -2108,20 +2209,6 @@ export function TradingPanel() {
     return { maxRiskUsdt, maxDailyUsdt, pool, showPool, sizedUsableUsdt: su, showSized };
   }, [capitalAllotmentHeadline, cfg.riskPerTradeUnit, cfg.maxDailyLossUnit]);
 
-  useEffect(() => {
-    setCapitalSliderPreviewPct(null);
-  }, [
-    cfg.riskPerTrade,
-    cfg.allowedBudgetUsdt,
-    cfg.allowedBudgetWalletPct,
-    capitalAllotmentHeadline.allowedPoolUsdt,
-    capitalAllotmentHeadline.walletSliderPct,
-  ]);
-
-  useEffect(() => {
-    setMultiTradePctPreview(null);
-  }, [cfg.multiTradePctOfUsable]);
-
   const manualFuturesLiqUi = useMemo(() => {
     const mm = String(cfg.marketMode || "AUTO").toUpperCase();
     if (mm === "SPOT" || !showManualOrders) return null;
@@ -2328,6 +2415,7 @@ export function TradingPanel() {
   async function saveCurrentStrategyConfig() {
     try {
       setStrategySaveBusy(true);
+      await flushStagedStrategyBotPatch();
       const out = await api.saveStrategyConfigForMode(modeSlug, {
         action: "save",
       });
@@ -2342,6 +2430,7 @@ export function TradingPanel() {
       } else {
         useAppStore.getState().markStrategyConfigCleanForMode(modeSlug);
       }
+      clearStagedStrategyBotPatch();
       persistBotSnapshotAfterSave();
       pushLog({ level: "info", msg: "Strategy saved", category: "config", reason: "strategy_save" });
     } catch (e) {
@@ -2358,6 +2447,7 @@ export function TradingPanel() {
     if (!trimmed) return;
     try {
       setStrategySaveBusy(true);
+      await flushStagedStrategyBotPatch();
       const out = await api.saveStrategyConfigForMode(modeSlug, {
         action: "save_as_new",
         name: trimmed,
@@ -2373,6 +2463,7 @@ export function TradingPanel() {
       } else {
         useAppStore.getState().markStrategyConfigCleanForMode(modeSlug);
       }
+      clearStagedStrategyBotPatch();
       persistBotSnapshotAfterSave();
       pushLog({ level: "info", msg: `Saved as new strategy: ${trimmed}`, category: "config", reason: "strategy_save_as_new" });
     } catch (e) {
@@ -2442,7 +2533,7 @@ export function TradingPanel() {
                 deferTask(() => {
                   void (async () => {
                     try {
-                      await api.botConfig({ strategyMode: v });
+                      await saveGatedBotConfig({ strategyMode: v });
                     } catch {
                       pushLog({ level: "error", msg: "Failed to set routing mode" });
                     }
@@ -2469,7 +2560,7 @@ export function TradingPanel() {
                   deferTask(() => {
                     void (async () => {
                       try {
-                        await api.botConfig({ manualStrategy: v });
+                        await saveGatedBotConfig({ manualStrategy: v });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set fixed signal path" });
                       }
@@ -2486,6 +2577,131 @@ export function TradingPanel() {
             )}
           </label>
         </div>
+        {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "REGIME_ADAPTIVE" && (
+          <div className="mt-2 rounded-lg border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/30 px-3 py-2 text-[11px] text-violet-900 dark:text-violet-200 space-y-2">
+            <div className="font-semibold">★ Regime-Adaptive — one playbook per market regime + institutional risk overlay</div>
+            <div className="text-violet-700 dark:text-violet-300">
+              Classifies each bar (TREND/RANGE/SQUEEZE/VOLATILE) and runs exactly one playbook. A/B graded, 2–3 trades/day, London/NY only. Best on BTC/ETH 15m.
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] uppercase opacity-70">Min grade</span>
+                <select
+                  className="rounded border border-violet-300 dark:border-violet-700 bg-white/80 dark:bg-violet-950/40 px-1 py-0.5"
+                  value={String(cfg.regimeAdaptiveMinGrade ?? "A")}
+                  onChange={(e) => void api.botConfig({ regimeAdaptiveMinGrade: e.currentTarget.value }).catch(() => pushLog("Failed to update min grade"))}
+                >
+                  <option value="A">A only</option>
+                  <option value="B">A or B</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] uppercase opacity-70">Max trades/day</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  className="rounded border border-violet-300 dark:border-violet-700 bg-white/80 dark:bg-violet-950/40 px-1 py-0.5"
+                  value={Number(cfg.regimeAdaptiveMaxTradesPerDay ?? 2)}
+                  onChange={(e) => void api.botConfig({ regimeAdaptiveMaxTradesPerDay: Number(e.currentTarget.value) }).catch(() => pushLog("Failed to update max trades/day"))}
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] uppercase opacity-70">Confidence floor</span>
+                <input
+                  type="number"
+                  step={0.05}
+                  min={0}
+                  max={1}
+                  className="rounded border border-violet-300 dark:border-violet-700 bg-white/80 dark:bg-violet-950/40 px-1 py-0.5"
+                  value={Number(cfg.regimeAdaptiveConfidenceFloor ?? 0.45)}
+                  onChange={(e) => void api.botConfig({ regimeAdaptiveConfidenceFloor: Number(e.currentTarget.value) }).catch(() => pushLog("Failed to update confidence floor"))}
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              {([
+                ["regimeAdaptiveEnableTrend", "Trend"],
+                ["regimeAdaptiveEnableRange", "Range"],
+                ["regimeAdaptiveEnableBreakout", "Breakout"],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="flex cursor-pointer items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={cfg[key] !== false}
+                    onChange={(e) => void api.botConfig({ [key]: e.currentTarget.checked }).catch(() => pushLog(`Failed to toggle ${label}`))}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+              <label className="flex cursor-pointer items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={cfg.volTargetSizing === true}
+                  onChange={(e) => void api.botConfig({ volTargetSizing: e.currentTarget.checked }).catch(() => pushLog("Failed to toggle vol-target sizing"))}
+                />
+                <span>Vol-target sizing</span>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] uppercase opacity-70">Risk scale ×</span>
+                <input
+                  type="number"
+                  step={0.1}
+                  min={0.1}
+                  max={5}
+                  className="rounded border border-violet-300 dark:border-violet-700 bg-white/80 dark:bg-violet-950/40 px-1 py-0.5"
+                  value={Number(cfg.riskScale ?? 1)}
+                  onChange={(e) => void api.botConfig({ riskScale: Number(e.currentTarget.value) }).catch(() => pushLog("Failed to update risk scale"))}
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] uppercase opacity-70">Kill-switch DD%</span>
+                <input
+                  type="number"
+                  step={1}
+                  min={0}
+                  max={100}
+                  className="rounded border border-violet-300 dark:border-violet-700 bg-white/80 dark:bg-violet-950/40 px-1 py-0.5"
+                  value={Number(cfg.riskKillSwitchDdPct ?? 0)}
+                  onChange={(e) => void api.botConfig({ riskKillSwitchDdPct: Number(e.currentTarget.value) }).catch(() => pushLog("Failed to update kill switch"))}
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] uppercase opacity-70">Consec-loss stop</span>
+                <input
+                  type="number"
+                  step={1}
+                  min={0}
+                  max={50}
+                  className="rounded border border-violet-300 dark:border-violet-700 bg-white/80 dark:bg-violet-950/40 px-1 py-0.5"
+                  value={Number(cfg.riskConsecutiveLossLimit ?? 0)}
+                  onChange={(e) => void api.botConfig({ riskConsecutiveLossLimit: Number(e.currentTarget.value) }).catch(() => pushLog("Failed to update consec-loss limit"))}
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] uppercase opacity-70">Weekly DD cap%</span>
+                <input
+                  type="number"
+                  step={1}
+                  min={0}
+                  max={100}
+                  className="rounded border border-violet-300 dark:border-violet-700 bg-white/80 dark:bg-violet-950/40 px-1 py-0.5"
+                  value={Number(cfg.riskWeeklyMaxLossPct ?? 0)}
+                  onChange={(e) => void api.botConfig({ riskWeeklyMaxLossPct: Number(e.currentTarget.value) }).catch(() => pushLog("Failed to update weekly cap"))}
+                />
+              </label>
+            </div>
+
+            <div className="text-[10px] text-violet-700 dark:text-violet-400">
+              Risk scale moves return AND drawdown ~1:1 — raise it for more aggression, lower it to protect capital.
+            </div>
+          </div>
+        )}
         {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "HTF_RSI" && (
           <div className="mt-2 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-[11px] text-emerald-800 dark:text-emerald-300 space-y-1">
             <div className="font-semibold">★ HTF RSI v3 — BNBUSDT 15m only (HTF trend sep ≥ 0.12%)</div>
@@ -2563,25 +2779,56 @@ export function TradingPanel() {
             </p>
           ) : (
             <p>
-              <b>★ Use 1H chart.</b> 15m is not profitable for this path. BNB Jan–May 26: ~73% WR · BTC: ~64% WR +62%.
-              Save strategy before backtest.
+              <b>★ Use 1H chart.</b> 15m is not profitable for this path. Use{" "}
+              <b>Elite Auto</b> for any coin — thresholds scale from each symbol&apos;s volatility.
+              Legacy FIXED presets are per-coin manual tuning only.
             </p>
           )}
           <div className="flex flex-wrap gap-2">
             <TrendHtfStPresetButton
-              label="★ BNB 1H Elite"
+              label="★ Elite Auto 1H (any coin)"
               highlight
+              patch={SUPERTREND_ELITE_AUTO_1H}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="ADX sep only"
+              patch={SUPERTREND_ELITE_ADX_1H}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="Percentile sep"
+              patch={SUPERTREND_ELITE_PERCENTILE_1H}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="ATR sep"
+              patch={SUPERTREND_ELITE_ATR_1H}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="Calibrated sep"
+              patch={SUPERTREND_ELITE_CALIBRATED_1H}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="BNB 1H FIXED"
               patch={SUPERTREND_ELITE_BNB_1H}
               pushLog={pushLog}
             />
             <TrendHtfStPresetButton
-              label="BTC 1H Elite"
+              label="BTC 1H FIXED (0.08%)"
               patch={SUPERTREND_ELITE_BTC_1H}
               pushLog={pushLog}
             />
             <TrendHtfStPresetButton
               label="BTC 1H + ADX20"
               patch={SUPERTREND_ELITE_BTC_1H_ADX}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="LINK 1H Auto"
+              patch={SUPERTREND_ELITE_LINK_1H}
               pushLog={pushLog}
             />
           </div>
@@ -2591,9 +2838,59 @@ export function TradingPanel() {
             </p>
           ) : null}
         </div>
+        <div className="mt-2 rounded-lg border border-cyan-500/60 bg-cyan-50 dark:bg-cyan-950/30 px-3 py-2 text-[11px] text-cyan-900 dark:text-cyan-200 space-y-1.5">
+          <div className="font-semibold">Unified Elite — regime-gated Elite + liq scale-up + RANGE supplement</div>
+          {cfg.strategyMode !== "MANUAL" || cfg.manualStrategy !== "UNIFIED_ELITE" ? (
+            <p className="text-amber-800 dark:text-amber-300">
+              Presets set <b>MANUAL</b> + <b>UNIFIED_ELITE</b>. Current:{" "}
+              <span className="font-mono">{cfg.strategyMode}</span>
+              {cfg.strategyMode === "MANUAL" ? ` / ${cfg.manualStrategy}` : ""}.
+            </p>
+          ) : (
+            <p>
+              <b>★ Use 1H chart.</b> Elite 5-gate signal + regime gate (skip VOLATILE/SQUEEZE) + 1.5× size on PDH/PDL
+              sweeps + LIQ/SR A+ trades in RANGE. Run on BTC/ETH/BNB/LINK/XRP for ~7–10 trades/month portfolio.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <TrendHtfStPresetButton
+              label="★ Any coin — Unified ADX sep"
+              highlight
+              patch={UNIFIED_ELITE_ADX_1H}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="BNB 1H Unified"
+              patch={UNIFIED_ELITE_BNB_1H}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="BTC 1H Unified"
+              patch={UNIFIED_ELITE_BTC_1H}
+              pushLog={pushLog}
+            />
+          </div>
+        </div>
+        <div className="mt-2 rounded-lg border border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-[11px] text-emerald-900 dark:text-emerald-200 space-y-1.5">
+          <div className="font-semibold">Safe Intraday — conservative 15m (~1%/month target)</div>
+          <p>
+            <b>Not 1%/day.</b> Uses Elite 5-gate signals + London/NY session + max 2 trades/day + 1% risk, 10× lev,
+            daily/weekly loss caps. Run on <b>15m</b> across BTC/ETH/BNB/LINK/XRP. See{" "}
+            <span className="font-mono">docs/SAFE_INTRADAY_SETUP.md</span>.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <TrendHtfStPresetButton
+              label="★ Safe Intraday 15m"
+              highlight
+              patch={SAFE_INTRADAY_BNB_15M}
+              pushLog={pushLog}
+            />
+          </div>
+        </div>
         <div className="mt-2 rounded-lg border border-teal-400 dark:border-teal-600 bg-teal-50 dark:bg-teal-950/30 px-3 py-2 text-[11px] text-teal-900 dark:text-teal-200 space-y-1.5">
           <div className="font-semibold">Intraday Pro — loss vetoes + big-move tier</div>
-          {cfg.strategyMode !== "MANUAL" || cfg.manualStrategy !== "SR_INTRADAY" ? (
+          {cfg.strategyMode !== "MANUAL" ||
+          (cfg.manualStrategy !== "SR_INTRADAY" && cfg.manualStrategy !== "SITUATION_INTRADAY") ? (
             <p className="text-amber-800 dark:text-amber-300">
               Presets set <b>MANUAL</b> + <b>SR_INTRADAY</b>. Each setup is scored (sweep, session S/R, Fib, VP,
               CVD); <b>learned rules block loss clusters</b> one-by-one. Tier-A = big-move trail. Use{" "}
@@ -2610,6 +2907,25 @@ export function TradingPanel() {
             <TrendHtfStPresetButton label="★ BNB 15m Pro" highlight patch={INTRADAY_PRO_15M} pushLog={pushLog} />
             <TrendHtfStPresetButton label="BNB 15m Fib" patch={INTRADAY_PRO_FIB_15M} pushLog={pushLog} />
             <TrendHtfStPresetButton label="BNB 15m Inst. A+" patch={INTRADAY_PRO_SR_APLUS_15M} pushLog={pushLog} />
+            <TrendHtfStPresetButton label="BNB 15m LIQ Daily" patch={INTRADAY_PRO_LIQ_DAILY_15M} pushLog={pushLog} />
+            <TrendHtfStPresetButton
+              label="BNB 15m CRT + TBS"
+              highlight
+              patch={CRT_TBS_BNB_15M}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="BNB 15m Tokyo Session"
+              highlight
+              patch={TOKYO_SESSION_BNB_15M}
+              pushLog={pushLog}
+            />
+            <TrendHtfStPresetButton
+              label="BNB 15m Situation Router"
+              highlight
+              patch={BNB_SITUATION_ROUTER_15M}
+              pushLog={pushLog}
+            />
             <TrendHtfStPresetButton label="BNB 15m SMC Sweep" patch={INTRADAY_PRO_ICT_15M} pushLog={pushLog} />
             <TrendHtfStPresetButton
               label="BNB 15m SMC Research (frozen)"
@@ -2707,7 +3023,7 @@ export function TradingPanel() {
                 type="button"
                 className="rounded border-2 border-emerald-500 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 text-[10px] font-bold hover:bg-emerald-200 dark:hover:bg-emerald-800/60"
                 onClick={() => {
-                  void api.botConfig({
+                  void saveGatedBotConfig({
                     manualStrategy: "APEX_TREND",
                     symbol: "BNBUSDT",
                     timeframe: "15m",
@@ -2726,7 +3042,7 @@ export function TradingPanel() {
                 type="button"
                 className="rounded border-2 border-emerald-500 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 text-[10px] font-bold hover:bg-emerald-200 dark:hover:bg-emerald-800/60"
                 onClick={() => {
-                  void api.botConfig({
+                  void saveGatedBotConfig({
                     manualStrategy: "APEX_TREND",
                     trailingStopLossAuto: false,
                     futuresLeverage: 25,
@@ -2745,7 +3061,7 @@ export function TradingPanel() {
                 type="button"
                 className="rounded border border-teal-500 dark:border-teal-400 bg-white/80 dark:bg-teal-950/40 px-2 py-0.5 text-[10px] font-semibold hover:bg-teal-50 dark:hover:bg-teal-900/40"
                 onClick={() => {
-                  void api.botConfig({
+                  void saveGatedBotConfig({
                     manualStrategy: "APEX_TREND",
                     timeframe: "1h",
                     trailingStopLossAuto: false,
@@ -2877,7 +3193,7 @@ export function TradingPanel() {
                                 deferTask(() => {
                                   void (async () => {
                                     try {
-                                      await api.botConfig({ manualStrategy: key });
+                                      await saveGatedBotConfig({ manualStrategy: key });
                                     } catch {
                                       pushLog({ level: "error", msg: "Failed to set fixed signal path" });
                                     }
@@ -2978,7 +3294,7 @@ export function TradingPanel() {
                   deferTask(() => {
                     void (async () => {
                       try {
-                        await api.botConfig({ timeframe: v });
+                        await saveGatedBotConfig({ timeframe: v });
                         await syncActiveInstanceOperational({ timeframe: v });
                         pushLog({ level: "info", msg: "Trading timeframe set", timeframe: v });
                       } catch {
@@ -3006,7 +3322,7 @@ export function TradingPanel() {
                   deferTask(() => {
                     void (async () => {
                       try {
-                        await api.botConfig({ universeCoinSelectMode: v, symbolMode: "AUTO" });
+                        await saveGatedBotConfig({ universeCoinSelectMode: v, symbolMode: "AUTO" });
                         pushLog({
                           level: "info",
                           msg: v === "MULTIPLE" ? "Coin select: multiple (ranked picks)" : "Coin select: single (ranked picks)",
@@ -3033,7 +3349,7 @@ export function TradingPanel() {
                   deferTask(() => {
                     void (async () => {
                       try {
-                        await api.botConfig({ marketMode: mode });
+                        await saveGatedBotConfig({ marketMode: mode });
                         await syncActiveInstanceOperational({ marketMode: mode });
                         pushLog({ level: "info", msg: "Market mode set", marketMode: mode });
                       } catch {
@@ -3074,7 +3390,7 @@ export function TradingPanel() {
                         parse={(raw) => parseFloat(raw)}
                         onCommit={async (v) => {
                           try {
-                            await api.botConfig({ tradeHistoryMakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
+                            await saveGatedBotConfig({ tradeHistoryMakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
                           } catch {
                             pushLog({ level: "error", msg: "Failed to set maker entry fee %" });
                           }
@@ -3091,7 +3407,7 @@ export function TradingPanel() {
                         parse={(raw) => parseFloat(raw)}
                         onCommit={async (v) => {
                           try {
-                            await api.botConfig({ tradeHistoryMakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
+                            await saveGatedBotConfig({ tradeHistoryMakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
                           } catch {
                             pushLog({ level: "error", msg: "Failed to set maker exit fee %" });
                           }
@@ -3113,7 +3429,7 @@ export function TradingPanel() {
                         parse={(raw) => parseFloat(raw)}
                         onCommit={async (v) => {
                           try {
-                            await api.botConfig({ tradeHistoryTakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
+                            await saveGatedBotConfig({ tradeHistoryTakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
                           } catch {
                             pushLog({ level: "error", msg: "Failed to set taker entry fee %" });
                           }
@@ -3130,7 +3446,7 @@ export function TradingPanel() {
                         parse={(raw) => parseFloat(raw)}
                         onCommit={async (v) => {
                           try {
-                            await api.botConfig({ tradeHistoryTakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
+                            await saveGatedBotConfig({ tradeHistoryTakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
                           } catch {
                             pushLog({ level: "error", msg: "Failed to set taker exit fee %" });
                           }
@@ -3163,7 +3479,7 @@ export function TradingPanel() {
                     parse={(raw) => parseFloat(raw)}
                     onCommit={async (v) => {
                       try {
-                        await api.botConfig({ supertrendFuturesMaxEntrySlippagePct: clampNum(v, 0, 5) });
+                        await saveGatedBotConfig({ supertrendFuturesMaxEntrySlippagePct: clampNum(v, 0, 5) });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set max entry slippage" });
                       }
@@ -3180,7 +3496,7 @@ export function TradingPanel() {
                       deferTask(() => {
                         void (async () => {
                           try {
-                            await api.botConfig({ supertrendFuturesEntryOpenStyle: v });
+                            await saveGatedBotConfig({ supertrendFuturesEntryOpenStyle: v });
                             pushLog({ level: "info", msg: `Futures entry open style: ${v}` });
                           } catch {
                             pushLog({ level: "error", msg: "Failed to set open style" });
@@ -3206,7 +3522,7 @@ export function TradingPanel() {
                     parse={(raw) => parseInt(raw, 10)}
                     onCommit={async (v) => {
                       try {
-                        await api.botConfig({ supertrendFuturesEntryRecheckMs: Math.max(0, Math.min(60000, Math.floor(v))) });
+                        await saveGatedBotConfig({ supertrendFuturesEntryRecheckMs: Math.max(0, Math.min(60000, Math.floor(v))) });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set entry recheck ms" });
                       }
@@ -3225,7 +3541,7 @@ export function TradingPanel() {
                     parse={(raw) => parseInt(raw, 10)}
                     onCommit={async (v) => {
                       try {
-                        await api.botConfig({ supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(v)) });
+                        await saveGatedBotConfig({ supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(v)) });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set max signal lag" });
                       }
@@ -3242,7 +3558,7 @@ export function TradingPanel() {
                       deferTask(() => {
                         void (async () => {
                           try {
-                            await api.botConfig({ supertrendFuturesIocFallbackMarket: on });
+                            await saveGatedBotConfig({ supertrendFuturesIocFallbackMarket: on });
                             pushLog({
                               level: "info",
                               msg: on
@@ -3273,7 +3589,7 @@ export function TradingPanel() {
                       deferTask(() => {
                         void (async () => {
                           try {
-                            await api.botConfig({ supertrendFuturesRequireMarkPrice: next });
+                            await saveGatedBotConfig({ supertrendFuturesRequireMarkPrice: next });
                           } catch (err) {
                             pushLog({
                               level: "error",
@@ -3301,7 +3617,7 @@ export function TradingPanel() {
                       deferTask(() => {
                         void (async () => {
                           try {
-                            await api.botConfig({ supertrendFuturesRequireBookTicker: next });
+                            await saveGatedBotConfig({ supertrendFuturesRequireBookTicker: next });
                           } catch (err) {
                             pushLog({
                               level: "error",
@@ -3337,7 +3653,7 @@ export function TradingPanel() {
                       deferTask(() => {
                         void (async () => {
                           try {
-                            await api.botConfig({ futuresLeverageMode: v });
+                            await saveGatedBotConfig({ futuresLeverageMode: v });
                             pushLog({
                               level: "info",
                               msg:
@@ -3372,7 +3688,7 @@ export function TradingPanel() {
                       onCommit={async (v) => {
                         setFuturesLevDraft(null);
                         try {
-                          await api.botConfig({ futuresLeverage: v });
+                          await saveGatedBotConfig({ futuresLeverage: v });
                         } catch {
                           pushLog({ level: "error", msg: "Failed to set futures leverage" });
                         }
@@ -3413,7 +3729,7 @@ export function TradingPanel() {
                         onChange={(e) => {
                           const off = e.target.checked;
                           setFuturesUseFixedSl(!off);
-                          void api.botConfig({ supertrendFuturesUseFixedSl: !off }).catch(() => {
+                          void saveGatedBotConfig({ supertrendFuturesUseFixedSl: !off }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to update SL bracket toggle" });
                           });
                         }}
@@ -3427,7 +3743,7 @@ export function TradingPanel() {
                       disabled={!slTpFieldsEditable(cfg) || !futuresUseFixedSl}
                       onCommit={async (v) => {
                         try {
-                          await api.botConfig({ supertrendFuturesFixedSlPct: v / 100, supertrendFuturesUseFixedSl: true });
+                          await saveGatedBotConfig({ supertrendFuturesFixedSlPct: v / 100, supertrendFuturesUseFixedSl: true });
                           setFuturesUseFixedSl(true);
                         } catch {
                           pushLog({ level: "error", msg: "Failed to set SL %" });
@@ -3459,7 +3775,7 @@ export function TradingPanel() {
                         onChange={(e) => {
                           const off = e.target.checked;
                           setFuturesUseFixedTp(!off);
-                          void api.botConfig({ supertrendFuturesUseFixedTp: !off }).catch(() => {
+                          void saveGatedBotConfig({ supertrendFuturesUseFixedTp: !off }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to update TP bracket toggle" });
                           });
                         }}
@@ -3473,7 +3789,7 @@ export function TradingPanel() {
                       disabled={!slTpFieldsEditable(cfg) || !futuresUseFixedTp}
                       onCommit={async (v) => {
                         try {
-                          await api.botConfig({ supertrendFuturesFixedTpPct: v / 100, supertrendFuturesUseFixedTp: true });
+                          await saveGatedBotConfig({ supertrendFuturesFixedTpPct: v / 100, supertrendFuturesUseFixedTp: true });
                           setFuturesUseFixedTp(true);
                         } catch {
                           pushLog({ level: "error", msg: "Failed to set TP %" });
@@ -3513,7 +3829,7 @@ export function TradingPanel() {
                             deferTask(() => {
                               void (async () => {
                                 try {
-                                  await api.botConfig({ universePinnedSymbols: [] });
+                                  await saveGatedBotConfig({ universePinnedSymbols: [] });
                                   pushLog({ level: "info", msg: "Cleared all pinned symbols" });
                                 } catch {
                                   pushLog({ level: "error", msg: "Failed to clear pins" });
@@ -3565,7 +3881,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ universeCoinBase: v });
+                              await saveGatedBotConfig({ universeCoinBase: v });
                               pushLog({ level: "info", msg: v === "CUSTOM" ? "Coin base: custom watchlist" : "Coin base: all Binance universe" });
                               await api.universeScan(true);
                             } catch {
@@ -3610,7 +3926,7 @@ export function TradingPanel() {
                             deferTask(() => {
                               void (async () => {
                                 try {
-                                  await api.botConfig({ universePinControl: "AUTO" });
+                                  await saveGatedBotConfig({ universePinControl: "AUTO" });
                                   pushLog({ level: "info", msg: "Pick control: Auto (pins read-only for bot)" });
                                 } catch {
                                   pushLog({ level: "error", msg: "Failed to set pick control" });
@@ -3632,7 +3948,7 @@ export function TradingPanel() {
                             deferTask(() => {
                               void (async () => {
                                 try {
-                                  await api.botConfig({ universePinControl: "MANUAL" });
+                                  await saveGatedBotConfig({ universePinControl: "MANUAL" });
                                   pushLog({ level: "info", msg: "Pick control: Manual (table pins apply)" });
                                 } catch {
                                   pushLog({ level: "error", msg: "Failed to set pick control" });
@@ -3665,7 +3981,7 @@ export function TradingPanel() {
                           deferTask(() => {
                             void (async () => {
                               try {
-                                await api.botConfig({ universeAutoCoinPick: v });
+                                await saveGatedBotConfig({ universeAutoCoinPick: v });
                                 pushLog({
                                   level: "info",
                                   msg:
@@ -3794,7 +4110,7 @@ export function TradingPanel() {
                                             void (async () => {
                                               try {
                                                 const next = pinnedMulti.filter((x) => x !== symU);
-                                                await api.botConfig({ universePinnedSymbols: next });
+                                                await saveGatedBotConfig({ universePinnedSymbols: next });
                                                 pushLog({ level: "info", msg: "Unpinned symbol", symbol: symU });
                                               } catch {
                                                 pushLog({ level: "error", msg: "Failed to unpin" });
@@ -3816,7 +4132,7 @@ export function TradingPanel() {
                                             void (async () => {
                                               try {
                                                 const next = [...pinnedMulti, sym].slice(0, 10);
-                                                await api.botConfig({ universePinnedSymbols: next });
+                                                await saveGatedBotConfig({ universePinnedSymbols: next });
                                                 pushLog({ level: "info", msg: "Pinned symbol", symbol: sym });
                                               } catch {
                                                 pushLog({ level: "error", msg: "Failed to pin symbol" });
@@ -3837,7 +4153,7 @@ export function TradingPanel() {
                                         deferTask(() => {
                                           void (async () => {
                                             try {
-                                              await api.botConfig({ universePinnedSymbol: null });
+                                              await saveGatedBotConfig({ universePinnedSymbol: null });
                                               pushLog({ level: "info", msg: "Unpinned symbol — auto coin selection resumed" });
                                             } catch {
                                               pushLog({ level: "error", msg: "Failed to unpin" });
@@ -3858,7 +4174,7 @@ export function TradingPanel() {
                                         deferTask(() => {
                                           void (async () => {
                                             try {
-                                              await api.botConfig({ universePinnedSymbol: sym });
+                                              await saveGatedBotConfig({ universePinnedSymbol: sym });
                                               pushLog({ level: "info", msg: "Pinned symbol", symbol: sym });
                                             } catch {
                                               pushLog({ level: "error", msg: "Failed to pin symbol" });
@@ -3910,7 +4226,7 @@ export function TradingPanel() {
                           parse={(raw) => parseFloat(raw)}
                           onCommit={async (v) => {
                             try {
-                              await api.botConfig({ tradeHistoryMakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
+                              await saveGatedBotConfig({ tradeHistoryMakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
                             } catch {
                               pushLog({ level: "error", msg: "Failed to set maker entry fee %" });
                             }
@@ -3927,7 +4243,7 @@ export function TradingPanel() {
                           parse={(raw) => parseFloat(raw)}
                           onCommit={async (v) => {
                             try {
-                              await api.botConfig({ tradeHistoryMakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
+                              await saveGatedBotConfig({ tradeHistoryMakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
                             } catch {
                               pushLog({ level: "error", msg: "Failed to set maker exit fee %" });
                             }
@@ -3949,7 +4265,7 @@ export function TradingPanel() {
                           parse={(raw) => parseFloat(raw)}
                           onCommit={async (v) => {
                             try {
-                              await api.botConfig({ tradeHistoryTakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
+                              await saveGatedBotConfig({ tradeHistoryTakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
                             } catch {
                               pushLog({ level: "error", msg: "Failed to set taker entry fee %" });
                             }
@@ -3966,7 +4282,7 @@ export function TradingPanel() {
                           parse={(raw) => parseFloat(raw)}
                           onCommit={async (v) => {
                             try {
-                              await api.botConfig({ tradeHistoryTakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
+                              await saveGatedBotConfig({ tradeHistoryTakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
                             } catch {
                               pushLog({ level: "error", msg: "Failed to set taker exit fee %" });
                             }
@@ -3999,7 +4315,7 @@ export function TradingPanel() {
                       parse={(raw) => parseFloat(raw)}
                       onCommit={async (v) => {
                         try {
-                          await api.botConfig({ supertrendFuturesMaxEntrySlippagePct: clampNum(v, 0, 5) });
+                          await saveGatedBotConfig({ supertrendFuturesMaxEntrySlippagePct: clampNum(v, 0, 5) });
                         } catch {
                           pushLog({ level: "error", msg: "Failed to set max entry slippage" });
                         }
@@ -4016,7 +4332,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ supertrendFuturesEntryOpenStyle: v });
+                              await saveGatedBotConfig({ supertrendFuturesEntryOpenStyle: v });
                               pushLog({ level: "info", msg: `Futures entry open style: ${v}` });
                             } catch {
                               pushLog({ level: "error", msg: "Failed to set open style" });
@@ -4042,7 +4358,7 @@ export function TradingPanel() {
                       parse={(raw) => parseInt(raw, 10)}
                       onCommit={async (v) => {
                         try {
-                          await api.botConfig({ supertrendFuturesEntryRecheckMs: Math.max(0, Math.min(60000, Math.floor(v))) });
+                          await saveGatedBotConfig({ supertrendFuturesEntryRecheckMs: Math.max(0, Math.min(60000, Math.floor(v))) });
                         } catch {
                           pushLog({ level: "error", msg: "Failed to set entry recheck ms" });
                         }
@@ -4061,7 +4377,7 @@ export function TradingPanel() {
                       parse={(raw) => parseInt(raw, 10)}
                       onCommit={async (v) => {
                         try {
-                          await api.botConfig({ supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(v)) });
+                          await saveGatedBotConfig({ supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(v)) });
                         } catch {
                           pushLog({ level: "error", msg: "Failed to set max signal lag" });
                         }
@@ -4078,7 +4394,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ supertrendFuturesIocFallbackMarket: on });
+                              await saveGatedBotConfig({ supertrendFuturesIocFallbackMarket: on });
                               pushLog({
                                 level: "info",
                                 msg: on
@@ -4109,7 +4425,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ supertrendFuturesRequireMarkPrice: next });
+                              await saveGatedBotConfig({ supertrendFuturesRequireMarkPrice: next });
                             } catch (err) {
                               pushLog({
                                 level: "error",
@@ -4137,7 +4453,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ supertrendFuturesRequireBookTicker: next });
+                              await saveGatedBotConfig({ supertrendFuturesRequireBookTicker: next });
                             } catch (err) {
                               pushLog({
                                 level: "error",
@@ -4167,7 +4483,7 @@ export function TradingPanel() {
                 max={1}
                 onCommit={async (v) => {
                   try {
-                    await api.botConfig({ aiThreshold: v });
+                    await saveGatedBotConfig({ aiThreshold: v });
                   } catch {
                     pushLog({ level: "error", msg: "Failed to set AI threshold" });
                   }
@@ -4220,7 +4536,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ trailingStopLossAuto: on });
+                              await saveGatedBotConfig({ trailingStopLossAuto: on });
                               pushLog({
                                 level: "info",
                                 msg: on
@@ -4254,7 +4570,7 @@ export function TradingPanel() {
                           deferTask(() => {
                             void (async () => {
                               try {
-                                await api.botConfig({ futuresTrailingStopMode: "SUPERTREND" });
+                                await saveGatedBotConfig({ futuresTrailingStopMode: "SUPERTREND" });
                                 pushLog({ level: "info", msg: "Futures trailing: Supertrend line + fee activation (chart ST, breakeven floor)" });
                               } catch {
                                 pushLog({ level: "error", msg: "Failed to set trailing mode" });
@@ -4287,7 +4603,7 @@ export function TradingPanel() {
                                   msg: "At least one Supertrend trail mode must stay on — Advanced will remain enabled.",
                                 });
                               }
-                              void api.botConfig({ futuresTrailingStFeeBreakeven: on }).catch(() =>
+                              void saveGatedBotConfig({ futuresTrailingStFeeBreakeven: on }).catch(() =>
                                 pushLog({ level: "error", msg: "Failed to update fee breakeven trailing" }),
                               );
                             }}
@@ -4348,7 +4664,7 @@ export function TradingPanel() {
                                 },
                               ]}
                               cfg={cfg}
-                              onChange={(k, v) => void api.botConfig({ [k]: v }).catch(() =>
+                              onChange={(k, v) => void saveGatedBotConfig({ [k]: v }).catch(() =>
                                 pushLog({ level: "error", msg: `Failed to update ${k}` }),
                               )}
                             />
@@ -4364,7 +4680,7 @@ export function TradingPanel() {
                                     className="mt-0.5"
                                     checked={cfg.trailBufferMode === "PERCENT"}
                                     onChange={() =>
-                                      void api.botConfig({ trailBufferMode: "PERCENT" }).catch(() =>
+                                      void saveGatedBotConfig({ trailBufferMode: "PERCENT" }).catch(() =>
                                         pushLog({ level: "error", msg: "Failed to update buffer mode" }),
                                       )
                                     }
@@ -4378,7 +4694,7 @@ export function TradingPanel() {
                                     className="mt-0.5"
                                     checked={cfg.trailBufferMode === "ATR"}
                                     onChange={() =>
-                                      void api.botConfig({ trailBufferMode: "ATR" }).catch(() =>
+                                      void saveGatedBotConfig({ trailBufferMode: "ATR" }).catch(() =>
                                         pushLog({ level: "error", msg: "Failed to update buffer mode" }),
                                       )
                                     }
@@ -4414,7 +4730,7 @@ export function TradingPanel() {
                                       ]
                                 }
                                 cfg={cfg}
-                                onChange={(k, v) => void api.botConfig({ [k]: v }).catch(() =>
+                                onChange={(k, v) => void saveGatedBotConfig({ [k]: v }).catch(() =>
                                   pushLog({ level: "error", msg: `Failed to update ${k}` }),
                                 )}
                               />
@@ -4436,7 +4752,7 @@ export function TradingPanel() {
                                   msg: "At least one Supertrend trail mode must stay on — Advanced will remain enabled.",
                                 });
                               }
-                              void api.botConfig({ futuresTrailingStAdvanced: on }).catch(() =>
+                              void saveGatedBotConfig({ futuresTrailingStAdvanced: on }).catch(() =>
                                 pushLog({ level: "error", msg: "Failed to update advanced Supertrend trailing" }),
                               );
                             }}
@@ -4508,7 +4824,7 @@ export function TradingPanel() {
                                   .catch(() => pushLog({ level: "error", msg: `Failed to update ${k}` }));
                                 return;
                               }
-                              void api.botConfig({ [k]: v }).catch(() =>
+                              void saveGatedBotConfig({ [k]: v }).catch(() =>
                                 pushLog({ level: "error", msg: `Failed to update ${k}` }),
                               );
                             }}
@@ -4528,7 +4844,7 @@ export function TradingPanel() {
                           deferTask(() => {
                             void (async () => {
                               try {
-                                await api.botConfig({ futuresTrailingStopMode: "FEE_LADDER" });
+                                await saveGatedBotConfig({ futuresTrailingStopMode: "FEE_LADDER" });
                                 pushLog({ level: "info", msg: "Futures trailing: Fee ladder — discrete locks" });
                               } catch {
                                 pushLog({ level: "error", msg: "Failed to set trailing mode" });
@@ -4570,7 +4886,7 @@ export function TradingPanel() {
                             },
                           ]}
                           cfg={cfg}
-                          onChange={(k, v) => void api.botConfig({ [k]: v }).catch(() =>
+                          onChange={(k, v) => void saveGatedBotConfig({ [k]: v }).catch(() =>
                             pushLog({ level: "error", msg: `Failed to update ${k}` }),
                           )}
                         />
@@ -4601,7 +4917,7 @@ export function TradingPanel() {
                                     (x): x is number => x != null && Number.isFinite(x) && x > 0,
                                   );
                                   try {
-                                    await api.botConfig({ trailingStopExtraScalpingPcts: next });
+                                    await saveGatedBotConfig({ trailingStopExtraScalpingPcts: next });
                                   } catch {
                                     pushLog({ level: "error", msg: "Failed to set trailing extra scalping" });
                                   }
@@ -4647,6 +4963,8 @@ export function TradingPanel() {
                     intradayLiqTp2Enabled: cfg.intradayLiqTp2Enabled,
                     intradayLiqBreakevenAfterPartial: cfg.intradayLiqBreakevenAfterPartial,
                     intradayLiqMinRr: cfg.intradayLiqMinRr,
+                    intradayLiqMaxTpRr: cfg.intradayLiqMaxTpRr,
+                    intradayLiqMaxHoldBars: cfg.intradayLiqMaxHoldBars,
                   }}
                   sr={{
                     intradaySrAPlusMode: cfg.intradaySrAPlusMode,
@@ -4672,8 +4990,26 @@ export function TradingPanel() {
                     intradaySmcRequireBos: cfg.intradaySmcRequireBos,
                     intradaySmcRequireConfirm: cfg.intradaySmcRequireConfirm,
                     intradaySmcRequireFvgRetrace: cfg.intradaySmcRequireFvgRetrace,
+                    intradaySmcUseOrderFlow: cfg.intradaySmcUseOrderFlow,
                   }}
-                  pushLog={pushLog}
+                  of={{
+                    intradayOfKillzoneMode: cfg.intradayOfKillzoneMode,
+                    intradayOfRequireKeyLevel: cfg.intradayOfRequireKeyLevel,
+                    intradayOfRequirePremiumDiscount: cfg.intradayOfRequirePremiumDiscount,
+                    intradayOfRequireConfirmation: cfg.intradayOfRequireConfirmation,
+                    intradayOfMinStackBars: cfg.intradayOfMinStackBars,
+                    intradayOfMinConfluence: cfg.intradayOfMinConfluence,
+                    intradayOfUseOrderBook: cfg.intradayOfUseOrderBook,
+                    intradayOfAllowProxy: cfg.intradayOfAllowProxy,
+                    intradayOfVetoMode: cfg.intradayOfVetoMode,
+                    intradayOfConfluenceMode: cfg.intradayOfConfluenceMode,
+                    intradayOfAllowCvdOnly: cfg.intradayOfAllowCvdOnly,
+                    intradayOfTp1Enabled: cfg.intradayOfTp1Enabled,
+                    intradayOfTp2Enabled: cfg.intradayOfTp2Enabled,
+                    intradayOfBreakevenAfterPartial: cfg.intradayOfBreakevenAfterPartial,
+                    intradayOfExitOnDeltaAgainst: cfg.intradayOfExitOnDeltaAgainst,
+                  }}
+                  onStagePatch={stageStrategyBotPatch}
                 />
 
                 {(cfg.marketMode === "SPOT" || cfg.marketMode === "FUTURES" || cfg.marketMode === "AUTO") && (
@@ -4701,7 +5037,7 @@ export function TradingPanel() {
                               deferTask(() => {
                                 void (async () => {
                                   try {
-                                    await api.botConfig({ supertrendSpotAuto: autoOn });
+                                    await saveGatedBotConfig({ supertrendSpotAuto: autoOn });
                                     pushLog({
                                       level: "info",
                                       msg: autoOn
@@ -4732,7 +5068,7 @@ export function TradingPanel() {
                               deferTask(() => {
                                 void (async () => {
                                   try {
-                                    await api.botConfig(
+                                    await saveGatedBotConfig(
                                       autoOn
                                         ? { supertrendFuturesAuto: true }
                                         : { supertrendFuturesAuto: false, supertrendFuturesAiConfidenceFilter: true },
@@ -4771,7 +5107,7 @@ export function TradingPanel() {
                               void (async () => {
                                 try {
                                   if (mm === "SPOT") {
-                                    await api.botConfig({ supertrendSpotAuto: autoOn });
+                                    await saveGatedBotConfig({ supertrendSpotAuto: autoOn });
                                     pushLog({
                                       level: "info",
                                       msg: autoOn
@@ -4779,7 +5115,7 @@ export function TradingPanel() {
                                         : "Supertrend spot autotrading OFF",
                                     });
                                   } else {
-                                    await api.botConfig(
+                                    await saveGatedBotConfig(
                                       autoOn
                                         ? { supertrendFuturesAuto: true }
                                         : { supertrendFuturesAuto: false, supertrendFuturesAiConfidenceFilter: true },
@@ -4840,7 +5176,7 @@ export function TradingPanel() {
                               deferTask(() => {
                                 void (async () => {
                                   try {
-                                    await api.botConfig({ supertrendFuturesTwoWay: false });
+                                    await saveGatedBotConfig({ supertrendFuturesTwoWay: false });
                                     pushLog({
                                       level: "info",
                                       msg: "Futures Supertrend: 1-way (buy) — SELL signal only closes long; BUY opens long.",
@@ -4866,7 +5202,7 @@ export function TradingPanel() {
                               deferTask(() => {
                                 void (async () => {
                                   try {
-                                    await api.botConfig({ supertrendFuturesTwoWay: true });
+                                    await saveGatedBotConfig({ supertrendFuturesTwoWay: true });
                                     pushLog({
                                       level: "info",
                                       msg: "Futures Supertrend: 2-way — BUY closes short then long; SELL closes long then short.",
@@ -4903,7 +5239,7 @@ export function TradingPanel() {
                         }
                         onCommit={async (v) => {
                           try {
-                            await api.botConfig({ supertrendPeriod: v });
+                            await saveGatedBotConfig({ supertrendPeriod: v });
                           } catch {
                             pushLog({ level: "error", msg: "Failed to set ATR period" });
                           }
@@ -4925,7 +5261,7 @@ export function TradingPanel() {
                         }
                         onCommit={async (v) => {
                           try {
-                            await api.botConfig({ supertrendMultiplier: v });
+                            await saveGatedBotConfig({ supertrendMultiplier: v });
                           } catch {
                             pushLog({ level: "error", msg: "Failed to set multiplier" });
                           }
@@ -4948,7 +5284,7 @@ export function TradingPanel() {
                           deferTask(() => {
                             void (async () => {
                               try {
-                                await api.botConfig({ supertrendWilderAtr: checked });
+                                await saveGatedBotConfig({ supertrendWilderAtr: checked });
                               } catch {
                                 pushLog({ level: "error", msg: "Failed to set ATR mode" });
                               }
@@ -5001,7 +5337,7 @@ export function TradingPanel() {
                         disabled={!cfg.surfPulseMlGateEnabled}
                         onDebouncedCommit={(u) => {
                           const p = clampNum(u / 100, 0, 1);
-                          void api.botConfig({ surfPulseMlThreshold: Number(p.toFixed(3)) }).catch(() => {
+                          void saveGatedBotConfig({ surfPulseMlThreshold: Number(p.toFixed(3)) }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to set SurfPulse threshold" });
                           });
                         }}
@@ -5099,7 +5435,7 @@ export function TradingPanel() {
                           deferTask(() => {
                             void (async () => {
                               try {
-                                await api.botConfig({ supertrendFuturesAiConfidenceFilter: filterOn });
+                                await saveGatedBotConfig({ supertrendFuturesAiConfidenceFilter: filterOn });
                                 pushLog({
                                   level: "info",
                                   msg: filterOn
@@ -5131,7 +5467,7 @@ export function TradingPanel() {
                         accentClassName="accent-violet-600"
                         onDebouncedCommit={(u) => {
                           const p = clampNum(u / 100, 0, 1);
-                          void api.botConfig({ supertrendFuturesMinAiProb: Number(p.toFixed(3)) }).catch(() => {
+                          void saveGatedBotConfig({ supertrendFuturesMinAiProb: Number(p.toFixed(3)) }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to set min AI probability" });
                           });
                         }}
@@ -5169,7 +5505,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ signalStrengthGatesTrades: gatesOn });
+                              await saveGatedBotConfig({ signalStrengthGatesTrades: gatesOn });
                               pushLog({
                                 level: "info",
                                 msg: gatesOn
@@ -5201,7 +5537,7 @@ export function TradingPanel() {
                       formatDisplay={(u) => `${u}`}
                       accentClassName="accent-violet-600"
                       onDebouncedCommit={(u) => {
-                        void api.botConfig({ signalStrengthOpenMin: Math.round(clampNum(u, 0, 100)) }).catch(() => {
+                        void saveGatedBotConfig({ signalStrengthOpenMin: Math.round(clampNum(u, 0, 100)) }).catch(() => {
                           pushLog({ level: "error", msg: "Failed to set min signal strength" });
                         });
                       }}
@@ -5223,7 +5559,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ marketDecision: { enabled: on } });
+                              await saveGatedBotConfig({ marketDecision: { enabled: on } });
                               pushLog({
                                 level: "info",
                                 msg: on
@@ -5315,7 +5651,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ supertrendMoveQualityGate: on });
+                              await saveGatedBotConfig({ supertrendMoveQualityGate: on });
                               pushLog({
                                 level: "info",
                                 msg: on
@@ -5349,7 +5685,7 @@ export function TradingPanel() {
                         accentClassName="accent-cyan-600"
                         onDebouncedCommit={(u) => {
                           const p = clampNum(u / 100, 0, 1);
-                          void api.botConfig({ supertrendMoveQualityMinScore: Number(p.toFixed(3)) }).catch(() => {
+                          void saveGatedBotConfig({ supertrendMoveQualityMinScore: Number(p.toFixed(3)) }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to set min move quality score" });
                           });
                         }}
@@ -5363,7 +5699,7 @@ export function TradingPanel() {
                         formatDisplay={(u) => `${u}`}
                         accentClassName="accent-cyan-600"
                         onDebouncedCommit={(u) => {
-                          void api.botConfig({ supertrendMoveQualityMinAdx: Math.round(clampNum(u, 0, 100)) }).catch(() => {
+                          void saveGatedBotConfig({ supertrendMoveQualityMinAdx: Math.round(clampNum(u, 0, 100)) }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to set min ADX" });
                           });
                         }}
@@ -5378,7 +5714,7 @@ export function TradingPanel() {
                         accentClassName="accent-cyan-600"
                         onDebouncedCommit={(u) => {
                           const r = Math.max(1, 1 + u / 20);
-                          void api.botConfig({ supertrendMoveQualityMinMoveSlRatio: Number(r.toFixed(2)) }).catch(() => {
+                          void saveGatedBotConfig({ supertrendMoveQualityMinMoveSlRatio: Number(r.toFixed(2)) }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to set move/SL ratio" });
                           });
                         }}
@@ -5393,7 +5729,7 @@ export function TradingPanel() {
                         accentClassName="accent-cyan-600"
                         onDebouncedCommit={(u) => {
                           const m = Math.max(0.1, u / 20);
-                          void api.botConfig({ supertrendMoveQualityExpectedMoveAtrMult: Number(m.toFixed(2)) }).catch(() => {
+                          void saveGatedBotConfig({ supertrendMoveQualityExpectedMoveAtrMult: Number(m.toFixed(2)) }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to set ATR expect mult" });
                           });
                         }}
@@ -5408,7 +5744,7 @@ export function TradingPanel() {
                         accentClassName="accent-cyan-600"
                         onDebouncedCommit={(u) => {
                           const v = u <= 0 ? 0 : 1 + u / 100;
-                          void api.botConfig({ supertrendMoveQualityMinAtrExpansion: Number(v.toFixed(3)) }).catch(() => {
+                          void saveGatedBotConfig({ supertrendMoveQualityMinAtrExpansion: Number(v.toFixed(3)) }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to set min ATR expansion" });
                           });
                         }}
@@ -5423,7 +5759,7 @@ export function TradingPanel() {
                         accentClassName="accent-cyan-600"
                         onDebouncedCommit={(u) => {
                           const p = clampNum(u / 100, 0.15, 1);
-                          void api.botConfig({ supertrendMoveQualityMinBodyVsAvg: Number(p.toFixed(3)) }).catch(() => {
+                          void saveGatedBotConfig({ supertrendMoveQualityMinBodyVsAvg: Number(p.toFixed(3)) }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to set min body ratio" });
                           });
                         }}
@@ -5455,7 +5791,7 @@ export function TradingPanel() {
                         accentClassName="accent-cyan-600"
                         onDebouncedCommit={(u) => {
                           const v = u <= 0 ? 0 : 1 + u / 100;
-                          void api.botConfig({ supertrendMoveQualityMinVolumeVsAvg: Number(v.toFixed(3)) }).catch(() => {
+                          void saveGatedBotConfig({ supertrendMoveQualityMinVolumeVsAvg: Number(v.toFixed(3)) }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to set volume vs avg min" });
                           });
                         }}
@@ -5478,7 +5814,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ supertrendBigMoveGateEnabled: on });
+                              await saveGatedBotConfig({ supertrendBigMoveGateEnabled: on });
                               pushLog({
                                 level: "info",
                                 msg: on
@@ -5577,7 +5913,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ supertrendHtf4hEnabled: on });
+                              await saveGatedBotConfig({ supertrendHtf4hEnabled: on });
                               pushLog({
                                 level: "info",
                                 msg: on
@@ -5647,7 +5983,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ volumeProfileEnabled: on });
+                              await saveGatedBotConfig({ volumeProfileEnabled: on });
                               pushLog({
                                 level: "info",
                                 msg: on
@@ -5786,7 +6122,7 @@ export function TradingPanel() {
                         onChange={(e) => {
                           const on = e.currentTarget.checked;
                           deferTask(() => {
-                            void api.botConfig({ eliteStRequireHtf4hAlign: on }).catch(() =>
+                            void saveGatedBotConfig({ eliteStRequireHtf4hAlign: on }).catch(() =>
                               pushLog({ level: "error", msg: "Failed to update 4H gate" }));
                           });
                         }}
@@ -5808,18 +6144,333 @@ export function TradingPanel() {
                         onChange={(e) => {
                           const on = e.currentTarget.checked;
                           deferTask(() => {
-                            void api.botConfig({ eliteStRequireHtf1hEmaAlign: on }).catch(() =>
+                            void saveGatedBotConfig({ eliteStRequireHtf1hEmaAlign: on }).catch(() =>
                               pushLog({ level: "error", msg: "Failed to update 1H EMA gate" }));
                           });
                         }}
                       />
                       <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
-                        <span className="font-semibold">Gate 3 — 1H EMA21/50 structure</span>
+                        <span className="font-semibold">
+                          Gate 3 — 1H EMA21/50 structure
+                          {cfg.eliteStHtf1hSepMode !== "FIXED" ? ` (${cfg.eliteStHtf1hSepMode} sep)` : ""}
+                        </span>
                         <span className="mt-0.5 block text-[10px] text-slate-500">
                           Block BUY when 1H EMA21 &lt; EMA50 (bearish structure). Block SELL when EMA21 &gt; EMA50.
+                          Requires |EMA21−EMA50|/EMA50 ≥ min separation.
                         </span>
                       </span>
                     </label>
+
+                    <label className="ml-6 flex cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={cfg.eliteStAutoCalibrate}
+                        onChange={(e) => {
+                          const on = e.currentTarget.checked;
+                          deferTask(() => {
+                            void saveGatedBotConfig({
+                              eliteStAutoCalibrate: on,
+                              ...(on ? { eliteStAutoFullTune: true, eliteStAutoBracketMode: "ATR" } : {}),
+                            }).catch(() =>
+                              pushLog({ level: "error", msg: "Failed to update auto-calibrate" }),
+                            );
+                          });
+                        }}
+                      />
+                      <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                        <span className="font-semibold">Auto-calibrate for any coin</span>
+                        <span className="mt-0.5 block text-[10px] text-slate-500">
+                          Derives gate thresholds and ATR brackets from warmup bars per symbol. No BTC/BNB hardcoding.
+                        </span>
+                      </span>
+                    </label>
+
+                    {cfg.eliteStRequireHtf1hEmaAlign ? (
+                      <div className="ml-6 space-y-2 rounded-md border border-slate-200/80 bg-slate-50/60 p-2 dark:border-slate-700/50 dark:bg-slate-900/40">
+                        {cfg.eliteStAutoCalibrate ? (
+                          <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
+                            Auto on — sep mode, ST bands, and brackets scale from each coin&apos;s volatility profile (no per-coin presets).
+                          </p>
+                        ) : null}
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-semibold uppercase text-slate-600 dark:text-slate-400">
+                            Min-separation mode
+                          </span>
+                          <select
+                            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-950"
+                            value={cfg.eliteStHtf1hSepMode}
+                            onChange={(e) => {
+                              const mode = e.currentTarget.value;
+                              deferTask(() => {
+                                void saveGatedBotConfig({ eliteStHtf1hSepMode: mode }).catch(() =>
+                                  pushLog({ level: "error", msg: "Failed to update sep mode" }),
+                                );
+                              });
+                            }}
+                          >
+                            <option value="FIXED">FIXED — constant % (BTC/BNB overrides when symbol matches)</option>
+                            <option value="ATR">ATR — k × (ATR₁ₕ / price), clamped</option>
+                            <option value="PERCENTILE">PERCENTILE — median of recent 1H EMA sep</option>
+                            <option value="ADX">ADX — tighter in chop, looser in trends (recommended)</option>
+                            <option value="CALIBRATED">CALIBRATED — warmup percentile, then constant</option>
+                          </select>
+                          <span className="text-[10px] text-slate-500">
+                            Dynamic modes scale per coin automatically — no per-symbol hardcoding.
+                          </span>
+                        </label>
+
+                        {cfg.eliteStHtf1hSepMode === "FIXED" ? (
+                          <label className="flex items-center gap-2">
+                            <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">
+                              Min sep %
+                            </span>
+                            <input
+                              type="number"
+                              step={0.0001}
+                              min={0}
+                              max={0.01}
+                              className="w-24 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-950"
+                              value={cfg.eliteStHtf1hMinSep}
+                              onChange={(e) => {
+                                const v = Math.max(0, Number(e.currentTarget.value));
+                                deferTask(() => {
+                                  void saveGatedBotConfig({ eliteStHtf1hMinSep: v }).catch(() =>
+                                    pushLog({ level: "error", msg: "Failed to update min sep" }),
+                                  );
+                                });
+                              }}
+                            />
+                            <span className="text-[10px] text-slate-500">
+                              ({(cfg.eliteStHtf1hMinSep * 100).toFixed(3)}%)
+                            </span>
+                          </label>
+                        ) : null}
+
+                        {cfg.eliteStHtf1hSepMode === "ATR" ? (
+                          <label className="flex items-center gap-2">
+                            <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">
+                              ATR mult (k)
+                            </span>
+                            <input
+                              type="number"
+                              step={0.05}
+                              min={0.05}
+                              max={2}
+                              className="w-24 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-950"
+                              value={cfg.eliteStHtf1hMinSepAtrMult}
+                              onChange={(e) => {
+                                const v = clampNum(Number(e.currentTarget.value), 0.05, 2);
+                                deferTask(() => {
+                                  void saveGatedBotConfig({ eliteStHtf1hMinSepAtrMult: v }).catch(() =>
+                                    pushLog({ level: "error", msg: "Failed to update ATR mult" }),
+                                  );
+                                });
+                              }}
+                            />
+                          </label>
+                        ) : null}
+
+                        {cfg.eliteStHtf1hSepMode === "PERCENTILE" ? (
+                          <div className="flex flex-wrap gap-3">
+                            <label className="flex items-center gap-2">
+                              <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">
+                                Lookback
+                              </span>
+                              <input
+                                type="number"
+                                step={1}
+                                min={20}
+                                max={200}
+                                className="w-20 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-950"
+                                value={cfg.eliteStHtf1hSepPercentileLookback}
+                                onChange={(e) => {
+                                  const v = clampNum(Math.round(Number(e.currentTarget.value)), 20, 200);
+                                  deferTask(() => {
+                                    void saveGatedBotConfig({ eliteStHtf1hSepPercentileLookback: v }).catch(() =>
+                                      pushLog({ level: "error", msg: "Failed to update percentile lookback" }),
+                                    );
+                                  });
+                                }}
+                              />
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <span className="shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Mult</span>
+                              <input
+                                type="number"
+                                step={0.1}
+                                min={0.5}
+                                max={3}
+                                className="w-20 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-950"
+                                value={cfg.eliteStHtf1hSepPercentileMult}
+                                onChange={(e) => {
+                                  const v = clampNum(Number(e.currentTarget.value), 0.5, 3);
+                                  deferTask(() => {
+                                    void saveGatedBotConfig({ eliteStHtf1hSepPercentileMult: v }).catch(() =>
+                                      pushLog({ level: "error", msg: "Failed to update percentile mult" }),
+                                    );
+                                  });
+                                }}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+
+                        {cfg.eliteStHtf1hSepMode === "ADX" ? (
+                          <div className="flex flex-wrap gap-3">
+                            <label className="flex items-center gap-2">
+                              <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">
+                                Base sep
+                              </span>
+                              <input
+                                type="number"
+                                step={0.0001}
+                                min={0}
+                                max={0.01}
+                                className="w-24 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-950"
+                                value={cfg.eliteStHtf1hSepAdxBase}
+                                onChange={(e) => {
+                                  const v = clampNum(Number(e.currentTarget.value), 0, 0.01);
+                                  deferTask(() => {
+                                    void saveGatedBotConfig({ eliteStHtf1hSepAdxBase: v }).catch(() =>
+                                      pushLog({ level: "error", msg: "Failed to update ADX base" }),
+                                    );
+                                  });
+                                }}
+                              />
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <span className="shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Alpha</span>
+                              <input
+                                type="number"
+                                step={0.1}
+                                min={0}
+                                max={5}
+                                className="w-20 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-950"
+                                value={cfg.eliteStHtf1hSepAdxAlpha}
+                                onChange={(e) => {
+                                  const v = clampNum(Number(e.currentTarget.value), 0, 5);
+                                  deferTask(() => {
+                                    void saveGatedBotConfig({ eliteStHtf1hSepAdxAlpha: v }).catch(() =>
+                                      pushLog({ level: "error", msg: "Failed to update ADX alpha" }),
+                                    );
+                                  });
+                                }}
+                              />
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <span className="shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Ref ADX</span>
+                              <input
+                                type="number"
+                                step={1}
+                                min={1}
+                                max={100}
+                                className="w-20 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-950"
+                                value={cfg.eliteStHtf1hSepAdxRef}
+                                onChange={(e) => {
+                                  const v = clampNum(Math.round(Number(e.currentTarget.value)), 1, 100);
+                                  deferTask(() => {
+                                    void saveGatedBotConfig({ eliteStHtf1hSepAdxRef: v }).catch(() =>
+                                      pushLog({ level: "error", msg: "Failed to update ADX ref" }),
+                                    );
+                                  });
+                                }}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+
+                        {cfg.eliteStHtf1hSepMode === "CALIBRATED" ? (
+                          <div className="flex flex-wrap gap-3">
+                            <label className="flex items-center gap-2">
+                              <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">
+                                Percentile
+                              </span>
+                              <input
+                                type="number"
+                                step={1}
+                                min={1}
+                                max={99}
+                                className="w-20 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-950"
+                                value={cfg.eliteStHtf1hSepCalibratePct}
+                                onChange={(e) => {
+                                  const v = clampNum(Math.round(Number(e.currentTarget.value)), 1, 99);
+                                  deferTask(() => {
+                                    void saveGatedBotConfig({ eliteStHtf1hSepCalibratePct: v }).catch(() =>
+                                      pushLog({ level: "error", msg: "Failed to update calibrate pct" }),
+                                    );
+                                  });
+                                }}
+                              />
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <span className="shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Warmup bars</span>
+                              <input
+                                type="number"
+                                step={1}
+                                min={20}
+                                max={200}
+                                className="w-20 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-950"
+                                value={cfg.eliteStHtf1hSepCalibrateBars}
+                                onChange={(e) => {
+                                  const v = clampNum(Math.round(Number(e.currentTarget.value)), 20, 200);
+                                  deferTask(() => {
+                                    void saveGatedBotConfig({ eliteStHtf1hSepCalibrateBars: v }).catch(() =>
+                                      pushLog({ level: "error", msg: "Failed to update calibrate bars" }),
+                                    );
+                                  });
+                                }}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+
+                        {["ATR", "PERCENTILE", "CALIBRATED"].includes(cfg.eliteStHtf1hSepMode) ? (
+                          <div className="flex flex-wrap gap-3">
+                            <label className="flex items-center gap-2">
+                              <span className="w-[7.5rem] shrink-0 text-[11px] text-slate-600 dark:text-slate-500">
+                                Floor %
+                              </span>
+                              <input
+                                type="number"
+                                step={0.0001}
+                                min={0}
+                                max={0.01}
+                                className="w-24 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-950"
+                                value={cfg.eliteStHtf1hMinSepFloor}
+                                onChange={(e) => {
+                                  const v = clampNum(Number(e.currentTarget.value), 0, 0.01);
+                                  deferTask(() => {
+                                    void saveGatedBotConfig({ eliteStHtf1hMinSepFloor: v }).catch(() =>
+                                      pushLog({ level: "error", msg: "Failed to update sep floor" }),
+                                    );
+                                  });
+                                }}
+                              />
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <span className="shrink-0 text-[11px] text-slate-600 dark:text-slate-500">Ceil %</span>
+                              <input
+                                type="number"
+                                step={0.0001}
+                                min={0}
+                                max={0.01}
+                                className="w-24 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-950"
+                                value={cfg.eliteStHtf1hMinSepCeil}
+                                onChange={(e) => {
+                                  const v = clampNum(Number(e.currentTarget.value), 0, 0.01);
+                                  deferTask(() => {
+                                    void saveGatedBotConfig({ eliteStHtf1hMinSepCeil: v }).catch(() =>
+                                      pushLog({ level: "error", msg: "Failed to update sep ceil" }),
+                                    );
+                                  });
+                                }}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     {/* Gate 1 — ADX */}
                     <label className="flex cursor-pointer items-start gap-2">
@@ -5830,7 +6481,7 @@ export function TradingPanel() {
                         onChange={(e) => {
                           const on = e.currentTarget.checked;
                           deferTask(() => {
-                            void api.botConfig({ eliteStMinAdx: on ? 20 : 0, eliteStRequireAdxRising: on }).catch(() =>
+                            void saveGatedBotConfig({ eliteStMinAdx: on ? 20 : 0, eliteStRequireAdxRising: on }).catch(() =>
                               pushLog({ level: "error", msg: "Failed to update ADX gate" }));
                           });
                         }}
@@ -5868,7 +6519,7 @@ export function TradingPanel() {
                         onChange={(e) => {
                           const on = e.currentTarget.checked;
                           deferTask(() => {
-                            void api.botConfig({ eliteStMinVolumeVsAvg: on ? 1.5 : 0 }).catch(() =>
+                            void saveGatedBotConfig({ eliteStMinVolumeVsAvg: on ? 1.5 : 0 }).catch(() =>
                               pushLog({ level: "error", msg: "Failed to update volume gate" }));
                           });
                         }}
@@ -5890,7 +6541,7 @@ export function TradingPanel() {
                         onChange={(e) => {
                           const on = e.currentTarget.checked;
                           deferTask(() => {
-                            void api.botConfig({ eliteStRequireAtrExpansion: on }).catch(() =>
+                            void saveGatedBotConfig({ eliteStRequireAtrExpansion: on }).catch(() =>
                               pushLog({ level: "error", msg: "Failed to update ATR gate" }));
                           });
                         }}
@@ -5912,7 +6563,7 @@ export function TradingPanel() {
                         onChange={(e) => {
                           const on = e.currentTarget.checked;
                           deferTask(() => {
-                            void api.botConfig({ eliteStLiqSweepEnabled: on }).catch(() =>
+                            void saveGatedBotConfig({ eliteStLiqSweepEnabled: on }).catch(() =>
                               pushLog({ level: "error", msg: "Failed to update liq sweep gate" }));
                           });
                         }}
@@ -5939,7 +6590,7 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ supertrendBreakoutConfirm: on });
+                              await saveGatedBotConfig({ supertrendBreakoutConfirm: on });
                               pushLog({
                                 level: "info",
                                 msg: on
@@ -5969,7 +6620,7 @@ export function TradingPanel() {
                       accentClassName="accent-cyan-600"
                       onDebouncedCommit={(u) => {
                         const n = Math.max(1, Math.min(20, Math.round(u)));
-                        void api.botConfig({ supertrendBreakoutMaxBars: n }).catch(() => {
+                        void saveGatedBotConfig({ supertrendBreakoutMaxBars: n }).catch(() => {
                           pushLog({ level: "error", msg: "Failed to set breakout max bars" });
                         });
                       }}
@@ -6143,7 +6794,7 @@ export function TradingPanel() {
                     type="button"
                     className={`rounded px-2 py-0.5 ${cfg.allowedBudgetInputMode === "USDT" ? "bg-slate-600 text-white" : "hover:text-slate-900 dark:hover:text-slate-100"}`}
                     onClick={() => {
-                      void api.botConfig({ allowedBudgetInputMode: "USDT" }).catch(() => {
+                      void saveGatedBotConfig({ allowedBudgetInputMode: "USDT" }).catch(() => {
                         pushLog({ level: "error", msg: "Failed to set allowed budget input mode" });
                       });
                     }}
@@ -6154,7 +6805,7 @@ export function TradingPanel() {
                     type="button"
                     className={`rounded px-2 py-0.5 ${cfg.allowedBudgetInputMode === "WALLET_PCT" ? "bg-slate-600 text-white" : "hover:text-slate-900 dark:hover:text-slate-100"}`}
                     onClick={() => {
-                      void api.botConfig({ allowedBudgetInputMode: "WALLET_PCT" }).catch(() => {
+                      void saveGatedBotConfig({ allowedBudgetInputMode: "WALLET_PCT" }).catch(() => {
                         pushLog({ level: "error", msg: "Failed to set allowed budget input mode" });
                       });
                     }}
@@ -6183,7 +6834,7 @@ export function TradingPanel() {
                     }
                     onCommit={async (v) => {
                       try {
-                        await api.botConfig({ allowedBudgetUsdt: v, allowedBudgetInputMode: "USDT" });
+                        await saveGatedBotConfig({ allowedBudgetUsdt: v, allowedBudgetInputMode: "USDT" });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set allowed budget" });
                       }
@@ -6207,28 +6858,22 @@ export function TradingPanel() {
                             ? capitalAllotmentHeadline.walletSliderPct
                             : cfg.allowedBudgetWalletPct
                         }
-                        onPreviewValue={setCapitalSliderPreviewPct}
                         onCommit={(pct) => {
                           const w = capitalAllotmentHeadline.walletFreeMarginTotal;
                           if (!Number.isFinite(pct) || w <= 0) return;
                           const nextAllowed = Math.max(1, Math.round((w * pct) / 100));
-                          void api
-                            .botConfig({
-                              allowedBudgetInputMode: "WALLET_PCT",
-                              allowedBudgetWalletPct: pct,
-                              allowedBudgetUsdt: nextAllowed,
-                            })
-                            .catch(() => {
-                              pushLog({ level: "error", msg: "Failed to set allowed budget from %" });
-                            });
+                          stageStrategyBotPatch({
+                            allowedBudgetInputMode: "WALLET_PCT",
+                            allowedBudgetWalletPct: pct,
+                            allowedBudgetUsdt: nextAllowed,
+                          });
                         }}
                       />
                       <span className="w-12 shrink-0 text-right text-[10px] tabular-nums text-slate-600 dark:text-slate-400">
                         {(
-                          capitalSliderPreviewPct ??
-                          (capitalAllotmentHeadline.walletFreeMarginTotal > 0
+                          capitalAllotmentHeadline.walletFreeMarginTotal > 0
                             ? capitalAllotmentHeadline.walletSliderPct
-                            : cfg.allowedBudgetWalletPct)
+                            : cfg.allowedBudgetWalletPct
                         ).toFixed(1)}
                         %
                       </span>
@@ -6241,7 +6886,7 @@ export function TradingPanel() {
                     className="mt-0.5 rounded border-slate-400"
                     checked={cfg.capitalAllotmentCompoundPnlUi}
                     onChange={(e) => {
-                      void api.botConfig({ capitalAllotmentCompoundPnlUi: e.target.checked }).catch(() => {
+                      void saveGatedBotConfig({ capitalAllotmentCompoundPnlUi: e.target.checked }).catch(() => {
                         pushLog({ level: "error", msg: "Failed to toggle compound P&L display" });
                       });
                     }}
@@ -6282,7 +6927,7 @@ export function TradingPanel() {
                       className="mt-0.5"
                       checked={cfg.multiTradeUsePctOfUsable}
                       onChange={(e) => {
-                        void api.botConfig({ multiTradeUsePctOfUsable: e.target.checked }).catch(() => {
+                        void saveGatedBotConfig({ multiTradeUsePctOfUsable: e.target.checked }).catch(() => {
                           pushLog({ level: "error", msg: "Failed to toggle % of usable" });
                         });
                       }}
@@ -6301,16 +6946,13 @@ export function TradingPanel() {
                         max={100}
                         step={1}
                         value={cfg.multiTradePctOfUsable}
-                        onPreviewValue={setMultiTradePctPreview}
                         onCommit={(v) => {
                           const n = clampNum(v, 1, 100);
-                          void api.botConfig({ multiTradePctOfUsable: n }).catch(() => {
-                            pushLog({ level: "error", msg: "Failed to set % of usable" });
-                          });
+                          stageStrategyBotPatch({ multiTradePctOfUsable: n });
                         }}
                       />
                       <span className="w-10 text-right text-[10px] tabular-nums text-slate-600 dark:text-slate-400">
-                        {(multiTradePctPreview ?? cfg.multiTradePctOfUsable)}%
+                        {cfg.multiTradePctOfUsable}%
                       </span>
                     </div>
                   ) : null}
@@ -6329,7 +6971,7 @@ export function TradingPanel() {
                           className="mt-0.5"
                           checked={cfg.multiCoinCapitalSizingActive}
                           onChange={() => {
-                            void api.botConfig({ multiCoinCapitalSizingActive: true }).catch(() => {
+                            void saveGatedBotConfig({ multiCoinCapitalSizingActive: true }).catch(() => {
                               pushLog({ level: "error", msg: "Failed to enable multi-coin sizing" });
                             });
                           }}
@@ -6345,7 +6987,7 @@ export function TradingPanel() {
                           className="mt-0.5"
                           checked={!cfg.multiCoinCapitalSizingActive}
                           onChange={() => {
-                            void api.botConfig({ multiCoinCapitalSizingActive: false }).catch(() => {
+                            void saveGatedBotConfig({ multiCoinCapitalSizingActive: false }).catch(() => {
                               pushLog({ level: "error", msg: "Failed to enable per-trade path" });
                             });
                           }}
@@ -6382,7 +7024,7 @@ export function TradingPanel() {
                             : "border-slate-300 bg-white text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
                         }`}
                         onClick={() => {
-                          void api.botConfig({ multiBudgetSplitMode: mode }).catch(() => {
+                          void saveGatedBotConfig({ multiBudgetSplitMode: mode }).catch(() => {
                             pushLog({ level: "error", msg: "Failed to set split mode" });
                           });
                         }}
@@ -6577,7 +7219,7 @@ export function TradingPanel() {
                                           onCommit={async (v) => {
                                             try {
                                               const capped = clampNum(v, 0, perCoinUsdtMax);
-                                              await api.botConfig({
+                                              await saveGatedBotConfig({
                                                 multiBudgetCoinUsdt: { ...cfg.multiBudgetCoinUsdt, [sym]: capped },
                                               });
                                             } catch {
@@ -6590,7 +7232,7 @@ export function TradingPanel() {
                                           sym={sym}
                                           pctVal={pctVal}
                                           multiBudgetCoinPct={cfg.multiBudgetCoinPct}
-                                          onLogError={(msg) => pushLog({ level: "error", msg })}
+                                          onCommitPatch={stageStrategyBotPatch}
                                         />
                                       ) : (
                                         <span className="text-slate-500 dark:text-slate-500">—</span>
@@ -6699,7 +7341,7 @@ export function TradingPanel() {
                       deferTask(() => {
                         void (async () => {
                           try {
-                            await api.botConfig({ riskPerTradeUnit: u });
+                            await saveGatedBotConfig({ riskPerTradeUnit: u });
                             await syncActiveInstanceOperational({ riskUnit: u });
                           } catch {
                             pushLog({ level: "error", msg: "Failed to set risk unit" });
@@ -6714,7 +7356,7 @@ export function TradingPanel() {
                       className="rounded border-slate-400"
                       checked={cfg.perTradeBudgetCapEnabled}
                       onChange={(e) => {
-                        void api.botConfig({ perTradeBudgetCapEnabled: e.target.checked }).catch(() => {
+                        void saveGatedBotConfig({ perTradeBudgetCapEnabled: e.target.checked }).catch(() => {
                           pushLog({ level: "error", msg: "Failed to toggle per-trade cap" });
                         });
                       }}
@@ -6736,7 +7378,7 @@ export function TradingPanel() {
                       type="button"
                       className={`rounded px-2 py-0.5 ${cfg.perTradeBudgetInputMode === "USDT" ? "bg-slate-600 text-white" : ""}`}
                       onClick={() => {
-                        void api.botConfig({ perTradeBudgetInputMode: "USDT" }).catch(() => {
+                        void saveGatedBotConfig({ perTradeBudgetInputMode: "USDT" }).catch(() => {
                           pushLog({ level: "error", msg: "Failed to set per-trade cap mode" });
                         });
                       }}
@@ -6747,7 +7389,7 @@ export function TradingPanel() {
                       type="button"
                       className={`rounded px-2 py-0.5 ${cfg.perTradeBudgetInputMode === "PCT_OF_USABLE" ? "bg-slate-600 text-white" : ""}`}
                       onClick={() => {
-                        void api.botConfig({ perTradeBudgetInputMode: "PCT_OF_USABLE" }).catch(() => {
+                        void saveGatedBotConfig({ perTradeBudgetInputMode: "PCT_OF_USABLE" }).catch(() => {
                           pushLog({ level: "error", msg: "Failed to set per-trade cap mode" });
                         });
                       }}
@@ -6766,7 +7408,7 @@ export function TradingPanel() {
                       try {
                         const cap = cfg.riskPerTradeUnit === "USDT" ? capitalFieldCaps.maxRiskUsdt : 100;
                         const val = clampNum(v, 0, cap);
-                        await api.botConfig({ riskPerTrade: val });
+                        await saveGatedBotConfig({ riskPerTrade: val });
                         await syncActiveInstanceOperational({ riskPerTrade: val });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set risk per trade" });
@@ -6840,7 +7482,7 @@ export function TradingPanel() {
                       deferTask(() => {
                         void (async () => {
                           try {
-                            await api.botConfig({ maxDailyLossUnit: u });
+                            await saveGatedBotConfig({ maxDailyLossUnit: u });
                             await syncActiveInstanceOperational({ maxDailyLossUnit: u });
                           } catch {
                             pushLog({ level: "error", msg: "Failed to set max daily loss unit" });
@@ -6860,7 +7502,7 @@ export function TradingPanel() {
                       try {
                         const cap = cfg.maxDailyLossUnit === "USDT" ? capitalFieldCaps.maxDailyUsdt : 100;
                         const val = clampNum(v, 0, cap);
-                        await api.botConfig({ maxDailyLoss: val });
+                        await saveGatedBotConfig({ maxDailyLoss: val });
                         await syncActiveInstanceOperational({ maxDailyLoss: val });
                       } catch {
                         pushLog({ level: "error", msg: "Failed to set max daily loss" });
@@ -7223,7 +7865,7 @@ export function TradingPanel() {
         initialSymbols={cfg.universeCustomSymbols}
         onClose={() => setCustomUniverseOpen(false)}
         onSave={async (symbols) => {
-          await api.botConfig({ universeCustomSymbols: symbols });
+          await saveGatedBotConfig({ universeCustomSymbols: symbols });
           pushLog({ level: "info", msg: "Custom coin base saved", detail: { count: symbols.length } });
           await api.universeScan(true);
         }}
@@ -7240,7 +7882,7 @@ export function TradingPanel() {
            * the WS state echo updates every bound field atomically (so the sliders / inputs don't jitter).
            */
           onApply={async (next) => {
-            await api.botConfig({
+            await saveGatedBotConfig({
               futuresTrailingStopMode: next.futuresTrailingStopMode,
               futuresTrailingStFeeBreakeven: next.futuresTrailingStFeeBreakeven,
               futuresTrailingStAdvanced: next.futuresTrailingStAdvanced,

@@ -9,6 +9,24 @@ import { query, withTransaction } from "../../db/query.js";
 
 const MAX_EQUITY_INSERT_ROWS = 5000;
 
+/** Postgres NUMERIC(p,s) max representable value (signed). */
+function clampNumeric(value, precision, scale) {
+  const v = Number(value);
+  if (!Number.isFinite(v)) return null;
+  const max = 10 ** (precision - scale) - 10 ** -scale;
+  return Math.max(-max, Math.min(max, v));
+}
+
+/** ROI % for backtest_trades.roi_pct — margin-based, not dollar PnL. */
+function tradeRoiPct(t) {
+  const net = Number(t.netPnl ?? 0);
+  const margin = Number(t.marginUsdt);
+  if (Number.isFinite(margin) && margin > 0) return (net / margin) * 100;
+  const eq = Number(t.equityAtEntry);
+  if (Number.isFinite(eq) && eq > 0) return (net / eq) * 100;
+  return null;
+}
+
 /**
  * Downsample the equity curve for bulk insert. Postgres forbids the same conflict
  * key `(run_id, ts)` appearing twice in one `INSERT … ON CONFLICT DO UPDATE` batch
@@ -40,7 +58,12 @@ function buildEquityBulkInsert(runId, points) {
   const params = [];
   for (const p of points) {
     const base = params.length;
-    params.push(runId, new Date(Number(p.ts)), Number(p.equity), Number(p.drawdownPct ?? 0));
+    params.push(
+      runId,
+      new Date(Number(p.ts)),
+      Number(p.equity),
+      clampNumeric(p.drawdownPct ?? 0, 8, 4) ?? 0,
+    );
     rows.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`);
   }
   const sql = `
@@ -95,7 +118,7 @@ export async function insertTrades(runId, symbol, trades) {
     params.push(
       runId,
       Number(t.tradeNumber),
-      symbol,
+      String(t.symbol ?? symbol),
       String(t.direction),
       new Date(Number(t.entryTs)),
       new Date(Number(t.exitTs)),
@@ -108,7 +131,7 @@ export async function insertTrades(runId, symbol, trades) {
       Number(t.grossPnl ?? 0),
       Number(t.fees ?? 0),
       Number(t.netPnl ?? 0),
-      Number(t.netPnl ?? 0),
+      clampNumeric(tradeRoiPct(t), 10, 4),
       null,
       null,
       JSON.stringify({
@@ -129,9 +152,9 @@ export async function insertTrades(runId, symbol, trades) {
       Number(t.fundingPaid ?? 0),
       Number(t.slippageCost ?? 0),
       Number(t.barsHeld ?? 0),
-      t.maePct != null ? Number(t.maePct) * 100 : null,
-      t.mfePct != null ? Number(t.mfePct) * 100 : null,
-      t.intelScoreAtEntry != null ? Number(t.intelScoreAtEntry) : null,
+      t.maePct != null ? clampNumeric(Number(t.maePct) * 100, 10, 4) : null,
+      t.mfePct != null ? clampNumeric(Number(t.mfePct) * 100, 10, 4) : null,
+      t.intelScoreAtEntry != null ? clampNumeric(t.intelScoreAtEntry, 6, 2) : null,
       String(t.gateAction ?? "pass"),
     );
     const ph = cols.map((_, j) => `$${base + j + 1}`).join(",");
@@ -200,11 +223,11 @@ export async function finalizeRun(args) {
       [
         runId,
         Number(metrics.totalTrades ?? 0),
-        Number((metrics.winRate ?? 0) * 100),
+        clampNumeric((metrics.winRate ?? 0) * 100, 6, 2) ?? 0,
         Number(metrics.totalNetPnl ?? 0),
-        Number(metrics.maxDrawdownPct ?? 0),
-        Number(metrics.sharpe ?? 0),
-        Number(metrics.profitFactor ?? 0),
+        clampNumeric(metrics.maxDrawdownPct ?? 0, 6, 2) ?? 0,
+        clampNumeric(metrics.sharpe ?? 0, 8, 4) ?? 0,
+        clampNumeric(metrics.profitFactor ?? 0, 10, 4) ?? 0,
         JSON.stringify(metrics),
         Number(finalEquity),
         coveragePct != null ? Number(coveragePct) : null,
@@ -249,7 +272,7 @@ async function insertTradesInTx(client, runId, symbol, trades) {
     params.push(
       runId,
       Number(t.tradeNumber),
-      symbol,
+      String(t.symbol ?? symbol),
       String(t.direction),
       new Date(Number(t.entryTs)),
       new Date(Number(t.exitTs)),
@@ -262,7 +285,7 @@ async function insertTradesInTx(client, runId, symbol, trades) {
       Number(t.grossPnl ?? 0),
       Number(t.fees ?? 0),
       Number(t.netPnl ?? 0),
-      Number(t.netPnl ?? 0),
+      clampNumeric(tradeRoiPct(t), 10, 4),
       JSON.stringify({
         intelScoreAtEntry: t.intelScoreAtEntry ?? null,
         gateAction: t.gateAction ?? null,
@@ -281,9 +304,9 @@ async function insertTradesInTx(client, runId, symbol, trades) {
       Number(t.fundingPaid ?? 0),
       Number(t.slippageCost ?? 0),
       Number(t.barsHeld ?? 0),
-      t.maePct != null ? Number(t.maePct) * 100 : null,
-      t.mfePct != null ? Number(t.mfePct) * 100 : null,
-      t.intelScoreAtEntry != null ? Number(t.intelScoreAtEntry) : null,
+      t.maePct != null ? clampNumeric(Number(t.maePct) * 100, 10, 4) : null,
+      t.mfePct != null ? clampNumeric(Number(t.mfePct) * 100, 10, 4) : null,
+      t.intelScoreAtEntry != null ? clampNumeric(t.intelScoreAtEntry, 6, 2) : null,
       String(t.gateAction ?? "pass"),
     );
     rows.push(`(${cols.map((_, j) => `$${base + j + 1}`).join(",")})`);

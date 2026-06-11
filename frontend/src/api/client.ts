@@ -368,8 +368,8 @@ export const api = {
     );
   },
   async botConfig(patch: any) {
-    const { useAppStore } = await import("../ws/store");
-    const { mergeOptimisticBotPatch, tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
+    const { useAppStore, deriveViewBot } = await import("../ws/store");
+    const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
     const { tradingModeToApiModeSlug } = await import("../lib/tradingModeSlug");
 
     const patchObj =
@@ -379,11 +379,16 @@ export const api = {
     const prevBot = useAppStore.getState().bot as Record<string, unknown> | undefined;
 
     if (!ignoredOnly && patchKeys.length > 0) {
-      const { noteBotConfigPatchInFlight, expandBotConfigPatch } = await import("../lib/configPatchInFlight");
-      const patchExpanded = expandBotConfigPatch(patchObj);
+      const { noteBotConfigPatchInFlight } = await import("../lib/configPatchInFlight");
       noteBotConfigPatchInFlight(patchObj);
       useAppStore.setState((s) => ({
-        bot: mergeOptimisticBotPatch(s.bot as Record<string, unknown> | null | undefined, patchExpanded),
+        bot: deriveViewBot(
+          s.mode,
+          s.liveBot && typeof s.liveBot === "object" && !Array.isArray(s.liveBot)
+            ? (s.liveBot as Record<string, unknown>)
+            : {},
+          s.draftBotPatchByMode,
+        ),
       }));
     }
 
@@ -420,24 +425,23 @@ export const api = {
 
     const botNext = data.bot as Record<string, unknown>;
     if (!ignoredOnly && patchKeys.length > 0) {
-      const { clearBotConfigPatchInFlightWhenAcked, applyBotConfigPatchInFlight } = await import(
-        "../lib/configPatchInFlight",
-      );
+      const { clearBotConfigPatchInFlightWhenAcked } = await import("../lib/configPatchInFlight");
       clearBotConfigPatchInFlightWhenAcked(patchObj, botNext);
-      const merged =
-        useAppStore.getState().bot && typeof useAppStore.getState().bot === "object"
-          ? { ...(useAppStore.getState().bot as Record<string, unknown>), ...botNext }
-          : botNext;
-      const { normalizeIntradayGatesOnBot } = await import("../lib/intradayGatesUi");
-      tradingUiPersistBotSnapshot(useAppStore.getState().mode, merged, useAppStore.getState().authUiUserTag ?? null);
-      useAppStore.setState({
-        bot: normalizeIntradayGatesOnBot(applyBotConfigPatchInFlight(merged)),
+      useAppStore.setState((s) => {
+        const viewBot = deriveViewBot(s.mode, botNext, s.draftBotPatchByMode);
+        tradingUiPersistBotSnapshot(s.mode, viewBot, s.authUiUserTag ?? null);
+        return { liveBot: botNext, bot: viewBot };
       });
     } else {
-      tradingUiPersistBotSnapshot(useAppStore.getState().mode, botNext, useAppStore.getState().authUiUserTag ?? null);
-      useAppStore.setState((s) => ({
-        bot: s.bot && typeof s.bot === "object" ? { ...(s.bot as Record<string, unknown>), ...botNext } : botNext,
-      }));
+      useAppStore.setState((s) => {
+        const live =
+          s.liveBot && typeof s.liveBot === "object" && !Array.isArray(s.liveBot)
+            ? { ...(s.liveBot as Record<string, unknown>), ...botNext }
+            : botNext;
+        const viewBot = deriveViewBot(s.mode, live, s.draftBotPatchByMode);
+        tradingUiPersistBotSnapshot(s.mode, viewBot, s.authUiUserTag ?? null);
+        return { liveBot: live, bot: viewBot };
+      });
     }
     const dirtyPatchKeys = Object.keys(patchObj);
     const dirtyIgnoredOnly =
@@ -966,7 +970,9 @@ export const api = {
   async createBacktestRun(body: {
     strategyVersionId: string;
     botInstanceId?: string;
-    symbol: string;
+    symbol?: string;
+    /** Multi-coin portfolio: 2–10 symbols; server sets symbol=PORTFOLIO. */
+    symbols?: string[];
     timeframe: string;
     from: string | number | Date;
     to: string | number | Date;
@@ -1043,6 +1049,44 @@ export const api = {
     );
   },
 
+  async startStrategyTest(seedRunId: string) {
+    return json<{ ok?: boolean; testId?: string; error?: string }>(
+      await apiFetch(`${HTTP}/api/backtest/strategy-tests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seedRunId }),
+      }),
+    );
+  },
+
+  async listStrategyTests(limit = 20) {
+    return json<{ ok?: boolean; tests?: unknown[] }>(
+      await apiFetch(`${HTTP}/api/backtest/strategy-tests?limit=${limit}`),
+    );
+  },
+
+  async getStrategyTest(testId: string) {
+    return json<{ ok?: boolean; test?: unknown }>(
+      await apiFetch(`${HTTP}/api/backtest/strategy-tests/${encodeURIComponent(testId)}`),
+    );
+  },
+
+  async cancelStrategyTest(testId: string) {
+    return json<{ ok?: boolean }>(
+      await apiFetch(`${HTTP}/api/backtest/strategy-tests/${encodeURIComponent(testId)}/cancel`, {
+        method: "POST",
+      }),
+    );
+  },
+
+  async deleteStrategyTest(testId: string) {
+    return json<{ ok?: boolean }>(
+      await apiFetch(`${HTTP}/api/backtest/strategy-tests/${encodeURIComponent(testId)}`, {
+        method: "DELETE",
+      }),
+    );
+  },
+
   async syncHistoricalData(body: {
     symbol: string;
     timeframe: string;
@@ -1065,13 +1109,20 @@ export const api = {
     );
   },
 
-  async getBacktestCandles(opts: { symbol: string; timeframe: string; from: string | number; to: string | number }) {
+  async getBacktestCandles(opts: {
+    symbol: string;
+    timeframe: string;
+    from: string | number;
+    to: string | number;
+    market?: "futures" | "spot";
+  }) {
     const q = new URLSearchParams({
       symbol: opts.symbol,
       timeframe: opts.timeframe,
       from: String(opts.from),
       to: String(opts.to),
     });
+    if (opts.market) q.set("market", opts.market);
     return json<{
       ok?: boolean;
       candles?: Array<{ ts: number; open: number; high: number; low: number; close: number; volume: number }>;
@@ -1087,6 +1138,22 @@ export const api = {
       coverage?: { have: number; expected: number | null; coveragePct: number | null; minTs: number | null; maxTs: number | null };
       monthly?: Array<{ month: string; have: number; expected: number; coveragePct: number }>;
     }>(await apiFetch(`${HTTP}/api/backtest/data/coverage?${q.toString()}`));
+  },
+
+  async getDataCoverageBatch(opts: { symbols: string[]; timeframe: string; from?: string; to?: string }) {
+    const q = new URLSearchParams({
+      symbols: opts.symbols.join(","),
+      timeframe: opts.timeframe,
+    });
+    if (opts.from) q.set("from", opts.from);
+    if (opts.to) q.set("to", opts.to);
+    return json<{
+      ok?: boolean;
+      coverageBySymbol?: Record<
+        string,
+        { have: number; expected: number | null; coveragePct: number | null; minTs: number | null; maxTs: number | null }
+      >;
+    }>(await apiFetch(`${HTTP}/api/backtest/data/coverage-batch?${q.toString()}`));
   },
 
   async startOptimization(body: {

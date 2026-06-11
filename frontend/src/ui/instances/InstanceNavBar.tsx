@@ -39,7 +39,8 @@ export function InstanceNavBar() {
 
   useEffect(() => {
     void fetchInstancesForMode(modeSlug);
-  }, [fetchInstancesForMode, modeSlug]);
+    void fetchStrategiesForMode(modeSlug);
+  }, [fetchInstancesForMode, fetchStrategiesForMode, modeSlug]);
 
   const onRefresh = useCallback(() => {
     void fetchInstancesForMode(modeSlug);
@@ -77,8 +78,12 @@ export function InstanceNavBar() {
           {/* Instance tabs */}
           {instances.map((inst) => {
             const isActive = mainView === "instance" && selectedInstanceId === inst.id;
-            const label = inst.label || `Instance ${inst.id.slice(0, 6)}`;
-            const short = label.length > 20 ? `${label.slice(0, 18)}…` : label;
+            const instanceName = inst.label || `Instance ${inst.id.slice(0, 6)}`;
+            const strategyName =
+              inst.strategyName ||
+              strategies.find((s) => s.id === inst.strategyId)?.name ||
+              null;
+            const tabLabel = strategyName ? `${instanceName} (${strategyName})` : instanceName;
             const st = String(inst.status).toLowerCase();
             const isOn = engineRunning && st === "running";
 
@@ -86,7 +91,7 @@ export function InstanceNavBar() {
               <div
                 key={inst.id}
                 className={clsx(
-                  "group relative flex h-10 shrink-0 items-center gap-2 border-b-2 px-3 text-xs transition-colors cursor-pointer select-none",
+                  "group relative flex h-10 shrink-0 items-center gap-2 border-b-2 px-3 pr-7 text-xs transition-colors cursor-pointer select-none",
                   isActive
                     ? "border-sky-500 bg-sky-50/60 font-semibold text-sky-700 dark:bg-sky-950/20 dark:text-sky-300"
                     : "border-transparent text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-900/50 dark:hover:text-slate-200",
@@ -103,7 +108,12 @@ export function InstanceNavBar() {
                   className={clsx("h-2 w-2 shrink-0 rounded-full", statusDotClass(isOn))}
                   title={isOn ? "ON" : "OFF"}
                 />
-                <span className="min-w-0 flex-1 truncate" title={label}>{short}</span>
+                <span className="whitespace-nowrap" title={tabLabel}>
+                  <span>{instanceName}</span>
+                  {strategyName ? (
+                    <span className="font-normal opacity-80"> ({strategyName})</span>
+                  ) : null}
+                </span>
 
                 {/* Delete tab button on hover */}
                 <button

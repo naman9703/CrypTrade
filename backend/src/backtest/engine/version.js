@@ -1,2 +1,2 @@
 /** Bump when simulator semantics change (sizing, brackets, materialization). */
-export const BACKTEST_ENGINE_VERSION = "phase1-2026-05-29";
+export const BACKTEST_ENGINE_VERSION = "tokyo-sweep-fade-2026-06-09";

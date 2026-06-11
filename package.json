@@ -14,6 +14,7 @@
     "dev:backend": "npm --workspace backend run dev",
     "dev:frontend": "npm --workspace frontend run dev",
     "dev:ai": "bash ai-service/scripts/run-dev-ai.sh",
+    "dev:stop": "bash scripts/dev-stop.sh",
     "build": "npx --no-install npm-run-all -s build:backend build:frontend",
     "build:backend": "npm --workspace backend run build",
     "build:frontend": "npm --workspace frontend run build"

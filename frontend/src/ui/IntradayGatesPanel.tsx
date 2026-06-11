@@ -1,5 +1,3 @@
-import { api } from "../api/client";
-import { deferTask } from "../lib/deferTask";
 import { intradayGateTogglePatch, type IntradayGateUiKey } from "../lib/intradayGatesUi";
 import {
   SMC_ICT_GAP_ROWS,
@@ -8,6 +6,7 @@ import {
 } from "../lib/smcIctGapGuide";
 import { useGuardedCheckbox } from "./useGuardedCheckbox";
 import { useState } from "react";
+import { RangeSliderReleaseCommit } from "./RangeSliderReleaseCommit";
 
 export const INTRADAY_GATE_KEYS = [
   ["intradayGateLiquidity", "Liquidity sweep + reclaim", "liq_sweep scoring"],
@@ -16,7 +15,7 @@ export const INTRADAY_GATE_KEYS = [
   ["intradayGateSmcIct", "SMC / ICT", "ICT 2022: sweep → MSS → FVG/OB retrace entry"],
   ["intradayGateFib", "Fibonacci", "Swing fib proximity"],
   ["intradayGateVp", "Volume profile filter", "POC/VA/HVN scoring (not standalone VP strategy)"],
-  ["intradayGateOrderFlow", "Order flow", "CVD + delta imbalance"],
+  ["intradayGateOrderFlow", "Order flow", "Layer 3: absorption + stacked delta + CVD div at key levels (live aggTrade / backtest taker-buy)"],
   ["intradayGateHtfRegime", "HTF + regime", "1h EMA trend, chop filter, learned vetoes"],
 ] as const;
 
@@ -29,6 +28,10 @@ export type IntradayLiqExitCfg = {
   intradayLiqTp2Enabled?: boolean;
   intradayLiqBreakevenAfterPartial?: boolean;
   intradayLiqMinRr?: number;
+  /** Cap TP2 at N×R when opposing pool is farther (0 = uncapped PDH/PDL). */
+  intradayLiqMaxTpRr?: number;
+  /** Closed bars before `time_stop` (0 = disabled). On 15m, 48 ≈ 12 hours. */
+  intradayLiqMaxHoldBars?: number;
 };
 
 export type InstitutionalSrCfg = {
@@ -41,24 +44,17 @@ export type InstitutionalSrCfg = {
   intradayLiqMinSweepExtensionPct?: number;
 };
 
-function patchBot(patch: Record<string, unknown>, pushLog: (msg: { level: string; msg: string }) => void, okMsg: string) {
-  deferTask(() => {
-    void api
-      .botConfig(patch)
-      .then(() => pushLog({ level: "info", msg: okMsg }))
-      .catch(() => pushLog({ level: "error", msg: "Failed to update bot config" }));
-  });
-}
-
 function LiquidityExitStages({
   liq,
-  pushLog,
+  onStagePatch,
 }: {
   liq: IntradayLiqExitCfg;
-  pushLog: (msg: { level: string; msg: string }) => void;
+  onStagePatch: (patch: Record<string, unknown>) => void;
 }) {
   const minRr = Math.max(0, Math.min(5, Number(liq.intradayLiqMinRr ?? 1.5)));
   const rrUnits = Math.round(minRr * 100);
+  const maxTpRr = Math.max(0, Math.min(20, Number(liq.intradayLiqMaxTpRr ?? 5)));
+  const maxTpRrUnits = Math.round(maxTpRr * 100);
 
   return (
     <div className="ml-5 mt-1.5 space-y-1.5 border-l-2 border-amber-700/25 pl-2.5 dark:border-amber-400/20">
@@ -88,7 +84,7 @@ function LiquidityExitStages({
               const on = e.currentTarget.checked;
               const patch: Record<string, boolean> = { [key]: on };
               if (legacyKey) patch[legacyKey] = on;
-              patchBot(patch, pushLog, on ? `${label} ON` : `${label} OFF`);
+              onStagePatch(patch);
             }}
           />
           <span className="text-[11px] text-slate-700 dark:text-slate-300">{label}</span>
@@ -98,19 +94,61 @@ function LiquidityExitStages({
         <span className="font-semibold text-slate-700 dark:text-slate-300">Min R:R</span>
         <span className="ml-1 font-mono text-amber-900 dark:text-amber-100">{minRr.toFixed(2)}</span>
         <span className="ml-1 text-slate-500">(0 = off)</span>
-        <input
-          type="range"
+        <RangeSliderReleaseCommit
+          className="mt-1 block w-full accent-amber-600"
           min={0}
           max={500}
           step={5}
           value={rrUnits}
-          className="mt-1 block w-full accent-amber-600"
-          onChange={(e) => {
-            const u = Number(e.currentTarget.value);
+          aria-label="Liquidity min risk reward"
+          onCommit={(u) => {
             const next = Math.max(0, Math.min(5, u / 100));
-            patchBot({ intradayLiqMinRr: next }, pushLog, `Liquidity min R:R ${next.toFixed(2)}`);
+            onStagePatch({ intradayLiqMinRr: next });
           }}
         />
+      </label>
+      <label className="mt-1 block text-[10px] text-slate-600 dark:text-slate-400">
+        <span className="font-semibold text-slate-700 dark:text-slate-300">Max TP R:R</span>
+        <span className="ml-1 font-mono text-amber-900 dark:text-amber-100">
+          {maxTpRr > 0 ? maxTpRr.toFixed(2) : "off"}
+        </span>
+        <span className="ml-1 text-slate-500">(0 = full opposing pool)</span>
+        <RangeSliderReleaseCommit
+          className="mt-1 block w-full accent-amber-600"
+          min={0}
+          max={2000}
+          step={5}
+          value={maxTpRrUnits}
+          aria-label="Liquidity max TP risk reward cap"
+          onCommit={(u) => {
+            const next = Math.max(0, Math.min(20, u / 100));
+            onStagePatch({ intradayLiqMaxTpRr: next });
+          }}
+        />
+        <span className="mt-0.5 block text-[10px] text-slate-500">
+          TP2 = min(PDH/PDL, entry ± this × SL distance). Lower = closer target; 0 = no LIQ cap.
+        </span>
+      </label>
+      <label className="mt-1 block text-[10px] text-slate-600 dark:text-slate-400">
+        <span className="font-semibold text-slate-700 dark:text-slate-300">Max hold (bars)</span>
+        <span className="ml-1 font-mono text-amber-900 dark:text-amber-100">
+          {Math.max(0, Math.min(2000, Math.round(Number(liq.intradayLiqMaxHoldBars ?? 48))))}
+        </span>
+        <span className="ml-1 text-slate-500">(0 = no time_stop)</span>
+        <RangeSliderReleaseCommit
+          className="mt-1 block w-full accent-amber-600"
+          min={0}
+          max={200}
+          step={1}
+          value={Math.max(0, Math.min(200, Math.round(Number(liq.intradayLiqMaxHoldBars ?? 48))))}
+          aria-label="Liquidity max hold bars before time stop"
+          onCommit={(bars) => {
+            onStagePatch({ intradayLiqMaxHoldBars: Math.max(0, Math.min(2000, Math.round(bars))) });
+          }}
+        />
+        <span className="mt-0.5 block text-[10px] text-slate-500">
+          Forces exit as <span className="font-mono">time_stop</span> if SL/TP not hit — e.g. 48 on 15m ≈ 12h.
+        </span>
       </label>
     </div>
   );
@@ -120,7 +158,7 @@ function SmcBoolCheckbox({
   cfgKey,
   label,
   serverChecked,
-  pushLog,
+  onStagePatch,
 }: {
   cfgKey:
     | "intradaySmcRequireMss"
@@ -129,10 +167,12 @@ function SmcBoolCheckbox({
     | "intradaySmcRequireChoch"
     | "intradaySmcRequireBos"
     | "intradaySmcRequireConfirm"
-    | "intradaySmcRequireFvgRetrace";
+    | "intradaySmcRequireFvgRetrace"
+    | "intradaySmcRequirePremiumDiscount"
+    | "intradaySmcUseOrderFlow";
   label: string;
   serverChecked: boolean;
-  pushLog: (msg: { level: string; msg: string }) => void;
+  onStagePatch: (patch: Record<string, unknown>) => void;
 }) {
   const [checked, setChecked] = useGuardedCheckbox(serverChecked);
   return (
@@ -143,7 +183,7 @@ function SmcBoolCheckbox({
         onChange={(e) => {
           const on = e.currentTarget.checked;
           setChecked(on);
-          patchBot({ [cfgKey]: on }, pushLog, `${label} ${on ? "ON" : "OFF"}`);
+          onStagePatch({ [cfgKey]: on });
         }}
       />
       <span>{label}</span>
@@ -195,10 +235,10 @@ function SmcIctGapTable() {
 
 function SmcIctControls({
   smc,
-  pushLog,
+  onStagePatch,
 }: {
   smc: Record<string, unknown>;
-  pushLog: (msg: { level: string; msg: string }) => void;
+  onStagePatch: (patch: Record<string, unknown>) => void;
 }) {
   const kz = String(smc.intradaySmcKillzoneMode ?? "LONDON_NY");
   const minAdx = Math.max(0, Math.min(100, Math.round(Number(smc.intradaySmcMinAdx ?? 18))));
@@ -229,44 +269,40 @@ function SmcIctControls({
             const v = e.target.value;
             const full = v === "full";
             const balanced = v === "balanced";
-            patchBot(
-              {
-                intradaySmcIctProfile: v,
-                ...(full
+            onStagePatch({
+              intradaySmcIctProfile: v,
+              ...(full
+                ? {
+                    intradaySmcRequireChoch: true,
+                    intradaySmcChochStrict: true,
+                    intradaySmcRequireMss: true,
+                    intradaySmcRequireBos: true,
+                    intradaySmcRequireRetrace: true,
+                    intradaySmcRequireFvgRetrace: true,
+                    intradaySmcKillzoneMode: "LONDON_NY",
+                    intradaySmcHtfBiasMode: "parallel",
+                    intradaySmcRequirePremiumDiscount: true,
+                  }
+                : balanced
                   ? {
                       intradaySmcRequireChoch: true,
-                      intradaySmcChochStrict: true,
+                      intradaySmcChochStrict: false,
                       intradaySmcRequireMss: true,
-                      intradaySmcRequireBos: true,
+                      intradaySmcRequireBos: false,
                       intradaySmcRequireRetrace: true,
                       intradaySmcRequireFvgRetrace: true,
-                      intradaySmcKillzoneMode: "LONDON_NY",
-                      intradaySmcHtfBiasMode: "parallel",
-                      intradaySmcRequirePremiumDiscount: true,
+                      intradaySmcRequirePremiumDiscount: false,
                     }
-                  : balanced
-                    ? {
-                        intradaySmcRequireChoch: true,
-                        intradaySmcChochStrict: false,
-                        intradaySmcRequireMss: true,
-                        intradaySmcRequireBos: false,
-                        intradaySmcRequireRetrace: true,
-                        intradaySmcRequireFvgRetrace: true,
-                        intradaySmcRequirePremiumDiscount: false,
-                      }
-                    : {
-                        intradaySmcRequireChoch: false,
-                        intradaySmcChochStrict: false,
-                        intradaySmcRequireMss: false,
-                        intradaySmcRequireBos: false,
-                        intradaySmcRequireRetrace: false,
-                        intradaySmcRequireFvgRetrace: false,
-                        intradaySmcRequirePremiumDiscount: false,
-                      }),
-              },
-              pushLog,
-              `ICT profile ${v}`,
-            );
+                  : {
+                      intradaySmcRequireChoch: false,
+                      intradaySmcChochStrict: false,
+                      intradaySmcRequireMss: false,
+                      intradaySmcRequireBos: false,
+                      intradaySmcRequireRetrace: false,
+                      intradaySmcRequireFvgRetrace: false,
+                      intradaySmcRequirePremiumDiscount: false,
+                    }),
+            });
           }}
         >
           <option value="balanced">Balanced (CHoCH + MSS + retrace, ~1/day)</option>
@@ -280,8 +316,10 @@ function SmcIctControls({
           className="mt-0.5 block w-full rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px] dark:border-slate-700 dark:bg-slate-900"
           value={String(smc.intradaySmcPickMode ?? "per_signal")}
           onChange={(e) => {
-            const v = e.target.value;
-            patchBot({ intradaySmcPickMode: e.target.value, intradaySmcOneTradePerDay: e.target.value !== "per_signal" }, pushLog, `Pick mode ${e.target.value}`);
+            onStagePatch({
+              intradaySmcPickMode: e.target.value,
+              intradaySmcOneTradePerDay: e.target.value !== "per_signal",
+            });
           }}
         >
           <option value="daily_sniper">Daily sniper (1 best trade / day)</option>
@@ -294,7 +332,7 @@ function SmcIctControls({
           className="mt-0.5 block w-full rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px] dark:border-slate-700 dark:bg-slate-900"
           value={kz}
           onChange={(e) => {
-            patchBot({ intradaySmcKillzoneMode: e.target.value }, pushLog, `Kill-zone ${e.target.value}`);
+            onStagePatch({ intradaySmcKillzoneMode: e.target.value });
           }}
         >
           {[
@@ -318,7 +356,7 @@ function SmcIctControls({
           className="mt-0.5 block w-full rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px] dark:border-slate-700 dark:bg-slate-900"
           value={String(smc.intradaySmcEntryZoneMode ?? "EITHER")}
           onChange={(e) => {
-            patchBot({ intradaySmcEntryZoneMode: e.target.value }, pushLog, `Entry zone ${e.target.value}`);
+            onStagePatch({ intradaySmcEntryZoneMode: e.target.value });
           }}
         >
           <option value="EITHER">FVG or OB</option>
@@ -332,7 +370,7 @@ function SmcIctControls({
           className="mt-0.5 block w-full rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px] dark:border-slate-700 dark:bg-slate-900"
           value={htf}
           onChange={(e) => {
-            patchBot({ intradaySmcHtfStrictness: e.target.value }, pushLog, `HTF strictness ${e.target.value}`);
+            onStagePatch({ intradaySmcHtfStrictness: e.target.value });
           }}
         >
           <option value="either">Either (4h or 1h)</option>
@@ -347,7 +385,7 @@ function SmcIctControls({
           className="mt-0.5 block w-full rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px] dark:border-slate-700 dark:bg-slate-900"
           value={String(smc.intradaySmcHtfBiasMode ?? "parallel")}
           onChange={(e) => {
-            patchBot({ intradaySmcHtfBiasMode: e.target.value }, pushLog, `HTF bias mode ${e.target.value}`);
+            onStagePatch({ intradaySmcHtfBiasMode: e.target.value });
           }}
         >
           <option value="parallel">Parallel (EMA + 4H structure)</option>
@@ -359,58 +397,63 @@ function SmcIctControls({
         cfgKey="intradaySmcRequireChoch"
         label="Require CHoCH after sweep"
         serverChecked={smc.intradaySmcRequireChoch === true}
-        pushLog={pushLog}
+        onStagePatch={onStagePatch}
       />
       <SmcBoolCheckbox
         cfgKey="intradaySmcRequireMss"
         label="Require MSS (BOS + displacement)"
         serverChecked={smc.intradaySmcRequireMss === true}
-        pushLog={pushLog}
+        onStagePatch={onStagePatch}
       />
       <SmcBoolCheckbox
         cfgKey="intradaySmcRequireBos"
         label="Require BOS (when MSS off)"
         serverChecked={smc.intradaySmcRequireBos === true}
-        pushLog={pushLog}
+        onStagePatch={onStagePatch}
       />
       <SmcBoolCheckbox
         cfgKey="intradaySmcRequireRetrace"
         label="Require retrace into FVG/OB"
         serverChecked={smc.intradaySmcRequireRetrace === true}
-        pushLog={pushLog}
+        onStagePatch={onStagePatch}
       />
       <SmcBoolCheckbox
         cfgKey="intradaySmcRequireHtfBias"
         label="Require HTF bias alignment"
         serverChecked={smc.intradaySmcRequireHtfBias !== false}
-        pushLog={pushLog}
+        onStagePatch={onStagePatch}
       />
       <SmcBoolCheckbox
         cfgKey="intradaySmcRequirePremiumDiscount"
         label="Require premium/discount (dealing range)"
         serverChecked={smc.intradaySmcRequirePremiumDiscount === true}
-        pushLog={pushLog}
+        onStagePatch={onStagePatch}
+      />
+      <SmcBoolCheckbox
+        cfgKey="intradaySmcUseOrderFlow"
+        label="Require order-flow confirmation at FVG/OB entry"
+        serverChecked={smc.intradaySmcUseOrderFlow === true}
+        onStagePatch={onStagePatch}
       />
       <SmcBoolCheckbox
         cfgKey="intradaySmcRequireConfirm"
         label="Require entry-bar confirm candle (extra)"
         serverChecked={smc.intradaySmcRequireConfirm === true}
-        pushLog={pushLog}
+        onStagePatch={onStagePatch}
       />
       <label className="block text-[10px] text-slate-600 dark:text-slate-400">
         <span className="font-semibold text-slate-700 dark:text-slate-300">Min ADX</span>
         <span className="ml-1 font-mono text-violet-900 dark:text-violet-100">{minAdx}</span>
         <span className="ml-1 text-slate-500">(0 = off)</span>
-        <input
-          type="range"
+        <RangeSliderReleaseCommit
+          className="mt-1 block w-full accent-violet-600"
           min={0}
           max={50}
           step={1}
           value={minAdx}
-          className="mt-1 block w-full accent-violet-600"
-          onChange={(e) => {
-            const v = Number(e.currentTarget.value);
-            patchBot({ intradaySmcMinAdx: v }, pushLog, `SMC min ADX ${v}`);
+          aria-label="SMC min ADX"
+          onCommit={(v) => {
+            onStagePatch({ intradaySmcMinAdx: v });
           }}
         />
       </label>
@@ -418,16 +461,16 @@ function SmcIctControls({
         <span className="font-semibold text-slate-700 dark:text-slate-300">Min R:R</span>
         <span className="ml-1 font-mono text-violet-900 dark:text-violet-100">{minRr.toFixed(2)}</span>
         <span className="ml-1 text-slate-500">(0 = off)</span>
-        <input
-          type="range"
+        <RangeSliderReleaseCommit
+          className="mt-1 block w-full accent-violet-600"
           min={0}
           max={500}
           step={5}
           value={Math.round(minRr * 100)}
-          className="mt-1 block w-full accent-violet-600"
-          onChange={(e) => {
-            const v = Math.max(0, Math.min(5, Number(e.currentTarget.value) / 100));
-            patchBot({ intradaySmcMinRr: v }, pushLog, `SMC min R:R ${v.toFixed(2)}`);
+          aria-label="SMC min risk reward"
+          onCommit={(v) => {
+            const next = Math.max(0, Math.min(5, v / 100));
+            onStagePatch({ intradaySmcMinRr: next });
           }}
         />
       </label>
@@ -437,10 +480,10 @@ function SmcIctControls({
 
 function InstitutionalSrControls({
   sr,
-  pushLog,
+  onStagePatch,
 }: {
   sr: InstitutionalSrCfg;
-  pushLog: (msg: { level: string; msg: string }) => void;
+  onStagePatch: (patch: Record<string, unknown>) => void;
 }) {
   const extPct = Math.max(0, Math.min(2, Number(sr.intradayLiqMinSweepExtensionPct ?? 0.004) * 100));
   const volR = Math.max(0, Math.min(3, Number(sr.intradaySrMinVolRatio ?? 1.2)));
@@ -461,54 +504,150 @@ function InstitutionalSrControls({
           checked={sr.intradaySrAPlusMode === true}
           onChange={(e) => {
             const on = e.currentTarget.checked;
-            patchBot({ intradaySrAPlusMode: on, intradayGateInstitutionalSr: on }, pushLog, on ? "A+ mode ON" : "A+ mode OFF");
+            onStagePatch({ intradaySrAPlusMode: on, intradayGateInstitutionalSr: on });
           }}
         />
         <span>Strict A+ mode (orchestrator)</span>
       </label>
       <label className="block text-[10px] text-slate-600 dark:text-slate-400">
         Min sweep extension % <span className="font-mono">{extPct.toFixed(2)}</span>
-        <input
-          type="range"
+        <RangeSliderReleaseCommit
+          className="mt-1 block w-full accent-emerald-600"
           min={0}
           max={200}
           step={5}
           value={Math.round(extPct * 100) / 100}
-          className="mt-1 block w-full accent-emerald-600"
-          onChange={(e) => {
-            const pct = Number(e.currentTarget.value) / 100;
-            patchBot({ intradayLiqMinSweepExtensionPct: pct }, pushLog, `Min extension ${pct.toFixed(2)}%`);
+          aria-label="Min sweep extension percent"
+          onCommit={(v) => {
+            onStagePatch({ intradayLiqMinSweepExtensionPct: v / 100 });
           }}
         />
       </label>
       <label className="block text-[10px] text-slate-600 dark:text-slate-400">
         Min volume ratio <span className="font-mono">{volR.toFixed(2)}×</span>
-        <input
-          type="range"
+        <RangeSliderReleaseCommit
+          className="mt-1 block w-full accent-emerald-600"
           min={0}
           max={300}
           step={5}
           value={Math.round(volR * 100)}
-          className="mt-1 block w-full accent-emerald-600"
-          onChange={(e) => {
-            const v = Number(e.currentTarget.value) / 100;
-            patchBot({ intradaySrMinVolRatio: v }, pushLog, `Min vol ratio ${v.toFixed(2)}`);
+          aria-label="Min volume ratio"
+          onCommit={(v) => {
+            onStagePatch({ intradaySrMinVolRatio: v / 100 });
           }}
         />
       </label>
       <label className="block text-[10px] text-slate-600 dark:text-slate-400">
         BOS max bars after reclaim <span className="font-mono">{bosBars}</span>
-        <input
-          type="range"
+        <RangeSliderReleaseCommit
+          className="mt-1 block w-full accent-emerald-600"
           min={0}
           max={10}
           step={1}
           value={bosBars}
-          className="mt-1 block w-full accent-emerald-600"
-          onChange={(e) => {
-            const n = Number(e.currentTarget.value);
-            patchBot({ intradaySrBosMaxBarsAfterReclaim: n }, pushLog, `BOS window ${n} bars`);
+          aria-label="BOS max bars after reclaim"
+          onCommit={(n) => {
+            onStagePatch({ intradaySrBosMaxBarsAfterReclaim: n });
           }}
+        />
+      </label>
+    </div>
+  );
+}
+
+function OrderFlowControls({
+  of,
+  onStagePatch,
+}: {
+  of: Record<string, unknown>;
+  onStagePatch: (patch: Record<string, unknown>) => void;
+}) {
+  const kz = String(of.intradayOfKillzoneMode ?? "LONDON_NY");
+  const confMode = String(of.intradayOfConfluenceMode ?? "full");
+  const minConf = Math.max(1, Math.min(4, Math.round(Number(of.intradayOfMinConfluence ?? 2))));
+  const stackBars = Math.max(2, Math.min(8, Math.round(Number(of.intradayOfMinStackBars ?? 3))));
+
+  return (
+    <div className="ml-5 mt-1.5 space-y-2 border-l-2 border-sky-700/30 pl-2.5 dark:border-sky-400/25">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-sky-900/90 dark:text-sky-200/90">
+        Order flow (Layer 3)
+      </div>
+      <p className="text-[10px] leading-snug text-slate-500">
+        Guide model: premium/discount → key level → approach CVD → absorption/stack → confirmation bar → enter next bar
+        open. Full mode skips CVD-only noise; layer3 is for SMC composite gates.
+      </p>
+      <label className="block text-[10px] text-slate-600 dark:text-slate-400">
+        Confluence mode
+        <select
+          className="mt-0.5 block w-full rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] dark:border-slate-600 dark:bg-slate-900"
+          value={confMode}
+          onChange={(e) => onStagePatch({ intradayOfConfluenceMode: e.currentTarget.value })}
+        >
+          <option value="full">Full (absorption + CVD + confirm + key)</option>
+          <option value="layer3">Layer 3 (confirm + key + absorption — composite)</option>
+          <option value="research">Research only (not for live)</option>
+        </select>
+      </label>
+      <label className="block text-[10px] text-slate-600 dark:text-slate-400">
+        Killzone
+        <select
+          className="mt-0.5 block w-full rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] dark:border-slate-600 dark:bg-slate-900"
+          value={kz}
+          onChange={(e) => onStagePatch({ intradayOfKillzoneMode: e.currentTarget.value })}
+        >
+          {["LONDON", "NY", "LONDON_NY", "OVERLAP"].map((m) => (
+            <option key={m} value={m}>
+              {m.replace(/_/g, " ")}
+            </option>
+          ))}
+        </select>
+      </label>
+      {(
+        [
+          ["intradayOfRequireKeyLevel", "Require key level (PDH/PDL/POC/VAH/VAL/VWAP)", true],
+          ["intradayOfRequirePremiumDiscount", "Premium/discount filter (longs ≤ VAL, shorts ≥ VAH)", true],
+          ["intradayOfRequireConfirmation", "Wait for confirmation bar after absorption", true],
+          ["intradayOfUseOrderBook", "Use live order book pressure (USD-M perps)", true],
+          ["intradayOfAllowProxy", "Allow OHLCV proxy fallback (Tier C — not footprint)", false],
+          ["intradayOfVetoMode", "Hard veto in composite mode (off = score contribution only)", false],
+          ["intradayOfTp1Enabled", "Partial TP at 1R", true],
+          ["intradayOfTp2Enabled", "Runner TP at opposing VP level", true],
+          ["intradayOfBreakevenAfterPartial", "Move SL to breakeven after partial", true],
+          ["intradayOfExitOnDeltaAgainst", "Exit on 2 bars delta against position", true],
+        ] as const
+      ).map(([key, label, defaultOn]) => (
+        <label key={key} className="flex cursor-pointer items-start gap-2 text-[11px]">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={defaultOn ? of[key] !== false : of[key] === true}
+            onChange={(e) => onStagePatch({ [key]: e.currentTarget.checked })}
+          />
+          <span>{label}</span>
+        </label>
+      ))}
+      <label className="block text-[10px] text-slate-600 dark:text-slate-400">
+        Min pattern confluence <span className="font-mono">{minConf}</span>
+        <RangeSliderReleaseCommit
+          className="mt-1 block w-full accent-sky-600"
+          min={1}
+          max={4}
+          step={1}
+          value={minConf}
+          aria-label="Order flow min confluence"
+          onCommit={(v) => onStagePatch({ intradayOfMinConfluence: v })}
+        />
+      </label>
+      <label className="block text-[10px] text-slate-600 dark:text-slate-400">
+        Stacked delta bars <span className="font-mono">{stackBars}</span>
+        <RangeSliderReleaseCommit
+          className="mt-1 block w-full accent-sky-600"
+          min={2}
+          max={8}
+          step={1}
+          value={stackBars}
+          aria-label="Stacked delta bars"
+          onCommit={(v) => onStagePatch({ intradayOfMinStackBars: v })}
         />
       </label>
     </div>
@@ -523,7 +662,8 @@ function GateCheckboxRow({
   liq,
   sr,
   smc,
-  pushLog,
+  of,
+  onStagePatch,
 }: {
   gateKey: IntradayGateKey;
   title: string;
@@ -532,7 +672,8 @@ function GateCheckboxRow({
   liq: IntradayLiqExitCfg;
   sr?: InstitutionalSrCfg;
   smc?: Record<string, unknown>;
-  pushLog: (msg: { level: string; msg: string }) => void;
+  of?: Record<string, unknown>;
+  onStagePatch: (patch: Record<string, unknown>) => void;
 }) {
   const [checked, setChecked] = useGuardedCheckbox(cfg[gateKey]);
   return (
@@ -546,17 +687,7 @@ function GateCheckboxRow({
             const on = e.currentTarget.checked;
             setChecked(on);
             const patch = intradayGateTogglePatch(gateKey as IntradayGateUiKey, on);
-            deferTask(() => {
-              void api
-                .botConfig(patch)
-                .then(() =>
-                  pushLog({
-                    level: "info",
-                    msg: on ? `${title} ON` : `${title} OFF`,
-                  }),
-                )
-                .catch(() => pushLog({ level: "error", msg: `Failed to update ${title}` }));
-            });
+            onStagePatch(patch);
           }}
         />
         <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
@@ -564,11 +695,14 @@ function GateCheckboxRow({
           <span className="mt-0.5 block text-[10px] text-slate-500">{hint}</span>
         </span>
       </label>
-      {gateKey === "intradayGateLiquidity" ? <LiquidityExitStages liq={liq} pushLog={pushLog} /> : null}
+      {gateKey === "intradayGateLiquidity" ? <LiquidityExitStages liq={liq} onStagePatch={onStagePatch} /> : null}
       {gateKey === "intradayGateInstitutionalSr" && sr ? (
-        <InstitutionalSrControls sr={sr} pushLog={pushLog} />
+        <InstitutionalSrControls sr={sr} onStagePatch={onStagePatch} />
       ) : null}
-      {gateKey === "intradayGateSmcIct" && smc ? <SmcIctControls smc={smc} pushLog={pushLog} /> : null}
+      {gateKey === "intradayGateSmcIct" && smc ? <SmcIctControls smc={smc} onStagePatch={onStagePatch} /> : null}
+      {gateKey === "intradayGateOrderFlow" && of ? (
+        <OrderFlowControls of={of} onStagePatch={onStagePatch} />
+      ) : null}
     </div>
   );
 }
@@ -578,14 +712,16 @@ export function IntradayGatesPanel({
   liq,
   sr,
   smc,
-  pushLog,
+  of,
+  onStagePatch,
   id,
 }: {
   cfg: GateCfg;
   liq: IntradayLiqExitCfg;
   sr?: InstitutionalSrCfg;
   smc?: Record<string, unknown>;
-  pushLog: (msg: { level: string; msg: string }) => void;
+  of?: Record<string, unknown>;
+  onStagePatch: (patch: Record<string, unknown>) => void;
   id?: string;
 }) {
   return (
@@ -597,8 +733,8 @@ export function IntradayGatesPanel({
         Intraday gates (8 techniques)
       </div>
       <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-500">
-        For <span className="font-semibold">SR_INTRADAY</span> / Intraday Pro. Preset <b>BNB 15m Institutional A+</b> enables
-        the full professional S/R stack. Backtests use these live panel toggles (not only the last saved strategy).
+        For <span className="font-semibold">SR_INTRADAY</span> / Intraday Pro. Changes apply in the UI immediately and
+        persist when you click <span className="font-semibold">Save</span> on the strategy bar.
       </p>
       {INTRADAY_GATE_KEYS.map(([key, title, hint]) => (
         <GateCheckboxRow
@@ -610,7 +746,8 @@ export function IntradayGatesPanel({
           liq={liq}
           sr={sr}
           smc={smc}
-          pushLog={pushLog}
+          of={of}
+          onStagePatch={onStagePatch}
         />
       ))}
     </div>

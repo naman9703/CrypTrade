@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "symbol": "BNBUSDT",
+    "timeframe": "15m",
+    "from": "2025-06-01",
+    "to": "2026-06-05",
+    "generatedAt": "2026-06-06T00:00:00.000Z",
+    "minTrades": 10,
+    "enabledCellCount": 4,
+    "mode": "multi_strategy_phase_locked"
+  },
+  "routes": {
+    "BREAKDOWN_BEAR": ["exhaustion_long"],
+    "BREAKOUT_BULL": [],
+    "RANGE_ABOVE_PDL": [],
+    "RANGE_BELOW_PDH": [],
+    "SQUEEZE": [],
+    "VOLATILE_AVOID": [],
+    "CHOP_NEUTRAL": []
+  },
+  "strategies": {
+    "RANGE_ABOVE_PDL": "range_fade_short",
+    "RANGE_BELOW_PDH": "range_retest_short",
+    "SQUEEZE": "squeeze_breakout",
+    "BREAKDOWN_BEAR": "breakdown_exhaustion",
+    "BREAKOUT_BULL": "breakout_exhaustion"
+  },
+  "thresholds": {
+    "fadeMinAdx": 20,
+    "fadeMinRvol": 1.0,
+    "lhFadeMinBarsFromOpen": 4,
+    "lhFadeMaxBarsFromOpen": 28,
+    "dispMinRvol": 2.5,
+    "rangeDispMaxBarsFromOpen": 32,
+    "retestMinRvol": 0.75,
+    "minScore": 7,
+    "exhaustionPartialR": 1.0,
+    "exhaustionTp2R": 2.2,
+    "exhaustionMinRvol": 1.6,
+    "exhaustionMinWick": 0.42,
+    "situationMaxDayRangeAtEntry": 0.05,
+    "situationMaxAdx": 70
+  },
+  "enabledCells": [
+    {
+      "situation": "BREAKDOWN_BEAR",
+      "trigger": "exhaustion_long",
+      "strategy": "breakdown_exhaustion",
+      "n": 74,
+      "net": 0.58,
+      "wr": 58
+    },
+    {
+      "situation": "RANGE_ABOVE_PDL",
+      "trigger": "displacement_short",
+      "strategy": "range_fade_short",
+      "n": 11,
+      "net": 2.78,
+      "wr": 64
+    },
+    {
+      "situation": "RANGE_BELOW_PDH",
+      "trigger": "retest_short",
+      "strategy": "range_retest_short",
+      "n": 15,
+      "net": 0.77,
+      "wr": 53
+    },
+    {
+      "situation": "SQUEEZE",
+      "trigger": "lh_fade_long",
+      "strategy": "squeeze_breakout",
+      "n": 13,
+      "net": 0.31,
+      "wr": 69
+    }
+  ]
+}

@@ -10,7 +10,13 @@ import {
   isSmcIctRun,
   type BacktestLiqContext,
 } from "./backtestChartOverlays";
-import { buildSmcChartMarkup, smcMarkupToChartLayers, type SmcChartLayers, type SmcChartMarkup } from "./smcChartMarkup";
+import {
+  buildLiquidityChartMarkup,
+  buildSmcChartMarkup,
+  smcMarkupToChartLayers,
+  type SmcChartLayers,
+  type SmcChartMarkup,
+} from "./smcChartMarkup";
 import type { OhlcCandle } from "./backtestChartTime";
 
 export type StrategyMarkupKind = "smc_ict" | "liquidity" | "fib" | "none";
@@ -36,6 +42,9 @@ export function buildStrategyTradeMarkup(
   const kind = resolveStrategyMarkupKind(run, trade);
   if (kind === "smc_ict" || (kind === "liquidity" && (trade.liqContext as BacktestLiqContext)?.smcMeta)) {
     return buildSmcChartMarkup(candles, trade, botOpts);
+  }
+  if (kind === "liquidity") {
+    return buildLiquidityChartMarkup(candles, trade, botOpts);
   }
   return null;
 }

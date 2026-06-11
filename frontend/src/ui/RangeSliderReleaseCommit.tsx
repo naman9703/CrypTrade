@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
 }
+
+export type RangeSliderReleaseCommitHandle = {
+  /** Commit the current thumb position (e.g. when locking a threshold slider). */
+  commitPending: () => void;
+};
 
 export type RangeSliderReleaseCommitProps = {
   min: number;
@@ -10,7 +15,10 @@ export type RangeSliderReleaseCommitProps = {
   step: number;
   value: number;
   onCommit: (v: number) => void;
-  /** Live value while dragging; `null` when the pointer is released (after `onCommit`). For labels only. */
+  /**
+   * Optional live value while dragging — for custom UI only.
+   * Omit to keep bound labels on `value` until release (recommended).
+   */
   onPreviewValue?: (v: number | null) => void;
   className?: string;
   disabled?: boolean;
@@ -18,20 +26,26 @@ export type RangeSliderReleaseCommitProps = {
 };
 
 /**
- * Range input that updates visually while dragging but calls `onCommit` only on pointer release
+ * Range input: thumb moves while dragging; `onCommit` runs only on pointer release
  * (global capture so release off the track still commits).
  */
-export function RangeSliderReleaseCommit({
-  min,
-  max,
-  step,
-  value,
-  onCommit,
-  onPreviewValue,
-  className,
-  disabled,
-  "aria-label": ariaLabel,
-}: RangeSliderReleaseCommitProps) {
+export const RangeSliderReleaseCommit = forwardRef<
+  RangeSliderReleaseCommitHandle,
+  RangeSliderReleaseCommitProps
+>(function RangeSliderReleaseCommit(
+  {
+    min,
+    max,
+    step,
+    value,
+    onCommit,
+    onPreviewValue,
+    className,
+    disabled,
+    "aria-label": ariaLabel,
+  },
+  ref,
+) {
   const [local, setLocal] = useState(() => clamp(value, min, max));
   const draggingRef = useRef(false);
   const localRef = useRef(local);
@@ -54,15 +68,39 @@ export function RangeSliderReleaseCommit({
 
   useEffect(() => () => clearUp(), [clearUp]);
 
+  const commitValue = useCallback(
+    (v: number) => {
+      const clamped = clamp(v, min, max);
+      setLocal(clamped);
+      localRef.current = clamped;
+      onCommitRef.current(clamped);
+      onPreviewValueRef.current?.(null);
+    },
+    [min, max],
+  );
+
   const finishDrag = useCallback(() => {
     if (!draggingRef.current) return;
     draggingRef.current = false;
     clearUp();
-    const v = clamp(localRef.current, min, max);
-    setLocal(v);
-    onCommitRef.current(v);
-    onPreviewValueRef.current?.(null);
-  }, [min, max, clearUp]);
+    commitValue(localRef.current);
+  }, [clearUp, commitValue]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      commitPending: () => {
+        if (draggingRef.current) {
+          finishDrag();
+          return;
+        }
+        const v = clamp(localRef.current, min, max);
+        if (Math.abs(v - value) < 1e-12) return;
+        commitValue(v);
+      },
+    }),
+    [finishDrag, commitValue, min, max, value],
+  );
 
   const onPointerDown = () => {
     if (disabled) return;
@@ -97,14 +135,6 @@ export function RangeSliderReleaseCommit({
         setLocal(n);
         if (draggingRef.current) onPreviewValueRef.current?.(n);
       }}
-      onBlur={() => {
-        if (draggingRef.current) return;
-        const v = clamp(localRef.current, min, max);
-        if (Math.abs(v - value) < 1e-12) return;
-        setLocal(v);
-        onCommitRef.current(v);
-        onPreviewValueRef.current?.(null);
-      }}
     />
   );
-}
+});

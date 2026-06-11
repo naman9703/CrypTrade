@@ -38,6 +38,18 @@ export type BacktestSmcMeta = {
   ictProfile?: string | null;
 };
 
+export type BacktestTokyoMeta = {
+  sessionStartTs?: number;
+  sessionEndTs?: number;
+  sessionHigh?: number;
+  sessionLow?: number;
+  first2High?: number;
+  first2Low?: number;
+  dirMode?: string;
+  slMode?: string;
+  tpRr?: number;
+};
+
 export type BacktestLiqContext = {
   levelType?: string;
   level?: number;
@@ -49,6 +61,7 @@ export type BacktestLiqContext = {
   tp1Price?: number | null;
   smcMeta?: BacktestSmcMeta | null;
   techniques?: string[] | null;
+  tokyoMeta?: BacktestTokyoMeta | null;
 };
 
 export type ChartPriceLineSpec = {
@@ -106,6 +119,77 @@ export function isFibRun(run: BacktestRunSummary | null): boolean {
   return bot.intradayGateFib === true;
 }
 
+export function isTokyoSessionRun(run: BacktestRunSummary | null): boolean {
+  return manualStrategyFromRun(run) === "TOKYO_SESSION";
+}
+
+function utcSessionBoundsMs(entryTsIso: string, startUtc: number, endUtc: number) {
+  const entryMs = new Date(entryTsIso).getTime();
+  const d = new Date(entryMs);
+  const dayStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0);
+  return {
+    startMs: dayStart + startUtc * 3_600_000,
+    endMs: dayStart + endUtc * 3_600_000,
+  };
+}
+
+/** Horizontal segment between two bar open times (chart UTC seconds). */
+export function priceSegmentForTimeWindow(
+  startMs: number,
+  endMs: number,
+  price: number,
+  candles: OhlcCandle[],
+  chartTimesSec: number[],
+  indexByTs: Map<number, number>,
+): LineData[] {
+  if (!Number.isFinite(price)) return [];
+  let startIdx = -1;
+  let endIdx = -1;
+  for (let i = 0; i < candles.length; i++) {
+    const ts = candles[i].ts;
+    if (ts >= startMs && ts < endMs) {
+      if (startIdx < 0) startIdx = i;
+      endIdx = i;
+    }
+  }
+  if (startIdx < 0 || endIdx < 0) return [];
+  const t0 = chartTimesSec[startIdx] as UTCTimestamp;
+  const t1 = chartTimesSec[endIdx] as UTCTimestamp;
+  if (t0 === t1) return [{ time: t0, value: price }];
+  return [
+    { time: t0, value: price },
+    { time: t1, value: price },
+  ];
+}
+
+/** Tokyo session box: full session high/low over 00:00–04:00 UTC (configurable). */
+export function buildTokyoSessionBoxSeries(
+  trade: BacktestTrade,
+  candles: OhlcCandle[],
+  chartTimesSec: number[],
+  indexByTs: Map<number, number>,
+  bot: Record<string, unknown> = {},
+): { top: LineData[]; bottom: LineData[]; high: number; low: number } | null {
+  const startUtc = Number(bot.tokyoSessionStartUtc ?? 0);
+  const endUtc = Number(bot.tokyoSessionEndUtc ?? 4);
+  const { startMs, endMs } = utcSessionBoundsMs(trade.entryTs, startUtc, endUtc);
+  let hi = -Infinity;
+  let lo = Infinity;
+  for (const c of candles) {
+    if (c.ts >= startMs && c.ts < endMs) {
+      hi = Math.max(hi, c.high);
+      lo = Math.min(lo, c.low);
+    }
+  }
+  if (!Number.isFinite(hi) || !Number.isFinite(lo)) return null;
+  return {
+    high: hi,
+    low: lo,
+    top: priceSegmentForTimeWindow(startMs, endMs, hi, candles, chartTimesSec, indexByTs),
+    bottom: priceSegmentForTimeWindow(startMs, endMs, lo, candles, chartTimesSec, indexByTs),
+  };
+}
+
 function num(v: unknown): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
@@ -137,6 +221,8 @@ export type TradeChartZoneSeries = {
   riskBottom: LineData[];
   rewardTop: LineData[];
   rewardBottom: LineData[];
+  tokyoBoxTop: LineData[];
+  tokyoBoxBottom: LineData[];
   taLines: Array<{ data: LineData[]; color: string; lineStyle?: LineStyle; lineWidth?: number }>;
 };
 
@@ -148,7 +234,15 @@ export function buildTradeChartZoneSeries(
   indexByTs: Map<number, number>,
   opts: { showTa: boolean; showPattern: boolean },
 ): TradeChartZoneSeries {
-  const empty = { riskTop: [], riskBottom: [], rewardTop: [], rewardBottom: [], taLines: [] };
+  const empty = {
+    riskTop: [],
+    riskBottom: [],
+    rewardTop: [],
+    rewardBottom: [],
+    tokyoBoxTop: [],
+    tokyoBoxBottom: [],
+    taLines: [],
+  };
   if (!trade) return empty;
 
   const isLong = trade.direction === "BUY";
@@ -181,6 +275,16 @@ export function buildTradeChartZoneSeries(
     }
   }
 
+  let tokyoBoxTop: LineData[] = [];
+  let tokyoBoxBottom: LineData[] = [];
+  if (run && isTokyoSessionRun(run)) {
+    const box = buildTokyoSessionBoxSeries(trade, candles, chartTimesSec, indexByTs, botFromRun(run));
+    if (box) {
+      tokyoBoxTop = box.top;
+      tokyoBoxBottom = box.bottom;
+    }
+  }
+
   const taLines: TradeChartZoneSeries["taLines"] = [];
   if (opts.showTa && run) {
     const ta = buildStrategyTaOverlay(run, trade);
@@ -204,7 +308,7 @@ export function buildTradeChartZoneSeries(
     }
   }
 
-  return { riskTop, riskBottom, rewardTop, rewardBottom, taLines };
+  return { riskTop, riskBottom, rewardTop, rewardBottom, tokyoBoxTop, tokyoBoxBottom, taLines };
 }
 
 function bandLines(
@@ -342,12 +446,47 @@ export function buildLiquidityTaOverlay(
   return { strategyKey: "LIQUIDITY", lines, legend };
 }
 
+export function buildTokyoSessionTaOverlay(
+  trade: BacktestTrade,
+  liq: BacktestLiqContext | null | undefined,
+): StrategyTaOverlay {
+  const lines: ChartPriceLineSpec[] = [];
+  const legend: string[] = ["Tokyo session box — full Asia range (00:00–04:00 UTC)"];
+  const meta = liq?.tokyoMeta;
+  const f2Hi = num(meta?.first2High);
+  const f2Lo = num(meta?.first2Low);
+  if (f2Hi != null) {
+    lines.push({
+      price: f2Hi,
+      color: "#38bdf8",
+      title: "First-2 high",
+      lineStyle: 2,
+      lineWidth: 1,
+    });
+  }
+  if (f2Lo != null) {
+    lines.push({
+      price: f2Lo,
+      color: "#38bdf8",
+      title: "First-2 low",
+      lineStyle: 2,
+      lineWidth: 1,
+    });
+    legend.push("Cyan — first two candle range (entry bias)");
+  }
+  return { strategyKey: "TOKYO_SESSION", lines, legend };
+}
+
 export function buildStrategyTaOverlay(
   run: BacktestRunSummary | null,
   trade: BacktestTrade,
 ): StrategyTaOverlay | null {
   const liq = trade.liqContext as BacktestLiqContext | null | undefined;
   const reason = String(trade.entryReason ?? "");
+
+  if (isTokyoSessionRun(run) || reason.startsWith("tokyo_")) {
+    return buildTokyoSessionTaOverlay(trade, liq);
+  }
 
   if (isSmcIctRun(run) || reason.startsWith("smc_")) {
     return buildSmcIctTaOverlay(trade, liq);

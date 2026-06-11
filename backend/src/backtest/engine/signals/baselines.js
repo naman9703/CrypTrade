@@ -26,12 +26,27 @@ import {
   buildEliteStBacktestAdapter,
   buildEliteStOptsFromCfg,
 } from "../../../strategy/supertrendElite.js";
+import { buildSafeIntradayBacktestAdapter } from "../../../strategy/safeIntraday.js";
 import {
   buildIntradayBacktestAdapter,
   buildIntradayOptsFromCfg,
   mergeAdaptiveCfg,
 } from "../../../strategy/intradayPro.js";
 import { buildVolumeProfileBacktestAdapter } from "../../../strategy/volumeProfileStrategy.js";
+import { buildRegimeAdaptiveBacktestAdapter } from "../../../strategy/regimeAdaptive.js";
+import {
+  buildSituationIntradayBacktestAdapter,
+  resolveSituationRouterCfg,
+} from "../../../strategy/situationIntraday.js";
+import { buildCrtTbsBacktestAdapter, resolveCrtTbsCfg } from "../../../strategy/crtTbsIntraday.js";
+import {
+  buildTokyoSessionBacktestAdapter,
+  resolveTokyoSessionCfg,
+} from "../../../strategy/tokyoSessionIntraday.js";
+import {
+  buildUnifiedEliteBacktestAdapter,
+  buildUnifiedEliteOptsFromCfg,
+} from "../../../strategy/unifiedElite.js";
 
 const WARMUP_BARS = 60;
 
@@ -54,9 +69,14 @@ export function buildBaselineAdapters() {
     APEX_TREND: makeAdapter("APEX_TREND"),
     ELITE_HTF: makeAdapter("ELITE_HTF"),
     SUPERTREND_ELITE: makeAdapter("SUPERTREND_ELITE"),
+    SAFE_INTRADAY: makeAdapter("SAFE_INTRADAY"),
     SR_INTRADAY: makeAdapter("SR_INTRADAY"),
     INTRADAY_PRO: makeAdapter("INTRADAY_PRO"),
     VOLUME_PROFILE: makeAdapter("VOLUME_PROFILE"),
+    UNIFIED_ELITE: makeAdapter("UNIFIED_ELITE"),
+    SITUATION_INTRADAY: makeAdapter("SITUATION_INTRADAY"),
+    CRT_TBS: makeAdapter("CRT_TBS"),
+    TOKYO_SESSION: makeAdapter("TOKYO_SESSION"),
   };
 }
 
@@ -136,6 +156,10 @@ export async function buildBacktestAdapters({ strategyKey, cfg, symbol, tf, cand
     adapters.SUPERTREND_ELITE = buildEliteStBacktestAdapter(candles, buildEliteStOptsFromCfg(cfg));
   }
 
+  if (strategyKey === "SAFE_INTRADAY" && typeof buildSafeIntradayBacktestAdapter === "function") {
+    adapters.SAFE_INTRADAY = buildSafeIntradayBacktestAdapter(candles, cfg);
+  }
+
   if (
     (strategyKey === "SR_INTRADAY" || strategyKey === "INTRADAY_PRO") &&
     typeof buildIntradayBacktestAdapter === "function"
@@ -148,6 +172,30 @@ export async function buildBacktestAdapters({ strategyKey, cfg, symbol, tf, cand
 
   if (strategyKey === "VOLUME_PROFILE" && typeof buildVolumeProfileBacktestAdapter === "function") {
     adapters.VOLUME_PROFILE = buildVolumeProfileBacktestAdapter(candles, cfg, tf);
+  }
+
+  if (strategyKey === "REGIME_ADAPTIVE" && typeof buildRegimeAdaptiveBacktestAdapter === "function") {
+    // Signals fire on the CLOSED signal bar; structure SL/TP ride on liqBrackets.
+    adapters.REGIME_ADAPTIVE = buildRegimeAdaptiveBacktestAdapter(candles, cfg, tf);
+  }
+
+  if (strategyKey === "SITUATION_INTRADAY" && typeof buildSituationIntradayBacktestAdapter === "function") {
+    const sitCfg = resolveSituationRouterCfg(cfg);
+    adapters.SITUATION_INTRADAY = buildSituationIntradayBacktestAdapter(candles, sitCfg, tf);
+  }
+
+  if (strategyKey === "CRT_TBS" && typeof buildCrtTbsBacktestAdapter === "function") {
+    const crtCfg = resolveCrtTbsCfg(cfg);
+    adapters.CRT_TBS = buildCrtTbsBacktestAdapter(candles, crtCfg, tf);
+  }
+
+  if (strategyKey === "TOKYO_SESSION" && typeof buildTokyoSessionBacktestAdapter === "function") {
+    const tokyoCfg = resolveTokyoSessionCfg(cfg);
+    adapters.TOKYO_SESSION = buildTokyoSessionBacktestAdapter(candles, tokyoCfg, tf);
+  }
+
+  if (strategyKey === "UNIFIED_ELITE" && typeof buildUnifiedEliteBacktestAdapter === "function") {
+    adapters.UNIFIED_ELITE = buildUnifiedEliteBacktestAdapter(candles, buildUnifiedEliteOptsFromCfg(cfg));
   }
 
   return adapters;

@@ -28,6 +28,7 @@ import {
 import {
   buildPositionPatternOverlay,
   buildStrategyTaOverlay,
+  isTokyoSessionRun,
   buildTradeChartZoneSeries,
   type ChartPriceLineSpec,
 } from "./backtestChartOverlays";
@@ -42,6 +43,17 @@ import {
   strategyMarkupToLayers,
 } from "./strategyTradeMarkup";
 import { SmcTradeSetupPanel } from "./SmcTradeSetupPanel";
+import { LiquidityTradeSetupPanel } from "./LiquidityTradeSetupPanel";
+import { ChartOverlayLegend } from "./ChartOverlayLegend";
+import {
+  buildDetailOverlayToggleList,
+  defaultOverlayLayerState,
+  filterTradeMarkers,
+  formatMaeMfeLine,
+  inferTaLineLayer,
+  isOverlayLayerOn,
+  type ChartOverlayLayerId,
+} from "./backtestChartOverlayLayers";
 
 const SUPPORTED_TFS = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d"];
 
@@ -247,7 +259,12 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
   const [internalSelected, setInternalSelected] = useState<BacktestTrade | null>(null);
   const [showTaDrawing, setShowTaDrawing] = useState(true);
   const [showPositionPattern, setShowPositionPattern] = useState(true);
+  const [overlayLayers, setOverlayLayers] = useState(defaultOverlayLayerState);
   const [fullscreen, setFullscreen] = useState(false);
+
+  const toggleOverlayLayer = useCallback((id: ChartOverlayLayerId) => {
+    setOverlayLayers((prev) => ({ ...prev, [id]: !isOverlayLayerOn(prev, id) }));
+  }, []);
   const selectedTrade = selectedProp !== undefined ? selectedProp : internalSelected;
   const setSelectedTrade = (t: BacktestTrade | null) => {
     if (onSelectTrade) onSelectTrade(t);
@@ -270,6 +287,8 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
   const zoneRiskBottomSeries = useRef<ISeriesApi<"Line"> | null>(null);
   const zoneRewardTopSeries = useRef<ISeriesApi<"Line"> | null>(null);
   const zoneRewardBottomSeries = useRef<ISeriesApi<"Line"> | null>(null);
+  const zoneTokyoTopSeries = useRef<ISeriesApi<"Line"> | null>(null);
+  const zoneTokyoBottomSeries = useRef<ISeriesApi<"Line"> | null>(null);
   const taZoneSeriesPool = useRef<ISeriesApi<"Line">[]>([]);
   const fetchSeqRef = useRef(0);
   const selectedTradeNumber = selectedTrade?.tradeNumber ?? null;
@@ -285,6 +304,13 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
     if (selectedTradeNumber == null) return null;
     return trades.find((t) => t.tradeNumber === selectedTradeNumber) ?? selectedTrade;
   }, [trades, selectedTradeNumber, selectedTrade]);
+
+  /** Portfolio runs: load candles for the selected trade's coin (or first universe symbol). */
+  const chartSymbol = useMemo(() => {
+    if (tradeForOverlays?.symbol) return String(tradeForOverlays.symbol);
+    if (run.isPortfolio && run.symbols?.length) return run.symbols[0]!;
+    return run.symbol;
+  }, [run.isPortfolio, run.symbol, run.symbols, tradeForOverlays?.symbol]);
 
   const showSessionSrOverlays = useMemo(
     () => shouldShowSessionSrOverlays(run),
@@ -383,11 +409,14 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
       setLoading(true);
       setError(null);
       try {
+        const bot = botFromRunConfig(run);
+        const marketMode = String(bot.marketMode ?? bot.market ?? "FUTURES").toUpperCase();
         const data = await api.getBacktestCandles({
-          symbol: run.symbol,
+          symbol: chartSymbol,
           timeframe: chartTf,
           from: fromMs,
           to: toMs,
+          market: marketMode === "SPOT" ? "spot" : "futures",
         });
         if (fetchSeqRef.current !== seq) return;
         setCandles(Array.isArray(data.candles) ? data.candles : []);
@@ -398,12 +427,43 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
         if (fetchSeqRef.current === seq) setLoading(false);
       }
     })();
-  }, [run?.id, run?.status, run?.symbol, run?.startDate, run?.endDate, chartTf]);
+  }, [run?.id, run?.status, chartSymbol, run?.startDate, run?.endDate, chartTf]);
 
   const strategyMarkupKind = useMemo(
     () => (detailMode ? resolveStrategyMarkupKind(run, tradeForOverlays) : "none"),
     [detailMode, run, tradeForOverlays],
   );
+
+  const taOverlay =
+    detailMode && tradeForOverlays && showTaDrawing && run && !smcLegendMarkup?.hlines.length
+      ? buildStrategyTaOverlay(run, tradeForOverlays)
+      : null;
+  const patternOverlay =
+    detailMode && tradeForOverlays && showPositionPattern
+      ? buildPositionPatternOverlay(tradeForOverlays)
+      : null;
+
+  const overlayToggleList = useMemo(() => {
+    const items = buildDetailOverlayToggleList({
+      showSessionSr: showSessionSrOverlays,
+      hasTrade: tradeForOverlays != null,
+      trade: tradeForOverlays,
+      markup: smcLegendMarkup,
+      taOverlay,
+      patternLegend: patternOverlay?.legend,
+      strategyKind: strategyMarkupKind,
+    });
+    const maeLine = tradeForOverlays ? formatMaeMfeLine(tradeForOverlays) : null;
+    if (!maeLine) return items;
+    return items.map((it) => (it.id === "mae_mfe" ? { ...it, label: maeLine } : it));
+  }, [
+    showSessionSrOverlays,
+    tradeForOverlays,
+    smcLegendMarkup,
+    taOverlay,
+    patternOverlay?.legend,
+    strategyMarkupKind,
+  ]);
 
   const clearDetailOverlays = useCallback(() => {
     try {
@@ -417,6 +477,8 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
     zoneRiskBottomSeries.current?.setData([]);
     zoneRewardTopSeries.current?.setData([]);
     zoneRewardBottomSeries.current?.setData([]);
+    zoneTokyoTopSeries.current?.setData([]);
+    zoneTokyoBottomSeries.current?.setData([]);
     for (const series of taZoneSeriesPool.current) series?.setData([]);
     srDayHighSeries.current?.setData([]);
     srDayLowSeries.current?.setData([]);
@@ -457,23 +519,26 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
 
     const trade = tradeForOverlays;
     const shouldFocusTrade = trade != null && focusedTradeRef.current !== trade.tradeNumber;
+    const layerOn = (id: ChartOverlayLayerId) => isOverlayLayerOn(overlayLayers, id);
 
     try {
-      candleSeries.current.setMarkers(detailTradeMarkers);
+      candleSeries.current.setMarkers(filterTradeMarkers(detailTradeMarkers, overlayLayers));
     } catch {
       /* ignore */
     }
 
     const link = trade ? buildSelectedTradeLine(trade, candles, chartTimesSec, indexByTs) : null;
-    linkSeries.current?.setData(link ?? []);
+    linkSeries.current?.setData(layerOn("trade_link") && link ? link : []);
 
-    const bracketSpecs: ChartPriceLineSpec[] = [];
+    type TaggedBracket = ChartPriceLineSpec & { layer: ChartOverlayLayerId };
+    const bracketSpecs: TaggedBracket[] = [];
     if (trade) {
       bracketSpecs.push({
         price: trade.entryPrice,
         color: "#38bdf8",
         title: `Entry #${trade.tradeNumber}`,
         lineStyle: LineStyle.Dashed,
+        layer: "bracket_entry",
       });
       if (trade.slPrice != null && Number.isFinite(trade.slPrice)) {
         bracketSpecs.push({
@@ -481,6 +546,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
           color: "#ef4444",
           title: `SL #${trade.tradeNumber}`,
           lineStyle: LineStyle.Dashed,
+          layer: "bracket_sl",
         });
       }
       if (trade.tpPrice != null && Number.isFinite(trade.tpPrice)) {
@@ -489,6 +555,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
           color: "#a855f7",
           title: `TP #${trade.tradeNumber}`,
           lineStyle: LineStyle.Dashed,
+          layer: "bracket_tp",
         });
       }
       if (trade.exitPrice != null) {
@@ -497,6 +564,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
           color: "#22c55e",
           title: `Exit #${trade.tradeNumber}`,
           lineStyle: LineStyle.Solid,
+          layer: "bracket_exit",
         });
       }
       const exitBar = barAtTradeTime(trade.exitTs, candles, indexByTs);
@@ -504,19 +572,62 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
         const inside = exitInsideBar(trade.direction, trade.exitPrice, exitBar);
         if (!inside) {
           bracketSpecs.push(
-            { price: exitBar.high, color: "#f97316", title: "Bar high", lineStyle: 3 },
-            { price: exitBar.low, color: "#f97316", title: "Bar low", lineStyle: 3 },
+            {
+              price: exitBar.high,
+              color: "#f97316",
+              title: "Bar high",
+              lineStyle: 3,
+              layer: "bracket_exit",
+            },
+            {
+              price: exitBar.low,
+              color: "#f97316",
+              title: "Bar low",
+              lineStyle: 3,
+              layer: "bracket_exit",
+            },
           );
         }
       }
+      if (strategyMarkupKind === "liquidity" && trade.liqContext) {
+        const lc = trade.liqContext as Record<string, unknown>;
+        const isSupport = trade.direction === "BUY";
+        const lt = String(lc.levelType ?? "").toUpperCase();
+        const srLevel = Number(lc.level);
+        const opposing = Number(lc.opposingLevel);
+        if (Number.isFinite(srLevel) && srLevel > 0) {
+          bracketSpecs.push({
+            price: srLevel,
+            color: isSupport ? "#2dd4bf" : "#fb923c",
+            title: `${isSupport ? "Support" : "Resistance"}${lt ? ` ${lt}` : ""}`,
+            lineStyle: LineStyle.Solid,
+            lineWidth: 2,
+            layer: "liq_sr_zone",
+          });
+        }
+        if (Number.isFinite(opposing) && opposing > 0) {
+          bracketSpecs.push({
+            price: opposing,
+            color: "#c084fc",
+            title: `Liq target ${isSupport ? "(resistance)" : "(support)"}`,
+            lineStyle: LineStyle.Dotted,
+            lineWidth: 2,
+            layer: "liq_opposing",
+          });
+        }
+      }
     }
-    priceLinesRef.current = applyPriceLineSpecs(candleSeries.current, priceLinesRef.current, bracketSpecs);
+    priceLinesRef.current = applyPriceLineSpecs(
+      candleSeries.current,
+      priceLinesRef.current,
+      bracketSpecs.filter((s) => layerOn(s.layer)).map(({ layer: _layer, ...spec }) => spec),
+    );
 
     if (srLineData) {
-      srDayHighSeries.current?.setData(srLineData.prevDayHigh);
-      srDayLowSeries.current?.setData(srLineData.prevDayLow);
-      srWeekHighSeries.current?.setData(srLineData.prevWeekHigh);
-      srWeekLowSeries.current?.setData(srLineData.prevWeekLow);
+      srDayHighSeries.current?.setData(layerOn("session_pdh") ? srLineData.prevDayHigh : []);
+      srDayLowSeries.current?.setData(layerOn("session_pdl") ? srLineData.prevDayLow : []);
+      srWeekHighSeries.current?.setData(layerOn("session_pwh") ? srLineData.prevWeekHigh : []);
+      srWeekLowSeries.current?.setData(layerOn("session_pwl") ? srLineData.prevWeekLow : []);
     } else {
       srDayHighSeries.current?.setData([]);
       srDayLowSeries.current?.setData([]);
@@ -525,23 +636,42 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
     }
 
     const zones =
-      trade && run && !smcLayers?.taLines?.length
+      trade && run && (!smcLayers?.taLines?.length || isTokyoSessionRun(run))
         ? buildTradeChartZoneSeries(run, trade, candles, chartTimesSec, indexByTs, {
             showTa: showTaDrawing,
             showPattern: showPositionPattern,
           })
         : null;
 
-    zoneRiskTopSeries.current?.setData(showPositionPattern && zones ? zones.riskTop : []);
-    zoneRiskBottomSeries.current?.setData(showPositionPattern && zones ? zones.riskBottom : []);
-    zoneRewardTopSeries.current?.setData(showPositionPattern && zones ? zones.rewardTop : []);
-    zoneRewardBottomSeries.current?.setData(showPositionPattern && zones ? zones.rewardBottom : []);
+    zoneRiskTopSeries.current?.setData(
+      showPositionPattern && layerOn("risk_band") && zones ? zones.riskTop : [],
+    );
+    zoneRiskBottomSeries.current?.setData(
+      showPositionPattern && layerOn("risk_band") && zones ? zones.riskBottom : [],
+    );
+    zoneRewardTopSeries.current?.setData(
+      showPositionPattern && layerOn("reward_band") && zones ? zones.rewardTop : [],
+    );
+    zoneRewardBottomSeries.current?.setData(
+      showPositionPattern && layerOn("reward_band") && zones ? zones.rewardBottom : [],
+    );
+    zoneTokyoTopSeries.current?.setData(
+      layerOn("tokyo_session_box") && zones ? zones.tokyoBoxTop : [],
+    );
+    zoneTokyoBottomSeries.current?.setData(
+      layerOn("tokyo_session_box") && zones ? zones.tokyoBoxBottom : [],
+    );
 
     const taLines = smcLayers?.taLines?.length ? smcLayers.taLines : zones?.taLines ?? [];
     for (let i = 0; i < taZoneSeriesPool.current.length; i++) {
       const series = taZoneSeriesPool.current[i];
       const line = taLines[i];
       if (!series) continue;
+      const layer = line?.layer ?? (line ? inferTaLineLayer(line.color, line.lineWidth) : null);
+      if (line?.data.length && layer && !layerOn(layer)) {
+        series.setData([]);
+        continue;
+      }
       if (line?.data.length) {
         series.applyOptions({
           color: line.color,
@@ -578,9 +708,11 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
     run,
     smcLayers,
     smcLegendMarkup,
+    strategyMarkupKind,
     detailTradeMarkers,
     overviewPoints,
     srLineData,
+    overlayLayers,
     clearDetailOverlays,
   ]);
 
@@ -607,6 +739,8 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
       zoneRiskBottomSeries.current = null;
       zoneRewardTopSeries.current = null;
       zoneRewardBottomSeries.current = null;
+      zoneTokyoTopSeries.current = null;
+      zoneTokyoBottomSeries.current = null;
       taZoneSeriesPool.current = [];
       priceLinesRef.current = [];
       taPriceLinesRef.current = [];
@@ -721,6 +855,16 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
         color: "rgba(74,222,128,0.55)",
         lineStyle: LineStyle.Dashed,
       });
+      zoneTokyoTopSeries.current = chartApi.current.addLineSeries({
+        ...zoneOpts,
+        color: "rgba(251,146,60,0.95)",
+        lineStyle: LineStyle.Solid,
+      });
+      zoneTokyoBottomSeries.current = chartApi.current.addLineSeries({
+        ...zoneOpts,
+        color: "rgba(251,146,60,0.55)",
+        lineStyle: LineStyle.Dashed,
+      });
       taZoneSeriesPool.current = [];
       for (let i = 0; i < 14; i++) {
         taZoneSeriesPool.current.push(
@@ -787,16 +931,8 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
     selectedTrade.exitPrice != null &&
     !exitInsideBar(selectedTrade.direction, selectedTrade.exitPrice, selectedExitBar);
 
-  const taOverlay =
-    detailMode && tradeForOverlays && showTaDrawing && run && !smcLegendMarkup?.hlines.length
-      ? buildStrategyTaOverlay(run, tradeForOverlays)
-      : null;
-  const patternOverlay =
-    detailMode && tradeForOverlays && showPositionPattern
-      ? buildPositionPatternOverlay(tradeForOverlays)
-      : null;
-
   const showSmcSetup = detailMode && strategyMarkupKind === "smc_ict" && tradeForOverlays != null;
+  const showLiqSetup = detailMode && strategyMarkupKind === "liquidity" && tradeForOverlays != null;
 
   if (!run) return null;
 
@@ -818,7 +954,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
       )}
       {!loading && !error && !candles.length && (
         <p className="px-3 py-6 text-center text-sm text-slate-500">
-          No stored candles for {run.symbol} / {chartTf}. Sync data first.
+          No stored candles for {chartSymbol} / {chartTf}. Sync data first.
         </p>
       )}
 
@@ -870,61 +1006,23 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
           </p>
         )}
 
-      {(detailMode && (showSessionSrOverlays || tradeForOverlays || taOverlay || patternOverlay)) &&
-        candles.length > 0 &&
-        !loading && (
-        <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-slate-100 px-3 py-1.5 text-[10px] text-slate-600 dark:border-slate-800 dark:text-slate-400">
-          {showSessionSrOverlays && (
-            <>
-              <span>
-                <span className="font-semibold text-sky-400">━━</span> Prev day high
-              </span>
-              <span>
-                <span className="font-semibold text-emerald-400">━━</span> Prev day low
-              </span>
-              <span>
-                <span className="font-semibold text-indigo-400">╌╌</span> Prev week high
-              </span>
-              <span>
-                <span className="font-semibold text-amber-400">╌╌</span> Prev week low
-              </span>
-            </>
-          )}
-          {tradeForOverlays && (
-            <>
-              <span>
-                <span className="font-semibold text-sky-300">╌╌</span> Entry
-              </span>
-              <span>
-                <span className="font-semibold text-red-400">╌╌</span> Stop
-              </span>
-              <span>
-                <span className="font-semibold text-violet-400">╌╌</span> Target
-              </span>
-              <span>
-                <span className="font-semibold text-green-400">━━</span> Exit fill
-              </span>
-            </>
-          )}
-          {smcLegendMarkup?.legend.map((line) => (
-            <span key={line}>{line}</span>
-          ))}
-          {taOverlay?.legend.map((line) => (
-            <span key={line}>{line}</span>
-          ))}
-          {patternOverlay?.legend.map((line) => (
-            <span key={`p-${line}`} className="text-slate-500">
-              {line}
-            </span>
-          ))}
-        </div>
-      )}
-
       <div
         ref={chartRef}
         className={fullscreen ? "h-[calc(100vh-11rem)] w-full" : "h-[min(420px,50vh)] w-full"}
         style={{ display: candles.length && !loading ? "block" : "none" }}
       />
+
+      {detailMode && overlayToggleList.length > 0 && candles.length > 0 && !loading && (
+        <ChartOverlayLegend
+          items={overlayToggleList}
+          layers={overlayLayers}
+          onToggle={toggleOverlayLayer}
+        />
+      )}
+
+      {detailMode && showLiqSetup && tradeForOverlays && showTaDrawing && candles.length > 0 && !loading && (
+        <LiquidityTradeSetupPanel trade={tradeForOverlays} markup={smcLegendMarkup} />
+      )}
 
       {!showSessionSrOverlays && candles.length > 0 && !loading && (
         <p className="border-t border-slate-100 px-3 py-1.5 text-[10px] text-amber-700 dark:border-slate-800 dark:text-amber-300">
@@ -952,7 +1050,8 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
       <div>
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Trade chart</h3>
         <p className="text-[11px] text-slate-500">
-          {run.symbol} · — = all entries/exits · Trade # = zoom + strategy diagram
+          {chartSymbol}
+          {run.isPortfolio ? " (portfolio — pick a trade for its coin)" : ""} · — = all entries/exits · Trade # = zoom
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -963,7 +1062,9 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
             checked={showTaDrawing}
             onChange={(e) => setShowTaDrawing(e.target.checked)}
           />
-          {strategyMarkupKind === "smc_ict" ? "Strategy markup" : "TA drawing"}
+          {strategyMarkupKind === "smc_ict" || strategyMarkupKind === "liquidity"
+            ? "Strategy markup"
+            : "TA drawing"}
         </label>
         <label className="flex cursor-pointer items-center gap-1 text-[11px] text-slate-600 dark:text-slate-400">
           <input

@@ -7,8 +7,14 @@ import { ELITE_HTF } from "./eliteHtf.js";
 import { HTF_LEG_RIDER } from "./htfLegRider.js";
 import { APEX_TREND } from "./apexTrend.js";
 import { SUPERTREND_ELITE } from "./supertrendElite.js";
+import { SAFE_INTRADAY } from "./safeIntraday.js";
 import { SR_INTRADAY, INTRADAY_PRO } from "./intradayPro.js";
 import { VOLUME_PROFILE } from "./volumeProfileStrategy.js";
+import { REGIME_ADAPTIVE } from "./regimeAdaptive.js";
+import { SITUATION_INTRADAY } from "./situationIntraday.js";
+import { CRT_TBS } from "./crtTbsIntraday.js";
+import { TOKYO_SESSION } from "./tokyoSessionIntraday.js";
+import { UNIFIED_ELITE } from "./unifiedElite.js";
 
 const MIN_SIGNAL_SCORE = Number(process.env.MIN_SIGNAL_SCORE || 65);
 
@@ -253,7 +259,13 @@ export const strategies = {
   },
 
   SUPERTREND_ELITE,
+  SAFE_INTRADAY,
   SR_INTRADAY,
   INTRADAY_PRO,
   VOLUME_PROFILE,
+  REGIME_ADAPTIVE,
+  SITUATION_INTRADAY,
+  CRT_TBS,
+  TOKYO_SESSION,
+  UNIFIED_ELITE,
 };

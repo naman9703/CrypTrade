@@ -1,0 +1,192 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  normalizeEliteStRunCfg,
+  buildEliteStOptsFromCfg,
+  resolveHtf1hMinSep,
+  ELITE_ST_TRAIL_PATCH,
+  ELITE_PANEL_DEFAULT_SL_PCT,
+  ELITE_PANEL_DEFAULT_TP_PCT,
+  resolveEliteBracketCfg,
+} from "./supertrendElite.js";
+
+test("normalizeEliteStRunCfg resets Supertrend ladder trail knobs that break 1H Elite", () => {
+  const poisoned = {
+    trailingStopLossAuto: true,
+    trailBufferMode: "ATR",
+    trailBufferRate: 0.0015,
+    trailBufferAtrMult: 0.5,
+    trailPostT02ActivationBufferRate: 0.0025,
+    trailPostT02SpacingFrac: 0.002,
+    trailActivationSlippageFrac: 0.0002,
+  };
+  const out = normalizeEliteStRunCfg(poisoned);
+  for (const [k, v] of Object.entries(ELITE_ST_TRAIL_PATCH)) {
+    assert.equal(out[k], v, `expected ${k}`);
+  }
+});
+
+test("normalizeEliteStRunCfg bumps BTC 1H EMA min sep above BNB default", () => {
+  const out = normalizeEliteStRunCfg({ symbol: "BTCUSDT", eliteStHtf1hMinSep: 0.0003 });
+  assert.equal(out.eliteStHtf1hMinSep, 0.0008);
+  const bnb = normalizeEliteStRunCfg({ symbol: "BNBUSDT", eliteStHtf1hMinSep: 0.0003 });
+  assert.equal(bnb.eliteStHtf1hMinSep, 0.0003);
+});
+
+test("normalizeEliteStRunCfg resets BNB sep when BTC preset (0.08%) was saved by mistake", () => {
+  const out = normalizeEliteStRunCfg({ symbol: "BNBUSDT", eliteStHtf1hMinSep: 0.0008 });
+  assert.equal(out.eliteStHtf1hMinSep, 0.0003);
+});
+
+test("normalizeEliteStRunCfg ships panel default SL/TP when brackets enabled", () => {
+  const out = normalizeEliteStRunCfg({ trailingStopLossAuto: true });
+  assert.equal(out.trailingStopLossAuto, true);
+  assert.equal(out.supertrendFuturesUseFixedSl, true);
+  assert.equal(out.supertrendFuturesFixedSlPct, ELITE_PANEL_DEFAULT_SL_PCT);
+  assert.equal(out.supertrendFuturesUseFixedTp, true);
+  assert.equal(out.supertrendFuturesFixedTpPct, ELITE_PANEL_DEFAULT_TP_PCT);
+});
+
+test("normalizeEliteStRunCfg preserves custom SL/TP pct when brackets enabled", () => {
+  const out = normalizeEliteStRunCfg({
+    supertrendFuturesUseFixedSl: true,
+    supertrendFuturesFixedSlPct: 0.008,
+    supertrendFuturesUseFixedTp: true,
+    supertrendFuturesFixedTpPct: 0.024,
+  });
+  assert.equal(out.supertrendFuturesFixedSlPct, 0.008);
+  assert.equal(out.supertrendFuturesFixedTpPct, 0.024);
+});
+
+test("normalizeEliteStRunCfg disables SL when panel bracket is off", () => {
+  const out = normalizeEliteStRunCfg({
+    supertrendFuturesUseFixedSl: false,
+    supertrendFuturesFixedSlPct: 0.015,
+  });
+  assert.equal(out.supertrendFuturesUseFixedSl, false);
+  assert.equal(out.supertrendFuturesFixedSlPct, 0);
+});
+
+test("normalizeEliteStRunCfg disables TP when panel bracket is off", () => {
+  const out = normalizeEliteStRunCfg({
+    supertrendFuturesUseFixedTp: false,
+    supertrendFuturesFixedTpPct: 0.03,
+  });
+  assert.equal(out.supertrendFuturesUseFixedTp, false);
+  assert.equal(out.supertrendFuturesFixedTpPct, 0);
+});
+
+test("normalizeEliteStRunCfg forces ST trail on when saved strategy has trailingStopLossAuto false", () => {
+  const out = normalizeEliteStRunCfg({
+    trailingStopLossAuto: false,
+    intradaySmcMaxHoldBars: 48,
+    supertrendFuturesUseFixedSl: false,
+  });
+  assert.equal(out.trailingStopLossAuto, true);
+  assert.equal(out.intradaySmcMaxHoldBars, 0);
+  assert.equal(out.supertrendFuturesUseFixedSl, false);
+  assert.equal(out.supertrendFuturesFixedSlPct, 0);
+  assert.equal(out.supertrendFuturesUseFixedTp, true);
+  assert.equal(out.supertrendFuturesFixedTpPct, ELITE_PANEL_DEFAULT_TP_PCT);
+});
+
+test("resolveEliteBracketCfg skips TP when trailing is off", () => {
+  const out = resolveEliteBracketCfg({}, { trailingOn: false });
+  assert.equal(out.supertrendFuturesUseFixedTp, false);
+  assert.equal(out.supertrendFuturesFixedTpPct, 0);
+  assert.equal(out.supertrendFuturesUseFixedSl, true);
+});
+
+test("resolveEliteBracketCfg TRAIL with profile sets ATR disaster SL", () => {
+  const out = resolveEliteBracketCfg(
+    {
+      eliteStAutoBracketMode: "OFF",
+      futuresLeverage: 10,
+      _eliteCoinProfile: { medianAtrPct: 0.00855 },
+    },
+    { trailingOn: true },
+  );
+  assert.equal(out.supertrendFuturesUseFixedSl, true);
+  assert.ok(Number(out.supertrendFuturesFixedSlPct) > 0.004);
+  assert.equal(out.supertrendFuturesUseFixedTp, false);
+  assert.equal(out.supertrendFuturesFixedTpPct, 0);
+});
+
+test("normalizeEliteStRunCfg skips BTC/BNB FIXED overrides when sep mode is ADX", () => {
+  const btc = normalizeEliteStRunCfg({
+    symbol: "BTCUSDT",
+    eliteStHtf1hSepMode: "ADX",
+    eliteStHtf1hMinSep: 0.0003,
+  });
+  assert.equal(btc.eliteStHtf1hMinSep, 0.0003);
+  const bnb = normalizeEliteStRunCfg({
+    symbol: "BNBUSDT",
+    eliteStHtf1hSepMode: "ADX",
+    eliteStHtf1hMinSep: 0.0008,
+  });
+  assert.equal(bnb.eliteStHtf1hMinSep, 0.0008);
+});
+
+test("buildEliteStOptsFromCfg maps dynamic sep fields", () => {
+  const opts = buildEliteStOptsFromCfg({
+    eliteStHtf1hSepMode: "PERCENTILE",
+    eliteStHtf1hMinSepAtrMult: 0.3,
+    eliteStHtf1hMinSepFloor: 0.00025,
+    eliteStHtf1hMinSepCeil: 0.001,
+    eliteStHtf1hSepPercentileLookback: 80,
+    eliteStHtf1hSepPercentileMult: 1.1,
+    eliteStHtf1hSepAdxBase: 0.00035,
+    eliteStHtf1hSepAdxAlpha: 1.2,
+    eliteStHtf1hSepAdxRef: 22,
+    eliteStHtf1hSepCalibratePct: 45,
+    eliteStHtf1hSepCalibrateBars: 100,
+  });
+  assert.equal(opts.htf1hSepMode, "PERCENTILE");
+  assert.equal(opts.htf1hMinSepAtrMult, 0.3);
+  assert.equal(opts.htf1hMinSepFloor, 0.00025);
+  assert.equal(opts.htf1hMinSepCeil, 0.001);
+  assert.equal(opts.htf1hSepPercentileLookback, 80);
+  assert.equal(opts.htf1hSepPercentileMult, 1.1);
+  assert.equal(opts.htf1hSepAdxBase, 0.00035);
+  assert.equal(opts.htf1hSepAdxAlpha, 1.2);
+  assert.equal(opts.htf1hSepAdxRef, 22);
+  assert.equal(opts.htf1hSepCalibratePct, 45);
+  assert.equal(opts.htf1hSepCalibrateBars, 100);
+});
+
+test("resolveHtf1hMinSep ATR mode scales with 1H ATR / price", () => {
+  const ctx = { h1Ema50: [100], h1Atr: [2], h1SepSeries: [], h1Adx: [] };
+  const sep = resolveHtf1hMinSep(
+    { htf1hSepMode: "ATR", htf1hMinSepAtrMult: 0.25, htf1hMinSepFloor: 0.0002, htf1hMinSepCeil: 0.01 },
+    0,
+    ctx,
+  );
+  assert.equal(sep, 0.005);
+});
+
+test("resolveHtf1hMinSep ADX mode tightens sep when ADX is below ref", () => {
+  const ctx = { h1Ema50: [100], h1Atr: [], h1SepSeries: [], h1Adx: [10] };
+  const sep = resolveHtf1hMinSep(
+    {
+      htf1hSepMode: "ADX",
+      htf1hSepAdxBase: 0.0003,
+      htf1hSepAdxAlpha: 1.5,
+      htf1hSepAdxRef: 25,
+      htf1hMinSepFloor: 0,
+      htf1hMinSepCeil: 0.01,
+    },
+    0,
+    ctx,
+  );
+  const expected = 0.0003 * (1 + 1.5 * ((25 - 10) / 25));
+  assert.ok(Math.abs(sep - expected) < 1e-9);
+});
+
+test("resolveHtf1hMinSep FIXED mode returns constant", () => {
+  const sep = resolveHtf1hMinSep(
+    { htf1hSepMode: "FIXED", htf1hMinSep: 0.0005 },
+    0,
+    { h1Ema50: [100], h1Atr: [2], h1SepSeries: [], h1Adx: [30] },
+  );
+  assert.equal(sep, 0.0005);
+});

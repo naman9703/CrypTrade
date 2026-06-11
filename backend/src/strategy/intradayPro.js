@@ -17,13 +17,22 @@ import {
   nearFibLevel,
   evaluateFibRetraceSetup,
 } from "./techniques/fibonacci.js";
-import { buildCvdSeries, cvdMomentum, deltaImbalance } from "./techniques/orderFlow.js";
+import { buildCvdSeries } from "./techniques/orderFlow.js";
+import { applyOrderFlowGate, evaluateOrderFlowSoloSetup } from "./techniques/orderFlowPatterns.js";
+import { buildSessionVwapSeries } from "./techniques/sessionVwap.js";
 import {
   evaluateSessionLiquiditySweep,
   listSessionLiquiditySetups,
   rejectionWickRatio,
   sweepReclaim,
 } from "./techniques/liquidity.js";
+import {
+  evaluateTrendContinuationSetup,
+  vetoCounterTrendLiqSetup,
+  vetoClassicalLiqOnTrendDay,
+  isBreakdownDay,
+  isBreakoutDay,
+} from "./techniques/liquidityTrendContinuation.js";
 import { buildIntradayEntryContext } from "./intradayEntryContext.js";
 import { applyIntradayVetoes } from "./intradayLearnedRules.js";
 import { fillLiqSoloPresetDefaults, fillSmcSoloPresetDefaults, materializeIntradayEngineCfgSync } from "./presets/srIntradayOptimized.js";
@@ -199,8 +208,10 @@ function _precomputeIntradayImpl(candles) {
   const atrSeries = computeAtr(candles, 14);
   const adxSeries = computeAdx(candles, 14);
   const ema9 = ema(closes, 9);
+  const ema21 = ema(closes, 21);
   const cvd = buildCvdSeries(candles);
   const session = buildSessionLevels(candles);
+  const sessionVwap = buildSessionVwapSeries(candles);
 
   const hourly = aggregateToHourly(candles);
   const hCloses = hourly.map((c) => c.close);
@@ -232,7 +243,9 @@ function _precomputeIntradayImpl(candles) {
     atrSeries,
     adxSeries,
     ema9,
+    ema21,
     cvd,
+    sessionVwap,
     volumes,
     htfUp,
     htfDown,
@@ -311,6 +324,15 @@ export function evaluateIntradayBar(candles, idx, opts = {}, pre = null) {
     !gates.orderFlow &&
     !gates.smcIct;
   const smcSoloStack = isSmcIctMode(opts) && gates.smcIct;
+  const ofSoloStack =
+    gates.orderFlow &&
+    !gates.liquidity &&
+    !gates.session &&
+    !gates.fib &&
+    !gates.vp &&
+    !gates.htfRegime &&
+    !gates.institutionalSr &&
+    !gates.smcIct;
 
   const P = pre || precomputeIntraday(candles);
   if (gates.htfRegime && !instSoloStack && !smcSoloStack && !isTradeableRegime(candles, idx, P)) {
@@ -356,6 +378,13 @@ export function evaluateIntradayBar(candles, idx, opts = {}, pre = null) {
     const minFibScore = Number(opts.intradayFibMinScore ?? 10);
     if (fibSig.score < minFibScore) return null;
     return fibSoloSignalFromSetup(fibSig, minFibScore);
+  }
+
+  if (ofSoloStack) {
+    const liveCtx = { orderBookSnapshot: opts.orderBookSnapshot ?? opts._orderBookSnapshot };
+    const ofSig = evaluateOrderFlowSoloSetup(candles, idx, P, opts, liveCtx);
+    if (ofSig) return ofSig;
+    return null;
   }
 
   /** Fib anchor: strict fib setup can fire without RSI/session/liq on the same bar (multi-gate intraday). */
@@ -533,15 +562,30 @@ export function evaluateIntradayBar(candles, idx, opts = {}, pre = null) {
     }
   }
 
+  let ofResult = null;
   if (gates.orderFlow) {
-    const cvdM = cvdMomentum(P.cvd, i, 6);
-    const delta = deltaImbalance(candles, i, 5);
-    if (side === "BUY" && cvdM.bullish && delta.buyPct >= 0.55) {
-      score += 2;
-      techniques.push("cvd_long");
-    } else if (side === "SELL" && cvdM.bearish && delta.sellPct >= 0.55) {
-      score += 2;
-      techniques.push("cvd_short");
+    const liveCtx = { orderBookSnapshot: opts.orderBookSnapshot ?? opts._orderBookSnapshot };
+    const ofGateCfg = {
+      ...opts,
+      intradayOfConfluenceMode: opts.intradayOfConfluenceMode ?? "layer3",
+      intradayOfAllowCvdOnly: opts.intradayOfAllowCvdOnly === true,
+    };
+    ofResult = applyOrderFlowGate(candles, i, side, P, ofGateCfg, liveCtx);
+    if (!ofResult.ok) return null;
+    score += Math.min(8, ofResult.score);
+    for (const t of ofResult.techniques) {
+      if (!techniques.includes(t)) techniques.push(t);
+    }
+    if (ofResult.ofBrackets) {
+      liqBrackets = {
+        slPct: ofResult.ofBrackets.slPct,
+        tpPct: ofResult.ofBrackets.tp2Pct,
+        rr: ofResult.ofBrackets.rr,
+        partialTp: ofResult.ofBrackets.partialTp,
+      };
+    } else if (ofResult.ofMeta?.stopBeyond && !liqBrackets) {
+      const slPct = Math.abs(bar.close - ofResult.ofMeta.stopBeyond) / bar.close;
+      if (slPct > 0) liqBrackets = { slPct, tpPct: null, rr: null };
     }
   }
 
@@ -562,7 +606,12 @@ export function evaluateIntradayBar(candles, idx, opts = {}, pre = null) {
 
   if (req.soloGateTest && req.enabledGateCount === 1) {
     if (gates.liquidity && !hasLiq) return null;
-    if (gates.orderFlow && !techniques.some((t) => t === "cvd_long" || t === "cvd_short")) return null;
+    if (
+      gates.orderFlow &&
+      !techniques.some((t) => t.startsWith("of_") || t === "cvd_long" || t === "cvd_short")
+    ) {
+      return null;
+    }
     if (gates.htfRegime && !techniques.includes("htf")) return null;
   }
 
@@ -586,6 +635,9 @@ export function evaluateIntradayBar(candles, idx, opts = {}, pre = null) {
         : null,
     liqBrackets,
     sizeMult: vpScore.setup === "lvn_vacuum" && opts.intradayLvnSizeMult ? Number(opts.intradayLvnSizeMult) : 1,
+    ofMeta: ofResult?.ofMeta,
+    ofBrackets: ofResult?.ofBrackets,
+    entryIdx: ofResult?.ofMeta?.entryIdx ?? i,
   };
 
   if (gates.htfRegime && opts.intradayLearnedRulesEnabled !== false) {
@@ -714,17 +766,29 @@ export function selectIntradayPicks(candles, opts = {}) {
     !gates.orderFlow &&
     !gates.smcIct;
   const smcSoloStack = isSmcIctMode(o) && gates.smcIct;
+  const ofSoloStack =
+    gates.orderFlow &&
+    !gates.liquidity &&
+    !gates.session &&
+    !gates.fib &&
+    !gates.vp &&
+    !gates.htfRegime &&
+    !gates.institutionalSr &&
+    !gates.smcIct;
   const liqSoloFastPath =
-    !smcSoloStack && o.intradayLiqStrictMode !== false && (liqStackSolo || instSoloStack);
+    !smcSoloStack && !ofSoloStack && o.intradayLiqStrictMode !== false && (liqStackSolo || instSoloStack);
   const smcSoloFastPath = smcSoloStack;
+  const ofSoloFastPath = ofSoloStack;
 
-  /** Liquidity / SMC solo: full-day scan only (skip O(bars) evaluateIntradayBar loop). */
+  /** Liquidity / SMC / OF solo: full-day scan only (skip O(bars) evaluateIntradayBar loop). */
   let candidates = [];
-  if (!liqSoloFastPath && !smcSoloFastPath) {
+  if (!liqSoloFastPath && !smcSoloFastPath && !ofSoloFastPath) {
     for (let i = WARMUP; i < candles.length; i++) {
       const sig = evaluateIntradayBar(candles, i, { ...o, sweepPct: o.sweepPct ?? pre.adaptive.sweepPct }, pre);
       if (!sig || sig.score < minScore) continue;
-      candidates.push({ idx: i, day: utcDayId(candles[i].ts), score: sig.score, sig });
+      const entryIdx = sig.entryIdx ?? sig.ofMeta?.entryIdx ?? i;
+      if (entryIdx >= candles.length) continue;
+      candidates.push({ idx: entryIdx, day: utcDayId(candles[entryIdx].ts), score: sig.score, sig });
     }
   }
 
@@ -759,6 +823,9 @@ export function selectIntradayPicks(candles, opts = {}) {
           : listSessionLiquiditySetups(candles, i, side, pre, liqOpts);
         for (const setup of setups) {
           if (setup.reclaimIdx !== i || setup.score < liqMinScore) continue;
+          if (liqOpts.intradayLiqClassicEnabled === false) continue;
+          if (vetoCounterTrendLiqSetup(setup, candles, i, pre, liqOpts)) continue;
+          if (vetoClassicalLiqOnTrendDay(setup, candles, i, pre, liqOpts)) continue;
           pool.push({
             idx: i,
             day: utcDayId(candles[i].ts),
@@ -766,7 +833,39 @@ export function selectIntradayPicks(candles, opts = {}) {
             sig: liqSoloSignalFromSetup(setup, liqMinScore),
           });
         }
+        if (liqOpts.intradayLiqTrendContinuation === true) {
+          const trend = evaluateTrendContinuationSetup(candles, i, side, pre, liqOpts);
+          if (trend && trend.reclaimIdx === i && trend.score >= liqMinScore) {
+            pool.push({
+              idx: i,
+              day: utcDayId(candles[i].ts),
+              score: trend.score,
+              sig: liqSoloSignalFromSetup(trend, liqMinScore),
+            });
+          }
+        }
       }
+    }
+  } else if (ofSoloFastPath) {
+    const ofMinScore = Number(o.intradayOfSoloMinScore ?? o.srIntradayMinScore ?? resolveIntradayMinScore(o));
+    const ofOpts = {
+      ...o,
+      intradayOfConfluenceMode: o.intradayOfConfluenceMode ?? "full",
+      intradayOfAllowCvdOnly: false,
+    };
+    const liveCtx = { orderBookSnapshot: o.orderBookSnapshot ?? o._orderBookSnapshot };
+    pool = [];
+    for (let i = WARMUP; i < candles.length; i++) {
+      const sig = evaluateOrderFlowSoloSetup(candles, i, pre, ofOpts, liveCtx);
+      if (!sig || sig.score < ofMinScore) continue;
+      const entryIdx = sig.entryIdx ?? sig.ofMeta?.entryIdx ?? i;
+      if (entryIdx >= candles.length) continue;
+      pool.push({
+        idx: entryIdx,
+        day: utcDayId(candles[entryIdx].ts),
+        score: sig.score,
+        sig,
+      });
     }
   }
 
@@ -809,17 +908,30 @@ export function selectIntradayPicks(candles, opts = {}) {
       continue;
     }
     if ((liqSoloFastPath || smcSoloFastPath) && o.intradayLiqOnePickPerDay === true && dayPool.length > 0) {
-      for (const side of ["BUY", "SELL"]) {
-        const sidePool = dayPool.filter((c) => c.sig?.action === side);
+      let sides = ["BUY", "SELL"];
+      if (liqSoloFastPath && o.intradayLiqBreakdownDayBias !== false && dayPool.length > 0) {
+        const ref = dayPool[0];
+        if (isBreakdownDay(candles, ref.idx, pre)) sides = ["SELL"];
+        else if (isBreakoutDay(candles, ref.idx, pre)) sides = ["BUY"];
+      }
+      for (const side of sides) {
+        const sidePool = dayPool
+          .filter((c) => c.sig?.action === side)
+          .sort(
+            (a, b) =>
+              Number(b.sig?.liqBrackets?.liqQuality ?? b.score ?? 0) -
+              Number(a.sig?.liqBrackets?.liqQuality ?? a.score ?? 0),
+          );
         if (!sidePool.length) continue;
-        const best = [...sidePool].sort(
-          (a, b) =>
-            Number(b.sig?.liqBrackets?.liqQuality ?? b.score ?? 0) -
-            Number(a.sig?.liqBrackets?.liqQuality ?? a.score ?? 0),
-        )[0];
-        if (best) {
+        const sideCap =
+          liqSoloFastPath && sides.length === 1 ? Math.max(1, maxPerSide) : 1;
+        let taken = 0;
+        for (const best of sidePool) {
+          if (taken >= sideCap) break;
+          if (chosen.some((x) => Math.abs(x.idx - best.idx) < minGap)) continue;
           chosen.push(best);
           picked.add(best.idx);
+          taken++;
         }
       }
       continue;
@@ -961,6 +1073,11 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradayLiqMinReclaimClosePct: cfg.intradayLiqMinReclaimClosePct,
     intradayLiqMinReclaimBodyRatio: cfg.intradayLiqMinReclaimBodyRatio,
     intradayLiqSessionExtremeMinExtensionPct: cfg.intradayLiqSessionExtremeMinExtensionPct,
+    intradayLiqSessionExtremeSweepPct: cfg.intradayLiqSessionExtremeSweepPct,
+    intradayLiqSweepMinVolRatio: cfg.intradayLiqSweepMinVolRatio,
+    intradayLiqSweepVolLookback: cfg.intradayLiqSweepVolLookback,
+    intradayLiqMaxSweepMinutes: cfg.intradayLiqMaxSweepMinutes,
+    intradayLiqSameBarPinbarWickBody: cfg.intradayLiqSameBarPinbarWickBody,
     intradayGateInstitutionalSr: cfg.intradayGateInstitutionalSr,
     intradaySrAPlusMode: cfg.intradaySrAPlusMode,
     intradaySrMinVolRatio: cfg.intradaySrMinVolRatio,
@@ -1029,6 +1146,54 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradaySmcRegimeAtrLookbackBars: cfg.intradaySmcRegimeAtrLookbackBars,
     intradayLiqMaxTpRr: cfg.intradayLiqMaxTpRr,
     intradayLiqMaxHoldBars: cfg.intradayLiqMaxHoldBars,
+    intradayLiqTrendContinuation: cfg.intradayLiqTrendContinuation,
+    intradayLiqVetoCounterTrend: cfg.intradayLiqVetoCounterTrend,
+    intradayLiqBreakdownDayBias: cfg.intradayLiqBreakdownDayBias,
+    intradayLiqClassicOnTrendDays: cfg.intradayLiqClassicOnTrendDays,
+    intradayLiqTrendOnlyBreakdownDays: cfg.intradayLiqTrendOnlyBreakdownDays,
+    intradayLiqTrendFadeEma: cfg.intradayLiqTrendFadeEma,
+    intradayLiqTrendFadeMinRvol: cfg.intradayLiqTrendFadeMinRvol,
+    intradayLiqTrendRsiMinShort: cfg.intradayLiqTrendRsiMinShort,
+    intradayLiqTrendRsiMaxShort: cfg.intradayLiqTrendRsiMaxShort,
+    intradayLiqTrendDayHighBuffer: cfg.intradayLiqTrendDayHighBuffer,
+    intradayLiqTrendRequireHtf: cfg.intradayLiqTrendRequireHtf,
+    intradayLiqTrendMinAdx: cfg.intradayLiqTrendMinAdx,
+    intradayLiqTrendMinRvol: cfg.intradayLiqTrendMinRvol,
+    intradayLiqTrendMinBarsBeyondLevel: cfg.intradayLiqTrendMinBarsBeyondLevel,
+    intradayLiqTrendMinBodyRatio: cfg.intradayLiqTrendMinBodyRatio,
+    intradayLiqTrendMinDispAtr: cfg.intradayLiqTrendMinDispAtr,
+    intradayLiqTrendSwingLookback: cfg.intradayLiqTrendSwingLookback,
+    intradayOfKillzoneMode: cfg.intradayOfKillzoneMode,
+    intradayOfRequireKeyLevel: cfg.intradayOfRequireKeyLevel,
+    intradayOfRequireConfirmation: cfg.intradayOfRequireConfirmation,
+    intradayOfMinStackBars: cfg.intradayOfMinStackBars,
+    intradayOfMinConfluence: cfg.intradayOfMinConfluence,
+    intradayOfUseOrderBook: cfg.intradayOfUseOrderBook,
+    intradayOfAllowProxy: cfg.intradayOfAllowProxy,
+    intradayOfLevelProximityPct: cfg.intradayOfLevelProximityPct,
+    intradayOfDivergenceLookback: cfg.intradayOfDivergenceLookback,
+    intradayOfAbsorptionVolMult: cfg.intradayOfAbsorptionVolMult,
+    intradayOfAbsorptionRangeAtrMult: cfg.intradayOfAbsorptionRangeAtrMult,
+    intradayOfStackDeltaRatio: cfg.intradayOfStackDeltaRatio,
+    intradayOfBookImbalanceMin: cfg.intradayOfBookImbalanceMin,
+    intradayOfSoloMinScore: cfg.intradayOfSoloMinScore,
+    intradayOfVetoMode: cfg.intradayOfVetoMode,
+    intradayOfMinPartialScore: cfg.intradayOfMinPartialScore,
+    intradayOfConfluenceMode: cfg.intradayOfConfluenceMode,
+    intradayOfAllowCvdOnly: cfg.intradayOfAllowCvdOnly,
+    intradayOfRequirePremiumDiscount: cfg.intradayOfRequirePremiumDiscount,
+    intradayOfTp1Enabled: cfg.intradayOfTp1Enabled,
+    intradayOfTp2Enabled: cfg.intradayOfTp2Enabled,
+    intradayOfPartialFrac: cfg.intradayOfPartialFrac,
+    intradayOfMinRr: cfg.intradayOfMinRr,
+    intradayOfBreakevenAfterPartial: cfg.intradayOfBreakevenAfterPartial,
+    intradayOfApproachLookback: cfg.intradayOfApproachLookback,
+    intradayOfEntryAtSignalClose: cfg.intradayOfEntryAtSignalClose,
+    intradayOfExitOnDeltaAgainst: cfg.intradayOfExitOnDeltaAgainst,
+    intradayOfExitGraceBars: cfg.intradayOfExitGraceBars,
+    intradayOfExitMinDeltaRatio: cfg.intradayOfExitMinDeltaRatio,
+    intradayOfMaxHoldBars: cfg.intradayOfMaxHoldBars,
+    orderBookSnapshot: cfg.orderBookSnapshot ?? cfg._orderBookSnapshot,
   };
 }
 
@@ -1071,6 +1236,8 @@ export function buildIntradayBacktestAdapter(candles, opts = {}, tf = "5m") {
     if (sig.vpBrackets) out.vpBrackets = sig.vpBrackets;
     if (sig.fibBrackets) out.fibBrackets = sig.fibBrackets;
     if (sig.liqBrackets) out.liqBrackets = sig.liqBrackets;
+    if (sig.ofBrackets) out.ofBrackets = sig.ofBrackets;
+    if (sig.ofMeta) out.ofMeta = sig.ofMeta;
     if (sig.smcMeta) out.smcMeta = sig.smcMeta;
     if (sig.techniques) out.techniques = sig.techniques;
     if (sig.sizeMult > 1) out.sizeMult = sig.sizeMult;

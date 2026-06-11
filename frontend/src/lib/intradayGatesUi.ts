@@ -102,7 +102,7 @@ export function readIntradaySmcCfg(bot: Record<string, unknown> | null | undefin
     intradaySmcMinAdx: Number(bot?.intradaySmcMinAdx ?? 15),
     intradaySmcMinRr: Number(bot?.intradaySmcMinRr ?? 1.5),
     intradaySmcSlMode: String(bot?.intradaySmcSlMode ?? "structure"),
-    intradaySmcMaxTpRr: Number(bot?.intradaySmcMaxTpRr ?? 3),
+    intradaySmcMaxTpRr: Number(bot?.intradaySmcMaxTpRr ?? 5),
     intradaySmcMaxHoldBars: Number(bot?.intradaySmcMaxHoldBars ?? 48),
     intradaySmcRequireMss: bot?.intradaySmcRequireMss === true,
     intradaySmcRequireRetrace: bot?.intradaySmcRequireRetrace === true,

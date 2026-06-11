@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CRT+TBS — BNBUSDT Jun 1–8 2026</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card: #131c31;
+      --border: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    h1 { font-size: 1.65rem; margin: 0 0 0.35rem; letter-spacing: -0.02em; }
+    .subtitle { color: var(--muted); margin: 0 0 2rem; font-size: 0.95rem; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+    }
+    .stat {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+    }
+    .stat .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .stat .value { font-size: 1.35rem; font-weight: 700; margin-top: 0.25rem; }
+    .legend {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 2rem;
+      font-size: 0.88rem;
+    }
+    .legend h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+    .legend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.35rem 1rem; }
+    .legend-item { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); }
+    .swatch { width: 22px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+    .swatch.dashed { background: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 9px); height: 2px; }
+    .no-trade {
+      background: var(--card);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 2rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .trade-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .trade-card header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .trade-card h2 { margin: 0; font-size: 1.15rem; }
+    .badge {
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 0.25rem 0.65rem;
+      border-radius: 999px;
+    }
+    .badge.win { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .badge.loss { background: rgba(239,68,68,0.15); color: #f87171; }
+    .chart-wrap {
+      background: #0a0f1a;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      margin-bottom: 1rem;
+    }
+    .chart-svg { width: 100%; height: auto; display: block; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+    .panel h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 0 0.5rem; }
+    .phases { margin: 0; padding-left: 1.2rem; font-size: 0.9rem; }
+    .phases li { margin-bottom: 0.5rem; }
+    .tag {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      margin-right: 0.35rem;
+      vertical-align: middle;
+    }
+    .tag.crt { background: #312e81; color: #c4b5fd; }
+    .tag.tbs { background: #422006; color: #fcd34d; }
+    .tag.choch { background: #500724; color: #f0abfc; }
+    .tag.entry { background: #0c4a6e; color: #7dd3fc; }
+    table.kv { width: 100%; font-size: 0.88rem; border-collapse: collapse; }
+    table.kv td { padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
+    table.kv td:first-child { color: var(--muted); }
+    table.kv td:last-child { text-align: right; font-family: ui-monospace, monospace; }
+    footer { margin-top: 2rem; font-size: 0.8rem; color: var(--muted); }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>CRT + TBS — BNBUSDT Trade Study</h1>
+    <p class="subtitle">15m execution · 4H CRT reference · Jun 1 – 8, 2026 · Strategy preset <code>CRT_TBS_BNB_15M</code> (LONG only)</p>
+
+    <div class="summary">
+      <div class="stat"><div class="label">Logical entries</div><div class="value">2</div></div>
+      <div class="stat"><div class="label">Net PnL (2% risk sim)</div><div class="value">$18.10</div></div>
+      <div class="stat"><div class="label">Wins / Losses</div><div class="value">1 / 1</div></div>
+      <div class="stat"><div class="label">Quiet days</div><div class="value">5</div></div>
+    </div>
+
+    <div class="legend">
+      <h2>Chart markings (matches app overlays)</h2>
+      <div class="legend-grid">
+        <div class="legend-item"><span class="swatch" style="background:#c084fc"></span> CRT High / TP2</div>
+        <div class="legend-item"><span class="swatch" style="background:#a3e635"></span> EQ — TP1 partial</div>
+        <div class="legend-item"><span class="swatch" style="background:#f472b6"></span> CRT Low — sweep level</div>
+        <div class="legend-item"><span class="swatch" style="background:#fb7185"></span> Sweep wick — SL anchor</div>
+        <div class="legend-item"><span class="swatch" style="background:#e879f9"></span> CHoCH level</div>
+        <div class="legend-item"><span class="swatch" style="background:#f87171"></span> Stop loss</div>
+        <div class="legend-item"><span class="swatch" style="background:#38bdf8"></span> Entry marker</div>
+        <div class="legend-item"><span class="swatch" style="background:#fbbf24"></span> TBS manipulation bar</div>
+        <div class="legend-item"><span style="width:22px;height:14px;background:rgba(56,189,248,0.2);border-radius:2px"></span> London killzone (07–10 UTC)</div>
+        <div class="legend-item"><span style="width:22px;height:14px;background:rgba(52,211,153,0.12);border-radius:2px"></span> Discount zone (below EQ)</div>
+      </div>
+    </div>
+
+    <div class="no-trade">
+      <strong>No CRT+TBS entries</strong> on 2026-06-02, 2026-06-03, 2026-06-04, 2026-06-06, 2026-06-07 — no valid TBS + CHoCH combo in London/NY killzone met all filters on those UTC days.
+    </div>
+
+    
+    <section class="trade-card" id="trade-1">
+      <header>
+        <h2>Trade 1 — 2026-06-01</h2>
+        <span class="badge win">WIN · $20.76</span>
+      </header>
+      <div class="chart-wrap"><svg viewBox="0 0 920 420" class="chart-svg" role="img"><rect x="387.0322580645161" y="36" width="27.419354838709676" height="332" fill="rgba(56,189,248,0.07)" /><rect x="414.4516129032258" y="36" width="27.419354838709676" height="332" fill="rgba(56,189,248,0.07)" /><rect x="441.8709677419355" y="36" width="27.419354838709676" height="332" fill="rgba(56,189,248,0.07)" /><rect x="469.2903225806451" y="36" width="27.419354838709676" height="332" fill="rgba(56,189,248,0.07)" /><rect x="496.7096774193548" y="36" width="27.419354838709676" height="332" fill="rgba(56,189,248,0.07)" /><rect x="524.1290322580645" y="36" width="27.419354838709676" height="332" fill="rgba(56,189,248,0.07)" /><rect x="551.5483870967741" y="36" width="27.419354838709676" height="332" fill="rgba(56,189,248,0.07)" /><rect x="578.9677419354839" y="36" width="27.419354838709676" height="332" fill="rgba(56,189,248,0.07)" /><rect x="606.3870967741935" y="36" width="27.419354838709676" height="332" fill="rgba(56,189,248,0.07)" /><rect x="633.8064516129032" y="36" width="27.419354838709676" height="332" fill="rgba(56,189,248,0.07)" /><rect x="661.2258064516129" y="36" width="27.419354838709676" height="332" fill="rgba(56,189,248,0.07)" /><rect x="688.6451612903226" y="36" width="27.419354838709676" height="332" fill="rgba(56,189,248,0.07)" /><rect x="58" y="222.6297154695263" width="850" height="145.3702845304737" fill="rgba(52,211,153,0.06)" /><line x1="58" y1="140.65101231620477" x2="908" y2="140.65101231620477" stroke="#c084fc" stroke-width="1.5" stroke-dasharray="6,4" />
+      <text x="912" y="144.65101231620477" fill="#c084fc" font-size="10" font-family="ui-monospace,monospace">CRT High 717.41</text><line x1="58" y1="222.6297154695263" x2="908" y2="222.6297154695263" stroke="#a3e635" stroke-width="1.5" stroke-dasharray="4,3" />
+      <text x="912" y="226.6297154695263" fill="#a3e635" font-size="10" font-family="ui-monospace,monospace">EQ 705.31</text><line x1="58" y1="304.6084186228486" x2="908" y2="304.6084186228486" stroke="#f472b6" stroke-width="1.5" stroke-dasharray="6,4" />
+      <text x="912" y="308.6084186228486" fill="#f472b6" font-size="10" font-family="ui-monospace,monospace">CRT Low 693.20</text><line x1="58" y1="308.1300151234463" x2="908" y2="308.1300151234463" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,3" />
+      <text x="912" y="312.1300151234463" fill="#fb7185" font-size="10" font-family="ui-monospace,monospace">Sweep wick 692.68</text><line x1="58" y1="326.88928879008824" x2="908" y2="326.88928879008824" stroke="#e879f9" stroke-width="1.5" stroke-dasharray="3,2" />
+      <text x="912" y="330.88928879008824" fill="#e879f9" font-size="10" font-family="ui-monospace,monospace">CHoCH 689.91</text><line x1="58" y1="315.1665712696966" x2="908" y2="315.1665712696966" stroke="#f87171" stroke-width="1.5" stroke-dasharray="5,3" />
+      <text x="912" y="319.1665712696966" fill="#f87171" font-size="10" font-family="ui-monospace,monospace">SL 691.64</text><line x1="58" y1="222.6297154695263" x2="908" y2="222.6297154695263" stroke="#84cc16" stroke-width="1.5" stroke-dasharray="4,2" />
+      <text x="912" y="216.6297154695263" fill="#84cc16" font-size="10" font-family="ui-monospace,monospace">TP1 705.31</text><line x1="58" y1="140.65101231620477" x2="908" y2="140.65101231620477" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="4,2" />
+      <text x="912" y="144.65101231620477" fill="#a855f7" font-size="10" font-family="ui-monospace,monospace">TP2 717.41</text><line x1="71.70967741935483" y1="217.58435125232546" x2="71.70967741935483" y2="253.68071538344492" stroke="#ef4444" stroke-width="1" /><rect x="64.16935483870967" y="230.72261511993722" width="15.080645161290324" height="19.77511881104479" fill="#ef4444" rx="0.5" /><text x="71.70967741935483" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-01 04:00</text><line x1="99.12903225806451" y1="249.48188878657916" x2="99.12903225806451" y2="278.8059519550127" stroke="#ef4444" stroke-width="1" /><rect x="91.58870967741935" y="250.497733930982" width="15.080645161290324" height="25.59929763895616" fill="#ef4444" rx="0.5" /><line x1="126.54838709677419" y1="250.56545694060958" x2="126.54838709677419" y2="277.9255528298635" stroke="#22c55e" stroke-width="1" /><rect x="119.00806451612902" y="267.69937837620665" width="15.080645161290324" height="8.465376203358403" fill="#22c55e" rx="0.5" /><line x1="153.96774193548387" y1="258.5567720765795" x2="153.96774193548387" y2="282.4629944748633" stroke="#ef4444" stroke-width="1" /><rect x="146.42741935483872" y="267.7671013858335" width="15.080645161290324" height="1" fill="#ef4444" rx="0.5" /><line x1="181.38709677419354" y1="266.2771951740423" x2="181.38709677419354" y2="277.5869377817287" stroke="#22c55e" stroke-width="1" /><rect x="173.84677419354838" y="266.2771951740423" width="15.080645161290324" height="1.6253522310448147" fill="#22c55e" rx="0.5" /><text x="181.38709677419354" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-01 05:00</text><line x1="208.80645161290323" y1="265.5322420681466" x2="208.80645161290323" y2="289.7770795145652" stroke="#ef4444" stroke-width="1" /><rect x="201.26612903225808" y="266.2771951740423" width="15.080645161290324" height="14.966785127537719" fill="#ef4444" rx="0.5" /><line x1="236.2258064516129" y1="274.2685103100129" x2="236.2258064516129" y2="293.7727370825505" stroke="#22c55e" stroke-width="1" /><rect x="228.68548387096774" y="274.33623331963975" width="15.080645161290324" height="6.9077469819402495" fill="#22c55e" rx="0.5" /><line x1="263.64516129032256" y1="267.49620934732627" x2="263.64516129032256" y2="288.82895737978913" stroke="#ef4444" stroke-width="1" /><rect x="256.1048387096774" y="274.4039563292665" width="15.080645161290324" height="9.345775328507557" fill="#ef4444" rx="0.5" /><line x1="291.06451612903226" y1="280.2281351571772" x2="291.06451612903226" y2="305.5565407576254" stroke="#ef4444" stroke-width="1" /><rect x="283.5241935483871" y="283.6820086481473" width="15.080645161290324" height="1.9639672791789167" fill="#ef4444" rx="0.5" /><text x="291.06451612903226" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-01 06:00</text><line x1="318.48387096774195" y1="284.22379272516173" x2="318.48387096774195" y2="296.6848264965054" stroke="#ef4444" stroke-width="1" /><rect x="310.94354838709677" y="285.71369893695305" width="15.080645161290324" height="4.266549606492504" fill="#ef4444" rx="0.5" /><line x1="345.9032258064516" y1="289.9125255338188" x2="345.9032258064516" y2="318.5593586059835" stroke="#ef4444" stroke-width="1" /><rect x="338.3629032258064" y="289.9125255338188" width="15.080645161290324" height="22.8903772538809" fill="#ef4444" rx="0.5" /><line x1="373.3225806451613" y1="285.3073608791922" x2="373.3225806451613" y2="316.12133025941625" stroke="#22c55e" stroke-width="1" /><rect x="365.7822580645161" y="300.2741460067292" width="15.080645161290324" height="12.461033771343693" fill="#22c55e" rx="0.5" /><line x1="400.741935483871" y1="293.56956805366934" x2="400.741935483871" y2="308.1300151234463" stroke="#22c55e" stroke-width="1" /><rect x="393.2016129032258" y="296.14304241949026" width="15.080645161290324" height="4.198826596865729" fill="#22c55e" rx="0.5" /><text x="400.741935483871" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-01 07:00</text><line x1="428.1612903225806" y1="294.85630523658017" x2="428.1612903225806" y2="336.2350641185958" stroke="#ef4444" stroke-width="1" /><rect x="420.62096774193543" y="296.21076542911703" width="15.080645161290324" height="33.861504813433385" fill="#ef4444" rx="0.5" /><line x1="455.5806451612903" y1="327.16018082859546" x2="455.5806451612903" y2="348.0865908032975" stroke="#ef4444" stroke-width="1" /><rect x="448.0403225806451" y="330.0045472329236" width="15.080645161290324" height="15.644015223806605" fill="#ef4444" rx="0.5" /><line x1="483" y1="342.1269659561333" x2="483" y2="358.7191033147152" stroke="#ef4444" stroke-width="1" /><rect x="475.4596774193548" y="345.5808394471034" width="15.080645161290324" height="3.8602115487309447" fill="#ef4444" rx="0.5" /><line x1="510.41935483870964" y1="326.88928879008824" x2="510.41935483870964" y2="355.265229823745" stroke="#22c55e" stroke-width="1" /><rect x="502.87903225806446" y="333.1198056757597" width="15.080645161290324" height="16.321245320074638" fill="#22c55e" rx="0.5" /><text x="510.41935483870964" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-01 08:00</text><line x1="537.8387096774193" y1="331.0203923773272" x2="537.8387096774193" y2="353.7076006023269" stroke="#ef4444" stroke-width="1" /><rect x="530.2983870967741" y="333.1198056757597" width="15.080645161290324" height="13.68004794462695" fill="#ef4444" rx="0.5" /><line x1="565.258064516129" y1="330.0722702425504" x2="565.258064516129" y2="353.97849264083493" stroke="#22c55e" stroke-width="1" /><rect x="557.7177419354839" y="335.1514959645654" width="15.080645161290324" height="11.71608066544809" fill="#22c55e" rx="0.5" /><line x1="592.6774193548387" y1="324.38353743389416" x2="592.6774193548387" y2="342.8719190620289" stroke="#22c55e" stroke-width="1" /><rect x="585.1370967741935" y="326.0766126745658" width="15.080645161290324" height="9.00716028037283" fill="#22c55e" rx="0.5" /><line x1="620.0967741935484" y1="312.7351797780729" x2="620.0967741935484" y2="335.96417208008785" stroke="#22c55e" stroke-width="1" /><rect x="612.5564516129033" y="314.08963997061056" width="15.080645161290324" height="12.054695713582078" fill="#22c55e" rx="0.5" /><text x="620.0967741935484" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-01 09:00</text><line x1="647.516129032258" y1="286.45865204284866" x2="647.516129032258" y2="314.3605320091178" stroke="#22c55e" stroke-width="1" /><rect x="639.9758064516129" y="290.183417572326" width="15.080645161290324" height="23.90622239828457" fill="#22c55e" rx="0.5" /><line x1="674.9354838709677" y1="127.91908650635386" x2="674.9354838709677" y2="296.61710348687865" stroke="#22c55e" stroke-width="1" /><rect x="667.3951612903226" y="134.55594144978693" width="15.080645161290324" height="155.69519913216584" fill="#22c55e" rx="0.5" /><line x1="702.3548387096774" y1="45.90652184821817" x2="702.3548387096774" y2="195.91298817172782" stroke="#ef4444" stroke-width="1" /><rect x="694.8145161290323" y="134.55594144978693" width="15.080645161290324" height="43.41044917082135" fill="#ef4444" rx="0.5" /><line x1="729.7741935483871" y1="155.550074434115" x2="729.7741935483871" y2="265.39679604889295" stroke="#ef4444" stroke-width="1" /><rect x="722.233870967742" y="177.96639062060828" width="15.080645161290324" height="35.89319510223905" fill="#ef4444" rx="0.5" /><text x="729.7741935483871" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-01 10:00</text><line x1="757.1935483870967" y1="212.50512553031044" x2="757.1935483870967" y2="265.39679604889295" stroke="#ef4444" stroke-width="1" /><rect x="749.6532258064516" y="213.92730873247413" width="15.080645161290324" height="45.64530848850822" fill="#ef4444" rx="0.5" /><line x1="784.6129032258065" y1="244.33494005493736" x2="784.6129032258065" y2="289.844802524192" stroke="#ef4444" stroke-width="1" /><rect x="777.0725806451613" y="259.6403402306091" width="15.080645161290324" height="6.501408924179486" fill="#ef4444" rx="0.5" /><line x1="812.0322580645161" y1="235.05688773605658" x2="812.0322580645161" y2="271.0178058479232" stroke="#22c55e" stroke-width="1" /><rect x="804.491935483871" y="241.01651258322082" width="15.080645161290324" height="25.19295958119457" fill="#22c55e" rx="0.5" /><line x1="839.4516129032257" y1="199.36686166269794" x2="839.4516129032257" y2="242.30324976613164" stroke="#22c55e" stroke-width="1" /><rect x="831.9112903225806" y="217.99068931008628" width="15.080645161290324" height="23.025823273134534" fill="#22c55e" rx="0.5" /><text x="839.4516129032257" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-01 11:00</text><line x1="866.8709677419355" y1="212.3696795110561" x2="866.8709677419355" y2="248.3983206325495" stroke="#ef4444" stroke-width="1" /><rect x="859.3306451612904" y="217.9229663004595" width="15.080645161290324" height="28.443664043284315" fill="#ef4444" rx="0.5" /><line x1="894.2903225806451" y1="244.74127811269895" x2="894.2903225806451" y2="263.2973827504605" stroke="#ef4444" stroke-width="1" /><rect x="886.75" y="246.43435335337062" width="15.080645161290324" height="6.5691319338054655" fill="#ef4444" rx="0.5" /><circle cx="400.741935483871" cy="308.1300151234463" r="6" fill="#fbbf24" stroke="#0f172a" stroke-width="1.5" /><text x="400.741935483871" y="294.1300151234463" fill="#fbbf24" font-size="10" font-weight="600" text-anchor="middle" font-family="system-ui,sans-serif">TBS</text><polygon points="592.6774193548387,316.88928879008824 585.6774193548387,330.88928879008824 599.6774193548387,330.88928879008824" fill="#e879f9" /><text x="592.6774193548387" y="312.88928879008824" fill="#e879f9" font-size="10" font-weight="600" text-anchor="middle" font-family="system-ui,sans-serif">CHoCH</text><polygon points="620.0967741935484,304.08963997061056 613.0967741935484,318.08963997061056 627.0967741935484,318.08963997061056" fill="#38bdf8" /><text x="620.0967741935484" y="300.08963997061056" fill="#38bdf8" font-size="10" font-weight="600" text-anchor="middle" font-family="system-ui,sans-serif">ENTRY</text><circle cx="647.516129032258" cy="310.67305077308464" r="6" fill="#4ade80" stroke="#0f172a" stroke-width="1.5" /><text x="647.516129032258" y="296.67305077308464" fill="#4ade80" font-size="10" font-weight="600" text-anchor="middle" font-family="system-ui,sans-serif">TP1_PARTIAL</text><circle cx="674.9354838709677" cy="143.0802705330252" r="6" fill="#4ade80" stroke="#0f172a" stroke-width="1.5" /><text x="674.9354838709677" y="129.0802705330252" fill="#4ade80" font-size="10" font-weight="600" text-anchor="middle" font-family="system-ui,sans-serif">TP2</text></svg></div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Setup phases</h3>
+          <ol class="phases">
+            <li><span class="tag crt">CRT</span> Prior 4H candle (2026-06-01 00:00) → High <strong>717.41</strong>, Low <strong>693.20</strong>, EQ <strong>705.31</strong></li>
+            <li><span class="tag tbs">TBS</span> 2026-06-01 07:00 UTC — swept to <strong>692.68</strong>, closed <strong>694.45</strong> above CRT low. Wick ratio 53%. Killzone h7 UTC ✓</li>
+            <li><span class="tag choch">CHoCH</span> bullish_choch @ 689.91 (08:45 UTC) — 8 bars after TBS</li>
+            <li><span class="tag entry">ENTRY</span> 2026-06-01 09:00 UTC long @ <strong>691.80</strong> (discount ✓)</li>
+          </ol>
+        </div>
+        <div class="panel">
+          <h3>Brackets</h3>
+          <table class="kv">
+            <tr><td>Stop (below sweep wick)</td><td>691.64</td></tr>
+            <tr><td>TP1 @ equilibrium</td><td>705.31</td></tr>
+            <tr><td>TP2 @ CRT high</td><td>717.41</td></tr>
+            <tr><td>R:R to TP2</td><td>161.05</td></tr>
+          </table>
+          <h3>Exits</h3>
+          <ul><li><strong>tp1_partial</strong> @ 2026-06-01 09:15 UTC — $-0.34 (exit 692.30)</li><li><strong>tp2</strong> @ 2026-06-01 09:30 UTC — $21.10 (exit 717.05)</li></ul>
+        </div>
+      </div>
+    </section>
+    <section class="trade-card" id="trade-2">
+      <header>
+        <h2>Trade 2 — 2026-06-05</h2>
+        <span class="badge loss">LOSS · $-2.66</span>
+      </header>
+      <div class="chart-wrap"><svg viewBox="0 0 920 420" class="chart-svg" role="img"><rect x="259.3157894736842" y="36" width="22.36842105263158" height="332" fill="rgba(56,189,248,0.07)" /><rect x="281.6842105263158" y="36" width="22.36842105263158" height="332" fill="rgba(56,189,248,0.07)" /><rect x="304.0526315789474" y="36" width="22.36842105263158" height="332" fill="rgba(56,189,248,0.07)" /><rect x="326.42105263157896" y="36" width="22.36842105263158" height="332" fill="rgba(56,189,248,0.07)" /><rect x="348.7894736842105" y="36" width="22.36842105263158" height="332" fill="rgba(56,189,248,0.07)" /><rect x="371.1578947368421" y="36" width="22.36842105263158" height="332" fill="rgba(56,189,248,0.07)" /><rect x="393.5263157894737" y="36" width="22.36842105263158" height="332" fill="rgba(56,189,248,0.07)" /><rect x="415.89473684210526" y="36" width="22.36842105263158" height="332" fill="rgba(56,189,248,0.07)" /><rect x="438.2631578947368" y="36" width="22.36842105263158" height="332" fill="rgba(56,189,248,0.07)" /><rect x="460.63157894736844" y="36" width="22.36842105263158" height="332" fill="rgba(56,189,248,0.07)" /><rect x="483" y="36" width="22.36842105263158" height="332" fill="rgba(56,189,248,0.07)" /><rect x="505.36842105263156" y="36" width="22.36842105263158" height="332" fill="rgba(56,189,248,0.07)" /><rect x="706.6842105263158" y="36" width="22.36842105263158" height="332" fill="rgba(167,139,250,0.07)" /><rect x="729.0526315789474" y="36" width="22.36842105263158" height="332" fill="rgba(167,139,250,0.07)" /><rect x="751.421052631579" y="36" width="22.36842105263158" height="332" fill="rgba(167,139,250,0.07)" /><rect x="773.7894736842105" y="36" width="22.36842105263158" height="332" fill="rgba(167,139,250,0.07)" /><rect x="796.1578947368421" y="36" width="22.36842105263158" height="332" fill="rgba(167,139,250,0.07)" /><rect x="818.5263157894736" y="36" width="22.36842105263158" height="332" fill="rgba(167,139,250,0.07)" /><rect x="840.8947368421052" y="36" width="22.36842105263158" height="332" fill="rgba(167,139,250,0.07)" /><rect x="863.2631578947369" y="36" width="22.36842105263158" height="332" fill="rgba(167,139,250,0.07)" /><rect x="885.6315789473684" y="36" width="22.36842105263158" height="332" fill="rgba(167,139,250,0.07)" /><rect x="58" y="114.80648737946082" width="850" height="253.1935126205392" fill="rgba(52,211,153,0.06)" /><line x1="58" y1="46.00175797663286" x2="908" y2="46.00175797663286" stroke="#c084fc" stroke-width="1.5" stroke-dasharray="6,4" />
+      <text x="912" y="50.00175797663286" fill="#c084fc" font-size="10" font-family="ui-monospace,monospace">CRT High 608.35</text><line x1="58" y1="114.80648737946082" x2="908" y2="114.80648737946082" stroke="#a3e635" stroke-width="1.5" stroke-dasharray="4,3" />
+      <text x="912" y="118.80648737946082" fill="#a3e635" font-size="10" font-family="ui-monospace,monospace">EQ 599.98</text><line x1="58" y1="183.61121678228878" x2="908" y2="183.61121678228878" stroke="#f472b6" stroke-width="1.5" stroke-dasharray="6,4" />
+      <text x="912" y="187.61121678228878" fill="#f472b6" font-size="10" font-family="ui-monospace,monospace">CRT Low 591.61</text><line x1="58" y1="204.244415205359" x2="908" y2="204.244415205359" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,3" />
+      <text x="912" y="208.244415205359" fill="#fb7185" font-size="10" font-family="ui-monospace,monospace">Sweep wick 589.10</text><line x1="58" y1="165.4441376926529" x2="908" y2="165.4441376926529" stroke="#e879f9" stroke-width="1.5" stroke-dasharray="3,2" />
+      <text x="912" y="169.4441376926529" fill="#e879f9" font-size="10" font-family="ui-monospace,monospace">CHoCH 593.82</text><line x1="58" y1="211.50836970199077" x2="908" y2="211.50836970199077" stroke="#f87171" stroke-width="1.5" stroke-dasharray="5,3" />
+      <text x="912" y="215.50836970199077" fill="#f87171" font-size="10" font-family="ui-monospace,monospace">SL 588.22</text><line x1="58" y1="114.80648737946082" x2="908" y2="114.80648737946082" stroke="#84cc16" stroke-width="1.5" stroke-dasharray="4,2" />
+      <text x="912" y="108.80648737946082" fill="#84cc16" font-size="10" font-family="ui-monospace,monospace">TP1 599.98</text><line x1="58" y1="46.00175797663286" x2="908" y2="46.00175797663286" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="4,2" />
+      <text x="912" y="50.00175797663286" fill="#a855f7" font-size="10" font-family="ui-monospace,monospace">TP2 608.35</text><line x1="69.1842105263158" y1="88.99443835617782" x2="69.1842105263158" y2="158.3745956034743" stroke="#22c55e" stroke-width="1" /><rect x="63.03289473684211" y="95.3241446453267" width="12.30263157894737" height="48.418142913101036" fill="#22c55e" rx="0.5" /><text x="69.1842105263158" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-05 04:45</text><line x1="91.55263157894737" y1="87.92578664502281" x2="91.55263157894737" y2="130.83626304678668" stroke="#ef4444" stroke-width="1" /><rect x="85.40131578947368" y="95.3241446453267" width="12.30263157894737" height="32.717183156900404" fill="#ef4444" rx="0.5" /><line x1="113.92105263157895" y1="120.39635786857998" x2="113.92105263157895" y2="140.3719244694006" stroke="#ef4444" stroke-width="1" /><rect x="107.76973684210526" y="128.0413278022271" width="12.30263157894737" height="1" fill="#ef4444" rx="0.5" /><line x1="136.28947368421052" y1="125.82182040213603" x2="136.28947368421052" y2="208.7656339833231" stroke="#ef4444" stroke-width="1" /><rect x="130.13815789473682" y="128.20573575778928" width="12.30263157894737" height="69.29795326951538" fill="#ef4444" rx="0.5" /><line x1="158.6578947368421" y1="182.9535849600392" x2="158.6578947368421" y2="249.53880696277605" stroke="#ef4444" stroke-width="1" /><rect x="152.50657894736844" y="197.58589300508572" width="12.30263157894737" height="41.84182469060798" fill="#ef4444" rx="0.5" /><line x1="181.0263157894737" y1="232.19376765095194" x2="181.0263157894737" y2="277.1593434972448" stroke="#ef4444" stroke-width="1" /><rect x="174.875" y="239.4277176956937" width="12.30263157894737" height="31.812939401307545" fill="#ef4444" rx="0.5" /><text x="181.0263157894737" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-05 06:00</text><line x1="203.39473684210526" y1="260.30752805210807" x2="203.39473684210526" y2="358.62348547837047" stroke="#ef4444" stroke-width="1" /><rect x="197.24342105263156" y="271.1584531192202" width="12.30263157894737" height="37.40280989042668" fill="#ef4444" rx="0.5" /><line x1="225.76315789473685" y1="251.34729447396174" x2="225.76315789473685" y2="318.83676023229145" stroke="#22c55e" stroke-width="1" /><rect x="219.61184210526318" y="257.18377689642415" width="12.30263157894737" height="51.459690091003836" fill="#22c55e" rx="0.5" /><line x1="248.1315789473684" y1="250.52525469615" x2="248.1315789473684" y2="288.50349243104426" stroke="#ef4444" stroke-width="1" /><rect x="241.98026315789474" y="257.2659808742052" width="12.30263157894737" height="15.454347822857358" fill="#ef4444" rx="0.5" /><line x1="270.5" y1="266.30841843013263" x2="270.5" y2="323.68679492137903" stroke="#ef4444" stroke-width="1" /><rect x="264.3486842105263" y="272.8025326748437" width="12.30263157894737" height="49.980018490943394" fill="#ef4444" rx="0.5" /><line x1="292.86842105263156" y1="226.1928772729283" x2="292.86842105263156" y2="323.27577503247363" stroke="#22c55e" stroke-width="1" /><rect x="286.71710526315786" y="236.30396654000978" width="12.30263157894737" height="86.5607886035584" fill="#22c55e" rx="0.5" /><text x="292.86842105263156" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-05 07:15</text><line x1="315.2368421052632" y1="184.02223667119512" x2="315.2368421052632" y2="240.4141654290676" stroke="#22c55e" stroke-width="1" /><rect x="309.0855263157895" y="189.8587190936566" width="12.30263157894737" height="46.527451424134256" fill="#22c55e" rx="0.5" /><line x1="337.60526315789474" y1="165.4441376926529" x2="337.60526315789474" y2="204.244415205359" stroke="#22c55e" stroke-width="1" /><rect x="331.45394736842104" y="168.89670475946207" width="12.30263157894737" height="20.87981035641343" fill="#22c55e" rx="0.5" /><line x1="359.9736842105263" y1="168.56788884833682" x2="359.9736842105263" y2="210.82073342785202" stroke="#ef4444" stroke-width="1" /><rect x="353.8223684210526" y="168.89670475946207" width="12.30263157894737" height="33.703630890274326" fill="#ef4444" rx="0.5" /><line x1="382.3421052631579" y1="200.2986242718633" x2="382.3421052631579" y2="226.1106732951463" stroke="#ef4444" stroke-width="1" /><rect x="376.1907894736842" y="202.5181316719553" width="12.30263157894737" height="7.56276595586607" fill="#ef4444" rx="0.5" /><line x1="404.7105263157895" y1="200.5452362052075" x2="404.7105263157895" y2="228.16577273967522" stroke="#ef4444" stroke-width="1" /><rect x="398.5592105263158" y="209.99869365004028" width="12.30263157894737" height="13.31704440054736" fill="#ef4444" rx="0.5" /><text x="404.7105263157895" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-05 08:30</text><line x1="427.07894736842104" y1="207.2859623832618" x2="427.07894736842104" y2="232.0293596953898" stroke="#22c55e" stroke-width="1" /><rect x="420.92763157894734" y="220.27419087268484" width="12.30263157894737" height="3.2059551334649825" fill="#22c55e" rx="0.5" /><line x1="449.4473684210526" y1="170.86960022620988" x2="449.4473684210526" y2="222.41149429499484" stroke="#22c55e" stroke-width="1" /><rect x="443.2960526315789" y="171.9382519373649" width="12.30263157894737" height="48.25373495753885" fill="#22c55e" rx="0.5" /><line x1="471.8157894736842" y1="151.05844158095056" x2="471.8157894736842" y2="183.69342076006984" stroke="#22c55e" stroke-width="1" /><rect x="465.6644736842105" y="151.46946146985687" width="12.30263157894737" height="20.46879046750803" fill="#22c55e" rx="0.5" /><line x1="494.1842105263158" y1="148.51011826973513" x2="494.1842105263158" y2="171.69164000402165" stroke="#ef4444" stroke-width="1" /><rect x="488.0328947368421" y="151.46946146985687" width="12.30263157894737" height="12.001780756049158" fill="#ef4444" rx="0.5" /><line x1="516.5526315789473" y1="136.0973176247806" x2="516.5526315789473" y2="164.7043018926232" stroke="#22c55e" stroke-width="1" /><rect x="510.4013157894736" y="144.31771540289623" width="12.30263157894737" height="19.07132284522777" fill="#22c55e" rx="0.5" /><text x="516.5526315789473" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-05 09:45</text><line x1="538.921052631579" y1="139.30327275824558" x2="538.921052631579" y2="168.32127691499355" stroke="#ef4444" stroke-width="1" /><rect x="532.7697368421053" y="144.23551142511513" width="12.30263157894737" height="19.400138756353044" fill="#ef4444" rx="0.5" /><line x1="561.2894736842105" y1="163.5534462036871" x2="561.2894736842105" y2="181.30950540441663" stroke="#ef4444" stroke-width="1" /><rect x="555.1381578947369" y="163.5534462036871" width="12.30263157894737" height="9.700069378176039" fill="#ef4444" rx="0.5" /><line x1="583.6578947368421" y1="165.4441376926529" x2="583.6578947368421" y2="187.39259976022228" stroke="#22c55e" stroke-width="1" /><rect x="577.5065789473684" y="168.23907293721248" width="12.30263157894737" height="5.096646622431734" fill="#22c55e" rx="0.5" /><line x1="606.0263157894736" y1="165.52634167043493" x2="606.0263157894736" y2="181.30950540441663" stroke="#ef4444" stroke-width="1" /><rect x="599.875" y="168.32127691499355" width="12.30263157894737" height="2.1373034223100262" fill="#ef4444" rx="0.5" /><line x1="628.3947368421052" y1="160.9229189146897" x2="628.3947368421052" y2="198.4079327828975" stroke="#ef4444" stroke-width="1" /><rect x="622.2434210526316" y="170.45858033730357" width="12.30263157894737" height="8.713621644803055" fill="#ef4444" rx="0.5" /><text x="628.3947368421052" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-05 11:00</text><line x1="650.7631578947369" y1="148.51011826973513" x2="650.7631578947369" y2="182.9535849600392" stroke="#22c55e" stroke-width="1" /><rect x="644.6118421052632" y="168.40348089277467" width="12.30263157894737" height="10.768721089331962" fill="#22c55e" rx="0.5" /><line x1="673.1315789473684" y1="165.19752575930966" x2="673.1315789473684" y2="192.65365433821617" stroke="#ef4444" stroke-width="1" /><rect x="666.9802631578948" y="168.40348089277467" width="12.30263157894737" height="24.250173445441504" fill="#ef4444" rx="0.5" /><line x1="695.5" y1="180.4052616488238" x2="695.5" y2="198.49013676067858" stroke="#ef4444" stroke-width="1" /><rect x="689.3486842105264" y="192.57145036043508" width="12.30263157894737" height="1" fill="#ef4444" rx="0.5" /><line x1="717.8684210526316" y1="179.66542584879312" x2="717.8684210526316" y2="220.9318226949335" stroke="#ef4444" stroke-width="1" /><rect x="711.7171052631579" y="193.14687820490266" width="12.30263157894737" height="4.521218777964151" fill="#ef4444" rx="0.5" /><line x1="740.2368421052631" y1="166.34838144824573" x2="740.2368421052631" y2="198.49013676067858" stroke="#22c55e" stroke-width="1" /><rect x="734.0855263157895" y="178.84338607098135" width="12.30263157894737" height="18.82471091188546" fill="#22c55e" rx="0.5" /><text x="740.2368421052631" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-05 12:15</text><line x1="762.6052631578947" y1="162.9780183592186" x2="762.6052631578947" y2="213.86228060575488" stroke="#ef4444" stroke-width="1" /><rect x="756.453947368421" y="178.7611820932003" width="12.30263157894737" height="9.042437555927393" fill="#ef4444" rx="0.5" /><line x1="784.9736842105264" y1="179.25440595988772" x2="784.9736842105264" y2="200.4630322274264" stroke="#22c55e" stroke-width="1" /><rect x="778.8223684210527" y="183.69342076006984" width="12.30263157894737" height="4.110198889057841" fill="#22c55e" rx="0.5" /><line x1="807.3421052631579" y1="141.3583722027745" x2="807.3421052631579" y2="183.94003269341312" stroke="#22c55e" stroke-width="1" /><rect x="801.1907894736843" y="161.08732687025184" width="12.30263157894737" height="22.68829786759909" fill="#22c55e" rx="0.5" /><line x1="829.7105263157895" y1="143.16685971396015" x2="829.7105263157895" y2="168.32127691499355" stroke="#ef4444" stroke-width="1" /><rect x="823.5592105263158" y="161.08732687025184" width="12.30263157894737" height="5.261054577993889" fill="#ef4444" rx="0.5" /><line x1="852.078947368421" y1="145.139755180708" x2="852.078947368421" y2="188.13243556025293" stroke="#ef4444" stroke-width="1" /><rect x="845.9276315789474" y="166.43058542602682" width="12.30263157894737" height="14.632308045046557" fill="#ef4444" rx="0.5" /><text x="852.078947368421" y="412" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">06-05 13:30</text><line x1="874.4473684210526" y1="176.70608264867138" x2="874.4473684210526" y2="271.73388096368865" stroke="#ef4444" stroke-width="1" /><rect x="868.296052631579" y="180.9806894932923" width="12.30263157894737" height="86.39638064799533" fill="#ef4444" rx="0.5" /><line x1="896.8157894736842" y1="201.86049984970572" x2="896.8157894736842" y2="276.58391565277714" stroke="#22c55e" stroke-width="1" /><rect x="890.6644736842105" y="220.0275789393416" width="12.30263157894737" height="47.26728722416493" fill="#22c55e" rx="0.5" /><circle cx="337.60526315789474" cy="204.244415205359" r="6" fill="#fbbf24" stroke="#0f172a" stroke-width="1.5" /><text x="337.60526315789474" y="190.244415205359" fill="#fbbf24" font-size="10" font-weight="600" text-anchor="middle" font-family="system-ui,sans-serif">TBS</text><polygon points="471.8157894736842,155.4441376926529 464.8157894736842,169.4441376926529 478.8157894736842,169.4441376926529" fill="#e879f9" /><text x="471.8157894736842" y="151.4441376926529" fill="#e879f9" font-size="10" font-weight="600" text-anchor="middle" font-family="system-ui,sans-serif">CHoCH</text><polygon points="471.8157894736842,141.46946146985687 464.8157894736842,155.46946146985687 478.8157894736842,155.46946146985687" fill="#38bdf8" /><text x="471.8157894736842" y="137.46946146985687" fill="#38bdf8" font-size="10" font-weight="600" text-anchor="middle" font-family="system-ui,sans-serif">ENTRY</text><circle cx="717.8684210526316" cy="213.92605589028656" r="6" fill="#f87171" stroke="#0f172a" stroke-width="1.5" /><text x="717.8684210526316" y="199.92605589028656" fill="#f87171" font-size="10" font-weight="600" text-anchor="middle" font-family="system-ui,sans-serif">SL</text></svg></div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Setup phases</h3>
+          <ol class="phases">
+            <li><span class="tag crt">CRT</span> Prior 4H candle (2026-06-05 00:00) → High <strong>608.35</strong>, Low <strong>591.61</strong>, EQ <strong>599.98</strong></li>
+            <li><span class="tag tbs">TBS</span> 2026-06-05 07:45 UTC — swept to <strong>589.10</strong>, closed <strong>593.40</strong> above CRT low. Wick ratio 37%. Killzone h7 UTC ✓</li>
+            <li><span class="tag choch">CHoCH</span> bullish_choch @ 593.82 (09:15 UTC) — 6 bars after TBS</li>
+            <li><span class="tag entry">ENTRY</span> 2026-06-05 09:15 UTC long @ <strong>595.52</strong> (discount ✓)</li>
+          </ol>
+        </div>
+        <div class="panel">
+          <h3>Brackets</h3>
+          <table class="kv">
+            <tr><td>Stop (below sweep wick)</td><td>588.22</td></tr>
+            <tr><td>TP1 @ equilibrium</td><td>599.98</td></tr>
+            <tr><td>TP2 @ CRT high</td><td>608.35</td></tr>
+            <tr><td>R:R to TP2</td><td>1.76</td></tr>
+          </table>
+          <h3>Exits</h3>
+          <ul><li><strong>sl</strong> @ 2026-06-05 12:00 UTC — $-2.66 (exit 587.92)</li></ul>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      Generated from live BNBUSDT 15m futures candles · See <code>docs/CRT_TBS_CHART_GUIDE.md</code> for the full marking workflow.
+    </footer>
+  </div>
+</body>
+</html>

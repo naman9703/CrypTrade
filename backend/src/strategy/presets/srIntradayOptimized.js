@@ -218,7 +218,9 @@ export const INTRADAY_PRO_LIQ_15M = {
   intradayLiqRejectSameBarReclaim: true,
   intradayLiqFirstCycleOnly: false,
   intradayLiqMinReclaimClosePct: 0,
-  intradayLiqMinReclaimBodyRatio: 0,
+  // Reject weak/false reclaims (e.g. trade #1: 0.29 body that re-broke the level
+  // next bar) — require a decisive rejection candle so genuine breakouts aren't faded.
+  intradayLiqMinReclaimBodyRatio: 0.35,
   intradayLiqMaxSlPct: 0.035,
   intradayLiqMaxSweepBars: 40,
   intradayLiqMinSweepExtensionPct: 0.008,
@@ -236,6 +238,10 @@ export const INTRADAY_PRO_LIQ_15M = {
   intradayLiqRequireHtfAlign: true,
   intradayLiqMinHtfSep: 0.0008,
   intradayLiqEntryAtSignalClose: true,
+  /** Backtest/live `time_stop` after this many closed bars (15m default ≈ 12h). 0 = off. */
+  intradayLiqMaxHoldBars: 48,
+  /** Cap TP2 at this R multiple when opposing pool is farther (0 = uncapped). */
+  intradayLiqMaxTpRr: 5,
   intradayRequireSessionReclaim: false,
   intradayRequireFibOrVp: false,
   intradayMinTechniqueCount: 1,
@@ -280,6 +286,37 @@ export const INTRADAY_PRO_SR_APLUS_15M = {
   intradayLiqOnePickPerDay: true,
   srIntradayMaxTradesPerDay: 3,
   srIntradayMinBarGap: 4,
+};
+
+/**
+ * LIQ daily target — strict classical PDH/PDL (LIQ_15M base) + trend continuation
+ * on breakdown/breakout days when PDH/PDL sweep+reclaim does not fire.
+ */
+export const INTRADAY_PRO_LIQ_DAILY_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  intradayLiqTrendContinuation: true,
+  intradayLiqTrendOnlyBreakdownDays: true,
+  intradayLiqClassicOnTrendDays: false,
+  intradayLiqVetoCounterTrend: true,
+  intradayLiqBreakdownDayBias: true,
+  intradayLiqTrendFadeEma: 21,
+  intradayLiqTrendMinAdx: 18,
+  intradayLiqClassicEnabled: false,
+  intradayLiqTrendMinRvol: 0.9,
+  intradayLiqTrendFadeMinRvol: 0.65,
+  intradayLiqTrendMinBarsBeyondLevel: 4,
+  intradayLiqTrendMinDispAtr: 0.42,
+  intradayLiqTrendDisplacementOnly: true,
+  intradayLiqTrendFadeHighAdxMin: 38,
+  intradayLiqTrendRsiMinShort: 28,
+  intradayLiqTrendRsiMaxShort: 58,
+  intradayLiqTrendAtrFallback: true,
+  intradayLiqTrendAtrTpMult: 2.0,
+  intradayLiqTrendAtrMinRr: 1.25,
+  intradayLiqTrendFadeMaxDayRangePct: 0.04,
+  intradayLiqTrendKillzone: "ALL",
+  intradayLiqTrendSellOnly: true,
+  intradayLiqMinScore: 9,
 };
 
 /**
@@ -338,7 +375,7 @@ export const INTRADAY_PRO_ICT_15M = {
   // Intraday exit horizon — cap TP at a realistic R and force same-day-ish closes
   // so a single runner can't ride for weeks and starve all subsequent setups
   // (without this, one trade held for ~118 days and blocked every other entry).
-  intradaySmcMaxTpRr: 3,
+  intradaySmcMaxTpRr: 5,
   intradaySmcMaxHoldBars: 48,
   intradayLiqTp1Enabled: true,
   intradayLiqBreakevenAfterPartial: true,
