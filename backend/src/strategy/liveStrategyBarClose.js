@@ -63,6 +63,87 @@ export function resolveManualStrategyVenue(state, mmUp) {
   return { stSpot: false, stFut: true };
 }
 
+/** Supertrend autotrade toggles for raw chart ST path (not MANUAL adapter venue). */
+export function supertrendAutotradeVenue(state, mmUp) {
+  const mm = String(mmUp ?? state?.marketMode ?? "AUTO").toUpperCase();
+  const spotOn = Boolean(state?.supertrendSpotAuto);
+  const futOn = Boolean(state?.supertrendFuturesAuto);
+  let stSpot = spotOn && mm === "SPOT";
+  let stFut = futOn && mm === "FUTURES";
+  if (mm === "AUTO") {
+    if (futOn) {
+      stFut = true;
+      stSpot = false;
+    } else if (spotOn) {
+      stSpot = true;
+      stFut = false;
+    }
+  }
+  return { stSpot, stFut };
+}
+
+/**
+ * Bar-close order venue: MANUAL panel strategies use marketMode (not supertrend autotrade toggles).
+ * Bot running is enforced later before placing orders.
+ */
+export function resolveTradingVenueForBarClose(state, mmUp) {
+  if (manualStrategyUsesLiveBarClose(state)) {
+    return resolveManualStrategyVenue(state, mmUp);
+  }
+  return supertrendAutotradeVenue(state, mmUp);
+}
+
+/** Activity/Telegram label kind for bar-close signal lines. */
+export function barCloseActivityKindFor(state, strategyKey) {
+  const sk = String(strategyKey ?? "").trim().toUpperCase();
+  if (manualStrategyUsesLiveBarClose(state) && sk && sk !== "SUPERTREND") return "strategy";
+  return "supertrend";
+}
+
+/**
+ * Raw chart Supertrend flip with autotrade toggles off is expected — skip noisy SKIPPED Activity/Telegram.
+ * MANUAL adapter signals that still hit venue-off should remain visible.
+ */
+export function shouldSuppressBarCloseAutotradeOffActivity(state) {
+  if (manualStrategyUsesLiveBarClose(state) && manualStrategyKey(state) !== "SUPERTREND") {
+    return false;
+  }
+  return true;
+}
+
+/** True when bar-close may place orders: MANUAL panel strategy or Supertrend autotrade toggles on. */
+export function barCloseTradingConfigured(state, mmUp) {
+  if (manualStrategyUsesLiveBarClose(state)) return true;
+  const { stSpot, stFut } = supertrendAutotradeVenue(state, mmUp);
+  return stSpot || stFut;
+}
+
+/** WS mux / multi-coin watch — config only (bot may be stopped). Same predicate as bar-close trading config. */
+export function barCloseWatchConfigured(state, mmUp) {
+  return barCloseTradingConfigured(state, mmUp);
+}
+
+/** Supertrend autotrade toggles on for this market mode (legacy name used in sweep helpers). */
+export function supertrendAutotradeActive(state, mmUp) {
+  const { stSpot, stFut } = supertrendAutotradeVenue(state, mmUp);
+  return stSpot || stFut;
+}
+
+/**
+ * Tick loop must not place orders when bar-close owns execution (MANUAL adapter or ST autotrade).
+ * Does not require bot.running — config alone disables tick trading.
+ */
+export function tickExecutionOwnedByBarClose(state, mmUp, { liveFeed = true } = {}) {
+  if (!liveFeed) return false;
+  if (manualStrategyUsesLiveBarClose(state)) return true;
+  return supertrendAutotradeActive(state, mmUp);
+}
+
+/** DB / Activity strategy key for bar-close signals. */
+export function barCloseSignalStrategyKey(state) {
+  return manualStrategyUsesLiveBarClose(state) ? manualStrategyKey(state) : "SUPERTREND";
+}
+
 function adapterPersistedFor(state, symU, strategyKey) {
   if (!state._liveStrategyPersisted || typeof state._liveStrategyPersisted !== "object") {
     state._liveStrategyPersisted = Object.create(null);

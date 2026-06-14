@@ -39,6 +39,15 @@ import {
   formatSupertrendSignalVerdict,
 } from "../lib/supertrendSignalVerdict";
 import { displayMarketDecisionVerdict, mdEnforcementOff } from "../lib/marketDecision/display";
+import {
+  chartOverlayDataEqual,
+  chartOverlayFetchKey,
+  chartOverlaySpanReady,
+  EMPTY_OVERLAY,
+  fetchChartOverlayDeduped,
+  shouldSkipRestCandleReconcile,
+  type ChartOverlayData,
+} from "../lib/chartOverlayFetch";
 import { useThemeStore } from "../themeStore";
 import { CHART_CANDLE_MAX, useAppStore } from "../ws/store";
 import { OrderBookPanel } from "./OrderBookPanel";
@@ -1265,10 +1274,8 @@ export function ChartPanel() {
   const [chartTrailedSessionBySymbol, setChartTrailedSessionBySymbol] = useState<Record<string, true>>({});
   /** One expanded row at a time in the signal list under the chart. */
   const [openSignalAccordionKey, setOpenSignalAccordionKey] = useState<string | null>(null);
-  const [chartOverlay, setChartOverlay] = useState<{
-    events: { id: string; title: string; eventTime: string; impactLevel: string }[];
-    whales: { id: string; alertedAt: string; amountUsd: number | null; symbol: string }[];
-  }>({ events: [], whales: [] });
+  const [chartOverlay, setChartOverlay] = useState<ChartOverlayData>(EMPTY_OVERLAY);
+  const chartOverlayRef = useRef<ChartOverlayData>(EMPTY_OVERLAY);
 
   const effectiveSym = useMemo(() => {
     const b = canonicalChartSymbol(bot?.symbol);
@@ -1368,51 +1375,63 @@ export function ChartPanel() {
   /** Same bars as candlesticks (in ms) so Supertrend math cannot diverge from what you see. */
   const ohlcAsMsCandles = useMemo(() => ohlcBarsToMsCandles(ohlc), [ohlc]);
   const candleTimes = useMemo(() => new Set(ohlc.map((b) => Number(b.time))), [ohlc]);
+  const ohlcFirstTime = ohlc.length ? Number(ohlc[0]!.time) : 0;
+  const ohlcLastTime = ohlc.length ? Number(ohlc[ohlc.length - 1]!.time) : 0;
   const ohlcSpanKey = useMemo(() => {
-    if (!ohlc.length || !effectiveSym) return "";
-    return `${effectiveSym}|${ohlc[0]!.time}|${ohlc[ohlc.length - 1]!.time}|${normalizeSymTf(bot?.timeframe)}`;
-  }, [ohlc, effectiveSym, bot?.timeframe]);
+    if (!ohlcFirstTime || !ohlcLastTime || !effectiveSym) return "";
+    if (!chartOverlaySpanReady(ohlcFirstTime, ohlcLastTime, ohlc.length)) return "";
+    return `${effectiveSym}|${ohlcFirstTime}|${ohlcLastTime}|${normalizeSymTf(bot?.timeframe)}`;
+  }, [ohlcFirstTime, ohlcLastTime, ohlc.length, effectiveSym, bot?.timeframe]);
 
   /**
    * Latest ohlc bounds for the overlay fetch, read via ref so the effect can depend
    * ONLY on the stable `ohlcSpanKey`. Depending on `ohlc` (a new array each WS market
    * tick) re-fired this effect ~20×/s, flooding /api/market/events + /whales.
    */
-  const ohlcBoundsRef = useRef<{ first: number; last: number }>({ first: 0, last: 0 });
+  const ohlcBoundsRef = useRef<{ first: number; last: number; barCount: number }>({ first: 0, last: 0, barCount: 0 });
   if (ohlc.length) {
     ohlcBoundsRef.current = {
-      first: Number(ohlc[0]!.time),
-      last: Number(ohlc[ohlc.length - 1]!.time),
+      first: ohlcFirstTime,
+      last: ohlcLastTime,
+      barCount: ohlc.length,
     };
   }
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const { first, last } = ohlcBoundsRef.current;
-      if (!first || !last || !effectiveSym) return;
+      const { first, last, barCount } = ohlcBoundsRef.current;
+      if (!chartOverlaySpanReady(first, last, barCount) || !effectiveSym) {
+        if (!cancelled && !chartOverlayDataEqual(chartOverlayRef.current, EMPTY_OVERLAY)) {
+          chartOverlayRef.current = EMPTY_OVERLAY;
+          setChartOverlay(EMPTY_OVERLAY);
+        }
+        return;
+      }
       const fromIso = new Date(first * 1000).toISOString();
       const toIso = new Date(last * 1000).toISOString();
-      const baseAsset = canonicalChartSymbol(effectiveSym).replace(/USDT|USDC|BUSD$/u, "");
+      const symCanon = canonicalChartSymbol(effectiveSym);
+      const baseAsset = symCanon.replace(/USDT|USDC|BUSD$/u, "");
+      const fetchKey = chartOverlayFetchKey(fromIso, toIso, symCanon);
       try {
-        const [evRaw, whRaw] = await Promise.all([
-          api.getMarketEvents({ from: fromIso, to: toIso, assets: baseAsset }),
-          api.getWhaleAlerts({ from: fromIso, to: toIso, symbol: canonicalChartSymbol(effectiveSym) }),
-        ]);
-        const evRes = (Array.isArray(evRaw) ? evRaw : []) as {
-          id: string;
-          title: string;
-          eventTime: string;
-          impactLevel: string;
-        }[];
-        const whRes = (Array.isArray(whRaw) ? whRaw : []) as {
-          id: string;
-          alertedAt: string;
-          amountUsd: number | null;
-          symbol: string;
-        }[];
-        if (!cancelled) setChartOverlay({ events: evRes, whales: whRes });
+        const next = await fetchChartOverlayDeduped(fetchKey, async () => {
+          const [evRaw, whRaw] = await Promise.all([
+            api.getMarketEvents({ from: fromIso, to: toIso, assets: baseAsset }),
+            api.getWhaleAlerts({ from: fromIso, to: toIso, symbol: symCanon }),
+          ]);
+          const events = (Array.isArray(evRaw) ? evRaw : []) as ChartOverlayData["events"];
+          const whales = (Array.isArray(whRaw) ? whRaw : []) as ChartOverlayData["whales"];
+          return { events, whales };
+        });
+        if (cancelled) return;
+        if (chartOverlayDataEqual(chartOverlayRef.current, next)) return;
+        chartOverlayRef.current = next;
+        setChartOverlay(next);
       } catch {
-        if (!cancelled) setChartOverlay({ events: [], whales: [] });
+        if (cancelled) return;
+        if (!chartOverlayDataEqual(chartOverlayRef.current, EMPTY_OVERLAY)) {
+          chartOverlayRef.current = EMPTY_OVERLAY;
+          setChartOverlay(EMPTY_OVERLAY);
+        }
       }
     };
     void load();
@@ -1780,10 +1799,13 @@ export function ChartPanel() {
   /** After `applyMarketCandlesResult(..., { preserveView: true })`, restore time-scale range after next series update. */
   const syncPreserveViewRef = useRef(false);
   const stLineFlushRafRef = useRef(0);
+  /** Skip redundant lightweight-charts setMarkers when marker payload unchanged. */
+  const markersAppliedKeyRef = useRef<string>("");
   /** Bump to destroy + recreate the chart canvas (same effect as a full page load / server restart for rendering). */
   const [chartInstanceKey, setChartInstanceKey] = useState(0);
 
   useEffect(() => {
+    markersAppliedKeyRef.current = "";
     if (!containerRef.current) return;
 
     const chart = createChart(containerRef.current, {
@@ -3238,13 +3260,15 @@ export function ChartPanel() {
       (!isAlt && storeViewSym === viewSym && storeMarketSym === viewSym);
     const storeLastTs = Number(live.candles.at(-1)?.ts);
     const restLastTs = Number(last?.ts);
-    /** REST must not rewind or re-apply the same tail when WS is already current. */
+    /** REST must not rewind on background sync when WS buffer is full and tail is current. */
     if (
-      storeMatchesView &&
-      live.candles.length > 0 &&
-      Number.isFinite(storeLastTs) &&
-      Number.isFinite(restLastTs) &&
-      restLastTs <= storeLastTs
+      shouldSkipRestCandleReconcile({
+        preserveView,
+        storeBarCount: live.candles.length,
+        storeMatchesView,
+        storeLastTs,
+        restLastTs,
+      })
     ) {
       if (isAlt) {
         const parsedAlt = parseCandlesFromMarketApi(r, symCanon);
@@ -3429,6 +3453,9 @@ export function ChartPanel() {
 
   useEffect(() => {
     if (!chartOkRef.current || !seriesRef.current) return;
+    const key = JSON.stringify(candlestickSeriesMarkers);
+    if (markersAppliedKeyRef.current === key) return;
+    markersAppliedKeyRef.current = key;
     try {
       seriesRef.current.setMarkers(candlestickSeriesMarkers);
     } catch {

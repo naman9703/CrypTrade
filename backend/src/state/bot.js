@@ -91,6 +91,14 @@ import {
   evaluateLiveStrategyBarClose,
   manualStrategyBarCloseActive,
   resolveManualStrategyVenue,
+  resolveTradingVenueForBarClose,
+  barCloseActivityKindFor,
+  shouldSuppressBarCloseAutotradeOffActivity,
+  barCloseTradingConfigured,
+  barCloseWatchConfigured,
+  supertrendAutotradeActive,
+  tickExecutionOwnedByBarClose,
+  barCloseSignalStrategyKey,
 } from "../strategy/liveStrategyBarClose.js";
 import { learnSmartSignalStrengthThreshold } from "../lib/signalStrengthSmartThreshold.js";
 import { extractSurfPulseFeatures } from "../strategy/surfPulseMl.js";
@@ -954,7 +962,7 @@ export function createBot({
 
     /**
      * When true, defer entry until a later bar **closes** beyond signal candle high (BUY) or low (SELL).
-     * Single-chart `processSupertrendCandleClose` only; AUTO multi sweep still uses immediate entry.
+     * Single-chart `processBarCloseTrading` only; AUTO multi sweep still uses immediate entry.
      */
     supertrendBreakoutConfirm: ["1", "true", "yes"].includes(
       String(process.env.SUPERTREND_BREAKOUT_CONFIRM ?? "0").toLowerCase(),
@@ -2543,7 +2551,7 @@ export function createBot({
     void tradeService
       .recordSignal(String(iid), {
         symbol: symbolU,
-        signalType: "SUPERTREND",
+        signalType: barCloseStrategyKey(),
         direction: direction === "SHORT" ? "SHORT" : "LONG",
         timeframe: state.timeframe,
         barCloseTime: barCloseWall,
@@ -2662,9 +2670,14 @@ export function createBot({
    */
   function emitSignalActionActivity(hub, p) {
     if (!hub?.broadcast || !p?.action) return;
-    const kind = p.kind === "strategy" ? "strategy" : "supertrend";
+    const sk =
+      p.strategyKey != null
+        ? String(p.strategyKey)
+        : manualStrategyUsesLiveBarClose(state)
+          ? manualStrategyKey(state)
+          : "SUPERTREND";
+    const kind = p.kind === "strategy" ? "strategy" : barCloseActivityKindFor(state, sk);
     const label = kind === "supertrend" ? "Supertrend signal" : "Strategy signal";
-    const sk = p.strategyKey != null ? String(p.strategyKey) : kind === "supertrend" ? "SUPERTREND" : "—";
     const ven = p.venue != null && String(p.venue) !== "—" && String(p.venue).trim() !== "" ? String(p.venue).toUpperCase() : "";
     const sd = p.side != null && String(p.side).trim() !== "" ? String(p.side).toUpperCase() : "—";
     const ac = String(p.action).toUpperCase();
@@ -2774,7 +2787,7 @@ export function createBot({
           : "This line is the OPEN (short): venue shows Sell. Any later Buy on the symbol is usually exit/reduce (SL/TP/flip), not this open."
         : undefined;
     emitSignalActionActivity(hub, {
-      kind: "supertrend",
+      kind: barCloseActivityKindFor(state, barCloseStrategyKey()),
       strategyKey: barCloseStrategyKey(),
       venue: venue != null ? String(venue) : "—",
       side,
@@ -2829,26 +2842,14 @@ export function createBot({
     state.pendingSupertrendAction = null;
 
     const mm = String(state.marketMode).toUpperCase();
-    const spotOn = Boolean(state.supertrendSpotAuto);
-    const futOn = Boolean(state.supertrendFuturesAuto);
-    let stSpot = spotOn && mm === "SPOT";
-    let stFut = futOn && mm === "FUTURES";
-    if (mm === "AUTO") {
-      if (futOn) {
-        stFut = true;
-        stSpot = false;
-      } else if (spotOn) {
-        stSpot = true;
-        stFut = false;
-      }
-    }
+    const { stSpot, stFut } = resolveTradingVenueForBarClose(state, mm);
 
     const venueWant = String(pending.venue || "").toUpperCase();
     const venueOk = venueWant === "SPOT" ? stSpot : stFut;
     if (!stSpot && !stFut) {
       wsHub?.broadcast?.("log", {
         level: "info",
-        msg: "Pending Supertrend skipped: Supertrend autotrade off or market mode mismatch",
+        msg: "Pending bar-close action skipped: no trading venue (autotrade off or market mode mismatch)",
       });
       return;
     }
@@ -2861,11 +2862,11 @@ export function createBot({
     }
 
     const hub = wsHub || wsHubRef;
-    const strategyKey = "SUPERTREND";
+    const strategyKey = barCloseStrategyKey();
 
     wsHub?.broadcast?.("log", {
       level: "info",
-      msg: `Running pending Supertrend ${pending.side} (${venueWant}) from bar ${pending.barTs}`,
+      msg: `Running pending bar-close ${pending.side} (${venueWant}) from bar ${pending.barTs}`,
       symbol: state.symbol,
     });
 
@@ -5214,41 +5215,12 @@ export function createBot({
   }
 
   function supertrendVenueActive(mmUp) {
-    const spotOn = Boolean(state.supertrendSpotAuto);
-    const futOn = Boolean(state.supertrendFuturesAuto);
-    let stSpot = spotOn && mmUp === "SPOT";
-    let stFut = futOn && mmUp === "FUTURES";
-    if (mmUp === "AUTO") {
-      if (futOn) {
-        stFut = true;
-        stSpot = false;
-      } else if (spotOn) {
-        stSpot = true;
-        stFut = false;
-      }
-    }
-    return stSpot || stFut;
+    return supertrendAutotradeActive(state, mmUp);
   }
 
   /** Supertrend autotrade toggles, or MANUAL bar-close adapter path (Elite / Safe Intraday). */
   function resolveTradingVenue(mmUp) {
-    if (manualStrategyBarCloseActive(state, mmUp)) {
-      return resolveManualStrategyVenue(state, mmUp);
-    }
-    const spotOn = Boolean(state.supertrendSpotAuto);
-    const futOn = Boolean(state.supertrendFuturesAuto);
-    let stSpot = spotOn && mmUp === "SPOT";
-    let stFut = futOn && mmUp === "FUTURES";
-    if (mmUp === "AUTO") {
-      if (futOn) {
-        stFut = true;
-        stSpot = false;
-      } else if (spotOn) {
-        stSpot = true;
-        stFut = false;
-      }
-    }
-    return { stSpot, stFut };
+    return resolveTradingVenueForBarClose(state, mmUp);
   }
 
   function manualStrategyMultiBarCloseActive(mmUp) {
@@ -5260,7 +5232,7 @@ export function createBot({
   }
 
   function barCloseStrategyKey() {
-    return manualStrategyUsesLiveBarClose(state) ? manualStrategyKey(state) : "SUPERTREND";
+    return barCloseSignalStrategyKey(state);
   }
 
   /** Intelligence gate veto/sizing on opens — skipped on MANUAL adapter path unless explicitly enabled. */
@@ -5308,7 +5280,7 @@ export function createBot({
     if (String(state.symbolMode || "").toUpperCase() !== "AUTO") return false;
     if (String(state.universeCoinSelectMode || "SINGLE").toUpperCase() !== "MULTIPLE") return false;
     if (!marketFeedUsesLiveBinance()) return false;
-    return supertrendVenueActive(mmUp) || manualStrategyBarCloseActive(state, mmUp);
+    return barCloseWatchConfigured(state, mmUp);
   }
 
   /**
@@ -5384,7 +5356,7 @@ export function createBot({
   }
 
   /**
-   * Supertrend + decision snapshot + SS on a specific closed bar (same pipeline as `processSupertrendCandleClose`).
+   * Strategy bar-close + decision snapshot + SS on a specific closed bar (same pipeline as `processBarCloseTrading`).
    * @param {unknown[]} closedRaw — OHLC buffer: for WS bar-close use **full** per-symbol buffer (like `feed.getCandles()`); for REST sweep use closed bars only.
    * @param {string} [evalSymbol]
    * @param {number} [candleTsOpt] — When set (e.g. `candle.ts` from `onCandleClose`), evaluate **that** bar; matches main chart idx lookup. Omit for REST “last closed only” sweeps.
@@ -6003,7 +5975,7 @@ export function createBot({
     }
   }
 
-  async function processSupertrendCandleClose(candle) {
+  async function processBarCloseTrading(candle) {
     if (!marketFeedUsesLiveBinance()) return;
     if (String(candle.symbol || "").toUpperCase() !== String(state.symbol).toUpperCase()) return;
 
@@ -6014,6 +5986,7 @@ export function createBot({
       return;
     }
     state._intelligenceSizeMultiplier = 1;
+    const barCloseTradesEnabled = barCloseTradingConfigured(state, mm);
     const { stSpot, stFut } = resolveTradingVenue(mm);
     const strategyKeyBar = barCloseStrategyKey();
 
@@ -6079,6 +6052,33 @@ export function createBot({
 
     state.supertrendLast = { ts: row.ts, up: row.up, dn: row.dn, trend: row.trend, line: row.line };
     state.supertrendLastClosedTs = row.ts;
+
+    /** AUTO + ST autotrade off: chart markers only — skip AI gates, history trade semantics, and orders. */
+    if (!barCloseTradesEnabled) {
+      state.supertrendLastBarClose = {
+        ts: Number(row.ts),
+        buySignal: allowBuy === true,
+        sellSignal: allowSell === true,
+        exitSignal: allowExit === true,
+        trend: row.trend != null && Number.isFinite(Number(row.trend)) ? Number(row.trend) : null,
+        supertrendStrength01,
+        chartStrict: strictChartAlign,
+        chartOnly: true,
+      };
+      state.supertrendStHandledCloseKey = barCloseKey;
+      if (wsHubRef) {
+        const candlesSt = rawCandles;
+        const lastSt = candlesSt.length ? candlesSt[candlesSt.length - 1] : null;
+        const pfSt = portfolioMtmForWs(lastSt, candlesSt, _cachedPositions, _cachedAccount, null);
+        wsHubRef.broadcast("state", {
+          mode: runtimeTradingMode(),
+          ...getPublicState(),
+          account: pfSt.account,
+          positions: pfSt.positionsMtM,
+        });
+      }
+      return;
+    }
 
     const indicatorsBarClose = computeIndicators(rawCandles);
     const decisionSnapshotBar =
@@ -6496,28 +6496,29 @@ export function createBot({
 
     if (!stSpot && !stFut) {
       await flushSupertrendFlipSignalHistoryIfNeeded();
-      if (wsHubRef) {
-        emitSignalActionActivity(wsHubRef, {
-          kind: "supertrend",
-          strategyKey: barCloseStrategyKey(),
-          venue: "—",
-          side: allowBuy ? "BUY" : "SELL",
-          action: "skipped",
-          reason: "supertrend_autotrade_off_or_market_mode_mismatch",
-          supertrendStrength01: supertrendStrength01 ?? undefined,
+      if (!shouldSuppressBarCloseAutotradeOffActivity(state)) {
+        if (wsHubRef) {
+          emitSignalActionActivity(wsHubRef, {
+            strategyKey: barCloseStrategyKey(),
+            venue: "—",
+            side: allowBuy ? "BUY" : "SELL",
+            action: "skipped",
+            reason: "supertrend_autotrade_off_or_market_mode_mismatch",
+            supertrendStrength01: supertrendStrength01 ?? undefined,
+          });
+        }
+        persistSupertrendSkippedSignal({
+          gateReason: "supertrend_autotrade_off_or_market_mode_mismatch",
+          direction: allowBuy ? "LONG" : "SHORT",
+          row,
+          cTs,
+          symbolU: String(state.symbol || "").trim().toUpperCase(),
+          decisionSnapshotBar,
+          supertrendStrength01,
+          stSpot,
+          stFut,
         });
       }
-      persistSupertrendSkippedSignal({
-        gateReason: "supertrend_autotrade_off_or_market_mode_mismatch",
-        direction: allowBuy ? "LONG" : "SHORT",
-        row,
-        cTs,
-        symbolU: String(state.symbol || "").trim().toUpperCase(),
-        decisionSnapshotBar,
-        supertrendStrength01,
-        stSpot,
-        stFut,
-      });
       return;
     }
 
@@ -6708,7 +6709,7 @@ export function createBot({
         try {
           const sig = await tradeService.recordSignal(String(iid), {
             symbol: symTrade,
-            signalType: "SUPERTREND",
+            signalType: strategyKeyBar,
             direction: dirSig,
             timeframe: state.timeframe,
             barCloseTime: barCloseWall,
@@ -6880,6 +6881,9 @@ export function createBot({
 
     await flushSupertrendFlipSignalHistoryIfNeeded();
   }
+
+  /** @deprecated use processBarCloseTrading */
+  const processSupertrendCandleClose = processBarCloseTrading;
 
   // Disk/strategy hydrate runs after market feed exists (see syncMarketFeedFromState below).
 
@@ -7101,7 +7105,7 @@ export function createBot({
       } catch {
         /* never block on intelligence */
       }
-      void processSupertrendCandleClose(c);
+      void processBarCloseTrading(c);
       void maybeAutoMultiBarClose(c);
     },
     /** Chart/UI: push last bar on each Binance kline WS (throttled); full `market` from `tick()` still ~BOT_TICK_MS. */
@@ -7287,7 +7291,7 @@ export function createBot({
     /**
      * `watch` is capped (`BINANCE_COMBINED_MAX_STREAMS`) and prepends UI focus first. The trading **primary**
      * is always the multiplex `feed` main symbol (its own stream) but can be **dropped from `watch`** when the
-     * cap fills with focus + other alts. `processSupertrendCandleClose` is a no-op in this mode, so skipping
+     * cap fills with focus + other alts. `processBarCloseTrading` is a no-op in this mode, so skipping
      * here meant **zero** bar-close orders on the bot’s selected coin.
      */
     if (symU !== primaryU && !watch.includes(symU)) return;
@@ -7943,7 +7947,7 @@ export function createBot({
   /**
    * One computeSupertrendSeries pass: Pine/TV-aligned line + buy/sell shapes.
    * Signals include the **open** (last) bar so markers fire intrabar when `close` crosses bands (realtime).
-   * Autotrade in `processSupertrendCandleClose` still runs only on kline close (k.x).
+   * Autotrade in `processBarCloseTrading` still runs only on kline close (k.x).
    */
   /**
    * @param {boolean} [opts.withChartArrays=true] If false, skips building full `line` / `signals` (1000s of points).
@@ -9619,14 +9623,11 @@ export function createBot({
 
     const mmUp = String(state.marketMode).toUpperCase();
     const manualBarCloseActive = manualStrategyBarCloseActive(state, mmUp);
-    const supertrendAutoOn =
-      (mmUp === "SPOT" && Boolean(state.supertrendSpotAuto)) ||
-      (mmUp === "FUTURES" && Boolean(state.supertrendFuturesAuto)) ||
-      (mmUp === "AUTO" && (Boolean(state.supertrendSpotAuto) || Boolean(state.supertrendFuturesAuto)));
-    const supertrendPausesAi =
-      marketFeedUsesLiveBinance() && (manualBarCloseActive || supertrendAutoOn);
+    const barCloseOwnsTick = tickExecutionOwnedByBarClose(state, mmUp, {
+      liveFeed: marketFeedUsesLiveBinance(),
+    });
 
-    const strategyKey = supertrendPausesAi
+    const strategyKey = barCloseOwnsTick
       ? manualBarCloseActive
         ? manualStrategyKey(state)
         : "SUPERTREND"
@@ -9636,7 +9637,7 @@ export function createBot({
 
     const strat = strategies[strategyKey] || strategies.EMA_CROSS;
     let signal;
-    if (supertrendPausesAi) {
+    if (barCloseOwnsTick) {
       signal = strategies.SUPERTREND.signal({ candles, indicators, regime });
     } else if (strategyKey === "SURF_PULSE_ML") {
       const fr = await getCachedFunding(state.symbol);
@@ -9705,8 +9706,8 @@ export function createBot({
 
     if (state.feedExecutionPause) return;
 
-    if (supertrendPausesAi) {
-      /** Supertrend orders run only in `processSupertrendCandleClose` (kline `x` = bar closed). */
+    if (barCloseOwnsTick) {
+      /** Bar-close (`processBarCloseTrading`) is the sole order engine for MANUAL adapter + ST autotrade. */
       return;
     }
 
@@ -10219,7 +10220,7 @@ export function createBot({
     if (
       isFuturesVenue &&
       String(state.strategyMode || "").toUpperCase() === "MANUAL" &&
-      !supertrendPausesAi
+      !barCloseOwnsTick
     ) {
       const fibBr = signal?.fibBrackets?.slPct > 0
         ? resolveFibEntryBrackets(state, signal, last.close, tradeAction)

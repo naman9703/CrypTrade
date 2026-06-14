@@ -84,7 +84,12 @@ export function createTelegramSidecar({ log, appState }) {
     const r = payload.reason != null ? String(payload.reason) : "";
     const d = payload.detail;
     const dr = d && typeof d === "object" && d.reason != null ? String(d.reason) : "";
-    return r === "bar_close_not_ready_buffer_mismatch" || dr === "bar_close_not_ready_buffer_mismatch";
+    return (
+      r === "bar_close_not_ready_buffer_mismatch" ||
+      dr === "bar_close_not_ready_buffer_mismatch" ||
+      r === "supertrend_autotrade_off_or_market_mode_mismatch" ||
+      dr === "supertrend_autotrade_off_or_market_mode_mismatch"
+    );
   }
 
   /** Categories forwarded from Activity (indicator signals, engine on/off). */
