@@ -54,8 +54,10 @@ export function OrderBookPanel() {
       </div>
       {depthMismatch ? (
         <div className="px-3 py-2 text-[11px] text-amber-200/90">
-          Depth catching up ({symbol} book vs chart {chartSymbolForBook})…
+          Depth catching up ({symbol ?? "—"} book vs chart {chartSymbolForBook})…
         </div>
+      ) : !showRows && chartSymbolForBook && normalizeSym(symbol ?? "") === normalizeSym(chartSymbolForBook) ? (
+        <div className="px-3 py-2 text-[11px] text-slate-600 dark:text-slate-500">Loading {chartSymbolForBook} depth…</div>
       ) : null}
 
       <div className="grid grid-cols-2 gap-2 p-3 text-xs">

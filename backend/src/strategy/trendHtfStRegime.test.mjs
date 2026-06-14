@@ -23,8 +23,9 @@ function synthCandles(n, drift = 0.001) {
   return out;
 }
 
-test("regime gate enabled by default", () => {
-  assert.equal(isTrendHtfStRegimeGateEnabled({}), true);
+test("regime gate opt-in (default off)", () => {
+  assert.equal(isTrendHtfStRegimeGateEnabled({}), false);
+  assert.equal(isTrendHtfStRegimeGateEnabled({ trendHtfStRegimeGate: true }), true);
   assert.equal(isTrendHtfStRegimeGateEnabled({ trendHtfStRegimeGate: false }), false);
 });
 

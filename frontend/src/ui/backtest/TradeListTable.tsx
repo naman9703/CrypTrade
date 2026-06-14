@@ -3,6 +3,7 @@
  * - compact: #, Side, entry/exit price, Net, Reason (below trade chart)
  * - detailed: full columns for the Trades tab
  */
+import { computeTradePriceRr, formatTradeRr } from "../../lib/backtestTradeRr";
 import type { BacktestTrade } from "../../types/backtest";
 
 type Props = {
@@ -54,12 +55,16 @@ export function TradeListTable({
               <th className="px-2 py-1.5">Entry (price)</th>
               <th className="px-2 py-1.5">Exit (price)</th>
               <th className="px-2 py-1.5 text-right">Net</th>
+              <th className="px-2 py-1.5 text-right" title="Reward ÷ risk (entry → exit vs entry → initial SL)">
+                RR
+              </th>
               <th className="px-2 py-1.5">Reason</th>
             </tr>
           </thead>
           <tbody>
             {trades.map((t) => {
               const sign = t.netPnl >= 0 ? "text-emerald-600" : "text-rose-600";
+              const rr = computeTradePriceRr(t);
               const selected = selectedTradeNumber === t.tradeNumber;
               return (
                 <tr
@@ -90,6 +95,7 @@ export function TradeListTable({
                     {fmtPrice(t.exitPrice)}
                   </td>
                   <td className={`px-2 py-1 text-right font-mono font-semibold ${sign}`}>{t.netPnl.toFixed(2)}</td>
+                  <td className={`px-2 py-1 text-right font-mono ${rrClass(rr)}`}>{formatTradeRr(rr)}</td>
                   <td className="px-2 py-1 text-[11px]">{t.exitReason ?? "—"}</td>
                 </tr>
               );
@@ -120,6 +126,9 @@ export function TradeListTable({
             <th className="px-2 py-1.5">Gross</th>
             <th className="px-2 py-1.5">Funding</th>
             <th className="px-2 py-1.5">Net</th>
+            <th className="px-2 py-1.5 text-right" title="Reward ÷ risk (entry → exit vs entry → initial SL)">
+              RR
+            </th>
             <th className="px-2 py-1.5">MAE %</th>
             <th className="px-2 py-1.5">MFE %</th>
             <th className="px-2 py-1.5">Reason</th>
@@ -135,6 +144,7 @@ export function TradeListTable({
           {trades.map((t) => {
             const sign = t.netPnl >= 0 ? "text-emerald-600" : "text-rose-600";
             const margin = marginForTrade(t, lev);
+            const rr = computeTradePriceRr(t);
             const eq = t.entryQuality;
             const selected = selectedTradeNumber === t.tradeNumber;
             return (
@@ -166,6 +176,7 @@ export function TradeListTable({
                 <td className="px-2 py-1 text-right font-mono">{t.grossPnl.toFixed(2)}</td>
                 <td className="px-2 py-1 text-right font-mono text-slate-500">{t.fundingPaid.toFixed(2)}</td>
                 <td className={`px-2 py-1 text-right font-mono font-semibold ${sign}`}>{t.netPnl.toFixed(2)}</td>
+                <td className={`px-2 py-1 text-right font-mono ${rrClass(rr)}`}>{formatTradeRr(rr)}</td>
                 <td className="px-2 py-1 text-right font-mono">{t.maePct != null ? t.maePct.toFixed(1) : "—"}</td>
                 <td className="px-2 py-1 text-right font-mono">{t.mfePct != null ? t.mfePct.toFixed(1) : "—"}</td>
                 <td className="px-2 py-1 text-[11px]">{t.exitReason ?? "—"}</td>
@@ -202,6 +213,13 @@ export function TradeListTable({
       </table>
     </div>
   );
+}
+
+function rrClass(rr: number | null): string {
+  if (rr == null || !Number.isFinite(rr)) return "text-slate-400";
+  if (rr > 0) return "text-emerald-600 dark:text-emerald-400";
+  if (rr < 0) return "text-rose-600 dark:text-rose-400";
+  return "text-slate-500";
 }
 
 function structureClass(risk: string): string {

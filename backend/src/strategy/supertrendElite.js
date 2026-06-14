@@ -20,6 +20,7 @@
  * per bar. All series use closed-bar data only (no look-ahead).
  */
 
+import { dirStore } from "./adapterPersisted.js";
 import { ema, adx as computeAdx, atr as computeAtr } from "./indicators.js";
 import { computeSupertrendSeries } from "./supertrend.js";
 import {
@@ -443,27 +444,52 @@ export function buildEliteStBacktestAdapter(candles, opts = {}) {
     multiplier: opts.multiplier ?? ELITE_ST_DEFAULTS.multiplier,
     wilderAtr:  opts.wilderAtr  !== false,
   });
-  let lastDir = 0;
+  const local = { lastDir: 0 };
 
-  return function eliteStAdapter(bar, idx) {
-    // When the raw ST flips opposite to lastDir (even if filtered), reset so
-    // the next with-trend signal can re-enter after a SL/TP closure.
-    const raw = rawSt[idx];
-    if (raw?.sellSignal && lastDir === 1)  lastDir = 0;
-    if (raw?.buySignal  && lastDir === -1) lastDir = 0;
-
-    const sig = series[idx];
-    if (!sig) return null;
-    if (sig.action === "BUY" && lastDir !== 1) {
-      lastDir = 1;
-      return { action: "BUY", reason: sig.reason };
-    }
-    if (sig.action === "SELL" && lastDir !== -1) {
-      lastDir = -1;
-      return { action: "SELL", reason: sig.reason };
-    }
-    return null;
+  return function eliteStAdapter(bar, idx, ctx) {
+    const st = dirStore(ctx, local);
+    const out = evaluateEliteStAtBar(candles, idx, opts, st, { series, rawSt });
+    if (!out.action) return null;
+    return { action: out.action, reason: out.reason, gates: out.gates };
   };
+}
+
+/**
+ * Single-bar Elite evaluation with persisted direction state (live bar-close parity with backtest adapter).
+ * @param {object} [adapterState] — mutated: `{ lastDir }`
+ * @param {{ series?: array, rawSt?: array }} [precomputed] — optional; built when omitted
+ */
+export function evaluateEliteStAtBar(candles, idx, opts = {}, adapterState = {}, precomputed = {}) {
+  const o = { ...ELITE_ST_DEFAULTS, ...opts };
+  const series =
+    precomputed.series ??
+    buildEliteStSignalSeries(candles, o);
+  const rawSt =
+    precomputed.rawSt ??
+    computeSupertrendSeries(candles, {
+      period: o.period ?? ELITE_ST_DEFAULTS.period,
+      multiplier: o.multiplier ?? ELITE_ST_DEFAULTS.multiplier,
+      wilderAtr: o.wilderAtr !== false,
+    });
+  let lastDir = Number(adapterState.lastDir) || 0;
+  const raw = rawSt[idx] ?? null;
+  if (raw?.sellSignal && lastDir === 1) lastDir = 0;
+  if (raw?.buySignal && lastDir === -1) lastDir = 0;
+
+  const sig = series[idx] ?? null;
+  let action = null;
+  let reason = null;
+  if (sig?.action === "BUY" && lastDir !== 1) {
+    lastDir = 1;
+    action = "BUY";
+    reason = sig.reason;
+  } else if (sig?.action === "SELL" && lastDir !== -1) {
+    lastDir = -1;
+    action = "SELL";
+    reason = sig.reason;
+  }
+  adapterState.lastDir = lastDir;
+  return { action, reason, gates: sig?.gates ?? null, row: raw, lastDir };
 }
 
 // ─── Config helpers ──────────────────────────────────────────────────────────
@@ -568,32 +594,33 @@ export function resolveEliteBracketCfg(cfg = {}, { trailingOn = true } = {}) {
 }
 
 /**
- * Sanitize cfg before backtest/live Elite runs.
- * Fixes saved strategies that still carry Supertrend-only SL/TP and multiplier 2.5.
+ * Strip cross-strategy pollution before Elite backtest/live runs.
+ * Does **not** override user-facing gate / trail / bracket choices — those come from the
+ * saved strategy snapshot (Trading panel → Save) and must match live + backtest.
  *
  * @param {Record<string, unknown>} cfg
  * @returns {Record<string, unknown>}
  */
-export function normalizeEliteStRunCfg(cfg = {}) {
+export function sanitizeEliteStContamination(cfg = {}) {
   const out = { ...cfg };
   const mult = Number(out.supertrendMultiplier ?? ELITE_ST_DEFAULTS.multiplier);
   if (!Number.isFinite(mult) || mult < ELITE_ST_MIN_MULTIPLIER) {
     out.supertrendMultiplier = ELITE_ST_DEFAULTS.multiplier;
   }
-  // Elite MUST trail on the ST line — saved snapshots often carry trailingStopLossAuto:false
-  // from intraday/ST-auto presets, which forces time_stop / liq exits instead of trail.
-  out.trailingStopLossAuto = true;
-  out.futuresTrailingStopMode = "SUPERTREND";
-  out.supertrendFuturesExitOnFlip = true;
-  Object.assign(out, ELITE_ST_TRAIL_PATCH);
-  Object.assign(out, resolveEliteBracketCfg(cfg, { trailingOn: true }));
+  // Intraday materialization leaves max-hold keys that force time_stop exits on Elite.
   out.intradaySmcMaxHoldBars = 0;
   out.intradayLiqMaxHoldBars = 0;
   out.intradayOfMaxHoldBars = 0;
-  // Validated preset always uses both HTF gates (saved strategies often leave 1H EMA off by mistake).
-  out.eliteStRequireHtf4hAlign = true;
-  out.eliteStRequireHtf1hEmaAlign = true;
-  if (out.eliteStHtf1hMinSep == null || Number(out.eliteStHtf1hMinSep) <= 0) {
+
+  const trailingOn = out.trailingStopLossAuto === true;
+  if (trailingOn) {
+    const mode = String(out.futuresTrailingStopMode ?? "SUPERTREND").toUpperCase();
+    if (mode === "OFF") out.futuresTrailingStopMode = "SUPERTREND";
+    Object.assign(out, ELITE_ST_TRAIL_PATCH);
+  }
+  // Bracket SL/TP come from the saved strategy snapshot only — never re-default here.
+
+  if (out.eliteStRequireHtf1hEmaAlign === true && (out.eliteStHtf1hMinSep == null || Number(out.eliteStHtf1hMinSep) <= 0)) {
     out.eliteStHtf1hMinSep = ELITE_ST_DEFAULTS.htf1hMinSep;
   }
   if (out.eliteStAutoCalibrate === true && out.eliteStAutoFullTune === false) {
@@ -602,24 +629,17 @@ export function normalizeEliteStRunCfg(cfg = {}) {
       out.eliteStHtf1hSepMode = "ADX";
     }
   }
-  // Legacy per-symbol FIXED sep overrides — only when auto-calibrate is off.
-  const sepMode = String(out.eliteStHtf1hSepMode ?? "FIXED").toUpperCase();
-  const skipFixedOverrides = out.eliteStAutoCalibrate === true || sepMode !== "FIXED";
-  if (!skipFixedOverrides) {
-    const sym = String(out.symbol ?? "").toUpperCase();
-    if (sym === "BTCUSDT" && Number(out.eliteStHtf1hMinSep) <= 0.0003) {
-      out.eliteStHtf1hMinSep = 0.0008;
-    }
-    if (sym === "BNBUSDT" && Number(out.eliteStHtf1hMinSep) >= 0.0008) {
-      out.eliteStHtf1hMinSep = 0.0003;
-    }
-  }
   return out;
 }
 
-/** Per-symbol Elite cfg: auto-calibrate from candles then normalize. */
+/** @deprecated Prefer `sanitizeEliteStContamination` — kept for existing imports. */
+export function normalizeEliteStRunCfg(cfg = {}) {
+  return sanitizeEliteStContamination(cfg);
+}
+
+/** Per-symbol Elite cfg: auto-calibrate from candles then sanitize contamination. */
 export function prepareEliteRunCfg(cfg = {}, symbol, candles) {
-  return normalizeEliteStRunCfg(eliteCfgForSymbol(cfg, symbol, candles));
+  return sanitizeEliteStContamination(eliteCfgForSymbol(cfg, symbol, candles));
 }
 
 /** Defaults applied when user switches manualStrategy to SUPERTREND_ELITE in the UI. */
@@ -635,18 +655,18 @@ export const ELITE_ST_ACTIVATION_PATCH = {
   eliteStHtf4hPeriod: ELITE_ST_DEFAULTS.htf4hPeriod,
   eliteStHtf4hMultiplier: ELITE_ST_DEFAULTS.htf4hMultiplier,
   eliteStRequireHtf1hEmaAlign: true,
-  eliteStHtf1hMinSep: ELITE_ST_DEFAULTS.htf1hMinSep,
-  eliteStMinAdx: 0,
-  eliteStRequireAdxRising: false,
-  eliteStMinVolumeVsAvg: 0,
-  eliteStRequireAtrExpansion: false,
+  eliteStHtf1hMinSep: 0.0003,
+  eliteStMinAdx: 20,
+  eliteStRequireAdxRising: true,
+  eliteStMinVolumeVsAvg: 1.5,
+  eliteStRequireAtrExpansion: true,
   eliteStLiqSweepEnabled: false,
   trailingStopLossAuto: true,
   supertrendFuturesExitOnFlip: true,
-  supertrendFuturesFixedSlPct: ELITE_PANEL_DEFAULT_SL_PCT,
-  supertrendFuturesFixedTpPct: ELITE_PANEL_DEFAULT_TP_PCT,
-  supertrendFuturesUseFixedSl: true,
-  supertrendFuturesUseFixedTp: true,
+  supertrendFuturesFixedSlPct: 0,
+  supertrendFuturesFixedTpPct: 0,
+  supertrendFuturesUseFixedSl: false,
+  supertrendFuturesUseFixedTp: false,
   ...ELITE_ST_TRAIL_PATCH,
   riskPerTrade: 5,
   riskPerTradeUnit: "PCT",
@@ -657,19 +677,19 @@ export const ELITE_ST_ACTIVATION_PATCH = {
  * Translate raw bot cfg into opts for buildEliteStBacktestAdapter / buildEliteStSignalSeries.
  */
 export function buildEliteStOptsFromCfg(cfg = {}) {
-  const c = normalizeEliteStRunCfg(cfg);
+  const c = sanitizeEliteStContamination(cfg);
   return {
     period:              Number(c.supertrendPeriod      ?? ELITE_ST_DEFAULTS.period),
     multiplier:          Number(c.supertrendMultiplier  ?? ELITE_ST_DEFAULTS.multiplier),
     wilderAtr:           c.supertrendWilderAtr !== false,
 
-    minAdx:              Number(c.eliteStMinAdx         ?? ELITE_ST_DEFAULTS.minAdx),
-    requireAdxRising:    c.eliteStRequireAdxRising      !== false,
+    minAdx:              Number(c.eliteStMinAdx ?? 0),
+    requireAdxRising:    c.eliteStRequireAdxRising === true,
     adxRisingLookback:   Number(c.eliteStAdxRisingLookback ?? ELITE_ST_DEFAULTS.adxRisingLookback),
 
-    minVolumeVsAvg:      Number(c.eliteStMinVolumeVsAvg ?? ELITE_ST_DEFAULTS.minVolumeVsAvg),
+    minVolumeVsAvg:      Number(c.eliteStMinVolumeVsAvg ?? 0),
 
-    requireHtf1hEmaAlign: c.eliteStRequireHtf1hEmaAlign !== false,
+    requireHtf1hEmaAlign: c.eliteStRequireHtf1hEmaAlign === true,
     htf1hMinSep:          Number(c.eliteStHtf1hMinSep   ?? ELITE_ST_DEFAULTS.htf1hMinSep),
     htf1hSepMode:         String(c.eliteStHtf1hSepMode ?? ELITE_ST_DEFAULTS.htf1hSepMode).toUpperCase(),
     htf1hMinSepAtrMult:   Number(c.eliteStHtf1hMinSepAtrMult ?? ELITE_ST_DEFAULTS.htf1hMinSepAtrMult),
@@ -683,11 +703,11 @@ export function buildEliteStOptsFromCfg(cfg = {}) {
     htf1hSepCalibratePct: Number(c.eliteStHtf1hSepCalibratePct ?? ELITE_ST_DEFAULTS.htf1hSepCalibratePct),
     htf1hSepCalibrateBars: Number(c.eliteStHtf1hSepCalibrateBars ?? ELITE_ST_DEFAULTS.htf1hSepCalibrateBars),
 
-    requireHtf4hAlign:    c.eliteStRequireHtf4hAlign    !== false,
+    requireHtf4hAlign:    c.eliteStRequireHtf4hAlign === true,
     htf4hPeriod:          Number(c.eliteStHtf4hPeriod   ?? ELITE_ST_DEFAULTS.htf4hPeriod),
     htf4hMultiplier:      Number(c.eliteStHtf4hMultiplier ?? ELITE_ST_DEFAULTS.htf4hMultiplier),
 
-    requireAtrExpansion:  c.eliteStRequireAtrExpansion  !== false,
+    requireAtrExpansion:  c.eliteStRequireAtrExpansion === true,
     minAtrExpansion:      Number(c.eliteStMinAtrExpansion ?? ELITE_ST_DEFAULTS.minAtrExpansion),
     atrExpansionLookback: Number(c.eliteStAtrExpansionLookback ?? ELITE_ST_DEFAULTS.atrExpansionLookback),
 

@@ -51,7 +51,8 @@ import * as instanceService from "../db/services/instanceService.js";
 import * as tradeService from "../db/services/tradeService.js";
 import * as performanceService from "../db/services/performanceService.js";
 import { getAccountAllotmentHeadroom, InsufficientCapitalError } from "../db/services/capitalAllotmentService.js";
-import { extractInstanceConfig } from "../lib/strategyInstanceSplit.js";
+import { extractInstanceConfig, mergeInstanceIntoCfgRaw } from "../lib/strategyInstanceSplit.js";
+import { sanitizeSignalBrainCfgRaw } from "../lib/strategySignalBrain.js";
 import { createBacktestRouter } from "./backtestRoutes.js";
 const BOT_TARGET_MODES = z.enum(["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"]);
 
@@ -268,8 +269,13 @@ export function createRouter({ appState }) {
       const symQ = String(req.query.symbol || "").trim().toUpperCase();
       const botSym = String(bot.getPublicState().symbol || "").toUpperCase();
       if (symQ && symQ !== botSym && typeof bot.getChartSnapshotForSymbol === "function") {
-        const snap = await bot.getChartSnapshotForSymbol(symQ, { hours });
-        if (!snap?.candles?.length) return res.status(503).json({ ok: false, error: "no_candles" });
+        let snap = await bot.getChartSnapshotForSymbol(symQ, { hours });
+        if (!snap?.candles?.length) {
+          snap = await bot.getChartSnapshotForSymbol(symQ, { hours, forceRest: true });
+        }
+        if (!snap?.candles?.length) {
+          return res.status(503).json({ ok: false, error: "no_candles", symbol: symQ });
+        }
         return res.json({ ok: true, ...snap });
       }
       const snap =
@@ -517,6 +523,68 @@ export function createRouter({ appState }) {
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
+  });
+
+  /** Latest-wins coalesce — rapid tab clicks merge before depth/tick work runs. */
+  const pendingChartFocusByMode = new Map();
+  let chartFocusDrainScheduled = false;
+  let chartFocusDrainInFlight = false;
+
+  function normalizeChartFocusRaw(raw) {
+    if (raw == null || raw === "") return null;
+    const u = String(raw).trim().toUpperCase();
+    return symbolRe.test(u) ? u : null;
+  }
+
+  async function drainPendingChartFocus() {
+    if (chartFocusDrainInFlight) return;
+    chartFocusDrainInFlight = true;
+    try {
+      while (pendingChartFocusByMode.size > 0) {
+        const batch = new Map(pendingChartFocusByMode);
+        pendingChartFocusByMode.clear();
+        for (const [mode, rawF] of batch) {
+          try {
+            await appState.ensureEngine(mode);
+            const row = appState.getEngine(mode);
+            if (!row?.bot?.updateChartFocus) continue;
+            row.bot.updateChartFocus(rawF);
+          } catch (e) {
+            appState.log?.warn?.("chart_focus_drain_failed", {
+              mode,
+              error: String(e?.message || e),
+            });
+          }
+        }
+      }
+    } finally {
+      chartFocusDrainInFlight = false;
+      if (pendingChartFocusByMode.size) scheduleChartFocusDrain();
+    }
+  }
+
+  function scheduleChartFocusDrain() {
+    if (chartFocusDrainScheduled) return;
+    chartFocusDrainScheduled = true;
+    queueMicrotask(() => {
+      chartFocusDrainScheduled = false;
+      void drainPendingChartFocus();
+    });
+  }
+
+  /** Fast multi-coin chart tab focus — HTTP acks immediately; depth/tick flush is coalesced async. */
+  r.post("/bot/chart-focus", (req, res) => {
+    const schema = z.object({
+      uiChartFocusSymbol: z.union([z.string().regex(symbolRe), z.null()]).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    const m = resolveViewTradingMode(req, undefined);
+    const raw = parsed.data.uiChartFocusSymbol;
+    const focusU = normalizeChartFocusRaw(raw === undefined ? null : raw);
+    pendingChartFocusByMode.set(m, focusU);
+    scheduleChartFocusDrain();
+    res.json({ ok: true, uiChartFocusSymbol: focusU });
   });
 
   r.post("/bot/config", async (req, res) => {
@@ -805,6 +873,7 @@ export function createRouter({ appState }) {
       surfPulseMlThreshold: z.number().min(0).max(1).optional(),
       /** When true, high-confidence opposing composite intelligence score can skip Supertrend opens. */
       intelligenceGateEnabled: z.boolean().optional(),
+      intelligenceGateManualStrategies: z.boolean().optional(),
       intelligenceGateStrict: z.boolean().optional(),
       intelligenceGateHighWinRate: z.boolean().optional(),
       supertrendFuturesExitOnFlip: z.boolean().optional(),
@@ -1061,7 +1130,8 @@ export function createRouter({ appState }) {
   r.get("/universe/symbols", async (req, res) => {
     try {
       const row = await getEngineForBotRequest(req, undefined);
-      const out = await row.bot.listTradableUniverseSymbols?.();
+      const q = String(req.query?.q || "").trim() || null;
+      const out = await row.bot.listTradableUniverseSymbols?.({ q });
       if (!out) return res.status(400).json({ ok: false, error: "universe_unavailable" });
       return res.json(out);
     } catch (e) {
@@ -1625,6 +1695,51 @@ export function createRouter({ appState }) {
     }
   });
 
+  /** Normalize + sanitize `{ v, bot }` from the UI Save button (signal brain only). */
+  function normalizeClientStrategyCfgRaw(raw, fillFrom = null) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const root = { ...raw };
+    if (!root.bot || typeof root.bot !== "object" || Array.isArray(root.bot)) {
+      const botOnly = { ...root };
+      delete botOnly.v;
+      delete botOnly.tradingFormDefaults;
+      root.bot = botOnly;
+    }
+    if (root.v == null) root.v = 1;
+    return sanitizeSignalBrainCfgRaw(root, { fillFrom });
+  }
+
+  /** Reload live engine from DB strategy version (+ active instance operational merge). */
+  async function reloadEngineFromSavedStrategyVersion(row, versionId, instanceId) {
+    if (!row?.bot?.reloadTradingConfigFromPersisted) {
+      return row?.bot?.getPublicState?.() ?? null;
+    }
+    let persisted = null;
+    try {
+      const ver = await strategyService.getVersion(String(versionId));
+      persisted = ver?.cfgRaw && typeof ver.cfgRaw === "object" ? sanitizeSignalBrainCfgRaw(ver.cfgRaw) : null;
+    } catch {
+      persisted = null;
+    }
+    if (instanceId) {
+      try {
+        const op = await instanceService.getInstanceOperationalConfig(String(instanceId));
+        if (op) persisted = mergeInstanceIntoCfgRaw(persisted ?? {}, op);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (persisted) {
+      row.bot.reloadTradingConfigFromPersisted(persisted);
+      try {
+        row.bot.saveTradingConfigToDisk?.();
+      } catch {
+        /* non-fatal */
+      }
+    }
+    return row.bot.getPublicState?.() ?? null;
+  }
+
   r.post("/trading-modes/:modeSlug/strategy-config/save", requireDbUserSession, async (req, res) => {
     const modeSlug = normalizeModeSlugParam(req.params.modeSlug);
     if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_mode_slug" });
@@ -1635,6 +1750,10 @@ export function createRouter({ appState }) {
       description: z.string().max(4000).optional().nullable(),
       tags: z.array(z.string().max(64)).max(48).optional(),
       label: z.string().max(200).optional().nullable(),
+      /** Authoritative UI snapshot (signal brain). When present, overrides live-engine read race. */
+      cfgRaw: z.record(z.unknown()).optional(),
+      /** Instance `inst_*` columns from UI view bot (skips pre-save botConfig flush). */
+      instanceOperational: z.record(z.unknown()).optional(),
     });
     const parsed = bodySchema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
@@ -1660,11 +1779,18 @@ export function createRouter({ appState }) {
       const st = await strategyService.getStrategyByVersionId(activeVid);
       if (!st || st.userId !== uid) return res.status(404).json({ ok: false, error: "active_strategy_not_found" });
       const row = await getEngineForBotRequest(req);
-      const payload = row?.bot?.getTradingConfigPersistPayload?.();
-      if (!payload || typeof payload !== "object") {
+      const enginePayload = row?.bot?.getTradingConfigPersistPayload?.();
+      if (!enginePayload || typeof enginePayload !== "object") {
         return res.status(500).json({ ok: false, error: "config_snapshot_unavailable" });
       }
       const rawSaveBody = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+      const clientCfgRaw = normalizeClientStrategyCfgRaw(
+        parsed.data.cfgRaw ?? rawSaveBody.cfgRaw,
+        enginePayload,
+      );
+      const payload =
+        clientCfgRaw ??
+        sanitizeSignalBrainCfgRaw(enginePayload, { fillFrom: enginePayload });
       const labelForSaveAsNew =
         parsed.data.label != null && String(parsed.data.label).trim() !== ""
           ? String(parsed.data.label)
@@ -1679,8 +1805,16 @@ export function createRouter({ appState }) {
       // Strategy version stores SIGNAL-BRAIN only (createVersion strips inst_* fields
       // from cfg_raw automatically). Instance-owned operational fields are routed to
       // the active instance below so a single "Save" persists both sides correctly.
+      const clientInstanceOp =
+        parsed.data.instanceOperational && typeof parsed.data.instanceOperational === "object"
+          ? parsed.data.instanceOperational
+          : rawSaveBody.instanceOperational && typeof rawSaveBody.instanceOperational === "object"
+            ? rawSaveBody.instanceOperational
+            : null;
       const instanceOpCols = (() => {
-        const inst = extractInstanceConfig(payload);
+        const inst =
+          clientInstanceOp ??
+          extractInstanceConfig(enginePayload);
         // Drop capital fields here — they are managed via capital_allotments + the
         // dedicated allotment endpoint. The non-capital inst_* fields (symbol,
         // timeframe, market mode, universe, risk) are safe to mirror onto the row.
@@ -1724,7 +1858,8 @@ export function createRouter({ appState }) {
           );
         }
         await Promise.all(postSave);
-        return res.json({ ok: true, action: "save", strategy: st, version: nv });
+        const bot = await reloadEngineFromSavedStrategyVersion(row, nv.id, activeInstanceId);
+        return res.json({ ok: true, action: "save", strategy: st, version: nv, bot });
       }
       const name = String(parsed.data.name || "").trim() || `${st.name} copy`;
       const newStrategy = await strategyService.createStrategy(
@@ -1754,7 +1889,8 @@ export function createRouter({ appState }) {
         );
       }
       await Promise.all(postSaveNew);
-      return res.json({ ok: true, action: "save_as_new", strategy: newStrategy, version: nv });
+      const bot = await reloadEngineFromSavedStrategyVersion(row, nv.id, activeInstanceId);
+      return res.json({ ok: true, action: "save_as_new", strategy: newStrategy, version: nv, bot });
     } catch (e) {
       return res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
@@ -1960,10 +2096,26 @@ export function createRouter({ appState }) {
           activeInstanceByMode: { [modeSlug]: null },
         });
       }
+      /** Re-hydrate live engine from the instance's bound strategy version (DB wins over disk). */
+      let bot = null;
+      if (instanceId) {
+        try {
+          const bind = await instanceService.getInstanceEngineBinding(String(instanceId));
+          if (bind?.strategyVersionId) {
+            appState.setActiveStrategyVersion(modeSlug, String(bind.strategyVersionId), { rebuildEngine: false });
+            const row = await getEngineForBotRequest(req);
+            bot = await reloadEngineFromSavedStrategyVersion(row, bind.strategyVersionId, instanceId);
+          }
+        } catch (reloadErr) {
+          // eslint-disable-next-line no-console
+          console.warn("active_instance_engine_reload_failed", String(reloadErr?.message || reloadErr));
+        }
+      }
       res.json({
         ok: true,
         modeSlug,
         instanceId,
+        bot,
         activeAccountByMode: appState.getActiveAccountByModeSnapshot(),
         activeStrategyVersionByMode: appState.getActiveStrategyVersionByModeSnapshot(),
       });

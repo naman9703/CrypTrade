@@ -30,3 +30,14 @@ test("LONG: SL wins when bar low crosses both SL and liq", () => {
   const ex = resolveExit({ isLong: true, bar, sl, liqPx });
   assert.equal(ex.exitReason, "sl");
 });
+
+test("LONG: DOGE-like 20x — tight 0.2% SL must beat liq on same bar", () => {
+  const entry = 0.24201094;
+  const sl = entry * (1 - 0.002);
+  const liqPx = liquidationPrice({ side: "BUY", entryFill: entry, leverage: 20 });
+  assert.ok(sl > liqPx);
+  const bar = { high: entry, low: liqPx - 0.0001, open: entry, close: liqPx };
+  const ex = resolveExit({ isLong: true, bar, sl, liqPx });
+  assert.equal(ex.exitReason, "sl");
+  assert.ok(Math.abs(ex.exitPrice - sl) < 1e-9);
+});

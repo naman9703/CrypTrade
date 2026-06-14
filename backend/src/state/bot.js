@@ -25,10 +25,10 @@ import { createMarketFeed } from "./marketFeed.js";
 import { createBinanceUniverse } from "../svc/universe/binanceUniverse.js";
 import { createBinanceOrderBook } from "./orderBookBinance.js";
 import {
-  depthNotionalUsd,
+  evaluateLiquidityGuards,
   fetchBinanceFuturesFundingRate,
   fundingBlocksTrade,
-  spreadBpsFromBook,
+  readLiquidityGuardConfig,
 } from "../svc/executionGuards.js";
 import { createCoinGeckoClient } from "../svc/external/coingecko.js";
 import { formatAiServiceError } from "../svc/aiHttpError.js";
@@ -49,7 +49,9 @@ import { computeInstanceStats, updateInstanceStats } from "../db/services/instan
 import { getAllotmentForInstance, updateReserved } from "../db/services/capitalAllotmentService.js";
 import * as tradeService from "../db/services/tradeService.js";
 import {
+  depthBookFromTicker,
   fetchUsdMBookTicker,
+  fetchUsdMDepthBook,
   fetchUsdMKlineCloseAtOpenTime,
   fetchUsdMPremiumMark,
 } from "../lib/binanceUsdMBookTicker.js";
@@ -82,6 +84,14 @@ import {
   evaluateHtf4hFilter,
 } from "../strategy/supertrendHtf4hFilter.js";
 import { ELITE_ST_ACTIVATION_PATCH } from "../strategy/supertrendElite.js";
+import {
+  manualStrategyUsesLiveBarClose,
+  manualStrategyUsesBarCloseAdapter,
+  manualStrategyKey,
+  evaluateLiveStrategyBarClose,
+  manualStrategyBarCloseActive,
+  resolveManualStrategyVenue,
+} from "../strategy/liveStrategyBarClose.js";
 import { learnSmartSignalStrengthThreshold } from "../lib/signalStrengthSmartThreshold.js";
 import { extractSurfPulseFeatures } from "../strategy/surfPulseMl.js";
 import { mergeMarketDecisionConfig, computeMarketDecisionSnapshot } from "../lib/marketDecisionEngine.js";
@@ -987,6 +997,8 @@ export function createBot({
     /** Stricter composite bands + neutral chop block (mirrors backtest `intelligenceGateStrict`). */
     intelligenceGateStrict: false,
     intelligenceGateHighWinRate: false,
+    /** When false (default), intelligence gate skips MANUAL bar-close adapter opens (backtest parity). */
+    intelligenceGateManualStrategies: false,
     /** When false, skip opposite ST flip orders while a futures leg is open (exit via SL/trail/TP on exchange). */
     supertrendFuturesExitOnFlip: true,
     /** Min XGBoost win probability (0–1) for SURF_PULSE_ML opens; default from env `SURF_PULSE_ML_THRESHOLD`. */
@@ -1260,6 +1272,33 @@ export function createBot({
     return k === "BINANCE" || k === "BINANCE_FUTURES";
   }
 
+  /** Periodic Binance universe scan + auto primary rotation (`UNIVERSE_SCAN_ENABLED=1` to opt in). */
+  function universeScanEnabled() {
+    return String(process.env.UNIVERSE_SCAN_ENABLED || "0") !== "0";
+  }
+
+  function buildUniverseStubFromUiCandidates() {
+    const syms = resolveMultiCoinUiSymbolCandidates();
+    const ranked = syms.map((symbol) => ({
+      symbol,
+      score: 0,
+      aiProb: null,
+      opportunity: null,
+      spreadPct: null,
+    }));
+    return {
+      ok: true,
+      asOf: new Date().toISOString(),
+      timeframe: state.timeframe,
+      ranked,
+      selected: syms.slice(0, 3),
+      tradable: syms.length,
+      universeSize: syms.length,
+      emptyCustom: syms.length === 0,
+      scanDisabled: true,
+    };
+  }
+
   function binanceDepthWsBase() {
     const k = effectiveMarketFeedKind();
     const tm = String(runtimeTradingMode() || "").toUpperCase();
@@ -1377,19 +1416,24 @@ export function createBot({
     // Use it as the equal-split divisor so fixed-USDT multi sizing doesn't silently fall back to divisor=1.
     const customRaw = Array.isArray(state.universeCustomSymbols) ? state.universeCustomSymbols : [];
     const customSyms = [...new Set(customRaw.map((s) => String(s || "").trim().toUpperCase()).filter((s) => SYM_RE.test(s)))].slice(0, 10);
+    const coinBase = String(state.universeCoinBase || "ALL").toUpperCase();
     const pins = Array.isArray(state.universePinnedSymbols)
       ? [...new Set(state.universePinnedSymbols.map((s) => String(s || "").trim().toUpperCase()).filter((s) => SYM_RE.test(s)))]
       : [];
     const manual = String(state.universePinControl || "").toUpperCase() === "MANUAL";
+    if (coinBase === "CUSTOM" && customSyms.length > 0) {
+      if (manual && pins.length > 0) {
+        const inCustom = pins.filter((p) => customSyms.includes(p));
+        return inCustom.length > 0 ? inCustom : customSyms;
+      }
+      return customSyms;
+    }
     if (manual && pins.length > 0) {
       const setR = new Set(rankedSyms);
       const inTable = pins.filter((p) => setR.has(p));
       return inTable.length > 0 ? inTable : pins;
     }
-    // AUTO pin-control: use ranked list when available, else fallback to custom list.
     if (rankedSyms.length > 0) return rankedSyms.slice(0, 10);
-    const coinBase = String(state.universeCoinBase || "ALL").toUpperCase();
-    if (coinBase === "CUSTOM" && customSyms.length > 0) return customSyms;
     return [];
   }
 
@@ -1763,6 +1807,42 @@ export function createBot({
     return p;
   }
 
+  /** SUPERTREND_ELITE signal-brain fields — shared by persist payload and WS/HTTP public state. */
+  function eliteStPublicSnapshot() {
+    return {
+      eliteStRequireHtf4hAlign: state.eliteStRequireHtf4hAlign === true,
+      eliteStHtf4hPeriod: state.eliteStHtf4hPeriod,
+      eliteStHtf4hMultiplier: state.eliteStHtf4hMultiplier,
+      eliteStRequireHtf1hEmaAlign: state.eliteStRequireHtf1hEmaAlign === true,
+      eliteStHtf1hMinSep: state.eliteStHtf1hMinSep,
+      eliteStHtf1hSepMode: state.eliteStHtf1hSepMode,
+      eliteStHtf1hMinSepAtrMult: state.eliteStHtf1hMinSepAtrMult,
+      eliteStHtf1hMinSepFloor: state.eliteStHtf1hMinSepFloor,
+      eliteStHtf1hMinSepCeil: state.eliteStHtf1hMinSepCeil,
+      eliteStHtf1hSepPercentileLookback: state.eliteStHtf1hSepPercentileLookback,
+      eliteStHtf1hSepPercentileMult: state.eliteStHtf1hSepPercentileMult,
+      eliteStHtf1hSepAdxBase: state.eliteStHtf1hSepAdxBase,
+      eliteStHtf1hSepAdxAlpha: state.eliteStHtf1hSepAdxAlpha,
+      eliteStHtf1hSepAdxRef: state.eliteStHtf1hSepAdxRef,
+      eliteStHtf1hSepCalibratePct: state.eliteStHtf1hSepCalibratePct,
+      eliteStHtf1hSepCalibrateBars: state.eliteStHtf1hSepCalibrateBars,
+      eliteStMinAdx: state.eliteStMinAdx,
+      eliteStRequireAdxRising: state.eliteStRequireAdxRising === true,
+      eliteStAdxRisingLookback: state.eliteStAdxRisingLookback,
+      eliteStMinVolumeVsAvg: state.eliteStMinVolumeVsAvg,
+      eliteStRequireAtrExpansion: state.eliteStRequireAtrExpansion === true,
+      eliteStMinAtrExpansion: state.eliteStMinAtrExpansion,
+      eliteStAtrExpansionLookback: state.eliteStAtrExpansionLookback,
+      eliteStLiqSweepEnabled: state.eliteStLiqSweepEnabled === true,
+      eliteStAutoCalibrate: state.eliteStAutoCalibrate === true,
+      eliteStAutoFullTune: state.eliteStAutoFullTune !== false,
+      eliteStAutoProfileBars: state.eliteStAutoProfileBars,
+      eliteStAutoBracketMode: state.eliteStAutoBracketMode,
+      eliteStAutoMinAdxFloor: state.eliteStAutoMinAdxFloor,
+      eliteStAutoMinAdxCeil: state.eliteStAutoMinAdxCeil,
+    };
+  }
+
   function buildTradingConfigPersistPayload() {
     return {
       v: 1,
@@ -1946,35 +2026,7 @@ export function createBot({
         supertrendMoveQualityMinBodyVsAvg: state.supertrendMoveQualityMinBodyVsAvg,
         supertrendMoveQualityMinDirectionalBody: state.supertrendMoveQualityMinDirectionalBody,
         supertrendMoveQualityMinVolumeVsAvg: state.supertrendMoveQualityMinVolumeVsAvg,
-        eliteStRequireHtf4hAlign:    state.eliteStRequireHtf4hAlign === true,
-        eliteStHtf4hPeriod:          state.eliteStHtf4hPeriod,
-        eliteStHtf4hMultiplier:      state.eliteStHtf4hMultiplier,
-        eliteStRequireHtf1hEmaAlign: state.eliteStRequireHtf1hEmaAlign === true,
-        eliteStHtf1hMinSep:          state.eliteStHtf1hMinSep,
-        eliteStHtf1hSepMode:         state.eliteStHtf1hSepMode,
-        eliteStHtf1hMinSepAtrMult:   state.eliteStHtf1hMinSepAtrMult,
-        eliteStHtf1hMinSepFloor:     state.eliteStHtf1hMinSepFloor,
-        eliteStHtf1hMinSepCeil:      state.eliteStHtf1hMinSepCeil,
-        eliteStHtf1hSepPercentileLookback: state.eliteStHtf1hSepPercentileLookback,
-        eliteStHtf1hSepPercentileMult:     state.eliteStHtf1hSepPercentileMult,
-        eliteStHtf1hSepAdxBase:      state.eliteStHtf1hSepAdxBase,
-        eliteStHtf1hSepAdxAlpha:     state.eliteStHtf1hSepAdxAlpha,
-        eliteStHtf1hSepAdxRef:       state.eliteStHtf1hSepAdxRef,
-        eliteStHtf1hSepCalibratePct: state.eliteStHtf1hSepCalibratePct,
-        eliteStHtf1hSepCalibrateBars: state.eliteStHtf1hSepCalibrateBars,
-        eliteStMinAdx:               state.eliteStMinAdx,
-        eliteStRequireAdxRising:     state.eliteStRequireAdxRising === true,
-        eliteStAdxRisingLookback:    state.eliteStAdxRisingLookback,
-        eliteStMinVolumeVsAvg:       state.eliteStMinVolumeVsAvg,
-        eliteStRequireAtrExpansion:  state.eliteStRequireAtrExpansion === true,
-        eliteStMinAtrExpansion:      state.eliteStMinAtrExpansion,
-        eliteStAtrExpansionLookback: state.eliteStAtrExpansionLookback,
-        eliteStLiqSweepEnabled:      state.eliteStLiqSweepEnabled === true,
-        eliteStAutoCalibrate:        state.eliteStAutoCalibrate === true,
-        eliteStAutoProfileBars:      state.eliteStAutoProfileBars,
-        eliteStAutoBracketMode:      state.eliteStAutoBracketMode,
-        eliteStAutoMinAdxFloor:      state.eliteStAutoMinAdxFloor,
-        eliteStAutoMinAdxCeil:       state.eliteStAutoMinAdxCeil,
+        ...eliteStPublicSnapshot(),
         marketDecision: state.marketDecision && typeof state.marketDecision === "object" ? { ...state.marketDecision } : {},
         supertrendBreakoutConfirm: state.supertrendBreakoutConfirm === true,
         supertrendBreakoutMaxBars: state.supertrendBreakoutMaxBars,
@@ -1993,6 +2045,7 @@ export function createBot({
         intelligenceGateEnabled: state.intelligenceGateEnabled === true,
         intelligenceGateStrict: state.intelligenceGateStrict === true,
         intelligenceGateHighWinRate: state.intelligenceGateHighWinRate === true,
+        intelligenceGateManualStrategies: state.intelligenceGateManualStrategies === true,
         supertrendFuturesExitOnFlip: state.supertrendFuturesExitOnFlip !== false,
         trailingStopLossAuto: state.trailingStopLossAuto,
         futuresTrailingStopMode: normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode),
@@ -2062,549 +2115,15 @@ export function createBot({
     if (!raw || typeof raw !== "object") return;
     const b = raw.bot;
     if (b && typeof b === "object") {
-      if (typeof b.symbol === "string" && SYM_RE.test(b.symbol.trim())) {
-        state.symbol = b.symbol.trim().toUpperCase();
-      }
-      if (typeof b.timeframe === "string" && PERSISTED_TF.has(b.timeframe)) {
-        state.timeframe = b.timeframe;
-      }
-      if (b.symbolMode === "SINGLE" || b.symbolMode === "AUTO") {
-        state.symbolMode = b.symbolMode;
-      }
-      if (b.universeCoinBase === "ALL" || b.universeCoinBase === "CUSTOM") {
-        state.universeCoinBase = b.universeCoinBase;
-      }
-      if (b.universeCoinSelectMode === "SINGLE" || b.universeCoinSelectMode === "MULTIPLE") {
-        state.universeCoinSelectMode = b.universeCoinSelectMode;
-      }
-      if (b.universePinControl === "AUTO" || b.universePinControl === "MANUAL") {
-        state.universePinControl = b.universePinControl;
-      }
-      if (b.universeAutoCoinPick === "RANKED_AI_SS" || b.universeAutoCoinPick === "ST_SIGNAL_FIRST") {
-        state.universeAutoCoinPick = b.universeAutoCoinPick;
-      }
-      if (Array.isArray(b.universeCustomSymbols)) {
-        state.universeCustomSymbols = [...new Set(b.universeCustomSymbols.map((s) => String(s || "").trim().toUpperCase()).filter((s) => SYM_RE.test(s)))].slice(0, 10);
-      }
-      const hasExplicitPinsArray = Array.isArray(b.universePinnedSymbols);
-      if (hasExplicitPinsArray) {
-        state.universePinnedSymbols = [...new Set(b.universePinnedSymbols.map((s) => String(s || "").trim().toUpperCase()).filter((s) => SYM_RE.test(s)))].slice(0, 10);
-        if (state.universeCoinSelectMode !== "MULTIPLE") {
-          state.universePinnedSymbols = state.universePinnedSymbols.slice(0, 1);
-        }
-      } else {
-        state.universePinnedSymbols = [];
-      }
-      if (
-        !hasExplicitPinsArray &&
-        typeof b.universePinnedSymbol === "string" &&
-        SYM_RE.test(b.universePinnedSymbol.trim())
-      ) {
-        const up = b.universePinnedSymbol.trim().toUpperCase();
-        state.universePinnedSymbols = state.universeCoinSelectMode === "MULTIPLE" ? [up] : [up];
-      }
-      if (!hasExplicitPinsArray && (b.universePinnedSymbol === null || b.universePinnedSymbol === "")) {
-        state.universePinnedSymbols = [];
-      }
-      state.universePinnedSymbol =
-        state.universeCoinSelectMode === "MULTIPLE" ? null : state.universePinnedSymbols[0] ?? null;
-      if (state.universePinnedSymbol) {
-        state.symbolMode = "AUTO";
-        state.symbol = state.universePinnedSymbol;
-      }
-      if (b.aiThreshold != null && Number.isFinite(Number(b.aiThreshold))) {
-        state.aiThreshold = clamp(Number(b.aiThreshold), 0, 1);
-      }
-      if (b.riskPerTradeUnit === "USDT" || b.riskPerTradeUnit === "PCT") {
-        state.riskPerTradeUnit = b.riskPerTradeUnit;
-      }
-      if (b.maxDailyLossUnit === "USDT" || b.maxDailyLossUnit === "PCT") {
-        state.maxDailyLossUnit = b.maxDailyLossUnit;
-      }
-      if (b.riskPerTrade != null && Number.isFinite(Number(b.riskPerTrade))) {
-        state.riskPerTrade = Number(b.riskPerTrade);
-      }
-      if (b.maxDailyLoss != null && Number.isFinite(Number(b.maxDailyLoss))) {
-        state.maxDailyLoss = Number(b.maxDailyLoss);
-      }
-      normalizeRiskLimits(state);
-      if (typeof b.capitalSplitAcrossCoins === "boolean") state.capitalSplitAcrossCoins = b.capitalSplitAcrossCoins;
-      if (b.allowedBudgetUsdt != null && Number.isFinite(Number(b.allowedBudgetUsdt))) {
-        state.allowedBudgetUsdt = clamp(Number(b.allowedBudgetUsdt), 0, 10_000_000);
-      }
-      if (b.allowedBudgetWalletPct != null && Number.isFinite(Number(b.allowedBudgetWalletPct))) {
-        state.allowedBudgetWalletPct = clamp(Number(b.allowedBudgetWalletPct), 0, 100);
-      }
-      if (b.allowedBudgetInputMode === "WALLET_PCT" || b.allowedBudgetInputMode === "USDT") {
-        state.allowedBudgetInputMode = b.allowedBudgetInputMode;
-      }
-      if (b.allowedBudgetPnlAnchorMs != null && Number.isFinite(Number(b.allowedBudgetPnlAnchorMs))) {
-        state.allowedBudgetPnlAnchorMs = Math.round(Number(b.allowedBudgetPnlAnchorMs));
-      }
-      if (typeof b.multiTradeUsePctOfUsable === "boolean") state.multiTradeUsePctOfUsable = b.multiTradeUsePctOfUsable;
-      if (b.multiTradePctOfUsable != null && Number.isFinite(Number(b.multiTradePctOfUsable))) {
-        state.multiTradePctOfUsable = clamp(Number(b.multiTradePctOfUsable), 0, 100);
-      }
-      if (typeof b.capitalAllotmentCompoundPnlUi === "boolean") state.capitalAllotmentCompoundPnlUi = b.capitalAllotmentCompoundPnlUi;
-      if (b.capitalCycleStrategyBalanceUsdt != null && Number.isFinite(Number(b.capitalCycleStrategyBalanceUsdt))) {
-        state.capitalCycleStrategyBalanceUsdt = Math.max(0, Number(b.capitalCycleStrategyBalanceUsdt));
-      }
-      if (b.capitalCyclePoolAnchorUsdt != null && Number.isFinite(Number(b.capitalCyclePoolAnchorUsdt))) {
-        state.capitalCyclePoolAnchorUsdt = Math.max(0, Number(b.capitalCyclePoolAnchorUsdt));
-      }
-      if (b.capitalCycleRealizedPnlUsdt != null && Number.isFinite(Number(b.capitalCycleRealizedPnlUsdt))) {
-        state.capitalCycleRealizedPnlUsdt = Number(b.capitalCycleRealizedPnlUsdt);
-      }
-      if (Array.isArray(b.capitalCycleSymbols)) {
-        state.capitalCycleSymbols = [...new Set(b.capitalCycleSymbols.map((s) => String(s || "").toUpperCase()).filter((s) => SYM_RE.test(s)))].slice(0, 10);
-      }
-      if (typeof b.perTradeBudgetCapEnabled === "boolean") state.perTradeBudgetCapEnabled = b.perTradeBudgetCapEnabled;
-      if (b.perTradeBudgetInputMode === "USDT" || b.perTradeBudgetInputMode === "PCT_OF_USABLE") {
-        state.perTradeBudgetInputMode = b.perTradeBudgetInputMode;
-      }
-      if (typeof b.multiCoinCapitalSizingActive === "boolean") {
-        state.multiCoinCapitalSizingActive = b.multiCoinCapitalSizingActive;
-      } else {
-        const mm0 = String(b.multiBudgetSplitMode || "").toUpperCase();
-        state.multiCoinCapitalSizingActive =
-          b.capitalSplitAcrossCoins === true ||
-          mm0 === "EQUAL" ||
-          mm0 === "CUSTOM_USDT" ||
-          mm0 === "CUSTOM_PCT_ALLOWED";
-      }
-      if (
-        b.multiBudgetSplitMode === "FULL" ||
-        b.multiBudgetSplitMode === "EQUAL" ||
-        b.multiBudgetSplitMode === "CUSTOM_USDT" ||
-        b.multiBudgetSplitMode === "CUSTOM_PCT_ALLOWED"
-      ) {
-        state.multiBudgetSplitMode = b.multiBudgetSplitMode;
-      }
-      if (b.multiBudgetCoinUsdt != null && typeof b.multiBudgetCoinUsdt === "object") {
-        state.multiBudgetCoinUsdt = { ...b.multiBudgetCoinUsdt };
-      }
-      if (b.multiBudgetCoinPct != null && typeof b.multiBudgetCoinPct === "object") {
-        state.multiBudgetCoinPct = { ...b.multiBudgetCoinPct };
-      }
-      normalizeCapitalBudgetFields(state, SYM_RE);
-      if (
-        !Number.isFinite(Number(state.capitalCycleStrategyBalanceUsdt)) ||
-        !Number.isFinite(Number(state.capitalCyclePoolAnchorUsdt))
-      ) {
-        resetCapitalCycleFromAllowedBase();
-      }
-      if (b.strategyMode === "AUTO" || b.strategyMode === "MANUAL") state.strategyMode = b.strategyMode;
-      if (typeof b.manualStrategy === "string" && b.manualStrategy.length <= 80) {
-        state.manualStrategy = b.manualStrategy;
-      }
-      if (b.marketMode === "SPOT" || b.marketMode === "FUTURES" || b.marketMode === "AUTO") {
-        state.marketMode = b.marketMode;
-      }
-      if (b.futuresLeverageMode === "AUTO" || b.futuresLeverageMode === "MANUAL") {
-        state.futuresLeverageMode = b.futuresLeverageMode;
-      }
-      if (b.futuresLeverage != null && Number.isFinite(Number(b.futuresLeverage))) {
-        state.futuresLeverage = clamp(Math.floor(Number(b.futuresLeverage)), 1, 100);
-      }
-      if (typeof b.supertrendSpotAuto === "boolean") state.supertrendSpotAuto = b.supertrendSpotAuto;
-      if (typeof b.supertrendFuturesAuto === "boolean") state.supertrendFuturesAuto = b.supertrendFuturesAuto;
-      if (typeof b.supertrendFuturesAiConfidenceFilter === "boolean") {
-        state.supertrendFuturesAiConfidenceFilter = b.supertrendFuturesAiConfidenceFilter;
-      }
-      if (typeof b.signalStrengthGatesTrades === "boolean") {
-        state.signalStrengthGatesTrades = b.signalStrengthGatesTrades;
-      }
-      if (typeof b.supertrendMoveQualityGate === "boolean") state.supertrendMoveQualityGate = b.supertrendMoveQualityGate;
-      if (typeof b.supertrendHtf4hEnabled === "boolean") state.supertrendHtf4hEnabled = b.supertrendHtf4hEnabled;
-      if (b.supertrendHtf4hPeriod != null && Number.isFinite(Number(b.supertrendHtf4hPeriod))) {
-        state.supertrendHtf4hPeriod = clamp(Math.round(Number(b.supertrendHtf4hPeriod)), 2, 50);
-      }
-      if (b.supertrendHtf4hMultiplier != null && Number.isFinite(Number(b.supertrendHtf4hMultiplier))) {
-        state.supertrendHtf4hMultiplier = Math.max(0.5, Number(b.supertrendHtf4hMultiplier));
-      }
-      if (typeof b.volumeProfileEnabled === "boolean") state.volumeProfileEnabled = b.volumeProfileEnabled;
-      if (typeof b.volumeProfileSoftGates === "boolean") state.volumeProfileSoftGates = b.volumeProfileSoftGates;
-      if (typeof b.volumeProfileGatesEnabled === "boolean") state.volumeProfileGatesEnabled = b.volumeProfileGatesEnabled;
-      if (typeof b.intradayVpBrackets === "boolean") state.intradayVpBrackets = b.intradayVpBrackets;
-      for (const gk of [
-        "intradayGateLiquidity",
-        "intradayGateSession",
-        "intradayGateFib",
-        "intradayGateVp",
-        "intradayGateOrderFlow",
-        "intradayGateHtfRegime",
-        "intradayGateInstitutionalSr",
-        "intradaySrAPlusMode",
-        "intradaySrRequireBos",
-        "intradaySrRequireConfirm",
-        "intradaySrRequireVolume",
-        "intradaySrRequireHtfTrend",
-        "intradayLiqTp1Enabled",
-        "intradayLiqTp2Enabled",
-        "intradayLiqBreakevenAfterPartial",
-        "intradayLiqPartialTp",
-      ]) {
-        if (typeof b[gk] === "boolean") state[gk] = b[gk];
-      }
-      for (const gk of [
-        "intradayGateSmcIct",
-        "intradaySmcIctMode",
-        "intradaySmcOneTradePerDay",
-        "intradaySmcRequireMss",
-        "intradaySmcRequireRetrace",
-        "intradaySmcRequireChoch",
-        "intradaySmcRequireBos",
-        "intradaySmcRequireConfirm",
-        "intradaySmcRequireFvgRetrace",
-        "intradaySmcRequireHtfBias",
-        "intradaySmcChochStrict",
-        "intradaySmcRequirePremiumDiscount",
-        "intradaySmcPremiumDiscountOte",
-        "intradayLiqOnePickPerDay",
-        "intradayLiqSessionExtreme",
-        "intradayLiqStrictMode",
-        "intradayRequireSessionReclaim",
-        "intradayRequireFibOrVp",
-        "intradayLearnedRulesEnabled",
-      ]) {
-        if (typeof b[gk] === "boolean") state[gk] = b[gk];
-      }
-      if (b.intradaySmcIctProfile != null) {
-        const p = String(b.intradaySmcIctProfile).toLowerCase();
-        const valid = ["full", "sweep", "ict2022", "lite", "balanced", "daily"];
-        if (valid.includes(p)) state.intradaySmcIctProfile = p;
-      }
-      if (b.intradaySmcPickMode != null) {
-        const pm = String(b.intradaySmcPickMode).toLowerCase();
-        if (pm === "per_signal" || pm === "daily_best" || pm === "daily_sniper") {
-          state.intradaySmcPickMode = pm;
-        }
-      }
-      if (b.intradaySmcMinScore != null && Number.isFinite(Number(b.intradaySmcMinScore))) {
-        state.intradaySmcMinScore = clamp(Math.round(Number(b.intradaySmcMinScore)), 1, 20);
-      }
-      if (b.intradaySmcLookbackBars != null && Number.isFinite(Number(b.intradaySmcLookbackBars))) {
-        state.intradaySmcLookbackBars = clamp(Math.round(Number(b.intradaySmcLookbackBars)), 3, 200);
-      }
-      if (b.intradaySmcDealingRangeLookback != null && Number.isFinite(Number(b.intradaySmcDealingRangeLookback))) {
-        state.intradaySmcDealingRangeLookback = clamp(
-          Math.round(Number(b.intradaySmcDealingRangeLookback)),
-          10,
-          200,
-        );
-      }
-      if (b.intradaySmcMinRr != null && Number.isFinite(Number(b.intradaySmcMinRr))) {
-        state.intradaySmcMinRr = clamp(Number(b.intradaySmcMinRr), 0, 10);
-      }
-      if (b.intradaySmcBosMaxBars != null && Number.isFinite(Number(b.intradaySmcBosMaxBars))) {
-        state.intradaySmcBosMaxBars = clamp(Math.round(Number(b.intradaySmcBosMaxBars)), 1, 20);
-      }
-      if (b.intradaySmcChochMaxBars != null && Number.isFinite(Number(b.intradaySmcChochMaxBars))) {
-        state.intradaySmcChochMaxBars = clamp(Math.round(Number(b.intradaySmcChochMaxBars)), 1, 30);
-      }
-      if (b.intradaySmcEntryZoneMode != null) {
-        const m = String(b.intradaySmcEntryZoneMode).toUpperCase();
-        if (m === "FVG" || m === "OB" || m === "EITHER") state.intradaySmcEntryZoneMode = m;
-      }
-      if (b.intradaySmcFvgEntryMode != null) {
-        const m = String(b.intradaySmcFvgEntryMode).toLowerCase();
-        state.intradaySmcFvgEntryMode = m === "midpoint" || m === "ce" ? "midpoint" : "zone";
-      }
-      if (b.intradaySmcTp2Mode != null) {
-        const m = String(b.intradaySmcTp2Mode).toLowerCase();
-        state.intradaySmcTp2Mode =
-          m === "internal" || m === "tiered" ? m : "opposing";
-      }
-      if (b.intradaySmcKillzoneMode != null) {
-        const kz = String(b.intradaySmcKillzoneMode).toUpperCase();
-        const valid = ["LONDON", "NY", "LONDON_NY", "OVERLAP", "SILVER_BULLET", "ASIA", "ALL", "CUSTOM"];
-        if (valid.includes(kz)) state.intradaySmcKillzoneMode = kz;
-      }
-      if (b.intradaySmcMinAdx != null && Number.isFinite(Number(b.intradaySmcMinAdx))) {
-        state.intradaySmcMinAdx = clamp(Math.round(Number(b.intradaySmcMinAdx)), 0, 100);
-      }
-      if (b.intradaySmcHtfStrictness != null) {
-        const s = String(b.intradaySmcHtfStrictness).toLowerCase();
-        if (s === "both" || s === "4h" || s === "1h" || s === "either") state.intradaySmcHtfStrictness = s;
-      }
-      if (b.intradaySmcHtfBiasMode != null) {
-        const m = String(b.intradaySmcHtfBiasMode).toLowerCase();
-        if (m === "ema" || m === "structure" || m === "parallel") state.intradaySmcHtfBiasMode = m;
-      }
-      if (b.intradaySmcSlMode != null) {
-        state.intradaySmcSlMode = String(b.intradaySmcSlMode).toLowerCase() === "structure" ? "structure" : "sweep";
-      }
-      if (b.intradaySmcMaxTpRr != null && Number.isFinite(Number(b.intradaySmcMaxTpRr))) {
-        state.intradaySmcMaxTpRr = clamp(Number(b.intradaySmcMaxTpRr), 0, 20);
-      }
-      if (b.intradaySmcMaxHoldBars != null && Number.isFinite(Number(b.intradaySmcMaxHoldBars))) {
-        state.intradaySmcMaxHoldBars = clamp(Math.round(Number(b.intradaySmcMaxHoldBars)), 0, 2000);
-      }
-      if (b.intradayLiqMinSweepExtensionPct != null && Number.isFinite(Number(b.intradayLiqMinSweepExtensionPct))) {
-        state.intradayLiqMinSweepExtensionPct = clamp(Number(b.intradayLiqMinSweepExtensionPct), 0, 0.05);
-      }
-      if (b.srIntradayMaxTradesPerDay != null && Number.isFinite(Number(b.srIntradayMaxTradesPerDay))) {
-        state.srIntradayMaxTradesPerDay = clamp(Math.round(Number(b.srIntradayMaxTradesPerDay)), 1, 50);
-      }
-      if (b.srIntradayMinBarGap != null && Number.isFinite(Number(b.srIntradayMinBarGap))) {
-        state.srIntradayMinBarGap = clamp(Math.round(Number(b.srIntradayMinBarGap)), 1, 100);
-      }
-      if (b.srIntradayMinScore != null && Number.isFinite(Number(b.srIntradayMinScore))) {
-        state.srIntradayMinScore = clamp(Number(b.srIntradayMinScore), 1, 20);
-      }
-      if (b.intradayMinTechniqueCount != null && Number.isFinite(Number(b.intradayMinTechniqueCount))) {
-        state.intradayMinTechniqueCount = clamp(Math.round(Number(b.intradayMinTechniqueCount)), 1, 10);
-      }
-      if (b.intradaySrMinVolRatio != null && Number.isFinite(Number(b.intradaySrMinVolRatio))) {
-        state.intradaySrMinVolRatio = clamp(Number(b.intradaySrMinVolRatio), 0, 5);
-      }
-      if (b.intradaySrMinHtfSep != null && Number.isFinite(Number(b.intradaySrMinHtfSep))) {
-        state.intradaySrMinHtfSep = clamp(Number(b.intradaySrMinHtfSep), 0, 0.01);
-      }
-      if (b.intradaySrZoneWidthPct != null && Number.isFinite(Number(b.intradaySrZoneWidthPct))) {
-        state.intradaySrZoneWidthPct = clamp(Number(b.intradaySrZoneWidthPct), 0.0001, 0.02);
-      }
-      if (b.intradaySrBosMaxBarsAfterReclaim != null && Number.isFinite(Number(b.intradaySrBosMaxBarsAfterReclaim))) {
-        state.intradaySrBosMaxBarsAfterReclaim = clamp(Math.round(Number(b.intradaySrBosMaxBarsAfterReclaim)), 0, 10);
-      }
-      if (b.intradaySrMinConfirmWick != null && Number.isFinite(Number(b.intradaySrMinConfirmWick))) {
-        state.intradaySrMinConfirmWick = clamp(Number(b.intradaySrMinConfirmWick), 0, 1);
-      }
-      if (b.intradayLiqMinRr != null && Number.isFinite(Number(b.intradayLiqMinRr))) {
-        state.intradayLiqMinRr = clamp(Number(b.intradayLiqMinRr), 0, 5);
-      }
-      if (b.intradayLiqMaxTpRr != null && Number.isFinite(Number(b.intradayLiqMaxTpRr))) {
-        state.intradayLiqMaxTpRr = clamp(Number(b.intradayLiqMaxTpRr), 0, 20);
-      }
-      if (b.intradayLiqMaxHoldBars != null && Number.isFinite(Number(b.intradayLiqMaxHoldBars))) {
-        state.intradayLiqMaxHoldBars = clamp(Math.round(Number(b.intradayLiqMaxHoldBars)), 0, 2000);
-      }
-      if (b.vpLookbackBars != null && Number.isFinite(Number(b.vpLookbackBars))) {
-        state.vpLookbackBars = clamp(Math.round(Number(b.vpLookbackBars)), 48, 2000);
-      }
-      if (b.vpMinRR != null && Number.isFinite(Number(b.vpMinRR))) {
-        state.vpMinRR = clamp(Number(b.vpMinRR), 0.8, 5);
-      }
-      if (typeof b.supertrendBigMoveGateEnabled === "boolean") state.supertrendBigMoveGateEnabled = b.supertrendBigMoveGateEnabled;
-      if (b.supertrendBigMoveMinStrength != null && Number.isFinite(Number(b.supertrendBigMoveMinStrength))) {
-        state.supertrendBigMoveMinStrength = clamp(Math.round(Number(b.supertrendBigMoveMinStrength)), 0, 100);
-      }
-      if (b.supertrendBigMoveMinMoveSlRatio != null && Number.isFinite(Number(b.supertrendBigMoveMinMoveSlRatio))) {
-        state.supertrendBigMoveMinMoveSlRatio = Math.max(1, Number(b.supertrendBigMoveMinMoveSlRatio));
-      }
-      if (b.supertrendBigMoveMinAdx != null && Number.isFinite(Number(b.supertrendBigMoveMinAdx))) {
-        state.supertrendBigMoveMinAdx = clamp(Math.round(Number(b.supertrendBigMoveMinAdx)), 0, 100);
-      }
-      if (b.supertrendBigMoveMinScore != null && Number.isFinite(Number(b.supertrendBigMoveMinScore))) {
-        state.supertrendBigMoveMinScore = clamp(Number(b.supertrendBigMoveMinScore), 0, 1);
-      }
-      if (b.supertrendBigMoveMaxCandlesSinceFlip != null && Number.isFinite(Number(b.supertrendBigMoveMaxCandlesSinceFlip))) {
-        state.supertrendBigMoveMaxCandlesSinceFlip = Math.max(0, Math.min(20, Math.floor(Number(b.supertrendBigMoveMaxCandlesSinceFlip))));
-      }
-      if (b.supertrendBigMoveMinVolumeVsAvg != null && Number.isFinite(Number(b.supertrendBigMoveMinVolumeVsAvg))) {
-        state.supertrendBigMoveMinVolumeVsAvg = Math.max(0, Number(b.supertrendBigMoveMinVolumeVsAvg));
-      }
-      if (b.supertrendBigMoveExpectedMoveAtrMult != null && Number.isFinite(Number(b.supertrendBigMoveExpectedMoveAtrMult))) {
-        state.supertrendBigMoveExpectedMoveAtrMult = Math.max(0.1, Number(b.supertrendBigMoveExpectedMoveAtrMult));
-      }
-      if (b.supertrendMoveQualityMinScore != null && Number.isFinite(Number(b.supertrendMoveQualityMinScore))) {
-        state.supertrendMoveQualityMinScore = clamp(Number(b.supertrendMoveQualityMinScore), 0, 1);
-      }
-      if (b.supertrendMoveQualityMinAdx != null && Number.isFinite(Number(b.supertrendMoveQualityMinAdx))) {
-        state.supertrendMoveQualityMinAdx = clamp(Math.round(Number(b.supertrendMoveQualityMinAdx)), 0, 100);
-      }
-      if (b.supertrendMoveQualityMinMoveSlRatio != null && Number.isFinite(Number(b.supertrendMoveQualityMinMoveSlRatio))) {
-        state.supertrendMoveQualityMinMoveSlRatio = Math.max(1, Number(b.supertrendMoveQualityMinMoveSlRatio));
-      }
-      if (b.supertrendMoveQualityExpectedMoveAtrMult != null && Number.isFinite(Number(b.supertrendMoveQualityExpectedMoveAtrMult))) {
-        state.supertrendMoveQualityExpectedMoveAtrMult = Math.max(0.1, Number(b.supertrendMoveQualityExpectedMoveAtrMult));
-      }
-      if (b.supertrendMoveQualityMinAtrExpansion != null && Number.isFinite(Number(b.supertrendMoveQualityMinAtrExpansion))) {
-        state.supertrendMoveQualityMinAtrExpansion = Math.max(0, Number(b.supertrendMoveQualityMinAtrExpansion));
-      }
-      if (b.supertrendMoveQualityMinBodyVsAvg != null && Number.isFinite(Number(b.supertrendMoveQualityMinBodyVsAvg))) {
-        state.supertrendMoveQualityMinBodyVsAvg = clamp(Number(b.supertrendMoveQualityMinBodyVsAvg), 0.15, 1);
-      }
-      if (b.supertrendMoveQualityMinDirectionalBody != null && Number.isFinite(Number(b.supertrendMoveQualityMinDirectionalBody))) {
-        state.supertrendMoveQualityMinDirectionalBody = clamp(Number(b.supertrendMoveQualityMinDirectionalBody), 0, 1);
-      }
-      if (b.supertrendMoveQualityMinVolumeVsAvg != null && Number.isFinite(Number(b.supertrendMoveQualityMinVolumeVsAvg))) {
-        state.supertrendMoveQualityMinVolumeVsAvg = Math.max(0, Number(b.supertrendMoveQualityMinVolumeVsAvg));
-      }
-      if (b.marketDecision != null && typeof b.marketDecision === "object") {
-        state.marketDecision = { ...(state.marketDecision || {}), ...b.marketDecision };
-      }
-      if (typeof b.supertrendBreakoutConfirm === "boolean") state.supertrendBreakoutConfirm = b.supertrendBreakoutConfirm;
-      if (b.supertrendBreakoutMaxBars != null && Number.isFinite(Number(b.supertrendBreakoutMaxBars))) {
-        state.supertrendBreakoutMaxBars = Math.max(1, Math.min(20, Math.floor(Number(b.supertrendBreakoutMaxBars))));
-      }
-      if (b.signalStrengthOpenMin != null && Number.isFinite(Number(b.signalStrengthOpenMin))) {
-        state.signalStrengthOpenMin = clamp(Math.round(Number(b.signalStrengthOpenMin)), 0, 100);
-      }
-      if (b.smartSignalStrengthThreshold != null && Number.isFinite(Number(b.smartSignalStrengthThreshold))) {
-        state.smartSignalStrengthThreshold = clamp(Math.round(Number(b.smartSignalStrengthThreshold)), 0, 100);
-      }
-      if (b.smartSignalStrengthThresholdMeta != null && typeof b.smartSignalStrengthThresholdMeta === "object") {
-        state.smartSignalStrengthThresholdMeta = { ...b.smartSignalStrengthThresholdMeta };
-      }
-      if (b.supertrendFuturesMinAiProb != null && Number.isFinite(Number(b.supertrendFuturesMinAiProb))) {
-        state.supertrendFuturesMinAiProb = clamp(Number(b.supertrendFuturesMinAiProb), 0, 1);
-      }
-      if (b.surfPulseMlGateEnabled != null) {
-        state.surfPulseMlGateEnabled = Boolean(b.surfPulseMlGateEnabled);
-      }
-      if (b.surfPulseMlThreshold != null && Number.isFinite(Number(b.surfPulseMlThreshold))) {
-        state.surfPulseMlThreshold = clamp(Number(b.surfPulseMlThreshold), 0, 1);
-      }
-      if (b.intelligenceGateEnabled != null) {
-        state.intelligenceGateEnabled = Boolean(b.intelligenceGateEnabled);
-      }
-      if (b.intelligenceGateStrict != null) {
-        state.intelligenceGateStrict = Boolean(b.intelligenceGateStrict);
-      }
-      if (b.intelligenceGateHighWinRate != null) {
-        state.intelligenceGateHighWinRate = Boolean(b.intelligenceGateHighWinRate);
-      }
-      if (b.supertrendFuturesExitOnFlip != null) {
-        state.supertrendFuturesExitOnFlip = Boolean(b.supertrendFuturesExitOnFlip);
-      }
-      if (typeof b.trailingStopLossAuto === "boolean") state.trailingStopLossAuto = b.trailingStopLossAuto;
-      if (b.futuresTrailingStopMode != null) state.futuresTrailingStopMode = normalizeFuturesTrailingStopMode(b.futuresTrailingStopMode);
-      if (typeof b.futuresTrailingStFeeBreakeven === "boolean") state.futuresTrailingStFeeBreakeven = b.futuresTrailingStFeeBreakeven;
-      if (typeof b.futuresTrailingStAdvanced === "boolean") state.futuresTrailingStAdvanced = b.futuresTrailingStAdvanced;
-      if (state.futuresTrailingStFeeBreakeven === false && state.futuresTrailingStAdvanced === false) {
-        state.futuresTrailingStAdvanced = true;
-      }
-      if (Array.isArray(b.trailingStopExtraScalpingPcts)) {
-        state.trailingStopExtraScalpingPcts = normalizeTrailingExtraPcts(b.trailingStopExtraScalpingPcts);
-      } else if (b.trailingStopScalpingPct != null && Number.isFinite(Number(b.trailingStopScalpingPct))) {
-        state.trailingStopExtraScalpingPcts = [clamp(Number(b.trailingStopScalpingPct), 0.01, 5)];
-      }
-      if (b.trailOpenFeeRate != null) state.trailOpenFeeRate = clamp(Number(b.trailOpenFeeRate) || 0.0004, 0, 0.01);
-      if (b.trailCloseFeeRate != null) state.trailCloseFeeRate = clamp(Number(b.trailCloseFeeRate) || 0.0004, 0, 0.01);
-      if (b.tradeHistoryMakerOpenFeeRate != null && Number.isFinite(Number(b.tradeHistoryMakerOpenFeeRate))) {
-        state.tradeHistoryMakerOpenFeeRate = clamp(Number(b.tradeHistoryMakerOpenFeeRate), 0, 0.01);
-      }
-      if (b.tradeHistoryMakerCloseFeeRate != null && Number.isFinite(Number(b.tradeHistoryMakerCloseFeeRate))) {
-        state.tradeHistoryMakerCloseFeeRate = clamp(Number(b.tradeHistoryMakerCloseFeeRate), 0, 0.01);
-      }
-      if (b.tradeHistoryTakerOpenFeeRate != null && Number.isFinite(Number(b.tradeHistoryTakerOpenFeeRate))) {
-        state.tradeHistoryTakerOpenFeeRate = clamp(Number(b.tradeHistoryTakerOpenFeeRate), 0, 0.01);
-      }
-      if (b.tradeHistoryTakerCloseFeeRate != null && Number.isFinite(Number(b.tradeHistoryTakerCloseFeeRate))) {
-        state.tradeHistoryTakerCloseFeeRate = clamp(Number(b.tradeHistoryTakerCloseFeeRate), 0, 0.01);
-      }
-      if (b.trailFeeBeMultiplier != null) {
-        state.trailFeeBeMultiplier = clamp(
-          Number(b.trailFeeBeMultiplier) || Number(process.env.FUTURES_TRAIL_FEE_BE_MULT ?? 1.25),
-          1,
-          2,
-        );
-      }
-      if (b.trailBufferRate != null) state.trailBufferRate = clamp(Number(b.trailBufferRate) || 0.0005, 0, 0.05);
-      if (b.trailActivationSlippageFrac != null) {
-        state.trailActivationSlippageFrac = clamp(Number(b.trailActivationSlippageFrac) || 0, 0, 0.01);
-      }
-      if (b.trailT01LockSlippageFrac != null && Number.isFinite(Number(b.trailT01LockSlippageFrac))) {
-        state.trailT01LockSlippageFrac = clamp(Number(b.trailT01LockSlippageFrac), 0, 0.01);
-      }
-      if (b.trailBufferAtrMult != null) state.trailBufferAtrMult = clamp(Number(b.trailBufferAtrMult) || 0, 0, 1);
-      if (b.trailBufferMode != null) state.trailBufferMode = normalizeTrailBufferMode(b.trailBufferMode);
-      if (b.trailPostT02ActivationBufferRate === null) {
-        state.trailPostT02ActivationBufferRate = null;
-      } else if (
-        b.trailPostT02ActivationBufferRate != null &&
-        Number.isFinite(Number(b.trailPostT02ActivationBufferRate))
-      ) {
-        state.trailPostT02ActivationBufferRate = clamp(Number(b.trailPostT02ActivationBufferRate), 0, 0.05);
-      }
-      if (b.trailMinSlDistFrac != null) state.trailMinSlDistFrac = clamp(Number(b.trailMinSlDistFrac) || 0.002, 0, 0.1);
-      if (b.trailMinGapFromMarkFrac != null) state.trailMinGapFromMarkFrac = clamp(Number(b.trailMinGapFromMarkFrac) || 0, 0, 0.2);
-      if (b.trailMaintMarginRate != null) state.trailMaintMarginRate = clamp(Number(b.trailMaintMarginRate) || 0.005, 0, 0.1);
-      if (b.trailPostT02SpacingFrac === null) {
-        state.trailPostT02SpacingFrac = null;
-      } else if (b.trailPostT02SpacingFrac != null && Number.isFinite(Number(b.trailPostT02SpacingFrac))) {
-        state.trailPostT02SpacingFrac = clamp(Number(b.trailPostT02SpacingFrac), 0.00001, 0.05);
-      }
-      if (b.trailPostT02MaxExtraTiers != null && Number.isFinite(Number(b.trailPostT02MaxExtraTiers))) {
-        state.trailPostT02MaxExtraTiers = Math.max(10, Math.min(500, Math.floor(Number(b.trailPostT02MaxExtraTiers))));
-      }
-      if (typeof b.supertrendFuturesTwoWay === "boolean") state.supertrendFuturesTwoWay = b.supertrendFuturesTwoWay;
-      if (b.supertrendFuturesMaxEntrySlippagePct != null && Number.isFinite(Number(b.supertrendFuturesMaxEntrySlippagePct))) {
-        state.supertrendFuturesMaxEntrySlippagePct = clamp(Number(b.supertrendFuturesMaxEntrySlippagePct), 0, 5);
-      }
-      if (b.supertrendFuturesEntryOpenStyle === "MARKET" || b.supertrendFuturesEntryOpenStyle === "LIMIT_IOC" || b.supertrendFuturesEntryOpenStyle === "AUTO") {
-        state.supertrendFuturesEntryOpenStyle = b.supertrendFuturesEntryOpenStyle;
-      }
-      if (b.supertrendFuturesEntryRecheckMs != null && Number.isFinite(Number(b.supertrendFuturesEntryRecheckMs))) {
-        state.supertrendFuturesEntryRecheckMs = Math.max(0, Math.floor(Number(b.supertrendFuturesEntryRecheckMs)));
-      }
-      if (typeof b.supertrendFuturesIocFallbackMarket === "boolean") {
-        state.supertrendFuturesIocFallbackMarket = b.supertrendFuturesIocFallbackMarket;
-      }
-      if (typeof b.supertrendFuturesRequireMarkPrice === "boolean") {
-        state.supertrendFuturesRequireMarkPrice = b.supertrendFuturesRequireMarkPrice;
-      }
-      if (typeof b.supertrendFuturesRequireBookTicker === "boolean") {
-        state.supertrendFuturesRequireBookTicker = b.supertrendFuturesRequireBookTicker;
-      }
-      if (b.supertrendFuturesMaxSignalLagMs != null && Number.isFinite(Number(b.supertrendFuturesMaxSignalLagMs))) {
-        state.supertrendFuturesMaxSignalLagMs = Math.max(0, Math.floor(Number(b.supertrendFuturesMaxSignalLagMs)));
-      }
-      if (b.supertrendFuturesFixedSlPct != null && Number.isFinite(Number(b.supertrendFuturesFixedSlPct))) {
-        state.supertrendFuturesFixedSlPct = clamp(Number(b.supertrendFuturesFixedSlPct), 0.00005, 0.2);
-      }
-      if (b.supertrendFuturesFixedTpPct != null && Number.isFinite(Number(b.supertrendFuturesFixedTpPct))) {
-        state.supertrendFuturesFixedTpPct = clamp(Number(b.supertrendFuturesFixedTpPct), 0.00005, 0.5);
-      }
-      if (b.supertrendPeriod != null && Number.isFinite(Number(b.supertrendPeriod))) {
-        state.supertrendPeriod = clamp(Math.floor(Number(b.supertrendPeriod)), 2, 100);
-      }
-      if (b.supertrendMultiplier != null && Number.isFinite(Number(b.supertrendMultiplier))) {
-        state.supertrendMultiplier = clamp(Number(b.supertrendMultiplier), 0.5, 20);
-      }
-      if (typeof b.supertrendWilderAtr === "boolean") state.supertrendWilderAtr = b.supertrendWilderAtr;
-      if (typeof b.trendHtfStRegimeGate === "boolean") state.trendHtfStRegimeGate = b.trendHtfStRegimeGate;
-      if (typeof b.trendHtfStSurgicalLossFilter === "boolean") {
-        state.trendHtfStSurgicalLossFilter = b.trendHtfStSurgicalLossFilter;
-      }
-      if (typeof b.trendHtfStQualityFilter === "boolean") state.trendHtfStQualityFilter = b.trendHtfStQualityFilter;
-      if (typeof b.trendHtfStFlipExitBeforeSl === "boolean") {
-        state.trendHtfStFlipExitBeforeSl = b.trendHtfStFlipExitBeforeSl;
-      }
-      if (b.trendHtfStMaxEntryRangeAtr != null && Number.isFinite(Number(b.trendHtfStMaxEntryRangeAtr))) {
-        state.trendHtfStMaxEntryRangeAtr = clamp(Number(b.trendHtfStMaxEntryRangeAtr), 0, 10);
-      }
-      if (b.trendHtfStMinHtfSep != null && Number.isFinite(Number(b.trendHtfStMinHtfSep))) {
-        state.trendHtfStMinHtfSep = clamp(Number(b.trendHtfStMinHtfSep), 0, 0.05);
-      }
-      if (b.trendHtfStRegimeTpTrend != null && Number.isFinite(Number(b.trendHtfStRegimeTpTrend))) {
-        state.trendHtfStRegimeTpTrend = clamp(Number(b.trendHtfStRegimeTpTrend), 0.0005, 0.5);
-      }
-      if (b.trendHtfStRegimeTpMixed != null && Number.isFinite(Number(b.trendHtfStRegimeTpMixed))) {
-        state.trendHtfStRegimeTpMixed = clamp(Number(b.trendHtfStRegimeTpMixed), 0.0005, 0.5);
-      }
-      if (b.trendHtfStRegimeTpChop != null && Number.isFinite(Number(b.trendHtfStRegimeTpChop))) {
-        state.trendHtfStRegimeTpChop = clamp(Number(b.trendHtfStRegimeTpChop), 0.0005, 0.5);
-      }
-      if (b.backtestBreakevenAtMfePct != null && Number.isFinite(Number(b.backtestBreakevenAtMfePct))) {
-        state.backtestBreakevenAtMfePct = clamp(Number(b.backtestBreakevenAtMfePct), 0, 0.1);
-      }
+      const patch = { ...b };
+      if (raw.tradingFormDefaults && typeof raw.tradingFormDefaults === "object") {
+        patch.tradingFormDefaults = raw.tradingFormDefaults;
+      }
+      updateConfig(patch, { fromPersisted: true });
+      return;
     }
-    const tf = raw.tradingFormDefaults;
-    if (tf && typeof tf === "object") {
-      if (typeof tf.amountUsdStr === "string" && tf.amountUsdStr.length <= 32) {
-        state.tradingFormDefaults.amountUsdStr = tf.amountUsdStr;
-      }
-      if (typeof tf.slPctStr === "string" && tf.slPctStr.length <= 32) {
-        state.tradingFormDefaults.slPctStr = tf.slPctStr;
-      }
-      if (typeof tf.tpPctStr === "string" && tf.tpPctStr.length <= 32) {
-        state.tradingFormDefaults.tpPctStr = tf.tpPctStr;
-      }
-    }
-    if (!state.supertrendFuturesAuto || state.marketMode === "SPOT") {
-      state.supertrendFuturesAiConfidenceFilter = true;
+    if (raw.tradingFormDefaults && typeof raw.tradingFormDefaults === "object") {
+      updateConfig({ tradingFormDefaults: raw.tradingFormDefaults }, { fromPersisted: true });
     }
   }
 
@@ -2755,6 +2274,12 @@ export function createBot({
 
   /** When `supertrendHtf4hEnabled` OR SUPERTREND_ELITE with 4H gate, block misaligned opens. */
   function htf4hBlocksOpen({ openingSide, candles }) {
+    if (manualStrategyUsesLiveBarClose(state) && manualStrategyKey(state) !== "SUPERTREND") {
+      return null;
+    }
+    if (manualStrategyUsesLiveBarClose(state) && state.eliteStRequireHtf4hAlign === true) {
+      return null;
+    }
     const eliteActive = state.manualStrategy === "SUPERTREND_ELITE" && state.eliteStRequireHtf4hAlign === true;
     if (!state.supertrendHtf4hEnabled && !eliteActive) return null;
     if (openingSide !== "BUY" && openingSide !== "SELL") return null;
@@ -3250,7 +2775,7 @@ export function createBot({
         : undefined;
     emitSignalActionActivity(hub, {
       kind: "supertrend",
-      strategyKey: "SUPERTREND",
+      strategyKey: barCloseStrategyKey(),
       venue: venue != null ? String(venue) : "—",
       side,
       action: action != null ? String(action) : "—",
@@ -3345,7 +2870,7 @@ export function createBot({
     });
 
     state._intelligenceSizeMultiplier = 1;
-    if (state.intelligenceGateEnabled) {
+    if (intelligenceGateAppliesForOpen()) {
       try {
         const openingIntel =
           pending.side === "BUY"
@@ -3705,7 +3230,7 @@ export function createBot({
       }
       if (side === "BUY") {
         let spend = tradable * bufferPct;
-        if (state.intelligenceGateEnabled) {
+        if (intelligenceGateAppliesForOpen()) {
           const im = Number(state._intelligenceSizeMultiplier);
           if (Number.isFinite(im) && im > 0 && im !== 1) spend *= im;
         }
@@ -3748,7 +3273,7 @@ export function createBot({
       }
       if (side === "BUY") {
         let spend = Math.min(fixedSpend * bufferPct, tradable * bufferPct);
-        if (state.intelligenceGateEnabled) {
+        if (intelligenceGateAppliesForOpen()) {
           const im = Number(state._intelligenceSizeMultiplier);
           if (Number.isFinite(im) && im > 0 && im !== 1) spend *= im;
         }
@@ -3803,7 +3328,7 @@ export function createBot({
         return { venue: "SPOT", side, action: "skipped", reason: plan.reason || "risk_plan" };
       }
       qty = plan.qty;
-      if (side === "BUY" && state.intelligenceGateEnabled) {
+      if (side === "BUY" && intelligenceGateAppliesForOpen()) {
         const im = Number(state._intelligenceSizeMultiplier);
         if (Number.isFinite(im) && im > 0 && im !== 1) qty = roundTo(qty * im, 8);
       }
@@ -3994,6 +3519,25 @@ export function createBot({
     return min;
   }
 
+  /** Depth book for liquidity guards — WS depth on chart symbol, else REST depth, else book ticker. */
+  async function resolveSupertrendLiquidityBook(orderSymbol, bookTicker) {
+    const symU = String(orderSymbol || "").toUpperCase();
+    const liqCfg = readLiquidityGuardConfig();
+    if (!(liqCfg.maxSpreadBps > 0 || liqCfg.minDepthUsd > 0)) return null;
+
+    if (depth) {
+      const wsBook = depth.getBook?.();
+      if (wsBook && String(wsBook.symbol || "").toUpperCase() === symU && wsBook.bids?.length && wsBook.asks?.length) {
+        return wsBook;
+      }
+    }
+    if (marketFeedUsesLiveBinance() && effectiveMarketFeedKind() === "BINANCE_FUTURES") {
+      const rest = await fetchUsdMDepthBook(symU, runtimeTradingMode(), liqCfg.depthLevels + 10);
+      if (rest?.bids?.length && rest?.asks?.length) return rest;
+    }
+    return depthBookFromTicker(bookTicker);
+  }
+
   /**
    * Supertrend autotrade on USD-M futures: bar-close BUY/SELL uses AI /predict for leverage (AUTO) and sizing.
    * 1-way: BUY opens long; SELL closes long only. 2-way: BUY flips short→long; SELL flips long→short.
@@ -4016,6 +3560,7 @@ export function createBot({
     anchorBarTs = null,
     barCloseAiGates = null,
     dbSignalId = null,
+    adapterSignal = null,
   }) {
     let futuresEx = exch?.futures;
     if (!futuresEx?.placeOrder && typeof exch?.placeOrder === "function") {
@@ -4292,7 +3837,10 @@ export function createBot({
 
     let snapUsedForOpen = decisionSnapshot ?? resolveSupertrendDecisionSnapshot(null);
 
-    const htf4hFut = htf4hBlocksOpen({ openingSide, candles });
+    const manualAdapterPath =
+      manualStrategyUsesLiveBarClose(state) && manualStrategyKey(state) !== "SUPERTREND";
+
+    const htf4hFut = manualAdapterPath ? null : htf4hBlocksOpen({ openingSide, candles });
     if (htf4hFut) {
       wsHub?.broadcast?.("log", {
         level: "info",
@@ -4308,12 +3856,14 @@ export function createBot({
       };
     }
 
-    const bmFut = bigMoveBlocksOpen({
-      openingSide,
-      candles,
-      latest: indicators.latest,
-      venue: "FUTURES",
-    });
+    const bmFut = manualAdapterPath
+      ? null
+      : bigMoveBlocksOpen({
+          openingSide,
+          candles,
+          latest: indicators.latest,
+          venue: "FUTURES",
+        });
     if (bmFut) {
       wsHub?.broadcast?.("log", {
         level: "info",
@@ -4328,9 +3878,11 @@ export function createBot({
         bigMoveGate: bmFut.detail,
       };
     }
-    const gate = state.supertrendBigMoveGateEnabled
+    const gate = manualAdapterPath
       ? null
-      : signalStrengthBlocksOpen({ openingSide, decisionSnapshot: snapUsedForOpen });
+      : state.supertrendBigMoveGateEnabled
+        ? null
+        : signalStrengthBlocksOpen({ openingSide, decisionSnapshot: snapUsedForOpen });
     if (gate) {
       const ss = snapUsedForOpen?.signalStrength;
       wsHub?.broadcast?.("log", {
@@ -4355,13 +3907,15 @@ export function createBot({
     if (openingSide === "BUY" || (openingSide === "SELL" && twoWay)) {
       const barTsMd =
         Number.isFinite(anchorTsFut) && anchorTsFut > 0 ? anchorTsFut : Number(last?.ts);
-      const mdFut = marketDecisionBlocksOpen({
-        openingSide,
-        candles,
-        cTs: barTsMd,
-        decisionSnapshotBar: snapUsedForOpen,
-        symbol: orderSymbol,
-      });
+      const mdFut = manualAdapterPath
+        ? null
+        : marketDecisionBlocksOpen({
+            openingSide,
+            candles,
+            cTs: barTsMd,
+            decisionSnapshotBar: snapUsedForOpen,
+            symbol: orderSymbol,
+          });
       if (mdFut) {
         const sn = mdFut.detail?.snapshot;
         wsHub?.broadcast?.("log", {
@@ -4377,14 +3931,16 @@ export function createBot({
           ...(sn ? { marketDecisionSnapshot: sn } : {}),
         };
       }
-      const mqFut = state.supertrendBigMoveGateEnabled
+      const mqFut = manualAdapterPath
         ? null
-        : moveQualityBlocksOpen({
-            openingSide,
-            candles,
-            latest: indicators.latest,
-            venue: "FUTURES",
-          });
+        : state.supertrendBigMoveGateEnabled
+          ? null
+          : moveQualityBlocksOpen({
+              openingSide,
+              candles,
+              latest: indicators.latest,
+              venue: "FUTURES",
+            });
       if (mqFut) {
         const mq = mqFut.detail?.mq;
         wsHub?.broadcast?.("log", {
@@ -4403,8 +3959,8 @@ export function createBot({
     }
 
     const aiMinCandles = Math.max(30, Number(process.env.AI_PREDICT_MIN_CANDLES || 30));
-    let gateProb = NaN;
-    if (barCloseAiGates && typeof barCloseAiGates === "object") {
+    let gateProb = manualAdapterPath ? (isFixedUsdtCapitalMode() ? 1 : 0.75) : NaN;
+    if (!manualAdapterPath && barCloseAiGates && typeof barCloseAiGates === "object") {
       const g =
         openingSide === "BUY"
           ? barCloseAiGates.aiGateBuy
@@ -4413,7 +3969,7 @@ export function createBot({
             : null;
       if (Number.isFinite(Number(g))) gateProb = Number(g);
     }
-    if (!Number.isFinite(gateProb) && candles.length >= aiMinCandles) {
+    if (!manualAdapterPath && !Number.isFinite(gateProb) && candles.length >= aiMinCandles) {
       try {
         const aiResp = await withTimeout(
           ai.predict({ symbol: orderSymbol, timeframe: state.timeframe, candles }),
@@ -4452,7 +4008,7 @@ export function createBot({
         log.warn("supertrend_futures_predict_failed", { symbol: orderSymbol, error: errMsg });
       }
     }
-    if (!Number.isFinite(gateProb) && !aiPredictNoLastAi) {
+    if (!manualAdapterPath && !Number.isFinite(gateProb) && !aiPredictNoLastAi) {
       const calProb = Number(state.lastAi?.probability ?? 0);
       const rawProb = Number(state.lastAi?.rawProbability ?? NaN);
       if (state.lastAi && (Number.isFinite(calProb) || Number.isFinite(rawProb))) {
@@ -4487,7 +4043,9 @@ export function createBot({
     }
 
     const aiFilterOn =
-      !isFixedUsdtCapitalMode() && state.supertrendFuturesAiConfidenceFilter !== false;
+      !manualAdapterPath &&
+      !isFixedUsdtCapitalMode() &&
+      state.supertrendFuturesAiConfidenceFilter !== false;
     const minAi = clamp(Number(state.supertrendFuturesMinAiProb ?? 0.55), 0, 1);
     if (aiFilterOn && minAi > 0 && gateProb < minAi) {
       wsHub?.broadcast?.("log", {
@@ -4644,6 +4202,75 @@ export function createBot({
       }
     }
 
+    if (manualAdapterPath && adapterSignal && typeof adapterSignal === "object") {
+      const sig = adapterSignal;
+      const fibBr =
+        sig?.fibBrackets?.slPct > 0
+          ? resolveFibEntryBrackets(state, sig, pxEntry, openingSide)
+          : null;
+      const liqBr =
+        !fibBr && sig?.liqBrackets?.slPct > 0
+          ? resolveLiquidityEntryBrackets(state, sig, pxEntry, openingSide)
+          : null;
+      const structBr = fibBr || liqBr;
+      if (structBr?.slPrice > 0 && state.supertrendFuturesUseFixedSl !== false) {
+        stopLoss = structBr.slPrice;
+        const liqLegs = liqBr ? mapLiquidityEntryLegs(liqBr, state) : null;
+        if (liqLegs && state.supertrendFuturesUseFixedTp !== false) {
+          if (liqLegs.tp > 0) takeProfit = liqLegs.tp;
+        } else if (structBr.tpPrice > 0 && state.supertrendFuturesUseFixedTp !== false) {
+          takeProfit = structBr.tp2Price ?? structBr.tpPrice;
+        }
+        const perUnitRisk = Math.abs(pxEntry - stopLoss);
+        const riskUsd = Number(plan.riskUsd);
+        if (perUnitRisk > 0 && riskUsd > 0) {
+          qty = roundTo(riskUsd / perUnitRisk, 6);
+        }
+      } else if (sig?.vpBrackets?.slPct > 0 && state.intradayVpBrackets === true) {
+        Object.assign(
+          plan,
+          applyFixedPctBracket(plan, {
+            entryPrice: pxEntry,
+            side: openingSide,
+            slPct: sig.vpBrackets.slPct,
+            tpPct:
+              state.supertrendFuturesUseFixedTp !== false ? (sig.vpBrackets.tpPct ?? 0) : 0,
+            futuresLeverage: lev,
+          }),
+        );
+        stopLoss = plan.stopLoss;
+        takeProfit = plan.takeProfit;
+        qty = plan.qty;
+      } else if (structBr && state.supertrendFuturesUseFixedSl !== false) {
+        Object.assign(
+          plan,
+          applyFixedPctBracket(plan, {
+            entryPrice: pxEntry,
+            side: openingSide,
+            slPct: structBr.slPct,
+            tpPct: state.supertrendFuturesUseFixedTp !== false ? structBr.tpPct : 0,
+            futuresLeverage: lev,
+          }),
+        );
+        stopLoss = plan.stopLoss;
+        takeProfit = plan.takeProfit;
+        qty = plan.qty;
+      }
+      const riskUsdManual = Number(plan.riskUsd);
+      if (riskUsdManual > 0 && stopLoss != null) {
+        const sizingSl = resolveSizingStopPrice({
+          entryFill: pxEntry,
+          exitSl: stopLoss,
+          side: openingSide,
+          cfg: state,
+        });
+        const perUnitRisk = Math.abs(pxEntry - sizingSl);
+        if (perUnitRisk > 0) {
+          qty = roundTo(riskUsdManual / perUnitRisk, 6);
+        }
+      }
+    }
+
     /**
      * HARD CAP: final per-coin margin guard — notional must never exceed the capital allotment
      * margin cap × leverage, regardless of how qty was computed above.
@@ -4668,7 +4295,7 @@ export function createBot({
       if (qty > maxQ) qty = roundTo(maxQ, 6);
     }
 
-    if (state.intelligenceGateEnabled) {
+    if (intelligenceGateAppliesForOpen()) {
       const intelMult = Number(state._intelligenceSizeMultiplier);
       if (Number.isFinite(intelMult) && intelMult > 0 && intelMult !== 1) {
         qty = roundTo(qty * intelMult, 6);
@@ -5026,6 +4653,46 @@ export function createBot({
           });
           return { venue: "FUTURES", side, action: "skipped", reason: "entry_slippage_guard_recheck" };
         }
+      }
+
+      const liqRefPx =
+        (Number.isFinite(midPxEntry) && midPxEntry > 0 ? midPxEntry : null) ??
+        (Number.isFinite(pxEntryOpen) && pxEntryOpen > 0 ? pxEntryOpen : slipSignalRef);
+      const estOrderNotional = Number(qty) * Number(liqRefPx);
+      const liqBook = await resolveSupertrendLiquidityBook(orderSymbol, bookTicker);
+      const liqGuard = evaluateLiquidityGuards({
+        book: liqBook,
+        side: openingSide,
+        referenceMid: liqRefPx,
+        orderNotionalUsd: estOrderNotional,
+      });
+      if (!liqGuard.ok) {
+        const liqCfg = readLiquidityGuardConfig();
+        noteTradeBlock({
+          reason: liqGuard.reason,
+          symbol: orderSymbol,
+          strategyKey,
+          spreadBps: liqGuard.spreadBps,
+          maxSpreadBps: liqGuard.maxSpreadBps ?? liqCfg.maxSpreadBps,
+          depthNotionalUsd: liqGuard.depthNotionalUsd,
+          minDepthUsd: liqGuard.minDepthUsd ?? liqCfg.minDepthUsd,
+          orderNotionalUsd: liqGuard.orderNotionalUsd ?? estOrderNotional,
+        });
+        const liqMsg =
+          liqGuard.reason === "spread_too_wide"
+            ? `Supertrend futures ${openingSide} skipped: spread ${liqGuard.spreadBps?.toFixed(1)} bps > max ${liqCfg.maxSpreadBps} bps`
+            : liqGuard.reason === "order_exceeds_depth"
+              ? `Supertrend futures ${openingSide} skipped: order ~${estOrderNotional.toFixed(0)} USDT > ${(liqCfg.maxOrderVsDepthFrac * 100).toFixed(0)}% of visible depth (~${liqGuard.depthNotionalUsd?.toFixed(0)} USDT)`
+              : `Supertrend futures ${openingSide} skipped: depth ~${liqGuard.depthNotionalUsd?.toFixed(0)} USDT below min ${liqCfg.minDepthUsd} USDT`;
+        wsHub?.broadcast?.("log", { level: "warn", msg: liqMsg, symbol: orderSymbol });
+        emitActivity(wsHub, {
+          level: "warn",
+          msg: `Open skipped · ${orderSymbol} · ${liqGuard.reason}`,
+          category: "execution",
+          reason: liqGuard.reason,
+          symbol: orderSymbol,
+        });
+        return { venue: "FUTURES", side, action: "skipped", reason: liqGuard.reason };
       }
 
       let entryMetaExtra = {};
@@ -5563,6 +5230,48 @@ export function createBot({
     return stSpot || stFut;
   }
 
+  /** Supertrend autotrade toggles, or MANUAL bar-close adapter path (Elite / Safe Intraday). */
+  function resolveTradingVenue(mmUp) {
+    if (manualStrategyBarCloseActive(state, mmUp)) {
+      return resolveManualStrategyVenue(state, mmUp);
+    }
+    const spotOn = Boolean(state.supertrendSpotAuto);
+    const futOn = Boolean(state.supertrendFuturesAuto);
+    let stSpot = spotOn && mmUp === "SPOT";
+    let stFut = futOn && mmUp === "FUTURES";
+    if (mmUp === "AUTO") {
+      if (futOn) {
+        stFut = true;
+        stSpot = false;
+      } else if (spotOn) {
+        stSpot = true;
+        stFut = false;
+      }
+    }
+    return { stSpot, stFut };
+  }
+
+  function manualStrategyMultiBarCloseActive(mmUp) {
+    if (!manualStrategyBarCloseActive(state, mmUp)) return false;
+    if (String(state.universeCoinSelectMode || "SINGLE").toUpperCase() !== "MULTIPLE") return false;
+    if (String(state.symbolMode || "").toUpperCase() !== "AUTO") return false;
+    if (!marketFeedUsesLiveBinance()) return false;
+    return true;
+  }
+
+  function barCloseStrategyKey() {
+    return manualStrategyUsesLiveBarClose(state) ? manualStrategyKey(state) : "SUPERTREND";
+  }
+
+  /** Intelligence gate veto/sizing on opens — skipped on MANUAL adapter path unless explicitly enabled. */
+  function intelligenceGateAppliesForOpen() {
+    if (!state.intelligenceGateEnabled) return false;
+    if (manualStrategyUsesLiveBarClose(state) && manualStrategyKey(state) !== "SUPERTREND") {
+      return state.intelligenceGateManualStrategies === true;
+    }
+    return true;
+  }
+
   /** AUTO coin select, no table pin, env on, live Binance feed, bot running, Supertrend autotrade for active venue. */
   function autoMultiUnpinnedActive(mmUp) {
     if (!autoMultiUnpinnedEnvOn()) return false;
@@ -5599,7 +5308,7 @@ export function createBot({
     if (String(state.symbolMode || "").toUpperCase() !== "AUTO") return false;
     if (String(state.universeCoinSelectMode || "SINGLE").toUpperCase() !== "MULTIPLE") return false;
     if (!marketFeedUsesLiveBinance()) return false;
-    return supertrendVenueActive(mmUp);
+    return supertrendVenueActive(mmUp) || manualStrategyBarCloseActive(state, mmUp);
   }
 
   /**
@@ -5610,7 +5319,8 @@ export function createBot({
     return (
       multiCoinKlineMuxEnabled(mmUp) ||
       autoMultiUnpinnedActive(mmUp) ||
-      stSignalFirstMultiSweepActive(mmUp)
+      stSignalFirstMultiSweepActive(mmUp) ||
+      manualStrategyMultiBarCloseActive(mmUp)
     );
   }
 
@@ -5680,7 +5390,7 @@ export function createBot({
    * @param {number} [candleTsOpt] — When set (e.g. `candle.ts` from `onCandleClose`), evaluate **that** bar; matches main chart idx lookup. Omit for REST “last closed only” sweeps.
    * @returns {null | { cTs: number, allowBuy: boolean, allowSell: boolean, row: object, decisionSnapshotBar: object, supertrendStrength01: number | null, closedRaw: array }}
    */
-  function evaluateSupertrendLastClosedBar(closedRaw, evalSymbol, candleTsOpt) {
+  function evaluateRawSupertrendBarClose(closedRaw, evalSymbol, candleTsOpt) {
     const raw = Array.isArray(closedRaw) ? closedRaw : [];
     if (raw.length < Math.max(30, state.supertrendPeriod + 2)) return null;
 
@@ -5753,9 +5463,31 @@ export function createBot({
       row,
       decisionSnapshotBar,
       supertrendStrength01,
-      /** Clone bars so later feed updates cannot mutate the bar-close row before `trySupertrend*Order` runs. */
+      strategyKey: "SUPERTREND",
       closedRaw: raw.map((c) => (c && typeof c === "object" ? { ...c } : c)),
     };
+  }
+
+  async function evaluateSupertrendLastClosedBar(closedRaw, evalSymbol, candleTsOpt) {
+    if (manualStrategyUsesLiveBarClose(state)) {
+      const strictChartAlign =
+        String(process.env.SUPERTREND_STRICT_CHART_ALIGN ?? "true").toLowerCase() !== "false";
+      return evaluateLiveStrategyBarClose({
+        state,
+        closedRaw,
+        evalSymbol,
+        candleTsOpt,
+        chartMarkerVisibleForBar,
+        computeIndicators,
+        computeDecisionSnapshot,
+        computeSupertrendSignalStrength01,
+        timeframe: state.timeframe,
+        strictChartAlign,
+        evaluateRawSupertrendBarClose,
+      });
+    }
+
+    return evaluateRawSupertrendBarClose(closedRaw, evalSymbol, candleTsOpt);
   }
 
   /**
@@ -5783,7 +5515,7 @@ export function createBot({
         continue;
       }
       const closedRaw = rows.length >= 2 ? rows.slice(0, -1) : rows;
-      const ev = evaluateSupertrendLastClosedBar(closedRaw, symU);
+      const ev = await evaluateSupertrendLastClosedBar(closedRaw, symU);
       if (!ev || !ev.allowBuy) continue;
       if (
         isFixedUsdtCapitalMode() &&
@@ -5839,8 +5571,28 @@ export function createBot({
       openSyms,
       refreshOpenSymsAfterTrade,
     } = ctx;
-    const { cTs, allowBuy, allowSell, decisionSnapshotBar, supertrendStrength01, closedRaw: cr, row } = ev;
+    const { cTs, allowBuy, allowSell, allowExit, decisionSnapshotBar, supertrendStrength01, closedRaw: cr, row, barSignal } = ev;
     if (Number(state.autoMultiLastSeenBarTs[symU]) === cTs) return;
+
+    const strategyKey = manualStrategyUsesLiveBarClose(state)
+      ? manualStrategyKey(state)
+      : "SUPERTREND";
+
+    if (allowExit) {
+      state.autoMultiLastSeenBarTs[symU] = cTs;
+      if (stFut) {
+        const positions = _cachedPositions || [];
+        const legs = positions.filter(
+          (p) => String(p?.symbol || "").toUpperCase() === symU && Number(p?.qty) > 0,
+        );
+        if (legs.length) {
+          await closeFuturesLegsForSupertrend(legs, `${strategyKey}_EXIT`);
+          await pushImmediateState(hubLocal);
+        }
+      }
+      return;
+    }
+
     if (!allowBuy && !allowSell) {
       state.autoMultiLastSeenBarTs[symU] = cTs;
       return;
@@ -5848,14 +5600,12 @@ export function createBot({
     // Claim this bar before any await so concurrent WS + sweep cannot duplicate history / signals.
     state.autoMultiLastSeenBarTs[symU] = cTs;
 
-    const strategyKey = "SUPERTREND";
-
     /** One `/predict` per symbol per bar — reused for sizing + history so orders are not queued behind SurfPulse + disk. */
     const gatesSweep = await resolveSupertrendBarCloseAiGatesNoLastAi(cr, symU);
 
     try {
       state._intelligenceSizeMultiplier = 1;
-      if (state.intelligenceGateEnabled && allowBuy) {
+      if (intelligenceGateAppliesForOpen() && allowBuy) {
         const ig = evaluateIntelligenceGateForSupertrendOpen({
             gateEnabled: true,
             strictMode: state.intelligenceGateStrict === true,
@@ -5903,7 +5653,7 @@ export function createBot({
         }
       }
     }
-    if (allowSell && stFut && state.supertrendFuturesTwoWay === true && state.intelligenceGateEnabled) {
+    if (allowSell && stFut && state.supertrendFuturesTwoWay === true && intelligenceGateAppliesForOpen()) {
       try {
         state._intelligenceSizeMultiplier = 1;
         const igShort = evaluateIntelligenceGateForSupertrendOpen({
@@ -5935,6 +5685,7 @@ export function createBot({
         aiPredictNoLastAi: true,
         anchorBarTs: cTs,
         barCloseAiGates: gatesSweep,
+        adapterSignal: barSignal ?? null,
       });
       emitSupertrendSignalFeedback(hubLocal, {
         ...sellRes,
@@ -6054,6 +5805,7 @@ export function createBot({
         maxNotionalUsd: Number.isFinite(maxNotionalUsd) && maxNotionalUsd > 0 ? maxNotionalUsd : null,
         anchorBarTs: cTs,
         barCloseAiGates: gatesSweep,
+        adapterSignal: barSignal ?? null,
       });
       emitSupertrendSignalFeedback(hubLocal, {
         ...buyRes,
@@ -6233,7 +5985,7 @@ export function createBot({
           }
           closedRaw = rows.length >= 2 ? rows.slice(0, -1) : rows;
         }
-        const ev = evaluateSupertrendLastClosedBar(closedRaw, symU);
+        const ev = await evaluateSupertrendLastClosedBar(closedRaw, symU);
         if (!ev) continue;
         const gatesOut = await processAutoMultiFromEval(symU, hub, ev, {
           stSpot,
@@ -6262,20 +6014,8 @@ export function createBot({
       return;
     }
     state._intelligenceSizeMultiplier = 1;
-    const spotOn = Boolean(state.supertrendSpotAuto);
-    const futOn = Boolean(state.supertrendFuturesAuto);
-    let stSpot = spotOn && mm === "SPOT";
-    let stFut = futOn && mm === "FUTURES";
-    /** AUTO previously disabled both flags — route Supertrend to the venue whose autotrade toggle is on. */
-    if (mm === "AUTO") {
-      if (futOn) {
-        stFut = true;
-        stSpot = false;
-      } else if (spotOn) {
-        stSpot = true;
-        stFut = false;
-      }
-    }
+    const { stSpot, stFut } = resolveTradingVenue(mm);
+    const strategyKeyBar = barCloseStrategyKey();
 
     const rawCandles = feed.getCandles();
     const cTs = Number(candle.ts);
@@ -6283,38 +6023,18 @@ export function createBot({
 
     const strictChartAlign = String(process.env.SUPERTREND_STRICT_CHART_ALIGN ?? "true").toLowerCase() !== "false";
 
+    const evBar = await evaluateSupertrendLastClosedBar(rawCandles, state.symbol, cTs);
+    if (!evBar) return;
+
     const clean = sanitizeCandlesForSt(rawCandles, state.symbol);
     const idxC = clean.findIndex((c) => Number(c.ts) === cTs);
-    const opts = {
-      period: state.supertrendPeriod,
-      multiplier: state.supertrendMultiplier,
-      wilderAtr: state.supertrendWilderAtr,
-    };
-    const series = computeSupertrendSeries(clean, opts);
-    const row = idxC >= 0 ? series[idxC] : null;
-
-    const chartVisible =
-      idxC >= 0 && row?.ready
-        ? chartMarkerVisibleForBar({
-            clean,
-            series,
-            barIndex: idxC,
-            timeframe: state.timeframe,
-            nowMs: Date.now(),
-          })
-        : false;
-    const allowBuy = Boolean(row?.buySignal) && (!strictChartAlign || chartVisible);
-    const allowSell = Boolean(row?.sellSignal) && (!strictChartAlign || chartVisible);
-
+    const row = evBar.row;
+    const allowBuy = evBar.allowBuy;
+    const allowSell = evBar.allowSell;
+    const allowExit = evBar.allowExit === true;
+    const adapterBarSignal = evBar.barSignal ?? null;
     const strengthBar = idxC >= 0 ? clean[idxC] : null;
-    const supertrendStrength01 =
-      row?.ready && strengthBar
-        ? computeSupertrendSignalStrength01({
-            row,
-            candle: strengthBar,
-            multiplier: state.supertrendMultiplier,
-          })
-        : null;
+    const supertrendStrength01 = evBar.supertrendStrength01;
 
     if (!row?.ready || Number(row.ts) !== cTs || idxC < 0) {
       log.warn("supertrend_close_bar_mismatch", {
@@ -6330,7 +6050,7 @@ export function createBot({
       if (wsHubRef) {
         emitSignalActionActivity(wsHubRef, {
           kind: "supertrend",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           venue: stSpot ? "SPOT" : stFut ? "FUTURES" : "—",
           side: "—",
           action: "skipped",
@@ -6342,11 +6062,11 @@ export function createBot({
 
     const barCloseKey = `${String(state.symbol).toUpperCase()}:${cTs}`;
     if (state.supertrendStHandledCloseKey === barCloseKey) {
-      if ((allowBuy || allowSell) && wsHubRef) {
-        const sideLabel = allowBuy ? "BUY" : "SELL";
+      if ((allowBuy || allowSell || allowExit) && wsHubRef) {
+        const sideLabel = allowExit ? "EXIT" : allowBuy ? "BUY" : "SELL";
         emitSignalActionActivity(wsHubRef, {
           kind: "supertrend",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           venue: stSpot ? "SPOT" : stFut ? "FUTURES" : "—",
           side: sideLabel,
           action: "skipped",
@@ -6361,17 +6081,19 @@ export function createBot({
     state.supertrendLastClosedTs = row.ts;
 
     const indicatorsBarClose = computeIndicators(rawCandles);
-    const decisionSnapshotBar = computeDecisionSnapshot({
-      candles: rawCandles,
-      indicatorsLatest: indicatorsBarClose.latest,
-      supertrendLastRow: row,
-      symbol: state.symbol,
-      supertrendOpts: {
-        period: state.supertrendPeriod,
-        multiplier: state.supertrendMultiplier,
-        wilderAtr: state.supertrendWilderAtr,
-      },
-    });
+    const decisionSnapshotBar =
+      evBar.decisionSnapshotBar ??
+      computeDecisionSnapshot({
+        candles: rawCandles,
+        indicatorsLatest: indicatorsBarClose.latest,
+        supertrendLastRow: row,
+        symbol: state.symbol,
+        supertrendOpts: {
+          period: state.supertrendPeriod,
+          multiplier: state.supertrendMultiplier,
+          wilderAtr: state.supertrendWilderAtr,
+        },
+      });
 
     let moveQualityAtBar = null;
     try {
@@ -6438,6 +6160,7 @@ export function createBot({
       /** Chart-aligned: only true when autotrade may act on this bar (see SUPERTREND_STRICT_CHART_ALIGN). */
       buySignal: allowBuy === true,
       sellSignal: allowSell === true,
+      exitSignal: allowExit === true,
       /** After this bar's close: +1 long, -1 short (no flip ≠ no position — see Activity). */
       trend: row.trend != null && Number.isFinite(Number(row.trend)) ? Number(row.trend) : null,
       supertrendStrength01,
@@ -6606,7 +6329,7 @@ export function createBot({
           state.pendingSupertrendBreakout = null;
           emitSignalActionActivity(hub, {
             kind: "supertrend",
-            strategyKey: "SUPERTREND",
+            strategyKey: barCloseStrategyKey(),
             venue: pend.stSpot ? "SPOT" : pend.stFut ? "FUTURES" : "—",
             side: pend.side,
             action: "skipped",
@@ -6622,7 +6345,7 @@ export function createBot({
       const symT = String(state.symbol || "").trim().toUpperCase();
 
       state._intelligenceSizeMultiplier = 1;
-      if (state.intelligenceGateEnabled) {
+      if (intelligenceGateAppliesForOpen()) {
         try {
           const openingIntel =
             pend.side === "BUY"
@@ -6643,7 +6366,7 @@ export function createBot({
             if (ig.veto) {
               emitSignalActionActivity(hub, {
                 kind: "supertrend",
-                strategyKey: "SUPERTREND",
+                strategyKey: barCloseStrategyKey(),
                 venue: pend.stSpot ? "SPOT" : pend.stFut ? "FUTURES" : "—",
                 side: pend.side,
                 action: "skipped",
@@ -6673,7 +6396,7 @@ export function createBot({
         ) {
           emitSignalActionActivity(hub, {
             kind: "supertrend",
-            strategyKey: "SUPERTREND",
+            strategyKey: barCloseStrategyKey(),
             venue: pend.stSpot ? "SPOT" : pend.stFut ? "FUTURES" : "—",
             side: pend.side,
             action: "skipped",
@@ -6690,7 +6413,7 @@ export function createBot({
       if (pend.side === "BUY" && pend.stSpot) {
         const buyRes = await trySupertrendSpotOrder({
           side: "BUY",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           wsHub: hub,
           indicatorFullCapital: true,
           dedupeKey: `${anchorTs}:BUY`,
@@ -6703,7 +6426,7 @@ export function createBot({
       } else if (pend.side === "BUY" && pend.stFut) {
         const buyRes = await trySupertrendFuturesOrder({
           side: "BUY",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           wsHub: hub,
           dedupeKey: `${anchorTs}:FUT:BUY`,
           signalStrength: supertrendStrength01,
@@ -6717,7 +6440,7 @@ export function createBot({
       } else if (pend.side === "SELL" && pend.stSpot) {
         const sellRes = await trySupertrendSpotOrder({
           side: "SELL",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           wsHub: hub,
           indicatorFullCapital: true,
           dedupeKey: `${anchorTs}:SELL`,
@@ -6730,7 +6453,7 @@ export function createBot({
       } else if (pend.side === "SELL" && pend.stFut) {
         const sellRes = await trySupertrendFuturesOrder({
           side: "SELL",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           wsHub: hub,
           dedupeKey: `${anchorTs}:FUT:SELL`,
           signalStrength: supertrendStrength01,
@@ -6746,25 +6469,37 @@ export function createBot({
       return { handled: true };
     }
 
+    if (allowExit && state.running && !state.feedExecutionPause) {
+      state.supertrendStHandledCloseKey = barCloseKey;
+      if (stFut) {
+        const positions = _cachedPositions || [];
+        const legs = positions.filter(
+          (p) =>
+            String(p?.symbol || "").toUpperCase() === String(state.symbol || "").toUpperCase() &&
+            Number(p?.qty) > 0,
+        );
+        if (legs.length) {
+          await closeFuturesLegsForSupertrend(legs, `${strategyKeyBar}_EXIT`);
+          await pushImmediateState(wsHubRef);
+        }
+      }
+      return;
+    }
+
     const breakoutBar = await tryConsumeSupertrendBreakoutFromPending();
     if (breakoutBar?.handled) {
       state.supertrendStHandledCloseKey = barCloseKey;
       return;
     }
 
-    if (!(row.buySignal || row.sellSignal)) return;
-
-    if (strictChartAlign && (row.buySignal || row.sellSignal) && !allowBuy && !allowSell) {
-      state.supertrendStHandledCloseKey = barCloseKey;
-      return;
-    }
+    if (!(allowBuy || allowSell)) return;
 
     if (!stSpot && !stFut) {
       await flushSupertrendFlipSignalHistoryIfNeeded();
       if (wsHubRef) {
         emitSignalActionActivity(wsHubRef, {
           kind: "supertrend",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           venue: "—",
           side: allowBuy ? "BUY" : "SELL",
           action: "skipped",
@@ -6792,7 +6527,7 @@ export function createBot({
       if (wsHubRef) {
         emitSignalActionActivity(wsHubRef, {
           kind: "supertrend",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           venue: stSpot ? "SPOT" : stFut ? "FUTURES" : "—",
           side: allowBuy ? "BUY" : "SELL",
           action: "skipped",
@@ -6882,7 +6617,7 @@ export function createBot({
         await flushSupertrendFlipSignalHistoryIfNeeded();
         emitSignalActionActivity(hub, {
           kind: "supertrend",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           venue: stSpot ? "SPOT" : stFut ? "FUTURES" : "—",
           side: allowBuy ? "BUY" : allowSell ? "SELL" : "—",
           action: "skipped",
@@ -6923,7 +6658,7 @@ export function createBot({
       if (wsHubRef) {
         emitSignalActionActivity(wsHubRef, {
           kind: "supertrend",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           venue: stSpot ? "SPOT" : stFut ? "FUTURES" : "—",
           side: allowBuy ? "BUY" : "SELL",
           action: "pending",
@@ -7000,7 +6735,7 @@ export function createBot({
     // ── Intelligence gate (optional): LONG opens only here; SHORT-open gate runs only for 2-way futures SELL ──
     try {
       state._intelligenceSizeMultiplier = 1;
-      if (state.intelligenceGateEnabled && allowBuy) {
+      if (intelligenceGateAppliesForOpen() && allowBuy) {
         const ig = evaluateIntelligenceGateForSupertrendOpen({
             gateEnabled: true,
             strictMode: state.intelligenceGateStrict === true,
@@ -7042,7 +6777,7 @@ export function createBot({
       if (stSpot) {
         buyRes = await trySupertrendSpotOrder({
           side: "BUY",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           wsHub: hub,
           indicatorFullCapital: true,
           dedupeKey: `${Number(row.ts)}:BUY`,
@@ -7054,7 +6789,7 @@ export function createBot({
       } else {
         buyRes = await trySupertrendFuturesOrder({
           side: "BUY",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           wsHub: hub,
           dedupeKey: `${Number(row.ts)}:FUT:BUY`,
           signalStrength: supertrendStrength01,
@@ -7063,6 +6798,7 @@ export function createBot({
           anchorBarTs: cTs,
           barCloseAiGates: { aiGateBuy, aiGateSell },
           dbSignalId: barSignalId,
+          adapterSignal: adapterBarSignal,
         });
       }
       emitSupertrendSignalFeedback(hub, { ...buyRes, signalStrength: supertrendStrength01 ?? undefined });
@@ -7076,7 +6812,7 @@ export function createBot({
       !placedBarExecution &&
       stFut &&
       state.supertrendFuturesTwoWay === true &&
-      state.intelligenceGateEnabled
+      intelligenceGateAppliesForOpen()
     ) {
       try {
         state._intelligenceSizeMultiplier = 1;
@@ -7103,7 +6839,7 @@ export function createBot({
       if (stSpot) {
         sellRes = await trySupertrendSpotOrder({
           side: "SELL",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           wsHub: hub,
           indicatorFullCapital: true,
           dedupeKey: `${Number(row.ts)}:SELL`,
@@ -7115,7 +6851,7 @@ export function createBot({
       } else {
         sellRes = await trySupertrendFuturesOrder({
           side: "SELL",
-          strategyKey: "SUPERTREND",
+          strategyKey: barCloseStrategyKey(),
           wsHub: hub,
           dedupeKey: `${Number(row.ts)}:FUT:SELL`,
           signalStrength: supertrendStrength01,
@@ -7124,6 +6860,7 @@ export function createBot({
           anchorBarTs: cTs,
           barCloseAiGates: { aiGateBuy, aiGateSell },
           dbSignalId: barSignalId,
+          adapterSignal: adapterBarSignal,
         });
       }
       emitSupertrendSignalFeedback(hub, { ...sellRes, signalStrength: supertrendStrength01 ?? undefined });
@@ -7144,49 +6881,54 @@ export function createBot({
     await flushSupertrendFlipSignalHistoryIfNeeded();
   }
 
-  // Disk holds the latest runtime edits (e.g. PATCH /bot/config). Strategy cfg_raw may omit fields that were
-  // added after a version was saved — load disk first, then overlay DB strategy + instance merge so explicit
-  // cfg_raw values win while missing keys (notably intelligenceGateEnabled on older snapshots) keep disk/env flow.
-  hydrateTradingConfigFromDisk();
-  if (initialPersistedConfig != null && typeof initialPersistedConfig === "object") {
-    hydrateTradingConfigFromPersistedObject(initialPersistedConfig);
+  // Disk/strategy hydrate runs after market feed exists (see syncMarketFeedFromState below).
+
+  /**
+   * UI chart tabs + WS multiplex candidates. Pins and custom watchlists apply to charts even when
+   * Pick control is Auto (pins only filter autotrade candidates).
+   */
+  function resolveMultiCoinUiSymbolCandidates() {
+    const norm = (arr) =>
+      [...new Set((Array.isArray(arr) ? arr : []).map((s) => String(s || "").trim().toUpperCase()).filter((s) => SYM_RE.test(s)))].slice(
+        0,
+        10,
+      );
+
+    const customBase = String(state.universeCoinBase || "ALL").toUpperCase() === "CUSTOM";
+    const custom = norm(state.universeCustomSymbols);
+    if (customBase && custom.length) return custom;
+
+    const pins = norm(state.universePinnedSymbols);
+    if (pins.length) return pins;
+
+    if (String(state.universeCoinSelectMode || "SINGLE").toUpperCase() !== "MULTIPLE") return [];
+
+    const snap = state.universe;
+    const rankedSyms = Array.isArray(snap?.ranked) ? snap.ranked.map((r) => r?.symbol).filter(Boolean) : [];
+    const selectedSyms = Array.isArray(snap?.selected) && snap.selected.length ? snap.selected : [];
+    const seen = new Set();
+    const merged = [];
+    for (const s of selectedSyms) {
+      const u = String(s || "").trim().toUpperCase();
+      if (!u || seen.has(u)) continue;
+      seen.add(u);
+      merged.push(u);
+    }
+    for (const s of rankedSyms) {
+      const u = String(s || "").trim().toUpperCase();
+      if (!u || seen.has(u)) continue;
+      seen.add(u);
+      merged.push(u);
+    }
+    return merged.slice(0, 12);
   }
-  loadSupertrendSignalHistoryFromDisk();
 
   /**
    * Same symbol ordering for WS multiplex + REST sweep: primary first, then universe, capped to BINANCE_COMBINED_MAX_STREAMS
    * so every listed symbol has live kline buffers (parallel with main chart).
    */
   function computeAutoMultiWatchSymbolList() {
-    const snap = state.universe;
-    const rankedSyms = Array.isArray(snap?.ranked) ? snap.ranked.map((r) => r?.symbol).filter(Boolean) : [];
-    const selectedSyms = Array.isArray(snap?.selected) && snap.selected.length ? snap.selected : [];
-    let candidatesRaw;
-    if (
-      String(state.universeCoinSelectMode || "SINGLE").toUpperCase() === "MULTIPLE" &&
-      universeManualPinningOn() &&
-      Array.isArray(state.universePinnedSymbols) &&
-      state.universePinnedSymbols.length
-    ) {
-      candidatesRaw = state.universePinnedSymbols;
-    } else if (selectedSyms.length) {
-      const seen = new Set();
-      candidatesRaw = [];
-      for (const s of selectedSyms) {
-        const u = String(s || "").trim().toUpperCase();
-        if (!u || seen.has(u)) continue;
-        seen.add(u);
-        candidatesRaw.push(s);
-      }
-      for (const s of rankedSyms) {
-        const u = String(s || "").trim().toUpperCase();
-        if (!u || seen.has(u)) continue;
-        seen.add(u);
-        candidatesRaw.push(s);
-      }
-    } else {
-      candidatesRaw = rankedSyms;
-    }
+    const candidatesRaw = resolveMultiCoinUiSymbolCandidates();
     const maxStreams = Math.max(1, Math.min(80, Math.floor(Number(process.env.BINANCE_COMBINED_MAX_STREAMS ?? 12))));
     const watchN = Math.min(autoMultiWatchSize(), maxStreams);
     const primary = String(state.symbol || "").toUpperCase();
@@ -7270,19 +7012,7 @@ export function createBot({
   }
 
   async function buildAutoMultiCtx(mm) {
-    const spotOn = Boolean(state.supertrendSpotAuto);
-    const futOn = Boolean(state.supertrendFuturesAuto);
-    let stSpot = spotOn && mm === "SPOT";
-    let stFut = futOn && mm === "FUTURES";
-    if (mm === "AUTO") {
-      if (futOn) {
-        stFut = true;
-        stSpot = false;
-      } else if (spotOn) {
-        stSpot = true;
-        stFut = false;
-      }
-    }
+    const { stSpot, stFut } = resolveTradingVenue(mm);
     const venueSpot = stSpot && !stFut;
     let positions = _cachedPositions || [];
     try {
@@ -7576,7 +7306,7 @@ export function createBot({
         return;
       }
       const closedRaw = rows.length >= 2 ? rows.slice(0, -1) : rows;
-      const ev = evaluateSupertrendLastClosedBar(closedRaw, symU, Number(candle.ts));
+      const ev = await evaluateSupertrendLastClosedBar(closedRaw, symU, Number(candle.ts));
       if (!ev) return;
       if (!state.running) return;
       const ctx = await buildAutoMultiCtx(mm);
@@ -7584,7 +7314,7 @@ export function createBot({
       await persistMultiSymbolSnapshot(symU, ev, "kline_ws", gatesOut);
       return;
     }
-    const ev = evaluateSupertrendLastClosedBar(rows, symU, Number(candle.ts));
+    const ev = await evaluateSupertrendLastClosedBar(rows, symU, Number(candle.ts));
     if (!ev) return;
     if (!state.running) return;
     const ctx = await buildAutoMultiCtx(mm);
@@ -7597,7 +7327,29 @@ export function createBot({
   const depth = marketFeedUsesLiveBinance()
     ? createBinanceOrderBook({ log, symbol: state.symbol, wsBase: binanceDepthWsBase() })
     : null;
+
+  /** Apply persisted symbol/timeframe to live feed after hydrate/reload (feed not wired during fromPersisted). */
+  function syncMarketFeedFromState() {
+    if (!feed) return;
+    try {
+      const sym = String(state.symbol || "").trim().toUpperCase();
+      if (sym && SYM_RE.test(sym)) feed.setSymbol(sym);
+      if (state.timeframe && PERSISTED_TF.has(state.timeframe)) feed.setTimeframe(state.timeframe);
+      syncFeedWatchSymbols();
+      if (depth && marketFeedUsesLiveBinance()) {
+        const depthSym =
+          state.uiChartFocusSymbol && String(state.uiChartFocusSymbol).trim()
+            ? String(state.uiChartFocusSymbol).trim().toUpperCase()
+            : sym;
+        if (depthSym) depth.setSymbol(depthSym);
+      }
+    } catch (e) {
+      log?.warn?.("sync_market_feed_from_state_failed", { error: String(e?.message || e) });
+    }
+  }
+
   const universe = createBinanceUniverse({ log, feedKind: effectiveMarketFeedKind() });
+  if (marketFeedUsesLiveBinance()) universe.warmTradableSymbolsCache?.();
   const cg = createCoinGeckoClient({ log });
   let lastSeenTradeId = null;
   /** Dedup CLOSE WS broadcasts — same id must not be emitted twice (duplicate rows / findIndex bug). */
@@ -7617,6 +7369,15 @@ export function createBot({
   const _trailingRecoveryDoneSyms = new Set();
   /** True once the real-time trailing poll has been started for the current exchange instance. */
   let _realtimeTrailingPollStarted = false;
+
+  // Disk holds latest runtime edits; when a DB strategy version is bound, it wins over disk.
+  if (initialPersistedConfig != null && typeof initialPersistedConfig === "object") {
+    hydrateTradingConfigFromPersistedObject(initialPersistedConfig);
+  } else {
+    hydrateTradingConfigFromDisk();
+  }
+  loadSupertrendSignalHistoryFromDisk();
+  syncMarketFeedFromState();
 
   /**
    * Build `account` + `positions` for every WS `state` message. If we omit either, the UI keeps the
@@ -7959,8 +7720,11 @@ export function createBot({
 
   // Coin selection loop (runs even if bot stopped so you can see ranks).
   let scanInFlight = false;
+  let lastUniverseScanFailLogAt = 0;
+  let lastUniverseScanFailErr = "";
   const _scanTimer = setInterval(() => {
     if (_destroyed) return;
+    if (!universeScanEnabled()) return;
     if (scanInFlight) return;
     if (!marketFeedUsesLiveBinance()) return;
     if (state.symbolMode !== "AUTO") return;
@@ -8105,7 +7869,13 @@ export function createBot({
           });
         }
       } catch (e) {
-        wsHubRef?.broadcast?.("log", { level: "warn", msg: "Universe scan failed", error: String(e?.message || e) });
+        const err = String(e?.message || e);
+        const now = Date.now();
+        if (now - lastUniverseScanFailLogAt > 5 * 60_000 || err !== lastUniverseScanFailErr) {
+          lastUniverseScanFailLogAt = now;
+          lastUniverseScanFailErr = err;
+          wsHubRef?.broadcast?.("log", { level: "warn", msg: "Universe scan failed", error: err });
+        }
       } finally {
         scanInFlight = false;
       }
@@ -8336,61 +8106,9 @@ export function createBot({
     return repaired?.candles?.length ? repaired : snap;
   }
 
-  async function getChartSnapshotForSymbol(sym, opts = {}) {
-    const forceRest = Boolean(opts.forceRest);
-    const hours = Math.max(0.25, Math.min(168, Number(opts.hours ?? 24)));
-    const symU = String(sym || "").trim().toUpperCase();
-    if (!SYM_RE.test(symU)) return null;
-    noteUiChartWatchSymbol(symU);
-    const n = maxBarsForHistory(state.timeframe, hours);
-    const minBars = Math.max(30, state.supertrendPeriod + 2);
-    if (!forceRest && typeof feed.getCandlesForSymbol === "function" && marketFeedUsesLiveBinance()) {
-      const buf = feed.getCandlesForSymbol(symU);
-      if (Array.isArray(buf) && buf.length >= minBars) {
-        const raw = buf.length <= n ? buf.slice() : buf.slice(-n);
-        const candles = sanitizeCandlesForSt(raw, symU);
-        const st = computeSupertrendChartModel(candles, { symbol: symU });
-        return {
-          symbol: symU,
-          timeframe: state.timeframe,
-          hours,
-          candles,
-          supertrendLine: st.line,
-          supertrendSignals: st.signals,
-          supertrend: st.lastRow
-            ? {
-                ts: st.lastRow.ts,
-                up: st.lastRow.up,
-                dn: st.lastRow.dn,
-                trend: st.lastRow.trend,
-                line: st.lastRow.line,
-              }
-            : null,
-        };
-      }
-    }
-    const limit = Math.min(1000, Math.max(50, n + 20));
-    let rows;
-    try {
-      rows = await fetchBinanceKlinesRows({
-        symbol: symU,
-        interval: state.timeframe,
-        limit,
-        feedKind: effectiveMarketFeedKind(),
-      });
-    } catch {
-      return null;
-    }
-    if (!Array.isArray(rows) || !rows.length) return null;
-    const raw = rows.map((r) => ({
-      ts: r.ts,
-      open: r.open,
-      high: r.high,
-      low: r.low,
-      close: r.close,
-      volume: r.volume,
-    }));
-    const candles = sanitizeCandlesForSt(raw, symU);
+  function buildChartSnapshotFromRawCandles(symU, rawCandles, hours) {
+    const candles = sanitizeCandlesForSt(rawCandles, symU);
+    if (!candles.length) return null;
     const st = computeSupertrendChartModel(candles, { symbol: symU });
     return {
       symbol: symU,
@@ -8409,6 +8127,72 @@ export function createBot({
           }
         : null,
     };
+  }
+
+  function getChartSnapshotFromFeedBuffer(symU, hours) {
+    if (!marketFeedUsesLiveBinance() || typeof feed.getCandlesForSymbol !== "function") return null;
+    const buf = feed.getCandlesForSymbol(symU);
+    if (!Array.isArray(buf) || !buf.length) return null;
+    const n = maxBarsForHistory(state.timeframe, hours);
+    const raw = buf.length <= n ? buf.slice() : buf.slice(-n);
+    return buildChartSnapshotFromRawCandles(symU, raw, hours);
+  }
+
+  async function getChartSnapshotForSymbol(sym, opts = {}) {
+    const forceRest = Boolean(opts.forceRest);
+    const hours = Math.max(0.25, Math.min(168, Number(opts.hours ?? 24)));
+    const symU = String(sym || "").trim().toUpperCase();
+    if (!SYM_RE.test(symU)) return null;
+    noteUiChartWatchSymbol(symU);
+    const n = maxBarsForHistory(state.timeframe, hours);
+    const minBars = Math.max(30, state.supertrendPeriod + 2);
+    if (!forceRest) {
+      const fromFeed = getChartSnapshotFromFeedBuffer(symU, hours);
+      if (fromFeed?.candles?.length >= minBars) return fromFeed;
+    }
+    const limit = Math.min(1000, Math.max(50, n + 20));
+    let rows = [];
+    try {
+      rows = await fetchBinanceKlinesRows({
+        symbol: symU,
+        interval: state.timeframe,
+        limit,
+        feedKind: effectiveMarketFeedKind(),
+        chartPublic: true,
+      });
+    } catch {
+      rows = [];
+    }
+    if (Array.isArray(rows) && rows.length) {
+      const raw = rows.map((r) => ({
+        ts: r.ts,
+        open: r.open,
+        high: r.high,
+        low: r.low,
+        close: r.close,
+        volume: r.volume,
+      }));
+      const fromRest = buildChartSnapshotFromRawCandles(symU, raw, hours);
+      if (fromRest?.candles?.length) {
+        if (typeof feed.seedCandlesForSymbol === "function") {
+          try {
+            const buf =
+              typeof feed.getCandlesForSymbol === "function" ? feed.getCandlesForSymbol(symU) : [];
+            const lastTs = Array.isArray(buf) && buf.length ? Number(buf[buf.length - 1]?.ts) : NaN;
+            const tailStale =
+              !Array.isArray(buf) ||
+              !buf.length ||
+              !Number.isFinite(lastTs) ||
+              Date.now() - lastTs > 120_000;
+            if (tailStale) feed.seedCandlesForSymbol(symU, fromRest.candles);
+          } catch {
+            /* ignore */
+          }
+        }
+        return fromRest;
+      }
+    }
+    return getChartSnapshotFromFeedBuffer(symU, hours);
   }
 
   function getPublicState() {
@@ -8626,6 +8410,14 @@ export function createBot({
       supertrendMoveQualityMinBodyVsAvg: clamp(Number(state.supertrendMoveQualityMinBodyVsAvg ?? 0.62), 0.15, 1),
       supertrendMoveQualityMinDirectionalBody: clamp(Number(state.supertrendMoveQualityMinDirectionalBody ?? 0), 0, 1),
       supertrendMoveQualityMinVolumeVsAvg: Math.max(0, Number(state.supertrendMoveQualityMinVolumeVsAvg ?? 0)),
+      srIntradayMaxTradesPerDay: clamp(Math.round(Number(state.srIntradayMaxTradesPerDay ?? 5)), 1, 50),
+      srIntradayMinBarGap: clamp(Math.round(Number(state.srIntradayMinBarGap ?? 4)), 1, 200),
+      srIntradayMinScore: clamp(Number(state.srIntradayMinScore ?? 7), 1, 20),
+      intradayMinTechniqueCount: clamp(Math.round(Number(state.intradayMinTechniqueCount ?? 1)), 1, 10),
+      intradayRequireSessionReclaim: state.intradayRequireSessionReclaim === true,
+      intradayRequireFibOrVp: state.intradayRequireFibOrVp === true,
+      intradayLearnedRulesEnabled: state.intradayLearnedRulesEnabled === true,
+      ...eliteStPublicSnapshot(),
       marketDecision: mergeMarketDecisionConfig(state.marketDecision),
       supertrendBreakoutConfirm: state.supertrendBreakoutConfirm === true,
       supertrendBreakoutMaxBars: Math.max(1, Math.min(20, Math.floor(Number(state.supertrendBreakoutMaxBars ?? 5)))),
@@ -8644,6 +8436,7 @@ export function createBot({
       intelligenceGateEnabled: state.intelligenceGateEnabled === true,
       intelligenceGateStrict: state.intelligenceGateStrict === true,
       intelligenceGateHighWinRate: state.intelligenceGateHighWinRate === true,
+      intelligenceGateManualStrategies: state.intelligenceGateManualStrategies === true,
       supertrendFuturesExitOnFlip: state.supertrendFuturesExitOnFlip !== false,
       trailingStopLossAuto: state.trailingStopLossAuto === true,
       futuresTrailingStopMode: normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode),
@@ -8732,10 +8525,7 @@ export function createBot({
           ? { ...state.multiSymbolWatchSignals }
           : {},
       uiChartFocusSymbol: state.uiChartFocusSymbol != null ? String(state.uiChartFocusSymbol).toUpperCase() : null,
-      multiCoinSignalTabSymbols:
-        String(state.universeCoinSelectMode || "SINGLE").toUpperCase() === "MULTIPLE"
-          ? computeAutoMultiWatchSymbolList()
-          : [],
+      multiCoinSignalTabSymbols: resolveMultiCoinUiSymbolCandidates().length ? computeAutoMultiWatchSymbolList() : [],
     };
   }
 
@@ -9828,14 +9618,18 @@ export function createBot({
     }
 
     const mmUp = String(state.marketMode).toUpperCase();
+    const manualBarCloseActive = manualStrategyBarCloseActive(state, mmUp);
+    const supertrendAutoOn =
+      (mmUp === "SPOT" && Boolean(state.supertrendSpotAuto)) ||
+      (mmUp === "FUTURES" && Boolean(state.supertrendFuturesAuto)) ||
+      (mmUp === "AUTO" && (Boolean(state.supertrendSpotAuto) || Boolean(state.supertrendFuturesAuto)));
     const supertrendPausesAi =
-      marketFeedUsesLiveBinance() &&
-      ((mmUp === "SPOT" && Boolean(state.supertrendSpotAuto)) ||
-        (mmUp === "FUTURES" && Boolean(state.supertrendFuturesAuto)) ||
-        (mmUp === "AUTO" && (Boolean(state.supertrendSpotAuto) || Boolean(state.supertrendFuturesAuto))));
+      marketFeedUsesLiveBinance() && (manualBarCloseActive || supertrendAutoOn);
 
     const strategyKey = supertrendPausesAi
-      ? "SUPERTREND"
+      ? manualBarCloseActive
+        ? manualStrategyKey(state)
+        : "SUPERTREND"
       : state.strategyMode === "AUTO"
         ? pickStrategyAuto({ regime, indicators, stats: state.stats })
         : state.manualStrategy;
@@ -10284,16 +10078,32 @@ export function createBot({
     });
     const isFuturesRoute = String(venueForGuards?.name || "").toLowerCase().includes("futures");
 
-    const maxSpread = Number(process.env.TRADE_MAX_SPREAD_BPS || 0);
-    if (maxSpread > 0 && depth) {
+    const liqCfgStrategy = readLiquidityGuardConfig({
+      maxSpreadBps: Number(process.env.TRADE_MAX_SPREAD_BPS || 0),
+      minDepthUsd: Number(process.env.TRADE_MIN_DEPTH_NOTIONAL_USD || 0),
+    });
+    if ((liqCfgStrategy.maxSpreadBps > 0 || liqCfgStrategy.minDepthUsd > 0) && depth) {
       const book = depth.getBook();
-      const sp = spreadBpsFromBook(book, last.close);
-      state.metrics.lastSpreadBps = sp;
-      if (sp != null && sp > maxSpread) {
+      const estNotional =
+        Number.isFinite(Number(last?.close)) && Number(last.close) > 0
+          ? Number(last.close) * 100
+          : 0;
+      const guard = evaluateLiquidityGuards({
+        book,
+        side: tradeAction,
+        referenceMid: Number(last?.close),
+        orderNotionalUsd: estNotional,
+        config: liqCfgStrategy,
+      });
+      if (guard.spreadBps != null) state.metrics.lastSpreadBps = guard.spreadBps;
+      if (guard.depthNotionalUsd != null) state.metrics.lastDepthNotionalUsd = guard.depthNotionalUsd;
+      if (!guard.ok) {
         noteTradeBlock({
-          reason: "spread_too_wide",
-          spreadBps: sp,
-          maxSpreadBps: maxSpread,
+          reason: guard.reason,
+          spreadBps: guard.spreadBps,
+          maxSpreadBps: guard.maxSpreadBps ?? liqCfgStrategy.maxSpreadBps,
+          depthNotionalUsd: guard.depthNotionalUsd,
+          minDepthUsd: guard.minDepthUsd ?? liqCfgStrategy.minDepthUsd,
           symbol: state.symbol,
           strategyKey,
         });
@@ -10303,34 +10113,7 @@ export function createBot({
           venue: stratVenue,
           side: tradeAction,
           action: "skipped",
-          reason: `spread_too_wide_${sp.toFixed(1)}bps`,
-          probability: prob,
-        });
-        return;
-      }
-    }
-
-    const minDepthUsd = Number(process.env.TRADE_MIN_DEPTH_NOTIONAL_USD || 0);
-    if (minDepthUsd > 0 && depth) {
-      const book = depth.getBook();
-      const lv = Number(process.env.TRADE_DEPTH_LEVELS || 5);
-      const notion = depthNotionalUsd(book, tradeAction, lv);
-      state.metrics.lastDepthNotionalUsd = notion;
-      if (notion != null && notion < minDepthUsd) {
-        noteTradeBlock({
-          reason: "depth_too_thin",
-          depthNotionalUsd: notion,
-          minDepthUsd: minDepthUsd,
-          symbol: state.symbol,
-          strategyKey,
-        });
-        emitSignalActionActivity(wsHub, {
-          kind: "strategy",
-          strategyKey,
-          venue: stratVenue,
-          side: tradeAction,
-          action: "skipped",
-          reason: "depth_too_thin",
+          reason: guard.reason === "spread_too_wide" ? `spread_too_wide_${guard.spreadBps?.toFixed(1)}bps` : guard.reason,
           probability: prob,
         });
         return;
@@ -10888,9 +10671,87 @@ export function createBot({
     start({ wsHub, reason: "daily_loss_reset_resume", source });
   }
 
-  function updateConfig(patch) {
+  function scheduleDeferredChartFocusWork(focusSym) {
+    if (!wsHubRef) return;
+    const hub = wsHubRef;
+    setImmediate(() => {
+      void (async () => {
+        try {
+          const primaryU = String(state.symbol || "").trim().toUpperCase();
+          const focusU =
+            focusSym != null && String(focusSym).trim()
+              ? String(focusSym).trim().toUpperCase()
+              : "";
+          if (focusU && focusU !== primaryU) {
+            try {
+              noteUiChartWatchSymbol(focusU);
+            } catch {
+              /* ignore */
+            }
+            const minBars = Math.max(30, state.supertrendPeriod + 2);
+            const buf =
+              typeof feed.getCandlesForSymbol === "function" ? feed.getCandlesForSymbol(focusU) : [];
+            const hasLiveBuf = Array.isArray(buf) && buf.length >= minBars;
+            if (!hasLiveBuf) {
+              if (typeof feed.prioritizeWatchSymbol === "function") {
+                await feed.prioritizeWatchSymbol(focusU);
+              } else {
+                await getChartSnapshotForSymbol(focusU, { hours: 24 });
+              }
+            }
+          }
+          await tick({ wsHub: hub });
+        } catch (e) {
+          log.warn("chart_focus_flush_failed", {
+            error: String(e?.message || e),
+            symbol: focusSym,
+          });
+        }
+      })();
+    });
+  }
+
+  /** Fast path for multi-coin chart tab switches — depth sync only; feed/tick deferred. */
+  function updateChartFocus(rawF) {
+    const prevFocusU =
+      state.uiChartFocusSymbol != null && String(state.uiChartFocusSymbol).trim()
+        ? String(state.uiChartFocusSymbol).trim().toUpperCase()
+        : "";
+    if (rawF == null || rawF === "") {
+      state.uiChartFocusSymbol = null;
+    } else {
+      const u = String(rawF).trim().toUpperCase();
+      state.uiChartFocusSymbol = SYM_RE.test(u) ? u : null;
+    }
+    const focusU = state.uiChartFocusSymbol ? String(state.uiChartFocusSymbol).trim().toUpperCase() : "";
+    const primaryU = String(state.symbol || "").trim().toUpperCase();
+    const focusChanged = focusU !== prevFocusU;
+    if (focusChanged) {
+      if (depth && marketFeedUsesLiveBinance()) {
+        try {
+          const depthSymU = focusU || primaryU;
+          if (depthSymU) depth.setSymbol(depthSymU);
+        } catch {
+          /* ignore */
+        }
+      }
+      scheduleDeferredChartFocusWork(state.uiChartFocusSymbol);
+    }
+    return {
+      uiChartFocusSymbol:
+        state.uiChartFocusSymbol != null ? String(state.uiChartFocusSymbol).toUpperCase() : null,
+    };
+  }
+
+  function updateConfig(patch, opts = {}) {
+    const fromPersisted = opts.fromPersisted === true;
     let capitalCycleResetNeeded = false;
+    let deferredChartFocusTick = false;
     if (patch.uiChartFocusSymbol !== undefined) {
+      const prevFocusU =
+        state.uiChartFocusSymbol != null && String(state.uiChartFocusSymbol).trim()
+          ? String(state.uiChartFocusSymbol).trim().toUpperCase()
+          : "";
       const rawF = patch.uiChartFocusSymbol;
       if (rawF == null || rawF === "") {
         state.uiChartFocusSymbol = null;
@@ -10898,21 +10759,28 @@ export function createBot({
         const u = String(rawF).trim().toUpperCase();
         state.uiChartFocusSymbol = SYM_RE.test(u) ? u : null;
       }
-      if (state.uiChartFocusSymbol) {
-        try {
-          noteUiChartWatchSymbol(state.uiChartFocusSymbol);
-        } catch {
-          /* ignore */
+      const focusU = state.uiChartFocusSymbol ? String(state.uiChartFocusSymbol).trim().toUpperCase() : "";
+      const primaryU = String(state.symbol || "").trim().toUpperCase();
+      const focusChanged = focusU !== prevFocusU;
+      if (focusChanged && !fromPersisted) {
+        /** Order book WS stayed on `state.symbol` while `market` followed `uiChartFocusSymbol` → UI hid all rows as “mismatch”. */
+        if (depth && marketFeedUsesLiveBinance()) {
+          try {
+            const depthSymU =
+              state.uiChartFocusSymbol && String(state.uiChartFocusSymbol).trim()
+                ? String(state.uiChartFocusSymbol).trim().toUpperCase()
+                : String(state.symbol || "").trim().toUpperCase();
+            if (depthSymU) depth.setSymbol(depthSymU);
+          } catch {
+            /* ignore */
+          }
         }
-      }
-      /** Order book WS stayed on `state.symbol` while `market` followed `uiChartFocusSymbol` → UI hid all rows as “mismatch”. */
-      if (depth && marketFeedUsesLiveBinance()) {
+        deferredChartFocusTick = true;
+      } else if (!fromPersisted && depth && marketFeedUsesLiveBinance() && focusU) {
+        /** Re-assert depth when duplicate focus patches arrive but book drifted back to primary. */
         try {
-          const depthSymU =
-            state.uiChartFocusSymbol && String(state.uiChartFocusSymbol).trim()
-              ? String(state.uiChartFocusSymbol).trim().toUpperCase()
-              : String(state.symbol || "").trim().toUpperCase();
-          if (depthSymU) depth.setSymbol(depthSymU);
+          const cur = String(depth.getBook?.()?.symbol || "").trim().toUpperCase();
+          if (cur && cur !== focusU) depth.setSymbol(focusU);
         } catch {
           /* ignore */
         }
@@ -10920,21 +10788,23 @@ export function createBot({
     }
     if (patch.symbol) {
       state.symbol = patch.symbol;
-      state.coinLastSwitchedAt = Date.now();
-      feed.setSymbol(patch.symbol);
-      state.feedExecutionPause = null;
-      state.supertrendStHandledCloseKey = null;
-      state.supertrendLastBarClose = null;
-      state.supertrendLastFlipBarClose = null;
-      state.supertrendSignalHistory = [];
-      state.pendingSupertrendAction = null;
-      state.pendingSupertrendBreakout = null;
-      state._pendingSupertrendFlushOnNextTick = false;
-      state.pendingAutoRestartAfterFeedStale = false;
-      try {
-        depth?.setSymbol?.(patch.symbol);
-      } catch {
-        // ignore
+      if (!fromPersisted) {
+        state.coinLastSwitchedAt = Date.now();
+        feed?.setSymbol?.(patch.symbol);
+        state.feedExecutionPause = null;
+        state.supertrendStHandledCloseKey = null;
+        state.supertrendLastBarClose = null;
+        state.supertrendLastFlipBarClose = null;
+        state.supertrendSignalHistory = [];
+        state.pendingSupertrendAction = null;
+        state.pendingSupertrendBreakout = null;
+        state._pendingSupertrendFlushOnNextTick = false;
+        state.pendingAutoRestartAfterFeedStale = false;
+        try {
+          depth?.setSymbol?.(patch.symbol);
+        } catch {
+          // ignore
+        }
       }
     }
     if (patch.symbolMode) {
@@ -10993,21 +10863,23 @@ export function createBot({
       if (state.universePinnedSymbol) {
         state.symbolMode = "AUTO";
         state.symbol = state.universePinnedSymbol;
-        state.coinLastSwitchedAt = Date.now();
-        feed.setSymbol(state.universePinnedSymbol);
-        state.feedExecutionPause = null;
-        state.supertrendStHandledCloseKey = null;
-        state.supertrendLastBarClose = null;
-        state.supertrendLastFlipBarClose = null;
-        state.supertrendSignalHistory = [];
-        state.pendingSupertrendAction = null;
-        state.pendingSupertrendBreakout = null;
-        state._pendingSupertrendFlushOnNextTick = false;
-        state.pendingAutoRestartAfterFeedStale = false;
-        try {
-          depth?.setSymbol?.(state.universePinnedSymbol);
-        } catch {
-          // ignore
+        if (!fromPersisted) {
+          state.coinLastSwitchedAt = Date.now();
+          feed?.setSymbol?.(state.universePinnedSymbol);
+          state.feedExecutionPause = null;
+          state.supertrendStHandledCloseKey = null;
+          state.supertrendLastBarClose = null;
+          state.supertrendLastFlipBarClose = null;
+          state.supertrendSignalHistory = [];
+          state.pendingSupertrendAction = null;
+          state.pendingSupertrendBreakout = null;
+          state._pendingSupertrendFlushOnNextTick = false;
+          state.pendingAutoRestartAfterFeedStale = false;
+          try {
+            depth?.setSymbol?.(state.universePinnedSymbol);
+          } catch {
+            // ignore
+          }
         }
       }
     }
@@ -11024,37 +10896,41 @@ export function createBot({
           state.universePinnedSymbols = [up];
           state.symbolMode = "AUTO";
           state.symbol = up;
-          state.coinLastSwitchedAt = Date.now();
-          feed.setSymbol(up);
-          state.feedExecutionPause = null;
-          state.supertrendStHandledCloseKey = null;
-          state.supertrendLastBarClose = null;
-          state.supertrendLastFlipBarClose = null;
-          state.supertrendSignalHistory = [];
-          state.pendingSupertrendAction = null;
-          state.pendingSupertrendBreakout = null;
-          state._pendingSupertrendFlushOnNextTick = false;
-          state.pendingAutoRestartAfterFeedStale = false;
-          try {
-            depth?.setSymbol?.(up);
-          } catch {
-            // ignore
+          if (!fromPersisted) {
+            state.coinLastSwitchedAt = Date.now();
+            feed?.setSymbol?.(up);
+            state.feedExecutionPause = null;
+            state.supertrendStHandledCloseKey = null;
+            state.supertrendLastBarClose = null;
+            state.supertrendLastFlipBarClose = null;
+            state.supertrendSignalHistory = [];
+            state.pendingSupertrendAction = null;
+            state.pendingSupertrendBreakout = null;
+            state._pendingSupertrendFlushOnNextTick = false;
+            state.pendingAutoRestartAfterFeedStale = false;
+            try {
+              depth?.setSymbol?.(up);
+            } catch {
+              // ignore
+            }
           }
         }
       }
     }
     if (patch.timeframe) {
       state.timeframe = patch.timeframe;
-      feed.setTimeframe(patch.timeframe);
-      state.feedExecutionPause = null;
-      state.supertrendStHandledCloseKey = null;
-      state.supertrendLastBarClose = null;
-      state.supertrendLastFlipBarClose = null;
-      state.supertrendSignalHistory = [];
-      state.pendingSupertrendAction = null;
-      state.pendingSupertrendBreakout = null;
-      state._pendingSupertrendFlushOnNextTick = false;
-      state.pendingAutoRestartAfterFeedStale = false;
+      if (!fromPersisted) {
+        feed?.setTimeframe?.(patch.timeframe);
+        state.feedExecutionPause = null;
+        state.supertrendStHandledCloseKey = null;
+        state.supertrendLastBarClose = null;
+        state.supertrendLastFlipBarClose = null;
+        state.supertrendSignalHistory = [];
+        state.pendingSupertrendAction = null;
+        state.pendingSupertrendBreakout = null;
+        state._pendingSupertrendFlushOnNextTick = false;
+        state.pendingAutoRestartAfterFeedStale = false;
+      }
     }
     if (patch.aiThreshold != null) state.aiThreshold = clamp(Number(patch.aiThreshold), 0, 1);
     if (patch.riskPerTradeUnit === "PCT" || patch.riskPerTradeUnit === "USDT") {
@@ -11493,6 +11369,9 @@ export function createBot({
     if (patch.intelligenceGateHighWinRate != null) {
       state.intelligenceGateHighWinRate = Boolean(patch.intelligenceGateHighWinRate);
     }
+    if (patch.intelligenceGateManualStrategies != null) {
+      state.intelligenceGateManualStrategies = Boolean(patch.intelligenceGateManualStrategies);
+    }
     if (patch.supertrendFuturesExitOnFlip != null) {
       state.supertrendFuturesExitOnFlip = Boolean(patch.supertrendFuturesExitOnFlip);
     }
@@ -11683,20 +11562,31 @@ export function createBot({
       loadSupertrendSignalHistoryFromDisk();
     }
 
-    syncFeedWatchSymbols();
-
-    clampAllowedBudgetToFreeMargin();
-    if (capitalCycleResetNeeded && capitalCycleModeActive()) {
-      resetCapitalCycleFromAllowedBase();
+    const focusOnlyPatch =
+      Object.keys(patch).filter((k) => patch[k] !== undefined).length === 1 &&
+      patch.uiChartFocusSymbol !== undefined;
+    if (!focusOnlyPatch && !fromPersisted) {
+      syncFeedWatchSymbols();
     }
-    persistTradingConfigToDisk();
 
-    if ((patch.symbol || patch.timeframe) && wsHubRef) {
+    if (!fromPersisted) {
+      clampAllowedBudgetToFreeMargin();
+      if (capitalCycleResetNeeded && capitalCycleModeActive()) {
+        resetCapitalCycleFromAllowedBase();
+      }
+    }
+    if (!focusOnlyPatch) persistTradingConfigToDisk();
+
+    if (!fromPersisted && (patch.symbol || patch.timeframe) && wsHubRef) {
       queueMicrotask(() => {
         tick({ wsHub: wsHubRef }).catch((e) =>
           log.warn("config_tick_flush_failed", { error: String(e?.message || e) }),
         );
       });
+    }
+
+    if (deferredChartFocusTick) {
+      scheduleDeferredChartFocusWork(state.uiChartFocusSymbol);
     }
 
     return getPublicState();
@@ -11856,6 +11746,11 @@ export function createBot({
       };
     },
     async getUniverseScan({ force = false } = {}) {
+      if (!universeScanEnabled()) {
+        const stub = buildUniverseStubFromUiCandidates();
+        if (force || !state.universe) state.universe = stub;
+        return state.universe && typeof state.universe === "object" ? state.universe : stub;
+      }
       if (!force && state.universe && !state.universe.emptyCustom) return state.universe;
       if (!marketFeedUsesLiveBinance()) return null;
       if (String(state.universeCoinBase || "ALL").toUpperCase() === "CUSTOM") {
@@ -11880,11 +11775,11 @@ export function createBot({
       state.universe = snap;
       return snap;
     },
-    async listTradableUniverseSymbols() {
+    async listTradableUniverseSymbols({ q = null } = {}) {
       if (!marketFeedUsesLiveBinance()) return null;
       try {
-        const symbols = await universe.listTradableUsdtSymbols();
-        return { ok: true, symbols };
+        const symbols = await universe.listTradableUsdtSymbols({ q });
+        return { ok: true, symbols, cached: true };
       } catch (e) {
         return { ok: false, error: String(e?.message || e), symbols: [] };
       }
@@ -11893,6 +11788,7 @@ export function createBot({
     stop,
     resetDailyLossBaselineAndStart,
     updateConfig,
+    updateChartFocus,
     manualTrade,
     saveTradingConfigToDisk() {
       persistTradingConfigToDisk();
@@ -11903,10 +11799,12 @@ export function createBot({
     reloadTradingConfigFromPersisted(raw) {
       hydrateTradingConfigFromPersistedObject(raw);
       loadSupertrendSignalHistoryFromDisk();
+      syncMarketFeedFromState();
     },
     reloadTradingConfigFromDisk() {
       hydrateTradingConfigFromDisk();
       loadSupertrendSignalHistoryFromDisk();
+      syncMarketFeedFromState();
     },
     setExchange(next) {
       exch = next;

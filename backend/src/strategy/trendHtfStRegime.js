@@ -195,8 +195,7 @@ export function buildTrendHtfStRegimeOpts(cfg = {}) {
 }
 
 export function isTrendHtfStRegimeGateEnabled(cfg = {}) {
-  if (cfg.trendHtfStRegimeGate === false) return false;
-  return true;
+  return cfg.trendHtfStRegimeGate === true;
 }
 
 /**

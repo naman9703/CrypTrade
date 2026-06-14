@@ -12,6 +12,7 @@
  */
 
 import { inSmcKillzone } from "./techniques/sessionKillzones.js";
+import { dirStore, dayStore } from "./adapterPersisted.js";
 import {
   buildEliteStBacktestAdapter,
   buildEliteStOptsFromCfg,
@@ -109,26 +110,34 @@ export function buildSafeIntradayBacktestAdapter(candles, cfg = {}) {
   const eliteOpts = { ...SAFE_INTRADAY_ELITE_OPTS, ...opts };
   const inner = buildEliteStBacktestAdapter(candles, eliteOpts);
 
+  const eliteLocal = { lastDir: 0 };
   let dayKey = "";
   let tradesToday = 0;
+  const dayLocal = { curDay: null, tradesToday: 0 };
 
-  return function safeIntradayAdapter(bar, idx) {
+  return function safeIntradayAdapter(bar, idx, ctx) {
+    const dDay = dayStore(ctx, dayLocal);
     const d = new Date(bar.ts);
     const key = `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
-    if (key !== dayKey) {
-      dayKey = key;
-      tradesToday = 0;
+    if (key !== (ctx?.persisted ? dDay.curDay : dayKey)) {
+      if (ctx?.persisted) dDay.curDay = key;
+      else dayKey = key;
+      if (ctx?.persisted) dDay.tradesToday = 0;
+      else tradesToday = 0;
     }
+    const tradesCount = ctx?.persisted ? dDay.tradesToday : tradesToday;
 
     if (opts.killzoneEnabled && !inSmcKillzone(bar.ts, { intradaySmcKillzoneMode: opts.killzoneMode })) {
       return null;
     }
 
-    if (tradesToday >= opts.maxTradesPerDay) return null;
+    if (tradesCount >= opts.maxTradesPerDay) return null;
 
-    const sig = inner(bar, idx);
+    const st = dirStore(ctx, eliteLocal);
+    const sig = inner(bar, idx, ctx ? { ...ctx, persisted: st } : undefined);
     if (sig?.action === "BUY" || sig?.action === "SELL") {
-      tradesToday++;
+      if (ctx?.persisted) dDay.tradesToday = tradesCount + 1;
+      else tradesToday += 1;
     }
     return sig;
   };

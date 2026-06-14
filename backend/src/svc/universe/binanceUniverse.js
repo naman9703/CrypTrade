@@ -118,23 +118,32 @@ export function createBinanceUniverse({ log, restBase, feedKind } = {}) {
 
   const http = axios.create({
     baseURL: useFuturesUniverse ? fapiBase : spotBase,
-    timeout: 12_000,
+    timeout: 25_000,
   });
 
   let futuresSymbolsCache = null;
   let futuresSymbolsCacheTs = 0;
   const FUTURES_CACHE_TTL = 30 * 60 * 1000;
 
+  let exchangeInfoCache = null;
+  let exchangeInfoCacheTs = 0;
+  const EXCHANGE_INFO_CACHE_TTL = 30 * 60 * 1000;
+
+  let tradableSymbolsCache = null;
+  let tradableSymbolsCacheTs = 0;
+  const TRADABLE_SYMBOLS_CACHE_TTL = 30 * 60 * 1000;
+  let tradableSymbolsLoadInFlight = null;
+
   async function loadFuturesSymbols() {
     const now = Date.now();
     if (futuresSymbolsCache && now - futuresSymbolsCacheTs < FUTURES_CACHE_TTL) return futuresSymbolsCache;
     const bases = [
-      process.env.BINANCE_DEMO_FUTURES_REST_BASE || "https://demo-fapi.binance.com",
       process.env.BINANCE_FUTURES_REST_BASE || "https://fapi.binance.com",
+      process.env.BINANCE_DEMO_FUTURES_REST_BASE || "https://demo-fapi.binance.com",
     ];
     for (const futBase of bases) {
       try {
-        const { data } = await axios.get(`${futBase}/fapi/v1/exchangeInfo`, { timeout: 10_000 });
+        const { data } = await axios.get(`${futBase}/fapi/v1/exchangeInfo`, { timeout: 8_000 });
         const syms = new Set(
           (data?.symbols || [])
             .filter((s) => s?.status === "TRADING" || s?.contractStatus === "TRADING")
@@ -153,10 +162,44 @@ export function createBinanceUniverse({ log, restBase, feedKind } = {}) {
     return futuresSymbolsCache || null;
   }
 
-  async function exchangeInfo() {
+  async function exchangeInfo({ allowStale = true } = {}) {
+    const now = Date.now();
+    if (exchangeInfoCache && now - exchangeInfoCacheTs < EXCHANGE_INFO_CACHE_TTL) return exchangeInfoCache;
     const path = useFuturesUniverse ? "/fapi/v1/exchangeInfo" : "/api/v3/exchangeInfo";
-    const { data } = await http.get(path);
-    return data;
+    try {
+      const { data } = await http.get(path);
+      exchangeInfoCache = data;
+      exchangeInfoCacheTs = now;
+      return data;
+    } catch (e) {
+      if (allowStale && exchangeInfoCache) {
+        log?.warn?.("universe_exchange_info_stale_fallback", { error: String(e?.message || e) });
+        return exchangeInfoCache;
+      }
+      throw e;
+    }
+  }
+
+  function filterTradableSymbols(syms, q) {
+    const query = String(q || "").trim().toUpperCase();
+    if (!query) return syms;
+    return syms.filter((sym) => {
+      const su = String(sym || "").toUpperCase();
+      const base = su.endsWith("USDT") ? su.slice(0, -4) : su;
+      return su.includes(query) || base.includes(query);
+    });
+  }
+
+  async function buildTradableSymbolsList({ excludeLeveragedTokens = true, excludeStablePairs = true } = {}) {
+    const [exInfo, futSyms] = await Promise.all([
+      exchangeInfo(),
+      useFuturesUniverse ? Promise.resolve(null) : loadFuturesSymbols(),
+    ]);
+    const syms = (exInfo?.symbols || [])
+      .filter((s) => exSymbolAllowed(s, futSyms, { excludeLeveragedTokens, excludeStablePairs }))
+      .map((s) => normalizeSymbol(s?.symbol))
+      .filter(Boolean);
+    return [...new Set(syms)].sort();
   }
 
   async function ticker24hr() {
@@ -211,16 +254,39 @@ export function createBinanceUniverse({ log, restBase, feedKind } = {}) {
     }
 
   return {
-    async listTradableUsdtSymbols({ excludeLeveragedTokens = true, excludeStablePairs = true } = {}) {
-      const [exInfo, futSyms] = await Promise.all([
-        exchangeInfo(),
-        useFuturesUniverse ? Promise.resolve(null) : loadFuturesSymbols(),
-      ]);
-      const syms = (exInfo?.symbols || [])
-        .filter((s) => exSymbolAllowed(s, futSyms, { excludeLeveragedTokens, excludeStablePairs }))
-        .map((s) => normalizeSymbol(s?.symbol))
-        .filter(Boolean);
-      return [...new Set(syms)].sort();
+    async listTradableUsdtSymbols({ excludeLeveragedTokens = true, excludeStablePairs = true, q = null } = {}) {
+      const now = Date.now();
+      const cacheFresh = tradableSymbolsCache && now - tradableSymbolsCacheTs < TRADABLE_SYMBOLS_CACHE_TTL;
+      if (cacheFresh) return filterTradableSymbols(tradableSymbolsCache, q);
+
+      if (!tradableSymbolsLoadInFlight) {
+        tradableSymbolsLoadInFlight = (async () => {
+          try {
+            const fresh = await buildTradableSymbolsList({ excludeLeveragedTokens, excludeStablePairs });
+            tradableSymbolsCache = fresh;
+            tradableSymbolsCacheTs = Date.now();
+            return fresh;
+          } catch (e) {
+            if (tradableSymbolsCache) {
+              log?.warn?.("universe_tradable_symbols_stale_fallback", { error: String(e?.message || e) });
+              return tradableSymbolsCache;
+            }
+            throw e;
+          } finally {
+            tradableSymbolsLoadInFlight = null;
+          }
+        })();
+      }
+
+      const all = await tradableSymbolsLoadInFlight;
+      return filterTradableSymbols(all, q);
+    },
+
+    /** Fire-and-forget warm-up so the custom coin picker does not cold-hit Binance. */
+    warmTradableSymbolsCache() {
+      void this.listTradableUsdtSymbols().catch((e) => {
+        log?.warn?.("universe_tradable_symbols_warm_failed", { error: String(e?.message || e) });
+      });
     },
 
     async scanAndRank({
@@ -294,13 +360,16 @@ export function createBinanceUniverse({ log, restBase, feedKind } = {}) {
           return { ...x, bid, ask, spreadPct };
         })
         .filter((x) => (customMode ? true : x.quoteVolumeUSDT >= Number(minQuoteVolumeUSDT || 0)))
-        .filter((x) => x.spreadPct > 0 && x.spreadPct <= Number(maxSpreadPct || 0.01));
+        .filter((x) =>
+          customMode ? true : x.spreadPct > 0 && x.spreadPct <= Number(maxSpreadPct || 0.01),
+        );
 
       // Step 3: opportunity signals for top candidates (klines are the expensive part)
+      const klineSource = customMode && tradable.length === 0 ? rankedByVol : tradable;
       const klineCap = customMode
-        ? Math.max(1, Math.min(10, tradable.length))
+        ? Math.max(1, Math.min(10, klineSource.length))
         : Math.max(5, Math.min(tradable.length, Number(topKlines || 12)));
-      const klinesTargets = tradable.slice(0, klineCap);
+      const klinesTargets = klineSource.slice(0, klineCap);
       const withSignals = await mapLimit(klinesTargets, 4, async (x) => {
         const candles = await klines({ symbol: x.symbol, interval: timeframe, limit: candlesLimit });
         const last = candles[candles.length - 1];
@@ -381,6 +450,28 @@ export function createBinanceUniverse({ log, restBase, feedKind } = {}) {
       }
       const topN = Number(aiRankedDisplayTop || 0);
       if (topN > 0 && ranked.length > topN) ranked = ranked.slice(0, topN);
+
+      if (customMode) {
+        const want = [...new Set(customSymbols.map((x) => normalizeSymbol(x)).filter(Boolean))].slice(0, 10);
+        const have = new Set(ranked.map((r) => r.symbol));
+        for (const sym of want) {
+          if (have.has(sym)) continue;
+          const vol = rankedByVol.find((x) => x.symbol === sym);
+          ranked.push({
+            symbol: sym,
+            score: 0,
+            aiProb: null,
+            quoteVolumeUSDT: vol?.quoteVolumeUSDT ?? null,
+            spreadPct: null,
+            lastPrice: null,
+            atrPct: null,
+            volSpike: null,
+            trendStrength: null,
+            opportunity: null,
+            corr: null,
+          });
+        }
+      }
 
       // Correlation-aware pick of top N
       const selected = [];

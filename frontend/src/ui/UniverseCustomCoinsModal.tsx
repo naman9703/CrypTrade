@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 
 const MAX = 10;
+const SYMBOLS_CACHE_KEY = "universe_tradable_symbols_v1";
+const SEARCH_DEBOUNCE_MS = 280;
 
 type Props = {
   open: boolean;
@@ -10,12 +12,41 @@ type Props = {
   onSave: (symbols: string[]) => void | Promise<void>;
 };
 
+function readSymbolsCache(): string[] | null {
+  try {
+    const raw = sessionStorage.getItem(SYMBOLS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map((s) => String(s || "").toUpperCase()).filter(Boolean) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSymbolsCache(symbols: string[]) {
+  try {
+    sessionStorage.setItem(SYMBOLS_CACHE_KEY, JSON.stringify(symbols.slice(0, 2000)));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+function normalizeQuerySymbol(q: string): string | null {
+  const raw = String(q || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!raw) return null;
+  const sym = raw.endsWith("USDT") ? raw : `${raw}USDT`;
+  return /^[A-Z0-9]{2,16}USDT$/.test(sym) ? sym : null;
+}
+
 export function UniverseCustomCoinsModal({ open, initialSymbols, onClose, onSave }: Props) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
-  const [allSymbols, setAllSymbols] = useState<string[] | null>(null);
+  const [allSymbols, setAllSymbols] = useState<string[] | null>(() => readSymbolsCache());
+  const [searchResults, setSearchResults] = useState<string[] | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [searchBusy, setSearchBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  const searchSeqRef = useRef(0);
 
   const initialKey = initialSymbols.join("\n");
 
@@ -23,23 +54,80 @@ export function UniverseCustomCoinsModal({ open, initialSymbols, onClose, onSave
     if (!open) return;
     setSelected([...new Set(initialSymbols.map((s) => String(s || "").trim().toUpperCase()))].slice(0, MAX));
     setSearch("");
+    setSearchResults(null);
     setLoadErr(null);
+    const cached = readSymbolsCache();
+    if (cached?.length) setAllSymbols(cached);
+
     let cancelled = false;
     (async () => {
-      setAllSymbols(null);
       try {
         const r = await api.universeSymbols();
         if (cancelled) return;
-        if (r?.ok && Array.isArray(r.symbols)) setAllSymbols(r.symbols);
-        else setLoadErr(String(r?.error || "symbols_unavailable"));
+        if (r?.ok && Array.isArray(r.symbols) && r.symbols.length) {
+          setAllSymbols(r.symbols);
+          writeSymbolsCache(r.symbols);
+          setLoadErr(null);
+        } else if (!cached?.length) {
+          setLoadErr(String(r?.error || "symbols_unavailable"));
+        }
       } catch (e) {
-        if (!cancelled) setLoadErr(String(e));
+        if (!cancelled && !cached?.length) setLoadErr(String(e));
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [open, initialKey]);
+
+  const q = search.trim().toUpperCase();
+  const manualSymbol = useMemo(() => normalizeQuerySymbol(search), [search]);
+
+  useEffect(() => {
+    if (!open || !q) {
+      setSearchResults(null);
+      setSearchBusy(false);
+      return;
+    }
+
+    const cached = allSymbols;
+    if (cached?.length) {
+      const local = cached.filter((s) => {
+        const su = s.toUpperCase();
+        const base = su.endsWith("USDT") ? su.slice(0, -4) : su;
+        return su.includes(q) || base.includes(q);
+      });
+      setSearchResults(local);
+      setSearchBusy(false);
+      return;
+    }
+
+    const seq = ++searchSeqRef.current;
+    setSearchBusy(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const r = await api.universeSymbols({ q });
+          if (searchSeqRef.current !== seq) return;
+          if (r?.ok && Array.isArray(r.symbols)) {
+            setSearchResults(r.symbols);
+            setLoadErr(null);
+          } else {
+            setSearchResults([]);
+            if (!manualSymbol) setLoadErr(String(r?.error || "symbols_unavailable"));
+          }
+        } catch (e) {
+          if (searchSeqRef.current !== seq) return;
+          setSearchResults([]);
+          if (!manualSymbol) setLoadErr(String(e));
+        } finally {
+          if (searchSeqRef.current === seq) setSearchBusy(false);
+        }
+      })();
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [open, q, allSymbols, manualSymbol]);
 
   useEffect(() => {
     if (!open) return;
@@ -50,16 +138,10 @@ export function UniverseCustomCoinsModal({ open, initialSymbols, onClose, onSave
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const q = search.trim().toUpperCase();
   const filtered = useMemo(() => {
-    if (!allSymbols) return [];
-    if (!q) return allSymbols;
-    return allSymbols.filter((s) => {
-      const su = s.toUpperCase();
-      const base = su.endsWith("USDT") ? su.slice(0, -4) : su;
-      return su.includes(q) || base.includes(q);
-    });
-  }, [allSymbols, q]);
+    if (!q) return allSymbols ?? [];
+    return searchResults ?? [];
+  }, [allSymbols, q, searchResults]);
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
@@ -86,6 +168,9 @@ export function UniverseCustomCoinsModal({ open, initialSymbols, onClose, onSave
       setSaving(false);
     }
   };
+
+  const showManualAdd =
+    manualSymbol != null && !selectedSet.has(manualSymbol) && selected.length < MAX;
 
   return (
     <div
@@ -129,12 +214,42 @@ export function UniverseCustomCoinsModal({ open, initialSymbols, onClose, onSave
               />
             </div>
             <div className="max-h-[min(52vh,420px)] overflow-auto p-2 text-xs">
-              {loadErr ? (
-                <div className="text-amber-700 dark:text-amber-400">{loadErr}</div>
-              ) : allSymbols == null ? (
-                <div className="text-slate-500">Loading tradable symbols…</div>
+              {showManualAdd ? (
+                <button
+                  type="button"
+                  className="mb-2 flex w-full items-center justify-between rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1.5 font-mono text-emerald-900 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100 dark:hover:bg-emerald-950/60"
+                  onClick={() => addSymbol(manualSymbol)}
+                >
+                  <span>Add {manualSymbol}</span>
+                  <span className="text-[10px] font-semibold">manual</span>
+                </button>
+              ) : null}
+              {loadErr && !q ? (
+                <div className="text-amber-700 dark:text-amber-400">
+                  {loadErr}
+                  <div className="mt-1 text-[10px] text-slate-500">Type a symbol above (e.g. BTC) to add manually.</div>
+                </div>
+              ) : !q ? (
+                <div className="text-slate-500">
+                  {allSymbols == null
+                    ? "Loading symbol index in background…"
+                    : `Search ${allSymbols.length} tradable symbols, or type a base (e.g. BTC).`}
+                </div>
+              ) : searchBusy ? (
+                <div className="text-slate-500">Searching…</div>
               ) : filtered.length === 0 ? (
-                <div className="text-slate-500">No matches</div>
+                <div className="text-slate-500">
+                  {loadErr ? (
+                    <>
+                      <span className="text-amber-700 dark:text-amber-400">{loadErr}</span>
+                      {showManualAdd ? null : (
+                        <span> — try a full symbol like BTCUSDT, or retry in a moment.</span>
+                      )}
+                    </>
+                  ) : (
+                    "No matches"
+                  )}
+                </div>
               ) : (
                 <ul className="space-y-0.5">
                   {filtered.slice(0, 800).map((sym) => {

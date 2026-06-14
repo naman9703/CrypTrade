@@ -151,6 +151,48 @@ export function monthlyReturns(trades) {
 }
 
 /**
+ * Price RR: (exit − entry) / (entry − initial SL) for longs (inverted for shorts).
+ * @param {object} t
+ * @returns {number|null}
+ */
+export function tradePriceRr(t) {
+  const entry = Number(t.entryPrice ?? t.entryFill);
+  const exit = Number(t.exitPrice);
+  if (!Number.isFinite(entry) || entry <= 0 || !Number.isFinite(exit)) return null;
+  const isLong = String(t.direction || "BUY").toUpperCase() === "BUY";
+  const initial = Number(t.initialSlPrice);
+  let stop = Number.isFinite(initial) && initial > 0 ? initial : Number(t.slPrice ?? t.stopPrice);
+  if (!Number.isFinite(stop) || stop <= 0) return null;
+  if (!Number.isFinite(initial) && Math.abs(entry - stop) / entry <= 1e-5) return null;
+  const riskDist = isLong ? entry - stop : stop - entry;
+  if (!Number.isFinite(riskDist) || riskDist <= entry * 1e-5) return null;
+  const rewardDist = isLong ? exit - entry : entry - exit;
+  if (!Number.isFinite(rewardDist)) return null;
+  return rewardDist / riskDist;
+}
+
+/** @param {Array<object>} trades */
+export function priceRrStats(trades) {
+  const values = [];
+  for (const t of trades || []) {
+    const rr = tradePriceRr(t);
+    if (rr != null && Number.isFinite(rr)) values.push(rr);
+  }
+  if (!values.length) {
+    return { avgRr: null, rrCount: 0, rrWinAvg: null, rrLossAvg: null };
+  }
+  const wins = values.filter((r) => r > 0);
+  const losses = values.filter((r) => r <= 0);
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  return {
+    avgRr: mean,
+    rrCount: values.length,
+    rrWinAvg: wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length : null,
+    rrLossAvg: losses.length ? losses.reduce((a, b) => a + b, 0) / losses.length : null,
+  };
+}
+
+/**
  * R-multiple distribution. Each trade's R = netPnl / riskAtEntry, where risk is
  * the dollar amount risked to the stop (entry-to-SL distance × qty). Falls back
  * to `t.riskUsd`/`t.rMultiple` if the runner already recorded them.
@@ -260,6 +302,7 @@ export function computeAllMetrics({ trades, equityCurve, tf, startingEquity, reg
   const mdd = maxDrawdown(equityCurve);
   const sr = sharpeAndSortino(equityCurve, tf);
   const rmult = rMultipleStats(trades);
+  const rrStats = priceRrStats(trades);
   const finalEquity = equityCurve.length ? equityCurve[equityCurve.length - 1].equity : startingEquity;
   const totalReturnPct = startingEquity > 0 ? ((finalEquity - startingEquity) / startingEquity) * 100 : 0;
   const romd = mdd.maxDrawdownPct > 0 ? totalReturnPct / mdd.maxDrawdownPct : null;
@@ -289,6 +332,8 @@ export function computeAllMetrics({ trades, equityCurve, tf, startingEquity, reg
     rMin: rmult.rMin,
     rMax: rmult.rMax,
     expectancyR: rmult.expectancyR,
+    avgRr: rrStats.avgRr,
+    rrCount: rrStats.rrCount,
     rollingSharpeMin: rollSharpe.min,
     rollingSharpeLast: rollSharpe.last,
     monthlyReturns: monthlyReturns(trades),

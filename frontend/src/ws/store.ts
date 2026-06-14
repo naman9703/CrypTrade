@@ -8,7 +8,7 @@ import {
   mergePersistedBotPreferServer,
   tradingUiPersistShowMarketIntelligencePanel,
 } from "../lib/tradingUiPersistence";
-import { applyBotConfigPatchInFlight } from "../lib/configPatchInFlight";
+import { composeViewBotFromLiveAndDraft, noteBotConfigPatchInFlight } from "../lib/configPatchInFlight";
 import { normalizeIntradayGatesOnBot } from "../lib/intradayGatesUi";
 import type { CreateStrategyDto, Strategy, StrategyMetaPatch, StrategyVersion } from "../types/strategy";
 import type { BotInstance, CreateInstanceDto } from "../types/instance";
@@ -18,9 +18,14 @@ import type { EquityCurvePoint, PerformanceCompareRow, StrategyPerformance } fro
 import type { IntelligenceData } from "../types/intelligence";
 import {
   canonicalCfgRawFromUiBot,
-  signalBrainSnapshotFromCfgRaw,
-  signalBrainSnapshotFromUiBot,
+  signalBrainPersistBotsEqual,
 } from "../lib/strategyBrainSnapshot";
+import {
+  mergeStrategyListWithRecentSave,
+  noteStrategySaveWsAckGuard,
+  recentSaveFromVersionRaw,
+  type RecentStrategySave,
+} from "../lib/syncStrategySave";
 import { isPlausibleCandleClose, normalizeSym } from "../lib/symbolPriceSanity";
 import { isIncomeLedgerClose, playProfitCloseSound } from "../lib/uiSounds";
 
@@ -203,6 +208,8 @@ type AppState = {
   showMarketIntelligencePanel: boolean;
   /** True when live bot signal-brain fields differ from the active saved strategy version. */
   strategyConfigDirtyByMode: Record<ApiTradingModeSlug, boolean>;
+  /** Latest Save response cfg — shields list refetch from overwriting fresh DB snapshot. */
+  recentStrategySaveByMode: Partial<Record<ApiTradingModeSlug, RecentStrategySave>>;
 
   /** Compare stripped signal-brain vs active `strategy_versions.cfg_raw` for `modeSlug`. */
   recomputeStrategyConfigDirtyForMode: (modeSlug: ApiTradingModeSlug) => void;
@@ -210,6 +217,12 @@ type AppState = {
   markStrategyConfigCleanForMode: (modeSlug: ApiTradingModeSlug) => void;
   /** Patch in-memory strategy version cfg after Save so dirty clears before the next list fetch. */
   mergeStrategyVersionFromSaveResponse: (modeSlug: ApiTradingModeSlug, versionRaw: unknown) => void;
+  /** Authoritative post-Save sync: store cfg, live bot, WS guards, dirty=false. */
+  applyStrategySaveResponse: (
+    modeSlug: ApiTradingModeSlug,
+    versionRaw: unknown,
+    botRaw: Record<string, unknown> | null | undefined,
+  ) => void;
 
   connect: () => void;
   setBot: (bot: any) => void;
@@ -218,6 +231,8 @@ type AppState = {
   getDraftBotPatch: (modeSlug: ApiTradingModeSlug) => Record<string, unknown>;
   hasDraftBotPatch: (modeSlug: ApiTradingModeSlug) => boolean;
   setChartDisplaySymbol: (sym: string | null) => void;
+  /** Push `chartDisplaySymbol` to server when WS/HTTP ack drifted (HMR, failed prior sync). */
+  ensureChartFocusSynced: () => void;
   pushLog: (p: LogPayload) => void;
   fetchAccountsForMode: (modeSlug: ApiTradingModeSlug) => Promise<void>;
   selectAccount: (accountId: string | null) => void;
@@ -402,6 +417,8 @@ let wsIntentionalClose = false;
  * symbol could win and the chart tab would stop updating (merge rejects non-view symbols).
  */
 let pendingMarketBySymbol: Map<string, MarketPayload> | null = null;
+/** Latest WS `market` tick per symbol — flush batches often carry one alt pair; chart view still merges from cache. */
+let lastMarketTickBySymbol = new Map<string, MarketPayload>();
 let pendingMarketFlushScheduled = false;
 /** Last-wins coalesce for burst `state` frames (multiplex + tick can emit several/sec — log showed e.g. state:3 + market:7 in one wall second). */
 let pendingWsStatePayload: unknown = undefined;
@@ -413,9 +430,147 @@ let pendingDepthFlushScheduled = false;
 let nextActivityLogLid = 1;
 /** Debounce `POST /api/bot/config` when multi-coin chart tab changes (server multiplex + `market` routing). */
 let chartFocusSyncTimer: ReturnType<typeof setTimeout> | null = null;
+let chartFocusSyncRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let chartFocusSyncQueued: string | null | undefined = undefined;
+let chartFocusSyncFailStreak = 0;
+let lastChartFocusSentNorm = "";
+/** Optimistic + server-confirmed focus norm. Empty = cleared/primary. */
+let lastChartFocusAckNorm = "";
+let chartFocusAbort: AbortController | null = null;
+
+function isChartFocusAbortError(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === "AbortError") return true;
+  if (err instanceof Error && err.name === "AbortError") return true;
+  return false;
+}
+
+/** Primary tab / null chart override → clear server alt focus (null), not `uiChartFocusSymbol: primary`. */
+function resolveChartFocusSyncSymbol(chartSym: string | null | undefined): string | null {
+  const primaryNorm = normalizeSym(String(useAppStore.getState().bot?.symbol ?? ""));
+  if (chartSym == null || !String(chartSym).trim()) return null;
+  const norm = normalizeSym(String(chartSym));
+  if (primaryNorm && norm === primaryNorm) return null;
+  return normWsSym(String(chartSym));
+}
+
+function noteChartFocusAckFromServer(raw: string | null | undefined) {
+  if (raw == null || !String(raw).trim()) {
+    lastChartFocusAckNorm = "";
+    return;
+  }
+  lastChartFocusAckNorm = normalizeSym(String(raw));
+}
+
+/** Tab click applies focus locally immediately — UI must not wait on HTTP/WS round-trips. */
+function applyOptimisticChartFocus(sym: string | null) {
+  const syncSym = resolveChartFocusSyncSymbol(sym);
+  noteChartFocusAckFromServer(syncSym);
+  if (syncSym != null) lastChartFocusSentNorm = normalizeSym(syncSym);
+  else lastChartFocusSentNorm = "";
+  useAppStore.setState((s) => {
+    const live =
+      s.liveBot && typeof s.liveBot === "object" && !Array.isArray(s.liveBot)
+        ? { ...(s.liveBot as Record<string, unknown>) }
+        : {};
+    live.uiChartFocusSymbol = syncSym;
+    return {
+      liveBot: live,
+      bot: deriveViewBot(s.mode, live, s.draftBotPatchByMode),
+    };
+  });
+}
+
+function shouldIgnoreStaleWsChartFocusAck(
+  ack: unknown,
+  chartDisplaySymbol: string | null,
+  botSymbol: string | undefined,
+): boolean {
+  const clientTarget = resolveChartFocusSyncSymbol(chartDisplaySymbol);
+  const clientNorm = clientTarget != null ? normalizeSym(clientTarget) : "";
+  const primaryNorm = normalizeSym(String(botSymbol ?? ""));
+  const ackNorm = ack != null && String(ack).trim() ? normalizeSym(String(ack)) : "";
+  const optimisticNorm = lastChartFocusAckNorm;
+  if (clientNorm && optimisticNorm === clientNorm && ackNorm !== clientNorm) return true;
+  if (!clientNorm && ackNorm && ackNorm !== primaryNorm && optimisticNorm !== ackNorm) return true;
+  return false;
+}
+
+function scheduleChartFocusRetry(failed: boolean) {
+  if (chartFocusSyncQueued === undefined) return;
+  if (chartFocusSyncRetryTimer != null) return;
+  const delay = failed
+    ? Math.min(8000, 250 * 2 ** Math.min(chartFocusSyncFailStreak, 5))
+    : 0;
+  chartFocusSyncRetryTimer = setTimeout(() => {
+    chartFocusSyncRetryTimer = null;
+    flushChartFocusToServer();
+  }, delay);
+}
+
+function flushChartFocusToServer() {
+  const sym = chartFocusSyncQueued;
+  chartFocusSyncQueued = undefined;
+  if (sym === undefined) return;
+  const symNorm = sym != null ? normalizeSym(sym) : "";
+  chartFocusAbort?.abort();
+  const abortCtrl = new AbortController();
+  chartFocusAbort = abortCtrl;
+  let flushFailed = false;
+  void api
+    .botChartFocus(sym, {
+      signal: abortCtrl.signal,
+    })
+    .then((data) => {
+      if (!data?.ok) {
+        throw new Error("chart focus not acked");
+      }
+      chartFocusSyncFailStreak = 0;
+      if (symNorm) lastChartFocusSentNorm = symNorm;
+      else lastChartFocusSentNorm = "";
+      const ackRaw = data.uiChartFocusSymbol;
+      noteChartFocusAckFromServer(
+        ackRaw != null && String(ackRaw).trim() ? String(ackRaw) : sym,
+      );
+    })
+    .catch((err: unknown) => {
+      if (isChartFocusAbortError(err)) return;
+      flushFailed = true;
+      chartFocusSyncFailStreak += 1;
+      chartFocusSyncQueued = sym;
+    })
+    .finally(() => {
+      if (chartFocusAbort !== abortCtrl) return;
+      chartFocusAbort = null;
+      if (chartFocusSyncQueued !== undefined) scheduleChartFocusRetry(flushFailed);
+    });
+}
+
+function queueChartFocusSync(sym: string | null, opts?: { immediate?: boolean }) {
+  chartFocusSyncQueued = resolveChartFocusSyncSymbol(sym);
+  if (chartFocusSyncTimer) clearTimeout(chartFocusSyncTimer);
+  if (opts?.immediate === true) {
+    flushChartFocusToServer();
+    return;
+  }
+  /** Coalesce rapid tab clicks — one HTTP round-trip for the final symbol (server also coalesces). */
+  chartFocusSyncTimer = setTimeout(() => {
+    chartFocusSyncTimer = null;
+    flushChartFocusToServer();
+  }, 280);
+}
 
 /** One-shot: push saved mode + /api/bot/config after load (hello or first HTTP hydrate). */
 let tradingUiSessionRestoreStarted = false;
+
+/**
+ * In-flight request dedup: several components (InstanceNavBar, OverviewPage,
+ * StrategySidebar, AccountWidget) mount together and each fired the same
+ * strategies/instances/accounts fetch — 4-6 identical GETs per mode on load.
+ * Coalesce concurrent calls per mode into a single network request.
+ */
+const inFlightStrategiesFetch = new Map<string, Promise<void>>();
+const inFlightInstancesFetch = new Map<string, Promise<void>>();
+const inFlightAccountsFetch = new Map<string, Promise<void>>();
 
 let strategyDirtyRecomputeTimer: ReturnType<typeof setTimeout> | null = null;
 let strategyDirtyRecomputeSlug: ApiTradingModeSlug | null = null;
@@ -431,25 +586,17 @@ function scheduleStrategyConfigDirtyRecompute(modeSlug: ApiTradingModeSlug) {
   }, 250);
 }
 
-function mergeLiveBotWithDraft(
+/** Authoritative UI bot: guarded live WS/HTTP truth, then unsaved draft wins on top. */
+export function deriveViewBot(
   mode: string | undefined,
   liveBot: Record<string, unknown> | undefined,
   draftByMode: Record<ApiTradingModeSlug, Record<string, unknown>>,
 ): Record<string, unknown> {
   const modeSlug = tradingModeToApiModeSlug(String(mode ?? ""));
   const draft = draftByMode[modeSlug] ?? {};
-  return { ...(liveBot ?? {}), ...draft };
-}
-
-/** Authoritative UI bot: live WS/HTTP truth + unsaved draft + in-flight patch guards. */
-export function deriveViewBot(
-  mode: string | undefined,
-  liveBot: Record<string, unknown> | undefined,
-  draftByMode: Record<ApiTradingModeSlug, Record<string, unknown>>,
-): Record<string, unknown> {
-  return normalizeIntradayGatesOnBot(
-    applyBotConfigPatchInFlight(mergeLiveBotWithDraft(mode, liveBot, draftByMode)),
-  );
+  const live =
+    liveBot && typeof liveBot === "object" && !Array.isArray(liveBot) ? liveBot : {};
+  return normalizeIntradayGatesOnBot(composeViewBotFromLiveAndDraft(live, draft));
 }
 
 function scheduleWsStateFlush() {
@@ -470,7 +617,25 @@ function scheduleDepthFlush() {
     pendingDepthFlushScheduled = false;
     const d = pendingDepthPayload;
     pendingDepthPayload = null;
-    if (d) useAppStore.setState({ depth: d });
+    if (d) {
+      const st = useAppStore.getState();
+      const chartSym = normalizeSym(st.chartDisplaySymbol ?? st.bot?.symbol);
+      const depthSym = normalizeSym(d.symbol);
+      if (chartSym && depthSym && chartSym !== depthSym) {
+        const storeDepthSym = normalizeSym(st.depth?.symbol);
+        if (storeDepthSym !== chartSym) {
+          useAppStore.setState({
+            depth: {
+              symbol: st.chartDisplaySymbol ?? chartSym,
+              bids: [],
+              asks: [],
+            },
+          });
+        }
+        return;
+      }
+      useAppStore.setState({ depth: d });
+    }
   });
 }
 
@@ -679,6 +844,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   liveBot: undefined,
   draftBotPatchByMode: { paper: {}, demo_api: {}, testnet: {}, live: {} },
   strategyConfigDirtyByMode: { paper: false, demo_api: false, testnet: false, live: false },
+  recentStrategySaveByMode: {},
   account: undefined,
   positions: [],
 
@@ -1082,6 +1248,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setBot: (bot) => set({ bot, liveBot: bot }),
   stageDraftBotPatch: (modeSlug, patch) => {
     if (!patch || typeof patch !== "object") return;
+    noteBotConfigPatchInFlight(patch);
     set((s) => {
       const prevModePatch = s.draftBotPatchByMode[modeSlug] ?? {};
       const nextModePatch = { ...prevModePatch, ...patch };
@@ -1119,19 +1286,41 @@ export const useAppStore = create<AppState>((set, get) => ({
   hasDraftBotPatch: (modeSlug) => Object.keys(get().draftBotPatchByMode[modeSlug] ?? {}).length > 0,
 
   setChartDisplaySymbol: (sym) => {
-    const next = sym == null || String(sym).trim() === "" ? null : normWsSym(String(sym));
-    set({ chartDisplaySymbol: next });
-    if (chartFocusSyncTimer) clearTimeout(chartFocusSyncTimer);
-    /** Immediate: delayed sync left live USD-M multiplex without `uiChartFocusSymbol` for ~120ms → ticked `market` stayed on the bot pair and the UI dropped every frame for the selected tab. */
-    void api
-      .botConfig({ uiChartFocusSymbol: next } as Record<string, unknown>)
-      .catch(() => {});
-    chartFocusSyncTimer = setTimeout(() => {
-      chartFocusSyncTimer = null;
-      void api
-        .botConfig({ uiChartFocusSymbol: next } as Record<string, unknown>)
-        .catch(() => {});
-    }, 800);
+    const primaryNorm = normalizeSym(String(get().bot?.symbol ?? ""));
+    const nextRaw = sym == null || String(sym).trim() === "" ? null : normWsSym(String(sym));
+    const next =
+      nextRaw != null && primaryNorm && normalizeSym(nextRaw) === primaryNorm ? null : nextRaw;
+    const depthSym = next ?? (primaryNorm || null);
+    /** ChartPanel owns candle hydration (per-symbol cache + REST). Clearing here left a blank chart until manual reload. */
+    set((s) => ({
+      chartDisplaySymbol: next,
+      /** Avoid “DOGE book vs chart XAUT” while server depth WS reconnects after focus change. */
+      depth:
+        depthSym != null
+          ? { symbol: depthSym, bids: [], asks: [] }
+          : s.depth,
+    }));
+    applyOptimisticChartFocus(next);
+    queueChartFocusSync(next);
+  },
+
+  ensureChartFocusSynced: () => {
+    const sym = get().chartDisplaySymbol;
+    const primaryNorm = normalizeSym(String(get().bot?.symbol ?? ""));
+    const serverNorm = normalizeSym(String(get().bot?.uiChartFocusSymbol ?? ""));
+    const syncTarget = resolveChartFocusSyncSymbol(sym);
+
+    /** Primary / no override: server focus must clear so depth + ticks follow `bot.symbol`. */
+    if (syncTarget == null) {
+      if (serverNorm && serverNorm !== primaryNorm) {
+        queueChartFocusSync(null, { immediate: true });
+      }
+      return;
+    }
+
+    const clientNorm = normalizeSym(syncTarget);
+    if (clientNorm && (clientNorm === lastChartFocusAckNorm || clientNorm === serverNorm)) return;
+    queueChartFocusSync(syncTarget, { immediate: true });
   },
 
   pushLog: (p) =>
@@ -1150,33 +1339,43 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
 
   fetchAccountsForMode: async (modeSlug) => {
-    set({ accountsLoading: true, accountsError: null });
-    try {
-      const list = await api.getAccountsForMode(modeSlug);
-      set({ accounts: list, accountsLoading: false, accountsError: null });
-      const sel = get().selectedAccountId;
-      if (sel && !list.some((a) => a.id === sel)) {
-        const fallback = list.find((a) => a.isActive)?.id ?? null;
-        set({ selectedAccountId: fallback });
-      }
-      // Auto-select first active account if none is set for this mode
-      const activeForMode = get().activeAccountByMode[modeSlug];
-      if (!activeForMode) {
-        const firstActive = list.find((a) => a.isActive);
-        if (firstActive) {
-          try {
-            await get().setActiveAccountForMode(modeSlug, firstActive.id);
-          } catch {
-            /* non-critical: ignore */
+    const existing = inFlightAccountsFetch.get(modeSlug);
+    if (existing) return existing;
+    const run = (async () => {
+      set({ accountsLoading: true, accountsError: null });
+      try {
+        const list = await api.getAccountsForMode(modeSlug);
+        set({ accounts: list, accountsLoading: false, accountsError: null });
+        const sel = get().selectedAccountId;
+        if (sel && !list.some((a) => a.id === sel)) {
+          const fallback = list.find((a) => a.isActive)?.id ?? null;
+          set({ selectedAccountId: fallback });
+        }
+        // Auto-select first active account if none is set for this mode.
+        // Paper mode has no DB-backed active account (server returns 400
+        // `paper_no_active_account`), so never POST active-account for it.
+        const activeForMode = get().activeAccountByMode[modeSlug];
+        if (!activeForMode && modeSlug !== "paper") {
+          const firstActive = list.find((a) => a.isActive);
+          if (firstActive) {
+            try {
+              await get().setActiveAccountForMode(modeSlug, firstActive.id);
+            } catch {
+              /* non-critical: ignore */
+            }
           }
         }
+      } catch (e) {
+        set({
+          accountsLoading: false,
+          accountsError: e instanceof Error ? e.message : "accounts_fetch_failed",
+        });
+      } finally {
+        inFlightAccountsFetch.delete(modeSlug);
       }
-    } catch (e) {
-      set({
-        accountsLoading: false,
-        accountsError: e instanceof Error ? e.message : "accounts_fetch_failed",
-      });
-    }
+    })();
+    inFlightAccountsFetch.set(modeSlug, run);
+    return run;
   },
 
   selectAccount: (accountId) => set({ selectedAccountId: accountId }),
@@ -1214,10 +1413,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const s = get();
     const vid = resolveActiveStrategyVersionId(s, modeSlug);
     const bot = s.bot;
+    const draftKeys = Object.keys(s.draftBotPatchByMode[modeSlug] ?? {});
     if (!vid || !bot || typeof bot !== "object") {
-      set((st) => ({
-        strategyConfigDirtyByMode: { ...st.strategyConfigDirtyByMode, [modeSlug]: false },
-      }));
+      if (draftKeys.length > 0) {
+        set((st) => ({
+          strategyConfigDirtyByMode: { ...st.strategyConfigDirtyByMode, [modeSlug]: true },
+        }));
+      }
       return;
     }
     const strategies = s.strategiesByMode[modeSlug] ?? [];
@@ -1235,9 +1437,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
     if (cfgRaw == null) {
-      set((st) => ({
-        strategyConfigDirtyByMode: { ...st.strategyConfigDirtyByMode, [modeSlug]: false },
-      }));
+      // Baseline still loading — keep current dirty flag (avoid banner flicker).
       void (async () => {
         for (const st of strategies) {
           await get().fetchVersionsForStrategy(st.id);
@@ -1250,8 +1450,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       })();
       return;
     }
-    const dirty =
-      signalBrainSnapshotFromUiBot(bot) !== signalBrainSnapshotFromCfgRaw(cfgRaw);
+    const dirty = draftKeys.length > 0 || !signalBrainPersistBotsEqual(bot, cfgRaw);
     set((st) => ({
       strategyConfigDirtyByMode: { ...st.strategyConfigDirtyByMode, [modeSlug]: dirty },
     }));
@@ -1289,57 +1488,82 @@ export const useAppStore = create<AppState>((set, get) => ({
   mergeStrategyVersionFromSaveResponse: (modeSlug, versionRaw) => {
     const ver = mapApiStrategyVersion(versionRaw);
     if (!ver?.id || !ver.strategyId) return;
-    const cfgRaw = canonicalCfgRawFromUiBot(get().bot);
-    const verSynced = { ...ver, cfgRaw };
+    const recent = recentSaveFromVersionRaw(versionRaw);
     set((s) => {
       const list = [...(s.strategiesByMode[modeSlug] ?? [])];
-      const idx = list.findIndex((st) => st.id === verSynced.strategyId);
+      const idx = list.findIndex((st) => st.id === ver.strategyId);
       if (idx === -1) return {};
       const st = list[idx];
       if (!st) return {};
-      const prevVers = s.versionsByStrategyId[verSynced.strategyId] ?? [];
-      const vidx = prevVers.findIndex((x) => x.id === verSynced.id);
-      const nextVers =
-        vidx === -1 ? [...prevVers, verSynced] : prevVers.map((x, i) => (i === vidx ? verSynced : x));
+      const prevVers = s.versionsByStrategyId[ver.strategyId] ?? [];
+      const vidx = prevVers.findIndex((x) => x.id === ver.id);
+      const nextVers = vidx === -1 ? [...prevVers, ver] : prevVers.map((x, i) => (i === vidx ? ver : x));
       const nextLatest =
-        st.latestVersion?.id === verSynced.id
-          ? verSynced
-          : st.latestVersion?.versionNumber != null &&
-              verSynced.versionNumber >= (st.latestVersion?.versionNumber ?? 0)
-            ? verSynced
+        st.latestVersion?.id === ver.id
+          ? ver
+          : st.latestVersion?.versionNumber != null && ver.versionNumber >= (st.latestVersion?.versionNumber ?? 0)
+            ? ver
             : st.latestVersion;
-      list[idx] = { ...st, latestVersion: nextLatest ?? verSynced };
+      list[idx] = { ...st, latestVersion: nextLatest ?? ver };
       return {
         strategiesByMode: { ...s.strategiesByMode, [modeSlug]: list },
-        versionsByStrategyId: { ...s.versionsByStrategyId, [verSynced.strategyId]: nextVers },
+        versionsByStrategyId: { ...s.versionsByStrategyId, [ver.strategyId]: nextVers },
         strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
+        ...(recent
+          ? { recentStrategySaveByMode: { ...s.recentStrategySaveByMode, [modeSlug]: recent } }
+          : {}),
       };
     });
   },
 
+  applyStrategySaveResponse: (modeSlug, versionRaw, botRaw) => {
+    get().mergeStrategyVersionFromSaveResponse(modeSlug, versionRaw);
+    if (!botRaw || typeof botRaw !== "object") return;
+    const botNext = botRaw as Record<string, unknown>;
+    noteStrategySaveWsAckGuard(botNext);
+    set((s) => {
+      const draftBotPatchByMode = { ...s.draftBotPatchByMode, [modeSlug]: {} };
+      const viewBot = deriveViewBot(s.mode, botNext, draftBotPatchByMode);
+      return {
+        liveBot: botNext,
+        bot: viewBot,
+        draftBotPatchByMode,
+        strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: false },
+      };
+    });
+    get().markStrategyConfigCleanForMode(modeSlug);
+  },
+
   fetchStrategiesForMode: async (modeSlug, opts) => {
-    set({ strategiesLoading: true, strategiesError: null });
-    try {
-      const list = await api.getStrategiesForMode(modeSlug, opts);
-      const allModeSlugs: ApiTradingModeSlug[] = ["paper", "demo_api", "testnet", "live"];
-      set((s) => {
-        const strategiesByMode = { ...s.strategiesByMode };
-        for (const slug of allModeSlugs) strategiesByMode[slug] = list;
-        return {
-          strategiesByMode,
+    const key = `${modeSlug}|${opts?.includeArchived ? 1 : 0}|${opts?.skipDirtyRecompute ? 1 : 0}`;
+    const existing = inFlightStrategiesFetch.get(key);
+    if (existing) return existing;
+    const run = (async () => {
+      set({ strategiesLoading: true, strategiesError: null });
+      try {
+        const prevList = get().strategiesByMode[modeSlug] ?? [];
+        const recent = get().recentStrategySaveByMode[modeSlug];
+        const list = await api.getStrategiesForMode(modeSlug, opts);
+        const merged = mergeStrategyListWithRecentSave(list, prevList, recent ?? null);
+        set((s) => ({
+          strategiesByMode: { ...s.strategiesByMode, [modeSlug]: merged },
           strategiesLoading: false,
           strategiesError: null,
-        };
-      });
-      if (!opts?.skipDirtyRecompute) {
-        get().recomputeStrategyConfigDirtyForMode(modeSlug);
+        }));
+        if (!opts?.skipDirtyRecompute) {
+          get().recomputeStrategyConfigDirtyForMode(modeSlug);
+        }
+      } catch (e) {
+        set({
+          strategiesLoading: false,
+          strategiesError: e instanceof Error ? e.message : "strategies_fetch_failed",
+        });
+      } finally {
+        inFlightStrategiesFetch.delete(key);
       }
-    } catch (e) {
-      set({
-        strategiesLoading: false,
-        strategiesError: e instanceof Error ? e.message : "strategies_fetch_failed",
-      });
-    }
+    })();
+    inFlightStrategiesFetch.set(key, run);
+    return run;
   },
 
   fetchVersionsForStrategy: async (strategyId) => {
@@ -1407,17 +1631,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchInstancesForMode: async (modeSlug) => {
-    set({ instancesLoading: true });
-    try {
-      const list = await api.listInstancesForMode(modeSlug);
-      set((s) => ({
-        instancesByMode: { ...s.instancesByMode, [modeSlug]: list },
-        instancesLoading: false,
-      }));
-      get().recomputeStrategyConfigDirtyForMode(modeSlug);
-    } catch {
-      set({ instancesLoading: false });
-    }
+    const existing = inFlightInstancesFetch.get(modeSlug);
+    if (existing) return existing;
+    const run = (async () => {
+      set({ instancesLoading: true });
+      try {
+        const list = await api.listInstancesForMode(modeSlug);
+        set((s) => ({
+          instancesByMode: { ...s.instancesByMode, [modeSlug]: list },
+          instancesLoading: false,
+        }));
+        get().recomputeStrategyConfigDirtyForMode(modeSlug);
+      } catch {
+        set({ instancesLoading: false });
+      } finally {
+        inFlightInstancesFetch.delete(modeSlug);
+      }
+    })();
+    inFlightInstancesFetch.set(modeSlug, run);
+    return run;
   },
 
   createInstanceStore: async (modeSlug, dto) => {
@@ -1473,6 +1705,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (data?.activeAccountByMode) patch.activeAccountByMode = data.activeAccountByMode;
     if (data?.activeStrategyVersionByMode) patch.activeStrategyVersionByMode = data.activeStrategyVersionByMode;
     enqueueServerUiPrefsPatch(patch);
+    if (data?.bot && typeof data.bot === "object") {
+      const { noteStrategySaveWsAckGuard } = await import("../lib/syncStrategySave");
+      const botNext = data.bot as Record<string, unknown>;
+      noteStrategySaveWsAckGuard(botNext);
+      set((s) => {
+        const draftBotPatchByMode = { ...s.draftBotPatchByMode, [modeSlug]: {} };
+        const viewBot = deriveViewBot(s.mode, botNext, draftBotPatchByMode);
+        return { liveBot: botNext, bot: viewBot, draftBotPatchByMode };
+      });
+    }
     get().recomputeStrategyConfigDirtyForMode(modeSlug);
   },
 
@@ -1667,12 +1909,43 @@ function scheduleMarketFlush() {
     const map = pendingMarketBySymbol;
     pendingMarketBySymbol = null;
     if (!map || map.size === 0) return;
+    for (const [k, v] of map) {
+      lastMarketTickBySymbol.set(k, v);
+    }
+    if (lastMarketTickBySymbol.size > 32) {
+      const keep = new Set(map.keys());
+      const viewK = normalizeSym(useAppStore.getState().chartDisplaySymbol ?? useAppStore.getState().bot?.symbol);
+      if (viewK) keep.add(viewK);
+      for (const k of [...lastMarketTickBySymbol.keys()]) {
+        if (!keep.has(k)) lastMarketTickBySymbol.delete(k);
+      }
+    }
     const s = useAppStore.getState();
     const viewNorm = normalizeSym(s.chartDisplaySymbol ?? s.bot?.symbol);
-    const pick =
-      viewNorm && map.has(viewNorm)
-        ? map.get(viewNorm)
-        : undefined;
+    const batchPick = viewNorm ? map.get(viewNorm) : undefined;
+    const cachedPick = viewNorm ? lastMarketTickBySymbol.get(viewNorm) : undefined;
+    const pick = batchPick ?? cachedPick;
+    const pickFromCache = Boolean(viewNorm && !batchPick && cachedPick);
+    if (pickFromCache && cachedPick) {
+      const storeLast = s.candles.at(-1);
+      const storeLastTs = Number(storeLast?.ts);
+      const pickTs = Number(cachedPick.candle?.ts);
+      const marketSym = normalizeSym(s.market?.symbol);
+      const sameBar =
+        marketSym === viewNorm &&
+        Number.isFinite(storeLastTs) &&
+        Number.isFinite(pickTs) &&
+        pickTs <= storeLastTs;
+      const sameOhlc =
+        sameBar &&
+        storeLast != null &&
+        Number(storeLast.close) === Number(cachedPick.candle?.close) &&
+        Number(storeLast.high) === Number(cachedPick.candle?.high) &&
+        Number(storeLast.low) === Number(cachedPick.candle?.low);
+      if (sameOhlc) {
+        return;
+      }
+    }
     if (!pick) return;
     useAppStore.setState((st) => mergeMarketIntoState(st, pick) as AppState);
   });
@@ -1803,6 +2076,17 @@ export function applyWsStateSnapshot(payload: unknown) {
     }
     return out;
   });
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const ack = (payload as Record<string, unknown>).uiChartFocusSymbol;
+    if (ack !== undefined) {
+      const st = useAppStore.getState();
+      if (
+        !shouldIgnoreStaleWsChartFocusAck(ack, st.chartDisplaySymbol, String(st.bot?.symbol ?? ""))
+      ) {
+        noteChartFocusAckFromServer(ack != null ? String(ack) : null);
+      }
+    }
+  }
   const m = useAppStore.getState().mode;
   if (m) scheduleStrategyConfigDirtyRecompute(tradingModeToApiModeSlug(String(m)));
 }

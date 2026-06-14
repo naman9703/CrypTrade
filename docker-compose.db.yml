@@ -13,6 +13,16 @@ services:
   timescale:
     image: timescale/timescaledb:latest-pg16
     restart: unless-stopped
+    # Long backtests (multi-year × multi-coin) need more lock table + shared memory.
+    shm_size: "256mb"
+    command:
+      - postgres
+      - -c
+      - max_locks_per_transaction=512
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=16MB
     # `127.0.0.1:54333` only listens on host loopback — other containers using
     # `host.docker.internal:54333` hit the bridge IP and will TIME OUT. Use plain
     # host binding below when `app` runs in Docker on the same machine; keep port

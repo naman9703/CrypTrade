@@ -56,6 +56,7 @@ export function MultiCoinSignalTabs() {
   const bot = useAppStore((s) => s.bot);
   const chartDisplaySymbol = useAppStore((s) => s.chartDisplaySymbol);
   const setChartDisplaySymbol = useAppStore((s) => s.setChartDisplaySymbol);
+  const ensureChartFocusSynced = useAppStore((s) => s.ensureChartFocusSynced);
 
   const liveTabs = useMemo(() => computeMultiCoinTabSymbols(bot as Record<string, unknown>), [bot]);
   const lastNonEmptyTabsRef = useRef<string[]>([]);
@@ -88,22 +89,30 @@ export function MultiCoinSignalTabs() {
   }, [liveSnaps, tabs, bot]);
   const primary = String(bot?.symbol || "").toUpperCase();
 
-  const chartU = String(chartDisplaySymbol ?? "")
+  const chartU = String(chartDisplaySymbol ?? bot?.symbol ?? "")
     .trim()
     .toUpperCase();
 
   /** Snapshot panel matches the tab row when the main chart is on a listed symbol; otherwise first tab. */
   const detailSym = chartU && tabs.includes(chartU) ? chartU : tabs[0] ?? null;
 
+  const chartFocusBootstrappedRef = useRef(false);
   useEffect(() => {
     if (!tabs.length) return;
     if (chartDisplaySymbol != null) return;
-    const serverFocus = String((bot as Record<string, unknown>)?.uiChartFocusSymbol ?? "")
-      .trim()
-      .toUpperCase();
-    const pick = serverFocus && tabs.includes(serverFocus) ? serverFocus : tabs[0];
-    setChartDisplaySymbol(pick);
-  }, [tabs, chartDisplaySymbol, setChartDisplaySymbol, bot]);
+    if (chartFocusBootstrappedRef.current) return;
+    chartFocusBootstrappedRef.current = true;
+    /** Null = primary chart; do not re-pick stale server alt focus on every primary return. */
+    if (primary && tabs.includes(primary)) return;
+    setChartDisplaySymbol(tabs[0]);
+  }, [tabs, chartDisplaySymbol, setChartDisplaySymbol, bot, primary]);
+
+  /** HMR / failed prior sync: chart tab can lead server depth + tick routing by minutes. */
+  useEffect(() => {
+    if (!tabs.length) return;
+    const t = window.setTimeout(() => ensureChartFocusSynced(), 300);
+    return () => window.clearTimeout(t);
+  }, [tabs.length, chartDisplaySymbol, bot?.uiChartFocusSymbol, bot?.symbol, ensureChartFocusSynced]);
 
   if (tabs.length === 0) return null;
 
@@ -127,15 +136,15 @@ export function MultiCoinSignalTabs() {
             <button
               key={sym}
               type="button"
-              onClick={() => setChartDisplaySymbol(sym)}
+              onClick={() => setChartDisplaySymbol(isPrimary ? null : sym)}
               className={clsx(
                 "rounded-t px-2 py-1 text-[11px] font-medium transition-colors",
                 chartU === sym
                   ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100"
                   : "bg-transparent text-slate-600 hover:bg-slate-200/80 dark:text-slate-400 dark:hover:bg-slate-800/80",
-                isPrimary && "ring-1 ring-sky-500/40",
+                isPrimary && chartU !== sym && "ring-1 ring-sky-500/40",
               )}
-              title={isPrimary ? "Primary trading symbol" : undefined}
+              title={isPrimary ? "Primary trading symbol (autotrade)" : undefined}
             >
               <span className="font-mono">{sym}</span>
               {hasData ? (

@@ -12,6 +12,7 @@
  */
 
 import { buildHtfRsiSignalSeries } from "./htfRsi.js";
+import { dirStore } from "./adapterPersisted.js";
 import { evaluateTrendHtfStRegime } from "./trendHtfStRegime.js";
 
 const WARMUP = 80;
@@ -35,7 +36,7 @@ export function buildEliteHtfSignalSeries(candles, cfg = {}) {
   const out = new Array(n).fill(null);
   if (n < WARMUP) return out;
 
-  const htfRsi = buildHtfRsiSignalSeries(candles, cfg.timeframe ?? "15m");
+  const htfRsi = buildHtfRsiSignalSeries(candles, cfg.timeframe ?? "15m", cfg);
   const regimeCfg = {
     trendHtfStRegimeGate: cfg.trendHtfStRegimeGate !== false,
     ...cfg,
@@ -53,16 +54,17 @@ export function buildEliteHtfSignalSeries(candles, cfg = {}) {
 
 export function buildEliteHtfBacktestAdapter(candles, cfg = {}) {
   const series = buildEliteHtfSignalSeries(candles, cfg);
-  let lastDir = 0;
-  return function eliteHtfAdapter(bar, idx) {
+  const local = { lastDir: 0 };
+  return function eliteHtfAdapter(bar, idx, ctx) {
     const sig = series[idx];
     if (!sig) return null;
-    if (sig.action === "BUY" && lastDir !== 1) {
-      lastDir = 1;
+    const d = dirStore(ctx, local);
+    if (sig.action === "BUY" && d.lastDir !== 1) {
+      d.lastDir = 1;
       return { action: "BUY", reason: sig.reason };
     }
-    if (sig.action === "SELL" && lastDir !== -1) {
-      lastDir = -1;
+    if (sig.action === "SELL" && d.lastDir !== -1) {
+      d.lastDir = -1;
       return { action: "SELL", reason: sig.reason };
     }
     return null;

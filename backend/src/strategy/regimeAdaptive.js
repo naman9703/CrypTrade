@@ -23,7 +23,7 @@
 
 import { ema, rsi as rsiFn, atr as atrFn } from "./indicators.js";
 import { barDelta } from "./techniques/orderFlow.js";
-import { inSmcKillzone } from "./techniques/sessionKillzones.js";
+import { dayStore } from "./adapterPersisted.js";
 import { buildRegimeSeries, REGIMES, playbookForRegime } from "./regimeEngine.js";
 
 const GRADE_A = "A";
@@ -332,20 +332,34 @@ export function buildRegimeAdaptiveBacktestAdapter(candles, cfg = {}, _tf = "15m
   let lastSignalIdx = -Infinity;
   let tradesToday = 0;
   let curDay = null;
+  const dayLocal = { lastSignalIdx: -Infinity, tradesToday: 0, curDay: null };
 
-  return function regimeAdaptiveAdapter(bar, idx) {
+  return function regimeAdaptiveAdapter(bar, idx, ctx) {
+    const dDay = dayStore(ctx, dayLocal);
     const day = utcDayId(bar.ts);
-    if (day !== curDay) {
-      curDay = day;
-      tradesToday = 0;
+    if (day !== (ctx?.persisted ? dDay.curDay : curDay)) {
+      if (ctx?.persisted) {
+        dDay.curDay = day;
+        dDay.tradesToday = 0;
+      } else {
+        curDay = day;
+        tradesToday = 0;
+      }
     }
     const sig = series[idx];
     if (!sig) return null;
-    if (tradesToday >= maxPerDay) return null;
-    if (idx - lastSignalIdx < minGap) return null;
+    const tradesCount = ctx?.persisted ? dDay.tradesToday : tradesToday;
+    if (tradesCount >= maxPerDay) return null;
+    const lastIdx = ctx?.persisted ? dDay.lastSignalIdx : lastSignalIdx;
+    if (idx - lastIdx < minGap) return null;
 
-    lastSignalIdx = idx;
-    tradesToday += 1;
+    if (ctx?.persisted) {
+      dDay.lastSignalIdx = idx;
+      dDay.tradesToday = tradesCount + 1;
+    } else {
+      lastSignalIdx = idx;
+      tradesToday += 1;
+    }
     return {
       action: sig.action,
       reason: sig.reason,

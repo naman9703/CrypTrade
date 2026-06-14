@@ -90,7 +90,11 @@ export function createBinanceOrderBook({ log, symbol, wsBase }) {
       return { ...book, bids: book.bids.slice(0, 20), asks: book.asks.slice(0, 20) };
     },
     setSymbol(next) {
-      symbol = normalizeSymbol(next);
+      const prevSym = symbol;
+      const nextNorm = normalizeSymbol(next);
+      if (prevSym === nextNorm) return;
+      depthConnSerial += 1;
+      symbol = nextNorm;
       book = { symbol, bids: [], asks: [] };
       try {
         ws?.terminate();

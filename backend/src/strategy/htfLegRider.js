@@ -6,6 +6,7 @@
  */
 
 import { ema } from "./indicators.js";
+import { dirStore } from "./adapterPersisted.js";
 
 const WARMUP = 100;
 const DEFAULT_LOOKBACK = 48;
@@ -104,16 +105,17 @@ export function buildHtfLegRiderSignalSeries(candles, opts = {}) {
 export function buildHtfLegRiderBacktestAdapter(candles, opts = {}) {
   const lookback = Number(opts.lookback ?? opts.htfLegRiderLookback ?? DEFAULT_LOOKBACK);
   const series = buildHtfLegRiderSignalSeries(candles, { ...opts, lookback });
-  let lastDir = 0;
-  return function htfLegRiderAdapter(bar, idx) {
+  const local = { lastDir: 0 };
+  return function htfLegRiderAdapter(bar, idx, ctx) {
     const sig = series[idx];
     if (!sig) return null;
-    if (sig.action === "BUY" && lastDir !== 1) {
-      lastDir = 1;
+    const d = dirStore(ctx, local);
+    if (sig.action === "BUY" && d.lastDir !== 1) {
+      d.lastDir = 1;
       return { action: "BUY", reason: sig.reason };
     }
-    if (sig.action === "SELL" && lastDir !== -1) {
-      lastDir = -1;
+    if (sig.action === "SELL" && d.lastDir !== -1) {
+      d.lastDir = -1;
       return { action: "SELL", reason: sig.reason };
     }
     return null;

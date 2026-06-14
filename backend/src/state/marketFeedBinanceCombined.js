@@ -784,9 +784,13 @@ export function createBinanceCombinedMarketFeed({
      * Primary `symbol` is always included.
      */
     setWatchSymbols(syms) {
-      extraWatch = uniqUpper(syms)
+      const next = uniqUpper(syms)
         .filter((s) => s && s !== symbol)
         .slice(0, maxStreams - 1);
+      const prevKey = [...extraWatch].sort().join(",");
+      const nextKey = [...next].sort().join(",");
+      extraWatch = next;
+      if (prevKey === nextKey) return;
       resetBuffers(subscriptionList());
       debouncedResync();
     },
@@ -797,6 +801,52 @@ export function createBinanceCombinedMarketFeed({
       const s = normalizeSymbol(sym);
       /** Always use `bufFor` — empty buffer before first backfill/WS is still a valid series (was `[]` if key missing). */
       return bufFor(s).toArray();
+    },
+    /** Push REST OHLC into the multiplex buffer when WS tail is empty/stale — never wipe a live buffer. */
+    seedCandlesForSymbol(symU, candles) {
+      const s = normalizeSymbol(symU);
+      if (!s || !Array.isArray(candles) || !candles.length) return;
+      const buf = bufFor(s);
+      const existing = typeof buf.toArray === "function" ? buf.toArray() : [];
+      const beforeLen = existing.length;
+      const lastTs = beforeLen ? Number(existing[beforeLen - 1]?.ts) : NaN;
+      if (beforeLen >= 30 && Number.isFinite(lastTs) && Date.now() - lastTs < 120_000) {
+        return;
+      }
+      try {
+        buf.clear?.();
+      } catch {
+        /* ignore */
+      }
+      for (const c of candles) {
+        const mapped = {
+          ts: Number(c.ts),
+          open: Number(c.open),
+          high: Number(c.high),
+          low: Number(c.low),
+          close: Number(c.close),
+          volume: Number(c.volume ?? 0),
+          buy_volume: c.buy_volume ?? null,
+          sell_volume: c.sell_volume ?? null,
+        };
+        if (![mapped.ts, mapped.open, mapped.high, mapped.low, mapped.close].every((x) => Number.isFinite(x) && x > 0)) {
+          continue;
+        }
+        const prev = buf.last();
+        const safe = sanitizeKlineCandle(s, mapped, prev, log);
+        if (safe) {
+          buf.push(safe);
+          notePrimaryKlineAccepted(s);
+        }
+      }
+    },
+    /** Immediate backfill for a watch symbol (chart tab click) — avoids waiting on debounced `fullResync`. */
+    async prioritizeWatchSymbol(symU) {
+      const s = normalizeSymbol(symU);
+      if (!s) return;
+      await backfillOne(s).catch((e) => {
+        log?.warn?.("binance_prioritize_backfill_failed", { symbol: s, error: String(e?.message || e) });
+      });
     },
   };
 }

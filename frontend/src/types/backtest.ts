@@ -62,6 +62,9 @@ export type BacktestMetrics = {
   largestLoss: number;
   avgHoldMs: number;
   expectancy: number;
+  /** Mean price RR (entry→exit vs entry→initial SL) across trades with valid stops. */
+  avgRr?: number | null;
+  rrCount?: number;
   totalNetPnl: number;
   totalGrossPnl: number;
   totalFees: number;
@@ -111,6 +114,9 @@ export type BacktestTrade = {
   qty: number;
   slPrice: number | null;
   tpPrice: number | null;
+  /** Entry-time stop used for sizing / RR (not trailed exit SL). */
+  initialSlPrice?: number | null;
+  initialRiskUsd?: number | null;
   exitReason: string | null;
   grossPnl: number;
   fees: number;

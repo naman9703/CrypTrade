@@ -17,6 +17,17 @@ function clampNumeric(value, precision, scale) {
   return Math.max(-max, Math.min(max, v));
 }
 
+/** Sizing metadata persisted on `signal_context`. */
+function tradeSizingContext(t) {
+  return {
+    leverageCapped: t.leverageCapped === true ? true : t.leverageCapped === false ? false : null,
+    allotmentCapped: t.allotmentCapped === true ? true : t.allotmentCapped === false ? false : null,
+    marginCapUsdt: t.marginCapUsdt != null && Number.isFinite(Number(t.marginCapUsdt)) ? Number(t.marginCapUsdt) : null,
+    allowedPoolUsdt:
+      t.allowedPoolUsdt != null && Number.isFinite(Number(t.allowedPoolUsdt)) ? Number(t.allowedPoolUsdt) : null,
+  };
+}
+
 /** ROI % for backtest_trades.roi_pct — margin-based, not dollar PnL. */
 function tradeRoiPct(t) {
   const net = Number(t.netPnl ?? 0);
@@ -141,6 +152,8 @@ export async function insertTrades(runId, symbol, trades) {
         trailTierLabel: t.trailTierLabel ?? null,
         equityAtEntry: t.equityAtEntry ?? null,
         marginUsdt: t.marginUsdt ?? null,
+        initialSlPrice: t.initialSlPrice != null && Number.isFinite(Number(t.initialSlPrice)) ? Number(t.initialSlPrice) : null,
+        initialRiskUsd: t.initialRiskUsd != null && Number.isFinite(Number(t.initialRiskUsd)) ? Number(t.initialRiskUsd) : null,
         entryQuality: t.entryQuality ?? null,
         lossPattern: t.lossPattern ?? null,
         entryReason: t.entryReason ?? null,
@@ -148,6 +161,7 @@ export async function insertTrades(runId, symbol, trades) {
           t.liqContext && typeof t.liqContext === "object"
             ? t.liqContext
             : null,
+        ...tradeSizingContext(t),
       }),
       Number(t.fundingPaid ?? 0),
       Number(t.slippageCost ?? 0),
@@ -293,6 +307,8 @@ async function insertTradesInTx(client, runId, symbol, trades) {
         trailTierLabel: t.trailTierLabel ?? null,
         equityAtEntry: t.equityAtEntry ?? null,
         marginUsdt: t.marginUsdt ?? null,
+        initialSlPrice: t.initialSlPrice != null && Number.isFinite(Number(t.initialSlPrice)) ? Number(t.initialSlPrice) : null,
+        initialRiskUsd: t.initialRiskUsd != null && Number.isFinite(Number(t.initialRiskUsd)) ? Number(t.initialRiskUsd) : null,
         entryQuality: t.entryQuality ?? null,
         lossPattern: t.lossPattern ?? null,
         entryReason: t.entryReason ?? null,
@@ -300,6 +316,7 @@ async function insertTradesInTx(client, runId, symbol, trades) {
           t.liqContext && typeof t.liqContext === "object"
             ? t.liqContext
             : null,
+        ...tradeSizingContext(t),
       }),
       Number(t.fundingPaid ?? 0),
       Number(t.slippageCost ?? 0),

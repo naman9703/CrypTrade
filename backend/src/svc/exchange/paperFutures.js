@@ -20,6 +20,11 @@ import {
 } from "../../lib/supertrendTrailingSl.js";
 import { resolveDefaultPaperFuturesStoreDir } from "../../lib/tradingModePersistence.js";
 import { trailTierStepForCloseAudit } from "../../lib/binanceUsdmCloseReasonHint.js";
+import { fetchLeverageBracketNotionalCap } from "../../lib/binanceUsdMBracketFetch.js";
+import {
+  clampQtyToBracketNotionalCap,
+  currentFuturesNotionalUsd,
+} from "../../lib/binanceUsdMPositionCap.js";
 import { createPaperStore } from "./paperStore.js";
 
 export function createPaperFuturesExchange({ log, name = "paper_futures", baseDir } = {}) {
@@ -690,8 +695,40 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     async placeOrder({ symbol, side, qty, price, stopLoss, takeProfit, strategy, meta }) {
       rolloverIfNeeded();
       const leverage = Math.max(1, Math.min(100, Number(meta?.futuresLeverage || meta?.leverage || defaultLeverage)));
-      const id = `pfut_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+      const symNorm = String(symbol || "").toUpperCase();
       const markPx = Number(price);
+      let qtyUse = Number(qty);
+
+      const simulateBracketCap = String(process.env.PAPER_FUTURES_SIMULATE_BRACKET_CAP ?? "1") !== "0";
+      if (simulateBracketCap && symNorm && Number.isFinite(markPx) && markPx > 0 && qtyUse > 0) {
+        const tradingMode = String(meta?.tradingMode || process.env.PAPER_FUTURES_BRACKET_TRADING_MODE || "BINANCE_DEMO_API");
+        const cap = await fetchLeverageBracketNotionalCap(symNorm, leverage, tradingMode);
+        if (cap != null && cap > 0) {
+          const cur = currentFuturesNotionalUsd(state.positions, symNorm, markPx);
+          const clamped = clampQtyToBracketNotionalCap({
+            qty: qtyUse,
+            entryPx: markPx,
+            capNotional: cap,
+            currentNotional: cur,
+          });
+          if (clamped.capped) {
+            log?.warn?.("paper_futures_bracket_cap_downsize", {
+              symbol: symNorm,
+              leverage,
+              capNotional: cap,
+              currentNotional: cur,
+              qtyRequested: qtyUse,
+              qtyUsed: clamped.qty,
+            });
+          }
+          qtyUse = clamped.qty;
+          if (!Number.isFinite(qtyUse) || qtyUse <= 0) {
+            throw new Error("paper_futures_bracket_cap_exhausted");
+          }
+        }
+      }
+
+      const id = `pfut_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
       const entryStyle = String(meta?.entryOrderStyle || "MARKET").toUpperCase();
       let anchorPx = markPx;
       if (entryStyle === "LIMIT_IOC") {
@@ -706,7 +743,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         }
       }
       const filledPrice = fillPrice({ side, px: anchorPx });
-      const notional = Number(filledPrice) * Number(qty);
+      const notional = Number(filledPrice) * Number(qtyUse);
       const fee = feeForNotional(notional);
       // Futures: we don't reserve margin precisely; we just apply fees now and PnL on close.
       state.equity = roundTo(state.equity - fee, 2);
@@ -717,7 +754,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         syncSource: "paper_local",
         symbol,
         side,
-        qty: Number(qty),
+        qty: Number(qtyUse),
         entryPrice: Number(filledPrice),
         stopLoss: Number.isFinite(Number(stopLoss)) && Number(stopLoss) > 0 ? Number(stopLoss) : null,
         takeProfit: Number.isFinite(Number(takeProfit)) && Number(takeProfit) > 0 ? Number(takeProfit) : null,
@@ -747,7 +784,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         type: "OPEN",
         symbol,
         side,
-        qty: Number(qty),
+        qty: Number(qtyUse),
         price: Number(filledPrice),
         stopLoss: pos.stopLoss,
         takeProfit: pos.takeProfit,

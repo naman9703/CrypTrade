@@ -282,10 +282,11 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
     setErr(null);
     setSubmitting(true);
     try {
-      await fetchStrategies(slug, { includeArchived: false });
+      // Do not refetch strategies here — list API can briefly return stale cfg_raw and mark the
+      // panel dirty; in-memory store already has the authoritative post-Save version + cfg.
       await fetchInstances(slug);
       const freshInstances = useAppStore.getState().instancesByMode[slug] ?? [];
-      const freshStrategies = useAppStore.getState().strategiesByMode[slug] ?? [];
+      const freshStrategies = useAppStore.getState().strategiesByMode[slug] ?? strategies;
       let runVersionId = versionId;
       const runInstance =
         configSource === "instance" && instanceId
@@ -630,17 +631,28 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
       </div>
 
       <Field label="Position sizing">
-        <label className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-slate-300">
-          <input
-            type="checkbox"
-            checked={fullEquityMargin}
-            onChange={(e) => setFullEquityMargin(e.target.checked)}
-          />
-          Use 100% of equity as margin each trade (compounded)
-        </label>
-        <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
-          Default sizes from risk % at stop. When enabled, each trade margin ≈ full account balance × leverage notional cap.
-        </p>
+        {coinMode === "multiple" ? (
+          <p className="text-[11px] text-slate-700 dark:text-slate-300">
+            Portfolio: capital is split equally across coins; each trade uses 100% of that coin&apos;s slice as
+            margin (live EQUAL-split parity).
+          </p>
+        ) : (
+          <>
+            <label className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={fullEquityMargin}
+                onChange={(e) => setFullEquityMargin(e.target.checked)}
+              />
+              Use 100% of equity as margin each trade (compounded)
+            </label>
+            <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+              Single-coin runs use the full starting capital you enter above (not divided across your live coin
+              list). Default sizes from risk % at stop; when enabled, each trade margin ≈ full balance × leverage
+              notional cap.
+            </p>
+          </>
+        )}
       </Field>
 
       <Field label="Walk-forward">

@@ -150,9 +150,9 @@ test("prepareEliteRunCfg skips BTC FIXED override when auto-calibrate on", () =>
   assert.ok(!out.eliteStHtf1hMinSep || Number(out.eliteStHtf1hMinSep) <= 0.0008);
 });
 
-test("normalizeEliteStRunCfg still applies BTC override when auto off and FIXED sep", () => {
+test("normalizeEliteStRunCfg preserves saved BTC FIXED sep when auto-calibrate off", () => {
   const out = normalizeEliteStRunCfg({ symbol: "BTCUSDT", eliteStHtf1hMinSep: 0.0003 });
-  assert.equal(out.eliteStHtf1hMinSep, 0.0008);
+  assert.equal(out.eliteStHtf1hMinSep, 0.0003);
 });
 
 test("resolveEliteTrailDisasterSlPct caps inside liquidation distance at high leverage", () => {

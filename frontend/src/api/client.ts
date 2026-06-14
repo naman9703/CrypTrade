@@ -20,6 +20,39 @@ function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   return fetch(input, { ...init, credentials: "include" });
 }
 
+export function buildCustomUniverseSnapshot(symbols: string[], timeframe = "1h") {
+  const cleaned = [...new Set(symbols.map((s) => String(s || "").trim().toUpperCase()).filter(Boolean))].slice(0, 10);
+  return {
+    ok: true,
+    asOf: new Date().toISOString(),
+    timeframe,
+    ranked: cleaned.map((symbol) => ({
+      symbol,
+      score: 0,
+      aiProb: null,
+      opportunity: null,
+      spreadPct: null,
+    })),
+    selected: cleaned.slice(0, 3),
+    tradable: cleaned.length,
+    universeSize: cleaned.length,
+    emptyCustom: cleaned.length === 0,
+  };
+}
+
+async function mergeUniverseScanSnapshot(scan: Record<string, unknown>) {
+  const { useAppStore, deriveViewBot } = await import("../ws/store");
+  useAppStore.setState((s) => {
+    const prevLive =
+      s.liveBot && typeof s.liveBot === "object" && !Array.isArray(s.liveBot)
+        ? (s.liveBot as Record<string, unknown>)
+        : {};
+    const liveBot = { ...prevLive, universe: scan };
+    const bot = deriveViewBot(s.mode, liveBot, s.draftBotPatchByMode);
+    return { liveBot, bot };
+  });
+}
+
 async function json<T>(res: Response): Promise<T> {
   const txt = await res.text();
   let data: any = null;
@@ -299,18 +332,24 @@ export const api = {
     const hours = typeof opts === "number" ? opts : opts?.hours ?? 24;
     const symbol = typeof opts === "number" ? undefined : opts?.symbol;
     const q = new URLSearchParams();
-    q.set("hours", encodeURIComponent(String(hours)));
+    q.set("hours", String(hours));
     if (symbol) q.set("symbol", String(symbol).toUpperCase());
     return json<any>(await apiFetch(`${HTTP}/api/market/candles?${q}`));
   },
   /** @param refresh When true, bypasses last cached snapshot and runs a fresh Binance scan. */
   async universeScan(refresh = false) {
     const q = refresh ? "?refresh=1" : "";
-    return json<any>(await apiFetch(`${HTTP}/api/universe/scan${q}`));
+    const scan = await json<any>(await apiFetch(`${HTTP}/api/universe/scan${q}`));
+    if (scan && typeof scan === "object") await mergeUniverseScanSnapshot(scan as Record<string, unknown>);
+    return scan;
   },
   /** Tradable USDT pairs for custom coin-base (spot or futures matches MARKET_FEED). */
-  async universeSymbols() {
-    return json<{ ok?: boolean; symbols?: string[]; error?: string }>(await apiFetch(`${HTTP}/api/universe/symbols`));
+  async universeSymbols(opts?: { q?: string }) {
+    const q = String(opts?.q || "").trim();
+    const qs = q ? `?q=${encodeURIComponent(q)}` : "";
+    return json<{ ok?: boolean; symbols?: string[]; error?: string }>(
+      await apiFetch(`${HTTP}/api/universe/symbols${qs}`),
+    );
   },
   async aiHealth() {
     return json<any>(await apiFetch(`${HTTP}/api/ai/health`));
@@ -367,7 +406,7 @@ export const api = {
       }),
     );
   },
-  async botConfig(patch: any) {
+  async botConfig(patch: any, opts?: { signal?: AbortSignal }) {
     const { useAppStore, deriveViewBot } = await import("../ws/store");
     const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
     const { tradingModeToApiModeSlug } = await import("../lib/tradingModeSlug");
@@ -399,6 +438,7 @@ export const api = {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(patch),
+          signal: opts?.signal,
         }),
       );
     } catch (e) {
@@ -425,12 +465,18 @@ export const api = {
 
     const botNext = data.bot as Record<string, unknown>;
     if (!ignoredOnly && patchKeys.length > 0) {
-      const { clearBotConfigPatchInFlightWhenAcked } = await import("../lib/configPatchInFlight");
+      const { clearBotConfigPatchInFlightWhenAcked, pruneDraftBotPatchAcked } = await import(
+        "../lib/configPatchInFlight"
+      );
       clearBotConfigPatchInFlightWhenAcked(patchObj, botNext);
       useAppStore.setState((s) => {
-        const viewBot = deriveViewBot(s.mode, botNext, s.draftBotPatchByMode);
+        const modeSlug = tradingModeToApiModeSlug(s.mode);
+        const prevDraft = s.draftBotPatchByMode[modeSlug] ?? {};
+        const prunedDraft = pruneDraftBotPatchAcked(prevDraft, patchObj, botNext);
+        const draftBotPatchByMode = { ...s.draftBotPatchByMode, [modeSlug]: prunedDraft };
+        const viewBot = deriveViewBot(s.mode, botNext, draftBotPatchByMode);
         tradingUiPersistBotSnapshot(s.mode, viewBot, s.authUiUserTag ?? null);
-        return { liveBot: botNext, bot: viewBot };
+        return { liveBot: botNext, bot: viewBot, draftBotPatchByMode };
       });
     } else {
       useAppStore.setState((s) => {
@@ -452,17 +498,62 @@ export const api = {
     }
     return data;
   },
+  async botChartFocus(uiChartFocusSymbol: string | null, opts?: { signal?: AbortSignal }) {
+    return json<{ ok?: boolean; uiChartFocusSymbol?: string | null }>(
+      await apiFetch(`${HTTP}/api/bot/chart-focus`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ uiChartFocusSymbol }),
+        signal: opts?.signal,
+        cache: "no-store",
+        keepalive: false,
+      }),
+    );
+  },
   async saveStrategyConfigForMode(
     modeSlug: ApiTradingModeSlug,
-    body: { action: "save" | "save_as_new"; name?: string; description?: string | null; tags?: string[]; label?: string | null },
+    body: {
+      action: "save" | "save_as_new";
+      name?: string;
+      description?: string | null;
+      tags?: string[];
+      label?: string | null;
+      cfgRaw?: Record<string, unknown>;
+      /** Instance operational fields (`inst_*`) from the UI view bot — avoids pre-save botConfig flush. */
+      instanceOperational?: Record<string, unknown>;
+    },
   ) {
-    return json<{ ok?: boolean; action?: "save" | "save_as_new"; strategy?: unknown; version?: unknown }>(
+    const data = await json<{
+      ok?: boolean;
+      action?: "save" | "save_as_new";
+      strategy?: unknown;
+      version?: unknown;
+      bot?: Record<string, unknown>;
+    }>(
       await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/strategy-config/save`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       }),
     );
+    if (data?.ok && data.bot && typeof data.bot === "object") {
+      const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
+      const { useAppStore, deriveViewBot } = await import("../ws/store");
+      const st = useAppStore.getState();
+      if (data.version) {
+        st.applyStrategySaveResponse(modeSlug, data.version, data.bot as Record<string, unknown>);
+      } else {
+        const botNext = data.bot as Record<string, unknown>;
+        useAppStore.setState((s) => {
+          const draftBotPatchByMode = { ...s.draftBotPatchByMode, [modeSlug]: {} };
+          const viewBot = deriveViewBot(st.mode, botNext, draftBotPatchByMode);
+          return { liveBot: botNext, bot: viewBot, draftBotPatchByMode };
+        });
+      }
+      const viewBot = useAppStore.getState().bot as Record<string, unknown>;
+      tradingUiPersistBotSnapshot(st.mode, viewBot, st.authUiUserTag ?? null);
+    }
+    return data;
   },
   /** Suggest / apply Move Quality thresholds from `mq-trade-outcomes.jsonl` for the current mode. */
   async botTuneMoveQuality(opts?: {
@@ -707,11 +798,13 @@ export const api = {
   ): Promise<{
     activeAccountByMode?: Record<string, string | null>;
     activeStrategyVersionByMode?: Record<string, string | null>;
+    bot?: Record<string, unknown>;
   } | null> {
     const data = await json<{
       ok?: boolean;
       activeAccountByMode?: Record<string, string | null>;
       activeStrategyVersionByMode?: Record<string, string | null>;
+      bot?: Record<string, unknown>;
     }>(
       await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/active-instance`, {
         method: "POST",

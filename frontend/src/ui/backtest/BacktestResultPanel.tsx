@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import { effectiveBacktestBotCfg } from "../../lib/backtestEffectiveCfg";
+import { avgTradePriceRr, formatTradeRr } from "../../lib/backtestTradeRr";
 import { computeWalkForwardClient } from "../../lib/backtestWalkForward";
 import type {
   BacktestEquityPoint,
@@ -259,7 +260,7 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
         </div>
       ) : null}
 
-      <KpiGrid run={displayRun} />
+      <KpiGrid run={displayRun} trades={trades} />
 
       <WalkForwardSummary run={displayRun} walkForward={walkForward} tradesLoaded={trades != null} />
 
@@ -504,11 +505,14 @@ function WalkForwardSummary({
   );
 }
 
-function KpiGrid({ run }: { run: BacktestRunSummary }) {
+function KpiGrid({ run, trades }: { run: BacktestRunSummary; trades: BacktestTrade[] | null }) {
   const m = run.metrics;
   const kpis = useMemo(() => {
     const ret = m != null ? Number(m.totalReturnPct) : NaN;
     const wr = m != null ? Number(m.winRate) : NaN;
+    const fromTrades = trades?.length ? avgTradePriceRr(trades) : null;
+    const fromMetrics = m?.avgRr != null && Number.isFinite(Number(m.avgRr)) ? Number(m.avgRr) : null;
+    const avgRr = fromTrades ?? fromMetrics;
     return [
       {
         label: "Total return",
@@ -520,16 +524,23 @@ function KpiGrid({ run }: { run: BacktestRunSummary }) {
       { label: "Sharpe", value: num(m?.sharpe, 2) },
       { label: "Max DD", value: Number.isFinite(Number(m?.maxDrawdownPct)) ? `${Number(m.maxDrawdownPct).toFixed(2)}%` : "—", tone: "neg" as const },
       { label: "# Trades", value: m != null && Number.isFinite(Number(m.totalTrades)) ? String(Math.round(Number(m.totalTrades))) : "—" },
+      {
+        label: "Avg RR",
+        value: formatTradeRr(avgRr),
+        tone: avgRr != null && avgRr > 0 ? ("pos" as const) : avgRr != null && avgRr < 0 ? ("neg" as const) : undefined,
+        title: "Mean reward:risk (entry→exit vs entry→initial SL)",
+      },
       { label: "Expectancy", value: num(m?.expectancy, 2) },
       { label: "Avg hold", value: m != null && Number.isFinite(Number(m.avgHoldMs)) ? fmtMs(Number(m.avgHoldMs)) : "—" },
     ];
-  }, [m]);
+  }, [m, trades]);
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-9">
       {kpis.map((k) => (
         <div
           key={k.label}
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950/60"
+          title={"title" in k && k.title ? String(k.title) : undefined}
         >
           <div className="text-[10px] uppercase tracking-wide text-slate-500">{k.label}</div>
           <div
@@ -807,7 +818,23 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
             <Row k="Risk/trade" v={cfgVal("riskPerTrade")} />
             <Row k="Risk unit" v={cfgVal("riskPerTradeUnit")} />
             <Row k="Leverage" v={leverageSummary(cfg)} />
+            <Row k="Trailing stop" v={String(cfg.trailingStopLossAuto === true)} />
             <Row k="Intelligence gate" v={String(cfg.intelligenceGateEnabled ?? "—")} />
+            {String(cfg.manualStrategy ?? "").toUpperCase() === "SUPERTREND_ELITE" ||
+            String(cfg.manualStrategy ?? "").toUpperCase() === "UNIFIED_ELITE" ? (
+              <>
+                <Row k="Elite gate 4H ST" v={String(cfg.eliteStRequireHtf4hAlign === true)} />
+                <Row k="Elite gate 1H EMA" v={String(cfg.eliteStRequireHtf1hEmaAlign === true)} />
+                <Row k="Elite gate ADX" v={Number(cfg.eliteStMinAdx ?? 0) > 0 ? String(cfg.eliteStMinAdx) : "off"} />
+                <Row
+                  k="Elite gate volume"
+                  v={Number(cfg.eliteStMinVolumeVsAvg ?? 0) > 0 ? `${cfg.eliteStMinVolumeVsAvg}×` : "off"}
+                />
+                <Row k="Elite gate ATR expand" v={String(cfg.eliteStRequireAtrExpansion === true)} />
+                <Row k="Elite auto-calibrate" v={String(cfg.eliteStAutoCalibrate === true)} />
+                <Row k="Position sizing" v={cfgVal("backtestPositionSizing")} />
+              </>
+            ) : null}
             <Row k="Market decision" v={String((cfg.marketDecision as Record<string,unknown>)?.enabled ?? "—")} />
             <Row k="Move quality gate" v={String(cfg.supertrendMoveQualityGate ?? "—")} />
             <Row k="Signal strength gate" v={String(cfg.signalStrengthGatesTrades ?? "—")} />

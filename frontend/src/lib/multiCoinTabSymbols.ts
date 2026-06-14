@@ -1,22 +1,33 @@
-/** Symbols shown for multi-coin ST / regime UI (matches server `multiCoinSignalTabSymbols` when set). */
+function normSymbols(raw: unknown, max = 12): string[] {
+  return [
+    ...new Set(
+      (Array.isArray(raw) ? raw : [])
+        .map((x) => String(x || "").trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ].slice(0, max);
+}
+
+/**
+ * Symbols for multi-coin chart tabs + realtime signal row.
+ * Chart/watch uses pins and custom lists even when Pick control is Auto (pins only gate autotrade).
+ */
 export function computeMultiCoinTabSymbols(bot: Record<string, unknown> | null | undefined): string[] {
   const multi = String(bot?.universeCoinSelectMode || "").toUpperCase() === "MULTIPLE";
-  if (!multi) return [];
-  const serverTabs = Array.isArray(bot?.multiCoinSignalTabSymbols)
-    ? [
-        ...new Set(
-          (bot.multiCoinSignalTabSymbols as string[])
-            .map((x: string) => String(x || "").trim().toUpperCase())
-            .filter(Boolean),
-        ),
-      ]
-    : [];
+  const customBase = String(bot?.universeCoinBase || "ALL").toUpperCase() === "CUSTOM";
+
+  const customSyms = normSymbols(bot?.universeCustomSymbols, 10);
+  /** Custom base is authoritative for chart tabs — pins only gate autotrade, they must not hide other custom picks (e.g. XAUT). */
+  if (customBase && customSyms.length) return customSyms;
+
+  const pins = normSymbols(bot?.universePinnedSymbols, 10);
+  if (pins.length) return pins;
+
+  const serverTabs = normSymbols(bot?.multiCoinSignalTabSymbols, 12);
   if (serverTabs.length) return serverTabs;
-  const manual = String(bot?.universePinControl || "").toUpperCase() === "MANUAL";
-  const pins = Array.isArray(bot?.universePinnedSymbols) ? bot.universePinnedSymbols : [];
-  if (manual && pins.length) {
-    return [...new Set(pins.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean))].slice(0, 10);
-  }
+
+  if (!multi) return [];
+
   const sel = Array.isArray(bot?.universe?.selected) ? bot.universe.selected : [];
   const ranked = Array.isArray(bot?.universe?.ranked)
     ? (bot.universe.ranked as { symbol?: string }[]).map((r) => r?.symbol).filter(Boolean)

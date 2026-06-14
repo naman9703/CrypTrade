@@ -3,6 +3,7 @@
  */
 
 import { precomputeIntraday } from "./intradayPro.js";
+import { dayStore } from "./adapterPersisted.js";
 import { utcDayId } from "./techniques/liquidity.js";
 import {
   buildCrtTbsSeries,
@@ -116,21 +117,35 @@ export function buildCrtTbsBacktestAdapter(candles, cfg = {}, _tf = "15m") {
   let lastSignalIdx = -Infinity;
   let tradesToday = 0;
   let curDay = null;
+  const dayLocal = { lastSignalIdx: -Infinity, tradesToday: 0, curDay: null };
 
-  return function crtTbsAdapter(bar, idx) {
+  return function crtTbsAdapter(bar, idx, ctx) {
     if (idx < CRT_TBS_WARMUP) return null;
+    const dDay = dayStore(ctx, dayLocal);
     const day = utcDayId(bar.ts);
-    if (day !== curDay) {
-      curDay = day;
-      tradesToday = 0;
+    if (day !== (ctx?.persisted ? dDay.curDay : curDay)) {
+      if (ctx?.persisted) {
+        dDay.curDay = day;
+        dDay.tradesToday = 0;
+      } else {
+        curDay = day;
+        tradesToday = 0;
+      }
     }
     const sig = series[idx];
     if (!sig) return null;
-    if (tradesToday >= opts.maxTradesPerDay) return null;
-    if (idx - lastSignalIdx < opts.minBarGap) return null;
+    const tradesCount = ctx?.persisted ? dDay.tradesToday : tradesToday;
+    if (tradesCount >= opts.maxTradesPerDay) return null;
+    const lastIdx = ctx?.persisted ? dDay.lastSignalIdx : lastSignalIdx;
+    if (idx - lastIdx < opts.minBarGap) return null;
 
-    lastSignalIdx = idx;
-    tradesToday += 1;
+    if (ctx?.persisted) {
+      dDay.lastSignalIdx = idx;
+      dDay.tradesToday = tradesCount + 1;
+    } else {
+      lastSignalIdx = idx;
+      tradesToday += 1;
+    }
     return {
       action: sig.action,
       reason: sig.reason,

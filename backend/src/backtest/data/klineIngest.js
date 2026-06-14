@@ -12,6 +12,12 @@ function normalizeSymbol(symbol) {
 
 const UPSERT_CHUNK = 400;
 
+/**
+ * Max window per DB read/backfill slice. Long ranges on Timescale hypertables
+ * exhaust Postgres `max_locks_per_transaction` → "out of shared memory".
+ */
+export const READ_CANDLES_SLICE_MS = 90 * 24 * 60 * 60 * 1000;
+
 /** Timescale compresses ohlcv chunks after 7d; bulk upsert must decompress them. */
 const TIMESCALE_DECOMPRESS_UNLIMITED =
   "SET timescaledb.max_tuples_decompressed_per_dml_transaction = 0";
@@ -91,16 +97,26 @@ export async function ensureKlines(symbol, tf, { from, to, market = "futures" } 
   const feedKind = market === "spot" ? "BINANCE" : "BINANCE_FUTURES";
   const interval = binanceInterval(timeframe);
 
-  const fetched = await fetchBinanceKlinesRange({
-    symbol: sym,
-    interval,
-    startTime: fromMs,
-    endTime: toMs,
-    feedKind,
-  });
+  let inserted = 0;
+  let fetchedTotal = 0;
+  const source = market === "spot" ? "binance_spot" : "binance_futures";
 
-  const inserted = await upsertCandles(sym, timeframe, fetched, market === "spot" ? "binance_spot" : "binance_futures");
-  const gaps = Math.max(0, expected - fetched.length);
+  for (let cursor = fromMs; cursor < toMs; cursor += READ_CANDLES_SLICE_MS) {
+    const sliceTo = Math.min(toMs, cursor + READ_CANDLES_SLICE_MS);
+    const fetched = await fetchBinanceKlinesRange({
+      symbol: sym,
+      interval,
+      startTime: cursor,
+      endTime: sliceTo,
+      feedKind,
+    });
+    fetchedTotal += fetched.length;
+    if (fetched.length) {
+      inserted += await upsertCandles(sym, timeframe, fetched, source);
+    }
+  }
+
+  const gaps = Math.max(0, expected - fetchedTotal);
   return { inserted, gaps };
 }
 
@@ -114,7 +130,7 @@ function preferredSources(market = "futures") {
  * @param {boolean} [opts.excludeLiveArchive=true] skip `binance_live` rows (spot/WS contamination)
  * @returns {Promise<Array<{ ts: number, open: number, high: number, low: number, close: number, volume: number }>>}
  */
-export async function readCandles(symbol, tf, fromMs, toMs, opts = {}) {
+async function readCandlesSlice(symbol, tf, fromMs, toMs, opts = {}) {
   const pool = getPool();
   if (!pool) throw new Error("db_not_configured");
   const sym = normalizeSymbol(symbol);
@@ -150,4 +166,23 @@ export async function readCandles(symbol, tf, fromMs, toMs, opts = {}) {
       ? { taker_buy_volume: Number(row.taker_buy_volume) }
       : {}),
   }));
+}
+
+export async function readCandles(symbol, tf, fromMs, toMs, opts = {}) {
+  const from = Number(fromMs);
+  const to = Number(toMs);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return [];
+
+  const span = to - from;
+  if (span <= READ_CANDLES_SLICE_MS) {
+    return readCandlesSlice(symbol, tf, from, to, opts);
+  }
+
+  const out = [];
+  for (let cursor = from; cursor < to; cursor += READ_CANDLES_SLICE_MS) {
+    const sliceTo = Math.min(to, cursor + READ_CANDLES_SLICE_MS);
+    const part = await readCandlesSlice(symbol, tf, cursor, sliceTo, opts);
+    if (part.length) out.push(...part);
+  }
+  return out;
 }

@@ -40,11 +40,14 @@
  *   unifiedLiqSrMaxPerDay {number} — max supplemental trades per UTC day (default 1)
  */
 
-import { buildEliteStBacktestAdapter, buildEliteStOptsFromCfg, ELITE_ST_DEFAULTS } from "./supertrendElite.js";
+import { dirStore, dayStore } from "./adapterPersisted.js";
 import { buildRegimeSeries, REGIMES } from "./regimeEngine.js";
 import { inSmcKillzone } from "./techniques/sessionKillzones.js";
 import { listSessionLiquiditySetups } from "./techniques/liquidity.js";
 import {
+  buildEliteStBacktestAdapter,
+  buildEliteStOptsFromCfg,
+  ELITE_ST_DEFAULTS,
   ELITE_ST_ACTIVATION_PATCH,
   normalizeEliteStRunCfg,
 } from "./supertrendElite.js";
@@ -186,17 +189,24 @@ export function buildUnifiedEliteBacktestAdapter(candles, opts = {}) {
   // Per-day state for supplemental path.
   let dayKey = "";
   let liqSrTodayCount = 0;
+  const dayLocal = { curDay: null, tradesToday: 0, liqSrTodayCount: 0 };
 
-  return function unifiedEliteAdapter(bar, idx) {
+  return function unifiedEliteAdapter(bar, idx, ctx) {
     const ts = bar.ts;
+    const dDay = dayStore(ctx, dayLocal);
 
-    // Daily counter for supplemental path.
     const d = new Date(ts);
     const k = `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
-    if (k !== dayKey) {
-      dayKey = k;
-      liqSrTodayCount = 0;
+    if (k !== (ctx?.persisted ? dDay.curDay : dayKey)) {
+      if (ctx?.persisted) {
+        dDay.curDay = k;
+        dDay.liqSrTodayCount = 0;
+      } else {
+        dayKey = k;
+        liqSrTodayCount = 0;
+      }
     }
+    const liqCount = ctx?.persisted ? (dDay.liqSrTodayCount ?? 0) : liqSrTodayCount;
 
     // ── Regime classification ──────────────────────────────────────────────────
     const reg = regimeSeries ? regimeSeries[idx] : null;
@@ -216,7 +226,7 @@ export function buildUnifiedEliteBacktestAdapter(candles, opts = {}) {
       // Gate: skip regimes classified as low-quality for trend entries.
       if (o.unifiedRegimeGate && shouldSkip) return null;
 
-      const sig = eliteAdapter(bar, idx);
+      const sig = eliteAdapter(bar, idx, ctx);
       if (!sig || (sig.action !== "BUY" && sig.action !== "SELL")) return null;
 
       // Layer 2: check liq proximity for scale-up.
@@ -236,7 +246,7 @@ export function buildUnifiedEliteBacktestAdapter(candles, opts = {}) {
 
     // ── SUPPLEMENTAL PATH (RANGE regime only) ─────────────────────────────────
     if (!o.unifiedLiqSrEnabled) return null;
-    if (liqSrTodayCount >= o.unifiedLiqSrMaxPerDay) return null;
+    if (liqCount >= o.unifiedLiqSrMaxPerDay) return null;
 
     // Session filter — only fire in high-liquidity hours.
     if (!inSmcKillzone(ts, { intradaySmcKillzoneMode: o.unifiedLiqSrKillzone })) return null;
@@ -246,7 +256,8 @@ export function buildUnifiedEliteBacktestAdapter(candles, opts = {}) {
     const setup = liqSetups.find((s) => s.signalIdx === idx && s.score >= o.unifiedLiqSrMinScore);
     if (!setup) return null;
 
-    liqSrTodayCount++;
+    if (ctx?.persisted) dDay.liqSrTodayCount = liqCount + 1;
+    else liqSrTodayCount++;
     return {
       action: setup.side,
       reason: `unified_liq_sr_${setup.side.toLowerCase()}_range`,

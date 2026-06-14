@@ -23,6 +23,15 @@ services:
   timescale:
     image: timescale/timescaledb:latest-pg16
     restart: unless-stopped
+    shm_size: "256mb"
+    command:
+      - postgres
+      - -c
+      - max_locks_per_transaction=512
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=16MB
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tradingdev}

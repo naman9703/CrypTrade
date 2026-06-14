@@ -22,6 +22,10 @@ full context, validated results, scripts, configs, and data/infra state. Summary
 - Backtest scripts live in `backend/scripts/`, run from `backend/` (they load `../.env`).
 - Run one heavy backtest at a time; the sandbox can't kill runaway processes, and
   full 49k-bar history is slow — prefer the 2026 window for quick iteration.
+- **Multi-year portfolio backtests:** candle reads/backfills are sliced in 90-day
+  windows to avoid Timescale `out of shared memory`. If you still see that error,
+  recreate the DB container so `docker-compose.db.yml` Postgres tuning applies:
+  `docker compose -f docker-compose.db.yml up -d --force-recreate`
 
 ## Conventions
 

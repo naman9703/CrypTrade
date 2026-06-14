@@ -18,15 +18,16 @@ function synth(n, start = 600) {
   return candles;
 }
 
-test("buildHtfRsiSignalSeries matches signal() on last bar", () => {
+test("buildHtfRsiSignalSeries matches signal() on every bar", () => {
   const candles = synth(200);
   const series = buildHtfRsiSignalSeries(candles, "15m");
-  const last = candles.length - 1;
-  const direct = signal({ candles: candles.slice(0, last + 1), timeframe: "15m" });
-  const fast = series[last];
-  if (direct.action === "HOLD") {
-    assert.equal(fast, null);
-  } else {
-    assert.equal(fast?.action, direct.action);
+  let mismatches = 0;
+  for (let i = 80; i < candles.length; i++) {
+    const direct = signal({ candles: candles.slice(0, i + 1), timeframe: "15m" });
+    const fast = series[i];
+    const dAct = direct.action === "HOLD" ? null : direct.action;
+    const fAct = fast?.action ?? null;
+    if (dAct !== fAct) mismatches++;
   }
+  assert.equal(mismatches, 0);
 });

@@ -4,6 +4,7 @@
  */
 
 import { buildBaselineAdapters } from "./baselines.js";
+import { dirStore } from "../../../strategy/adapterPersisted.js";
 import { buildHtfRsiBacktestAdapter } from "../../../strategy/htfRsi.js";
 import { buildTrendHtfStBacktestAdapter } from "../../../strategy/trendHtfSt.js";
 import { buildHtfLegRiderBacktestAdapter } from "../../../strategy/htfLegRider.js";
@@ -26,7 +27,7 @@ export function buildBtcConsensusAdapter(candles, opts = {}) {
   const minAgree = Math.max(1, opts.minAgree ?? DEFAULT_MIN_AGREE);
 
   const base = buildBaselineAdapters();
-  if (keys.includes("HTF_RSI")) base.HTF_RSI = buildHtfRsiBacktestAdapter(candles, tf);
+  if (keys.includes("HTF_RSI")) base.HTF_RSI = buildHtfRsiBacktestAdapter(candles, tf, cfg);
   if (keys.includes("TREND_HTF_ST")) {
     base.TREND_HTF_ST = buildTrendHtfStBacktestAdapter(candles, {
       period: Number(cfg.supertrendPeriod ?? 10),
@@ -39,7 +40,7 @@ export function buildBtcConsensusAdapter(candles, opts = {}) {
     });
   }
 
-  let lastDir = 0;
+  const local = { lastDir: 0 };
   const warmup = 80;
 
   return function btcConsensusAdapter(bar, idx, ctx) {
@@ -54,12 +55,13 @@ export function buildBtcConsensusAdapter(candles, opts = {}) {
       if (sig.action === "BUY") buys++;
       else if (sig.action === "SELL") sells++;
     }
-    if (buys >= minAgree && lastDir !== 1) {
-      lastDir = 1;
+    const d = dirStore(ctx, local);
+    if (buys >= minAgree && d.lastDir !== 1) {
+      d.lastDir = 1;
       return { action: "BUY", reason: `btc_consensus_${buys}` };
     }
-    if (sells >= minAgree && lastDir !== -1) {
-      lastDir = -1;
+    if (sells >= minAgree && d.lastDir !== -1) {
+      d.lastDir = -1;
       return { action: "SELL", reason: `btc_consensus_${sells}` };
     }
     return null;

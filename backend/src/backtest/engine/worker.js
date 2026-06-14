@@ -38,6 +38,15 @@ const { buildBacktestAdapters } = await import("./signals/baselines.js").catch((
 let cancelFlag = false;
 const persistent = workerData?.persistent === true;
 
+async function applyBacktestBracketCap(cfg, symbol) {
+  if (String(process.env.BACKTEST_SIMULATE_BRACKET_CAP ?? "0") !== "1") return cfg;
+  const lev = Math.max(1, Number(cfg?.futuresLeverage ?? cfg?.leverage ?? 10));
+  const { fetchLeverageBracketNotionalCap } = await import("../../lib/binanceUsdMBracketFetch.js");
+  const cap = await fetchLeverageBracketNotionalCap(symbol, lev, process.env.BACKTEST_BRACKET_TRADING_MODE || "BINANCE_DEMO_API");
+  if (cap != null && cap > 0) return { ...cfg, backtestBracketNotionalCap: cap };
+  return cfg;
+}
+
 parentPort?.on("message", (msg) => {
   if (msg && msg.type === "cancel") cancelFlag = true;
 });
@@ -164,6 +173,17 @@ async function execute({ runId }) {
   const startingUsdt = Number(run.initial_capital);
   let cfg = pickBotCfg(run.config_snapshot, run.strategy_cfg_raw);
   try {
+    const { stripRuntimePollutionFromBot, mergeMissingSignalBrainBot, sanitizeSignalBrainCfgRaw } =
+      await import("../../lib/strategySignalBrain.js");
+    stripRuntimePollutionFromBot(cfg);
+    if (run.strategy_cfg_raw && typeof run.strategy_cfg_raw === "object") {
+      const versionBrain = sanitizeSignalBrainCfgRaw(run.strategy_cfg_raw).bot ?? {};
+      mergeMissingSignalBrainBot(cfg, versionBrain);
+    }
+  } catch {
+    /* optional */
+  }
+  try {
     const { materializeIntradayEngineCfgSync } = await import("../../strategy/presets/srIntradayOptimized.js");
     const { materializeIntradayPanelOnCfg } = await import("../../strategy/intradayPanelKeys.js");
     const { ensureBacktestMarketMode, applyInstanceOperationalToBot } = await import("../../lib/strategyInstanceSplit.js");
@@ -279,6 +299,7 @@ async function execute({ runId }) {
     const { prepareEliteRunCfg } = await import("../../strategy/supertrendElite.js");
     cfg = prepareEliteRunCfg(cfg, symbol, candles);
   }
+  if (isFutures) cfg = await applyBacktestBracketCap(cfg, symbol);
 
   const fundingRates = isFutures ? await readFundingRates(symbol, fromMs, toMs).catch(() => []) : [];
 
@@ -392,7 +413,7 @@ async function execute({ runId }) {
 }
 
 /**
- * Multi-coin portfolio: per-symbol simulation → R-multiples → shared-account replay.
+ * Multi-coin portfolio: per-symbol unit sims (equal slice) → shared-account dollar replay.
  */
 async function executePortfolio({
   runId,
@@ -411,11 +432,10 @@ async function executePortfolio({
   trainPct = null,
   reportPrep,
 }) {
-  const { portfolioReplay, tradesToREvents } = await import("./portfolioReplay.js");
+  const { portfolioSliceReplay, tradesToTimelineEvents } = await import("./portfolioReplay.js");
   const { prepareEliteRunCfg } = await import("../../strategy/supertrendElite.js");
-  const UNIT_START = 1000;
-  const riskPct = Math.max(0.01, Number(cfg?.riskPerTrade ?? 5));
-  const riskFrac = riskPct / 100;
+  const nCoins = Math.max(1, symbols.length);
+  const perCoinStart = Math.max(1, Number(startingUsdt) || 100) / nCoins;
 
   reportPrep(1);
   const coveragePcts = [];
@@ -474,10 +494,11 @@ async function executePortfolio({
     if (!timelineCandles.length) timelineCandles = candles;
 
     const stratKey = String(cfg.manualStrategy ?? "").toUpperCase();
-    const symCfg =
+    let symCfg =
       stratKey === "SUPERTREND_ELITE" || stratKey === "UNIFIED_ELITE"
         ? prepareEliteRunCfg(cfg, sym, candles)
         : { ...cfg, symbol: sym };
+    if (isFutures) symCfg = await applyBacktestBracketCap(symCfg, sym);
 
     const fundingRates = isFutures ? await readFundingRates(sym, fromMs, toMs).catch(() => []) : [];
 
@@ -515,7 +536,7 @@ async function executePortfolio({
       gateMode,
       gateFn,
       fundingRates,
-      startingUsdt: UNIT_START,
+      startingUsdt: perCoinStart,
       timeframe: tf,
       symbol: sym,
       adapters,
@@ -532,7 +553,7 @@ async function executePortfolio({
       if (gr.intelScoreSum != null) gateReplayAgg.intelScoreSum += Number(gr.intelScoreSum);
     }
 
-    allEvents.push(...tradesToREvents(sym, sim.trades, riskPct));
+    allEvents.push(...tradesToTimelineEvents(sym, sim.trades));
   }
 
   if (cancelFlag) {
@@ -541,10 +562,11 @@ async function executePortfolio({
   }
 
   reportPrep(92);
-  const replay = portfolioReplay({
+  const replay = portfolioSliceReplay({
     events: allEvents,
     startingUsdt,
-    riskFrac,
+    coinCount: nCoins,
+    perCoinUnitStart: perCoinStart,
     startTs: fromMs,
   });
 
@@ -568,6 +590,9 @@ async function executePortfolio({
       gateReplayAgg.evaluated > 0 ? gateReplayAgg.intelScoreSum / gateReplayAgg.evaluated : null,
   };
   metrics.portfolio = {
+    mode: "equal_slice_full_margin",
+    coinCount: nCoins,
+    perCoinStart,
     symbols,
     perCoin: Object.fromEntries(
       Object.entries(replay.perCoin).map(([sym, v]) => [

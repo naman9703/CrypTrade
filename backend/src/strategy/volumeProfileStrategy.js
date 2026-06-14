@@ -3,6 +3,7 @@
  */
 
 import { ema, adx as computeAdx, atr as computeAtr } from "./indicators.js";
+import { dayStore } from "./adapterPersisted.js";
 import {
   buildVolumeProfile,
   detectVolumeProfileSetup,
@@ -323,21 +324,35 @@ export function buildVolumeProfileBacktestAdapter(candles, opts = {}, tf = "15m"
   let lastSignalIdx = -1;
   let tradesToday = 0;
   let curDay = null;
+  const dayLocal = { lastSignalIdx: -1, tradesToday: 0, curDay: null };
 
-  return function volumeProfileAdapter(bar, idx) {
+  return function volumeProfileAdapter(bar, idx, ctx) {
+    const dDay = dayStore(ctx, dayLocal);
     const day = utcDayId(bar.ts);
-    if (day !== curDay) {
-      curDay = day;
-      tradesToday = 0;
+    if (day !== (ctx?.persisted ? dDay.curDay : curDay)) {
+      if (ctx?.persisted) {
+        dDay.curDay = day;
+        dDay.tradesToday = 0;
+      } else {
+        curDay = day;
+        tradesToday = 0;
+      }
     }
-    if (tradesToday >= maxPerDay) return null;
+    const tradesCount = ctx?.persisted ? dDay.tradesToday : tradesToday;
+    if (tradesCount >= maxPerDay) return null;
 
     const sig = series[idx];
     if (!sig) return null;
-    if (lastSignalIdx >= 0 && idx - lastSignalIdx < cooldownBars) return null;
+    const lastIdx = ctx?.persisted ? dDay.lastSignalIdx : lastSignalIdx;
+    if (lastIdx >= 0 && idx - lastIdx < cooldownBars) return null;
 
-    lastSignalIdx = idx;
-    tradesToday += 1;
+    if (ctx?.persisted) {
+      dDay.lastSignalIdx = idx;
+      dDay.tradesToday = tradesCount + 1;
+    } else {
+      lastSignalIdx = idx;
+      tradesToday += 1;
+    }
     const out = { action: sig.action, reason: sig.reason };
     if (sig.vpBrackets) out.vpBrackets = sig.vpBrackets;
     if (sig.sizeMult > 1) out.sizeMult = sig.sizeMult;

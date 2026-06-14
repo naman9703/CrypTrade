@@ -11,6 +11,7 @@
  */
 
 import { ema, adx as computeAdx, atr as computeAtr } from "./indicators.js";
+import { dirStore } from "./adapterPersisted.js";
 import { computeSupertrendSeries } from "./supertrend.js";
 import {
   shouldAllowTrendHtfStEntry,
@@ -165,16 +166,17 @@ export function buildTrendHtfStQualityOpts(cfg = {}) {
 
 export function buildTrendHtfStBacktestAdapter(candles, opts = {}) {
   const series = buildTrendHtfStSignalSeries(candles, opts);
-  let lastDir = 0;
-  return function trendHtfStAdapter(bar, idx) {
+  const local = { lastDir: 0 };
+  return function trendHtfStAdapter(bar, idx, ctx) {
     const sig = series[idx];
     if (!sig) return null;
-    if (sig.action === "BUY" && lastDir !== 1) {
-      lastDir = 1;
+    const d = dirStore(ctx, local);
+    if (sig.action === "BUY" && d.lastDir !== 1) {
+      d.lastDir = 1;
       return { action: "BUY", reason: sig.reason };
     }
-    if (sig.action === "SELL" && lastDir !== -1) {
-      lastDir = -1;
+    if (sig.action === "SELL" && d.lastDir !== -1) {
+      d.lastDir = -1;
       return { action: "SELL", reason: sig.reason };
     }
     return null;

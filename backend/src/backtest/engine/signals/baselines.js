@@ -47,6 +47,7 @@ import {
   buildUnifiedEliteBacktestAdapter,
   buildUnifiedEliteOptsFromCfg,
 } from "../../../strategy/unifiedElite.js";
+import { dirStore, dayStore, machineStore } from "../../../strategy/adapterPersisted.js";
 
 const WARMUP_BARS = 60;
 
@@ -114,7 +115,7 @@ export async function buildBacktestAdapters({ strategyKey, cfg, symbol, tf, cand
   }
 
   if (strategyKey === "HTF_RSI" && typeof buildHtfRsiBacktestAdapter === "function") {
-    adapters.HTF_RSI = buildHtfRsiBacktestAdapter(candles, tf);
+    adapters.HTF_RSI = buildHtfRsiBacktestAdapter(candles, tf, cfg);
   }
 
   if (strategyKey === "TREND_HTF_ST" && typeof buildTrendHtfStBacktestAdapter === "function") {
@@ -206,7 +207,7 @@ export async function buildBacktestAdapters({ strategyKey, cfg, symbol, tf, cand
  */
 export function buildAutoAdapter() {
   const baseAdapters = buildBaselineAdapters();
-  let lastDir = 0;
+  const local = { lastDir: 0 };
 
   return function autoAdapter(bar, idx, ctx) {
     if (idx < WARMUP_BARS) return null;
@@ -221,12 +222,13 @@ export function buildAutoAdapter() {
     const sig = sub(bar, idx, ctx);
 
     if (!sig || sig.action === "HOLD") return null;
-    if (sig.action === "BUY" && lastDir !== 1) {
-      lastDir = 1;
+    const d = dirStore(ctx, local);
+    if (sig.action === "BUY" && d.lastDir !== 1) {
+      d.lastDir = 1;
       return { action: "BUY", reason: `AUTO:${stratKey}:${sig.reason ?? ""}` };
     }
-    if (sig.action === "SELL" && lastDir !== -1) {
-      lastDir = -1;
+    if (sig.action === "SELL" && d.lastDir !== -1) {
+      d.lastDir = -1;
       return { action: "SELL", reason: `AUTO:${stratKey}:${sig.reason ?? ""}` };
     }
     return null;
@@ -255,9 +257,15 @@ function makePullbackAdapter() {
   let entryIdx = -1;
   let entryPrice = 0;
   let cooldownUntil = -1;
+  const local = { state: "IDLE", entryIdx: -1, entryPrice: 0, cooldownUntil: -1 };
 
   return function pullbackAdapter(bar, idx, ctx) {
     if (idx < WARMUP_BARS) return null;
+    const m = machineStore(ctx, local);
+    state = m.state;
+    entryIdx = m.entryIdx;
+    entryPrice = m.entryPrice;
+    cooldownUntil = m.cooldownUntil;
 
     const tf = String(ctx.timeframe || ctx.cfg?.timeframe || "5m").toLowerCase();
     const minutesPerBar =
@@ -324,6 +332,10 @@ function makePullbackAdapter() {
       if (shouldExit) {
         state = "COOLDOWN";
         cooldownUntil = idx + cooldownBars;
+        m.state = state;
+        m.entryIdx = entryIdx;
+        m.entryPrice = entryPrice;
+        m.cooldownUntil = cooldownUntil;
         return { action: "EXIT", reason };
       }
       return null;
@@ -343,12 +355,20 @@ function makePullbackAdapter() {
       state = "IN_LONG";
       entryIdx = idx;
       entryPrice = bar.close;
+      m.state = state;
+      m.entryIdx = entryIdx;
+      m.entryPrice = entryPrice;
+      m.cooldownUntil = cooldownUntil;
       return { action: "BUY", reason: sig.reason };
     }
     if (sig.action === "SELL") {
       state = "IN_SHORT";
       entryIdx = idx;
       entryPrice = bar.close;
+      m.state = state;
+      m.entryIdx = entryIdx;
+      m.entryPrice = entryPrice;
+      m.cooldownUntil = cooldownUntil;
       return { action: "SELL", reason: sig.reason };
     }
 
@@ -363,40 +383,43 @@ function makePullbackAdapter() {
  * Cooldown prevents re-entries too soon after a position would have closed.
  */
 function makeSmartReversalAdapter() {
-  let lastDir = 0;        // 1 = long, -1 = short, 0 = flat
-  let lastSignalIdx = -1;
+  const local = { lastDir: 0, lastSignalIdx: -1 };
 
   return function smartReversalAdapter(bar, idx, ctx) {
     if (idx < 100) return null;
 
     const tf = String(ctx.timeframe || ctx.cfg?.timeframe || "15m").toLowerCase();
     const minutesPerBar = { "1m":1,"5m":5,"15m":15,"30m":30,"1h":60 }[tf] ?? 15;
-    // Minimum bars between same-direction signals (prevents churning)
-    const cooldownBars = Math.ceil(60 / minutesPerBar); // 1h cooldown
+    const cooldownBars = Math.ceil(60 / minutesPerBar);
+    const d = dirStore(ctx, local);
+    const lastSignalIdx = ctx?.persisted ? (ctx.persisted.lastSignalIdx ?? -1) : local.lastSignalIdx;
 
-    if (lastDir !== 0 && idx - lastSignalIdx < cooldownBars) return null;
+    if (d.lastDir !== 0 && idx - lastSignalIdx < cooldownBars) return null;
 
     const slice = ctx.candles.slice(0, idx + 1);
     const sig = strategies.SMART_REVERSAL?.signal?.({ candles: slice, timeframe: tf });
     if (!sig || sig.action === "HOLD") return null;
 
-    if (sig.action === "BUY" && lastDir !== 1) {
-      lastDir = 1;
-      lastSignalIdx = idx;
+    if (sig.action === "BUY" && d.lastDir !== 1) {
+      d.lastDir = 1;
+      if (ctx?.persisted) ctx.persisted.lastSignalIdx = idx;
+      else local.lastSignalIdx = idx;
       return { action: "BUY", reason: sig.reason };
     }
-    if (sig.action === "SELL" && lastDir !== -1) {
-      lastDir = -1;
-      lastSignalIdx = idx;
+    if (sig.action === "SELL" && d.lastDir !== -1) {
+      d.lastDir = -1;
+      if (ctx?.persisted) ctx.persisted.lastSignalIdx = idx;
+      else local.lastSignalIdx = idx;
       return { action: "SELL", reason: sig.reason };
     }
-    // Allow same direction again after cooldown
-    if (sig.action === "BUY" && lastDir === 1 && idx - lastSignalIdx >= cooldownBars) {
-      lastSignalIdx = idx;
+    if (sig.action === "BUY" && d.lastDir === 1 && idx - lastSignalIdx >= cooldownBars) {
+      if (ctx?.persisted) ctx.persisted.lastSignalIdx = idx;
+      else local.lastSignalIdx = idx;
       return { action: "BUY", reason: sig.reason };
     }
-    if (sig.action === "SELL" && lastDir === -1 && idx - lastSignalIdx >= cooldownBars) {
-      lastSignalIdx = idx;
+    if (sig.action === "SELL" && d.lastDir === -1 && idx - lastSignalIdx >= cooldownBars) {
+      if (ctx?.persisted) ctx.persisted.lastSignalIdx = idx;
+      else local.lastSignalIdx = idx;
       return { action: "SELL", reason: sig.reason };
     }
     return null;
@@ -404,9 +427,24 @@ function makeSmartReversalAdapter() {
 }
 
 /** Flip-only signals; warmup matches strategy needs (SurfPulse rules need ~200 bars). */
+const FULL_HISTORY_STRATEGIES = new Set([
+  "HTF_RSI",
+  "HTF_LEG_RIDER",
+  "TREND_HTF_ST",
+  "APEX_TREND",
+  "ELITE_HTF",
+]);
+
+function strategyWarmupBars(strategyKey) {
+  if (strategyKey === "SURF_PULSE_ML") return 200;
+  if (strategyKey === "HTF_RSI") return 80;
+  if (strategyKey === "HTF_LEG_RIDER") return 100;
+  return WARMUP_BARS;
+}
+
 function makeAdapter(strategyKey) {
-  const warmupBars = strategyKey === "SURF_PULSE_ML" ? 200 : WARMUP_BARS;
-  let lastDir = 0;
+  const warmupBars = strategyWarmupBars(strategyKey);
+  const local = { lastDir: 0 };
   let snapshots = null;
   let snapshotLen = 0;
   return function adapter(bar, idx, ctx) {
@@ -419,22 +457,35 @@ function makeAdapter(strategyKey) {
     const indicators = snapshots[idx];
     if (!indicators) return null;
     const lookback =
-      strategyKey === "SURF_PULSE_ML" ? 220 : strategyKey === "BREAKOUT_VOL" || strategyKey === "MOMENTUM_SURGE" ? 30 : 5;
+      strategyKey === "SURF_PULSE_ML"
+        ? 220
+        : FULL_HISTORY_STRATEGIES.has(strategyKey)
+          ? idx + 1
+          : strategyKey === "BREAKOUT_VOL" || strategyKey === "MOMENTUM_SURGE"
+            ? 30
+            : 5;
     const tail = ctx.candles.slice(Math.max(0, idx - lookback + 1), idx + 1);
     const regime = detectRegime({ candles: tail, indicators });
 
     const sig =
       strategyKey === "SURF_PULSE_ML"
         ? strategies.SURF_PULSE_ML?.signal?.({ candles: tail, surfPulse: {} })
-        : strategies[strategyKey]?.signal?.({ candles: tail, indicators, regime });
+        : strategies[strategyKey]?.signal?.({
+            candles: tail,
+            indicators,
+            regime,
+            timeframe: ctx.timeframe ?? ctx.cfg?.timeframe,
+            cfg: ctx.cfg,
+          });
 
     if (!sig) return null;
-    if (sig.action === "BUY" && lastDir !== 1) {
-      lastDir = 1;
+    const d = dirStore(ctx, local);
+    if (sig.action === "BUY" && d.lastDir !== 1) {
+      d.lastDir = 1;
       return { action: "BUY", reason: sig.reason };
     }
-    if (sig.action === "SELL" && lastDir !== -1) {
-      lastDir = -1;
+    if (sig.action === "SELL" && d.lastDir !== -1) {
+      d.lastDir = -1;
       return { action: "SELL", reason: sig.reason };
     }
     return null;

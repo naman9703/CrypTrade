@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api/client";
+import { api, buildCustomUniverseSnapshot } from "../api/client";
 import { deferTask } from "../lib/deferTask";
 import { patchInstanceInByMode, useAppStore } from "../ws/store";
 import { UniverseCustomCoinsModal } from "./UniverseCustomCoinsModal";
@@ -73,17 +73,33 @@ import {
   stageStrategyBotPatch,
 } from "../lib/stagedStrategyBotPatch";
 import { useGuardedCheckbox } from "./useGuardedCheckbox";
+import { useGuardedNumber } from "./useGuardedNumber";
+import { GateEffectiveBadge } from "./trading/CollapsibleSection";
+import { countActiveGates, isGateEffective } from "../lib/tradingPanelGateEffective";
+import {
+  groupedStrategyOptions,
+  isBaselineStrategy,
+  isSupertrendAutotradeStrategy,
+  showRegimeAdaptivePanel,
+  showStrategyPresetStrip,
+  showSurfPulsePanel,
+  showVolumeProfileStrategyPanel,
+  usesEliteSettingsPanel,
+  usesIntradayGatePanel,
+} from "../lib/tradingPanelStrategyMeta";
 
 function TrendHtfStPresetButton({
   label,
   patch,
   pushLog,
   highlight,
+  applyPatch,
 }: {
   label: string;
   patch: Record<string, unknown>;
   pushLog: (msg: { level: string; msg: string }) => void;
   highlight?: boolean;
+  applyPatch: (patch: Record<string, unknown>) => Promise<{ ok?: boolean }>;
 }) {
   return (
     <button
@@ -94,9 +110,8 @@ function TrendHtfStPresetButton({
           : "rounded border border-sky-400 dark:border-sky-600 bg-white/80 dark:bg-sky-950/50 px-2 py-0.5 text-[10px] font-semibold hover:bg-sky-100 dark:hover:bg-sky-900/50"
       }
       onClick={() => {
-        void api
-          .botConfig(patch)
-          .then(() => pushLog({ level: "info", msg: `Applied: ${label}` }))
+        void applyPatch(patch)
+          .then(() => pushLog({ level: "info", msg: `Applied: ${label} — Save strategy to persist for backtest` }))
           .catch((e: unknown) => {
             const detail =
               e && typeof e === "object" && "message" in e
@@ -484,6 +499,10 @@ function multiBudgetSymbolsForUi(bot: any): string[] {
     ? [...new Set((bot.capitalCycleSymbols as unknown[]).map((s) => String(s || "").trim().toUpperCase()).filter(Boolean))]
     : [];
   if (capitalCycleModeActiveFromBot(bot) && cycleSyms.length > 0) return cycleSyms.slice(0, 10);
+  const customBase = String(bot?.universeCoinBase || "ALL").toUpperCase() === "CUSTOM";
+  const customSyms = Array.isArray(bot?.universeCustomSymbols)
+    ? [...new Set((bot.universeCustomSymbols as unknown[]).map((s) => String(s || "").trim().toUpperCase()).filter(Boolean))]
+    : [];
   const ranked = Array.isArray(bot?.universe?.ranked) ? (bot.universe.ranked as any[]) : [];
   const rankedSyms = ranked
     .slice(0, 12)
@@ -493,6 +512,13 @@ function multiBudgetSymbolsForUi(bot: any): string[] {
     ? [...new Set((bot.universePinnedSymbols as unknown[]).map((s) => String(s || "").trim().toUpperCase()).filter(Boolean))]
     : [];
   const manual = String(bot?.universePinControl || "").toUpperCase() === "MANUAL";
+  if (customBase && customSyms.length > 0) {
+    if (manual && pins.length > 0) {
+      const inCustom = pins.filter((p) => customSyms.includes(p));
+      return inCustom.length > 0 ? inCustom : customSyms.slice(0, 10);
+    }
+    return customSyms.slice(0, 10);
+  }
   if (manual && pins.length > 0) {
     const setR = new Set(rankedSyms);
     const inTable = pins.filter((p) => setR.has(p));
@@ -1186,7 +1212,7 @@ const NUMBERED_SIGNAL_SOURCES: { n: number; key: string; label: string }[] = [
   { n: 7, key: "ENSEMBLE", label: "Ensemble (2+ base signals must agree)" },
   { n: 8, key: "SURF_PULSE_ML", label: "SurfPulse (trend + pullback; optional XGBoost gate)" },
   { n: 9, key: "TREND_PULLBACK", label: "Trend-Pullback Scalper (HTF trend + RSI oversold bounce)" },
-  { n: 10, key: "HTF_RSI", label: "HTF RSI v3 ★ BNB 15m (~50% WR, up to ~191%)" },
+  { n: 10, key: "HTF_RSI", label: "HTF RSI v4 — BNB 15m only (tuned pullback + RSI)" },
   { n: 11, key: "HTF_LEG_RIDER", label: "HTF Leg Rider (trend + range breakout — big moves)" },
   { n: 12, key: "TREND_HTF_ST", label: "HTF Trend + Supertrend flip (trend legs)" },
   { n: 13, key: "SMART_REVERSAL", label: "Smart Reversal (liquidity sweep + HTF trend + RSI)" },
@@ -1330,9 +1356,6 @@ export function TradingPanel() {
     const x = Number(s.market?.regime?.atrPct);
     return Number.isFinite(x) && x > 0 ? x : null;
   });
-  const [top, setTop] = useState<any[]>([]);
-  const [btLoading, setBtLoading] = useState(false);
-  const [coinBusy, setCoinBusy] = useState(false);
   const [customUniverseOpen, setCustomUniverseOpen] = useState(false);
   const [trailPreviewOpen, setTrailPreviewOpen] = useState(false);
   const [trailPreviewSnap, setTrailPreviewSnap] = useState<{
@@ -1568,6 +1591,7 @@ export function TradingPanel() {
       surfPulseMlGateEnabled: bot?.surfPulseMlGateEnabled !== false,
       surfPulseMlThreshold: clampNum(Number(bot?.surfPulseMlThreshold ?? 0.6), 0, 1),
       intelligenceGateEnabled: bot?.intelligenceGateEnabled === true,
+      intelligenceGateManualStrategies: bot?.intelligenceGateManualStrategies === true,
       trailingStopLossAuto: bot?.trailingStopLossAuto === true,
       futuresTrailingStopMode:
         String(bot?.futuresTrailingStopMode || "SUPERTREND").toUpperCase() === "FEE_LADDER" ? "FEE_LADDER" : "SUPERTREND",
@@ -1656,6 +1680,11 @@ export function TradingPanel() {
       capitalCycleSymbols: Array.isArray(bot?.capitalCycleSymbols) ? [...bot.capitalCycleSymbols] : [],
     };
   }, [bot]);
+
+  const slPctServer = Number((cfg.supertrendFuturesFixedSlPct * 100).toFixed(8));
+  const tpPctServer = Number((cfg.supertrendFuturesFixedTpPct * 100).toFixed(8));
+  const [slPctDisplay, setSlPctDisplay] = useGuardedNumber(slPctServer);
+  const [tpPctDisplay, setTpPctDisplay] = useGuardedNumber(tpPctServer);
 
   const activeSymbol = useMemo(() => {
     const s = String(bot?.symbol || "").toUpperCase().trim();
@@ -2274,8 +2303,21 @@ export function TradingPanel() {
   }, [coinSelectMultiple, pinnedMulti, pinnedSymbolNorm]);
   const pinnedSet = useMemo(() => new Set(pinnedList), [pinnedList]);
   const hasSavedPins = pinnedList.length > 0;
-  const rankedCoins = (bot?.universe?.ranked || []).slice(0, 12);
-  const emptyCustom = bot?.universe?.emptyCustom === true;
+  const rankedCoins = useMemo(() => {
+    if (cfg.universeCoinBase === "CUSTOM" && cfg.universeCustomSymbols.length > 0) {
+      return cfg.universeCustomSymbols.map((symbol) => ({
+        symbol,
+        aiProb: null,
+        opportunity: null,
+        spreadPct: null,
+      }));
+    }
+    const ranked = Array.isArray(bot?.universe?.ranked) ? (bot.universe.ranked as any[]).slice(0, 12) : [];
+    return ranked;
+  }, [bot?.universe?.ranked, cfg.universeCoinBase, cfg.universeCustomSymbols]);
+  const emptyCustom =
+    bot?.universe?.emptyCustom === true &&
+    !(cfg.universeCoinBase === "CUSTOM" && cfg.universeCustomSymbols.length > 0);
   const showRankedCoins =
     cfg.symbolMode === "AUTO" ||
     Boolean(pinnedSymbolNorm) ||
@@ -2374,30 +2416,6 @@ export function TradingPanel() {
 
   const capitalMultiSet = useMemo(() => new Set(capitalMultiSyms.map((s) => String(s).toUpperCase())), [capitalMultiSyms]);
 
-  useEffect(() => {
-    let alive = true;
-    const run = async () => {
-      if (cfg.strategyMode !== "MANUAL") return;
-      try {
-        setBtLoading(true);
-        const r = await api.backtest(700);
-        if (!alive) return;
-        setTop((r?.results || []).slice(0, 10));
-      } catch {
-        if (!alive) return;
-        setTop([]);
-      } finally {
-        if (alive) setBtLoading(false);
-      }
-    };
-    run();
-    const id = setInterval(run, 30_000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [cfg.strategyMode]);
-
   function persistBotSnapshotAfterSave() {
     void import("../lib/tradingUiPersistence")
       .then(({ tradingUiPersistBotSnapshot }) => {
@@ -2415,9 +2433,16 @@ export function TradingPanel() {
   async function saveCurrentStrategyConfig() {
     try {
       setStrategySaveBusy(true);
-      await flushStagedStrategyBotPatch();
+      const { canonicalCfgRawFromUiBot, instanceOperationalFromUiBot } = await import(
+        "../lib/strategyBrainSnapshot",
+      );
+      const viewBot = useAppStore.getState().bot;
+      const cfgRaw = canonicalCfgRawFromUiBot(viewBot);
+      const instanceOperational = instanceOperationalFromUiBot(viewBot);
       const out = await api.saveStrategyConfigForMode(modeSlug, {
         action: "save",
+        cfgRaw,
+        instanceOperational,
       });
       const vid = typeof out?.version?.id === "string" ? out.version.id : null;
       if (vid) {
@@ -2425,9 +2450,7 @@ export function TradingPanel() {
           activeStrategyVersionByMode: { ...s.activeStrategyVersionByMode, [modeSlug]: vid },
         }));
       }
-      if (out?.version) {
-        useAppStore.getState().mergeStrategyVersionFromSaveResponse(modeSlug, out.version);
-      } else {
+      if (!out?.version) {
         useAppStore.getState().markStrategyConfigCleanForMode(modeSlug);
       }
       clearStagedStrategyBotPatch();
@@ -2447,10 +2470,17 @@ export function TradingPanel() {
     if (!trimmed) return;
     try {
       setStrategySaveBusy(true);
-      await flushStagedStrategyBotPatch();
+      const { canonicalCfgRawFromUiBot, instanceOperationalFromUiBot } = await import(
+        "../lib/strategyBrainSnapshot",
+      );
+      const viewBot = useAppStore.getState().bot;
+      const cfgRaw = canonicalCfgRawFromUiBot(viewBot);
+      const instanceOperational = instanceOperationalFromUiBot(viewBot);
       const out = await api.saveStrategyConfigForMode(modeSlug, {
         action: "save_as_new",
         name: trimmed,
+        cfgRaw,
+        instanceOperational,
       });
       const vid = typeof out?.version?.id === "string" ? out.version.id : null;
       if (vid) {
@@ -2458,9 +2488,7 @@ export function TradingPanel() {
           activeStrategyVersionByMode: { ...s.activeStrategyVersionByMode, [modeSlug]: vid },
         }));
       }
-      if (out?.version) {
-        useAppStore.getState().mergeStrategyVersionFromSaveResponse(modeSlug, out.version);
-      } else {
+      if (!out?.version) {
         useAppStore.getState().markStrategyConfigCleanForMode(modeSlug);
       }
       clearStagedStrategyBotPatch();
@@ -2568,16 +2596,28 @@ export function TradingPanel() {
                   });
                 }}
               >
-                {[...NUMBERED_SIGNAL_SOURCES].sort((a, b) => a.n - b.n).map((s) => (
-                  <option key={s.key} value={s.key}>
-                    {s.n}. {s.key} — {s.label}
-                  </option>
+                {groupedStrategyOptions(NUMBERED_SIGNAL_SOURCES).map(({ category, items }) => (
+                  <optgroup key={category.id} label={category.label}>
+                    {items.map((s) => (
+                      <option key={s.key} value={s.key}>
+                        {s.n}. {s.key}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             )}
           </label>
         </div>
-        {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "REGIME_ADAPTIVE" && (
+        {cfg.strategyMode === "MANUAL" && isBaselineStrategy(cfg.manualStrategy) ? (
+          <p className="mt-2 rounded-md border border-slate-200 bg-white/70 px-2 py-1.5 text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-400">
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Strategy settings · {cfg.manualStrategy}</span>
+            {" — "}
+            Fixed rules (no tunable signal parameters). Orders fire on bar close via the backtest adapter. Use Deployment for
+            capital/leverage and Universal sections for optional gates and trailing.
+          </p>
+        ) : null}
+        {cfg.strategyMode === "MANUAL" && showRegimeAdaptivePanel(cfg.manualStrategy) && (
           <div className="mt-2 rounded-lg border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/30 px-3 py-2 text-[11px] text-violet-900 dark:text-violet-200 space-y-2">
             <div className="font-semibold">★ Regime-Adaptive — one playbook per market regime + institutional risk overlay</div>
             <div className="text-violet-700 dark:text-violet-300">
@@ -2702,14 +2742,14 @@ export function TradingPanel() {
             </div>
           </div>
         )}
-        {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "HTF_RSI" && (
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "HTF_RSI") && (
           <div className="mt-2 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-[11px] text-emerald-800 dark:text-emerald-300 space-y-1">
-            <div className="font-semibold">★ HTF RSI v3 — BNBUSDT 15m only (HTF trend sep ≥ 0.12%)</div>
+            <div className="font-semibold">HTF RSI v4 — BNBUSDT 15m (1h EMA zone + RSI fade)</div>
             <div className="text-amber-800 dark:text-amber-300">
-              Do <b>not</b> use on BTC. Use <b>RISK_AT_SL</b>, SL <b>0.6%</b>, TP <b>1.8%</b>, lev <b>25×</b>.
+              BNB 15m only. <b>RISK_AT_SL</b>, trail <b>off</b>, SL <b>0.8%</b>, TP <b>2.5%</b>, lev <b>5×</b>.
             </div>
             <div className="text-emerald-700 dark:text-emerald-400">
-              v3 Jan–May 2026: <b>50% WR</b> · Risk 5% → ~125% · Risk 6% → ~157% · Risk 7% → ~191%
+              v4 sweep Jun 2025–Jun 2026: ~<b>+5%</b> @ 1% risk, ~37 trades, ~8% DD. Apply preset before backtest.
             </div>
             <div className="flex flex-wrap gap-2 pt-0.5">
               <button
@@ -2719,16 +2759,24 @@ export function TradingPanel() {
                   void api
                     .botConfig({
                       trailingStopLossAuto: false,
-                      futuresLeverage: 25,
-                      riskPerTrade: 5,
+                      futuresLeverage: 5,
+                      riskPerTrade: 1,
                       riskPerTradeUnit: "PCT_EQUITY",
-                      supertrendFuturesFixedSlPct: 0.006,
-                      supertrendFuturesFixedTpPct: 0.018,
+                      backtestPositionSizing: "RISK_AT_SL",
+                      supertrendFuturesFixedSlPct: 0.008,
+                      supertrendFuturesFixedTpPct: 0.025,
+                      htfRsiMinSep: 0.0008,
+                      htfRsiLongMax: 40,
+                      htfRsiShortMin: 60,
+                      htfRsiConfirmMode: "recovery_only",
+                      htfRsiPullbackMode: "ema21_zone",
+                      htfRsiSideMode: "both",
+                      htfRsiRequireHtfSlope: true,
                     })
-                    .catch(() => pushLog("Failed to apply HTF RSI v3 balanced preset"));
+                    .catch(() => pushLog("Failed to apply HTF RSI v4 balanced preset"));
                 }}
               >
-                Apply balanced v3 (~125%, 50% WR)
+                Apply v4 balanced (1% risk) ★
               </button>
               <button
                 type="button"
@@ -2737,16 +2785,24 @@ export function TradingPanel() {
                   void api
                     .botConfig({
                       trailingStopLossAuto: false,
-                      futuresLeverage: 25,
-                      riskPerTrade: 6,
+                      futuresLeverage: 5,
+                      riskPerTrade: 2,
                       riskPerTradeUnit: "PCT_EQUITY",
-                      supertrendFuturesFixedSlPct: 0.006,
-                      supertrendFuturesFixedTpPct: 0.018,
+                      backtestPositionSizing: "RISK_AT_SL",
+                      supertrendFuturesFixedSlPct: 0.008,
+                      supertrendFuturesFixedTpPct: 0.025,
+                      htfRsiMinSep: 0.0008,
+                      htfRsiLongMax: 40,
+                      htfRsiShortMin: 60,
+                      htfRsiConfirmMode: "recovery_only",
+                      htfRsiPullbackMode: "ema21_zone",
+                      htfRsiSideMode: "both",
+                      htfRsiRequireHtfSlope: true,
                     })
-                    .catch(() => pushLog("Failed to apply HTF RSI v3 max preset"));
+                    .catch(() => pushLog("Failed to apply HTF RSI v4 max preset"));
                 }}
               >
-                Apply max v3 (~157%, 50% WR) ★
+                Apply v4 max (2% risk)
               </button>
               <button
                 type="button"
@@ -2755,124 +2811,121 @@ export function TradingPanel() {
                   void api
                     .botConfig({
                       trailingStopLossAuto: false,
-                      futuresLeverage: 25,
-                      riskPerTrade: 7,
+                      futuresLeverage: 5,
+                      riskPerTrade: 3,
                       riskPerTradeUnit: "PCT_EQUITY",
-                      supertrendFuturesFixedSlPct: 0.006,
-                      supertrendFuturesFixedTpPct: 0.018,
+                      backtestPositionSizing: "RISK_AT_SL",
+                      supertrendFuturesFixedSlPct: 0.008,
+                      supertrendFuturesFixedTpPct: 0.025,
+                      htfRsiMinSep: 0.0008,
+                      htfRsiLongMax: 40,
+                      htfRsiShortMin: 60,
+                      htfRsiConfirmMode: "recovery_only",
+                      htfRsiPullbackMode: "ema21_zone",
+                      htfRsiSideMode: "both",
+                      htfRsiRequireHtfSlope: true,
                     })
-                    .catch(() => pushLog("Failed to apply HTF RSI v3 aggressive preset"));
+                    .catch(() => pushLog("Failed to apply HTF RSI v4 aggressive preset"));
                 }}
               >
-                Apply aggressive v3 (~191%, 50% WR)
+                Apply v4 aggressive (3% risk)
               </button>
             </div>
           </div>
         )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "SUPERTREND_ELITE") && (
         <div className="mt-2 rounded-lg border border-violet-400 dark:border-violet-600 bg-violet-50 dark:bg-violet-950/30 px-3 py-2 text-[11px] text-violet-900 dark:text-violet-200 space-y-1.5">
-          <div className="font-semibold">Supertrend Elite — validated presets (1H only)</div>
-          {cfg.strategyMode !== "MANUAL" || cfg.manualStrategy !== "SUPERTREND_ELITE" ? (
-            <p className="text-amber-800 dark:text-amber-300">
-              Presets set <b>MANUAL</b> + <b>SUPERTREND_ELITE</b>, turn off Supertrend auto-trade, enable 4H+1H gates + ST trailing.
-              Current: <span className="font-mono">{cfg.strategyMode}</span>
-              {cfg.strategyMode === "MANUAL" ? ` / ${cfg.manualStrategy}` : ""}.
-            </p>
-          ) : (
-            <p>
-              <b>★ Use 1H chart.</b> 15m is not profitable for this path. Use{" "}
-              <b>Elite Auto</b> for any coin — thresholds scale from each symbol&apos;s volatility.
-              Legacy FIXED presets are per-coin manual tuning only.
-            </p>
-          )}
+          <div className="font-semibold">Strategy presets · SUPERTREND_ELITE (1H only)</div>
+          <p>
+            <b>★ Use 1H chart.</b> 15m is not profitable for this path. Use{" "}
+            <b>Elite Auto</b> for any coin — thresholds scale from each symbol&apos;s volatility.
+            Legacy FIXED presets are per-coin manual tuning only.
+          </p>
           <div className="flex flex-wrap gap-2">
             <TrendHtfStPresetButton
               label="★ Elite Auto 1H (any coin)"
               highlight
               patch={SUPERTREND_ELITE_AUTO_1H}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="ADX sep only"
               patch={SUPERTREND_ELITE_ADX_1H}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="Percentile sep"
               patch={SUPERTREND_ELITE_PERCENTILE_1H}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="ATR sep"
               patch={SUPERTREND_ELITE_ATR_1H}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="Calibrated sep"
               patch={SUPERTREND_ELITE_CALIBRATED_1H}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="BNB 1H FIXED"
               patch={SUPERTREND_ELITE_BNB_1H}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="BTC 1H FIXED (0.08%)"
               patch={SUPERTREND_ELITE_BTC_1H}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="BTC 1H + ADX20"
               patch={SUPERTREND_ELITE_BTC_1H_ADX}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="LINK 1H Auto"
               patch={SUPERTREND_ELITE_LINK_1H}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
           </div>
-          {cfg.supertrendFuturesAuto === true && cfg.manualStrategy === "SUPERTREND_ELITE" ? (
+          {cfg.supertrendFuturesAuto === true ? (
             <p className="text-[10px] text-amber-800 dark:text-amber-300">
               Turn off <b>Futures Supertrend auto</b> — otherwise engine stays on plain SUPERTREND, not Elite gates.
             </p>
           ) : null}
         </div>
+        )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "UNIFIED_ELITE") && (
         <div className="mt-2 rounded-lg border border-cyan-500/60 bg-cyan-50 dark:bg-cyan-950/30 px-3 py-2 text-[11px] text-cyan-900 dark:text-cyan-200 space-y-1.5">
-          <div className="font-semibold">Unified Elite — regime-gated Elite + liq scale-up + RANGE supplement</div>
-          {cfg.strategyMode !== "MANUAL" || cfg.manualStrategy !== "UNIFIED_ELITE" ? (
-            <p className="text-amber-800 dark:text-amber-300">
-              Presets set <b>MANUAL</b> + <b>UNIFIED_ELITE</b>. Current:{" "}
-              <span className="font-mono">{cfg.strategyMode}</span>
-              {cfg.strategyMode === "MANUAL" ? ` / ${cfg.manualStrategy}` : ""}.
-            </p>
-          ) : (
-            <p>
-              <b>★ Use 1H chart.</b> Elite 5-gate signal + regime gate (skip VOLATILE/SQUEEZE) + 1.5× size on PDH/PDL
-              sweeps + LIQ/SR A+ trades in RANGE. Run on BTC/ETH/BNB/LINK/XRP for ~7–10 trades/month portfolio.
-            </p>
-          )}
+          <div className="font-semibold">Strategy presets · UNIFIED_ELITE</div>
+          <p>
+            <b>★ Use 1H chart.</b> Elite 5-gate signal + regime gate (skip VOLATILE/SQUEEZE) + 1.5× size on PDH/PDL
+            sweeps + LIQ/SR A+ trades in RANGE. Run on BTC/ETH/BNB/LINK/XRP for ~7–10 trades/month portfolio.
+          </p>
           <div className="flex flex-wrap gap-2">
             <TrendHtfStPresetButton
               label="★ Any coin — Unified ADX sep"
               highlight
               patch={UNIFIED_ELITE_ADX_1H}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="BNB 1H Unified"
               patch={UNIFIED_ELITE_BNB_1H}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="BTC 1H Unified"
               patch={UNIFIED_ELITE_BTC_1H}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
           </div>
         </div>
+        )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "SAFE_INTRADAY") && (
         <div className="mt-2 rounded-lg border border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-[11px] text-emerald-900 dark:text-emerald-200 space-y-1.5">
-          <div className="font-semibold">Safe Intraday — conservative 15m (~1%/month target)</div>
+          <div className="font-semibold">Strategy presets · SAFE_INTRADAY (~1%/month target)</div>
           <p>
             <b>Not 1%/day.</b> Uses Elite 5-gate signals + London/NY session + max 2 trades/day + 1% risk, 10× lev,
             daily/weekly loss caps. Run on <b>15m</b> across BTC/ETH/BNB/LINK/XRP. See{" "}
@@ -2883,140 +2936,141 @@ export function TradingPanel() {
               label="★ Safe Intraday 15m"
               highlight
               patch={SAFE_INTRADAY_BNB_15M}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
           </div>
         </div>
+        )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "SR_INTRADAY") && (
         <div className="mt-2 rounded-lg border border-teal-400 dark:border-teal-600 bg-teal-50 dark:bg-teal-950/30 px-3 py-2 text-[11px] text-teal-900 dark:text-teal-200 space-y-1.5">
-          <div className="font-semibold">Intraday Pro — loss vetoes + big-move tier</div>
-          {cfg.strategyMode !== "MANUAL" ||
-          (cfg.manualStrategy !== "SR_INTRADAY" && cfg.manualStrategy !== "SITUATION_INTRADAY") ? (
-            <p className="text-amber-800 dark:text-amber-300">
-              Presets set <b>MANUAL</b> + <b>SR_INTRADAY</b>. Each setup is scored (sweep, session S/R, Fib, VP,
-              CVD); <b>learned rules block loss clusters</b> one-by-one. Tier-A = big-move trail. Use{" "}
-              <b>15m</b>. Autopsy: <span className="font-mono">npm run backtest:intraday-autopsy</span>
-            </p>
-          ) : (
-            <p>
-              <b>★ BNB 15m Pro</b> — fixed TP + veto stack. <b>BNB 15m VP</b> — HVN/LVN structure gates + SL/TP at
-              nodes. <b>BNB 15m Big Move</b> — tier-A only + ST trail.
-              Run autopsy to see which losses each rule blocks.
-            </p>
-          )}
+          <div className="font-semibold">Strategy presets · SR_INTRADAY</div>
+          <p>
+            Each setup is scored (sweep, session S/R, Fib, VP, CVD); learned rules block loss clusters. Use{" "}
+            <b>15m</b>. Autopsy: <span className="font-mono">npm run backtest:intraday-autopsy</span>
+          </p>
           <div className="flex flex-wrap gap-2">
-            <TrendHtfStPresetButton label="★ BNB 15m Pro" highlight patch={INTRADAY_PRO_15M} pushLog={pushLog} />
-            <TrendHtfStPresetButton label="BNB 15m Fib" patch={INTRADAY_PRO_FIB_15M} pushLog={pushLog} />
-            <TrendHtfStPresetButton label="BNB 15m Inst. A+" patch={INTRADAY_PRO_SR_APLUS_15M} pushLog={pushLog} />
-            <TrendHtfStPresetButton label="BNB 15m LIQ Daily" patch={INTRADAY_PRO_LIQ_DAILY_15M} pushLog={pushLog} />
-            <TrendHtfStPresetButton
-              label="BNB 15m CRT + TBS"
-              highlight
-              patch={CRT_TBS_BNB_15M}
-              pushLog={pushLog}
-            />
-            <TrendHtfStPresetButton
-              label="BNB 15m Tokyo Session"
-              highlight
-              patch={TOKYO_SESSION_BNB_15M}
-              pushLog={pushLog}
-            />
-            <TrendHtfStPresetButton
-              label="BNB 15m Situation Router"
-              highlight
-              patch={BNB_SITUATION_ROUTER_15M}
-              pushLog={pushLog}
-            />
-            <TrendHtfStPresetButton label="BNB 15m SMC Sweep" patch={INTRADAY_PRO_ICT_15M} pushLog={pushLog} />
+            <TrendHtfStPresetButton label="★ BNB 15m Pro" highlight patch={INTRADAY_PRO_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 15m Fib" patch={INTRADAY_PRO_FIB_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 15m Inst. A+" patch={INTRADAY_PRO_SR_APLUS_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 15m LIQ Daily" patch={INTRADAY_PRO_LIQ_DAILY_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 15m SMC Sweep" patch={INTRADAY_PRO_ICT_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             <TrendHtfStPresetButton
               label="BNB 15m SMC Research (frozen)"
               patch={INTRADAY_PRO_ICT_RESEARCH_15M}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
-            <TrendHtfStPresetButton label="BNB 1H SMC Research (frozen)" patch={INTRADAY_PRO_ICT_RESEARCH_1H} pushLog={pushLog} />
-            <TrendHtfStPresetButton label="BNB 15m SMC ICT Full" patch={INTRADAY_PRO_ICT_FULL_15M} pushLog={pushLog} />
-            <TrendHtfStPresetButton label="BNB 15m Big Move" patch={INTRADAY_PRO_BIGMOVE_15M} pushLog={pushLog} />
-            <TrendHtfStPresetButton label="BNB 5m" patch={INTRADAY_PRO_5M} pushLog={pushLog} />
-            <TrendHtfStPresetButton label="BTC 15m" patch={SR_INTRADAY_BTC_15M} pushLog={pushLog} />
+            <TrendHtfStPresetButton label="BNB 1H SMC Research (frozen)" patch={INTRADAY_PRO_ICT_RESEARCH_1H} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 15m SMC ICT Full" patch={INTRADAY_PRO_ICT_FULL_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 15m Big Move" patch={INTRADAY_PRO_BIGMOVE_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 5m" patch={INTRADAY_PRO_5M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BTC 15m" patch={SR_INTRADAY_BTC_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
           </div>
           <p className="text-[10px] text-teal-800/90 dark:text-teal-200/80">
-            Per-technique on/off toggles live in <b>Indicators</b> → <b>Intraday gates (8 techniques)</b> (first block in that section).
+            Per-technique toggles are in <b>Universal gates & indicators</b> → Intraday gates (when this path is selected).
           </p>
         </div>
-        {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "VOLUME_PROFILE" && (
+        )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "SITUATION_INTRADAY") && (
+        <div className="mt-2 rounded-lg border border-teal-400 dark:border-teal-600 bg-teal-50 dark:bg-teal-950/30 px-3 py-2 text-[11px] text-teal-900 dark:text-teal-200 space-y-1.5">
+          <div className="font-semibold">Strategy presets · SITUATION_INTRADAY</div>
+          <p>Day-type router — BNB 15m situation table preset.</p>
+          <div className="flex flex-wrap gap-2">
+            <TrendHtfStPresetButton
+              label="★ BNB 15m Situation Router"
+              highlight
+              patch={BNB_SITUATION_ROUTER_15M}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+            />
+          </div>
+        </div>
+        )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "CRT_TBS") && (
+        <div className="mt-2 rounded-lg border border-teal-400 dark:border-teal-600 bg-teal-50 dark:bg-teal-950/30 px-3 py-2 text-[11px] text-teal-900 dark:text-teal-200 space-y-1.5">
+          <div className="font-semibold">Strategy presets · CRT_TBS</div>
+          <p>4H candle range + turtle body soup (ICT reversal). Use <b>15m</b>.</p>
+          <div className="flex flex-wrap gap-2">
+            <TrendHtfStPresetButton label="★ BNB 15m CRT + TBS" highlight patch={CRT_TBS_BNB_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+          </div>
+        </div>
+        )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "TOKYO_SESSION") && (
+        <div className="mt-2 rounded-lg border border-teal-400 dark:border-teal-600 bg-teal-50 dark:bg-teal-950/30 px-3 py-2 text-[11px] text-teal-900 dark:text-teal-200 space-y-1.5">
+          <div className="font-semibold">Strategy presets · TOKYO_SESSION</div>
+          <p>Asia session sweep preset for BNB 15m.</p>
+          <div className="flex flex-wrap gap-2">
+            <TrendHtfStPresetButton label="★ BNB 15m Tokyo Session" highlight patch={TOKYO_SESSION_BNB_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+          </div>
+        </div>
+        )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "VOLUME_PROFILE") && (
           <div className="mt-2 rounded-lg border border-fuchsia-300 dark:border-fuchsia-700 bg-fuchsia-50 dark:bg-fuchsia-950/30 px-3 py-2 text-[11px] text-fuchsia-900 dark:text-fuchsia-200 space-y-1.5">
-            <div className="font-semibold">Volume Profile strategy — BNB 15m recommended</div>
+            <div className="font-semibold">Strategy presets · VOLUME_PROFILE</div>
             <p>
               Standalone VP path: entries only on POC bounce, LVN vacuum, VAH breakout, HVN flip, or VA rejection.
               Backtest: <span className="font-mono">npm run backtest:volume-profile</span>
             </p>
             <div className="flex flex-wrap gap-2">
-              <TrendHtfStPresetButton label="★ BNB 15m VP (optimized)" highlight patch={VOLUME_PROFILE_15M} pushLog={pushLog} />
-              <TrendHtfStPresetButton label="BNB Tier-A (same)" patch={VOLUME_PROFILE_TIER_A_15M} pushLog={pushLog} />
-              <TrendHtfStPresetButton label="BNB balanced (~80% WR)" patch={VOLUME_PROFILE_BALANCED_15M} pushLog={pushLog} />
-              <TrendHtfStPresetButton label="BTC 15m VP" patch={VOLUME_PROFILE_BTC_15M} pushLog={pushLog} />
-              <TrendHtfStPresetButton label="BNB 5m VP" patch={VOLUME_PROFILE_5M} pushLog={pushLog} />
+              <TrendHtfStPresetButton label="★ BNB 15m VP (optimized)" highlight patch={VOLUME_PROFILE_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+              <TrendHtfStPresetButton label="BNB Tier-A (same)" patch={VOLUME_PROFILE_TIER_A_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+              <TrendHtfStPresetButton label="BNB balanced (~80% WR)" patch={VOLUME_PROFILE_BALANCED_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+              <TrendHtfStPresetButton label="BTC 15m VP" patch={VOLUME_PROFILE_BTC_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+              <TrendHtfStPresetButton label="BNB 5m VP" patch={VOLUME_PROFILE_5M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             </div>
           </div>
         )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "TREND_HTF_ST") && (
         <div className="mt-2 rounded-lg border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/30 px-3 py-2 text-[11px] text-sky-900 dark:text-sky-200 space-y-1.5">
-          <div className="font-semibold">Trend + HTF Supertrend — research presets (15m)</div>
-          {cfg.strategyMode !== "MANUAL" || cfg.manualStrategy !== "TREND_HTF_ST" ? (
-            <p className="text-amber-800 dark:text-amber-300">
-              Presets set <b>MANUAL</b> + <b>TREND_HTF_ST</b> (not raw SUPERTREND). Current:{" "}
-              <span className="font-mono">{cfg.strategyMode}</span>
-              {cfg.strategyMode === "MANUAL" ? ` / ${cfg.manualStrategy}` : ""}.
-              {cfg.supertrendFuturesAuto === true ? (
-                <span className="block mt-1">
-                  Turn off <b>supertrendFuturesAuto</b> or use a preset — otherwise backtests may run the wrong engine.
-                </span>
-              ) : null}
-            </p>
-          ) : (
-            <p>
-              <b>★ Optimal BNB</b>: ~61% WR / ~840% Jan (best tested). <b>BTC</b>: use surgical preset (~42% WR Jan).
-              Intel gate OFF for returns. Save strategy before backtest.
-            </p>
-          )}
+          <div className="font-semibold">Strategy presets · TREND_HTF_ST (15m)</div>
+          <p>
+            <b>★ Optimal BNB</b>: ~61% WR / ~840% Jan (best tested). <b>BTC</b>: use surgical preset (~42% WR Jan).
+            Intel gate OFF for returns. Save strategy before backtest.
+            {cfg.supertrendFuturesAuto === true ? (
+              <span className="block mt-1 text-amber-800 dark:text-amber-300">
+                Turn off <b>supertrendFuturesAuto</b> or use a preset — otherwise backtests may run the wrong engine.
+              </span>
+            ) : null}
+          </p>
           <div className="flex flex-wrap gap-2">
             <TrendHtfStPresetButton
               label="★ BNB Optimal 10%"
               highlight
               patch={TREND_HTF_ST_OPTIMAL_BNB}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="BTC Optimal 10%"
               patch={TREND_HTF_ST_OPTIMAL_BTC}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="BNB High-WR 50%"
               patch={TREND_HTF_ST_BNB_HIGH_WR}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="BNB max return 10%"
               patch={TREND_HTF_ST_BNB_MAX_RETURN}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
             <TrendHtfStPresetButton
               label="BNB surgical 10%"
               patch={TREND_HTF_ST_BNB_SURGICAL}
-              pushLog={pushLog}
+              pushLog={pushLog} applyPatch={saveGatedBotConfig}
             />
           </div>
           <p className="text-[10px] text-amber-800 dark:text-amber-300">
             80%+ WR on BTC 15m was not found in exhaustive sweeps — use BNB Optimal. Avoid intel gate + 50×/40% risk on BTC (last run -98%).
           </p>
         </div>
-        {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "APEX_TREND" && (
+        )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "APEX_TREND") && (
           <div className="mt-2 rounded-lg border border-emerald-400 dark:border-emerald-500 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30 px-3 py-2 text-[11px] text-emerald-900 dark:text-emerald-200 space-y-1.5">
             <div className="font-bold text-[12px] text-amber-800 dark:text-amber-300">APEX v2 — experimental (use HTF RSI ★ on BNB instead)</div>
             <div className="text-slate-700 dark:text-slate-300">
               Last BTC run failed: v1 entered at RSI 67 (not a pullback). v2 fixes RSI zone 40–52. Too few trades on BTC.
             </div>
             <div className="text-emerald-700 dark:text-emerald-400">
-              <b>Best validated:</b> BNB 15m + HTF RSI v3 (~191%, 50% WR) or Trend+ST max (~428% Jan–May, ~61% WR @ 7% risk).
+              <b>Deploy:</b> SUPERTREND_ELITE multi-coin portfolio (~10–21% CAGR OOS). HTF RSI is research-only on BNB 15m.
             </div>
             <div className="flex flex-wrap gap-2 pt-1">
               <button
@@ -3080,7 +3134,7 @@ export function TradingPanel() {
             </div>
           </div>
         )}
-        {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "BTC_CONSENSUS" && (
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "BTC_CONSENSUS") && (
           <div className="mt-2 rounded-lg border border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-950/30 px-3 py-2 text-[11px] text-orange-900 dark:text-orange-200 space-y-1">
             <div className="font-semibold">★ BTC Consensus — BTCUSDT 1h (2 of 3 trend signals)</div>
             <div>Vote: Trend+ST + Leg Rider + Momentum. Do not use HTF RSI on BTC.</div>
@@ -3129,7 +3183,7 @@ export function TradingPanel() {
             </div>
           </div>
         )}
-        {cfg.strategyMode === "MANUAL" && cfg.manualStrategy === "HTF_LEG_RIDER" && (
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "HTF_LEG_RIDER") && (
           <div className="mt-2 rounded-lg border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/30 px-3 py-2 text-[11px] text-violet-900 dark:text-violet-200 space-y-1">
             <div className="font-semibold">HTF Leg Rider — breakout in trend direction</div>
             <div>32-bar breakout · SL 1.5% · TP 5% → ~62% return on BNB (lower WR than HTF RSI).</div>
@@ -3153,73 +3207,6 @@ export function TradingPanel() {
             </button>
           </div>
         )}
-        {cfg.strategyMode === "MANUAL" ? (
-          <div className="mt-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-950/40">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-3 py-2">
-              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Path scoreboard (last ~700 bars)</div>
-              <div className="text-[11px] text-slate-600 dark:text-slate-500">{btLoading ? "running…" : "refresh 30s"}</div>
-            </div>
-            <div className="max-h-[180px] overflow-auto">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
-                  <tr className="text-left text-slate-600 dark:text-slate-400">
-                    <th className="px-3 py-2">#</th>
-                    <th className="px-3 py-2">Key</th>
-                    <th className="px-3 py-2">Trades</th>
-                    <th className="px-3 py-2">Win%</th>
-                    <th className="px-3 py-2">PF</th>
-                    <th className="px-3 py-2">PnL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {top.length === 0 ? (
-                    <tr>
-                      <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={6}>
-                        No scoreboard rows yet
-                      </td>
-                    </tr>
-                  ) : (
-                    top.map((r) => {
-                      const num = NUMBERED_SIGNAL_SOURCES.find((x) => x.key === r.key)?.n ?? "—";
-                      return (
-                        <tr key={r.key} className="border-t border-slate-200 dark:border-slate-900">
-                          <td className="px-3 py-2 font-mono text-slate-500">{num}</td>
-                          <td className="px-3 py-2">
-                            <button
-                              type="button"
-                              className="font-semibold text-slate-800 dark:text-slate-200 hover:text-emerald-300"
-                              onClick={() => {
-                                const key = r.key;
-                                deferTask(() => {
-                                  void (async () => {
-                                    try {
-                                      await saveGatedBotConfig({ manualStrategy: key });
-                                    } catch {
-                                      pushLog({ level: "error", msg: "Failed to set fixed signal path" });
-                                    }
-                                  })();
-                                });
-                              }}
-                            >
-                              {r.key}
-                            </button>
-                            <div className="text-[11px] text-slate-600 dark:text-slate-500">{r.name}</div>
-                          </td>
-                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{r.trades}</td>
-                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{(Number(r.winRate || 0) * 100).toFixed(1)}</td>
-                          <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{Number(r.profitFactor || 0).toFixed(2)}</td>
-                          <td className={`px-3 py-2 ${Number(r.netPnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                            {Number(r.netPnl || 0).toFixed(2)}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : null}
       </div>
 
       {strategyConfigDirty ? (
@@ -3276,6 +3263,7 @@ export function TradingPanel() {
         </div>
       </div>
 
+      {!showManualOrders ? (
       <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3">
         <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">Auto trading / bot configuration</div>
         <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-500">
@@ -3365,279 +3353,6 @@ export function TradingPanel() {
               </select>
             </label>
 
-            {false && cfg.marketMode === "FUTURES" && (
-              <>
-              <div className="space-y-2 rounded-lg border border-emerald-900/45 bg-emerald-950/20 p-2">
-                <div className="text-[11px] font-semibold text-emerald-200/95">Trade history fees (USD‑M · modeled)</div>
-                <p className="text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-                  Custom maker vs taker fee rates as <span className="text-slate-700 dark:text-slate-300">percent of notional</span>{" "}
-                  (e.g. 0.05 = 0.05%). Used for Portfolio <span className="font-medium text-slate-700 dark:text-slate-300">trade history</span>{" "}
-                  when the exchange did not attach commission on a row; fills from Binance still override when present. Liquidity class comes from{" "}
-                  fill data when available, else order type / stop vs limit heuristics (defaults to taker).
-                </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="rounded-md border border-emerald-800/40 bg-white/40 px-2 py-1.5 dark:bg-slate-950/40">
-                    <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-emerald-800/80 dark:text-emerald-300/70">
-                      Maker (limit adds liquidity)
-                    </div>
-                    <div className="grid grid-cols-[108px_1fr] items-center gap-2 text-xs">
-                      <span className="text-slate-600 dark:text-slate-400">Entry %</span>
-                      <NumericTextInput
-                        value={+(cfg.tradeHistoryMakerOpenFeeRate * 100).toFixed(4)}
-                        inputMode="decimal"
-                        min={0}
-                        max={1}
-                        parse={(raw) => parseFloat(raw)}
-                        onCommit={async (v) => {
-                          try {
-                            await saveGatedBotConfig({ tradeHistoryMakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to set maker entry fee %" });
-                          }
-                        }}
-                      />
-                    </div>
-                    <div className="mt-1 grid grid-cols-[108px_1fr] items-center gap-2 text-xs">
-                      <span className="text-slate-600 dark:text-slate-400">Exit %</span>
-                      <NumericTextInput
-                        value={+(cfg.tradeHistoryMakerCloseFeeRate * 100).toFixed(4)}
-                        inputMode="decimal"
-                        min={0}
-                        max={1}
-                        parse={(raw) => parseFloat(raw)}
-                        onCommit={async (v) => {
-                          try {
-                            await saveGatedBotConfig({ tradeHistoryMakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to set maker exit fee %" });
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="rounded-md border border-emerald-800/40 bg-white/40 px-2 py-1.5 dark:bg-slate-950/40">
-                    <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-emerald-800/80 dark:text-emerald-300/70">
-                      Taker (market / takes liquidity)
-                    </div>
-                    <div className="grid grid-cols-[108px_1fr] items-center gap-2 text-xs">
-                      <span className="text-slate-600 dark:text-slate-400">Entry %</span>
-                      <NumericTextInput
-                        value={+(cfg.tradeHistoryTakerOpenFeeRate * 100).toFixed(4)}
-                        inputMode="decimal"
-                        min={0}
-                        max={1}
-                        parse={(raw) => parseFloat(raw)}
-                        onCommit={async (v) => {
-                          try {
-                            await saveGatedBotConfig({ tradeHistoryTakerOpenFeeRate: clampNum(v / 100, 0, 0.01) });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to set taker entry fee %" });
-                          }
-                        }}
-                      />
-                    </div>
-                    <div className="mt-1 grid grid-cols-[108px_1fr] items-center gap-2 text-xs">
-                      <span className="text-slate-600 dark:text-slate-400">Exit %</span>
-                      <NumericTextInput
-                        value={+(cfg.tradeHistoryTakerCloseFeeRate * 100).toFixed(4)}
-                        inputMode="decimal"
-                        min={0}
-                        max={1}
-                        parse={(raw) => parseFloat(raw)}
-                        onCommit={async (v) => {
-                          try {
-                            await saveGatedBotConfig({ tradeHistoryTakerCloseFeeRate: clampNum(v / 100, 0, 0.01) });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to set taker exit fee %" });
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-2 rounded-lg border border-sky-800/50 bg-sky-950/25 p-2">
-                <div className="text-[11px] font-semibold text-sky-200/95">Futures entry (Supertrend signal → order)</div>
-                <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
-                  Flow: bar-close signal uses the candle <span className="text-slate-600 dark:text-slate-300">close</span> as the
-                  reference price → server fetches <span className="text-slate-600 dark:text-slate-300">live bid/ask, mark, mid</span> →
-                  if any price is worse than your max slippage vs that close, the open is <span className="text-slate-600 dark:text-slate-300">skipped</span>{" "}
-                  (better than a bad MARKET fill). With <span className="text-slate-600 dark:text-slate-300">AUTO</span> open style and slippage
-                  &gt; 0, the first attempt is typically <span className="text-slate-600 dark:text-slate-300">LIMIT IOC</span> at close × (1±slippage).
-                  Activity logs fill vs signal as bps. Values below are saved with bot config (server{" "}
-                  <code className="text-slate-600 dark:text-slate-400">bot-trading-config.json</code>).
-                </p>
-                <div className="grid grid-cols-[118px_1fr] items-center gap-2 text-xs">
-                  <span className="text-slate-600 dark:text-slate-400" title="Percent points vs signal candle close (0 = disable guard).">
-                    Max slippage %
-                  </span>
-                  <NumericTextInput
-                    value={Number(cfg.supertrendFuturesMaxEntrySlippagePct.toFixed(4))}
-                    inputMode="decimal"
-                    min={0}
-                    max={5}
-                    parse={(raw) => parseFloat(raw)}
-                    onCommit={async (v) => {
-                      try {
-                        await saveGatedBotConfig({ supertrendFuturesMaxEntrySlippagePct: clampNum(v, 0, 5) });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to set max entry slippage" });
-                      }
-                    }}
-                  />
-                </div>
-                <label className="grid grid-cols-[118px_1fr] items-center gap-2 text-xs">
-                  <span className="text-slate-600 dark:text-slate-400">Open style</span>
-                  <select
-                    className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-slate-900 dark:text-slate-100"
-                    value={cfg.supertrendFuturesEntryOpenStyle}
-                    onChange={(e) => {
-                      const v = e.target.value as "AUTO" | "MARKET" | "LIMIT_IOC";
-                      deferTask(() => {
-                        void (async () => {
-                          try {
-                            await saveGatedBotConfig({ supertrendFuturesEntryOpenStyle: v });
-                            pushLog({ level: "info", msg: `Futures entry open style: ${v}` });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to set open style" });
-                          }
-                        })();
-                      });
-                    }}
-                  >
-                    <option value="AUTO">AUTO (LIMIT IOC if slippage &gt; 0)</option>
-                    <option value="LIMIT_IOC">LIMIT IOC</option>
-                    <option value="MARKET">MARKET</option>
-                  </select>
-                </label>
-                <div className="grid grid-cols-[118px_1fr] items-center gap-2 text-xs">
-                  <span className="text-slate-600 dark:text-slate-400" title="Wait, then re-fetch book/mark before placing.">
-                    Recheck ms
-                  </span>
-                  <NumericTextInput
-                    value={cfg.supertrendFuturesEntryRecheckMs}
-                    inputMode="numeric"
-                    min={0}
-                    max={60000}
-                    parse={(raw) => parseInt(raw, 10)}
-                    onCommit={async (v) => {
-                      try {
-                        await saveGatedBotConfig({ supertrendFuturesEntryRecheckMs: Math.max(0, Math.min(60000, Math.floor(v))) });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to set entry recheck ms" });
-                      }
-                    }}
-                  />
-                </div>
-                <div className="grid grid-cols-[118px_1fr] items-center gap-2 text-xs">
-                  <span className="text-slate-600 dark:text-slate-400" title="Skip if bar-close to order is too slow (AI/network).">
-                    Max signal lag ms
-                  </span>
-                  <NumericTextInput
-                    value={cfg.supertrendFuturesMaxSignalLagMs}
-                    inputMode="numeric"
-                    min={0}
-                    max={3600000}
-                    parse={(raw) => parseInt(raw, 10)}
-                    onCommit={async (v) => {
-                      try {
-                        await saveGatedBotConfig({ supertrendFuturesMaxSignalLagMs: Math.max(0, Math.floor(v)) });
-                      } catch {
-                        pushLog({ level: "error", msg: "Failed to set max signal lag" });
-                      }
-                    }}
-                  />
-                </div>
-                <label className="flex cursor-pointer items-start gap-2 text-[11px]">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={cfg.supertrendFuturesIocFallbackMarket}
-                    onChange={(e) => {
-                      const on = e.currentTarget.checked;
-                      deferTask(() => {
-                        void (async () => {
-                          try {
-                            await saveGatedBotConfig({ supertrendFuturesIocFallbackMarket: on });
-                            pushLog({
-                              level: "info",
-                              msg: on
-                                ? "IOC no-fill → may retry MARKET if still within slippage cap"
-                                : "IOC no-fill → no MARKET fallback",
-                            });
-                          } catch {
-                            pushLog({ level: "error", msg: "Failed to update IOC fallback" });
-                          }
-                        })();
-                      });
-                    }}
-                  />
-                  <span>
-                    <span className="font-medium text-slate-700 dark:text-slate-200">IOC → MARKET fallback</span>
-                    <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
-                      If LIMIT IOC does not fill, re-quote once; place MARKET only if still inside the slippage band (off = safer).
-                    </span>
-                  </span>
-                </label>
-                <label className="flex cursor-pointer items-start gap-2 text-[11px]">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={cfg.supertrendFuturesRequireMarkPrice}
-                    onChange={(e) => {
-                      const next = e.currentTarget.checked;
-                      deferTask(() => {
-                        void (async () => {
-                          try {
-                            await saveGatedBotConfig({ supertrendFuturesRequireMarkPrice: next });
-                          } catch (err) {
-                            pushLog({
-                              level: "error",
-                              msg: `Failed to update require mark: ${err instanceof Error ? err.message : String(err)}`,
-                            });
-                          }
-                        })();
-                      });
-                    }}
-                  />
-                  <span>
-                    Require mark price
-                    <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
-                      Skip open if premium-index mark cannot be fetched (stricter).
-                    </span>
-                  </span>
-                </label>
-                <label className="flex cursor-pointer items-start gap-2 text-[11px]">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={cfg.supertrendFuturesRequireBookTicker}
-                    onChange={(e) => {
-                      const next = e.currentTarget.checked;
-                      deferTask(() => {
-                        void (async () => {
-                          try {
-                            await saveGatedBotConfig({ supertrendFuturesRequireBookTicker: next });
-                          } catch (err) {
-                            pushLog({
-                              level: "error",
-                              msg: `Failed to update require book: ${err instanceof Error ? err.message : String(err)}`,
-                            });
-                          }
-                        })();
-                      });
-                    }}
-                  />
-                  <span>
-                    Require book ticker
-                    <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
-                      Skip open if best bid/ask snapshot fails while slippage guard is active.
-                    </span>
-                  </span>
-                </label>
-              </div>
-              </>
-            )}
 
             
 
@@ -3737,12 +3452,13 @@ export function TradingPanel() {
                       Off
                     </label>
                     <NumericTextInput
-                      value={Number((cfg.supertrendFuturesFixedSlPct * 100).toFixed(8))}
+                      value={slPctDisplay}
                       min={0.005}
                       max={20}
                       disabled={!slTpFieldsEditable(cfg) || !futuresUseFixedSl}
                       onCommit={async (v) => {
                         try {
+                          setSlPctDisplay(v);
                           await saveGatedBotConfig({ supertrendFuturesFixedSlPct: v / 100, supertrendFuturesUseFixedSl: true });
                           setFuturesUseFixedSl(true);
                         } catch {
@@ -3783,12 +3499,13 @@ export function TradingPanel() {
                       Off
                     </label>
                     <NumericTextInput
-                      value={Number((cfg.supertrendFuturesFixedTpPct * 100).toFixed(8))}
+                      value={tpPctDisplay}
                       min={0.005}
                       max={50}
                       disabled={!slTpFieldsEditable(cfg) || !futuresUseFixedTp}
                       onCommit={async (v) => {
                         try {
+                          setTpPctDisplay(v);
                           await saveGatedBotConfig({ supertrendFuturesFixedTpPct: v / 100, supertrendFuturesUseFixedTp: true });
                           setFuturesUseFixedTp(true);
                         } catch {
@@ -3847,27 +3564,6 @@ export function TradingPanel() {
                       </div>
                     ) : null}
                   </div>
-                  <button
-                    disabled={coinBusy}
-                    className="shrink-0 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-200/65 dark:bg-slate-100 dark:bg-slate-900/50 px-2 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 disabled:opacity-50"
-                    onClick={() => {
-                      deferTask(() => {
-                        void (async () => {
-                          setCoinBusy(true);
-                          try {
-                            await api.universeScan(true);
-                            pushLog({ level: "info", msg: "Universe scan refreshed" });
-                          } catch {
-                            pushLog({ level: "warn", msg: "Universe scan failed" });
-                          } finally {
-                            setCoinBusy(false);
-                          }
-                        })();
-                      });
-                    }}
-                  >
-                    {coinBusy ? "Scanning…" : "Scan now"}
-                  </button>
                 </div>
 
                 <div className="flex flex-col gap-2 border-b border-slate-200 dark:border-slate-800 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -3881,9 +3577,8 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await saveGatedBotConfig({ universeCoinBase: v });
+                              await api.botConfig({ universeCoinBase: v });
                               pushLog({ level: "info", msg: v === "CUSTOM" ? "Coin base: custom watchlist" : "Coin base: all Binance universe" });
-                              await api.universeScan(true);
                             } catch {
                               pushLog({ level: "error", msg: "Failed to set coin base" });
                             }
@@ -3970,42 +3665,11 @@ export function TradingPanel() {
                       </span>
                     ) : null}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-3 py-2 dark:border-slate-800 sm:border-t-0 sm:px-0 sm:py-0">
-                    <label className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-700 dark:text-slate-300">
-                      <span className="shrink-0 text-slate-600 dark:text-slate-400">Auto coin pick</span>
-                      <select
-                        className="max-w-[min(100vw,280px)] rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-[11px] text-slate-900 dark:text-slate-100"
-                        value={cfg.universeAutoCoinPick}
-                        onChange={(e) => {
-                          const v = e.target.value === "ST_SIGNAL_FIRST" ? "ST_SIGNAL_FIRST" : "RANKED_AI_SS";
-                          deferTask(() => {
-                            void (async () => {
-                              try {
-                                await saveGatedBotConfig({ universeAutoCoinPick: v });
-                                pushLog({
-                                  level: "info",
-                                  msg:
-                                    v === "ST_SIGNAL_FIRST"
-                                      ? "Auto coin: Supertrend signal order (first signal in list)"
-                                      : "Auto coin: ranked AI + opportunity composite",
-                                });
-                              } catch {
-                                pushLog({ level: "error", msg: "Failed to set auto coin pick" });
-                              }
-                            })();
-                          });
-                        }}
-                      >
-                        <option value="RANKED_AI_SS">Ranked (AI + opportunity / SS gates at trade)</option>
-                        <option value="ST_SIGNAL_FIRST">Supertrend signal first (walk list for bar-close signal)</option>
-                      </select>
-                    </label>
-                  </div>
                 </div>
 
                 {emptyCustom ? (
                   <div className="px-3 py-4 text-[12px] text-amber-800 dark:text-amber-200/90">
-                    Custom coin base is empty. Use &quot;Edit coin list&quot; to add up to 10 symbols, then scan.
+                    Custom coin base is empty. Use &quot;Edit coin list&quot; to add up to 10 symbols.
                   </div>
                 ) : (
                   <div className="max-h-[180px] overflow-auto">
@@ -4023,7 +3687,7 @@ export function TradingPanel() {
                         {rankedCoins.length === 0 ? (
                           <tr>
                             <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={5}>
-                              No scan results yet (set MARKET_FEED=BINANCE or BINANCE_FUTURES and use Coin select above)
+                              No coins in list yet — set Custom coin base or pin symbols in the table
                             </td>
                           </tr>
                         ) : (
@@ -4110,7 +3774,7 @@ export function TradingPanel() {
                                             void (async () => {
                                               try {
                                                 const next = pinnedMulti.filter((x) => x !== symU);
-                                                await saveGatedBotConfig({ universePinnedSymbols: next });
+                                                await api.botConfig({ universePinnedSymbols: next });
                                                 pushLog({ level: "info", msg: "Unpinned symbol", symbol: symU });
                                               } catch {
                                                 pushLog({ level: "error", msg: "Failed to unpin" });
@@ -4132,7 +3796,7 @@ export function TradingPanel() {
                                             void (async () => {
                                               try {
                                                 const next = [...pinnedMulti, sym].slice(0, 10);
-                                                await saveGatedBotConfig({ universePinnedSymbols: next });
+                                                await api.botConfig({ universePinnedSymbols: next });
                                                 pushLog({ level: "info", msg: "Pinned symbol", symbol: sym });
                                               } catch {
                                                 pushLog({ level: "error", msg: "Failed to pin symbol" });
@@ -4937,15 +4601,20 @@ export function TradingPanel() {
               <div className="mb-3 rounded-xl border-2 border-violet-600/35 bg-gradient-to-br from-violet-50/95 via-white to-slate-50/90 p-3 shadow-md dark:border-violet-500/35 dark:from-violet-950/45 dark:via-slate-950 dark:to-slate-900/90">
                 <div className="flex flex-wrap items-start justify-between gap-2 border-b border-violet-800/15 pb-2 dark:border-violet-300/10">
                   <div className="min-w-0">
-                    <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-50">Indicators</h3>
+                    <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-50">Universal gates & indicators</h3>
                     <p className="mt-0.5 max-w-[28rem] text-[10px] leading-snug text-slate-600 dark:text-slate-400">
-                      Supertrend autotrade filters (AI confidence, signal strength) plus{" "}
-                      <span className="font-semibold text-amber-800 dark:text-amber-200">six intraday technique toggles</span> for
-                      SR_INTRADAY — first block below.
+                      Supertrend autotrade filters, intelligence, and signal strength. Badges show whether each gate is{" "}
+                      <span className="font-semibold">effective</span> for the current routing path.
+                      {countActiveGates(cfg) > 0 ? (
+                        <span className="ml-1 font-semibold text-emerald-700 dark:text-emerald-300">
+                          {countActiveGates(cfg)} active
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                 </div>
 
+                {cfg.strategyMode === "MANUAL" && usesIntradayGatePanel(cfg.manualStrategy) ? (
                 <IntradayGatesPanel
                   id="intraday-gates"
                   cfg={{
@@ -5011,8 +4680,16 @@ export function TradingPanel() {
                   }}
                   onStagePatch={stageStrategyBotPatch}
                 />
+                ) : cfg.strategyMode === "MANUAL" ? (
+                  <p className="mt-2 rounded-md border border-slate-200/80 bg-white/60 px-2 py-1.5 text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-400">
+                    Intraday technique gates apply to <span className="font-mono">SR_INTRADAY</span>,{" "}
+                    <span className="font-mono">SITUATION_INTRADAY</span>, and <span className="font-mono">UNIFIED_ELITE</span> only — select one of
+                    those paths in Signal routing.
+                  </p>
+                ) : null}
 
-                {(cfg.marketMode === "SPOT" || cfg.marketMode === "FUTURES" || cfg.marketMode === "AUTO") && (
+                {(cfg.strategyMode === "AUTO" || isSupertrendAutotradeStrategy(cfg.manualStrategy)) &&
+                (cfg.marketMode === "SPOT" || cfg.marketMode === "FUTURES" || cfg.marketMode === "AUTO") && (
                   <div
                     className={`mt-3 space-y-2 rounded-lg p-2 ${
                       cfg.marketMode === "FUTURES"
@@ -5347,10 +5024,13 @@ export function TradingPanel() {
                 )}
 
                 <div className="mt-3 rounded-md border border-violet-800/25 bg-white/85 px-2 py-2 dark:border-violet-400/20 dark:bg-slate-950/50">
-                  <div className="text-xs font-semibold text-violet-900 dark:text-violet-100">Market Intelligence</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-xs font-semibold text-violet-900 dark:text-violet-100">Market Intelligence</div>
+                    <GateEffectiveBadge effective={isGateEffective(cfg, "intelligence")} />
+                  </div>
                   <p className="mt-0.5 text-[11px] leading-snug text-slate-600 dark:text-slate-500">
-                    Layered signals under the chart order book on this instance view. Live updates via WebSocket. The gate affects Supertrend bar-close opens only when enabled (
-                    server default off via <span className="font-mono text-[10px]">INTELLIGENCE_GATE_ENABLED</span>).
+                    Layered signals under the chart order book on this instance view. Live updates via WebSocket. The gate affects opens when enabled and
+                    effective for your routing path (MANUAL bar-close strategies skip unless sub-toggle is on).
                   </p>
                   <label className="mt-2 flex cursor-pointer items-start gap-2">
                     <input
@@ -5396,34 +5076,74 @@ export function TradingPanel() {
                       }}
                     />
                     <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">Intelligence gate on Supertrend opens</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Intelligence gate on opens</span>
                       <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
                         High-confidence opposing composite score blocks the open. Independent from showing the panel.
                       </span>
                     </span>
                   </label>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <TrendHtfStPresetButton
-                      label="★ ST + Intel 80% WR"
-                      highlight
-                      patch={SUPERTREND_INTEL_80WR}
-                      pushLog={pushLog}
-                    />
-                    <TrendHtfStPresetButton
-                      label="ST + Intel + Trail"
-                      patch={SUPERTREND_INTEL_TRAIL}
-                      pushLog={pushLog}
-                    />
-                  </div>
-                  <p className="mt-1 text-[10px] text-amber-800 dark:text-amber-300">
-                    <b>80% WR preset:</b> MANUAL + SUPERTREND + intel gate + SL 1.5% / TP 0.7% — validated BNBUSDT 15m Jan–May 2026:
-                    ~87% WR, ~+18% return (15 trades). Sweep did not find 1000%+ return at WR≥80%; use for high WR, not max compounding.
-                  </p>
+                  {cfg.intelligenceGateEnabled ? (
+                    <label className="mt-2 flex cursor-pointer items-start gap-2 pl-6">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={cfg.intelligenceGateManualStrategies}
+                        onChange={(e) => {
+                          const on = e.currentTarget.checked;
+                          deferTask(() => {
+                            void api
+                              .botConfig({ intelligenceGateManualStrategies: on })
+                              .then(() => {
+                                pushLog({
+                                  level: "info",
+                                  msg: on
+                                    ? "Intelligence gate applies to MANUAL bar-close opens"
+                                    : "Intelligence gate skipped on MANUAL bar-close (backtest parity)",
+                                });
+                              })
+                              .catch(() => {
+                                pushLog({ level: "error", msg: "Failed to update intelligence gate MANUAL toggle" });
+                              });
+                          });
+                        }}
+                      />
+                      <span className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">Apply to MANUAL strategy bar-close opens</span>
+                        <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-500">
+                          Off = backtest parity. On = extra live filter (not in backtest).
+                        </span>
+                      </span>
+                    </label>
+                  ) : null}
+                  {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "SUPERTREND") ? (
+                    <>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <TrendHtfStPresetButton
+                          label="★ ST + Intel 80% WR"
+                          highlight
+                          patch={SUPERTREND_INTEL_80WR}
+                          pushLog={pushLog} applyPatch={saveGatedBotConfig}
+                        />
+                        <TrendHtfStPresetButton
+                          label="ST + Intel + Trail"
+                          patch={SUPERTREND_INTEL_TRAIL}
+                          pushLog={pushLog} applyPatch={saveGatedBotConfig}
+                        />
+                      </div>
+                      <p className="mt-1 text-[10px] text-amber-800 dark:text-amber-300">
+                        <b>80% WR preset:</b> intel gate + SL 1.5% / TP 0.7% — validated BNBUSDT 15m Jan–May 2026: ~87% WR, ~+18%
+                        return (15 trades).
+                      </p>
+                    </>
+                  ) : null}
                 </div>
 
                 {cfg.marketMode !== "SPOT" && cfg.supertrendFuturesAuto && (
                   <div className="mt-3 space-y-2 rounded-lg border border-violet-800/25 bg-white/85 p-2 dark:border-violet-400/20 dark:bg-slate-950/50">
-                    <div className="text-[11px] font-semibold text-violet-900 dark:text-violet-100">Futures · AI confidence</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-[11px] font-semibold text-violet-900 dark:text-violet-100">Futures · AI confidence</div>
+                      <GateEffectiveBadge effective={isGateEffective(cfg, "futuresAiConfidence")} />
+                    </div>
                     <label className="flex cursor-pointer items-start gap-2">
                       <input
                         type="checkbox"
@@ -5493,7 +5213,10 @@ export function TradingPanel() {
                 </div>
 
                 <div className="mt-3 space-y-2 rounded-lg border border-violet-800/25 bg-white/85 p-2 dark:border-violet-400/20 dark:bg-slate-950/50">
-                  <div className="text-[11px] font-semibold text-violet-900 dark:text-violet-100">Signal strength</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-[11px] font-semibold text-violet-900 dark:text-violet-100">Signal strength</div>
+                    <GateEffectiveBadge effective={isGateEffective(cfg, "signalStrength")} />
+                  </div>
                   <label className="flex cursor-pointer items-start gap-2">
                     <input
                       type="checkbox"
@@ -5546,8 +5269,11 @@ export function TradingPanel() {
                 </div>
 
                 <div className="mt-3 space-y-2 rounded-lg border border-violet-800/25 bg-white/85 p-2 dark:border-violet-400/20 dark:bg-slate-950/50">
-                  <div className="text-[11px] font-semibold text-violet-900 dark:text-violet-100">
-                    Market decision (regime · chop · score · fees)
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-[11px] font-semibold text-violet-900 dark:text-violet-100">
+                      Market decision (regime · chop · score · fees)
+                    </div>
+                    <GateEffectiveBadge effective={isGateEffective(cfg, "marketDecision")} />
                   </div>
                   <label className="flex cursor-pointer items-start gap-2">
                     <input
@@ -5599,9 +5325,12 @@ export function TradingPanel() {
                   />
                 </div>
                 <div className="mt-3 space-y-2 rounded-lg border border-cyan-800/25 bg-white/85 p-2 dark:border-cyan-400/20 dark:bg-slate-950/50">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-[11px] font-semibold text-cyan-900 dark:text-cyan-100">
-                      Move quality (ATR · ADX · body)
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-[11px] font-semibold text-cyan-900 dark:text-cyan-100">
+                        Move quality (ATR · ADX · body)
+                      </div>
+                      <GateEffectiveBadge effective={isGateEffective(cfg, "moveQuality")} />
                     </div>
                     <button
                       type="button"
@@ -5801,8 +5530,11 @@ export function TradingPanel() {
                 </div>
 
                 <div className="mt-3 space-y-2 rounded-lg border border-emerald-800/30 bg-white/85 p-2 dark:border-emerald-400/25 dark:bg-slate-950/50">
-                  <div className="text-[11px] font-semibold text-emerald-900 dark:text-emerald-100">
-                    Big-move filter (Supertrend + T1)
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-[11px] font-semibold text-emerald-900 dark:text-emerald-100">
+                      Big-move filter (Supertrend + T1)
+                    </div>
+                    <GateEffectiveBadge effective={isGateEffective(cfg, "bigMove")} />
                   </div>
                   <label className="flex cursor-pointer items-start gap-2">
                     <input
@@ -5900,8 +5632,11 @@ export function TradingPanel() {
                 </div>
 
                 <div className="mt-3 space-y-2 rounded-lg border border-teal-800/30 bg-white/85 p-2 dark:border-teal-400/25 dark:bg-slate-950/50">
-                  <div className="text-[11px] font-semibold text-teal-900 dark:text-teal-100">
-                    4H Supertrend confirmation
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-[11px] font-semibold text-teal-900 dark:text-teal-100">
+                      4H Supertrend confirmation
+                    </div>
+                    <GateEffectiveBadge effective={isGateEffective(cfg, "htf4h")} />
                   </div>
                   <label className="flex cursor-pointer items-start gap-2">
                     <input
@@ -6098,8 +5833,8 @@ export function TradingPanel() {
                   </div>
                 </div>
 
-                {/* ─── SUPERTREND_ELITE gate controls ─── */}
-                {cfg.manualStrategy === "SUPERTREND_ELITE" && (
+                {/* ─── Elite / Safe / Unified strategy settings ─── */}
+                {cfg.strategyMode === "MANUAL" && usesEliteSettingsPanel(cfg.manualStrategy) && (
                   <div className="mt-3 space-y-2 rounded-lg border border-violet-600/40 bg-white/85 p-2 dark:border-violet-400/30 dark:bg-slate-950/50">
                     <div className="flex items-center gap-1.5">
                       <div className="text-[11px] font-semibold text-violet-800 dark:text-violet-300">
@@ -7633,6 +7368,7 @@ export function TradingPanel() {
             })()}
         </div>
       </div>
+      ) : null}
 
       {showManualOrders && (
         <div className="mt-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-3">
@@ -7865,9 +7601,24 @@ export function TradingPanel() {
         initialSymbols={cfg.universeCustomSymbols}
         onClose={() => setCustomUniverseOpen(false)}
         onSave={async (symbols) => {
-          await saveGatedBotConfig({ universeCustomSymbols: symbols });
+          const tf = String(bot?.timeframe || cfg.timeframe || "1h");
+          await api.botConfig({ universeCustomSymbols: symbols, universeCoinBase: "CUSTOM" });
+          const snap = buildCustomUniverseSnapshot(symbols, tf);
+          const { useAppStore, deriveViewBot } = await import("../ws/store");
+          useAppStore.setState((s) => {
+            const prevLive =
+              s.liveBot && typeof s.liveBot === "object" && !Array.isArray(s.liveBot)
+                ? (s.liveBot as Record<string, unknown>)
+                : {};
+            const liveBot = {
+              ...prevLive,
+              universe: snap,
+              universeCustomSymbols: symbols,
+              universeCoinBase: "CUSTOM",
+            };
+            return { liveBot, bot: deriveViewBot(s.mode, liveBot, s.draftBotPatchByMode) };
+          });
           pushLog({ level: "info", msg: "Custom coin base saved", detail: { count: symbols.length } });
-          await api.universeScan(true);
         }}
       />
 

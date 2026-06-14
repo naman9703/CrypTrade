@@ -297,18 +297,23 @@ export function applyEliteBracketStyleToCfg(cfg, profile, bracketStyle) {
   const style = String(bracketStyle ?? "ATR").toUpperCase();
   const mode = eliteBracketStyleToMode(style);
   const out = { ...cfg, eliteStAutoBracketMode: mode };
+  const tpLockedOff = cfg.supertrendFuturesUseFixedTp === false;
 
   if (style === "TIGHT") {
     out.supertrendFuturesUseFixedSl = true;
     out.supertrendFuturesFixedSlPct = ELITE_TIGHT_SL_PCT;
-    out.supertrendFuturesUseFixedTp = true;
-    out.supertrendFuturesFixedTpPct = ELITE_TIGHT_TP_PCT;
+    if (!tpLockedOff) {
+      out.supertrendFuturesUseFixedTp = true;
+      out.supertrendFuturesFixedTpPct = ELITE_TIGHT_TP_PCT;
+    }
   } else if (style === "ATR") {
     const { slPct, tpPct } = resolveEliteBracketPct(profile);
     out.supertrendFuturesUseFixedSl = true;
     out.supertrendFuturesFixedSlPct = slPct;
-    out.supertrendFuturesUseFixedTp = true;
-    out.supertrendFuturesFixedTpPct = tpPct;
+    if (!tpLockedOff) {
+      out.supertrendFuturesUseFixedTp = true;
+      out.supertrendFuturesFixedTpPct = tpPct;
+    }
   } else {
     const disasterSl = resolveEliteTrailDisasterSlPct(profile, { cfg: out });
     out.supertrendFuturesUseFixedSl = true;
@@ -473,7 +478,8 @@ export function applyEliteAutoCalibrateCfg(cfg = {}, candles = []) {
 
   if (!fullTune || userSepLocked) {
     const bracketMode = String(out.eliteStAutoBracketMode ?? "ATR").toUpperCase();
-    if (bracketMode === "ATR") {
+    const tpLockedOff = out.supertrendFuturesUseFixedTp === false;
+    if (bracketMode === "ATR" && !tpLockedOff) {
       const { slPct, tpPct } = resolveEliteBracketPct(profile);
       out.supertrendFuturesUseFixedSl = true;
       out.supertrendFuturesFixedSlPct = slPct;

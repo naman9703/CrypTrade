@@ -60,6 +60,44 @@ export async function fetchUsdMPremiumMark(symbol, tradingMode) {
  *
  * @returns {Promise<number | null>} close price or null
  */
+/**
+ * Partial depth book for liquidity guards (public, no API key).
+ * @returns {Promise<{ symbol: string, bids: Array<[number, number]>, asks: Array<[number, number]> } | null>}
+ */
+export async function fetchUsdMDepthBook(symbol, tradingMode, limit = 20) {
+  const sym = String(symbol || "").toUpperCase();
+  const lim = Math.max(5, Math.min(100, Math.floor(Number(limit) || 20)));
+  if (!sym) return null;
+  const base = usdMFapiPublicBaseForTradingMode(tradingMode).replace(/\/$/, "");
+  const url = `${base}/fapi/v1/depth`;
+  try {
+    const { data } = await axios.get(url, { params: { symbol: sym, limit: lim }, timeout: 6000 });
+    const toLv = (arr) =>
+      (Array.isArray(arr) ? arr : [])
+        .map((x) => [Number(x?.[0]), Number(x?.[1])])
+        .filter(([p, q]) => Number.isFinite(p) && Number.isFinite(q) && p > 0 && q > 0);
+    const bids = toLv(data?.bids);
+    const asks = toLv(data?.asks);
+    if (!bids.length && !asks.length) return null;
+    return { symbol: sym, bids, asks };
+  } catch {
+    return null;
+  }
+}
+
+/** Single-level book from book ticker (spread guard when full depth unavailable). */
+export function depthBookFromTicker(ticker) {
+  if (!ticker) return null;
+  const bid = Number(ticker.bidPrice);
+  const ask = Number(ticker.askPrice);
+  const bidQty = Number(ticker.bidQty ?? ticker.bidQuantity ?? 0);
+  const askQty = Number(ticker.askQty ?? ticker.askQuantity ?? 0);
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0) return null;
+  const bids = bidQty > 0 ? [[bid, bidQty]] : [[bid, 1]];
+  const asks = askQty > 0 ? [[ask, askQty]] : [[ask, 1]];
+  return { symbol: String(ticker.symbol || "").toUpperCase(), bids, asks };
+}
+
 export async function fetchUsdMKlineCloseAtOpenTime(symbol, interval, openTimeMs, tradingMode) {
   const sym = String(symbol || "").toUpperCase();
   const ot = Number(openTimeMs);

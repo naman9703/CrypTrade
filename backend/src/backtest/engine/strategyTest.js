@@ -17,13 +17,13 @@
  */
 
 import { query } from "../../db/query.js";
-import { readCandles, ensureKlines } from "../data/klineIngest.js";
+import { readCandles, ensureKlines, READ_CANDLES_SLICE_MS } from "../data/klineIngest.js";
 import { readFundingRates } from "../data/fundingIngest.js";
 import { getCoverage } from "../data/dataCoverage.js";
 import { runSimulation } from "./runner.js";
 import { computeAllMetrics, rMultipleStats } from "./metrics.js";
 import { monteCarloBootstrap, purgedWalkForwardSplits, acceptanceGates } from "./validation.js";
-import { portfolioReplay, tradesToREvents } from "./portfolioReplay.js";
+import { portfolioSliceReplay, tradesToTimelineEvents } from "./portfolioReplay.js";
 import { SYNTHETIC_SCENARIOS, REAL_CRASH_WINDOWS } from "./stressScenarios.js";
 import { BACKTEST_ENGINE_VERSION } from "./version.js";
 
@@ -166,15 +166,11 @@ async function materializeCfg(run) {
 
 /** Binance futures launched Sep 2019; nothing exists before this floor. */
 const HISTORY_FLOOR_MS = Date.UTC(2019, 0, 1);
-/** TimescaleDB lock budget: unbounded reads across years of chunks exhaust
- *  max_locks_per_transaction, so full history is read in bounded slices. */
-const HISTORY_SLICE_MS = 180 * 24 * 60 * 60 * 1000;
-
 async function readFullHistory(symbol, tf, market) {
   const out = [];
   const now = Date.now();
-  for (let from = HISTORY_FLOOR_MS; from < now; from += HISTORY_SLICE_MS) {
-    const to = Math.min(now, from + HISTORY_SLICE_MS);
+  for (let from = HISTORY_FLOOR_MS; from < now; from += READ_CANDLES_SLICE_MS) {
+    const to = Math.min(now, from + READ_CANDLES_SLICE_MS);
     const part = await readCandles(symbol, tf, from, to, { market });
     if (part.length) out.push(...part);
   }
@@ -259,8 +255,9 @@ async function simulateVariant(ctx, { cfgPatch = null, costPatch = null, candleT
     return { metrics, trades: sim.trades, equityCurve: sim.equityCurve };
   }
 
-  // Portfolio: per-symbol unit sims → R events → shared-account replay.
-  const UNIT_START = 1000;
+  // Portfolio: equal slice per coin → shared-account dollar replay (live parity).
+  const nCoins = Math.max(1, symbols.length);
+  const perCoinStart = Math.max(1, Number(startingUsdt) || 100) / nCoins;
   const allEvents = [];
   let firstTs = null;
   for (const sym of symbols) {
@@ -269,7 +266,10 @@ async function simulateVariant(ctx, { cfgPatch = null, costPatch = null, candleT
     const candles = candleTransform ? candleTransform(base) : base;
     if (!candles?.length) continue;
     if (firstTs == null) firstTs = candles[0].ts;
-    const runCfg = await prepareEliteSimCfg(cfg, sym, candles, strategyKey);
+    const runCfg = {
+      ...(await prepareEliteSimCfg(cfg, sym, candles, strategyKey)),
+      backtestPositionSizing: "FULL_EQUITY_MARGIN",
+    };
     const adapters = await buildAdapters({
       strategyKey,
       cfg: runCfg,
@@ -285,18 +285,19 @@ async function simulateVariant(ctx, { cfgPatch = null, costPatch = null, candleT
       costModelOverride,
       gateMode: "off",
       fundingRates: ctx.fundingBySym[sym] ?? [],
-      startingUsdt: UNIT_START,
+      startingUsdt: perCoinStart,
       timeframe: tf,
       symbol: sym,
       adapters,
       shouldCancel,
     });
-    allEvents.push(...tradesToREvents(sym, sim.trades, riskPct));
+    allEvents.push(...tradesToTimelineEvents(sym, sim.trades));
   }
-  const replay = portfolioReplay({
+  const replay = portfolioSliceReplay({
     events: allEvents,
     startingUsdt,
-    riskFrac: riskPct / 100,
+    coinCount: nCoins,
+    perCoinUnitStart: perCoinStart,
     startTs: firstTs,
   });
   const metrics = computeAllMetrics({

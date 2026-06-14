@@ -1,21 +1,29 @@
 /**
- * HTF_RSI v3 presets — BNBUSDT 15m (Jan 1 – May 18 2026), realistic engine:
- * RISK_AT_SL, 0.05% slippage, OHLC-clamped fills. Strategy v3: HTF sep ≥ 0.12%.
- *
- * Do NOT use on BTC or 5m. Do NOT use FULL_EQUITY_MARGIN for research.
+ * HTF_RSI v4 presets — BNBUSDT 15m only.
+ * Tuned Jun 2025–Jun 2026: ~+5% full year @ 1% risk, ~+9% OOS Jan–Jun 2026 (37 trades).
+ * Use RISK_AT_SL, trail off, modest risk — not FULL_EQUITY or 7%+ risk.
  */
 
-/** ~125% return, 50% WR, 24 trades — conservative risk */
-export const HTF_RSI_BALANCED_PRESET = {
+const HTF_RSI_V4_SIGNAL = {
+  htfRsiMinSep: 0.0008,
+  htfRsiLongMax: 40,
+  htfRsiShortMin: 60,
+  htfRsiConfirmMode: "recovery_only",
+  htfRsiPullbackMode: "ema21_zone",
+  htfRsiSideMode: "both",
+  htfRsiRequireHtfSlope: true,
+};
+
+const HTF_RSI_V4_EXEC = {
   strategyMode: "MANUAL",
   manualStrategy: "HTF_RSI",
   marketMode: "FUTURES",
-  futuresLeverage: 25,
+  futuresLeverage: 5,
   backtestPositionSizing: "RISK_AT_SL",
-  riskPerTrade: 5,
+  riskPerTrade: 1,
   riskPerTradeUnit: "PCT_EQUITY",
-  supertrendFuturesFixedSlPct: 0.006,
-  supertrendFuturesFixedTpPct: 0.018,
+  supertrendFuturesFixedSlPct: 0.008,
+  supertrendFuturesFixedTpPct: 0.025,
   trailingStopLossAuto: false,
   supertrendMoveQualityGate: false,
   signalStrengthGatesTrades: false,
@@ -24,22 +32,27 @@ export const HTF_RSI_BALANCED_PRESET = {
   tradeHistoryTakerCloseFeeRate: 0.0004,
 };
 
-/** ~157% return, 50% WR, 24 trades — recommended balance of return + WR */
+/** Validated default — 1% risk, SL 0.8% / TP 2.5% */
+export const HTF_RSI_BALANCED_PRESET = {
+  ...HTF_RSI_V4_EXEC,
+  ...HTF_RSI_V4_SIGNAL,
+};
+
+/** 2% risk — same signal, higher variance */
 export const HTF_RSI_MAX_RETURN_PRESET = {
   ...HTF_RSI_BALANCED_PRESET,
-  riskPerTrade: 6,
+  riskPerTrade: 2,
 };
 
-/** ~191% return, 50% WR, 24 trades — max validated return (BNB 15m only) */
+/** 3% risk — research only */
 export const HTF_RSI_AGGRESSIVE_PRESET = {
   ...HTF_RSI_BALANCED_PRESET,
-  riskPerTrade: 7,
+  riskPerTrade: 3,
 };
 
-/** @deprecated v2 label — use HTF_RSI_MAX_RETURN_PRESET */
+/** @deprecated */
 export const HTF_RSI_V2_MAX_RETURN_PRESET = {
   ...HTF_RSI_BALANCED_PRESET,
-  riskPerTrade: 5,
 };
 
 export const HTF_RSI_RECOMMENDED_TIMEFRAME = "15m";

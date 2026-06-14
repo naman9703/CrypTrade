@@ -6,6 +6,7 @@ import { createAiClient } from "../svc/aiClient.js";
 import { createExchange } from "./exchangeFactory.js";
 import { getPaperSystemAccountId } from "../db/services/walletService.js";
 import { getPool } from "../db/pool.js";
+import { sanitizeSignalBrainCfgRaw } from "../lib/strategySignalBrain.js";
 import * as strategyService from "../db/services/strategyService.js";
 import * as instanceService from "../db/services/instanceService.js";
 import { mergeInstanceIntoCfgRaw } from "../lib/strategyInstanceSplit.js";
@@ -139,7 +140,9 @@ export function createAppState({ log }) {
       if (vid) {
         try {
           const ver = await strategyService.getVersion(vid);
-          if (ver?.cfgRaw && typeof ver.cfgRaw === "object") initialPersistedConfig = ver.cfgRaw;
+          if (ver?.cfgRaw && typeof ver.cfgRaw === "object") {
+            initialPersistedConfig = sanitizeSignalBrainCfgRaw(ver.cfgRaw);
+          }
         } catch (e) {
           log?.warn?.("strategy_version_hydrate_failed", { slug, error: String(e?.message || e) });
         }
@@ -437,7 +440,7 @@ export function createAppState({ log }) {
             if (vid) {
               try {
                 const ver = await strategyService.getVersion(vid);
-                persisted = ver?.cfgRaw && typeof ver.cfgRaw === "object" ? ver.cfgRaw : null;
+                persisted = ver?.cfgRaw && typeof ver.cfgRaw === "object" ? sanitizeSignalBrainCfgRaw(ver.cfgRaw) : null;
               } catch {
                 persisted = null;
               }

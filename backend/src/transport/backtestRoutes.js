@@ -30,7 +30,7 @@ import { normalizeTradingMode } from "../state/appState.js";
 import { pickRawIntradayPanelFromBot, materializeIntradayPanelOnCfg } from "../strategy/intradayPanelKeys.js";
 import { fillSmcSoloPresetDefaults, materializeIntradayEngineCfgSync } from "../strategy/presets/srIntradayOptimized.js";
 import { mergeInstanceIntoCfgRaw, ensureBacktestMarketMode, stripInstanceFieldsFromCfgRaw, uiOperationalPatchToInstColumns, applyInstanceOperationalToConfigSnapshot, applyInstanceOperationalToBot, INSTANCE_FIELD_KEYS } from "../lib/strategyInstanceSplit.js";
-import { normalizeEliteStRunCfg } from "../strategy/supertrendElite.js";
+import { sanitizeSignalBrainCfgRaw, sanitizeBacktestConfigSnapshot } from "../lib/strategySignalBrain.js";
 import { resolveSituationRouterCfg } from "../strategy/situationIntraday.js";
 import { resolveCrtTbsCfg } from "../strategy/crtTbsIntraday.js";
 import { resolveTokyoSessionCfg } from "../strategy/tokyoSessionIntraday.js";
@@ -1105,7 +1105,7 @@ async function buildRunConfigSnapshot({
   req,
   appState,
 }) {
-  const base = stripInstanceFieldsFromCfgRaw(cloneStrategyCfgSnapshot(ver?.cfgRaw));
+  const base = sanitizeSignalBrainCfgRaw(cloneStrategyCfgSnapshot(ver?.cfgRaw));
   if (!botInstanceId) {
     let configSnapshot = withBacktestRunOptions(withRequestedMarket(base, symbol, timeframe), {
       positionSizing,
@@ -1119,7 +1119,7 @@ async function buildRunConfigSnapshot({
       });
     }
     return {
-      configSnapshot,
+      configSnapshot: sanitizeBacktestConfigSnapshot(configSnapshot),
       botInstanceId: null,
       instanceOperationalSnapshot: null,
       configSource: useLivePanelOverrides ? "strategy_with_live_panel" : "strategy_only",
@@ -1149,7 +1149,7 @@ async function buildRunConfigSnapshot({
     });
   }
   return {
-    configSnapshot,
+    configSnapshot: sanitizeBacktestConfigSnapshot(configSnapshot),
     botInstanceId: String(botInstanceId),
     instanceOperationalSnapshot: operationalConfig ?? null,
     configSource: useLivePanelOverrides ? "instance_snapshot_with_live_panel" : "instance_snapshot",
@@ -1183,6 +1183,8 @@ function materializeBacktestEngineSnapshot(cfgRaw) {
     engine = { ...resolveCrtTbsCfg(b), ...preserved };
   } else if (strat === "TOKYO_SESSION") {
     engine = { ...resolveTokyoSessionCfg(b), ...preserved };
+  } else if (strat === "SUPERTREND_ELITE" || strat === "UNIFIED_ELITE") {
+    engine = { ...b, ...preserved };
   } else {
     engine = materializeIntradayEngineCfgSync(b, materializeIntradayPanelOnCfg);
     Object.assign(engine, preserved);
@@ -1210,10 +1212,6 @@ function withBacktestRunOptions(cfgRaw, { positionSizing } = {}) {
   const b = pickBotFromConfigSnapshot(root);
   if (positionSizing) b.backtestPositionSizing = positionSizing;
   b._engineVersion = BACKTEST_ENGINE_VERSION;
-  const strat = String(b.manualStrategy ?? "").toUpperCase();
-  if (strat === "SUPERTREND_ELITE" || strat === "UNIFIED_ELITE") {
-    Object.assign(b, normalizeEliteStRunCfg(b));
-  }
   return root;
 }
 
@@ -1482,6 +1480,20 @@ function mapTradeRow(row) {
       if (!sc) return null;
       const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
       const v = obj?.marginUsdt;
+      return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
+    })(),
+    initialSlPrice: (() => {
+      const sc = row.signal_context;
+      if (!sc) return null;
+      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
+      const v = obj?.initialSlPrice;
+      return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
+    })(),
+    initialRiskUsd: (() => {
+      const sc = row.signal_context;
+      if (!sc) return null;
+      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
+      const v = obj?.initialRiskUsd;
       return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
     })(),
     entryQuality: (() => {

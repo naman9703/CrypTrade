@@ -91,6 +91,7 @@ const PERSIST_BOT_KEYS_FOR_STRATEGY_COMPARE: readonly string[] = [
   "surfPulseMlGateEnabled",
   "surfPulseMlThreshold",
   "intelligenceGateEnabled",
+  "intelligenceGateManualStrategies",
   "intelligenceGateStrict",
   "intelligenceGateHighWinRate",
   "supertrendConfirmationGateEnabled",
@@ -265,10 +266,13 @@ const PERSIST_BOT_KEYS_FOR_STRATEGY_COMPARE: readonly string[] = [
   "eliteStAutoMinAdxCeil",
   "eliteStMinAdx",
   "eliteStRequireAdxRising",
+  "eliteStAdxRisingLookback",
   "eliteStMinVolumeVsAvg",
   "eliteStRequireAtrExpansion",
   "eliteStMinAtrExpansion",
+  "eliteStAtrExpansionLookback",
   "eliteStLiqSweepEnabled",
+  "eliteStAutoFullTune",
   "supertrendBigMoveGateEnabled",
   "supertrendBigMoveMinStrength",
   "supertrendBigMoveMinMoveSlRatio",
@@ -359,6 +363,8 @@ const RUNTIME_ONLY_BOT_KEYS = new Set<string>([
   "capitalCycleRealizedPnlUsdt",
   "capitalCycleSymbols",
   "allowedBudgetPnlAnchorMs",
+  /** Learned each bar on the backend — must not flip "Configuration changed". */
+  "smartSignalStrengthThreshold",
   "smartSignalStrengthThresholdMeta",
 ]);
 
@@ -380,9 +386,42 @@ function pickPersistBotShape(flat: Record<string, unknown>): Record<string, unkn
   const out: Record<string, unknown> = {};
   for (const k of PERSIST_BOT_KEYS_FOR_STRATEGY_COMPARE) {
     if (RUNTIME_ONLY_BOT_KEYS.has(k)) continue;
-    out[k] = normalized[k];
+    const v = normalized[k];
+    // Sparse shape — matches DB cfg_raw (JSON omits undefined). Dense objects made
+    // "Configuration changed" stick on after Save when compared to sparse baselines.
+    if (v !== undefined) out[k] = v;
   }
   return out;
+}
+
+function flatSignalBrainBotForCompare(root: Record<string, unknown>): Record<string, unknown> {
+  const stripped = stripInstanceFieldsFromCfgRaw(root);
+  const flat =
+    stripped.bot && typeof stripped.bot === "object" && !Array.isArray(stripped.bot)
+      ? ({ ...(stripped.bot as Record<string, unknown>) } as Record<string, unknown>)
+      : ({ ...stripped } as Record<string, unknown>);
+  delete flat.v;
+  delete flat.tradingFormDefaults;
+  return normalizeIntradayGatesOnBot(flat);
+}
+
+/** True when live UI bot matches saved strategy cfg_raw (signal brain only). */
+export function signalBrainPersistBotsEqual(
+  bot: unknown,
+  cfgRaw: Record<string, unknown> | null | undefined,
+): boolean {
+  const uiFlat = flatSignalBrainBotForCompare(persistLikePayloadFromUiBot(bot));
+  const cfgFlat = flatSignalBrainBotForCompare(
+    cfgRaw && typeof cfgRaw === "object" ? ({ ...cfgRaw } as Record<string, unknown>) : { v: 1, bot: {} },
+  );
+  for (const k of PERSIST_BOT_KEYS_FOR_STRATEGY_COMPARE) {
+    if (RUNTIME_ONLY_BOT_KEYS.has(k)) continue;
+    const a = uiFlat[k];
+    const b = cfgFlat[k];
+    if (a === undefined && b === undefined) continue;
+    if (stableStringify(a) !== stableStringify(b)) return false;
+  }
+  return true;
 }
 
 /** cfg_raw shape aligned with what Save persists (for dirty baseline after Save). */
@@ -390,7 +429,41 @@ export function canonicalCfgRawFromUiBot(bot: unknown): Record<string, unknown> 
   if (!bot || typeof bot !== "object" || Array.isArray(bot)) {
     return stripInstanceFieldsFromCfgRaw({ v: 1, bot: {} });
   }
-  return stripInstanceFieldsFromCfgRaw(persistLikePayloadFromUiBot(bot));
+  return canonicalSignalBrainRecord(persistLikePayloadFromUiBot(bot));
+}
+
+/** Mirror of backend `extractInstanceConfig` — sent with Save so we skip pre-save `/api/bot/config` flush. */
+export function instanceOperationalFromUiBot(bot: unknown): Record<string, unknown> {
+  const payload = persistLikePayloadFromUiBot(bot);
+  const b =
+    payload.bot && typeof payload.bot === "object" && !Array.isArray(payload.bot)
+      ? (payload.bot as Record<string, unknown>)
+      : (payload as Record<string, unknown>);
+  const universe =
+    b.universe && typeof b.universe === "object" && !Array.isArray(b.universe)
+      ? (b.universe as Record<string, unknown>)
+      : {
+          mode: b.universeCoinSelectMode ?? null,
+          pinnedSymbols: b.universePinnedSymbols ?? null,
+          coinBase: b.universeCoinBase ?? null,
+          customSymbols: b.universeCustomSymbols ?? null,
+          autoCoinPick: b.universeAutoCoinPick ?? null,
+        };
+  return {
+    inst_symbol: b.symbol ?? null,
+    inst_timeframe: b.timeframe ?? null,
+    inst_symbol_mode: b.symbolMode ?? null,
+    inst_market_mode: b.marketMode ?? null,
+    inst_universe: universe,
+    inst_risk_per_trade: b.riskPerTrade ?? null,
+    inst_risk_unit: b.riskPerTradeUnit ?? null,
+    inst_max_daily_loss: b.maxDailyLoss ?? null,
+    inst_max_daily_loss_unit: b.maxDailyLossUnit ?? null,
+    inst_capital_mode: b.allowedBudgetInputMode ?? null,
+    inst_capital_usdt: b.allowedBudgetUsdt ?? null,
+    inst_capital_pct: b.allowedBudgetWalletPct ?? null,
+    inst_compound_pnl: b.capitalAllotmentCompoundPnlUi ?? null,
+  };
 }
 
 /** Match `getTradingConfigPersistPayload` / WS bot: nested `bot` or flat legacy. */

@@ -30,6 +30,7 @@ import {
 } from "../../strategy/trendHtfStRegime.js";
 import { fixedBracketSlEnabled, fixedBracketTpEnabled } from "../../strategy/bracketToggles.js";
 import { resolveSizingStopPrice } from "../../strategy/sizingStop.js";
+import { computeEntryQtyDetailed } from "./backtestSizing.js";
 import {
   buildSupertrendConfirmationContext,
   evaluateSupertrendConfirmationGate,
@@ -116,11 +117,11 @@ export function clampBracketFillToBar(exitPrice, bar) {
 /**
  * Position size for the next entry.
  *
- * `RISK_AT_SL` (default): risk `riskPerTrade` % of equity (or fixed USDT) at the stop distance,
- * capped at `equity × leverage` notional on futures.
+ * `RISK_AT_SL` (default): risk `riskPerTrade` % of policy cap at the stop distance,
+ * capped by `allowedBudgetUsdt` allotment and `equity × leverage` (live parity).
  *
- * `FULL_EQUITY_MARGIN`: use all current equity as isolated margin each trade
- * (`qty = equity × leverage / entry` on futures; spot uses full equity notional).
+ * `FULL_EQUITY_MARGIN`: use full per-trade margin cap as isolated margin
+ * (`qty = marginCap × leverage / entry` on futures).
  *
  * @param {object} p
  * @param {number} p.equity
@@ -130,32 +131,22 @@ export function clampBracketFillToBar(exitPrice, bar) {
  * @param {import("./costModel.js").ResolvedCostModel} p.cm
  * @param {boolean} p.isFutures
  * @param {number} [p.sizeMult]
+ * @param {string} [p.symbol]
+ * @param {number} [p.openMarginUsdt]
  * @returns {number}
  */
-export function computeEntryQty({ equity, entryFill, sl, cfg, cm, isFutures, sizeMult = 1 }) {
-  const entry = Number(entryFill);
-  if (!Number.isFinite(entry) || entry <= 0) return 0;
-  const mult = Math.max(0.01, Number(sizeMult) || 1);
-  const sizing = String(cfg?.backtestPositionSizing ?? "RISK_AT_SL").toUpperCase();
-
-  if (sizing === "FULL_EQUITY_MARGIN" || sizing === "FULL_EQUITY") {
-    if (isFutures && cm.leverage > 0) return (equity * cm.leverage * mult) / entry;
-    return (equity * mult) / entry;
-  }
-
-  const riskPctOfEquity = Math.max(0.01, Number(cfg?.riskPerTrade ?? 1)) / 100;
-  const riskUnit = String(cfg?.riskPerTradeUnit ?? "PCT_EQUITY");
-  const dollarRisk =
-    riskUnit === "USDT" ? Math.max(1, Number(cfg?.riskPerTrade ?? 10)) : equity * riskPctOfEquity;
-  const perUnitRisk = Math.abs(entry - Number(sl));
-  let qty = perUnitRisk > 0 ? (dollarRisk * mult) / perUnitRisk : 0;
-  if (!Number.isFinite(qty) || qty <= 0) qty = (mult * equity * 0.01) / entry;
-  if (isFutures && cm.leverage > 0) {
-    const maxNotional = equity * cm.leverage;
-    const notional = Math.abs(qty) * entry;
-    if (notional > maxNotional && maxNotional > 0) qty = maxNotional / entry;
-  }
-  return qty;
+export function computeEntryQty({ equity, entryFill, sl, cfg, cm, isFutures, sizeMult = 1, symbol = "", openMarginUsdt = 0 }) {
+  return computeEntryQtyDetailed({
+    equity,
+    entryFill,
+    sl,
+    cfg,
+    cm,
+    isFutures,
+    sizeMult,
+    symbol,
+    openMarginUsdt,
+  }).qty;
 }
 
 /**
@@ -454,6 +445,11 @@ export async function runSimulation(args) {
         (pos.partialTaken || !pos.partialTp) &&
         (isLong ? bar.high >= pos.tp : bar.low <= pos.tp);
       const hitLiq = isFutures && (isLong ? bar.low <= pos.liqPx : bar.high >= pos.liqPx);
+      /** Protective SL sits between entry and liquidation — must win when both are touched. */
+      const protectiveSlBeforeLiq =
+        pos.sl > 0 && (isLong ? pos.sl > pos.liqPx : pos.sl < pos.liqPx);
+      const hitProtectiveSl =
+        protectiveSlBeforeLiq && (isLong ? bar.low <= pos.sl : bar.high >= pos.sl);
       pos.mae = Math.min(pos.mae, computePctMove(pos.entryFill, adv, isLong));
       pos.mfe = Math.max(pos.mfe, computePctMove(pos.entryFill, fav, isLong));
 
@@ -515,14 +511,15 @@ export async function runSimulation(args) {
 
       /**
        * Intra-bar exit priority (no tick data):
-       *   1. Liq — gap through liquidation without a closer stop.
+       *   1. Liq — only when liquidation is touched and no closer protective SL
+       *      also triggered (long: SL above liq; short: SL below liq).
        *   2. TP — fixed take-profit on favorable touch.
        *   3. Trail — advance SL from the favorable extreme first, then test the
        *      adverse extreme vs the tightened stop (live updates trail on mark
        *      before the stop order is evaluated).
        *   4. SL — initial / BE bracket if trail did not exit on this bar.
        */
-      if (!exitReason && hitLiq) {
+      if (!exitReason && hitLiq && !hitProtectiveSl) {
         exitReason = "liq";
         exitPrice = pos.liqPx;
       } else if (!exitReason && hitTp1) {
@@ -545,7 +542,11 @@ export async function runSimulation(args) {
         equity += netPnlP;
         const entryNotionalP = closeQty * pos.entryFill;
         const marginP =
-          isFutures && cm.leverage > 0 ? entryNotionalP / cm.leverage : entryNotionalP;
+          pos.marginUsdt != null && Number.isFinite(Number(pos.marginUsdt))
+            ? Number(pos.marginUsdt) * frac
+            : isFutures && cm.leverage > 0
+              ? entryNotionalP / cm.leverage
+              : entryNotionalP;
         trades.push(
           finalizeTradeRecord(pos, {
             tradeNumber: trades.length + 1,
@@ -574,6 +575,10 @@ export async function runSimulation(args) {
             gateAction: pos.gateAction,
             equityAtEntry: pos.entryEquity ?? equity - netPnlP,
             marginUsdt: marginP,
+            leverageCapped: pos.leverageCapped === true,
+            allotmentCapped: pos.allotmentCapped === true,
+            marginCapUsdt: pos.marginCapUsdt,
+            allowedPoolUsdt: pos.allowedPoolUsdt,
           }),
         );
         pos.qty -= closeQty;
@@ -704,7 +709,11 @@ export async function runSimulation(args) {
         equity += netPnl;
         const entryNotional = Math.abs(pos.qty) * pos.entryFill;
         const marginUsdt =
-          isFutures && cm.leverage > 0 ? entryNotional / cm.leverage : entryNotional;
+          pos.marginUsdt != null && Number.isFinite(Number(pos.marginUsdt))
+            ? Number(pos.marginUsdt)
+            : isFutures && cm.leverage > 0
+              ? entryNotional / cm.leverage
+              : entryNotional;
         trades.push(
           finalizeTradeRecord(pos, {
             tradeNumber: trades.length + 1,
@@ -731,6 +740,10 @@ export async function runSimulation(args) {
             gateAction: pos.gateAction,
             equityAtEntry: pos.entryEquity ?? equity - netPnl,
             marginUsdt,
+            leverageCapped: pos.leverageCapped === true,
+            allotmentCapped: pos.allotmentCapped === true,
+            marginCapUsdt: pos.marginCapUsdt,
+            allowedPoolUsdt: pos.allowedPoolUsdt,
           }),
         );
         pos = null;
@@ -1158,7 +1171,11 @@ export async function runSimulation(args) {
         riskMult *= Math.max(volTargetMinMult, Math.min(volTargetMaxMult, vtm));
       }
       const sizeMultFinal = sizeMult * riskMult;
-      const qty = computeEntryQty({
+      const openMarginUsdt =
+        pos && String(pos.symbol || symbol).toUpperCase() === String(symbol || cfg?.symbol || "").toUpperCase()
+          ? (Math.abs(pos.qty) * pos.entryFill) / Math.max(1, cm.leverage)
+          : 0;
+      const sizing = computeEntryQtyDetailed({
         equity,
         entryFill,
         sl: sizingSl,
@@ -1166,7 +1183,10 @@ export async function runSimulation(args) {
         cm,
         isFutures,
         sizeMult: sizeMultFinal,
+        symbol: String(symbol || cfg?.symbol || ""),
+        openMarginUsdt,
       });
+      const qty = sizing.qty;
       const liqPx = isFutures
         ? liquidationPrice({ side: barSignal.action, entryFill, leverage: cm.leverage })
         : barSignal.action === "BUY"
@@ -1181,6 +1201,7 @@ export async function runSimulation(args) {
         fibSameBarEntry || liqSameBarEntry || ofSameBarEntry || eliteSameBarEntry;
       pos = {
         side: barSignal.action,
+        symbol: String(symbol || cfg?.symbol || ""),
         entryFill,
         entryTs: fillBar.ts,
         entryIdx: sameBarEntry ? i : i + 1,
@@ -1192,6 +1213,11 @@ export async function runSimulation(args) {
         trailTierLabel: null,
         trailOpts: trailEnabled ? resolveTrailingOpts(cfg, cm, atrPctEntry) : null,
         entryEquity: equity,
+        marginUsdt: sizing.marginUsdt,
+        leverageCapped: sizing.leverageCapped,
+        allotmentCapped: sizing.allotmentCapped,
+        marginCapUsdt: sizing.marginCapUsdt,
+        allowedPoolUsdt: sizing.allowedPoolUsdt,
         intelAtEntry,
         gateAction,
         sizeMult: sizeMultFinal,
@@ -1265,7 +1291,11 @@ export async function runSimulation(args) {
     equity += netPnl;
     const entryNotionalEnd = Math.abs(pos.qty) * pos.entryFill;
     const marginUsdtEnd =
-      cm.isFutures && cm.leverage > 0 ? entryNotionalEnd / cm.leverage : entryNotionalEnd;
+      pos.marginUsdt != null && Number.isFinite(Number(pos.marginUsdt))
+        ? Number(pos.marginUsdt)
+        : cm.isFutures && cm.leverage > 0
+          ? entryNotionalEnd / cm.leverage
+          : entryNotionalEnd;
     trades.push(
       finalizeTradeRecord(pos, {
         tradeNumber: trades.length + 1,
@@ -1292,6 +1322,10 @@ export async function runSimulation(args) {
         gateAction: pos.gateAction,
         equityAtEntry: pos.entryEquity ?? equity - netPnl,
         marginUsdt: marginUsdtEnd,
+        leverageCapped: pos.leverageCapped === true,
+        allotmentCapped: pos.allotmentCapped === true,
+        marginCapUsdt: pos.marginCapUsdt,
+        allowedPoolUsdt: pos.allowedPoolUsdt,
       }),
     );
     equityCurve.push({ ts: last.ts, equity, drawdownPct: drawdownAt(equityCurve, equity) });

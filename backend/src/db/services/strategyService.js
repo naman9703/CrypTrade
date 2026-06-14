@@ -4,6 +4,7 @@ import {
   stripInstanceFieldsFromCfgRaw,
   pickBotSubtree,
 } from "../../lib/strategyInstanceSplit.js";
+import { sanitizeSignalBrainCfgRaw } from "../../lib/strategySignalBrain.js";
 
 /**
  * Map persisted trading config (`{ v, bot, tradingFormDefaults }` or legacy flat bot) into cfg_* columns.
@@ -255,7 +256,7 @@ export async function updateStrategyMeta(strategyId, patch) {
 export async function createVersion(strategyId, userId, configRaw, label = null, promotedFrom = null) {
   const cols = extractCfgColumns(configRaw);
   const blocks = buildSignalBrainBlocks(configRaw);
-  const cleanRaw = stripInstanceFieldsFromCfgRaw(
+  const cleanRaw = sanitizeSignalBrainCfgRaw(
     configRaw && typeof configRaw === "object" ? configRaw : {},
   );
   const r = await query(
@@ -369,7 +370,7 @@ export async function updateVersion(versionId, userId, configRaw, label = undefi
 
   const cols = extractCfgColumns(configRaw);
   const blocks = buildSignalBrainBlocks(configRaw);
-  const cleanRaw = stripInstanceFieldsFromCfgRaw(
+  const cleanRaw = sanitizeSignalBrainCfgRaw(
     configRaw && typeof configRaw === "object" ? configRaw : {},
   );
 
