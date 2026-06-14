@@ -8,6 +8,7 @@ import {
 } from "../intelligence/index.js";
 import { tradeCloseFeeUsdtFromNotional, tradeCloseFeeRate } from "../lib/tradeCloseFee.js";
 import { maxBarsForHistory } from "../lib/chartWindow.js";
+import { chartSnapshotNeedsRestRepair } from "../lib/chartSnapshotRepair.js";
 import { computeIndicators } from "../strategy/indicators.js";
 import { computeDecisionSnapshot } from "../strategy/decisionEngine.js";
 import { detectRegime } from "../strategy/regime.js";
@@ -8080,31 +8081,37 @@ export function createBot({
     return age > tfMs * 2 + 15_000;
   }
 
-  /** Same shape as `getChartSnapshot`, but fetches Binance REST klines when the in-memory tail is stale. */
+  /** Same shape as `getChartSnapshot`, but fetches Binance REST klines when the in-memory tail is stale or too thin. */
   async function getChartSnapshotOrRestRepair(opts = {}) {
     const focusU =
       state.uiChartFocusSymbol != null && String(state.uiChartFocusSymbol).trim()
         ? String(state.uiChartFocusSymbol).trim().toUpperCase()
         : "";
     const primaryU = String(state.symbol || "").toUpperCase();
+    const stPeriod = Number(state.supertrendPeriod ?? 10);
+    const needsRepair = (candles) =>
+      chartSnapshotNeedsRestRepair(candles, {
+        supertrendPeriod: stPeriod,
+        tailStale: feedChartTailLooksStale(candles),
+      });
     if (focusU && focusU !== primaryU) {
       const snapF = getChartSnapshotFromFeedSymbol(focusU, opts);
-      if (snapF?.candles?.length && !feedChartTailLooksStale(snapF.candles)) return snapF;
-      log.warn("chart_snapshot_feed_tail_stale_using_rest", {
+      if (snapF?.candles?.length && !needsRepair(snapF.candles)) return snapF;
+      log.warn("chart_snapshot_feed_repair_using_rest", {
         symbol: focusU,
         timeframe: state.timeframe,
-        lastTs: snapF?.candles?.length ? snapF.candles[snapF.candles.length - 1]?.ts : null,
+        barCount: snapF?.candles?.length ?? 0,
         uiChartFocus: true,
       });
       const repairedF = await getChartSnapshotForSymbol(focusU, { ...opts, forceRest: true });
       return repairedF?.candles?.length ? repairedF : snapF || getChartSnapshot(opts);
     }
     const snap = getChartSnapshot(opts);
-    if (!feedChartTailLooksStale(snap?.candles)) return snap;
-    log.warn("chart_snapshot_feed_tail_stale_using_rest", {
+    if (!needsRepair(snap?.candles)) return snap;
+    log.warn("chart_snapshot_feed_repair_using_rest", {
       symbol: state.symbol,
       timeframe: state.timeframe,
-      lastTs: snap?.candles?.length ? snap.candles[snap.candles.length - 1]?.ts : null,
+      barCount: snap?.candles?.length ?? 0,
     });
     const repaired = await getChartSnapshotForSymbol(String(state.symbol || ""), { ...opts, forceRest: true });
     return repaired?.candles?.length ? repaired : snap;

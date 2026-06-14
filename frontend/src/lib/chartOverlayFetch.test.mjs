@@ -7,6 +7,7 @@ import {
   fetchChartOverlayDeduped,
   resetChartOverlayFetchCacheForTests,
   shouldSkipRestCandleReconcile,
+  restCandleResponseExpandsStore,
 } from "./chartOverlayFetch.ts";
 
 test("chartOverlaySpanReady requires at least two bars and positive span", () => {
@@ -55,4 +56,9 @@ test("shouldSkipRestCandleReconcile never skips initial hydrate or thin WS buffe
     shouldSkipRestCandleReconcile({ preserveView: true, storeBarCount: 120, ...tail }),
     true,
   );
+});
+
+test("restCandleResponseExpandsStore detects REST history backfill", () => {
+  assert.equal(restCandleResponseExpandsStore(1, 96), true);
+  assert.equal(restCandleResponseExpandsStore(120, 121), false);
 });

@@ -46,6 +46,7 @@ import {
   EMPTY_OVERLAY,
   fetchChartOverlayDeduped,
   shouldSkipRestCandleReconcile,
+  restCandleResponseExpandsStore,
   type ChartOverlayData,
 } from "../lib/chartOverlayFetch";
 import { useThemeStore } from "../themeStore";
@@ -3249,7 +3250,9 @@ export function ChartPanel() {
       chartOhlcAppliedRef.current = null;
       chartOhlcAppliedSymRef.current = null;
     }
-    const cc0 = r.candles.slice(-CHART_CANDLE_MAX);
+    const cc0Raw = r.candles.slice(-CHART_CANDLE_MAX);
+    const parsedPrimary = parseCandlesFromMarketApi(r, symCanon);
+    const cc0 = (parsedPrimary.length ? parsedPrimary : cc0Raw).slice(-CHART_CANDLE_MAX);
     const last = cc0[cc0.length - 1];
     const viewSym = normalizeSym(symCanon);
     const storeMarketSym = normalizeSym(live.market?.symbol ?? "");
@@ -3268,7 +3271,8 @@ export function ChartPanel() {
         storeMatchesView,
         storeLastTs,
         restLastTs,
-      })
+      }) &&
+      !restCandleResponseExpandsStore(live.candles.length, cc0.length)
     ) {
       if (isAlt) {
         const parsedAlt = parseCandlesFromMarketApi(r, symCanon);

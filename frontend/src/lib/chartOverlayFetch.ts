@@ -108,3 +108,8 @@ export function shouldSkipRestCandleReconcile(opts: {
   if (!Number.isFinite(opts.storeLastTs) || !Number.isFinite(opts.restLastTs)) return false;
   return opts.restLastTs <= opts.storeLastTs;
 }
+
+/** REST payload materially longer than WS buffer — always merge (live load with fresh 1-bar tail). */
+export function restCandleResponseExpandsStore(storeBarCount: number, restBarCount: number): boolean {
+  return restBarCount >= Math.max(MIN_STORE_BARS_FOR_REST_TAIL_SKIP, storeBarCount + 5);
+}
