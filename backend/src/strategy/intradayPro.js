@@ -11,7 +11,12 @@ import { rankSmcCandidate } from "./smcCandidateRank.js";
 import { dayStore } from "./adapterPersisted.js";
 import { ema, rsi as computeRsi, atr as computeAtr, adx as computeAdx } from "./indicators.js";
 import { computeAdaptiveIntradayParams } from "./adaptiveIntraday.js";
-import { buildVolumeProfile, scoreVolumeProfile, volumeProfileBias } from "./techniques/volumeProfile.js";
+import {
+  buildVolumeProfile,
+  isPriceNearVpStructure,
+  scoreVolumeProfile,
+  volumeProfileBias,
+} from "./techniques/volumeProfile.js";
 import {
   swingHighLow,
   fibLevels,
@@ -26,6 +31,7 @@ import {
   listSessionLiquiditySetups,
   rejectionWickRatio,
   sweepReclaim,
+  liqReclaimHoldBars,
 } from "./techniques/liquidity.js";
 import {
   evaluateTrendContinuationSetup,
@@ -34,6 +40,10 @@ import {
   isBreakdownDay,
   isBreakoutDay,
 } from "./techniques/liquidityTrendContinuation.js";
+import {
+  ensureLiqRegimeSeries,
+  passesLiqMarketActivation,
+} from "./techniques/liq/marketState.js";
 import { buildIntradayEntryContext } from "./intradayEntryContext.js";
 import { applyIntradayVetoes } from "./intradayLearnedRules.js";
 import { fillLiqSoloPresetDefaults, fillSmcSoloPresetDefaults, materializeIntradayEngineCfgSync } from "./presets/srIntradayOptimized.js";
@@ -544,7 +554,15 @@ export function evaluateIntradayBar(candles, idx, opts = {}, pre = null) {
   let vpScore = { score: 0, blocked: false, setup: null, brackets: null, penalty: 0 };
   if (gates.vp) {
     const vpLookback = Number(opts.vpLookbackBars ?? 192);
-    const vp = buildVolumeProfile(candles, i, { lookback: vpLookback, bins: opts.vpBins ?? 50 });
+    const vp = buildVolumeProfile(candles, i, {
+      mode: opts.vpProfileMode ?? "composite_utc",
+      lookback: vpLookback,
+      bins: opts.vpBins ?? 50,
+      valueAreaPct: opts.vpValueAreaPct,
+      distribute: opts.vpVolumeDistribute ?? "close_weighted",
+      includePriorSession: opts.vpIncludePriorSession !== false,
+      vpCompositeDays: opts.vpCompositeDays ?? 5,
+    });
     vpScore = scoreVolumeProfile(candles, i, side, vp, opts);
     if (vpScore.blocked) return null;
 
@@ -691,6 +709,12 @@ function setupBracketsPayload(sig) {
     levelType: nested.levelType ?? sig.levelType,
     reclaimIdx: nested.reclaimIdx ?? sig.reclaimIdx ?? sig.sweepReclaimIdx,
     liqQuality: nested.liqQuality ?? sig.liqQuality ?? 0,
+    weightedQuality: nested.weightedQuality ?? sig.weightedQuality ?? nested.liqQuality ?? sig.liqQuality ?? 0,
+    entryContextScore: nested.entryContextScore ?? sig.entryContextScore ?? null,
+    entryContextBreakdown: nested.entryContextBreakdown ?? sig.entryContextBreakdown ?? null,
+    liqFeatures: nested.liqFeatures ?? sig.liqFeatures ?? null,
+    levelImportance: nested.levelImportance ?? sig.levelImportance ?? null,
+    levelSource: nested.levelSource ?? sig.levelSource ?? null,
   };
 }
 
@@ -713,8 +737,17 @@ function liqBracketsFromSetup(liqSig) {
     partialTp: s.partialTp !== false,
     tp2Enabled: s.tp2Enabled !== false,
     partialFrac: s.partialFrac ?? 0.5,
+    tp2PartialFrac: s.tp2PartialFrac ?? 0,
+    tp1Rr: s.tp1Rr ?? 1,
+    tp2Rr: s.tp2Rr ?? 0,
     liqQuality: s.liqQuality ?? 0,
+    weightedQuality: s.weightedQuality ?? s.liqQuality ?? 0,
     reclaimIdx: s.reclaimIdx,
+    entryContextScore: s.entryContextScore ?? null,
+    entryContextBreakdown: s.entryContextBreakdown ?? null,
+    liqFeatures: s.liqFeatures ?? null,
+    levelImportance: s.levelImportance ?? null,
+    levelSource: s.levelSource ?? null,
   };
 }
 
@@ -815,18 +848,45 @@ export function selectIntradayPicks(candles, opts = {}) {
     const liqMinScore = Number(o.intradayLiqMinScore ?? o.intradaySoloGateMinScore ?? 5);
     const liqSweep = o.sweepPct ?? pre.adaptive.sweepPct;
     const liqOpts = { ...o, sweepPct: liqSweep, _liqPre: pre };
+    const regimeSeries = ensureLiqRegimeSeries(candles, liqOpts);
+    liqOpts._regimeSeries = regimeSeries;
+    const vpProximityMax = Number(o.intradayLiqVpProximityMaxPct ?? 0);
+    const vpProximityCache = vpProximityMax > 0 ? new Map() : null;
+    const vpBuildOpts =
+      vpProximityMax > 0
+        ? {
+            mode: o.vpProfileMode ?? "rolling",
+            lookback: Number(o.vpLookbackBars ?? 384),
+            bins: Number(o.vpBins ?? 50),
+            valueAreaPct: o.vpValueAreaPct,
+            distribute: o.vpVolumeDistribute ?? "close_weighted",
+            includePriorSession: o.vpIncludePriorSession !== false,
+            vpCompositeDays: o.vpCompositeDays ?? 5,
+          }
+        : null;
     const instMode = isInstitutionalSrMode(o);
     pool = [];
     for (let i = WARMUP; i < candles.length; i++) {
+      if (!passesLiqMarketActivation(candles, i, pre, liqOpts)) continue;
       for (const side of ["BUY", "SELL"]) {
         const setups = instMode
           ? [evaluateInstitutionalSrSetup(candles, i, side, pre, liqOpts)].filter(Boolean)
           : listSessionLiquiditySetups(candles, i, side, pre, liqOpts);
         for (const setup of setups) {
-          if (setup.reclaimIdx !== i || setup.score < liqMinScore) continue;
+          const holdBars = liqReclaimHoldBars(liqOpts);
+          if (setup.reclaimIdx !== i - holdBars || setup.score < liqMinScore) continue;
           if (liqOpts.intradayLiqClassicEnabled === false) continue;
           if (vetoCounterTrendLiqSetup(setup, candles, i, pre, liqOpts)) continue;
           if (vetoClassicalLiqOnTrendDay(setup, candles, i, pre, liqOpts)) continue;
+          if (vpProximityMax > 0 && vpBuildOpts) {
+            let vp = vpProximityCache.get(i);
+            if (vp === undefined) {
+              vp = buildVolumeProfile(candles, i, vpBuildOpts);
+              vpProximityCache.set(i, vp);
+            }
+            const sweepPrice = Number(setup.level ?? setup.entry ?? candles[i]?.close ?? 0);
+            if (!isPriceNearVpStructure(sweepPrice, vp, vpProximityMax, liqOpts)) continue;
+          }
           pool.push({
             idx: i,
             day: utcDayId(candles[i].ts),
@@ -920,8 +980,8 @@ export function selectIntradayPicks(candles, opts = {}) {
           .filter((c) => c.sig?.action === side)
           .sort(
             (a, b) =>
-              Number(b.sig?.liqBrackets?.liqQuality ?? b.score ?? 0) -
-              Number(a.sig?.liqBrackets?.liqQuality ?? a.score ?? 0),
+              Number(b.sig?.liqBrackets?.weightedQuality ?? b.sig?.liqBrackets?.liqQuality ?? b.score ?? 0) -
+              Number(a.sig?.liqBrackets?.weightedQuality ?? a.sig?.liqBrackets?.liqQuality ?? a.score ?? 0),
           );
         if (!sidePool.length) continue;
         const sideCap =
@@ -992,6 +1052,11 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradayLvnSizeMult: cfg.intradayLvnSizeMult,
     vpLookbackBars: cfg.vpLookbackBars,
     vpBins: cfg.vpBins,
+    vpProfileMode: cfg.vpProfileMode,
+    vpValueAreaPct: cfg.vpValueAreaPct,
+    vpVolumeDistribute: cfg.vpVolumeDistribute,
+    vpIncludePriorSession: cfg.vpIncludePriorSession,
+    vpEnableNakedPoc: cfg.vpEnableNakedPoc,
     vpMinRR: cfg.vpMinRR,
     vpMinRunPct: cfg.vpMinRunPct,
     vpSoftBlockPenalty: cfg.vpSoftBlockPenalty,
@@ -1064,6 +1129,9 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradayLiqTp1Enabled: cfg.intradayLiqTp1Enabled,
     intradayLiqTp2Enabled: cfg.intradayLiqTp2Enabled,
     intradayLiqPartialFrac: cfg.intradayLiqPartialFrac,
+    intradayLiqTp1Rr: cfg.intradayLiqTp1Rr,
+    intradayLiqTp2Rr: cfg.intradayLiqTp2Rr,
+    intradayLiqTp2PartialFrac: cfg.intradayLiqTp2PartialFrac,
     intradayLiqMaxTradesPerSidePerDay: cfg.intradayLiqMaxTradesPerSidePerDay,
     intradayLiqOnePickPerDay: cfg.intradayLiqOnePickPerDay,
     intradayLiqEntryAtSignalClose: cfg.intradayLiqEntryAtSignalClose,
@@ -1073,6 +1141,32 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradayLiqFirstCycleOnly: cfg.intradayLiqFirstCycleOnly,
     intradayLiqMinReclaimClosePct: cfg.intradayLiqMinReclaimClosePct,
     intradayLiqMinReclaimBodyRatio: cfg.intradayLiqMinReclaimBodyRatio,
+    intradayLiqReclaimHoldBars: cfg.intradayLiqReclaimHoldBars,
+    intradayLiqRequireSweepDisplacement: cfg.intradayLiqRequireSweepDisplacement,
+    intradayLiqSweepDisplacementMinAtrMult: cfg.intradayLiqSweepDisplacementMinAtrMult,
+    intradayLiqTrailUseContextScore: cfg.intradayLiqTrailUseContextScore,
+    intradayLiqUseEntryScore: cfg.intradayLiqUseEntryScore,
+    intradayLiqUseEntryScoreV2: cfg.intradayLiqUseEntryScoreV2,
+    intradayLiqMinEntryScore: cfg.intradayLiqMinEntryScore,
+    intradayLiqMarketStateGate: cfg.intradayLiqMarketStateGate,
+    intradayLiqDaySituationBias: cfg.intradayLiqDaySituationBias,
+    intradayLiqContinuationGate: cfg.intradayLiqContinuationGate,
+    intradayLiqMinContinuationR: cfg.intradayLiqMinContinuationR,
+    intradayLiqMaxDailyRangeUsedPct: cfg.intradayLiqMaxDailyRangeUsedPct,
+    intradayLiqSweepQualityGate: cfg.intradayLiqSweepQualityGate,
+    intradayLiqMaxSweepVelocityAtr: cfg.intradayLiqMaxSweepVelocityAtr,
+    intradayLiqMinSweepVelocityAtr: cfg.intradayLiqMinSweepVelocityAtr,
+    intradayLiqMaxSweepAttempts: cfg.intradayLiqMaxSweepAttempts,
+    intradayLiqMaxAbsorptionProxy: cfg.intradayLiqMaxAbsorptionProxy,
+    intradayLiqRequireDisplacementV2: cfg.intradayLiqRequireDisplacementV2,
+    intradayLiqLevels: cfg.intradayLiqLevels,
+    intradayLiqUseHtfPools: cfg.intradayLiqUseHtfPools,
+    intradayLiqHtfPoolTfs: cfg.intradayLiqHtfPoolTfs,
+    intradayLiqAtrPctileLookback: cfg.intradayLiqAtrPctileLookback,
+    intradayLiqSessionMinEntryScoreBump: cfg.intradayLiqSessionMinEntryScoreBump,
+    intradayLiqMaxFadeDayRangePct: cfg.intradayLiqMaxFadeDayRangePct,
+    intradayLiqPostDisplacementCooldownBars: cfg.intradayLiqPostDisplacementCooldownBars,
+    intradayLiqDisplacementBarAtrMult: cfg.intradayLiqDisplacementBarAtrMult,
     intradayLiqSessionExtremeMinExtensionPct: cfg.intradayLiqSessionExtremeMinExtensionPct,
     intradayLiqSessionExtremeSweepPct: cfg.intradayLiqSessionExtremeSweepPct,
     intradayLiqSweepMinVolRatio: cfg.intradayLiqSweepMinVolRatio,
@@ -1149,7 +1243,15 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradayLiqMaxHoldBars: cfg.intradayLiqMaxHoldBars,
     intradayLiqTrendContinuation: cfg.intradayLiqTrendContinuation,
     intradayLiqVetoCounterTrend: cfg.intradayLiqVetoCounterTrend,
+    intradayLiqEntryMode: cfg.intradayLiqEntryMode,
+    intradayLiqPdhPdlOnly: cfg.intradayLiqPdhPdlOnly,
+    intradayLiqMinAdx: cfg.intradayLiqMinAdx,
+    intradayLiqMaxAdx: cfg.intradayLiqMaxAdx,
     intradayLiqBreakdownDayBias: cfg.intradayLiqBreakdownDayBias,
+    intradayLiqRequireChoch: cfg.intradayLiqRequireChoch,
+    intradayLiqChochMaxBars: cfg.intradayLiqChochMaxBars,
+    intradayLiqChochRequireTrend: cfg.intradayLiqChochRequireTrend,
+    intradayLiqRequireKillzone: cfg.intradayLiqRequireKillzone,
     intradayLiqClassicOnTrendDays: cfg.intradayLiqClassicOnTrendDays,
     intradayLiqTrendOnlyBreakdownDays: cfg.intradayLiqTrendOnlyBreakdownDays,
     intradayLiqTrendFadeEma: cfg.intradayLiqTrendFadeEma,
@@ -1202,7 +1304,7 @@ function minutesPerBar(tf) {
   return { "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30, "1h": 60 }[String(tf || "5m").toLowerCase()] ?? 5;
 }
 
-export function buildIntradayBacktestAdapter(candles, opts = {}, tf = "5m") {
+export function buildIntradayBacktestAdapter(candles, opts = {}, tf = "5m", hooks = {}) {
   const cfg = materializeIntradayEngineCfgSync(opts, materializeIntradayPanelOnCfg);
   const o = { ...cfg, ...buildIntradayOptsFromCfg({ ...cfg, timeframe: tf }), timeframe: tf };
   const cacheKey = intradayAdapterCacheKey(candles, o, tf);
@@ -1239,6 +1341,12 @@ export function buildIntradayBacktestAdapter(candles, opts = {}, tf = "5m") {
     if (!sig) return null;
     const lastIdx = ctx?.persisted ? dDay.lastSignalIdx : lastSignalIdx;
     if (lastIdx >= 0 && idx - lastIdx < cooldownBars) return null;
+
+    if (typeof hooks.entryFilter === "function") {
+      const ts = Number(bar?.ts ?? candles[idx]?.ts);
+      const isLong = sig.action === "BUY";
+      if (!hooks.entryFilter(isLong, ts, sig, idx)) return null;
+    }
 
     if (ctx?.persisted) {
       dDay.lastSignalIdx = idx;

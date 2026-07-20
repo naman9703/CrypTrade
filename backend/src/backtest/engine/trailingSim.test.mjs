@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveTrailingOpts, advanceTrailForBar } from "./trailingSim.js";
+import { resolveTrailingOpts, advanceTrailForBar, classifyStopExitReason } from "./trailingSim.js";
 import { resolveCostModel } from "./costModel.js";
 
 const FUTURES_CFG = {
@@ -186,6 +186,42 @@ test("advanced-only trail does not use tiered T01/T02 locks", () => {
   }
 });
 
+test("advanced-only dynamic trail requires ATR-spaced stop improvement", () => {
+  const cfg = {
+    ...FUTURES_CFG,
+    futuresTrailingStFeeBreakeven: false,
+    futuresTrailingStAdvanced: true,
+    trailSizingMode: "DYNAMIC",
+    trailDynamicAdvAtrHwmMult: 3,
+    trailDynamicAdvMfeGivebackFrac: 0.5,
+    trailDynamicAdvMfeMinR: 10,
+    trailDynamicAdvMergeSupertrend: false,
+    trailDynamicAdvPostT02StepAtrMult: 0.6,
+  };
+  const cm = resolveCostModel(cfg);
+  const opts = resolveTrailingOpts(cfg, cm, 0.01);
+  const pos = {
+    side: "BUY",
+    entryFill: 100,
+    initialSl: 98,
+    sl: 100,
+    tp: 0,
+    trailStep: 18,
+    extremePx: 103,
+    trailTierLabel: "T18",
+  };
+  const r = advanceTrailForBar({
+    pos,
+    bar: bar(102.5, 103.2, 102.1, 103),
+    stBar: null,
+    opts,
+    mode: "SUPERTREND",
+    leverage: cm.leverage,
+  });
+  assert.equal(r.advanced, false, "sub-ATR trail bump should not create T19");
+  assert.equal(r.trailStep, 18);
+});
+
 test("FEE_LADDER mode advances using extra scalping pcts", () => {
   const cfg = { ...FUTURES_CFG, futuresTrailingStopMode: "FEE_LADDER", extraScalpingPcts: [0.5] };
   const cm = resolveCostModel(cfg);
@@ -209,4 +245,123 @@ test("FEE_LADDER mode advances using extra scalping pcts", () => {
   });
   assert.equal(r.advanced, true);
   assert.ok(r.trailStep >= 1, "fee-BE lock advances");
+});
+
+test("DYNAMIC post-T02 hybrid SL differs from FIXED_PCT equidistant ladder at step 3+", () => {
+  const atrPct = 0.02;
+  const fixedCfg = { ...FUTURES_CFG, trailSizingMode: "FIXED_PCT" };
+  const dynamicCfg = {
+    ...FUTURES_CFG,
+    trailSizingMode: "DYNAMIC",
+    trailDynamicBeAtrMult: 0.5,
+    trailDynamicAdvAtrHwmMult: 1.0,
+    trailDynamicAdvPostT02StepAtrMult: 0.5,
+    trailPostT02ActivationBufferRate: 0,
+  };
+  const cm = resolveCostModel(fixedCfg);
+  const fixedOpts = resolveTrailingOpts(fixedCfg, cm, atrPct);
+  const dynamicOpts = resolveTrailingOpts(dynamicCfg, cm, atrPct);
+  const entry = 100;
+  const initialSl = entry * (1 - 0.003);
+  const stBar = { line: 100.25, trend: 1, ready: true };
+
+  function runToStep3(opts, bars) {
+    const pos = {
+      side: "BUY",
+      entryFill: entry,
+      sl: initialSl,
+      tp: 0,
+      trailStep: 0,
+      extremePx: entry,
+      trailTierLabel: null,
+      initialSl,
+    };
+    advanceTrailForBar({
+      pos,
+      bar: bars[0],
+      stBar: null,
+      opts,
+      mode: "SUPERTREND",
+      leverage: cm.leverage,
+    });
+    advanceTrailForBar({
+      pos,
+      bar: bars[1],
+      stBar: null,
+      opts,
+      mode: "SUPERTREND",
+      leverage: cm.leverage,
+    });
+    const r3 = advanceTrailForBar({
+      pos,
+      bar: bars[2],
+      stBar,
+      opts,
+      mode: "SUPERTREND",
+      leverage: cm.leverage,
+    });
+    return { pos, r3 };
+  }
+
+  const fixedBars = [
+    bar(100, 100.2, 99.95, 100.15),
+    bar(100.15, 100.3, 100.1, 100.27),
+    bar(100.27, 100.4, 100.2, 100.35),
+  ];
+  const dynamicBars = [
+    bar(100, 102.2, 99.95, 102.0),
+    bar(102, 103.0, 101.5, 102.7),
+    bar(102.7, 104.0, 102.2, 103.8),
+  ];
+
+  const fixed = runToStep3(fixedOpts, fixedBars);
+  const dynamic = runToStep3(dynamicOpts, dynamicBars);
+  assert.ok(fixed.r3.trailStep >= 3);
+  assert.ok(dynamic.r3.trailStep >= 3);
+  assert.notEqual(
+    Math.round(Number(fixed.r3.proposedSl) * 1e4),
+    Math.round(Number(dynamic.r3.proposedSl) * 1e4),
+    "dynamic hybrid SL should differ from fixed equidistant ladder",
+  );
+  assert.equal(fixedOpts.trailSizingMode, "FIXED_PCT");
+  assert.equal(dynamicOpts.trailSizingMode, "DYNAMIC");
+});
+
+test("classifyStopExitReason: loss-side tier bump stays sl", () => {
+  assert.equal(
+    classifyStopExitReason({
+      side: "BUY",
+      entryFill: 2588,
+      initialSl: 2557,
+      sl: 2578,
+      trailStep: 2,
+    }),
+    "sl",
+  );
+});
+
+test("classifyStopExitReason: protective tightened stop is trail", () => {
+  assert.equal(
+    classifyStopExitReason({
+      side: "BUY",
+      entryFill: 3105,
+      initialSl: 3058,
+      sl: 3108,
+      trailStep: 8,
+    }),
+    "trail",
+  );
+});
+
+test("classifyStopExitReason: no step is sl even if SL moved", () => {
+  assert.equal(
+    classifyStopExitReason({
+      side: "SELL",
+      entryFill: 2789,
+      initialSl: 2854,
+      sl: 2854,
+      trailStep: 0,
+    }),
+    "sl",
+  );
 });

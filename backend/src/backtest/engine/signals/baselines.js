@@ -39,6 +39,7 @@ import {
   resolveSituationRouterCfg,
 } from "../../../strategy/situationIntraday.js";
 import { buildCrtTbsBacktestAdapter, resolveCrtTbsCfg } from "../../../strategy/crtTbsIntraday.js";
+import { buildScalpMrBacktestAdapter } from "../../../strategy/scalpMr.js";
 import {
   buildTokyoSessionBacktestAdapter,
   resolveTokyoSessionCfg,
@@ -47,6 +48,7 @@ import {
   buildUnifiedEliteBacktestAdapter,
   buildUnifiedEliteOptsFromCfg,
 } from "../../../strategy/unifiedElite.js";
+import { buildLiquidityMapBacktestAdapter } from "../../../strategy/liquidityMapStrategy.js";
 import { dirStore, dayStore, machineStore } from "../../../strategy/adapterPersisted.js";
 
 const WARMUP_BARS = 60;
@@ -77,7 +79,9 @@ export function buildBaselineAdapters() {
     UNIFIED_ELITE: makeAdapter("UNIFIED_ELITE"),
     SITUATION_INTRADAY: makeAdapter("SITUATION_INTRADAY"),
     CRT_TBS: makeAdapter("CRT_TBS"),
+    SCALP_MR: makeAdapter("SCALP_MR"),
     TOKYO_SESSION: makeAdapter("TOKYO_SESSION"),
+    LIQUIDITY_MAP: makeAdapter("LIQUIDITY_MAP"),
   };
 }
 
@@ -172,7 +176,26 @@ export async function buildBacktestAdapters({ strategyKey, cfg, symbol, tf, cand
   }
 
   if (strategyKey === "VOLUME_PROFILE" && typeof buildVolumeProfileBacktestAdapter === "function") {
-    adapters.VOLUME_PROFILE = buildVolumeProfileBacktestAdapter(candles, cfg, tf);
+    let vpCfg = { ...cfg, symbol: symbol || cfg?.symbol };
+    try {
+      const { fillVolumeProfileFreqDefaults } = await import("../../../strategy/presets/volumeProfileOptimized.js");
+      vpCfg = fillVolumeProfileFreqDefaults(vpCfg);
+    } catch {
+      /* optional */
+    }
+    // Novelty monitor is OPT-IN. Default-on was attaching BTC bleed/prepared cells to
+    // every FREQ backtest — on ETH that abstained vacuum VAL/VAH edges and crushed
+    // 2020–26 from ~+538% to +238% (UI 158t mismatch vs research). Live can enable
+    // explicitly with vpNoveltyEnabled=true after coin-native cell lists exist.
+    try {
+      if (vpCfg?.vpNoveltyEnabled === true) {
+        const { attachVpNoveltyMonitorToCfg } = await import("../../../strategy/vpNoveltyLive.js");
+        vpCfg = attachVpNoveltyMonitorToCfg(vpCfg);
+      }
+    } catch {
+      /* optional */
+    }
+    adapters.VOLUME_PROFILE = buildVolumeProfileBacktestAdapter(candles, vpCfg, tf);
   }
 
   if (strategyKey === "REGIME_ADAPTIVE" && typeof buildRegimeAdaptiveBacktestAdapter === "function") {
@@ -190,6 +213,10 @@ export async function buildBacktestAdapters({ strategyKey, cfg, symbol, tf, cand
     adapters.CRT_TBS = buildCrtTbsBacktestAdapter(candles, crtCfg, tf);
   }
 
+  if (strategyKey === "SCALP_MR" && typeof buildScalpMrBacktestAdapter === "function") {
+    adapters.SCALP_MR = buildScalpMrBacktestAdapter(candles, cfg, tf);
+  }
+
   if (strategyKey === "TOKYO_SESSION" && typeof buildTokyoSessionBacktestAdapter === "function") {
     const tokyoCfg = resolveTokyoSessionCfg(cfg);
     adapters.TOKYO_SESSION = buildTokyoSessionBacktestAdapter(candles, tokyoCfg, tf);
@@ -197,6 +224,10 @@ export async function buildBacktestAdapters({ strategyKey, cfg, symbol, tf, cand
 
   if (strategyKey === "UNIFIED_ELITE" && typeof buildUnifiedEliteBacktestAdapter === "function") {
     adapters.UNIFIED_ELITE = buildUnifiedEliteBacktestAdapter(candles, buildUnifiedEliteOptsFromCfg(cfg));
+  }
+
+  if (strategyKey === "LIQUIDITY_MAP" && typeof buildLiquidityMapBacktestAdapter === "function") {
+    adapters.LIQUIDITY_MAP = buildLiquidityMapBacktestAdapter(candles, cfg);
   }
 
   return adapters;
@@ -251,29 +282,28 @@ export function buildAutoAdapter() {
  * `signal_exit` losses and bad WR.
  */
 function makePullbackAdapter() {
-  const MIN_PROFIT_PCT = 0.0015;
-
-  let state = "IDLE";
-  let entryIdx = -1;
-  let entryPrice = 0;
-  let cooldownUntil = -1;
   const local = { state: "IDLE", entryIdx: -1, entryPrice: 0, cooldownUntil: -1 };
 
   return function pullbackAdapter(bar, idx, ctx) {
     if (idx < WARMUP_BARS) return null;
+    const cfg = ctx?.cfg && typeof ctx.cfg === "object" ? ctx.cfg : {};
+    const minProfitPct = Math.max(0, Number(cfg.trendPullbackMinProfitPct) || 0.0015);
+    const quickProfitPct = Math.max(minProfitPct, Number(cfg.trendPullbackQuickProfitPct) || 0.003);
+    const rsiExitLong = Number(cfg.trendPullbackRsiExitLong) || 42;
+    const rsiExitShort = Number(cfg.trendPullbackRsiExitShort) || 58;
     const m = machineStore(ctx, local);
-    state = m.state;
-    entryIdx = m.entryIdx;
-    entryPrice = m.entryPrice;
-    cooldownUntil = m.cooldownUntil;
+    let state = m.state;
+    let entryIdx = m.entryIdx;
+    let entryPrice = m.entryPrice;
+    let cooldownUntil = m.cooldownUntil;
 
-    const tf = String(ctx.timeframe || ctx.cfg?.timeframe || "5m").toLowerCase();
+    const tf = String(ctx.timeframe || cfg?.timeframe || "5m").toLowerCase();
     const minutesPerBar =
       { "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240, "1d": 1440 }[tf] ?? 5;
     /** Wall-clock horizon before time-stop (noisy TFs need longer). */
-    const targetHoldMin = tf === "1m" ? 200 : tf === "5m" ? 150 : 120;
+    const targetHoldMin = Number(cfg.trendPullbackMaxHoldMin) || (tf === "1m" ? 200 : tf === "5m" ? 150 : 120);
     const maxHoldBars = Math.min(400, Math.max(28, Math.ceil(targetHoldMin / minutesPerBar)));
-    const cooldownBars = tf === "1m" ? 12 : tf === "5m" ? 8 : 6;
+    const cooldownBars = Number(cfg.trendPullbackCooldownBars) || (tf === "1m" ? 12 : tf === "5m" ? 8 : 6);
 
     const slice = ctx.candles.slice(0, idx + 1);
 
@@ -288,22 +318,22 @@ function makePullbackAdapter() {
       const pricePnl = isLong
         ? (bar.close - entryPrice) / entryPrice
         : (entryPrice - bar.close) / entryPrice;
-      const inProfit = pricePnl >= MIN_PROFIT_PCT;
+      const inProfit = pricePnl >= minProfitPct;
 
       let shouldExit = false;
       let reason = "";
 
       // (a) Profit-taking: in profit AND RSI has recovered from extreme
-      if (inProfit && isLong && Number.isFinite(rsiNow) && rsiNow >= 42) {
+      if (inProfit && isLong && Number.isFinite(rsiNow) && rsiNow >= rsiExitLong) {
         shouldExit = true;
         reason = "profit_rsi_recovered";
-      } else if (inProfit && !isLong && Number.isFinite(rsiNow) && rsiNow <= 58) {
+      } else if (inProfit && !isLong && Number.isFinite(rsiNow) && rsiNow <= rsiExitShort) {
         shouldExit = true;
         reason = "profit_rsi_recovered";
       }
 
-      // (b) Quick profit: price moved significantly in our favor (> 0.3%)
-      if (!shouldExit && pricePnl >= 0.003) {
+      // (b) Quick profit: price moved significantly in our favor
+      if (!shouldExit && pricePnl >= quickProfitPct) {
         shouldExit = true;
         reason = "quick_profit";
       }
@@ -348,7 +378,7 @@ function makePullbackAdapter() {
     }
 
     // ── Entry logic ──
-    const sig = strategies.TREND_PULLBACK?.signal?.({ candles: slice, timeframe: tf });
+    const sig = strategies.TREND_PULLBACK?.signal?.({ candles: slice, timeframe: tf, cfg });
     if (!sig || sig.action === "HOLD") return null;
 
     if (sig.action === "BUY") {

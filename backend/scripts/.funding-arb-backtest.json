@@ -1,0 +1,185 @@
+{
+  "generatedAt": "2026-07-14T02:04:22.159Z",
+  "profile": "v2_maker_stress2",
+  "window": {
+    "from": "2025-01-01",
+    "to": "2026-06-01"
+  },
+  "feeStressMult": 2,
+  "feeMode": "maker",
+  "params": {
+    "minAnnualizedYieldPct": 25,
+    "exitAnnualizedYieldPct": 5,
+    "stabilityIntervals": 6,
+    "minHoldIntervals": 9
+  },
+  "aggregate": {
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT"
+    ],
+    "trades": 0,
+    "grossFunding": 0,
+    "basisPnl": 0,
+    "fees": 0,
+    "netPnl": 0,
+    "capitalDeployedPeak": 12000,
+    "netAnnualizedOnCapitalPct": 0,
+    "honestyPass": false,
+    "perSymbol": [
+      {
+        "symbol": "BTCUSDT",
+        "settlements": 1548,
+        "trades": 0,
+        "flips": 0,
+        "timeInMarketPct": 0,
+        "years": 1.4118,
+        "capitalDeployedPeak": 12000,
+        "grossFunding": 0,
+        "basisPnl": 0,
+        "fees": 0,
+        "slipCost": 0,
+        "netPnl": 0,
+        "grossFundingAnnPct": 0,
+        "netAnnualizedOnCapitalPct": 0,
+        "maxDrawdownPct": 0,
+        "honestyPass": false,
+        "honestyNotes": [
+          "failed_under_fee_stress",
+          "spot_proxied_by_perp_closes_ohlcv_pk_limitation"
+        ],
+        "cfg": {
+          "minAnnualizedYieldPct": 25,
+          "exitAnnualizedYieldPct": 5,
+          "stabilityIntervals": 6,
+          "minHoldIntervals": 9,
+          "feeMode": "maker",
+          "notionalUsdt": 10000,
+          "perpLeverage": 5,
+          "spotFeeRate": 0.001,
+          "perpFeeRate": 0.0002,
+          "slippagePct": 0.0001,
+          "feeStressMult": 2
+        },
+        "spotProxy": true
+      },
+      {
+        "symbol": "ETHUSDT",
+        "settlements": 1548,
+        "trades": 0,
+        "flips": 0,
+        "timeInMarketPct": 0,
+        "years": 1.4118,
+        "capitalDeployedPeak": 12000,
+        "grossFunding": 0,
+        "basisPnl": 0,
+        "fees": 0,
+        "slipCost": 0,
+        "netPnl": 0,
+        "grossFundingAnnPct": 0,
+        "netAnnualizedOnCapitalPct": 0,
+        "maxDrawdownPct": 0,
+        "honestyPass": false,
+        "honestyNotes": [
+          "failed_under_fee_stress",
+          "spot_proxied_by_perp_closes_ohlcv_pk_limitation"
+        ],
+        "cfg": {
+          "minAnnualizedYieldPct": 25,
+          "exitAnnualizedYieldPct": 5,
+          "stabilityIntervals": 6,
+          "minHoldIntervals": 9,
+          "feeMode": "maker",
+          "notionalUsdt": 10000,
+          "perpLeverage": 5,
+          "spotFeeRate": 0.001,
+          "perpFeeRate": 0.0002,
+          "slippagePct": 0.0001,
+          "feeStressMult": 2
+        },
+        "spotProxy": true
+      }
+    ]
+  },
+  "perSymbol": [
+    {
+      "summary": {
+        "symbol": "BTCUSDT",
+        "settlements": 1548,
+        "trades": 0,
+        "flips": 0,
+        "timeInMarketPct": 0,
+        "years": 1.4118,
+        "capitalDeployedPeak": 12000,
+        "grossFunding": 0,
+        "basisPnl": 0,
+        "fees": 0,
+        "slipCost": 0,
+        "netPnl": 0,
+        "grossFundingAnnPct": 0,
+        "netAnnualizedOnCapitalPct": 0,
+        "maxDrawdownPct": 0,
+        "honestyPass": false,
+        "honestyNotes": [
+          "failed_under_fee_stress",
+          "spot_proxied_by_perp_closes_ohlcv_pk_limitation"
+        ],
+        "cfg": {
+          "minAnnualizedYieldPct": 25,
+          "exitAnnualizedYieldPct": 5,
+          "stabilityIntervals": 6,
+          "minHoldIntervals": 9,
+          "feeMode": "maker",
+          "notionalUsdt": 10000,
+          "perpLeverage": 5,
+          "spotFeeRate": 0.001,
+          "perpFeeRate": 0.0002,
+          "slippagePct": 0.0001,
+          "feeStressMult": 2
+        },
+        "spotProxy": true
+      },
+      "tradeCount": 0
+    },
+    {
+      "summary": {
+        "symbol": "ETHUSDT",
+        "settlements": 1548,
+        "trades": 0,
+        "flips": 0,
+        "timeInMarketPct": 0,
+        "years": 1.4118,
+        "capitalDeployedPeak": 12000,
+        "grossFunding": 0,
+        "basisPnl": 0,
+        "fees": 0,
+        "slipCost": 0,
+        "netPnl": 0,
+        "grossFundingAnnPct": 0,
+        "netAnnualizedOnCapitalPct": 0,
+        "maxDrawdownPct": 0,
+        "honestyPass": false,
+        "honestyNotes": [
+          "failed_under_fee_stress",
+          "spot_proxied_by_perp_closes_ohlcv_pk_limitation"
+        ],
+        "cfg": {
+          "minAnnualizedYieldPct": 25,
+          "exitAnnualizedYieldPct": 5,
+          "stabilityIntervals": 6,
+          "minHoldIntervals": 9,
+          "feeMode": "maker",
+          "notionalUsdt": 10000,
+          "perpLeverage": 5,
+          "spotFeeRate": 0.001,
+          "perpFeeRate": 0.0002,
+          "slippagePct": 0.0001,
+          "feeStressMult": 2
+        },
+        "spotProxy": true
+      },
+      "tradeCount": 0
+    }
+  ],
+  "trades": []
+}

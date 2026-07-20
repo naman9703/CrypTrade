@@ -37,12 +37,13 @@ function aggregateToHourly(candles) {
   return hourly;
 }
 
-/** @param {{ candles: unknown[], timeframe?: string }} ctx */
-export function signal({ candles, timeframe } = {}) {
+/** @param {{ candles: unknown[], timeframe?: string, cfg?: Record<string, unknown> }} ctx */
+export function signal({ candles, timeframe, cfg } = {}) {
   if (candles.length < WARMUP) return { action: "HOLD", reason: "warmup" };
 
-  const tf = String(timeframe || "5m").toLowerCase();
+  const tf = String(timeframe || cfg?.timeframe || "5m").toLowerCase();
   const is1m = tf === "1m";
+  const longOnly = cfg?.trendPullbackLongOnly === true;
 
   // ── HTF (1h) trend ──────────────────────────────────────────────────
   const hourly = aggregateToHourly(candles);
@@ -93,15 +94,15 @@ export function signal({ candles, timeframe } = {}) {
 
   // Check if RSI was deeply oversold/overbought recently (within last 5 bars).
   // 1m: stricter thresholds — shorts were firing on noise (WR ~24% on SELL in live runs).
-  const oversoldExtreme = is1m ? 22 : 25;
-  const overboughtExtreme = is1m ? 80 : 75;
+  const oversoldExtreme = Number(cfg?.trendPullbackRsiOversold) || (is1m ? 22 : 25);
+  const overboughtExtreme = Number(cfg?.trendPullbackRsiOverbought) || (is1m ? 80 : 75);
   const recentRsi = rsiSeries.slice(Math.max(0, i - 5), i);
   const wasDeepOversold = recentRsi.some((r) => r <= oversoldExtreme);
   const wasDeepOverbought = recentRsi.some((r) => r >= overboughtExtreme);
 
   // ── LONG ──────────────────────────────────────────────────────────────
   if (htfTrendUp) {
-    const recoverMin = is1m ? 38 : 35;
+    const recoverMin = Number(cfg?.trendPullbackRsiRecoverMin) || (is1m ? 38 : 35);
     const rsiRecovered = wasDeepOversold && rsiNow >= recoverMin;
     const bullishBar = bar.close > bar.open;
     const strongClose = range > 0 && (bar.close - bar.low) / range >= 0.6;
@@ -113,8 +114,8 @@ export function signal({ candles, timeframe } = {}) {
   }
 
   // ── SHORT ─────────────────────────────────────────────────────────────
-  if (htfTrendDown) {
-    const rejectMax = is1m ? 55 : 65;
+  if (htfTrendDown && !longOnly) {
+    const rejectMax = Number(cfg?.trendPullbackRsiRejectMax) || (is1m ? 55 : 65);
     const rsiRejected = wasDeepOverbought && rsiNow <= rejectMax;
     const bearishBar = bar.close < bar.open;
     const strongClose = range > 0 && (bar.high - bar.close) / range >= 0.6;

@@ -1,0 +1,34 @@
+
+=== PORTFOLIO VALIDATION — SUPERTREND_ELITE ===
+Config: instance snapshot (latest portfolio run)
+Coins: BTCUSDT, BNBUSDT, ETHUSDT, SOLUSDT, XRPUSDT  TF: 15m  2025-01-01 → 2026-06-01
+Risk: 10%  SL: off  TP: off
+Bars (ref BTCUSDT): 49536  embargo: 96 bars
+
+── Full window (in-sample reference) ──
+Trades: 958  WR: 63.4%  PF: 0.86
+Return: -100.00%  CAGR: -100.00%  MaxDD: 100.00%  Calmar: -1.00
+Final: $0.00  Expectancy/trade: $-10.44
+MC (10% risk/trade): p5=-99.99%  p50=-99.93%  p95=4058.87%  ruin≥50%DD=100.0%
+
+── Walk-forward (4 folds, purged embargo=96) ──
+  fold 0: train[n=139 exp=$-71.71 ret=-99.68%] test[n=162 ret=-99.98% PF=0.74 DD=100.00%]
+  fold 1: train[n=302 exp=$-33.11 ret=-100.00%] test[n=239 ret=-99.99% PF=0.65 DD=100.00%]
+  fold 2: train[n=542 exp=$-18.45 ret=-100.00%] test[n=215 ret=-100.00% PF=0.67 DD=100.00%]
+  fold 3: train[n=761 exp=$-13.14 ret=-100.00%] test[n=186 ret=-100.00% PF=0.30 DD=100.00%]
+
+── Acceptance gates ──
+  ❌ oosPositive: -399.97 (need > 0)
+  ❌ mcP5Positive: -99.99 (need > 0)
+  ❌ calmarOver1: -1.00 (need > 1)
+  ❌ wfDegradationOk: 49.42 (need < 35%)
+
+  → REJECTED ❌
+
+── Minimum expectation (conservative framing) ──
+  Span: ~17.0 months  |  OOS test-window sum return: -399.97%
+  Floor (MC 5th pct): ~-99.99% total over full window at 10% risk/trade
+  Floor (~monthly): ~-43.01%/mo if trade mix resembles bootstrap
+  Median (MC 50th): ~-99.93% total
+  Full-window CAGR (not a floor): -100.00% (~-93.51%/mo)
+  Honest deploy band if gates pass: plan for MC p5 / OOS, not full-window headline %

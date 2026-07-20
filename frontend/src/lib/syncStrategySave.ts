@@ -3,8 +3,8 @@ import { mapApiStrategyVersion } from "./strategyApiMappers";
 import type { Strategy } from "../types/strategy";
 import type { ApiTradingModeSlug } from "./tradingModeSlug";
 
-/** WS/runtime fields — never treat as strategy save ack guards. */
-const RUNTIME_BOT_KEYS = new Set([
+/** WS/runtime fields — never treat as strategy save ack guards or config fingerprint. */
+export const RUNTIME_BOT_KEYS = new Set([
   "feed",
   "account",
   "depth",
@@ -39,6 +39,15 @@ const RUNTIME_BOT_KEYS = new Set([
   "feedExecutionPause",
   "futuresAuthError",
 ]);
+
+/** Overlay live-engine counters onto view bot without rebuilding the config slice. */
+export function runtimeBotOverlayFromPayload(live: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(live)) {
+    if (RUNTIME_BOT_KEYS.has(key)) out[key] = value;
+  }
+  return out;
+}
 
 /** Extend WS ack guards so multiplex `state` frames cannot revert a fresh Save. */
 export function noteStrategySaveWsAckGuard(savedBot: Record<string, unknown>) {

@@ -4,9 +4,13 @@ import {
   DEFAULT_TRAIL_FEE_BE_MULTIPLIER,
   buildTrailLockPrices,
   clampFeeRate,
+  computeDynamicT01LockFrac,
+  computeDynamicTrailBuffer,
   computeEffectiveTrailBuffer,
   defaultTieredPostT02SpacingFrac,
+  dynamicPostT02SpacingFrac,
   feeRateBreakevenPadded,
+  resolveTrailSizingMode,
 } from "../lib/trailingFeeLadder";
 
 type Candle = { ts: number; open: number; high: number; low: number; close: number; volume: number };
@@ -43,6 +47,19 @@ export type TrailPreviewCfg = {
   trailMinGapFromMarkFrac: number;
   trailPostT02SpacingFrac: number | null;
   trailPostT02MaxExtraTiers: number;
+
+  trailSizingMode: "FIXED_PCT" | "DYNAMIC";
+  trailDynamicBeAtrMult: number;
+  trailDynamicBeT01LockAtrMult: number;
+  trailDynamicBeRegimeAdjust: boolean;
+  trailDynamicBeRegimeLowMult: number;
+  trailDynamicBeRegimeHighMult: number;
+  trailDynamicAdvAtrHwmMult: number;
+  trailDynamicAdvMfeGivebackFrac: number;
+  trailDynamicAdvMfeMinR: number;
+  trailDynamicAdvMergeSupertrend: boolean;
+  trailDynamicAdvAtrSource: "ENTRY" | "ROLLING";
+  trailDynamicAdvPostT02StepAtrMult: number;
 
   trailingStopExtraScalpingPcts: number[];
 };
@@ -113,6 +130,18 @@ function cfgEqual(a: TrailPreviewCfg, b: TrailPreviewCfg): boolean {
     a.trailMinGapFromMarkFrac === b.trailMinGapFromMarkFrac &&
     a.trailPostT02SpacingFrac === b.trailPostT02SpacingFrac &&
     a.trailPostT02MaxExtraTiers === b.trailPostT02MaxExtraTiers &&
+    a.trailSizingMode === b.trailSizingMode &&
+    a.trailDynamicBeAtrMult === b.trailDynamicBeAtrMult &&
+    a.trailDynamicBeT01LockAtrMult === b.trailDynamicBeT01LockAtrMult &&
+    a.trailDynamicBeRegimeAdjust === b.trailDynamicBeRegimeAdjust &&
+    a.trailDynamicBeRegimeLowMult === b.trailDynamicBeRegimeLowMult &&
+    a.trailDynamicBeRegimeHighMult === b.trailDynamicBeRegimeHighMult &&
+    a.trailDynamicAdvAtrHwmMult === b.trailDynamicAdvAtrHwmMult &&
+    a.trailDynamicAdvMfeGivebackFrac === b.trailDynamicAdvMfeGivebackFrac &&
+    a.trailDynamicAdvMfeMinR === b.trailDynamicAdvMfeMinR &&
+    a.trailDynamicAdvMergeSupertrend === b.trailDynamicAdvMergeSupertrend &&
+    a.trailDynamicAdvAtrSource === b.trailDynamicAdvAtrSource &&
+    a.trailDynamicAdvPostT02StepAtrMult === b.trailDynamicAdvPostT02StepAtrMult &&
     sameList(a.trailingStopExtraScalpingPcts, b.trailingStopExtraScalpingPcts)
   );
 }
@@ -196,6 +225,16 @@ function NumericTextInput({
 }
 
 function effectivePreviewBuffer(cfg: TrailPreviewCfg, atrPct: number | null): number {
+  if (resolveTrailSizingMode(cfg) === "DYNAMIC") {
+    return computeDynamicTrailBuffer({
+      entryAtrPct: atrPct,
+      trailDynamicBeAtrMult: cfg.trailDynamicBeAtrMult,
+      trailDynamicBeRegimeAdjust: cfg.trailDynamicBeRegimeAdjust,
+      trailDynamicBeRegimeLowMult: cfg.trailDynamicBeRegimeLowMult,
+      trailDynamicBeRegimeHighMult: cfg.trailDynamicBeRegimeHighMult,
+      fallbackBufferRate: cfg.trailBufferRate,
+    });
+  }
   return computeEffectiveTrailBuffer({
     bufferRate: cfg.trailBufferRate,
     trailBufferMode: cfg.trailBufferMode,
@@ -249,7 +288,14 @@ function buildPreviewPoints(p: {
   const slipFrac = clampNum(cfg.trailActivationSlippageFrac ?? 0, 0, 0.01);
   const feeBeActGate = Math.min(0.02, feeBe + slipFrac);
 
-  const t01Slip = clampNum(cfg.trailT01LockSlippageFrac ?? 0, 0, 0.01);
+  const t01Slip =
+    resolveTrailSizingMode(cfg) === "DYNAMIC"
+      ? computeDynamicT01LockFrac({
+          entryAtrPct: atrPct,
+          trailDynamicBeT01LockAtrMult: cfg.trailDynamicBeT01LockAtrMult,
+          fixedT01LockSlipFrac: cfg.trailT01LockSlippageFrac ?? 0,
+        })
+      : clampNum(cfg.trailT01LockSlippageFrac ?? 0, 0, 0.01);
   const sign = isLong ? 1 : -1;
   const apply = (frac: number) => E * (1 + sign * frac);
 
@@ -323,7 +369,12 @@ function buildPreviewPoints(p: {
     cfg.trailPostT02SpacingFrac != null && Number.isFinite(Number(cfg.trailPostT02SpacingFrac))
       ? Number(cfg.trailPostT02SpacingFrac)
       : null;
-  const sp = spUser != null && spUser > 0 ? Math.min(0.05, spUser) : defaultTieredPostT02SpacingFrac(rtFee);
+  const sp =
+    resolveTrailSizingMode(cfg) === "DYNAMIC"
+      ? dynamicPostT02SpacingFrac(atrPct, cfg.trailDynamicAdvPostT02StepAtrMult)
+      : spUser != null && spUser > 0
+        ? Math.min(0.05, spUser)
+        : defaultTieredPostT02SpacingFrac(rtFee);
 
   const t01Lock = apply(t01Slip);
   const t01Act = apply(buf);

@@ -5,8 +5,63 @@ function normalizeSymbol(symbol) {
   return String(symbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 }
 
+/** Fallback row size when the sample query returns no rows. */
+const DEFAULT_ROW_DISK_BYTES = 196;
+/** Plain `{ts,o,h,l,c,v}` objects loaded by the backtest worker. */
+const MEM_BYTES_PER_BAR = 112;
+
 /**
- * @returns {Promise<{ have: number, expected: number | null, coveragePct: number | null, minTs: number | null, maxTs: number | null }>}
+ * Estimate Postgres heap bytes + backtest in-memory load for matching `ohlcv_candles` rows.
+ * Uses an exact SUM for small windows; otherwise AVG(sample) × count.
+ *
+ * @returns {Promise<{ diskBytes: number, memBytesEst: number, diskBytesFull: number | null, memBytesFull: number | null }>}
+ */
+export async function estimateCandleFootprint(pool, where, params, have, expected = null) {
+  const noRows = {
+    diskBytes: 0,
+    memBytesEst: 0,
+    diskBytesFull: expected != null && expected > 0 ? Math.round(DEFAULT_ROW_DISK_BYTES * expected) : null,
+    memBytesFull: expected != null && expected > 0 ? expected * MEM_BYTES_PER_BAR : null,
+  };
+  if (have <= 0) return noRows;
+
+  let diskBytes;
+  if (have <= 5000) {
+    const sr = await pool.query(
+      `SELECT COALESCE(SUM(pg_column_size(t)), 0)::bigint AS storage_bytes
+         FROM ohlcv_candles t
+        WHERE ${where}`,
+      params,
+    );
+    diskBytes = Number(sr.rows[0]?.storage_bytes ?? 0);
+  } else {
+    const sampleLimit = 2000;
+    const sr = await pool.query(
+      `SELECT COALESCE(AVG(pg_column_size(t)), 0)::float8 AS avg_bytes
+         FROM (
+           SELECT t FROM ohlcv_candles t
+            WHERE ${where}
+            LIMIT $${params.length + 1}
+         ) s`,
+      [...params, sampleLimit],
+    );
+    const avg = Number(sr.rows[0]?.avg_bytes ?? 0) || DEFAULT_ROW_DISK_BYTES;
+    diskBytes = Math.round(avg * have);
+  }
+
+  const memBytesEst = have * MEM_BYTES_PER_BAR;
+  let diskBytesFull = null;
+  let memBytesFull = null;
+  if (expected != null && expected > 0) {
+    memBytesFull = expected * MEM_BYTES_PER_BAR;
+    diskBytesFull = Math.round((diskBytes / have) * expected);
+  }
+
+  return { diskBytes, memBytesEst, diskBytesFull, memBytesFull };
+}
+
+/**
+ * @returns {Promise<{ have: number, expected: number | null, coveragePct: number | null, minTs: number | null, maxTs: number | null, diskBytes: number, memBytesEst: number, diskBytesFull: number | null, memBytesFull: number | null }>}
  */
 export async function getCoverage(symbol, tf, { from, to } = {}) {
   const pool = getPool();
@@ -49,7 +104,8 @@ export async function getCoverage(symbol, tf, { from, to } = {}) {
     }
   }
 
-  return { have, expected, coveragePct, minTs, maxTs };
+  const footprint = await estimateCandleFootprint(pool, where, params, have, expected);
+  return { have, expected, coveragePct, minTs, maxTs, ...footprint };
 }
 
 /**

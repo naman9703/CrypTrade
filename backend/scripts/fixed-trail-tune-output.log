@@ -1,0 +1,524 @@
+
+========================================================================
+FIXED % + SL tune | UNIFIED_ELITE
+baseline run: 9e6bb26c… | BTCUSDT 1h
+window: 2025-06-01 → 2026-06-13 | stored ret: 437.3%
+trail sim: worker 1m mark micro | 2-phase quick
+========================================================================
+
+baseline (saved params): ret=-74.7% DD=74.7% trail=26 sl=7 trail$=-43.0 PF=0.05
+
+--- Phase 1: SL × trail buffer (81 combos) ---
+
+  [1] sl=0.004 buf=0.001 feeBe=2 t02=null t01=0            ret=  -55.1% DD= 56.3% trail=28 sl= 5 PF=0.19
+  [2] sl=0.004 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -57.2% DD= 59.8% trail=25 sl= 7 PF=0.21
+  [3] sl=0.004 buf=0.002 feeBe=2 t02=null t01=0            ret=  -70.4% DD= 72.2% trail=20 sl=12 PF=0.16
+  [4] sl=0.004 buf=0.003 feeBe=2 t02=null t01=0            ret=  -67.7% DD= 73.7% trail=17 sl=15 PF=0.26
+  [5] sl=0.004 buf=0.004 feeBe=2 t02=null t01=0            ret=  -75.2% DD= 78.3% trail=15 sl=17 PF=0.21
+  [6] sl=0.004 buf=0.005 feeBe=2 t02=null t01=0            ret=  -79.3% DD= 82.4% trail=13 sl=19 PF=0.20
+  [7] sl=0.004 buf=0.006 feeBe=2 t02=null t01=0            ret=  -77.2% DD= 79.8% trail=10 sl=22 PF=0.28
+  [8] sl=0.004 buf=0.008 feeBe=2 t02=null t01=0            ret=  -72.4% DD= 72.7% trail= 9 sl=23 PF=0.39
+  [9] sl=0.004 buf=0.01 feeBe=2 t02=null t01=0             ret=  -54.2% DD= 65.4% trail= 9 sl=23 PF=0.58
+  [10] sl=0.006 buf=0.001 feeBe=2 t02=null t01=0            ret=  -48.0% DD= 48.9% trail=28 sl= 5 PF=0.16
+  [11] sl=0.006 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -53.0% DD= 55.0% trail=26 sl= 7 PF=0.17
+  [12] sl=0.006 buf=0.002 feeBe=2 t02=null t01=0            ret=  -63.3% DD= 64.8% trail=22 sl=11 PF=0.15
+  [13] sl=0.006 buf=0.003 feeBe=2 t02=null t01=0            ret=  -59.6% DD= 64.9% trail=20 sl=13 PF=0.25
+  [14] sl=0.006 buf=0.004 feeBe=2 t02=null t01=0            ret=  -67.1% DD= 69.9% trail=18 sl=15 PF=0.22
+  [15] sl=0.006 buf=0.005 feeBe=2 t02=null t01=0            ret=  -68.5% DD= 71.9% trail=17 sl=16 PF=0.23
+  [16] sl=0.006 buf=0.006 feeBe=2 t02=null t01=0            ret=  -57.0% DD= 65.9% trail=14 sl=18 PF=0.42
+  [17] sl=0.006 buf=0.008 feeBe=2 t02=null t01=0            ret=  -47.1% DD= 59.4% trail=13 sl=19 PF=0.56
+  [18] sl=0.006 buf=0.01 feeBe=2 t02=null t01=0             ret=  -21.3% DD= 52.8% trail=13 sl=19 PF=0.81
+  [19] sl=0.008 buf=0.001 feeBe=2 t02=null t01=0            ret=  -38.3% DD= 39.1% trail=29 sl= 4 PF=0.17
+  [20] sl=0.008 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -41.6% DD= 43.4% trail=28 sl= 5 PF=0.19
+  [21] sl=0.008 buf=0.002 feeBe=2 t02=null t01=0            ret=  -55.1% DD= 56.5% trail=24 sl= 9 PF=0.15
+  [22] sl=0.008 buf=0.003 feeBe=2 t02=null t01=0            ret=  -51.0% DD= 58.1% trail=22 sl=11 PF=0.27
+  [23] sl=0.008 buf=0.004 feeBe=2 t02=null t01=0            ret=  -62.6% DD= 65.0% trail=19 sl=14 PF=0.21
+  [24] sl=0.008 buf=0.005 feeBe=2 t02=null t01=0            ret=  -64.4% DD= 68.7% trail=18 sl=15 PF=0.22
+  [25] sl=0.008 buf=0.006 feeBe=2 t02=null t01=0            ret=  -53.2% DD= 64.3% trail=16 sl=16 PF=0.40
+  [26] sl=0.008 buf=0.008 feeBe=2 t02=null t01=0            ret=  -47.6% DD= 61.8% trail=14 sl=18 PF=0.50
+  [27] sl=0.008 buf=0.01 feeBe=2 t02=null t01=0             ret=  -27.8% DD= 57.1% trail=14 sl=18 PF=0.72
+  [28] sl=0.01 buf=0.001 feeBe=2 t02=null t01=0             ret=  -35.7% DD= 36.4% trail=29 sl= 4 PF=0.16
+  [29] sl=0.01 buf=0.0015 feeBe=2 t02=null t01=0            ret=  -39.5% DD= 41.0% trail=28 sl= 5 PF=0.17
+  [30] sl=0.01 buf=0.002 feeBe=2 t02=null t01=0             ret=  -48.7% DD= 49.9% trail=25 sl= 8 PF=0.18
+  [31] sl=0.01 buf=0.003 feeBe=2 t02=null t01=0             ret=  -48.1% DD= 53.6% trail=23 sl=10 PF=0.26
+  [32] sl=0.01 buf=0.004 feeBe=2 t02=null t01=0             ret=  -54.9% DD= 57.3% trail=21 sl=12 PF=0.26
+  [33] sl=0.01 buf=0.005 feeBe=2 t02=null t01=0             ret=  -54.8% DD= 58.7% trail=20 sl=13 PF=0.31
+  [34] sl=0.01 buf=0.006 feeBe=2 t02=null t01=0             ret=  -43.7% DD= 53.4% trail=18 sl=14 PF=0.51
+  [35] sl=0.01 buf=0.008 feeBe=2 t02=null t01=0             ret=  -37.8% DD= 50.3% trail=16 sl=16 PF=0.61
+  [36] sl=0.01 buf=0.01 feeBe=2 t02=null t01=0              ret=  -14.7% DD= 43.4% trail=16 sl=16 PF=0.86
+  [37] sl=0.012 buf=0.001 feeBe=2 t02=null t01=0            ret=  -29.4% DD= 30.0% trail=30 sl= 3 PF=0.19
+  [38] sl=0.012 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -33.7% DD= 35.1% trail=29 sl= 4 PF=0.20
+  [39] sl=0.012 buf=0.002 feeBe=2 t02=null t01=0            ret=  -38.3% DD= 41.9% trail=27 sl= 6 PF=0.23
+  [40] sl=0.012 buf=0.003 feeBe=2 t02=null t01=0            ret=  -33.8% DD= 44.9% trail=26 sl= 7 PF=0.36
+  [41] sl=0.012 buf=0.004 feeBe=2 t02=null t01=0            ret=  -43.3% DD= 50.1% trail=24 sl= 9 PF=0.31
+  [42] sl=0.012 buf=0.005 feeBe=2 t02=null t01=0            ret=  -42.6% DD= 51.9% trail=23 sl=10 PF=0.39
+  [43] sl=0.012 buf=0.006 feeBe=2 t02=null t01=0            ret=  -34.2% DD= 52.2% trail=20 sl=12 PF=0.58
+  [44] sl=0.012 buf=0.008 feeBe=2 t02=null t01=0            ret=  -29.0% DD= 49.4% trail=18 sl=14 PF=0.68
+  [45] sl=0.012 buf=0.01 feeBe=2 t02=null t01=0             ret=   -6.6% DD= 45.7% trail=18 sl=14 PF=0.93
+  [46] sl=0.015 buf=0.001 feeBe=2 t02=null t01=0            ret=  -27.7% DD= 28.3% trail=30 sl= 3 PF=0.17
+  [47] sl=0.015 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -32.4% DD= 33.5% trail=29 sl= 4 PF=0.18
+  [48] sl=0.015 buf=0.002 feeBe=2 t02=null t01=0            ret=  -38.1% DD= 41.0% trail=27 sl= 6 PF=0.20
+  [49] sl=0.015 buf=0.003 feeBe=2 t02=null t01=0            ret=  -35.5% DD= 44.3% trail=26 sl= 7 PF=0.30
+  [50] sl=0.015 buf=0.004 feeBe=2 t02=null t01=0            ret=  -44.8% DD= 50.2% trail=24 sl= 9 PF=0.26
+  [51] sl=0.015 buf=0.005 feeBe=2 t02=null t01=0            ret=  -45.0% DD= 52.3% trail=23 sl=10 PF=0.32
+  [52] sl=0.015 buf=0.006 feeBe=2 t02=null t01=0            ret=  -35.7% DD= 52.6% trail=21 sl=11 PF=0.50
+  [53] sl=0.015 buf=0.008 feeBe=2 t02=null t01=0            ret=  -38.0% DD= 51.1% trail=18 sl=14 PF=0.55
+  [54] sl=0.015 buf=0.01 feeBe=2 t02=null t01=0             ret=  -22.7% DD= 47.9% trail=18 sl=14 PF=0.75
+  [55] sl=0.018 buf=0.001 feeBe=2 t02=null t01=0            ret=  -20.6% DD= 21.1% trail=31 sl= 2 PF=0.19
+  [56] sl=0.018 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -25.8% DD= 26.9% trail=30 sl= 3 PF=0.19
+  [57] sl=0.018 buf=0.002 feeBe=2 t02=null t01=0            ret=  -32.9% DD= 35.5% trail=28 sl= 5 PF=0.20
+  [58] sl=0.018 buf=0.003 feeBe=2 t02=null t01=0            ret=  -29.7% DD= 37.8% trail=27 sl= 6 PF=0.34
+  [59] sl=0.018 buf=0.004 feeBe=2 t02=null t01=0            ret=  -39.8% DD= 44.8% trail=25 sl= 8 PF=0.28
+  [60] sl=0.018 buf=0.005 feeBe=2 t02=null t01=0            ret=  -40.8% DD= 47.4% trail=24 sl= 9 PF=0.33
+  [61] sl=0.018 buf=0.006 feeBe=2 t02=null t01=0            ret=  -32.8% DD= 47.3% trail=22 sl=10 PF=0.50
+  [62] sl=0.018 buf=0.008 feeBe=2 t02=null t01=0            ret=  -31.0% DD= 42.7% trail=20 sl=12 PF=0.60
+  [63] sl=0.018 buf=0.01 feeBe=2 t02=null t01=0             ret=   -8.3% DD= 31.9% trail=20 sl=11 PF=0.89
+  [64] sl=0.02 buf=0.001 feeBe=2 t02=null t01=0             ret=  -20.0% DD= 20.5% trail=31 sl= 2 PF=0.18
+  [65] sl=0.02 buf=0.0015 feeBe=2 t02=null t01=0            ret=  -25.4% DD= 26.3% trail=30 sl= 3 PF=0.18
+  [66] sl=0.02 buf=0.002 feeBe=2 t02=null t01=0             ret=  -32.8% DD= 35.2% trail=28 sl= 5 PF=0.19
+  [67] sl=0.02 buf=0.003 feeBe=2 t02=null t01=0             ret=  -30.5% DD= 37.8% trail=27 sl= 6 PF=0.31
+  [68] sl=0.02 buf=0.004 feeBe=2 t02=null t01=0             ret=  -40.5% DD= 45.0% trail=25 sl= 8 PF=0.26
+  [69] sl=0.02 buf=0.005 feeBe=2 t02=null t01=0             ret=  -41.8% DD= 47.8% trail=24 sl= 9 PF=0.30
+  [70] sl=0.02 buf=0.006 feeBe=2 t02=null t01=0             ret=  -35.3% DD= 48.0% trail=22 sl=10 PF=0.45
+  [71] sl=0.02 buf=0.008 feeBe=2 t02=null t01=0             ret=  -34.6% DD= 44.2% trail=20 sl=12 PF=0.54
+  [72] sl=0.02 buf=0.01 feeBe=2 t02=null t01=0              ret=  -14.8% DD= 33.4% trail=20 sl=11 PF=0.81
+  [73] sl=0.025 buf=0.001 feeBe=2 t02=null t01=0            ret=  -12.6% DD= 13.0% trail=33 sl= 1 PF=0.23
+  [74] sl=0.025 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -10.8% DD= 11.8% trail=33 sl= 1 PF=0.35
+  [75] sl=0.025 buf=0.002 feeBe=2 t02=null t01=0            ret=  -14.2% DD= 16.6% trail=32 sl= 2 PF=0.36
+  [76] sl=0.025 buf=0.003 feeBe=2 t02=null t01=0            ret=  -12.4% DD= 19.9% trail=31 sl= 3 PF=0.54
+  [77] sl=0.025 buf=0.004 feeBe=2 t02=null t01=0            ret=  -24.3% DD= 28.9% trail=29 sl= 5 PF=0.38
+  [78] sl=0.025 buf=0.005 feeBe=2 t02=null t01=0            ret=  -24.4% DD= 30.6% trail=27 sl= 6 PF=0.46
+  [79] sl=0.025 buf=0.006 feeBe=2 t02=null t01=0            ret=  -17.9% DD= 31.1% trail=25 sl= 7 PF=0.65
+  [80] sl=0.025 buf=0.008 feeBe=2 t02=null t01=0            ret=  -17.8% DD= 26.6% trail=23 sl= 9 PF=0.72
+  [81] sl=0.025 buf=0.01 feeBe=2 t02=null t01=0             ret=    5.0% DD= 19.6% trail=23 sl= 8 PF=1.08
+
+--- Phase 2: fee BE × post-T02 on top SL/buffer (120 combos) ---
+
+  [82] sl=0.025 buf=0.01 feeBe=2 t02=null t01=0             ret=    5.0% DD= 19.6% trail=23 sl= 8 PF=1.08
+  [83] sl=0.025 buf=0.01 feeBe=2 t02=0.001 t01=0            ret=    5.5% DD= 19.6% trail=23 sl= 8 PF=1.09
+  [84] sl=0.025 buf=0.01 feeBe=2.5 t02=null t01=0           ret=    5.0% DD= 19.6% trail=23 sl= 8 PF=1.08
+  [85] sl=0.025 buf=0.01 feeBe=2.5 t02=0.001 t01=0          ret=    5.5% DD= 19.6% trail=23 sl= 8 PF=1.09
+  [86] sl=0.025 buf=0.01 feeBe=3 t02=null t01=0             ret=    5.0% DD= 19.6% trail=23 sl= 8 PF=1.08
+  [87] sl=0.025 buf=0.01 feeBe=3 t02=0.001 t01=0            ret=    5.5% DD= 19.6% trail=23 sl= 8 PF=1.09
+  [88] sl=0.025 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -10.8% DD= 11.8% trail=33 sl= 1 PF=0.35
+  [89] sl=0.025 buf=0.0015 feeBe=2 t02=0.001 t01=0          ret=  -10.6% DD= 11.2% trail=33 sl= 1 PF=0.37
+  [90] sl=0.025 buf=0.0015 feeBe=2.5 t02=null t01=0         ret=  -10.8% DD= 11.8% trail=33 sl= 1 PF=0.35
+  [91] sl=0.025 buf=0.0015 feeBe=2.5 t02=0.001 t01=0        ret=  -10.6% DD= 11.2% trail=33 sl= 1 PF=0.37
+  [92] sl=0.025 buf=0.0015 feeBe=3 t02=null t01=0           ret=  -10.8% DD= 11.8% trail=33 sl= 1 PF=0.35
+  [93] sl=0.025 buf=0.0015 feeBe=3 t02=0.001 t01=0          ret=  -10.6% DD= 11.2% trail=33 sl= 1 PF=0.37
+  [94] sl=0.025 buf=0.001 feeBe=2 t02=null t01=0            ret=  -12.6% DD= 13.0% trail=33 sl= 1 PF=0.23
+  [95] sl=0.025 buf=0.001 feeBe=2 t02=0.001 t01=0           ret=  -11.8% DD= 12.4% trail=33 sl= 1 PF=0.28
+  [96] sl=0.025 buf=0.001 feeBe=2.5 t02=null t01=0          ret=  -12.6% DD= 13.0% trail=33 sl= 1 PF=0.23
+  [97] sl=0.025 buf=0.001 feeBe=2.5 t02=0.001 t01=0         ret=  -11.8% DD= 12.4% trail=33 sl= 1 PF=0.28
+  [98] sl=0.025 buf=0.001 feeBe=3 t02=null t01=0            ret=  -12.6% DD= 13.0% trail=33 sl= 1 PF=0.23
+  [99] sl=0.025 buf=0.001 feeBe=3 t02=0.001 t01=0           ret=  -11.8% DD= 12.4% trail=33 sl= 1 PF=0.28
+  [100] sl=0.025 buf=0.003 feeBe=2 t02=null t01=0            ret=  -12.4% DD= 19.9% trail=31 sl= 3 PF=0.54
+  [101] sl=0.025 buf=0.003 feeBe=2 t02=0.001 t01=0           ret=  -10.3% DD= 18.8% trail=31 sl= 3 PF=0.62
+  [102] sl=0.025 buf=0.003 feeBe=2.5 t02=null t01=0          ret=  -12.4% DD= 19.9% trail=31 sl= 3 PF=0.54
+  [103] sl=0.025 buf=0.003 feeBe=2.5 t02=0.001 t01=0         ret=  -10.3% DD= 18.8% trail=31 sl= 3 PF=0.62
+  [104] sl=0.025 buf=0.003 feeBe=3 t02=null t01=0            ret=  -12.4% DD= 19.9% trail=31 sl= 3 PF=0.54
+  [105] sl=0.025 buf=0.003 feeBe=3 t02=0.001 t01=0           ret=  -10.3% DD= 18.8% trail=31 sl= 3 PF=0.62
+  [106] sl=0.025 buf=0.002 feeBe=2 t02=null t01=0            ret=  -14.2% DD= 16.6% trail=32 sl= 2 PF=0.36
+  [107] sl=0.025 buf=0.002 feeBe=2 t02=0.001 t01=0           ret=  -13.4% DD= 16.6% trail=32 sl= 2 PF=0.40
+  [108] sl=0.025 buf=0.002 feeBe=2.5 t02=null t01=0          ret=  -14.2% DD= 16.6% trail=32 sl= 2 PF=0.36
+  [109] sl=0.025 buf=0.002 feeBe=2.5 t02=0.001 t01=0         ret=  -13.4% DD= 16.6% trail=32 sl= 2 PF=0.40
+  [110] sl=0.025 buf=0.002 feeBe=3 t02=null t01=0            ret=  -14.2% DD= 16.6% trail=32 sl= 2 PF=0.36
+  [111] sl=0.025 buf=0.002 feeBe=3 t02=0.001 t01=0           ret=  -13.4% DD= 16.6% trail=32 sl= 2 PF=0.40
+  [112] sl=0.018 buf=0.01 feeBe=2 t02=null t01=0             ret=   -8.3% DD= 31.9% trail=20 sl=11 PF=0.89
+  [113] sl=0.018 buf=0.01 feeBe=2 t02=0.001 t01=0            ret=   -7.7% DD= 31.6% trail=20 sl=11 PF=0.90
+  [114] sl=0.018 buf=0.01 feeBe=2.5 t02=null t01=0           ret=   -8.3% DD= 31.9% trail=20 sl=11 PF=0.89
+  [115] sl=0.018 buf=0.01 feeBe=2.5 t02=0.001 t01=0          ret=   -7.7% DD= 31.6% trail=20 sl=11 PF=0.90
+  [116] sl=0.018 buf=0.01 feeBe=3 t02=null t01=0             ret=   -8.3% DD= 31.9% trail=20 sl=11 PF=0.89
+  [117] sl=0.018 buf=0.01 feeBe=3 t02=0.001 t01=0            ret=   -7.7% DD= 31.6% trail=20 sl=11 PF=0.90
+  [118] sl=0.018 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -25.8% DD= 26.9% trail=30 sl= 3 PF=0.19
+  [119] sl=0.018 buf=0.0015 feeBe=2 t02=0.001 t01=0          ret=  -25.5% DD= 26.3% trail=30 sl= 3 PF=0.20
+  [120] sl=0.018 buf=0.0015 feeBe=2.5 t02=null t01=0         ret=  -25.8% DD= 26.9% trail=30 sl= 3 PF=0.19
+  [121] sl=0.018 buf=0.0015 feeBe=2.5 t02=0.001 t01=0        ret=  -25.5% DD= 26.3% trail=30 sl= 3 PF=0.20
+  [122] sl=0.018 buf=0.0015 feeBe=3 t02=null t01=0           ret=  -25.8% DD= 26.9% trail=30 sl= 3 PF=0.19
+  [123] sl=0.018 buf=0.0015 feeBe=3 t02=0.001 t01=0          ret=  -25.5% DD= 26.3% trail=30 sl= 3 PF=0.20
+  [124] sl=0.018 buf=0.001 feeBe=2 t02=null t01=0            ret=  -20.6% DD= 21.1% trail=31 sl= 2 PF=0.19
+  [125] sl=0.018 buf=0.001 feeBe=2 t02=0.001 t01=0           ret=  -19.7% DD= 20.5% trail=31 sl= 2 PF=0.24
+  [126] sl=0.018 buf=0.001 feeBe=2.5 t02=null t01=0          ret=  -20.6% DD= 21.1% trail=31 sl= 2 PF=0.19
+  [127] sl=0.018 buf=0.001 feeBe=2.5 t02=0.001 t01=0         ret=  -19.7% DD= 20.5% trail=31 sl= 2 PF=0.24
+  [128] sl=0.018 buf=0.001 feeBe=3 t02=null t01=0            ret=  -20.6% DD= 21.1% trail=31 sl= 2 PF=0.19
+  [129] sl=0.018 buf=0.001 feeBe=3 t02=0.001 t01=0           ret=  -19.7% DD= 20.5% trail=31 sl= 2 PF=0.24
+  [130] sl=0.018 buf=0.003 feeBe=2 t02=null t01=0            ret=  -29.7% DD= 37.8% trail=27 sl= 6 PF=0.34
+  [131] sl=0.018 buf=0.003 feeBe=2 t02=0.001 t01=0           ret=  -27.7% DD= 37.1% trail=27 sl= 6 PF=0.39
+  [132] sl=0.018 buf=0.003 feeBe=2.5 t02=null t01=0          ret=  -29.7% DD= 37.8% trail=27 sl= 6 PF=0.34
+  [133] sl=0.018 buf=0.003 feeBe=2.5 t02=0.001 t01=0         ret=  -27.7% DD= 37.1% trail=27 sl= 6 PF=0.39
+  [134] sl=0.018 buf=0.003 feeBe=3 t02=null t01=0            ret=  -29.7% DD= 37.8% trail=27 sl= 6 PF=0.34
+  [135] sl=0.018 buf=0.003 feeBe=3 t02=0.001 t01=0           ret=  -27.7% DD= 37.1% trail=27 sl= 6 PF=0.39
+  [136] sl=0.018 buf=0.002 feeBe=2 t02=null t01=0            ret=  -32.9% DD= 35.5% trail=28 sl= 5 PF=0.20
+  [137] sl=0.018 buf=0.002 feeBe=2 t02=0.001 t01=0           ret=  -32.1% DD= 35.5% trail=28 sl= 5 PF=0.22
+  [138] sl=0.018 buf=0.002 feeBe=2.5 t02=null t01=0          ret=  -32.9% DD= 35.5% trail=28 sl= 5 PF=0.20
+  [139] sl=0.018 buf=0.002 feeBe=2.5 t02=0.001 t01=0         ret=  -32.1% DD= 35.5% trail=28 sl= 5 PF=0.22
+  [140] sl=0.018 buf=0.002 feeBe=3 t02=null t01=0            ret=  -32.9% DD= 35.5% trail=28 sl= 5 PF=0.20
+  [141] sl=0.018 buf=0.002 feeBe=3 t02=0.001 t01=0           ret=  -32.1% DD= 35.5% trail=28 sl= 5 PF=0.22
+  [142] sl=0.012 buf=0.01 feeBe=2 t02=null t01=0             ret=   -6.6% DD= 45.7% trail=18 sl=14 PF=0.93
+  [143] sl=0.012 buf=0.01 feeBe=2 t02=0.001 t01=0            ret=   -6.3% DD= 45.7% trail=18 sl=14 PF=0.94
+  [144] sl=0.012 buf=0.01 feeBe=2.5 t02=null t01=0           ret=   -6.6% DD= 45.7% trail=18 sl=14 PF=0.93
+  [145] sl=0.012 buf=0.01 feeBe=2.5 t02=0.001 t01=0          ret=   -6.3% DD= 45.7% trail=18 sl=14 PF=0.94
+  [146] sl=0.012 buf=0.01 feeBe=3 t02=null t01=0             ret=   -6.6% DD= 45.7% trail=18 sl=14 PF=0.93
+  [147] sl=0.012 buf=0.01 feeBe=3 t02=0.001 t01=0            ret=   -6.3% DD= 45.7% trail=18 sl=14 PF=0.94
+  [148] sl=0.012 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -33.7% DD= 35.1% trail=29 sl= 4 PF=0.20
+  [149] sl=0.012 buf=0.0015 feeBe=2 t02=0.001 t01=0          ret=  -33.3% DD= 34.3% trail=29 sl= 4 PF=0.21
+  [150] sl=0.012 buf=0.0015 feeBe=2.5 t02=null t01=0         ret=  -33.7% DD= 35.1% trail=29 sl= 4 PF=0.20
+  [151] sl=0.012 buf=0.0015 feeBe=2.5 t02=0.001 t01=0        ret=  -33.3% DD= 34.3% trail=29 sl= 4 PF=0.21
+  [152] sl=0.012 buf=0.0015 feeBe=3 t02=null t01=0           ret=  -33.7% DD= 35.1% trail=29 sl= 4 PF=0.20
+  [153] sl=0.012 buf=0.0015 feeBe=3 t02=0.001 t01=0          ret=  -33.3% DD= 34.3% trail=29 sl= 4 PF=0.21
+  [154] sl=0.012 buf=0.001 feeBe=2 t02=null t01=0            ret=  -29.4% DD= 30.0% trail=30 sl= 3 PF=0.19
+  [155] sl=0.012 buf=0.001 feeBe=2 t02=0.001 t01=0           ret=  -28.1% DD= 29.1% trail=30 sl= 3 PF=0.23
+  [156] sl=0.012 buf=0.001 feeBe=2.5 t02=null t01=0          ret=  -29.4% DD= 30.0% trail=30 sl= 3 PF=0.19
+  [157] sl=0.012 buf=0.001 feeBe=2.5 t02=0.001 t01=0         ret=  -28.1% DD= 29.1% trail=30 sl= 3 PF=0.23
+  [158] sl=0.012 buf=0.001 feeBe=3 t02=null t01=0            ret=  -29.4% DD= 30.0% trail=30 sl= 3 PF=0.19
+  [159] sl=0.012 buf=0.001 feeBe=3 t02=0.001 t01=0           ret=  -28.1% DD= 29.1% trail=30 sl= 3 PF=0.23
+  [160] sl=0.012 buf=0.003 feeBe=2 t02=null t01=0            ret=  -33.8% DD= 44.9% trail=26 sl= 7 PF=0.36
+  [161] sl=0.012 buf=0.003 feeBe=2 t02=0.001 t01=0           ret=  -30.6% DD= 43.6% trail=26 sl= 7 PF=0.43
+  [162] sl=0.012 buf=0.003 feeBe=2.5 t02=null t01=0          ret=  -33.8% DD= 44.9% trail=26 sl= 7 PF=0.36
+  [163] sl=0.012 buf=0.003 feeBe=2.5 t02=0.001 t01=0         ret=  -30.6% DD= 43.6% trail=26 sl= 7 PF=0.43
+  [164] sl=0.012 buf=0.003 feeBe=3 t02=null t01=0            ret=  -33.8% DD= 44.9% trail=26 sl= 7 PF=0.36
+  [165] sl=0.012 buf=0.003 feeBe=3 t02=0.001 t01=0           ret=  -30.6% DD= 43.6% trail=26 sl= 7 PF=0.43
+  [166] sl=0.012 buf=0.002 feeBe=2 t02=null t01=0            ret=  -38.3% DD= 41.9% trail=27 sl= 6 PF=0.23
+  [167] sl=0.012 buf=0.002 feeBe=2 t02=0.001 t01=0           ret=  -37.2% DD= 41.9% trail=27 sl= 6 PF=0.26
+  [168] sl=0.012 buf=0.002 feeBe=2.5 t02=null t01=0          ret=  -38.3% DD= 41.9% trail=27 sl= 6 PF=0.23
+  [169] sl=0.012 buf=0.002 feeBe=2.5 t02=0.001 t01=0         ret=  -37.2% DD= 41.9% trail=27 sl= 6 PF=0.26
+  [170] sl=0.012 buf=0.002 feeBe=3 t02=null t01=0            ret=  -38.3% DD= 41.9% trail=27 sl= 6 PF=0.23
+  [171] sl=0.012 buf=0.002 feeBe=3 t02=0.001 t01=0           ret=  -37.2% DD= 41.9% trail=27 sl= 6 PF=0.26
+  [172] sl=0.02 buf=0.01 feeBe=2 t02=null t01=0              ret=  -14.8% DD= 33.4% trail=20 sl=11 PF=0.81
+  [173] sl=0.02 buf=0.01 feeBe=2 t02=0.001 t01=0             ret=  -14.3% DD= 33.2% trail=20 sl=11 PF=0.81
+  [174] sl=0.02 buf=0.01 feeBe=2.5 t02=null t01=0            ret=  -14.8% DD= 33.4% trail=20 sl=11 PF=0.81
+  [175] sl=0.02 buf=0.01 feeBe=2.5 t02=0.001 t01=0           ret=  -14.3% DD= 33.2% trail=20 sl=11 PF=0.81
+  [176] sl=0.02 buf=0.01 feeBe=3 t02=null t01=0              ret=  -14.8% DD= 33.4% trail=20 sl=11 PF=0.81
+  [177] sl=0.02 buf=0.01 feeBe=3 t02=0.001 t01=0             ret=  -14.3% DD= 33.2% trail=20 sl=11 PF=0.81
+  [178] sl=0.02 buf=0.0015 feeBe=2 t02=null t01=0            ret=  -25.4% DD= 26.3% trail=30 sl= 3 PF=0.18
+  [179] sl=0.02 buf=0.0015 feeBe=2 t02=0.001 t01=0           ret=  -25.1% DD= 25.8% trail=30 sl= 3 PF=0.19
+  [180] sl=0.02 buf=0.0015 feeBe=2.5 t02=null t01=0          ret=  -25.4% DD= 26.3% trail=30 sl= 3 PF=0.18
+  [181] sl=0.02 buf=0.0015 feeBe=2.5 t02=0.001 t01=0         ret=  -25.1% DD= 25.8% trail=30 sl= 3 PF=0.19
+  [182] sl=0.02 buf=0.0015 feeBe=3 t02=null t01=0            ret=  -25.4% DD= 26.3% trail=30 sl= 3 PF=0.18
+  [183] sl=0.02 buf=0.0015 feeBe=3 t02=0.001 t01=0           ret=  -25.1% DD= 25.8% trail=30 sl= 3 PF=0.19
+  [184] sl=0.02 buf=0.001 feeBe=2 t02=null t01=0             ret=  -20.0% DD= 20.5% trail=31 sl= 2 PF=0.18
+  [185] sl=0.02 buf=0.001 feeBe=2 t02=0.001 t01=0            ret=  -19.1% DD= 19.9% trail=31 sl= 2 PF=0.22
+  [186] sl=0.02 buf=0.001 feeBe=2.5 t02=null t01=0           ret=  -20.0% DD= 20.5% trail=31 sl= 2 PF=0.18
+  [187] sl=0.02 buf=0.001 feeBe=2.5 t02=0.001 t01=0          ret=  -19.1% DD= 19.9% trail=31 sl= 2 PF=0.22
+  [188] sl=0.02 buf=0.001 feeBe=3 t02=null t01=0             ret=  -20.0% DD= 20.5% trail=31 sl= 2 PF=0.18
+  [189] sl=0.02 buf=0.001 feeBe=3 t02=0.001 t01=0            ret=  -19.1% DD= 19.9% trail=31 sl= 2 PF=0.22
+  [190] sl=0.02 buf=0.003 feeBe=2 t02=null t01=0             ret=  -30.5% DD= 37.8% trail=27 sl= 6 PF=0.31
+  [191] sl=0.02 buf=0.003 feeBe=2 t02=0.001 t01=0            ret=  -28.8% DD= 37.2% trail=27 sl= 6 PF=0.35
+  [192] sl=0.02 buf=0.003 feeBe=2.5 t02=null t01=0           ret=  -30.5% DD= 37.8% trail=27 sl= 6 PF=0.31
+  [193] sl=0.02 buf=0.003 feeBe=2.5 t02=0.001 t01=0          ret=  -28.8% DD= 37.2% trail=27 sl= 6 PF=0.35
+  [194] sl=0.02 buf=0.003 feeBe=3 t02=null t01=0             ret=  -30.5% DD= 37.8% trail=27 sl= 6 PF=0.31
+  [195] sl=0.02 buf=0.003 feeBe=3 t02=0.001 t01=0            ret=  -28.8% DD= 37.2% trail=27 sl= 6 PF=0.35
+  [196] sl=0.02 buf=0.002 feeBe=2 t02=null t01=0             ret=  -32.8% DD= 35.2% trail=28 sl= 5 PF=0.19
+  [197] sl=0.02 buf=0.002 feeBe=2 t02=0.001 t01=0            ret=  -32.1% DD= 35.2% trail=28 sl= 5 PF=0.21
+  [198] sl=0.02 buf=0.002 feeBe=2.5 t02=null t01=0           ret=  -32.8% DD= 35.2% trail=28 sl= 5 PF=0.19
+  [199] sl=0.02 buf=0.002 feeBe=2.5 t02=0.001 t01=0          ret=  -32.1% DD= 35.2% trail=28 sl= 5 PF=0.21
+  [200] sl=0.02 buf=0.002 feeBe=3 t02=null t01=0             ret=  -32.8% DD= 35.2% trail=28 sl= 5 PF=0.19
+  [201] sl=0.02 buf=0.002 feeBe=3 t02=0.001 t01=0            ret=  -32.1% DD= 35.2% trail=28 sl= 5 PF=0.21
+
+--- TOP 10 (UNIFIED_ELITE) ---
+sl=0.025 buf=0.01 feeBe=2 t02=0.001 t01=0            ret=    5.50% DD=19.6% trail=23 trail$=68 PF=1.09
+sl=0.025 buf=0.01 feeBe=2.5 t02=0.001 t01=0          ret=    5.50% DD=19.6% trail=23 trail$=68 PF=1.09
+sl=0.025 buf=0.01 feeBe=3 t02=0.001 t01=0            ret=    5.50% DD=19.6% trail=23 trail$=68 PF=1.09
+sl=0.025 buf=0.01 feeBe=2 t02=null t01=0             ret=    4.99% DD=19.6% trail=23 trail$=67 PF=1.08
+sl=0.025 buf=0.01 feeBe=2 t02=null t01=0             ret=    4.99% DD=19.6% trail=23 trail$=67 PF=1.08
+sl=0.025 buf=0.01 feeBe=2.5 t02=null t01=0           ret=    4.99% DD=19.6% trail=23 trail$=67 PF=1.08
+sl=0.025 buf=0.01 feeBe=3 t02=null t01=0             ret=    4.99% DD=19.6% trail=23 trail$=67 PF=1.08
+sl=0.025 buf=0.0015 feeBe=2 t02=0.001 t01=0          ret=  -10.58% DD=11.2% trail=33 trail$=-3 PF=0.37
+sl=0.025 buf=0.0015 feeBe=2.5 t02=0.001 t01=0        ret=  -10.58% DD=11.2% trail=33 trail$=-3 PF=0.37
+sl=0.025 buf=0.0015 feeBe=3 t02=0.001 t01=0          ret=  -10.58% DD=11.2% trail=33 trail$=-3 PF=0.37
+
+=== BEST UNIFIED_ELITE (micro trail) ===
+Return 5.50% vs baseline -74.71% (Δ 80.21%)
+DD 19.6% | WR 74% | PF 1.09 | trades 31
+Trail exits 23 (net $68.06) | SL exits 8
+
+Recommended Fixed % + SL params:
+{
+  "trailSizingMode": "FIXED_PCT",
+  "trailingStopLossAuto": true,
+  "supertrendFuturesUseFixedSl": true,
+  "supertrendFuturesFixedSlPct": 0.025,
+  "trailBufferRate": 0.01,
+  "trailFeeBeMultiplier": 2,
+  "trailPostT02SpacingFrac": 0.001,
+  "trailT01LockSlippageFrac": 0,
+  "futuresTrailingStFeeBreakeven": true,
+  "futuresTrailingStAdvanced": true
+}
+
+========================================================================
+FIXED % + SL tune | SUPERTREND_ELITE
+baseline run: 1845b3b6… | BTCUSDT 1h
+window: 2025-06-01 → 2026-06-16 | stored ret: -31.1%
+trail sim: worker 1m mark micro | 2-phase quick
+========================================================================
+
+baseline (saved params): ret=-31.1% DD=32.1% trail=24 sl=7 trail$=-10.6 PF=0.26
+
+--- Phase 1: SL × trail buffer (81 combos) ---
+
+  [1] sl=0.004 buf=0.001 feeBe=2 t02=null t01=0            ret=  -29.8% DD= 30.9% trail=27 sl= 4 PF=0.29
+  [2] sl=0.004 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -26.3% DD= 31.1% trail=25 sl= 6 PF=0.47
+  [3] sl=0.004 buf=0.002 feeBe=2 t02=null t01=0            ret=  -32.7% DD= 35.6% trail=21 sl=10 PF=0.47
+  [4] sl=0.004 buf=0.003 feeBe=2 t02=null t01=0            ret=  -35.8% DD= 38.6% trail=17 sl=14 PF=0.48
+  [5] sl=0.004 buf=0.004 feeBe=2 t02=null t01=0            ret=  -40.3% DD= 42.8% trail=14 sl=17 PF=0.51
+  [6] sl=0.004 buf=0.005 feeBe=2 t02=null t01=0            ret=  -43.8% DD= 46.2% trail=13 sl=18 PF=0.48
+  [7] sl=0.004 buf=0.006 feeBe=2 t02=null t01=0            ret=  -42.1% DD= 44.9% trail=10 sl=20 PF=0.53
+  [8] sl=0.004 buf=0.008 feeBe=2 t02=null t01=0            ret=  -36.2% DD= 39.3% trail=10 sl=20 PF=0.61
+  [9] sl=0.004 buf=0.01 feeBe=2 t02=null t01=0             ret=  -25.7% DD= 33.5% trail=10 sl=20 PF=0.73
+  [10] sl=0.006 buf=0.001 feeBe=2 t02=null t01=0            ret=  -30.5% DD= 31.4% trail=27 sl= 4 PF=0.25
+  [11] sl=0.006 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -30.0% DD= 33.9% trail=25 sl= 6 PF=0.39
+  [12] sl=0.006 buf=0.002 feeBe=2 t02=null t01=0            ret=  -35.1% DD= 37.5% trail=22 sl= 9 PF=0.40
+  [13] sl=0.006 buf=0.003 feeBe=2 t02=null t01=0            ret=  -29.9% DD= 38.7% trail=20 sl=11 PF=0.51
+  [14] sl=0.006 buf=0.004 feeBe=2 t02=null t01=0            ret=  -19.8% DD= 27.1% trail=18 sl=13 PF=0.75
+  [15] sl=0.006 buf=0.005 feeBe=2 t02=null t01=0            ret=  -25.1% DD= 31.9% trail=17 sl=14 PF=0.70
+  [16] sl=0.006 buf=0.006 feeBe=2 t02=null t01=0            ret=  -22.2% DD= 31.6% trail=14 sl=16 PF=0.75
+  [17] sl=0.006 buf=0.008 feeBe=2 t02=null t01=0            ret=   -4.4% DD= 25.0% trail=14 sl=16 PF=0.95
+  [18] sl=0.006 buf=0.01 feeBe=2 t02=null t01=0             ret=    8.6% DD= 25.0% trail=14 sl=16 PF=1.09
+  [19] sl=0.008 buf=0.001 feeBe=2 t02=null t01=0            ret=  -22.8% DD= 23.5% trail=28 sl= 3 PF=0.26
+  [20] sl=0.008 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -21.3% DD= 24.7% trail=27 sl= 4 PF=0.42
+  [21] sl=0.008 buf=0.002 feeBe=2 t02=null t01=0            ret=  -28.5% DD= 30.4% trail=24 sl= 7 PF=0.40
+  [22] sl=0.008 buf=0.003 feeBe=2 t02=null t01=0            ret=  -22.3% DD= 34.9% trail=22 sl= 9 PF=0.55
+  [23] sl=0.008 buf=0.004 feeBe=2 t02=null t01=0            ret=  -20.1% DD= 31.1% trail=19 sl=12 PF=0.70
+  [24] sl=0.008 buf=0.005 feeBe=2 t02=null t01=0            ret=  -25.1% DD= 35.4% trail=18 sl=13 PF=0.65
+  [25] sl=0.008 buf=0.006 feeBe=2 t02=null t01=0            ret=  -20.8% DD= 32.9% trail=16 sl=14 PF=0.72
+  [26] sl=0.008 buf=0.008 feeBe=2 t02=null t01=0            ret=  -12.1% DD= 31.1% trail=15 sl=15 PF=0.85
+  [27] sl=0.008 buf=0.01 feeBe=2 t02=null t01=0             ret=   -3.1% DD= 31.1% trail=15 sl=15 PF=0.96
+  [28] sl=0.01 buf=0.001 feeBe=2 t02=null t01=0             ret=  -21.2% DD= 21.7% trail=28 sl= 3 PF=0.24
+  [29] sl=0.01 buf=0.0015 feeBe=2 t02=null t01=0            ret=  -20.7% DD= 23.5% trail=27 sl= 4 PF=0.38
+  [30] sl=0.01 buf=0.002 feeBe=2 t02=null t01=0             ret=  -24.2% DD= 25.9% trail=25 sl= 6 PF=0.40
+  [31] sl=0.01 buf=0.003 feeBe=2 t02=null t01=0             ret=  -21.5% DD= 31.2% trail=23 sl= 8 PF=0.51
+  [32] sl=0.01 buf=0.004 feeBe=2 t02=null t01=0             ret=  -12.8% DD= 24.7% trail=21 sl=10 PF=0.79
+  [33] sl=0.01 buf=0.005 feeBe=2 t02=null t01=0             ret=   -7.4% DD= 29.2% trail=20 sl=11 PF=0.90
+  [34] sl=0.01 buf=0.006 feeBe=2 t02=null t01=0             ret=   -4.1% DD= 30.9% trail=18 sl=12 PF=0.95
+  [35] sl=0.01 buf=0.008 feeBe=2 t02=null t01=0             ret=    3.2% DD= 26.7% trail=17 sl=13 PF=1.04
+  [36] sl=0.01 buf=0.01 feeBe=2 t02=null t01=0              ret=   11.6% DD= 26.7% trail=17 sl=13 PF=1.14
+  [37] sl=0.012 buf=0.001 feeBe=2 t02=null t01=0            ret=  -20.0% DD= 20.5% trail=28 sl= 3 PF=0.22
+  [38] sl=0.012 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -20.3% DD= 22.6% trail=27 sl= 4 PF=0.34
+  [39] sl=0.012 buf=0.002 feeBe=2 t02=null t01=0            ret=  -17.9% DD= 23.5% trail=26 sl= 5 PF=0.47
+  [40] sl=0.012 buf=0.003 feeBe=2 t02=null t01=0            ret=  -11.7% DD= 26.7% trail=25 sl= 6 PF=0.66
+  [41] sl=0.012 buf=0.004 feeBe=2 t02=null t01=0            ret=   -5.9% DD= 22.2% trail=23 sl= 8 PF=0.88
+  [42] sl=0.012 buf=0.005 feeBe=2 t02=null t01=0            ret=   -1.8% DD= 26.8% trail=22 sl= 9 PF=0.97
+  [43] sl=0.012 buf=0.006 feeBe=2 t02=null t01=0            ret=   -4.9% DD= 32.5% trail=19 sl=11 PF=0.93
+  [44] sl=0.012 buf=0.008 feeBe=2 t02=null t01=0            ret=    0.4% DD= 29.0% trail=18 sl=12 PF=1.01
+  [45] sl=0.012 buf=0.01 feeBe=2 t02=null t01=0             ret=    7.2% DD= 29.0% trail=18 sl=12 PF=1.10
+  [46] sl=0.015 buf=0.001 feeBe=2 t02=null t01=0            ret=  -18.9% DD= 19.3% trail=28 sl= 3 PF=0.19
+  [47] sl=0.015 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -19.9% DD= 21.8% trail=27 sl= 4 PF=0.30
+  [48] sl=0.015 buf=0.002 feeBe=2 t02=null t01=0            ret=  -18.8% DD= 23.3% trail=26 sl= 5 PF=0.40
+  [49] sl=0.015 buf=0.003 feeBe=2 t02=null t01=0            ret=  -14.8% DD= 26.7% trail=25 sl= 6 PF=0.55
+  [50] sl=0.015 buf=0.004 feeBe=2 t02=null t01=0            ret=  -12.1% DD= 23.8% trail=23 sl= 8 PF=0.73
+  [51] sl=0.015 buf=0.005 feeBe=2 t02=null t01=0            ret=   -9.9% DD= 28.1% trail=22 sl= 9 PF=0.81
+  [52] sl=0.015 buf=0.006 feeBe=2 t02=null t01=0            ret=   -9.4% DD= 34.0% trail=20 sl=10 PF=0.83
+  [53] sl=0.015 buf=0.008 feeBe=2 t02=null t01=0            ret=  -11.1% DD= 31.3% trail=18 sl=12 PF=0.83
+  [54] sl=0.015 buf=0.01 feeBe=2 t02=null t01=0             ret=   -6.3% DD= 31.3% trail=18 sl=12 PF=0.90
+  [55] sl=0.018 buf=0.001 feeBe=2 t02=null t01=0            ret=  -13.8% DD= 14.2% trail=29 sl= 2 PF=0.22
+  [56] sl=0.018 buf=0.0015 feeBe=2 t02=null t01=0           ret=  -15.4% DD= 17.1% trail=28 sl= 3 PF=0.32
+  [57] sl=0.018 buf=0.002 feeBe=2 t02=null t01=0            ret=  -15.2% DD= 19.1% trail=27 sl= 4 PF=0.42
+  [58] sl=0.018 buf=0.003 feeBe=2 t02=null t01=0            ret=  -11.4% DD= 21.8% trail=26 sl= 5 PF=0.59
+  [59] sl=0.018 buf=0.004 feeBe=2 t02=null t01=0            ret=  -10.6% DD= 20.1% trail=24 sl= 7 PF=0.73
+  [60] sl=0.018 buf=0.005 feeBe=2 t02=null t01=0            ret=   -9.5% DD= 24.4% trail=23 sl= 8 PF=0.79
+  [61] sl=0.018 buf=0.006 feeBe=2 t02=null t01=0            ret=   -9.8% DD= 30.8% trail=21 sl= 9 PF=0.80
+  [62] sl=0.018 buf=0.008 feeBe=2 t02=null t01=0            ret=  -12.7% DD= 28.5% trail=19 sl=11 PF=0.78
+  [63] sl=0.018 buf=0.01 feeBe=2 t02=null t01=0             ret=   -7.3% DD= 27.3% trail=19 sl=11 PF=0.87
+  [64] sl=0.02 buf=0.001 feeBe=2 t02=null t01=0             ret=  -13.4% DD= 13.7% trail=29 sl= 2 PF=0.21
+  [65] sl=0.02 buf=0.0015 feeBe=2 t02=null t01=0            ret=  -15.3% DD= 16.8% trail=28 sl= 3 PF=0.30
+  [66] sl=0.02 buf=0.002 feeBe=2 t02=null t01=0             ret=  -15.5% DD= 19.1% trail=27 sl= 4 PF=0.39
+  [67] sl=0.02 buf=0.003 feeBe=2 t02=null t01=0             ret=  -12.6% DD= 21.9% trail=26 sl= 5 PF=0.54
+  [68] sl=0.02 buf=0.004 feeBe=2 t02=null t01=0             ret=  -12.8% DD= 21.1% trail=24 sl= 7 PF=0.67
+  [69] sl=0.02 buf=0.005 feeBe=2 t02=null t01=0             ret=  -12.2% DD= 25.0% trail=23 sl= 8 PF=0.73
+  [70] sl=0.02 buf=0.006 feeBe=2 t02=null t01=0             ret=  -12.9% DD= 31.4% trail=21 sl= 9 PF=0.73
+  [71] sl=0.02 buf=0.008 feeBe=2 t02=null t01=0             ret=  -16.3% DD= 29.4% trail=19 sl=11 PF=0.71
+  [72] sl=0.02 buf=0.01 feeBe=2 t02=null t01=0              ret=  -11.6% DD= 28.3% trail=19 sl=11 PF=0.79
+  [73] sl=0.025 buf=0.001 feeBe=2 t02=null t01=0            ret=   -8.3% DD=  8.6% trail=31 sl= 1 PF=0.26
+  [74] sl=0.025 buf=0.0015 feeBe=2 t02=null t01=0           ret=   -5.8% DD=  7.1% trail=31 sl= 1 PF=0.51
+  [75] sl=0.025 buf=0.002 feeBe=2 t02=null t01=0            ret=   -2.0% DD=  5.8% trail=31 sl= 1 PF=0.81
+  [76] sl=0.025 buf=0.003 feeBe=2 t02=null t01=0            ret=    0.8% DD=  7.9% trail=30 sl= 2 PF=1.06
+  [77] sl=0.025 buf=0.004 feeBe=2 t02=null t01=0            ret=   -0.9% DD= 10.8% trail=28 sl= 4 PF=0.96
+  [78] sl=0.025 buf=0.005 feeBe=2 t02=null t01=0            ret=   -0.3% DD= 11.7% trail=26 sl= 5 PF=0.99
+  [79] sl=0.025 buf=0.006 feeBe=2 t02=null t01=0            ret=   -2.0% DD= 19.1% trail=24 sl= 6 PF=0.94
+  [80] sl=0.025 buf=0.008 feeBe=2 t02=null t01=0            ret=   -7.0% DD= 17.1% trail=22 sl= 8 PF=0.84
+  [81] sl=0.025 buf=0.01 feeBe=2 t02=null t01=0             ret=   -1.3% DD= 14.8% trail=22 sl= 8 PF=0.97
+
+--- Phase 2: fee BE × post-T02 on top SL/buffer (144 combos) ---
+
+  [82] sl=0.01 buf=0.01 feeBe=2 t02=null t01=0              ret=   11.6% DD= 26.7% trail=17 sl=13 PF=1.14
+  [83] sl=0.01 buf=0.01 feeBe=2 t02=0.001 t01=0             ret=   14.3% DD= 26.4% trail=17 sl=13 PF=1.18
+  [84] sl=0.01 buf=0.01 feeBe=2.5 t02=null t01=0            ret=   11.6% DD= 26.7% trail=17 sl=13 PF=1.14
+  [85] sl=0.01 buf=0.01 feeBe=2.5 t02=0.001 t01=0           ret=   14.3% DD= 26.4% trail=17 sl=13 PF=1.18
+  [86] sl=0.01 buf=0.01 feeBe=3 t02=null t01=0              ret=   11.6% DD= 26.7% trail=17 sl=13 PF=1.14
+  [87] sl=0.01 buf=0.01 feeBe=3 t02=0.001 t01=0             ret=   14.3% DD= 26.4% trail=17 sl=13 PF=1.18
+  [88] sl=0.01 buf=0.003 feeBe=2 t02=null t01=0             ret=  -21.5% DD= 31.2% trail=23 sl= 8 PF=0.51
+  [89] sl=0.01 buf=0.003 feeBe=2 t02=0.001 t01=0            ret=  -22.6% DD= 31.2% trail=23 sl= 8 PF=0.49
+  [90] sl=0.01 buf=0.003 feeBe=2.5 t02=null t01=0           ret=  -21.5% DD= 31.2% trail=23 sl= 8 PF=0.51
+  [91] sl=0.01 buf=0.003 feeBe=2.5 t02=0.001 t01=0          ret=  -22.6% DD= 31.2% trail=23 sl= 8 PF=0.49
+  [92] sl=0.01 buf=0.003 feeBe=3 t02=null t01=0             ret=  -21.5% DD= 31.2% trail=23 sl= 8 PF=0.51
+  [93] sl=0.01 buf=0.003 feeBe=3 t02=0.001 t01=0            ret=  -22.6% DD= 31.2% trail=23 sl= 8 PF=0.49
+  [94] sl=0.01 buf=0.008 feeBe=2 t02=null t01=0             ret=    3.2% DD= 26.7% trail=17 sl=13 PF=1.04
+  [95] sl=0.01 buf=0.008 feeBe=2 t02=0.001 t01=0            ret=    2.2% DD= 26.4% trail=17 sl=13 PF=1.03
+  [96] sl=0.01 buf=0.008 feeBe=2.5 t02=null t01=0           ret=    3.2% DD= 26.7% trail=17 sl=13 PF=1.04
+  [97] sl=0.01 buf=0.008 feeBe=2.5 t02=0.001 t01=0          ret=    2.2% DD= 26.4% trail=17 sl=13 PF=1.03
+  [98] sl=0.01 buf=0.008 feeBe=3 t02=null t01=0             ret=    3.2% DD= 26.7% trail=17 sl=13 PF=1.04
+  [99] sl=0.01 buf=0.008 feeBe=3 t02=0.001 t01=0            ret=    2.2% DD= 26.4% trail=17 sl=13 PF=1.03
+  [100] sl=0.01 buf=0.002 feeBe=2 t02=null t01=0             ret=  -24.2% DD= 25.9% trail=25 sl= 6 PF=0.40
+  [101] sl=0.01 buf=0.002 feeBe=2 t02=0.001 t01=0            ret=  -23.9% DD= 25.9% trail=25 sl= 6 PF=0.41
+  [102] sl=0.01 buf=0.002 feeBe=2.5 t02=null t01=0           ret=  -24.2% DD= 25.9% trail=25 sl= 6 PF=0.40
+  [103] sl=0.01 buf=0.002 feeBe=2.5 t02=0.001 t01=0          ret=  -23.9% DD= 25.9% trail=25 sl= 6 PF=0.41
+  [104] sl=0.01 buf=0.002 feeBe=3 t02=null t01=0             ret=  -24.2% DD= 25.9% trail=25 sl= 6 PF=0.40
+  [105] sl=0.01 buf=0.002 feeBe=3 t02=0.001 t01=0            ret=  -23.9% DD= 25.9% trail=25 sl= 6 PF=0.41
+  [106] sl=0.01 buf=0.005 feeBe=2 t02=null t01=0             ret=   -7.4% DD= 29.2% trail=20 sl=11 PF=0.90
+  [107] sl=0.01 buf=0.005 feeBe=2 t02=0.001 t01=0            ret=  -10.9% DD= 29.2% trail=20 sl=11 PF=0.84
+  [108] sl=0.01 buf=0.005 feeBe=2.5 t02=null t01=0           ret=   -7.4% DD= 29.2% trail=20 sl=11 PF=0.90
+  [109] sl=0.01 buf=0.005 feeBe=2.5 t02=0.001 t01=0          ret=  -10.9% DD= 29.2% trail=20 sl=11 PF=0.84
+  [110] sl=0.01 buf=0.005 feeBe=3 t02=null t01=0             ret=   -7.4% DD= 29.2% trail=20 sl=11 PF=0.90
+  [111] sl=0.01 buf=0.005 feeBe=3 t02=0.001 t01=0            ret=  -10.9% DD= 29.2% trail=20 sl=11 PF=0.84
+  [112] sl=0.01 buf=0.004 feeBe=2 t02=null t01=0             ret=  -12.8% DD= 24.7% trail=21 sl=10 PF=0.79
+  [113] sl=0.01 buf=0.004 feeBe=2 t02=0.001 t01=0            ret=  -16.6% DD= 24.7% trail=21 sl=10 PF=0.72
+  [114] sl=0.01 buf=0.004 feeBe=2.5 t02=null t01=0           ret=  -12.8% DD= 24.7% trail=21 sl=10 PF=0.79
+  [115] sl=0.01 buf=0.004 feeBe=2.5 t02=0.001 t01=0          ret=  -16.6% DD= 24.7% trail=21 sl=10 PF=0.72
+  [116] sl=0.01 buf=0.004 feeBe=3 t02=null t01=0             ret=  -12.8% DD= 24.7% trail=21 sl=10 PF=0.79
+  [117] sl=0.01 buf=0.004 feeBe=3 t02=0.001 t01=0            ret=  -16.6% DD= 24.7% trail=21 sl=10 PF=0.72
+  [118] sl=0.006 buf=0.01 feeBe=2 t02=null t01=0             ret=    8.6% DD= 25.0% trail=14 sl=16 PF=1.09
+  [119] sl=0.006 buf=0.01 feeBe=2 t02=0.001 t01=0            ret=   12.9% DD= 24.5% trail=14 sl=16 PF=1.14
+  [120] sl=0.006 buf=0.01 feeBe=2.5 t02=null t01=0           ret=    8.6% DD= 25.0% trail=14 sl=16 PF=1.09
+  [121] sl=0.006 buf=0.01 feeBe=2.5 t02=0.001 t01=0          ret=   12.9% DD= 24.5% trail=14 sl=16 PF=1.14
+  [122] sl=0.006 buf=0.01 feeBe=3 t02=null t01=0             ret=    8.6% DD= 25.0% trail=14 sl=16 PF=1.09
+  [123] sl=0.006 buf=0.01 feeBe=3 t02=0.001 t01=0            ret=   12.9% DD= 24.5% trail=14 sl=16 PF=1.14
+  [124] sl=0.006 buf=0.003 feeBe=2 t02=null t01=0            ret=  -29.9% DD= 38.7% trail=20 sl=11 PF=0.51
+  [125] sl=0.006 buf=0.003 feeBe=2 t02=0.001 t01=0           ret=  -31.6% DD= 38.7% trail=20 sl=11 PF=0.48
+  [126] sl=0.006 buf=0.003 feeBe=2.5 t02=null t01=0          ret=  -29.9% DD= 38.7% trail=20 sl=11 PF=0.51
+  [127] sl=0.006 buf=0.003 feeBe=2.5 t02=0.001 t01=0         ret=  -31.6% DD= 38.7% trail=20 sl=11 PF=0.48
+  [128] sl=0.006 buf=0.003 feeBe=3 t02=null t01=0            ret=  -29.9% DD= 38.7% trail=20 sl=11 PF=0.51
+  [129] sl=0.006 buf=0.003 feeBe=3 t02=0.001 t01=0           ret=  -31.6% DD= 38.7% trail=20 sl=11 PF=0.48
+  [130] sl=0.006 buf=0.008 feeBe=2 t02=null t01=0            ret=   -4.4% DD= 25.0% trail=14 sl=16 PF=0.95
+  [131] sl=0.006 buf=0.008 feeBe=2 t02=0.001 t01=0           ret=   -0.6% DD= 24.5% trail=14 sl=16 PF=0.99
+  [132] sl=0.006 buf=0.008 feeBe=2.5 t02=null t01=0          ret=   -4.4% DD= 25.0% trail=14 sl=16 PF=0.95
+  [133] sl=0.006 buf=0.008 feeBe=2.5 t02=0.001 t01=0         ret=   -0.6% DD= 24.5% trail=14 sl=16 PF=0.99
+  [134] sl=0.006 buf=0.008 feeBe=3 t02=null t01=0            ret=   -4.4% DD= 25.0% trail=14 sl=16 PF=0.95
+  [135] sl=0.006 buf=0.008 feeBe=3 t02=0.001 t01=0           ret=   -0.6% DD= 24.5% trail=14 sl=16 PF=0.99
+  [136] sl=0.006 buf=0.002 feeBe=2 t02=null t01=0            ret=  -35.1% DD= 37.5% trail=22 sl= 9 PF=0.40
+  [137] sl=0.006 buf=0.002 feeBe=2 t02=0.001 t01=0           ret=  -34.6% DD= 37.5% trail=22 sl= 9 PF=0.41
+  [138] sl=0.006 buf=0.002 feeBe=2.5 t02=null t01=0          ret=  -35.1% DD= 37.5% trail=22 sl= 9 PF=0.40
+  [139] sl=0.006 buf=0.002 feeBe=2.5 t02=0.001 t01=0         ret=  -34.6% DD= 37.5% trail=22 sl= 9 PF=0.41
+  [140] sl=0.006 buf=0.002 feeBe=3 t02=null t01=0            ret=  -35.1% DD= 37.5% trail=22 sl= 9 PF=0.40
+  [141] sl=0.006 buf=0.002 feeBe=3 t02=0.001 t01=0           ret=  -34.6% DD= 37.5% trail=22 sl= 9 PF=0.41
+  [142] sl=0.006 buf=0.005 feeBe=2 t02=null t01=0            ret=  -25.1% DD= 31.9% trail=17 sl=14 PF=0.70
+  [143] sl=0.006 buf=0.005 feeBe=2 t02=0.001 t01=0           ret=  -25.7% DD= 31.4% trail=17 sl=14 PF=0.69
+  [144] sl=0.006 buf=0.005 feeBe=2.5 t02=null t01=0          ret=  -25.1% DD= 31.9% trail=17 sl=14 PF=0.70
+  [145] sl=0.006 buf=0.005 feeBe=2.5 t02=0.001 t01=0         ret=  -25.7% DD= 31.4% trail=17 sl=14 PF=0.69
+  [146] sl=0.006 buf=0.005 feeBe=3 t02=null t01=0            ret=  -25.1% DD= 31.9% trail=17 sl=14 PF=0.70
+  [147] sl=0.006 buf=0.005 feeBe=3 t02=0.001 t01=0           ret=  -25.7% DD= 31.4% trail=17 sl=14 PF=0.69
+  [148] sl=0.006 buf=0.004 feeBe=2 t02=null t01=0            ret=  -19.8% DD= 27.1% trail=18 sl=13 PF=0.75
+  [149] sl=0.006 buf=0.004 feeBe=2 t02=0.001 t01=0           ret=  -21.1% DD= 26.5% trail=18 sl=13 PF=0.74
+  [150] sl=0.006 buf=0.004 feeBe=2.5 t02=null t01=0          ret=  -19.8% DD= 27.1% trail=18 sl=13 PF=0.75
+  [151] sl=0.006 buf=0.004 feeBe=2.5 t02=0.001 t01=0         ret=  -21.1% DD= 26.5% trail=18 sl=13 PF=0.74
+  [152] sl=0.006 buf=0.004 feeBe=3 t02=null t01=0            ret=  -19.8% DD= 27.1% trail=18 sl=13 PF=0.75
+  [153] sl=0.006 buf=0.004 feeBe=3 t02=0.001 t01=0           ret=  -21.1% DD= 26.5% trail=18 sl=13 PF=0.74
+  [154] sl=0.012 buf=0.01 feeBe=2 t02=null t01=0             ret=    7.2% DD= 29.0% trail=18 sl=12 PF=1.10
+  [155] sl=0.012 buf=0.01 feeBe=2 t02=0.001 t01=0            ret=    9.3% DD= 28.7% trail=18 sl=12 PF=1.13
+  [156] sl=0.012 buf=0.01 feeBe=2.5 t02=null t01=0           ret=    7.2% DD= 29.0% trail=18 sl=12 PF=1.10
+  [157] sl=0.012 buf=0.01 feeBe=2.5 t02=0.001 t01=0          ret=    9.3% DD= 28.7% trail=18 sl=12 PF=1.13
+  [158] sl=0.012 buf=0.01 feeBe=3 t02=null t01=0             ret=    7.2% DD= 29.0% trail=18 sl=12 PF=1.10
+  [159] sl=0.012 buf=0.01 feeBe=3 t02=0.001 t01=0            ret=    9.3% DD= 28.7% trail=18 sl=12 PF=1.13
+  [160] sl=0.012 buf=0.003 feeBe=2 t02=null t01=0            ret=  -11.7% DD= 26.7% trail=25 sl= 6 PF=0.66
+  [161] sl=0.012 buf=0.003 feeBe=2 t02=0.001 t01=0           ret=  -12.8% DD= 26.7% trail=25 sl= 6 PF=0.63
+  [162] sl=0.012 buf=0.003 feeBe=2.5 t02=null t01=0          ret=  -11.7% DD= 26.7% trail=25 sl= 6 PF=0.66
+  [163] sl=0.012 buf=0.003 feeBe=2.5 t02=0.001 t01=0         ret=  -12.8% DD= 26.7% trail=25 sl= 6 PF=0.63
+  [164] sl=0.012 buf=0.003 feeBe=3 t02=null t01=0            ret=  -11.7% DD= 26.7% trail=25 sl= 6 PF=0.66
+  [165] sl=0.012 buf=0.003 feeBe=3 t02=0.001 t01=0           ret=  -12.8% DD= 26.7% trail=25 sl= 6 PF=0.63
+  [166] sl=0.012 buf=0.008 feeBe=2 t02=null t01=0            ret=    0.4% DD= 29.0% trail=18 sl=12 PF=1.01
+  [167] sl=0.012 buf=0.008 feeBe=2 t02=0.001 t01=0           ret=   -0.5% DD= 28.7% trail=18 sl=12 PF=0.99
+  [168] sl=0.012 buf=0.008 feeBe=2.5 t02=null t01=0          ret=    0.4% DD= 29.0% trail=18 sl=12 PF=1.01
+  [169] sl=0.012 buf=0.008 feeBe=2.5 t02=0.001 t01=0         ret=   -0.5% DD= 28.7% trail=18 sl=12 PF=0.99
+  [170] sl=0.012 buf=0.008 feeBe=3 t02=null t01=0            ret=    0.4% DD= 29.0% trail=18 sl=12 PF=1.01
+  [171] sl=0.012 buf=0.008 feeBe=3 t02=0.001 t01=0           ret=   -0.5% DD= 28.7% trail=18 sl=12 PF=0.99
+  [172] sl=0.012 buf=0.002 feeBe=2 t02=null t01=0            ret=  -17.9% DD= 23.5% trail=26 sl= 5 PF=0.47
+  [173] sl=0.012 buf=0.002 feeBe=2 t02=0.001 t01=0           ret=  -17.6% DD= 23.5% trail=26 sl= 5 PF=0.48
+  [174] sl=0.012 buf=0.002 feeBe=2.5 t02=null t01=0          ret=  -17.9% DD= 23.5% trail=26 sl= 5 PF=0.47
+  [175] sl=0.012 buf=0.002 feeBe=2.5 t02=0.001 t01=0         ret=  -17.6% DD= 23.5% trail=26 sl= 5 PF=0.48
+  [176] sl=0.012 buf=0.002 feeBe=3 t02=null t01=0            ret=  -17.9% DD= 23.5% trail=26 sl= 5 PF=0.47
+  [177] sl=0.012 buf=0.002 feeBe=3 t02=0.001 t01=0           ret=  -17.6% DD= 23.5% trail=26 sl= 5 PF=0.48
+  [178] sl=0.012 buf=0.005 feeBe=2 t02=null t01=0            ret=   -1.8% DD= 26.8% trail=22 sl= 9 PF=0.97
+  [179] sl=0.012 buf=0.005 feeBe=2 t02=0.001 t01=0           ret=   -5.0% DD= 26.8% trail=22 sl= 9 PF=0.91
+  [180] sl=0.012 buf=0.005 feeBe=2.5 t02=null t01=0          ret=   -1.8% DD= 26.8% trail=22 sl= 9 PF=0.97
+  [181] sl=0.012 buf=0.005 feeBe=2.5 t02=0.001 t01=0         ret=   -5.0% DD= 26.8% trail=22 sl= 9 PF=0.91
+  [182] sl=0.012 buf=0.005 feeBe=3 t02=null t01=0            ret=   -1.8% DD= 26.8% trail=22 sl= 9 PF=0.97
+  [183] sl=0.012 buf=0.005 feeBe=3 t02=0.001 t01=0           ret=   -5.0% DD= 26.8% trail=22 sl= 9 PF=0.91
+  [184] sl=0.012 buf=0.004 feeBe=2 t02=null t01=0            ret=   -5.9% DD= 22.2% trail=23 sl= 8 PF=0.88
+  [185] sl=0.012 buf=0.004 feeBe=2 t02=0.001 t01=0           ret=   -9.3% DD= 22.3% trail=23 sl= 8 PF=0.81
+  [186] sl=0.012 buf=0.004 feeBe=2.5 t02=null t01=0          ret=   -5.9% DD= 22.2% trail=23 sl= 8 PF=0.88
+  [187] sl=0.012 buf=0.004 feeBe=2.5 t02=0.001 t01=0         ret=   -9.3% DD= 22.3% trail=23 sl= 8 PF=0.81
+  [188] sl=0.012 buf=0.004 feeBe=3 t02=null t01=0            ret=   -5.9% DD= 22.2% trail=23 sl= 8 PF=0.88
+  [189] sl=0.012 buf=0.004 feeBe=3 t02=0.001 t01=0           ret=   -9.3% DD= 22.3% trail=23 sl= 8 PF=0.81
+  [190] sl=0.025 buf=0.01 feeBe=2 t02=null t01=0             ret=   -1.3% DD= 14.8% trail=22 sl= 8 PF=0.97
+  [191] sl=0.025 buf=0.01 feeBe=2 t02=0.001 t01=0            ret=    0.3% DD= 14.2% trail=22 sl= 8 PF=1.01
+  [192] sl=0.025 buf=0.01 feeBe=2.5 t02=null t01=0           ret=   -1.3% DD= 14.8% trail=22 sl= 8 PF=0.97
+  [193] sl=0.025 buf=0.01 feeBe=2.5 t02=0.001 t01=0          ret=    0.3% DD= 14.2% trail=22 sl= 8 PF=1.01
+  [194] sl=0.025 buf=0.01 feeBe=3 t02=null t01=0             ret=   -1.3% DD= 14.8% trail=22 sl= 8 PF=0.97
+  [195] sl=0.025 buf=0.01 feeBe=3 t02=0.001 t01=0            ret=    0.3% DD= 14.2% trail=22 sl= 8 PF=1.01
+  [196] sl=0.025 buf=0.003 feeBe=2 t02=null t01=0            ret=    0.8% DD=  7.9% trail=30 sl= 2 PF=1.06
+  [197] sl=0.025 buf=0.003 feeBe=2 t02=0.001 t01=0           ret=    0.4% DD=  7.7% trail=30 sl= 2 PF=1.03
+  [198] sl=0.025 buf=0.003 feeBe=2.5 t02=null t01=0          ret=    0.8% DD=  7.9% trail=30 sl= 2 PF=1.06
+  [199] sl=0.025 buf=0.003 feeBe=2.5 t02=0.001 t01=0         ret=    0.4% DD=  7.7% trail=30 sl= 2 PF=1.03
+  [200] sl=0.025 buf=0.003 feeBe=3 t02=null t01=0            ret=    0.8% DD=  7.9% trail=30 sl= 2 PF=1.06
+  [201] sl=0.025 buf=0.003 feeBe=3 t02=0.001 t01=0           ret=    0.4% DD=  7.7% trail=30 sl= 2 PF=1.03
+  [202] sl=0.025 buf=0.008 feeBe=2 t02=null t01=0            ret=   -7.0% DD= 17.1% trail=22 sl= 8 PF=0.84
+  [203] sl=0.025 buf=0.008 feeBe=2 t02=0.001 t01=0           ret=   -6.6% DD= 16.3% trail=22 sl= 8 PF=0.84
+  [204] sl=0.025 buf=0.008 feeBe=2.5 t02=null t01=0          ret=   -7.0% DD= 17.1% trail=22 sl= 8 PF=0.84
+  [205] sl=0.025 buf=0.008 feeBe=2.5 t02=0.001 t01=0         ret=   -6.6% DD= 16.3% trail=22 sl= 8 PF=0.84
+  [206] sl=0.025 buf=0.008 feeBe=3 t02=null t01=0            ret=   -7.0% DD= 17.1% trail=22 sl= 8 PF=0.84
+  [207] sl=0.025 buf=0.008 feeBe=3 t02=0.001 t01=0           ret=   -6.6% DD= 16.3% trail=22 sl= 8 PF=0.84
+  [208] sl=0.025 buf=0.002 feeBe=2 t02=null t01=0            ret=   -2.0% DD=  5.8% trail=31 sl= 1 PF=0.81
+  [209] sl=0.025 buf=0.002 feeBe=2 t02=0.001 t01=0           ret=   -1.9% DD=  5.8% trail=31 sl= 1 PF=0.83
+  [210] sl=0.025 buf=0.002 feeBe=2.5 t02=null t01=0          ret=   -2.0% DD=  5.8% trail=31 sl= 1 PF=0.81
+  [211] sl=0.025 buf=0.002 feeBe=2.5 t02=0.001 t01=0         ret=   -1.9% DD=  5.8% trail=31 sl= 1 PF=0.83
+  [212] sl=0.025 buf=0.002 feeBe=3 t02=null t01=0            ret=   -2.0% DD=  5.8% trail=31 sl= 1 PF=0.81
+  [213] sl=0.025 buf=0.002 feeBe=3 t02=0.001 t01=0           ret=   -1.9% DD=  5.8% trail=31 sl= 1 PF=0.83
+  [214] sl=0.025 buf=0.005 feeBe=2 t02=null t01=0            ret=   -0.3% DD= 11.7% trail=26 sl= 5 PF=0.99
+  [215] sl=0.025 buf=0.005 feeBe=2 t02=0.001 t01=0           ret=   -1.1% DD= 11.3% trail=26 sl= 5 PF=0.96
+  [216] sl=0.025 buf=0.005 feeBe=2.5 t02=null t01=0          ret=   -0.3% DD= 11.7% trail=26 sl= 5 PF=0.99
+  [217] sl=0.025 buf=0.005 feeBe=2.5 t02=0.001 t01=0         ret=   -1.1% DD= 11.3% trail=26 sl= 5 PF=0.96
+  [218] sl=0.025 buf=0.005 feeBe=3 t02=null t01=0            ret=   -0.3% DD= 11.7% trail=26 sl= 5 PF=0.99
+  [219] sl=0.025 buf=0.005 feeBe=3 t02=0.001 t01=0           ret=   -1.1% DD= 11.3% trail=26 sl= 5 PF=0.96
+  [220] sl=0.025 buf=0.004 feeBe=2 t02=null t01=0            ret=   -0.9% DD= 10.8% trail=28 sl= 4 PF=0.96
+  [221] sl=0.025 buf=0.004 feeBe=2 t02=0.001 t01=0           ret=   -2.3% DD= 10.8% trail=28 sl= 4 PF=0.91
+  [222] sl=0.025 buf=0.004 feeBe=2.5 t02=null t01=0          ret=   -0.9% DD= 10.8% trail=28 sl= 4 PF=0.96
+  [223] sl=0.025 buf=0.004 feeBe=2.5 t02=0.001 t01=0         ret=   -2.3% DD= 10.8% trail=28 sl= 4 PF=0.91
+  [224] sl=0.025 buf=0.004 feeBe=3 t02=null t01=0            ret=   -0.9% DD= 10.8% trail=28 sl= 4 PF=0.96
+  [225] sl=0.025 buf=0.004 feeBe=3 t02=0.001 t01=0           ret=   -2.3% DD= 10.8% trail=28 sl= 4 PF=0.91
+
+--- TOP 10 (SUPERTREND_ELITE) ---
+sl=0.01 buf=0.01 feeBe=2 t02=0.001 t01=0             ret=   14.33% DD=26.4% trail=17 trail$=96 PF=1.18
+sl=0.01 buf=0.01 feeBe=2.5 t02=0.001 t01=0           ret=   14.33% DD=26.4% trail=17 trail$=96 PF=1.18
+sl=0.01 buf=0.01 feeBe=3 t02=0.001 t01=0             ret=   14.33% DD=26.4% trail=17 trail$=96 PF=1.18
+sl=0.006 buf=0.01 feeBe=2 t02=0.001 t01=0            ret=   12.93% DD=24.5% trail=14 trail$=108 PF=1.14
+sl=0.006 buf=0.01 feeBe=2.5 t02=0.001 t01=0          ret=   12.93% DD=24.5% trail=14 trail$=108 PF=1.14
+sl=0.006 buf=0.01 feeBe=3 t02=0.001 t01=0            ret=   12.93% DD=24.5% trail=14 trail$=108 PF=1.14
+sl=0.01 buf=0.01 feeBe=2 t02=null t01=0              ret=   11.63% DD=26.7% trail=17 trail$=92 PF=1.14
+sl=0.01 buf=0.01 feeBe=2 t02=null t01=0              ret=   11.63% DD=26.7% trail=17 trail$=92 PF=1.14
+sl=0.01 buf=0.01 feeBe=2.5 t02=null t01=0            ret=   11.63% DD=26.7% trail=17 trail$=92 PF=1.14
+sl=0.01 buf=0.01 feeBe=3 t02=null t01=0              ret=   11.63% DD=26.7% trail=17 trail$=92 PF=1.14
+
+=== BEST SUPERTREND_ELITE (micro trail) ===
+Return 14.33% vs baseline -31.09% (Δ 45.42%)
+DD 26.4% | WR 57% | PF 1.18 | trades 30
+Trail exits 17 (net $95.71) | SL exits 13
+
+Recommended Fixed % + SL params:
+{
+  "trailSizingMode": "FIXED_PCT",
+  "trailingStopLossAuto": true,
+  "supertrendFuturesUseFixedSl": true,
+  "supertrendFuturesFixedSlPct": 0.01,
+  "trailBufferRate": 0.01,
+  "trailFeeBeMultiplier": 2,
+  "trailPostT02SpacingFrac": 0.001,
+  "trailT01LockSlippageFrac": 0,
+  "futuresTrailingStFeeBreakeven": true,
+  "futuresTrailingStAdvanced": true
+}
+
+========================================================================
+SUMMARY — best Fixed % + SL per strategy (1m micro trail)
+========================================================================
+UNIFIED_ELITE      best ret=5.5% (baseline -74.7%) | sl=0.025 buf=0.01 feeBe=2
+SUPERTREND_ELITE   best ret=14.3% (baseline -31.1%) | sl=0.01 buf=0.01 feeBe=2

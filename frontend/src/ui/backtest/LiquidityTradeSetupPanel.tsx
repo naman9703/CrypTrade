@@ -5,6 +5,7 @@
  */
 import type { BacktestTrade } from "../../types/backtest";
 import type { BacktestLiqContext } from "./backtestChartOverlays";
+import { activeBracketPrice } from "./backtestChartTime";
 import type { SmcChartMarkup } from "./smcChartMarkup";
 
 const TECH_LABELS: Record<string, string> = {
@@ -153,9 +154,9 @@ export function LiquidityTradeSetupPanel({ trade, markup }: Props) {
         </div>
         <div>
           <span className="font-semibold text-sky-600 dark:text-sky-400">Entry</span> {fmt(trade.entryPrice)}
-          {trade.slPrice != null ? ` · SL ${fmt(trade.slPrice)}` : ""}
-          {liq?.tp1Price != null ? ` · TP1 ${fmt(liq.tp1Price)}` : ""}
-          {trade.tpPrice != null ? ` · TP ${fmt(trade.tpPrice)}` : ""}
+          {activeBracketPrice(trade.slPrice) != null ? ` · SL ${fmt(activeBracketPrice(trade.slPrice)!)}` : ""}
+          {activeBracketPrice(liq?.tp1Price) != null ? ` · TP1 ${fmt(activeBracketPrice(liq?.tp1Price)!)}` : ""}
+          {activeBracketPrice(trade.tpPrice) != null ? ` · TP ${fmt(activeBracketPrice(trade.tpPrice)!)}` : ""}
         </div>
         {techniques.length > 0 && (
           <div className="sm:col-span-2 lg:col-span-4">

@@ -252,7 +252,7 @@ Illiquid alts            → slippage, gaps, manipulation
 
 **Use case:** Validate over **long OOS** windows; distrust one hot quarter (e.g. 2026 H1 alone).
 
-**Honest return band (validated in repo):** ~**10–21% CAGR**, ~**1–1.5%/month**, 15–30% DD — not 50%/month systematic.
+**Honest return band (aspirational research target):** ~**1–1.5%/month** class may be achievable in principle — **not** currently certified by any strategy in-repo. Not 50%/month systematic.
 
 ---
 
@@ -308,11 +308,11 @@ Illiquid alts            → slippage, gaps, manipulation
 | Market lesson | Backtest / validation result |
 |---------------|------------------------------|
 | High-frequency TA bleeds on taker 15m | EMA_CROSS, BREAKOUT_VOL ≈ −95%+ |
-| Low-frequency trend + trail exit survives | **SUPERTREND_ELITE** — only strategy passing all 4 OOS gates |
+| Low-frequency trend + trail exit (candidate) | **SUPERTREND_ELITE** — prior gate-pass claims revoked until correct-trail re-validation |
 | Over-gating → no sample | Order-flow paths: 0–6 trades |
-| Short windows mislead | 2026 H1 leaders ≠ 17mo validated edge |
+| Short windows mislead | 2026 H1 leaders ≠ multi-year truth |
 | Regime router ≠ automatic edge | REGIME_ADAPTIVE negative OOS |
-| Honest deploy expectation | ~10–21% CAGR, 15–30% MDD at moderate risk |
+| Honest stance | No certified deployable band until gates pass with correct exits |
 
 See `STRATEGY_RESEARCH_HANDOFF.md`, `strategy.md`, Appendix A below.
 
@@ -322,7 +322,7 @@ See `STRATEGY_RESEARCH_HANDOFF.md`, `strategy.md`, Appendix A below.
 
 | Playbook | Description | Repo status |
 |----------|-------------|-------------|
-| **Trend continuation** | HTF trend + LTF trigger + trail exit | **Validated** (`SUPERTREND_ELITE`) |
+| **Trend continuation** | HTF trend + LTF trigger + trail exit | Candidate (`SUPERTREND_ELITE`) — not certified |
 | **Range fade** | Mean reversion at range extremes | Mostly negative OOS on 15m taker |
 | **Post-sweep reversal** | Liquidity sweep + structure flip | SMART_REVERSAL negative; needs strict rules |
 
@@ -660,7 +660,7 @@ See `STRATEGY_RESEARCH_HANDOFF.md`, `strategy.md`, Appendix A below.
 ### Timeframe (TF)
 **Definition:** Bar duration (1m, 5m, 15m, 1h, 4h, 1d).
 **Use case:** Signal TF vs filter TF (MTF).
-**Notes:** Our validated edge mostly 15m + 1h/4h filters.
+**Notes:** Candidate research often used 15m + 1h/4h filters — not a certified edge.
 
 ### EMA / SMA
 **Definition:** Exponential or simple moving average of close.
@@ -1065,19 +1065,24 @@ See `STRATEGY_RESEARCH_HANDOFF.md`, `strategy.md`, Appendix A below.
 **Notes:** Time-of-day seasonality on crypto.
 
 ### Volume profile (VP)
-**Definition:** Histogram of volume at price levels over period.
-**Use case:** POC, VAH, VAL structure trades (`volumeProfileStrategy.js`).
-**Notes:** Computationally heavy per bar in backtest.
+**Definition:** Histogram of volume at price levels over a defined session or range.
+**Use case:** POC, VAH, VAL structure trades (`volumeProfileStrategy.js`, `techniques/volumeProfile.js`).
+**Notes:** Repo default is **developing UTC-day session VP** (`vpProfileMode=session_utc`), not a rolling lookback smear. OHLCV is a proxy until tick footprint exists. Legacy `rolling` mode remains for research.
 
 ### POC (point of control)
 **Definition:** Price with highest traded volume in profile.
 **Use case:** Magnet price; support/resistance.
-**Notes:** Developing POC moves intraday.
+**Notes:** Developing POC moves as the session trades. Prior-session POC can be a **naked POC** if still untested.
 
 ### Value area (VA) / VAH / VAL
-**Definition:** Range containing ~70% of volume; its high and low.
+**Definition:** Range containing ~70% of volume (configurable `vpValueAreaPct`); its high and low.
 **Use case:** Fade extremes back to POC; break VA for trend.
-**Notes:** Parameter: value area %.
+**Notes:** Built by contiguous expansion from POC (Auction Market Theory).
+
+### Naked POC
+**Definition:** Prior session POC that the current developing session has not yet traded through.
+**Use case:** Magnet / first-touch mean-reversion (`naked_poc` setup).
+**Notes:** Cleared once price trades through the level.
 
 ### HVN / LVN
 **Definition:** High / low volume node.
@@ -1296,7 +1301,7 @@ See `STRATEGY_RESEARCH_HANDOFF.md`, `strategy.md`, Appendix A below.
 
 ### Trend following
 **Definition:** Trade in direction of established trend; let winners run.
-**Use case:** SUPERTREND_ELITE — only validated OOS approach in repo.
+**Use case:** SUPERTREND_ELITE — research candidate; deploy claim revoked until correct-trail re-validation.
 **Notes:** Low frequency survives fees.
 
 ### Mean reversion
@@ -1365,7 +1370,7 @@ See `STRATEGY_RESEARCH_HANDOFF.md`, `strategy.md`, Appendix A below.
 
 ### Acceptance gates
 **Definition:** Pass/fail criteria before deploy (OOS>0, MC p5>0, Calmar>1, WF deg<35%).
-**Use case:** Only SUPERTREND_ELITE passed all four.
+**Use case:** Required before any deploy claim; currently no strategy certified pass.
 **Notes:** Non-negotiable for this project per AGENTS.md.
 
 ### Overfitting / curve fitting
@@ -1533,7 +1538,7 @@ See `STRATEGY_RESEARCH_HANDOFF.md`, `strategy.md`, Appendix A below.
 
 ### `manualStrategy` / `strategyMode`
 **Definition:** Config selecting which registered strategy runs.
-**Use case:** `SUPERTREND_ELITE` + `MANUAL` for deploy.
+**Use case:** Pick a registered strategy key for research; nothing is certified for live deploy.
 **Notes:** AUTO picks regime router.
 
 ### `RISK_AT_SL` sizing
@@ -1797,7 +1802,7 @@ Before every live or paper trade, mark:
 
 | Key | One-line | Research status |
 |-----|----------|-----------------|
-| SUPERTREND_ELITE | 5-gate Supertrend + trail exit | **Only OOS-validated** |
+| SUPERTREND_ELITE | 5-gate Supertrend + trail exit | Deploy claim **revoked** (wrong trailing); re-validate |
 | TREND_HTF_ST | HTF trend + Supertrend | Promising 2026 H1; needs full WF |
 | HTF_LEG_RIDER | HTF + range breakout legs | Mixed; validate |
 | TREND_PULLBACK | HTF trend + RSI pullback | Negative OOS |

@@ -1,0 +1,16 @@
+
+=== baseline (immediate breakout) ===
+N=263 ret=135.0% DD=52.4% WR=38%
+  2022-2023: n=64 wr=33% ret=-5.4% net=$-5.4
+  2023-2024: n=45 wr=36% ret=0.0% net=$0.0
+  2024-2025: n=82 wr=37% ret=13.2% net=$12.5
+  2025-2026: n=72 wr=46% ret=119.4% net=$127.9
+
+=== vacuum retest routing ===
+N=225 ret=-51.3% DD=65.6% WR=40%
+  2022-2023: n=51 wr=39% ret=-24.3% net=$-24.3
+  2023-2024: n=37 wr=43% ret=-2.5% net=$-1.9
+  2024-2025: n=75 wr=36% ret=-25.1% net=$-18.5
+  2025-2026: n=62 wr=42% ret=-11.9% net=$-6.6
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-vacuum-retest.json

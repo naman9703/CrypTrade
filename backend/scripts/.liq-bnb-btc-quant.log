@@ -1,0 +1,168 @@
+
+=== LIQ quantitative research: BNB vs BTC ===
+
+Window: 2025-06-01 → 2026-06-01
+Preset: INTRADAY_PRO_LIQ_15M (partial TP, breakdown bias fixed)
+
+Running BNBUSDT partial TP…
+Running BTCUSDT partial TP…
+
+--- Headline ---
+BNBUSDT: n=65 ret=7.68% WR=64.6% PF=1.19
+BTCUSDT: n=27 ret=-12.79% WR=44.4% PF=0.47
+
+--- WHY BNB vs BTC? Feature means (all trades) ---
+feature               BNB      BTC        Δ    BNB W    BTC W    BNB L    BTC L
+entryScore         63.108   64.370    1.263   60.119   64.750   68.565   64.067
+extension           0.005    0.005   -0.000    0.006    0.003    0.003    0.006
+reclaimBars         4.692    5.259    0.567    5.167    6.000    3.826    4.667
+bodyRatio           0.383    0.341   -0.042    0.396    0.195    0.361    0.458
+volRatio            1.107    1.328    0.221    1.112    1.653    1.100    1.069
+adx                36.946   39.766    2.820   39.310   43.079   32.628   37.116
+impulse             0.786    1.223    0.437    0.915    1.287    0.551    1.173
+htfSep              0.011    0.007   -0.004    0.011    0.005    0.009    0.008
+atrPctile          73.582   74.969    1.388   73.034   70.292   74.582   78.711
+mfePct              1.643    1.067   -0.576    2.010    1.826    0.971    0.460
+maePct             -0.991   -1.101   -0.110   -0.774   -0.585   -1.388   -1.515
+barsHeld           34.815   35.148    0.333   36.405   39.167   31.913   31.933
+givebackPct        59.001   71.602   12.601   41.311   44.437   91.304   93.333
+exitEff            -0.024   -0.487   -0.462    0.587    0.556   -1.141   -1.320
+
+--- BTC winners vs losers (feature divergence) ---
+feature             winners     losers          Δ
+entryScore           64.750     64.067      0.683
+extension             0.003      0.006     -0.002
+reclaimBars           6.000      4.667      1.333
+bodyRatio             0.195      0.458     -0.262
+volRatio              1.653      1.069      0.585
+adx                  43.079     37.116      5.963
+impulse               1.287      1.173      0.114
+htfSep                0.005      0.008     -0.002
+atrPctile            70.292     78.711     -8.419
+mfePct                1.826      0.460      1.366
+maePct               -0.585     -1.515      0.930
+barsHeld             39.167     31.933      7.233
+givebackPct          44.437     93.333    -48.896
+exitEff               0.556     -1.320      1.876
+
+--- BTC feature correlation with PnL ---
+  mfePct           r=0.809 n=27
+  maePct           r=0.805 n=27
+  givebackPct      r=-0.586 n=27
+  bodyRatio        r=-0.570 n=27
+  htfSep           r=-0.235 n=27
+  atrPctile        r=-0.217 n=27
+  volRatio         r=0.217 n=27
+  extension        r=-0.129 n=27
+  reclaimBars      r=0.063 n=27
+  impulse          r=-0.038 n=27
+  entryScore       r=0.030 n=27
+  adx              r=0.012 n=27
+
+--- BTC entry score → conditional expectancy ---
+  score 0-59     n= 12 WR= 41.7% avg$=-0.740 total=$-8.88
+  score 60-69    n=  6 WR= 66.7% avg$=0.647 total=$3.88
+  score 70-79    n=  7 WR= 28.6% avg$=-0.783 total=$-5.48
+  score 80-89    n=  1 WR=  0.0% avg$=-2.385 total=$-2.39
+  score 90-100   n=  1 WR=100.0% avg$=0.073 total=$0.07
+
+--- BTC market regime buckets ---
+
+  [regime15m]
+    trending       n= 22 WR= 55% avg$=-0.197 total=$-4.33 avgMFE=1.19%
+    developing     n=  4 WR=  0% avg$=-1.424 total=$-5.70 avgMFE=0.60%
+    compression    n=  1 WR=  0% avg$=-2.761 total=$-2.76 avgMFE=0.24%
+
+  [dayRegime]
+    breakdown      n= 20 WR= 50% avg$=-0.333 total=$-6.66 avgMFE=1.21%
+    breakout       n=  7 WR= 29% avg$=-0.876 total=$-6.13 avgMFE=0.66%
+
+  [volState]
+    expansion      n= 12 WR= 58% avg$=-0.311 total=$-3.73 avgMFE=1.13%
+    normal         n=  8 WR= 25% avg$=-1.167 total=$-9.34 avgMFE=0.80%
+    compression    n=  7 WR= 43% avg$=0.040 total=$0.28 avgMFE=1.26%
+
+  [liquidityClass]
+    daily          n= 27 WR= 44% avg$=-0.474 total=$-12.79 avgMFE=1.07%
+
+  [session]
+    ny             n= 13 WR= 46% avg$=-0.301 total=$-3.91 avgMFE=1.12%
+    overlap        n= 10 WR= 60% avg$=-0.155 total=$-1.55 avgMFE=1.29%
+    asia           n=  2 WR=  0% avg$=-2.554 total=$-5.11 avgMFE=0.09%
+    london         n=  2 WR=  0% avg$=-1.105 total=$-2.21 avgMFE=0.63%
+
+  [htfTrend]
+    down           n= 20 WR= 45% avg$=-0.459 total=$-9.17 avgMFE=1.20%
+    up             n=  7 WR= 43% avg$=-0.517 total=$-3.62 avgMFE=0.69%
+
+  [displacement]
+    weak           n= 19 WR= 47% avg$=-0.389 total=$-7.39 avgMFE=1.16%
+    strong         n=  8 WR= 38% avg$=-0.675 total=$-5.40 avgMFE=0.85%
+
+  [sweepSpeed]
+    ?              n= 19 WR= 47% avg$=-0.389 total=$-7.39 avgMFE=1.16%
+    slow           n=  6 WR= 50% avg$=-0.353 total=$-2.12 avgMFE=1.00%
+    medium         n=  2 WR=  0% avg$=-1.641 total=$-3.28 avgMFE=0.39%
+
+--- BTC failure clustering ---
+  winner                 n= 12 avg$=0.953 avgMFE=1.83%
+  never_green            n=  4 avg$=-2.584 avgMFE=0.08%
+  sl_no_follow           n=  3 avg$=-2.612 avgMFE=0.28%
+  time_stop_scratch      n=  3 avg$=-0.726 avgMFE=0.26%
+  time_stop_gave_back    n=  3 avg$=-0.485 avgMFE=0.77%
+  breakeven_after_partial n=  1 avg$=-0.040 avgMFE=1.60%
+  sl_after_profit        n=  1 avg$=-2.385 avgMFE=1.04%
+
+--- Exit efficiency (realized / MFE dollar) ---
+BNBUSDT: winners exitEff=0.59 giveback=41.3% | losers exitEff=-1.14 avgMFE=0.97%
+BTCUSDT: winners exitEff=0.56 giveback=44.4% | losers exitEff=-1.32 avgMFE=0.46%
+
+--- BTC: partial TP vs trail-only (exit hypothesis) ---
+partial: n=27 ret=-12.79% avgMFE=1.07% avgExitEff=-0.49
+trail:   n=43 ret=-25.98% avgMFE=0.27% avgExitEff=-1.00 WR=4.7%
+Trail failure modes:
+  trail_scratch          n=16 avgMFE=0.21%
+  never_green            n=14 avgMFE=0.09%
+  trail_gave_back        n=9 avgMFE=0.46%
+  winner                 n=2 avgMFE=1.11%
+  sl_no_follow           n=1 avgMFE=0.31%
+  time_stop_scratch      n=1 avgMFE=0.19%
+
+--- BNB regime buckets (same preset, for contrast) ---
+
+  [regime15m] BNB
+    trending       n= 55 WR= 67% total=$12.58
+    developing     n=  7 WR= 43% total=$-6.21
+    compression    n=  3 WR= 67% total=$1.31
+  [regime15m] BTC
+    trending       n= 22 WR= 55% total=$-4.33
+    developing     n=  4 WR=  0% total=$-5.70
+    compression    n=  1 WR=  0% total=$-2.76
+
+  [dayRegime] BNB
+    breakout       n= 30 WR= 57% total=$-4.93
+    breakdown      n= 23 WR= 70% total=$3.71
+    neutral        n= 12 WR= 75% total=$8.90
+  [dayRegime] BTC
+    breakdown      n= 20 WR= 50% total=$-6.66
+    breakout       n=  7 WR= 29% total=$-6.13
+
+  [displacement] BNB
+    weak           n= 41 WR= 59% total=$-4.86
+    strong         n= 24 WR= 75% total=$12.54
+  [displacement] BTC
+    weak           n= 19 WR= 47% total=$-7.39
+    strong         n=  8 WR= 38% total=$-5.40
+
+  [levelType] BNB
+    pdh            n= 33 WR= 58% total=$-4.38
+    pdl            n= 32 WR= 72% total=$12.05
+  [levelType] BTC
+    pdl            n= 20 WR= 50% total=$-6.66
+    pdh            n=  7 WR= 29% total=$-6.13
+
+--- Research status (defensible summary) ---
+• Bug fixed: breakdown-day veto was blocking classical setups on BTC.
+• Current implementation: BTC 27 trades (~2.3/mo), all tested micro-params negative in prior sweep.
+• Root cause of BTC negative expectancy: NOT identified — requires regime/exit hypotheses above.
+• Entry score correlation on BTC: 0.030

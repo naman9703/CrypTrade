@@ -141,7 +141,7 @@ export function createAppState({ log }) {
         try {
           const ver = await strategyService.getVersion(vid);
           if (ver?.cfgRaw && typeof ver.cfgRaw === "object") {
-            initialPersistedConfig = sanitizeSignalBrainCfgRaw(ver.cfgRaw);
+            initialPersistedConfig = sanitizeSignalBrainCfgRaw(ver.cfgRaw, { hydrate: true });
           }
         } catch (e) {
           log?.warn?.("strategy_version_hydrate_failed", { slug, error: String(e?.message || e) });
@@ -440,7 +440,7 @@ export function createAppState({ log }) {
             if (vid) {
               try {
                 const ver = await strategyService.getVersion(vid);
-                persisted = ver?.cfgRaw && typeof ver.cfgRaw === "object" ? sanitizeSignalBrainCfgRaw(ver.cfgRaw) : null;
+                persisted = ver?.cfgRaw && typeof ver.cfgRaw === "object" ? sanitizeSignalBrainCfgRaw(ver.cfgRaw, { hydrate: true }) : null;
               } catch {
                 persisted = null;
               }

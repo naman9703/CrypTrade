@@ -1,0 +1,52 @@
+Harvest BTCUSDT 2022-01-01→2026-06-01...
+Harvest BNBUSDT 2022-01-01→2026-06-01...
+Harvest ETHUSDT 2022-01-01→2026-06-01...
+Harvest SOLUSDT 2022-01-01→2026-06-01...
+Harvest XRPUSDT 2022-01-01→2026-06-01...
+
+Harvested 2137 candidates → /Users/namanpaliwal/Desktop/trading/backend/scripts/.liq-candidate-trades.csv
+Selection bias: 1612 would be day-picked
+{
+  "generatedAt": "2026-07-10T00:05:38.623Z",
+  "from": "2022-01-01",
+  "to": "2026-06-01",
+  "runs": [
+    {
+      "symbol": "BTCUSDT",
+      "candidates": 350,
+      "selectedByDayPicker": 278,
+      "selectionRatePct": 79.42857142857143,
+      "candleCount": 68981
+    },
+    {
+      "symbol": "BNBUSDT",
+      "candidates": 658,
+      "selectedByDayPicker": 505,
+      "selectionRatePct": 76.74772036474164,
+      "candleCount": 100024
+    },
+    {
+      "symbol": "ETHUSDT",
+      "candidates": 569,
+      "selectedByDayPicker": 421,
+      "selectionRatePct": 73.98945518453426,
+      "candleCount": 68981
+    },
+    {
+      "symbol": "SOLUSDT",
+      "candidates": 318,
+      "selectedByDayPicker": 227,
+      "selectionRatePct": 71.38364779874213,
+      "candleCount": 35040
+    },
+    {
+      "symbol": "XRPUSDT",
+      "candidates": 242,
+      "selectedByDayPicker": 181,
+      "selectionRatePct": 74.79338842975206,
+      "candleCount": 34086
+    }
+  ]
+}
+
+Next: node scripts/research-liq-experiments.mjs

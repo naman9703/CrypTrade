@@ -1,0 +1,826 @@
+{
+  "sample": {
+    "totalRows": 1964,
+    "analyzedRows": 1964,
+    "dataSource": "candidates",
+    "defaultOutcome": "fwd_closeR_20",
+    "v1Rows": 1964,
+    "coins": [
+      "BTCUSDT",
+      "BNBUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "XRPUSDT"
+    ],
+    "pickedCandidates": 1515,
+    "winPct": 0,
+    "avgOutcome": -0.01922637474541758
+  },
+  "dashboard": [
+    {
+      "rank": 1,
+      "feature": "cont_dailyRangeUsed",
+      "importance": 0.6037035493794458,
+      "spearman": 0.06851599510291886,
+      "mutualInfo": 0.018215807485121346,
+      "monotonicity": 0.6606060606060606,
+      "bucketSpread": 0.35973734849269656,
+      "coinStable": 0.4,
+      "regimeStable": 0.6,
+      "driftStable": true,
+      "recommendation": "PARTIAL",
+      "evidencePassed": 5,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 2,
+      "feature": "cont_trendMaturity",
+      "importance": 0.4425707892193011,
+      "spearman": -0.02168486552274819,
+      "mutualInfo": 0.0015403319554329713,
+      "monotonicity": 0.05219667262143741,
+      "bucketSpread": 0.3950421319796955,
+      "coinStable": 0.4,
+      "regimeStable": 0.2,
+      "driftStable": true,
+      "recommendation": "REVIEW",
+      "evidencePassed": 3,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 3,
+      "feature": "cont_score",
+      "importance": 0.41918592157799295,
+      "spearman": -0.006950196000387695,
+      "mutualInfo": 0.03590207853420297,
+      "monotonicity": -0.41818181818181815,
+      "bucketSpread": 0.2582277297213301,
+      "coinStable": 0.2,
+      "regimeStable": 0.2,
+      "driftStable": false,
+      "recommendation": "PARTIAL",
+      "evidencePassed": 3,
+      "evidenceTotal": 6,
+      "topInteractions": [
+        {
+          "type": "numeric",
+          "features": [
+            "marketState_adx",
+            "cont_score"
+          ],
+          "bestCell": {
+            "aBin": 2,
+            "bBin": 3,
+            "n": 115,
+            "avgR": 0.17577391304347825
+          },
+          "lift": 0.19500028778889583,
+          "cells": 16
+        },
+        {
+          "type": "numeric",
+          "features": [
+            "disp_impulseAtr",
+            "cont_score"
+          ],
+          "bestCell": {
+            "aBin": 2,
+            "bBin": 3,
+            "n": 121,
+            "avgR": 0.15185371900826444
+          },
+          "lift": 0.17108009375368202,
+          "cells": 16
+        }
+      ]
+    },
+    {
+      "rank": 4,
+      "feature": "scoreV2_continuationRoom",
+      "importance": 0.4187411803148491,
+      "spearman": -0.006950196000387695,
+      "mutualInfo": 0.03590207853420297,
+      "monotonicity": -0.41818181818181815,
+      "bucketSpread": 0.2582277297213301,
+      "coinStable": 0.2,
+      "regimeStable": 0.2,
+      "driftStable": false,
+      "recommendation": "PARTIAL",
+      "evidencePassed": 3,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 5,
+      "feature": "rr",
+      "importance": 0.4160765847826584,
+      "spearman": 0.0043157998747974675,
+      "mutualInfo": 0.019399480002074986,
+      "monotonicity": -0.07878787878787878,
+      "bucketSpread": 0.3369714285714286,
+      "coinStable": 0,
+      "regimeStable": 0.2,
+      "driftStable": false,
+      "recommendation": "IGNORE",
+      "evidencePassed": 2,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 6,
+      "feature": "sweep_absorption",
+      "importance": 0.4155583139704866,
+      "spearman": -0.04401303950059803,
+      "mutualInfo": 0.013307997967293627,
+      "monotonicity": -0.5951368255656534,
+      "bucketSpread": 0.2780100823578163,
+      "coinStable": 0.6,
+      "regimeStable": 0.6,
+      "driftStable": true,
+      "recommendation": "USE",
+      "evidencePassed": 6,
+      "evidenceTotal": 6,
+      "topInteractions": [
+        {
+          "type": "numeric",
+          "features": [
+            "sweep_absorption",
+            "level_importance"
+          ],
+          "bestCell": {
+            "aBin": 2,
+            "bBin": 1,
+            "n": 144,
+            "avgR": 0.12625000000000006
+          },
+          "lift": 0.14547637474541764,
+          "cells": 12
+        }
+      ]
+    },
+    {
+      "rank": 7,
+      "feature": "cont_opposingR",
+      "importance": 0.3856469350931188,
+      "spearman": 0.0015833407076750654,
+      "mutualInfo": 0.02366840614728623,
+      "monotonicity": -0.23636363636363636,
+      "bucketSpread": 0.2966214285714287,
+      "coinStable": 0,
+      "regimeStable": 0.2,
+      "driftStable": false,
+      "recommendation": "IGNORE",
+      "evidencePassed": 2,
+      "evidenceTotal": 6,
+      "topInteractions": [
+        {
+          "type": "numeric",
+          "features": [
+            "sweep_velocityAtr",
+            "cont_opposingR"
+          ],
+          "bestCell": {
+            "aBin": 4,
+            "bBin": 1,
+            "n": 106,
+            "avgR": 0.17130094339622642
+          },
+          "lift": 0.190527318141644,
+          "cells": 16
+        },
+        {
+          "type": "numeric",
+          "features": [
+            "cont_opposingR",
+            "level_importance"
+          ],
+          "bestCell": {
+            "aBin": 3,
+            "bBin": 1,
+            "n": 140,
+            "avgR": 0.06590857142857139
+          },
+          "lift": 0.08513494617398897,
+          "cells": 10
+        }
+      ]
+    },
+    {
+      "rank": 8,
+      "feature": "cont_opposingAtr",
+      "importance": 0.3838302855089105,
+      "spearman": -0.022590901712427405,
+      "mutualInfo": 0.014043063382649094,
+      "monotonicity": -0.3333333333333333,
+      "bucketSpread": 0.29685918367346953,
+      "coinStable": 0,
+      "regimeStable": 0.4,
+      "driftStable": false,
+      "recommendation": "IGNORE",
+      "evidencePassed": 2,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 9,
+      "feature": "sweep_attemptCount",
+      "importance": 0.3825685927270943,
+      "spearman": -0.04351614310906783,
+      "mutualInfo": 0.037654731776121726,
+      "monotonicity": -0.006060606060606061,
+      "bucketSpread": 0.15976632653061223,
+      "coinStable": 0.4,
+      "regimeStable": 0.2,
+      "driftStable": false,
+      "recommendation": "IGNORE",
+      "evidencePassed": 2,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 10,
+      "feature": "marketState_atrPct",
+      "importance": 0.37272728825600987,
+      "spearman": 0.046788362993860716,
+      "mutualInfo": 0.02703152017500975,
+      "monotonicity": 0.5393939393939394,
+      "bucketSpread": 0.18261118564176937,
+      "coinStable": 0.2,
+      "regimeStable": 0.4,
+      "driftStable": true,
+      "recommendation": "PARTIAL",
+      "evidencePassed": 4,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 11,
+      "feature": "disp_bodyEfficiency",
+      "importance": 0.36445702928404194,
+      "spearman": -0.005818483953104234,
+      "mutualInfo": 0.01993277822977416,
+      "monotonicity": -0.41818181818181815,
+      "bucketSpread": 0.2911979591836735,
+      "coinStable": 0.2,
+      "regimeStable": 0.2,
+      "driftStable": true,
+      "recommendation": "PARTIAL",
+      "evidencePassed": 4,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 12,
+      "feature": "disp_overlap",
+      "importance": 0.36169413169549264,
+      "spearman": -0.005854329033198186,
+      "mutualInfo": 0.014798472746084243,
+      "monotonicity": 0.12727272727272726,
+      "bucketSpread": 0.31075123795711174,
+      "coinStable": 0.6,
+      "regimeStable": 0.2,
+      "driftStable": false,
+      "recommendation": "PARTIAL",
+      "evidencePassed": 3,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 13,
+      "feature": "sweep_velocity",
+      "importance": 0.3589215000196222,
+      "spearman": 0.046388673794854264,
+      "mutualInfo": 0.029652521782144035,
+      "monotonicity": 0.22424242424242424,
+      "bucketSpread": 0.1605908629441623,
+      "coinStable": 0.4,
+      "regimeStable": 0.2,
+      "driftStable": true,
+      "recommendation": "REVIEW",
+      "evidencePassed": 3,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 14,
+      "feature": "scoreV2_sessionNarrative",
+      "importance": 0.34979724623161634,
+      "spearman": -0.0019929062969757487,
+      "mutualInfo": 0.012915734866559265,
+      "monotonicity": 0.04923659639173309,
+      "bucketSpread": 0.30773959390862937,
+      "coinStable": 0.2,
+      "regimeStable": 0.2,
+      "driftStable": false,
+      "recommendation": "IGNORE",
+      "evidencePassed": 2,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 15,
+      "feature": "disp_momentum",
+      "importance": 0.33780385820291214,
+      "spearman": -0.015429993787827995,
+      "mutualInfo": 0.024151192774999174,
+      "monotonicity": -0.3696969696969697,
+      "bucketSpread": 0.24232295918367347,
+      "coinStable": 0.4,
+      "regimeStable": 0.4,
+      "driftStable": true,
+      "recommendation": "PARTIAL",
+      "evidencePassed": 4,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 16,
+      "feature": "cont_remainingAtr",
+      "importance": 0.3377849169211927,
+      "spearman": 0.0016191982684275656,
+      "mutualInfo": 0.028625078950150963,
+      "monotonicity": 0.47878787878787876,
+      "bucketSpread": 0.24648975448047242,
+      "coinStable": 0.2,
+      "regimeStable": 0.2,
+      "driftStable": true,
+      "recommendation": "PARTIAL",
+      "evidencePassed": 4,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 17,
+      "feature": "scoreV2_displacement",
+      "importance": 0.3330004304313967,
+      "spearman": -0.031158589825753417,
+      "mutualInfo": 0.013606586701223743,
+      "monotonicity": -0.296969696969697,
+      "bucketSpread": 0.2452454081632653,
+      "coinStable": 0.4,
+      "regimeStable": 0.2,
+      "driftStable": true,
+      "recommendation": "REVIEW",
+      "evidencePassed": 3,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 18,
+      "feature": "sweep_velocityAtr",
+      "importance": 0.32981100554257725,
+      "spearman": 0.03417455976823407,
+      "mutualInfo": 0.026026512386972442,
+      "monotonicity": 0.1393939393939394,
+      "bucketSpread": 0.1659259271728996,
+      "coinStable": 0.4,
+      "regimeStable": 0.2,
+      "driftStable": false,
+      "recommendation": "IGNORE",
+      "evidencePassed": 2,
+      "evidenceTotal": 6,
+      "topInteractions": [
+        {
+          "type": "numeric",
+          "features": [
+            "sweep_velocityAtr",
+            "cont_opposingR"
+          ],
+          "bestCell": {
+            "aBin": 4,
+            "bBin": 1,
+            "n": 106,
+            "avgR": 0.17130094339622642
+          },
+          "lift": 0.190527318141644,
+          "cells": 16
+        },
+        {
+          "type": "numeric",
+          "features": [
+            "sweep_velocityAtr",
+            "level_importance"
+          ],
+          "bestCell": {
+            "aBin": 2,
+            "bBin": 4,
+            "n": 61,
+            "avgR": 0.13593934426229506
+          },
+          "lift": 0.15516571900771264,
+          "cells": 12
+        }
+      ]
+    },
+    {
+      "rank": 19,
+      "feature": "sweep_volSpike",
+      "importance": 0.31398809835702657,
+      "spearman": -0.04439552189914866,
+      "mutualInfo": 0.01606593844839462,
+      "monotonicity": -0.2727272727272727,
+      "bucketSpread": 0.18695663265306114,
+      "coinStable": 0.2,
+      "regimeStable": 0.2,
+      "driftStable": true,
+      "recommendation": "REVIEW",
+      "evidencePassed": 3,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 20,
+      "feature": "marketState_adx",
+      "importance": 0.3070437703851417,
+      "spearman": -0.029332932668423857,
+      "mutualInfo": 0.014171231630866029,
+      "monotonicity": -0.3212121212121212,
+      "bucketSpread": 0.21118838961980727,
+      "coinStable": 0.4,
+      "regimeStable": 0.4,
+      "driftStable": true,
+      "recommendation": "REVIEW",
+      "evidencePassed": 3,
+      "evidenceTotal": 6,
+      "topInteractions": [
+        {
+          "type": "numeric",
+          "features": [
+            "marketState_adx",
+            "cont_score"
+          ],
+          "bestCell": {
+            "aBin": 2,
+            "bBin": 3,
+            "n": 115,
+            "avgR": 0.17577391304347825
+          },
+          "lift": 0.19500028778889583,
+          "cells": 16
+        }
+      ]
+    },
+    {
+      "rank": 21,
+      "feature": "disp_impulseAtr",
+      "importance": 0.30498560692532356,
+      "spearman": -0.016898941316011547,
+      "mutualInfo": 0.013144397900513874,
+      "monotonicity": -0.11515151515151516,
+      "bucketSpread": 0.25432732829172267,
+      "coinStable": 0.2,
+      "regimeStable": 0.2,
+      "driftStable": false,
+      "recommendation": "IGNORE",
+      "evidencePassed": 2,
+      "evidenceTotal": 6,
+      "topInteractions": [
+        {
+          "type": "numeric",
+          "features": [
+            "disp_impulseAtr",
+            "cont_score"
+          ],
+          "bestCell": {
+            "aBin": 2,
+            "bBin": 3,
+            "n": 121,
+            "avgR": 0.15185371900826444
+          },
+          "lift": 0.17108009375368202,
+          "cells": 16
+        }
+      ]
+    },
+    {
+      "rank": 22,
+      "feature": "disp_atrExpansion",
+      "importance": 0.2845095374586951,
+      "spearman": -0.008286288063103966,
+      "mutualInfo": 0.021611960994844012,
+      "monotonicity": -0.006060606060606061,
+      "bucketSpread": 0.21307295918367347,
+      "coinStable": 0.2,
+      "regimeStable": 0,
+      "driftStable": true,
+      "recommendation": "REVIEW",
+      "evidencePassed": 3,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 23,
+      "feature": "marketState_confidence",
+      "importance": 0.2697942517902229,
+      "spearman": -0.0036257991141068753,
+      "mutualInfo": 0.004694559048187347,
+      "monotonicity": 0.22627786434233257,
+      "bucketSpread": 0.25355402206567906,
+      "coinStable": 0.2,
+      "regimeStable": 0.2,
+      "driftStable": false,
+      "recommendation": "IGNORE",
+      "evidencePassed": 1,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 24,
+      "feature": "weightedQuality",
+      "importance": 0.24422289251367602,
+      "spearman": -0.030048067903475712,
+      "mutualInfo": 0.013640617380196118,
+      "monotonicity": -0.47878787878787876,
+      "bucketSpread": 0.15405989847715737,
+      "coinStable": 0.6,
+      "regimeStable": 0.2,
+      "driftStable": false,
+      "recommendation": "USE",
+      "evidencePassed": 4,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 25,
+      "feature": "scoreV2_total",
+      "importance": 0.24338736387589988,
+      "spearman": -0.020058605321388853,
+      "mutualInfo": 0.011436239877839694,
+      "monotonicity": -0.01818181818181818,
+      "bucketSpread": 0.18410609137055833,
+      "coinStable": 0.4,
+      "regimeStable": 0,
+      "driftStable": false,
+      "recommendation": "IGNORE",
+      "evidencePassed": 2,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 26,
+      "feature": "liqQuality",
+      "importance": 0.24049297707980252,
+      "spearman": -0.020058605321388853,
+      "mutualInfo": 0.011436239877839694,
+      "monotonicity": -0.01818181818181818,
+      "bucketSpread": 0.18410609137055833,
+      "coinStable": 0.4,
+      "regimeStable": 0,
+      "driftStable": false,
+      "recommendation": "IGNORE",
+      "evidencePassed": 2,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 27,
+      "feature": "scoreV2_htfAlign",
+      "importance": 0.24000442712214648,
+      "spearman": -0.02084282463188004,
+      "mutualInfo": 0.002584141297808441,
+      "monotonicity": -0.027311549679956755,
+      "bucketSpread": 0.20750406091370568,
+      "coinStable": 0.6,
+      "regimeStable": 0.2,
+      "driftStable": true,
+      "recommendation": "PARTIAL",
+      "evidencePassed": 4,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 28,
+      "feature": "level_importance",
+      "importance": 0.23082205607333428,
+      "spearman": -0.02262204956606773,
+      "mutualInfo": 0.005435594889625907,
+      "monotonicity": -0.21540137501422144,
+      "bucketSpread": 0.18112244897959184,
+      "coinStable": 0.2,
+      "regimeStable": 0.6,
+      "driftStable": false,
+      "recommendation": "REVIEW",
+      "evidencePassed": 3,
+      "evidenceTotal": 6,
+      "topInteractions": [
+        {
+          "type": "numeric",
+          "features": [
+            "sweep_velocityAtr",
+            "level_importance"
+          ],
+          "bestCell": {
+            "aBin": 2,
+            "bBin": 4,
+            "n": 61,
+            "avgR": 0.13593934426229506
+          },
+          "lift": 0.15516571900771264,
+          "cells": 12
+        },
+        {
+          "type": "numeric",
+          "features": [
+            "sweep_absorption",
+            "level_importance"
+          ],
+          "bestCell": {
+            "aBin": 2,
+            "bBin": 1,
+            "n": 144,
+            "avgR": 0.12625000000000006
+          },
+          "lift": 0.14547637474541764,
+          "cells": 12
+        }
+      ]
+    },
+    {
+      "rank": 29,
+      "feature": "sweep_exhaustion",
+      "importance": 0.2268925786472474,
+      "spearman": -0.005241622909147728,
+      "mutualInfo": 0.014427447170069165,
+      "monotonicity": -0.4303030303030303,
+      "bucketSpread": 0.17901150160571833,
+      "coinStable": 0.4,
+      "regimeStable": 0.4,
+      "driftStable": false,
+      "recommendation": "PARTIAL",
+      "evidencePassed": 2,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 30,
+      "feature": "scoreV2_sweepQuality",
+      "importance": 0.22229363236926244,
+      "spearman": -0.005167677365194043,
+      "mutualInfo": 0.013525551035049625,
+      "monotonicity": 0.43146072564169846,
+      "bucketSpread": 0.16921275510204087,
+      "coinStable": 0.2,
+      "regimeStable": 0,
+      "driftStable": false,
+      "recommendation": "PARTIAL",
+      "evidencePassed": 3,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    },
+    {
+      "rank": 31,
+      "feature": "scoreV2_levelImportance",
+      "importance": 0.2124710028778127,
+      "spearman": -0.016245740608435668,
+      "mutualInfo": 0.0033968180628811675,
+      "monotonicity": -0.15410579833974583,
+      "bucketSpread": 0.18321723816430124,
+      "coinStable": 0,
+      "regimeStable": 0.6,
+      "driftStable": false,
+      "recommendation": "REVIEW",
+      "evidencePassed": 3,
+      "evidenceTotal": 6,
+      "topInteractions": []
+    }
+  ],
+  "topInteractions": [
+    {
+      "type": "categorical",
+      "features": [
+        "sessionNarrative",
+        "level_type"
+      ],
+      "best": {
+        "a": "london_sweep",
+        "b": "asian_high",
+        "n": 40,
+        "avgR": 0.3981199999999999
+      },
+      "lift": 0.41734637474541747,
+      "cells": 20
+    },
+    {
+      "type": "categorical",
+      "features": [
+        "level_type",
+        "marketState_regime"
+      ],
+      "best": {
+        "a": "asian_high",
+        "b": "VOLATILE_AVOID",
+        "n": 13,
+        "avgR": 0.381976923076923
+      },
+      "lift": 0.40120329782234054,
+      "cells": 20
+    },
+    {
+      "type": "numeric",
+      "features": [
+        "marketState_adx",
+        "cont_score"
+      ],
+      "bestCell": {
+        "aBin": 2,
+        "bBin": 3,
+        "n": 115,
+        "avgR": 0.17577391304347825
+      },
+      "lift": 0.19500028778889583,
+      "cells": 16
+    },
+    {
+      "type": "numeric",
+      "features": [
+        "sweep_velocityAtr",
+        "cont_opposingR"
+      ],
+      "bestCell": {
+        "aBin": 4,
+        "bBin": 1,
+        "n": 106,
+        "avgR": 0.17130094339622642
+      },
+      "lift": 0.190527318141644,
+      "cells": 16
+    },
+    {
+      "type": "numeric",
+      "features": [
+        "disp_impulseAtr",
+        "cont_score"
+      ],
+      "bestCell": {
+        "aBin": 2,
+        "bBin": 3,
+        "n": 121,
+        "avgR": 0.15185371900826444
+      },
+      "lift": 0.17108009375368202,
+      "cells": 16
+    },
+    {
+      "type": "numeric",
+      "features": [
+        "sweep_velocityAtr",
+        "level_importance"
+      ],
+      "bestCell": {
+        "aBin": 2,
+        "bBin": 4,
+        "n": 61,
+        "avgR": 0.13593934426229506
+      },
+      "lift": 0.15516571900771264,
+      "cells": 12
+    },
+    {
+      "type": "numeric",
+      "features": [
+        "sweep_absorption",
+        "level_importance"
+      ],
+      "bestCell": {
+        "aBin": 2,
+        "bBin": 1,
+        "n": 144,
+        "avgR": 0.12625000000000006
+      },
+      "lift": 0.14547637474541764,
+      "cells": 12
+    },
+    {
+      "type": "categorical",
+      "features": [
+        "cont_expansionState",
+        "marketState_regime"
+      ],
+      "best": {
+        "a": "expanding",
+        "b": "VOLATILE_AVOID",
+        "n": 42,
+        "avgR": 0.11965952380952384
+      },
+      "lift": 0.13888589855494143,
+      "cells": 14
+    },
+    {
+      "type": "numeric",
+      "features": [
+        "cont_opposingR",
+        "level_importance"
+      ],
+      "bestCell": {
+        "aBin": 3,
+        "bBin": 1,
+        "n": 140,
+        "avgR": 0.06590857142857139
+      },
+      "lift": 0.08513494617398897,
+      "cells": 10
+    }
+  ]
+}

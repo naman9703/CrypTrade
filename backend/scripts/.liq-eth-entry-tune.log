@@ -1,0 +1,11 @@
+A_no_sq                n  11 ret   -0.5% WR  18% PF 0.84 DD 2.8%
+B_no_sq_score35        n  12 ret   -0.7% WR  17% PF 0.78 DD 3.0%
+C_no_sq_no_score       n  12 ret   -0.7% WR  17% PF 0.78 DD 3.0%
+D_no_sq_poke20         n  14 ret   -0.5% WR  21% PF 0.85 DD 2.8%
+E_no_sq_close0         n  11 ret   -0.5% WR  18% PF 0.84 DD 2.8%
+[backtest] mark 5m klines: 3916 gaps in window (ETHUSDT)
+F_loose                n  15 ret   -0.8% WR  20% PF 0.80 DD 3.0%
+G_sq_loose             n   3 ret   -0.8% WR   0% PF 0.00 DD 0.8%
+H_sq_attempts_only     n   3 ret   -0.9% WR   0% PF 0.00 DD 0.9%
+I_breakdown_off        n  18 ret   -7.5% WR  11% PF 0.26 DD 9.7%
+J_veto_off             n  36 ret  -33.1% WR  14% PF 0.11 DD 34.6%

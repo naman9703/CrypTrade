@@ -38,8 +38,13 @@ export function InstanceNavBar() {
   const engineRunning = Boolean(runningByMode[modeUpper]);
 
   useEffect(() => {
-    void fetchInstancesForMode(modeSlug);
-    void fetchStrategiesForMode(modeSlug);
+    const st = useAppStore.getState();
+    if ((st.instancesByMode[modeSlug]?.length ?? 0) === 0) {
+      void fetchInstancesForMode(modeSlug);
+    }
+    if ((st.strategiesByMode[modeSlug]?.length ?? 0) === 0) {
+      void fetchStrategiesForMode(modeSlug);
+    }
   }, [fetchInstancesForMode, fetchStrategiesForMode, modeSlug]);
 
   const onRefresh = useCallback(() => {

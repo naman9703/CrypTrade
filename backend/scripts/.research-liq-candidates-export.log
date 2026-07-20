@@ -1,0 +1,73 @@
+
+> backend@0.1.0 research:liq:candidates
+> node scripts/research-liq-candidate-export.mjs
+
+Harvest BTCUSDT 2022-01-01→2026-06-01...
+  Observable sync BTCUSDT (binance+bybit)...
+Harvest BNBUSDT 2022-01-01→2026-06-01...
+  Observable sync BNBUSDT (binance+bybit)...
+Harvest ETHUSDT 2022-01-01→2026-06-01...
+  Observable sync ETHUSDT (binance+bybit)...
+Harvest SOLUSDT 2022-01-01→2026-06-01...
+  Observable sync SOLUSDT (binance+bybit)...
+Harvest XRPUSDT 2022-01-01→2026-06-01...
+  Observable sync XRPUSDT (binance+bybit)...
+
+Harvested 2137 candidates → /Users/namanpaliwal/Desktop/trading/backend/scripts/.liq-candidate-trades.csv
+Selection bias: 1612 would be day-picked
+{
+  "generatedAt": "2026-07-11T06:19:57.916Z",
+  "from": "2022-01-01",
+  "to": "2026-06-01",
+  "observableEnabled": true,
+  "bybitEnabled": true,
+  "runs": [
+    {
+      "symbol": "BTCUSDT",
+      "candidates": 350,
+      "selectedByDayPicker": 278,
+      "selectionRatePct": 79.42857142857143,
+      "candleCount": 68981,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    {
+      "symbol": "BNBUSDT",
+      "candidates": 658,
+      "selectedByDayPicker": 505,
+      "selectionRatePct": 76.74772036474164,
+      "candleCount": 100024,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    {
+      "symbol": "ETHUSDT",
+      "candidates": 569,
+      "selectedByDayPicker": 421,
+      "selectionRatePct": 73.98945518453426,
+      "candleCount": 68981,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    {
+      "symbol": "SOLUSDT",
+      "candidates": 318,
+      "selectedByDayPicker": 227,
+      "selectionRatePct": 71.38364779874213,
+      "candleCount": 35040,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    {
+      "symbol": "XRPUSDT",
+      "candidates": 242,
+      "selectedByDayPicker": 181,
+      "selectionRatePct": 74.79338842975206,
+      "candleCount": 34086,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    }
+  ]
+}
+
+Next: node scripts/research-liq-experiments.mjs

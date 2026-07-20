@@ -1,0 +1,6 @@
+SET
+ERROR:  could not extend file "base/16384/2389565": I/O error
+HINT:  Check free disk space.
+WARNING:  AbortTransaction while in ABORT state
+ERROR:  could not open file "base/16384/2389565": I/O error
+ERROR:  could not open file "base/16384/3081": I/O error

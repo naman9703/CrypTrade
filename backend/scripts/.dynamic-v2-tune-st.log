@@ -1,0 +1,30 @@
+
+========================================================================
+DYNAMIC V2 tune | SUPERTREND_ELITE
+baseline run: 1845b3b6… | 1h | coins: BTCUSDT, ETHUSDT, SOLUSDT
+window: 2025-06-01 → 2026-06-16
+trail sim: 1m mark micro | quick grid
+========================================================================
+
+saved:     avgRet=-44.0% min=-52.7% avgDD=44.4%
+tuned fix: avgRet=-8.7% min=-22.6% avgDD=27.6%
+v2 default: avgRet=-16.7% min=-22.6% avgDD=25.1%
+
+--- Dynamic grid (portfolio avg) ---
+
+
+--- quick phase-1 SL×BE (27 combos) ---
+
+  [1] sl=2 be=0.85 hwm=2 μ=1 gb=0.2                    avg=-18.5% min=-22.7% DD=26.9%
+  [2] sl=2 be=0.85 hwm=2 μ=1 gb=0.22                   avg=-18.8% min=-23.5% DD=27.2%
+  [3] sl=2 be=0.85 hwm=2 μ=1 gb=0.25                   avg=-18.9% min=-24.3% DD=27.7%
+  [4] sl=2 be=1 hwm=2 μ=1 gb=0.2                       avg=-17.9% min=-22.7% DD=26.2%
+  [5] sl=2 be=1 hwm=2 μ=1 gb=0.22                      avg=-18.2% min=-23.5% DD=26.5%
+  [6] sl=2 be=1 hwm=2 μ=1 gb=0.25                      avg=-18.3% min=-22.7% DD=27.1%
+  [7] sl=2 be=1.25 hwm=2 μ=1 gb=0.2                    avg=-12.5% min=-18.3% DD=25.1%
+  [8] sl=2 be=1.25 hwm=2 μ=1 gb=0.22                   avg=-13.0% min=-19.2% DD=25.4%
+  [9] sl=2 be=1.25 hwm=2 μ=1 gb=0.25                   avg=-11.8% min=-20.6% DD=24.6%
+  [10] sl=2.5 be=0.85 hwm=2 μ=1 gb=0.2                  avg=-16.6% min=-22.1% DD=25.2%
+  [11] sl=2.5 be=0.85 hwm=2 μ=1 gb=0.22                 avg=-16.7% min=-22.6% DD=25.1%
+  [12] sl=2.5 be=0.85 hwm=2 μ=1 gb=0.25                 avg=-17.1% min=-23.4% DD=25.7%
+  [13] sl=2.5 be=1 hwm=2 μ=1 gb=0.2                     

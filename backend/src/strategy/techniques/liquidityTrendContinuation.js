@@ -217,7 +217,7 @@ export function evaluateTrendContinuationSetup(candles, idx, side, pre, opts = {
     sweepStartIdx: Math.max(dayStart, idx - lookback),
     reclaimIdx: idx,
     entry: bar.close,
-    extension: side === "SELL" ? (pdl - sweepWick) / pdl : (sweepWick - pdh) / pdh,
+    extension: side === "SELL" ? (sweepWick - pdl) / pdl : (pdh - sweepWick) / pdh,
     liqQuality,
     ...br,
     techniques,
@@ -289,15 +289,32 @@ export function vetoClassicalLiqOnTrendDay(setup, candles, idx, pre, opts = {}) 
   return false;
 }
 
-/** Skip counter-trend PDL longs / PDH shorts when HTF disagrees. */
+/**
+ * Skip counter-trend liquidity fades when HTF disagrees.
+ * Applies to PDH/PDL and session clusters — same knife/rally + trend-day rules.
+ */
 export function vetoCounterTrendLiqSetup(setup, candles, idx, pre, opts = {}) {
   if (opts.intradayLiqVetoCounterTrend !== true || !setup) return false;
-  if (setup.levelType !== "pdl" && setup.levelType !== "pdh") return false;
+
+  const fadeLow =
+    setup.side === "BUY" &&
+    (setup.levelType === "pdl" || setup.levelType === "session_low");
+  const fadeHigh =
+    setup.side === "SELL" &&
+    (setup.levelType === "pdh" || setup.levelType === "session_high");
+
+  if (fadeLow && pre.htfDown?.[idx]) return true;
+  if (fadeHigh && pre.htfUp?.[idx]) return true;
+
+  if (opts.intradayLiqBreakdownDayBias !== false) {
+    if (fadeLow && isBreakoutDay(candles, idx, pre)) return true;
+    if (fadeHigh && isBreakdownDay(candles, idx, pre)) return true;
+  }
+
   if (setup.side === "BUY" && setup.levelType === "pdl") {
-    if (pre.htfDown?.[idx]) return true;
     if (opts.intradayLiqClassicRequireHtfUp === true && !pre.htfUp?.[idx]) return true;
   }
-  if (setup.side === "SELL" && setup.levelType === "pdh" && pre.htfUp?.[idx]) return true;
+
   const isTrend = setup.levelType === "pdl_break" || setup.levelType === "pdh_break";
   if (opts.intradayLiqTrendSellOnly === true && setup.side === "BUY" && isTrend) return true;
   return false;

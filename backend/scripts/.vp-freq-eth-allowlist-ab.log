@@ -1,0 +1,45 @@
+
+=== ETH allowlist A/B — year windows ===
+
+--- full_2020_26 (2020-01-01 → 2026-05-31) ---
+  v0_locked                  N=318 0.95/wk ret=  178.2% DD=58.9% Calmar=0.29 WR=40%
+  v1_prepared_only           N=146 0.44/wk ret=  129.5% DD=28.5% Calmar=0.49 WR=46%
+  v2_prepared_plus_bearvac   N=194 0.58/wk ret=  307.2% DD=33.5% Calmar=0.73 WR=44%
+
+--- oos_2020_21 (2020-06-01 → 2021-05-31) ---
+  v0_locked                  N= 73 1.40/wk ret=  -24.0% DD=47.4% Calmar=-0.48 WR=34%
+  v1_prepared_only           N= 35 0.67/wk ret=   14.5% DD=19.2% Calmar=0.71 WR=43%
+  v2_prepared_plus_bearvac   N= 37 0.71/wk ret=    6.9% DD=24.6% Calmar=0.27 WR=41%
+
+--- oos_2021_22 (2021-06-01 → 2022-05-31) ---
+  v0_locked                  N= 55 1.06/wk ret=  -32.4% DD=41.8% Calmar=-0.74 WR=31%
+  v1_prepared_only           N= 24 0.46/wk ret=  -16.8% DD=28.5% Calmar=-0.56 WR=33%
+  v2_prepared_plus_bearvac   N= 29 0.56/wk ret=  -14.2% DD=28.3% Calmar=-0.48 WR=34%
+
+--- oos_2022_23 (2022-06-01 → 2023-05-31) ---
+  v0_locked                  N= 38 0.73/wk ret=   23.9% DD=22.6% Calmar=1.00 WR=39%
+  v1_prepared_only           N= 23 0.44/wk ret=   39.9% DD=11.4% Calmar=3.29 WR=48%
+  v2_prepared_plus_bearvac   N= 28 0.54/wk ret=   32.2% DD=12.5% Calmar=2.43 WR=43%
+
+--- oos_2023_24 (2023-06-01 → 2024-05-31) ---
+  v0_locked                  N= 23 0.44/wk ret=   43.3% DD=14.1% Calmar=2.88 WR=52%
+  v1_prepared_only           N= 11 0.21/wk ret=   12.8% DD=6.6% Calmar=1.82 WR=55%
+  v2_prepared_plus_bearvac   N= 12 0.23/wk ret=   33.4% DD=8.8% Calmar=3.55 WR=58%
+
+--- oos_2024_25 (2024-06-01 → 2025-05-31) ---
+  v0_locked                  N= 52 1.00/wk ret=   38.9% DD=17.5% Calmar=2.09 WR=40%
+  v1_prepared_only           N= 19 0.37/wk ret=   19.3% DD=13.1% Calmar=1.39 WR=47%
+  v2_prepared_plus_bearvac   N= 35 0.67/wk ret=   26.7% DD=10.8% Calmar=2.33 WR=43%
+
+--- oos_2025_26 (2025-06-01 → 2026-05-31) ---
+  v0_locked                  N= 51 0.98/wk ret=  151.1% DD=8.7% Calmar=15.93 WR=53%
+  v1_prepared_only           N= 21 0.40/wk ret=   60.5% DD=6.0% Calmar=9.36 WR=71%
+  v2_prepared_plus_bearvac   N= 32 0.62/wk ret=  142.5% DD=8.7% Calmar=15.14 WR=66%
+
+=== COST STRESS (full window) ===
+
+  v0_locked                  base=178.2%/DD58.9  slip_x2=-37.8%/DD77.6  slip_x4=-92.0%/DD95.2
+  v1_prepared_only           base=129.5%/DD28.5  slip_x2=11.2%/DD46.9  slip_x4=-63.3%/DD73.9
+  v2_prepared_plus_bearvac   base=307.2%/DD33.5  slip_x2=86.2%/DD45.8  slip_x4=-41.5%/DD71.7
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-allowlist-ab.json

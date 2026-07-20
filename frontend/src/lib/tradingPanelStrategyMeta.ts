@@ -1,5 +1,7 @@
 /** Strategy picker categories and panel visibility for Trading Panel. */
 
+import { profileHasUiSection } from "./strategyConfigProfile.ts";
+
 export type StrategyCategory = {
   id: string;
   label: string;
@@ -28,7 +30,7 @@ export const STRATEGY_CATEGORIES: StrategyCategory[] = [
   {
     id: "intraday",
     label: "Intraday / ICT",
-    keys: ["SR_INTRADAY", "SITUATION_INTRADAY", "CRT_TBS", "TOKYO_SESSION", "REGIME_ADAPTIVE"],
+    keys: ["SR_INTRADAY", "LIQUIDITY_MAP", "SITUATION_INTRADAY", "CRT_TBS", "SCALP_MR", "TOKYO_SESSION", "REGIME_ADAPTIVE"],
   },
   {
     id: "baselines",
@@ -63,13 +65,11 @@ export function groupedStrategyOptions(
 }
 
 export function usesIntradayGatePanel(manualStrategy: string): boolean {
-  const k = String(manualStrategy || "").toUpperCase();
-  return k === "SR_INTRADAY" || k === "SITUATION_INTRADAY" || k === "UNIFIED_ELITE";
+  return profileHasUiSection(manualStrategy, "intradayGates");
 }
 
 export function usesEliteSettingsPanel(manualStrategy: string): boolean {
-  const k = String(manualStrategy || "").toUpperCase();
-  return k === "SUPERTREND_ELITE" || k === "SAFE_INTRADAY" || k === "UNIFIED_ELITE";
+  return profileHasUiSection(manualStrategy, "elite");
 }
 
 export function isSupertrendAutotradeStrategy(manualStrategy: string): boolean {
@@ -82,7 +82,7 @@ export function isBaselineStrategy(manualStrategy: string): boolean {
 }
 
 export function showVolumeProfileStrategyPanel(manualStrategy: string): boolean {
-  return String(manualStrategy || "").toUpperCase() === "VOLUME_PROFILE";
+  return profileHasUiSection(manualStrategy, "volumeProfile");
 }
 
 export function showRegimeAdaptivePanel(manualStrategy: string): boolean {
@@ -90,7 +90,7 @@ export function showRegimeAdaptivePanel(manualStrategy: string): boolean {
 }
 
 export function showSurfPulsePanel(manualStrategy: string): boolean {
-  return String(manualStrategy || "").toUpperCase() === "SURF_PULSE_ML";
+  return profileHasUiSection(manualStrategy, "surfPulse");
 }
 
 /** Preset strips apply only in MANUAL when the fixed path matches. */

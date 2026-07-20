@@ -1,0 +1,21 @@
+Coinalyze markets loaded: 4631
+
+── BTCUSDT → BTCUSDT_PERP.A ──
+API liquidation bars (daily): 366
+  liq total USD — max 215.85M | p95 34.64M
+DB stored: liq=366 oi=366
+Liq spike (>5M) + Bybit OI drop agreement: 17.9%
+
+── ETHUSDT → ETHUSDT_PERP.A ──
+API liquidation bars (daily): 366
+  liq total USD — max 132.13M | p95 33.41M
+DB stored: liq=366 oi=366
+Liq spike (>5M) + Bybit OI drop agreement: 20.5%
+
+── BNBUSDT → BNBUSDT_PERP.A ──
+API liquidation bars (daily): 366
+  liq total USD — max 16.04M | p95 3.11M
+DB stored: liq=366 oi=366
+Liq spike (>5M) + Bybit OI drop agreement: 4.0%
+
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.research-coinalyze-probe.json

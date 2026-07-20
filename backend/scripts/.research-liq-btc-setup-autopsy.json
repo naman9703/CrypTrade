@@ -1,0 +1,67 @@
+{
+  "window": {
+    "from": "2025-01-01",
+    "to": "2026-01-01"
+  },
+  "symbol": "BTCUSDT",
+  "funnel": {
+    "counts": {
+      "reclaimEvents": 109,
+      "failExtension": 0,
+      "failMaxSweepBars": 0,
+      "failSameBar": 6,
+      "failBrackets": 39,
+      "failMinRr": 0,
+      "failReclaimBody": 64,
+      "failEntryScore": 0,
+      "failMinScore": 0,
+      "failChoch": 0,
+      "failTrendDayVeto": 0,
+      "passSetup": 0,
+      "poolBeforePick": 0,
+      "picked": 26
+    },
+    "days": {
+      "tradingDays": 385,
+      "daysWithReclaim": 91,
+      "daysWithSetup": 0,
+      "reclaimPerDay": "0.28",
+      "setupPerDay": "0.00"
+    }
+  },
+  "results": {
+    "trades": 22,
+    "tradeDays": 22,
+    "tradingDays": 365,
+    "tradesPerDay": 0.06027397260273973,
+    "returnPct": 7.986851242997109,
+    "pf": 0.783869015990607,
+    "winRate": 0.5
+  },
+  "hardcoded": {
+    "intradayLiqMinSweepExtensionPct": 0.008,
+    "intradayLiqMinRr": 1.5,
+    "intradayLiqMinReclaimBodyRatio": 0.35,
+    "intradayLiqMinEntryScore": 52,
+    "intradayLiqOnePickPerDay": true,
+    "intradayLiqMaxTradesPerSidePerDay": 1,
+    "srIntradayMaxTradesPerDay": 3,
+    "intradayLiqRequireHtfAlign": true,
+    "intradayLiqMaxSlPct": 0.035,
+    "intradayLiqMaxTpRr": 5,
+    "intradayLiqMaxHoldBars": 48,
+    "srIntradayMinBarGap": 4
+  },
+  "failBuckets": {
+    "sl_after_profit": 3,
+    "sl_no_follow": 5,
+    "time_stop_gave_back": 1,
+    "never_green": 2
+  },
+  "exits": {
+    "be": 1,
+    "sl": 8,
+    "tp2": 2,
+    "time_stop": 11
+  }
+}

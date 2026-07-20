@@ -1,0 +1,32 @@
+
+=== ETH session filter A/B (allowlist locked) ===
+
+--- full ---
+  v2_allday        N=194 ret=  307.2% DD=33.5% Calmar=0.73
+    years: 2019-20=-16.7%/14  2020-21=3.9%/38  2021-22=-10.6%/31  2022-23=32.0%/31  2023-24=29.7%/13  2024-25=26.7%/35  2025-26=142.5%/32
+  v5_block_us      N=147 ret=  239.2% DD=25.4% Calmar=0.82
+    years: 2019-20=-8.9%/9  2020-21=4.1%/30  2021-22=13.7%/21  2022-23=35.7%/27  2023-24=37.1%/11  2024-25=-0.5%/25  2025-26=69.9%/24
+  v6_eu_only       N= 93 ret=  134.8% DD=30.0% Calmar=0.47
+    years: 2019-20=-16.4%/6  2020-21=3.3%/19  2021-22=17.5%/16  2022-23=48.1%/15  2023-24=19.6%/6  2024-25=12.7%/18  2025-26=16.0%/13
+
+--- y20_21 ---
+  v2_allday        N= 37 ret=    6.9% DD=24.6% Calmar=0.27
+  v5_block_us      N= 29 ret=    7.1% DD=19.9% Calmar=0.34
+  v6_eu_only       N= 18 ret=    6.2% DD=21.1% Calmar=0.28
+
+--- y21_22 ---
+  v2_allday        N= 29 ret=  -14.2% DD=28.3% Calmar=-0.48
+  v5_block_us      N= 19 ret=    9.1% DD=11.6% Calmar=0.74
+  v6_eu_only       N= 14 ret=    9.0% DD=6.9% Calmar=1.23
+
+--- y22_23 ---
+  v2_allday        N= 28 ret=   32.2% DD=12.5% Calmar=2.43
+  v5_block_us      N= 25 ret=   32.1% DD=15.0% Calmar=2.02
+  v6_eu_only       N= 14 ret=   52.4% DD=5.6% Calmar=8.73
+
+--- y25_26 ---
+  v2_allday        N= 32 ret=  142.5% DD=8.7% Calmar=15.14
+  v5_block_us      N= 24 ret=   69.9% DD=9.1% Calmar=7.15
+  v6_eu_only       N= 13 ret=   16.0% DD=5.6% Calmar=2.71
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-session-ab.json

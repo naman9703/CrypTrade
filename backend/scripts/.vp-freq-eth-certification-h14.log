@@ -1,0 +1,12 @@
+
+=== ETH VP FREQ certification — ETHUSDT 15m 2020-01-01→2026-05-31 ===
+locked preset · risk%=2.5 lev=12x · expanding WF folds=5
+
+candles=224832 funding=6571 first=2020-01-01T00:00:00.000Z last=2026-05-30T23:45:00.000Z
+FULL: trades=265 (0.79/wk) net=400.3% CAGR=28.5% Calmar=0.60 maxDD=47.7% Sharpe=0.90 PF=1.67 WR=42%
+  years: 2019-20=-16.1%/21  2020-21=-27.6%/54  2021-22=7.2%/43  2022-23=45.4%/33  2023-24=56.4%/19  2024-25=33.7%/48  2025-26=152.8%/47
+  negYears=2019-20,2020-21
+MC(1% risk): ret p5=21.7% p50=108.7% p95=262.6%  maxDD p95=27.2% ruin=0.0%
+
+WF expanding folds=5 embargo=96bars (~1d)
+  fold 0: 2021-01-25→2022-02-19  trainN=52 testN=59 testRet=4.6% DD=17.8% WR=41%

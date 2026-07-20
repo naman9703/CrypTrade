@@ -20,12 +20,13 @@ import { MaeMfeScatter } from "./MaeMfeScatter";
 import { ChartErrorBoundary } from "../ChartErrorBoundary";
 import { BacktestEquityChart } from "./BacktestEquityChart";
 import { WithVsWithoutGatePanel } from "./WithVsWithoutGatePanel";
+import { TrailTickAuditPanel } from "./TrailTickAuditPanel";
 import { PromoteToInstanceModal } from "./PromoteToInstanceModal";
 import { BacktestTradeChart } from "./BacktestTradeChart";
 import { TrendHtfStChopSummary } from "./TrendHtfStChopSummary";
 import { SessionWeekdayHeatmap } from "./SessionWeekdayHeatmap";
 
-type Tab = "kpis" | "equity" | "drawdown" | "monthly" | "trades" | "distributions" | "gate";
+type Tab = "kpis" | "equity" | "drawdown" | "monthly" | "trades" | "distributions" | "gate" | "tick";
 
 type Props = {
   run: BacktestRunSummary | null;
@@ -113,6 +114,14 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
     const lev = Number(bot?.futuresLeverage);
     return Number.isFinite(lev) && lev > 0 ? lev : 5;
   }, [displayRun?.configSnapshot]);
+
+  const trailingAuditEnabled = useMemo(() => {
+    if (!displayRun) return false;
+    const bot = effectiveBacktestBotCfg(displayRun.configSnapshot, displayRun.instanceOperationalSnapshot);
+    const isFutures = String(bot.marketMode ?? bot.market ?? "").toUpperCase() === "FUTURES";
+    const mode = String(bot.futuresTrailingStopMode ?? "SUPERTREND").toUpperCase();
+    return bot.trailingStopLossAuto === true && isFutures && mode !== "OFF";
+  }, [displayRun]);
 
   useEffect(() => {
     setTrades(null);
@@ -274,6 +283,7 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
             ["trades", "Trades"],
             ["distributions", "Distributions"],
             ["gate", "Gate ON/OFF"],
+            ...(trailingAuditEnabled ? ([["tick", "Tick replay"]] as Array<[Tab, string]>) : []),
           ] as Array<[Tab, string]>
         ).map(([key, label]) => (
           <button
@@ -325,6 +335,8 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
             <TradeListTable
               trades={trades}
               futuresLeverage={futuresLeverage}
+              runTimeframe={displayRun.timeframe}
+              engineType={displayRun.engineType}
               variant="detailed"
               selectedTradeNumber={selectedTrade?.tradeNumber ?? null}
               onSelectTrade={setSelectedTrade}
@@ -347,12 +359,15 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
             <WithVsWithoutGatePanel run={displayRun} />
           </div>
         )}
+        {tab === "tick" && trailingAuditEnabled && displayRun && (
+          <TrailTickAuditPanel run={displayRun} />
+        )}
       </div>
 
       {/* Trade chart + list — always below tabs when run is done */}
       {displayRun.status === "done" && (
         <div className="space-y-3">
-          <ChartErrorBoundary>
+          <ChartErrorBoundary key={displayRun.id}>
             {/* Remount per run so chart TF + fetch state reset; avoids stale loading from aborted fetches */}
             <BacktestTradeChart
               key={displayRun.id}
@@ -375,6 +390,8 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
               <TradeListTable
                 trades={trades}
                 futuresLeverage={futuresLeverage}
+                runTimeframe={displayRun.timeframe}
+                engineType={displayRun.engineType}
                 selectedTradeNumber={selectedTrade?.tradeNumber ?? null}
                 onSelectTrade={setSelectedTrade}
               />
@@ -562,8 +579,31 @@ function leverageSummary(cfg: Record<string, unknown>): string {
   if (!Number.isFinite(n) || n <= 0) return "—";
   const mode = cfg.futuresLeverageMode;
   const x = `${Math.floor(n)}×`;
+  const sizing = String(cfg.backtestPositionSizing ?? "").toUpperCase();
+  if (sizing === "RISK_AT_SL_FULL_MARGIN") return `${x} max (dynamic per trade)`;
   if (mode != null && String(mode).trim() !== "") return `${x} (${String(mode)})`;
   return x;
+}
+
+function positionSizingSummary(cfg: Record<string, unknown>, isPortfolio = false): string {
+  if (isPortfolio) {
+    const raw = String(cfg.portfolioPositionSizing ?? "EQUAL_SLICE_FULL_MARGIN").toUpperCase();
+    if (raw === "EQUAL_SLICE_RISK_AT_SL") return "Portfolio: risk % at SL of equal slice";
+    if (raw === "TOTAL_CAPITAL_RISK_AT_SL") return "Portfolio: risk % at SL of total capital (skip overlaps)";
+    return "Portfolio: 100% of equal slice";
+  }
+  const raw = String(cfg.backtestPositionSizing ?? "RISK_AT_SL").toUpperCase();
+  if (raw === "RISK_AT_SL_FULL_MARGIN") return "Full margin + dynamic leverage (same risk at SL)";
+  if (raw === "FULL_EQUITY_MARGIN") return "100% margin each trade";
+  return "Risk % at stop (fixed leverage)";
+}
+
+function trailMicroTfSummary(cfg: Record<string, unknown>): string {
+  const raw = String(cfg.backtestTrailMicroTf ?? "1m").toLowerCase();
+  if (raw === "off" || raw === "false" || raw === "0") return "Parent bar only";
+  if (raw === "1m") return "1m mark wick (live tick parity)";
+  const activation = String(cfg.backtestTrailActivationOn ?? "close").toLowerCase();
+  return `${raw} mark ${activation === "close" ? "candle close" : "wick"}`;
 }
 
 function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: BacktestTrade[] | null }) {
@@ -744,7 +784,10 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
             <Row k="ST period" v={cfgVal("supertrendPeriod")} />
             <Row k="ST multiplier" v={cfgVal("supertrendMultiplier")} />
             <Row k="Trailing" v={cfgVal("futuresTrailingStopMode")} />
-            <Row k="Trail auto" v={String(cfg.trailingStopLossAuto ?? "—")} />
+            <Row k="Trail auto" v={String(cfg.trailingStopLossAuto === true)} />
+            {cfg.trailOnlyAfterTp2Fill === true ? (
+              <Row k="Trail after TP2" v="true" />
+            ) : null}
             <Row k="Trail buffer" v={cfgVal("trailBufferRate")} />
             <Row k="Fixed SL %" v={cfgVal("supertrendFuturesFixedSlPct")} />
             <Row k="Fixed TP %" v={cfgVal("supertrendFuturesFixedTpPct")} />
@@ -797,9 +840,22 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
                 <Row
                   k="Max hold (bars)"
                   v={String(
-                    cfg.intradayLiqMaxHoldBars ??
-                      cfg.intradaySmcMaxHoldBars ??
-                      0,
+                    (() => {
+                      const smcOn =
+                        cfg.intradayGateSmcIct === true || cfg.intradaySmcIctMode === true;
+                      const liqOn =
+                        cfg.intradayGateLiquidity !== false ||
+                        cfg.intradayGateInstitutionalSr === true ||
+                        cfg.intradaySrAPlusMode === true;
+                      if (liqOn && !smcOn) {
+                        return Object.prototype.hasOwnProperty.call(cfg, "intradayLiqMaxHoldBars")
+                          ? Number(cfg.intradayLiqMaxHoldBars)
+                          : 0;
+                      }
+                      return Number(
+                        cfg.intradaySmcMaxHoldBars ?? cfg.intradayLiqMaxHoldBars ?? 0,
+                      );
+                    })(),
                   )}
                 />
               </>
@@ -818,6 +874,16 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
             <Row k="Risk/trade" v={cfgVal("riskPerTrade")} />
             <Row k="Risk unit" v={cfgVal("riskPerTradeUnit")} />
             <Row k="Leverage" v={leverageSummary(cfg)} />
+            <Row k="Position sizing" v={positionSizingSummary(cfg, run.isPortfolio === true)} />
+            {run.isPortfolio && Number(run.metrics?.portfolio?.skippedOverlap) > 0 ? (
+              <Row
+                k="Skipped overlaps"
+                v={String(run.metrics?.portfolio?.skippedOverlap)}
+              />
+            ) : null}
+            {cfg.trailingStopLossAuto === true ? (
+              <Row k="Trail resolution" v={trailMicroTfSummary(cfg)} />
+            ) : null}
             <Row k="Trailing stop" v={String(cfg.trailingStopLossAuto === true)} />
             <Row k="Intelligence gate" v={String(cfg.intelligenceGateEnabled ?? "—")} />
             {String(cfg.manualStrategy ?? "").toUpperCase() === "SUPERTREND_ELITE" ||
@@ -832,7 +898,6 @@ function SummaryBlock({ run, trades }: { run: BacktestRunSummary; trades: Backte
                 />
                 <Row k="Elite gate ATR expand" v={String(cfg.eliteStRequireAtrExpansion === true)} />
                 <Row k="Elite auto-calibrate" v={String(cfg.eliteStAutoCalibrate === true)} />
-                <Row k="Position sizing" v={cfgVal("backtestPositionSizing")} />
               </>
             ) : null}
             <Row k="Market decision" v={String((cfg.marketDecision as Record<string,unknown>)?.enabled ?? "—")} />

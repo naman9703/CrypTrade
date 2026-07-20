@@ -1,5 +1,6 @@
 import type { BotInstance, InstanceOperationalConfig } from "../types/instance";
 import type { Strategy, StrategyVersion } from "../types/strategy";
+import { pickBotFromStrategyVersion } from "./strategyVersionDisplay.ts";
 
 /** Instance-bound strategy version (not latest) when backtesting from a deployment. */
 export function resolveBacktestStrategyVersion(
@@ -65,4 +66,38 @@ export function mergeCfgForBacktestPreview(
   if (symbol) b.symbol = symbol.toUpperCase();
   if (timeframe) b.timeframe = timeframe;
   return root;
+}
+
+/** Display symbol/timeframe: instance operational overrides win over saved strategy version. */
+export function effectiveInstanceSymbol(
+  instance: BotInstance | null,
+  version: StrategyVersion | null,
+): string {
+  const op = instance?.operational?.symbol;
+  if (op != null && String(op).trim()) return String(op).toUpperCase();
+  const bot = pickBotFromStrategyVersion(version);
+  const sym = bot.symbol ?? version?.cfgSymbol;
+  return sym != null && String(sym).trim() ? String(sym).toUpperCase() : "—";
+}
+
+export function effectiveInstanceTimeframe(
+  instance: BotInstance | null,
+  version: StrategyVersion | null,
+): string {
+  const op = instance?.operational?.timeframe;
+  if (op != null && String(op).trim()) return String(op);
+  const bot = pickBotFromStrategyVersion(version);
+  const tf = bot.timeframe ?? version?.cfgTimeframe;
+  return tf != null && String(tf).trim() ? String(tf) : "—";
+}
+
+export function effectiveInstanceRiskLabel(
+  instance: BotInstance | null,
+  version: StrategyVersion | null,
+): string {
+  const op = instance?.operational;
+  const risk = op?.riskPerTrade ?? pickBotFromStrategyVersion(version).riskPerTrade;
+  if (risk == null || !Number.isFinite(Number(risk))) return "—";
+  const unit = String(op?.riskUnit ?? pickBotFromStrategyVersion(version).riskPerTradeUnit ?? "PCT").toUpperCase();
+  return unit === "USDT" ? `${Number(risk)} USDT` : `${Number(risk)}%`;
 }

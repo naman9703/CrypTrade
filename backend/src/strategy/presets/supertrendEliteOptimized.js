@@ -73,9 +73,9 @@ export const SUPERTREND_ELITE_4H_TRAIL_PRESET = {
  *   Gate 3 — 1H EMA21 > EMA50 alignment (ON) : blocks entries in disordered trend structure
  *   ADX, Volume, ATR — OFF (insufficient data for 1H; add selectively after paper trading)
  *
- * Exit:
- *   Trailing stop = Supertrend line on primary TF (1H)
- *   Panel default brackets: 0.2% SL, 1.5% TP (toggle off in UI for trail-only)
+ * Exit (locked honesty contract 2026-07-14):
+ *   Trail-only Supertrend + exit-on-flip. Fixed %-brackets OFF.
+ *   See ELITE_ST_EXIT_CONTRACT in supertrendElite.js.
  */
 export const SUPERTREND_ELITE_1H_PRESET = {
   // ── Strategy ──────────────────────────────────────────────────────────────
@@ -100,14 +100,25 @@ export const SUPERTREND_ELITE_1H_PRESET = {
   eliteStRequireAtrExpansion:  false,
   eliteStLiqSweepEnabled:      false,
 
-  // ── Exit: ST trail + panel default brackets (0.2% SL, 1.5% TP) ─────────
+  // ── Exit: locked trail-only contract (live = backtest) ───────────────────
   trailingStopLossAuto:        true,
   futuresTrailingStopMode:     "SUPERTREND",
-  supertrendFuturesExitOnFlip: true,   // also exit on opposite signal
-  supertrendFuturesFixedSlPct: 0.002,
-  supertrendFuturesFixedTpPct: 0.015,
-  supertrendFuturesUseFixedSl: true,
-  supertrendFuturesUseFixedTp: true,
+  supertrendFuturesExitOnFlip: true,
+  supertrendFuturesFixedSlPct: 0,
+  supertrendFuturesFixedTpPct: 0,
+  supertrendFuturesUseFixedSl: false,
+  supertrendFuturesUseFixedTp: false,
+  eliteStAutoBracketMode:      "OFF",
+  futuresTrailingStAdvanced:   true,
+  futuresTrailingStFeeBreakeven: true,
+  trailSizingMode:             "FIXED_PCT",
+  trailBufferMode:             "PERCENT",
+  trailBufferRate:             0.0005,
+  trailBufferAtrMult:          0,
+  trailPostT02ActivationBufferRate: 0,
+  trailPostT02SpacingFrac:     null,
+  trailActivationSlippageFrac: 0,
+  trailT01LockSlippageFrac:    0,
 
   // ── Risk ──────────────────────────────────────────────────────────────────
   riskPerTrade:                5,      // 5% per trade (conservative — fewer trades on 1H)
@@ -151,6 +162,40 @@ export const SUPERTREND_ELITE_BNB_1H_PRESET = {
   ...SUPERTREND_ELITE_1H_PRESET,
   symbol: "BNBUSDT",
   timeframe: "1h",
+};
+
+/**
+ * Intraday target portfolio — optimized for ~1-2 logical entries/day across the
+ * portfolio while keeping the validated 1H Supertrend edge intact.
+ *
+ * Micro-validated by `scripts/backtest-intraday-target-validate.mjs` on
+ * Jan-2025→Jun-2026 with 1m trade replay:
+ *   10 symbols, 516 trades, 1.00 entries/day, +540.6% shared-account return,
+ *   PF 5.86, maxDD 2.17%, MC p5 +417.6%, WF degradation 29.06% (accepted).
+ *
+ * This is a portfolio preset: run the same config on each symbol below with
+ * equal-slice capital allocation. Excluded weak/unstable symbols from the wider
+ * scan: LINK, XRP, DOGE, LTC, SOL, TRX.
+ */
+export const SUPERTREND_ELITE_INTRADAY_TARGET_1H_SYMBOLS = [
+  "BTCUSDT",
+  "ETHUSDT",
+  "BNBUSDT",
+  "ADAUSDT",
+  "AVAXUSDT",
+  "UNIUSDT",
+  "DOTUSDT",
+  "ATOMUSDT",
+  "APTUSDT",
+  "INJUSDT",
+];
+
+export const SUPERTREND_ELITE_INTRADAY_TARGET_1H_PRESET = {
+  ...SUPERTREND_ELITE_1H_PRESET,
+  timeframe: "1h",
+  futuresLeverage: 12,
+  riskPerTrade: 2,
+  riskPerTradeUnit: "PCT",
 };
 
 // ── Dynamic Gate 3 sep modes (any-coin, no per-symbol hardcoding) ─────────────
@@ -208,6 +253,45 @@ export const SUPERTREND_ELITE_AUTO_1H_PRESET = {
   futuresLeverage: 10,
   riskPerTrade: 5,
   riskPerTradeUnit: "PCT",
+};
+
+/**
+ * Optimized 1H — wide disaster SL + trail buffer (trail-tune winner on ST Elite).
+ *
+ * Panel default 0.2% SL / 0.05% buffer exits before Supertrend trail arms.
+ * This preset: 1% disaster SL, no fixed TP, 1% trail buffer, post-T02 0.1%.
+ * Risk 3% @ 10× — best return vs liq in fixed trail grid (Jan–Jun 2026 tune).
+ *
+ * BTC: use BTC 1H FIXED (0.08%) for EMA sep, or eliteStHtf1hMinSep 0.0008 manually.
+ */
+export const SUPERTREND_ELITE_OPTIMIZED_1H_PRESET = {
+  ...SUPERTREND_ELITE_1H_PRESET,
+  timeframe: "1h",
+  supertrendFuturesUseFixedSl: true,
+  supertrendFuturesFixedSlPct: 0.01,
+  supertrendFuturesUseFixedTp: false,
+  supertrendFuturesFixedTpPct: 0,
+  trailBufferMode: "PERCENT",
+  trailSizingMode: "FIXED_PCT",
+  trailBufferRate: 0.01,
+  trailBufferAtrMult: 0,
+  trailPostT02ActivationBufferRate: 0.001,
+  trailPostT02SpacingFrac: null,
+  trailActivationSlippageFrac: 0,
+  trailT01LockSlippageFrac: 0,
+  futuresTrailingStAdvanced: true,
+  futuresTrailingStFeeBreakeven: true,
+  riskPerTrade: 3,
+  riskPerTradeUnit: "PCT",
+  futuresLeverage: 10,
+};
+
+/** BTC 1H — optimized trail + tighter 1H EMA min sep (chop filter). */
+export const SUPERTREND_ELITE_OPTIMIZED_BTC_1H_PRESET = {
+  ...SUPERTREND_ELITE_OPTIMIZED_1H_PRESET,
+  symbol: "BTCUSDT",
+  timeframe: "1h",
+  eliteStHtf1hMinSep: 0.0008,
 };
 
 /** @deprecated Use SUPERTREND_ELITE_AUTO_1H_PRESET — full auto-tune derives LINK settings from profile. */

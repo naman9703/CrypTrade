@@ -1,0 +1,55 @@
+
+=== Prune audit_log (keep last 30 days) ===
+audit_log size before: 50.72 GB
+Rows: 56,951,474 | delete: 4,006,082
+Range: Sun Apr 26 2026 02:11:32 GMT+0530 (India Standard Time) → Wed Jun 17 2026 22:32:09 GMT+0530 (India Standard Time)
+DB size before: 53.78 GB
+Docker VM before: 59.23 GB
+
+Top tables in rows to delete:
+  backtest_runs                50,670
+  _hyper_3_753_chunk           41,252
+  _hyper_3_764_chunk           34,795
+  _hyper_3_752_chunk           32,315
+  _hyper_3_754_chunk           31,566
+  _hyper_3_387_chunk           31,566
+  _hyper_3_386_chunk           30,948
+  _hyper_3_385_chunk           30,126
+  _hyper_3_383_chunk           30,126
+  _hyper_3_384_chunk           30,126
+  _hyper_3_382_chunk           30,126
+  _hyper_3_381_chunk           30,126
+
+Deleting rows with created_at < 2026-05-18T17:57:07.963Z (batch 50000)...
+  batch 10: deleted 500,000 total  batch 20: deleted 1,000,000 total  batch 30: deleted 1,500,000 total  batch 40: deleted 2,000,000 total  batch 50: deleted 2,500,000 total  batch 60: deleted 3,000,000 total  batch 70: deleted 3,500,000 total  batch 80: deleted 4,000,000 total
+Deleted 4,006,652 audit_log rows
+
+Vacuuming audit_log (standard)...
+/Users/namanpaliwal/Desktop/trading/node_modules/pg-pool/index.js:45
+    Error.captureStackTrace(err)
+          ^
+
+error: could not resize shared memory segment "/PostgreSQL.1273629748" to 513641440 bytes: No space left on device
+    at /Users/namanpaliwal/Desktop/trading/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async file:///Users/namanpaliwal/Desktop/trading/backend/scripts/prune-audit-log.mjs:132:3 {
+  length: 168,
+  severity: 'ERROR',
+  code: '53100',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'dsm_impl.c',
+  line: '307',
+  routine: 'dsm_impl_posix'
+}
+
+Node.js v22.19.0

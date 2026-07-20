@@ -1,0 +1,63 @@
+
+=== ETH prepared-regime OOS A/B (BTC doctrine, ETH cells) ===
+
+ETH unprepared (deny): SELL|val_breakdown|weak_bear|vacuum | BUY|vah_breakout|bull_trend|vacuum | SELL|val_breakdown|bull_trend|structured | SELL|val_breakdown|weak_bear|structured | SELL|val_breakdown|bull_chop|structured
+
+--- full_2020_26 (2020-01-01 → 2026-05-31) ---
+  v0_abc_only              N=318 0.95/wk ret=  178.2% DD=58.9% Calmar=0.29
+    years: 2019-20=-11.1%/22  2020-21=-26.2%/74  2021-22=-27.5%/56  2022-23=23.9%/38  2023-24=43.3%/23  2024-25=38.9%/52  2025-26=137.2%/53
+  v1_deny_unprepared       N=234 0.70/wk ret=  401.1% DD=35.3% Calmar=0.81
+    years: 2019-20=-17.9%/17  2020-21=8.3%/45  2021-22=-14.1%/36  2022-23=33.2%/34  2023-24=49.1%/15  2024-25=48.0%/45  2025-26=123.2%/42
+  v2_deny_plus_allowlist   N=194 0.58/wk ret=  307.2% DD=33.5% Calmar=0.73
+    years: 2019-20=-16.7%/14  2020-21=3.9%/38  2021-22=-10.6%/31  2022-23=32.0%/31  2023-24=29.7%/13  2024-25=26.7%/35  2025-26=142.5%/32
+  Δv1 vs v0: ret +222.9%  N -84
+  Δv2 vs v0: ret +129.0%  N -124
+
+--- oos_2020_21 (2020-06-01 → 2021-05-31) ---
+  v0_abc_only              N= 73 1.40/wk ret=  -24.0% DD=47.4% Calmar=-0.48
+  v1_deny_unprepared       N= 45 0.87/wk ret=   15.7% DD=23.6% Calmar=0.63
+  v2_deny_plus_allowlist   N= 37 0.71/wk ret=    6.9% DD=24.6% Calmar=0.27
+  Δv1 vs v0: ret +39.8%  N -28
+  Δv2 vs v0: ret +30.9%  N -36
+
+--- oos_2021_22 (2021-06-01 → 2022-05-31) ---
+  v0_abc_only              N= 55 1.06/wk ret=  -32.4% DD=41.8% Calmar=-0.74
+  v1_deny_unprepared       N= 34 0.65/wk ret=  -17.6% DD=29.8% Calmar=-0.56
+  v2_deny_plus_allowlist   N= 29 0.56/wk ret=  -14.2% DD=28.3% Calmar=-0.48
+  Δv1 vs v0: ret +14.8%  N -21
+  Δv2 vs v0: ret +18.2%  N -26
+
+--- oos_2022_23 (2022-06-01 → 2023-05-31) ---
+  v0_abc_only              N= 38 0.73/wk ret=   23.9% DD=22.6% Calmar=1.00
+  v1_deny_unprepared       N= 31 0.60/wk ret=   33.5% DD=17.3% Calmar=1.83
+  v2_deny_plus_allowlist   N= 28 0.54/wk ret=   32.2% DD=12.5% Calmar=2.43
+  Δv1 vs v0: ret +9.6%  N -7
+  Δv2 vs v0: ret +8.3%  N -10
+
+--- oos_2023_24 (2023-06-01 → 2024-05-31) ---
+  v0_abc_only              N= 23 0.44/wk ret=   43.3% DD=14.1% Calmar=2.88
+  v1_deny_unprepared       N= 14 0.27/wk ret=   53.4% DD=8.8% Calmar=5.65
+  v2_deny_plus_allowlist   N= 12 0.23/wk ret=   33.4% DD=8.8% Calmar=3.55
+  Δv1 vs v0: ret +10.2%  N -9
+  Δv2 vs v0: ret -9.8%  N -11
+
+--- oos_2024_25 (2024-06-01 → 2025-05-31) ---
+  v0_abc_only              N= 52 1.00/wk ret=   38.9% DD=17.5% Calmar=2.09
+  v1_deny_unprepared       N= 45 0.87/wk ret=   48.0% DD=15.1% Calmar=2.98
+  v2_deny_plus_allowlist   N= 35 0.67/wk ret=   26.7% DD=10.8% Calmar=2.33
+  Δv1 vs v0: ret +9.0%  N -7
+  Δv2 vs v0: ret -12.2%  N -17
+
+--- oos_2025_26 (2025-06-01 → 2026-05-31) ---
+  v0_abc_only              N= 51 0.98/wk ret=  151.1% DD=8.7% Calmar=15.93
+  v1_deny_unprepared       N= 42 0.81/wk ret=  123.2% DD=10.5% Calmar=10.84
+  v2_deny_plus_allowlist   N= 32 0.62/wk ret=  142.5% DD=8.7% Calmar=15.14
+  Δv1 vs v0: ret -27.9%  N -9
+  Δv2 vs v0: ret -8.6%  N -19
+
+=== READ ===
+  v0_abc_only              catYears=2 negYears=3 N=318 ret=178.2% DD=58.9%
+  v1_deny_unprepared       catYears=0 negYears=2 N=234 ret=401.1% DD=35.3%
+  v2_deny_plus_allowlist   catYears=0 negYears=2 N=194 ret=307.2% DD=33.5%
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-prepared-oos-ab.json

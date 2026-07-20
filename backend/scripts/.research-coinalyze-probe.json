@@ -1,0 +1,70 @@
+{
+  "generatedAt": "2026-07-11T18:19:50.315Z",
+  "from": "2025-01-01",
+  "to": "2026-01-01",
+  "coins": {
+    "BTCUSDT": {
+      "coinalyzeSymbol": "BTCUSDT_PERP.A",
+      "apiLiqBars": 366,
+      "dbLiqBars": 366,
+      "dbLiqDailyBars": 366,
+      "dbOiBars": 366,
+      "sync": {
+        "liquidations": {
+          "inserted": 366,
+          "rows": 366,
+          "coinalyzeSymbol": "BTCUSDT_PERP.A"
+        },
+        "oi": {
+          "inserted": 366,
+          "rows": 366,
+          "coinalyzeSymbol": "BTCUSDT_PERP.A"
+        },
+        "hourly": null
+      },
+      "liqSpikeOiDropAgreementPct": 17.94871794871795
+    },
+    "ETHUSDT": {
+      "coinalyzeSymbol": "ETHUSDT_PERP.A",
+      "apiLiqBars": 366,
+      "dbLiqBars": 366,
+      "dbLiqDailyBars": 366,
+      "dbOiBars": 366,
+      "sync": {
+        "liquidations": {
+          "inserted": 366,
+          "rows": 366,
+          "coinalyzeSymbol": "ETHUSDT_PERP.A"
+        },
+        "oi": {
+          "inserted": 366,
+          "rows": 366,
+          "coinalyzeSymbol": "ETHUSDT_PERP.A"
+        },
+        "hourly": null
+      },
+      "liqSpikeOiDropAgreementPct": 20.54380664652568
+    },
+    "BNBUSDT": {
+      "coinalyzeSymbol": "BNBUSDT_PERP.A",
+      "apiLiqBars": 366,
+      "dbLiqBars": 366,
+      "dbLiqDailyBars": 366,
+      "dbOiBars": 366,
+      "sync": {
+        "liquidations": {
+          "inserted": 366,
+          "rows": 366,
+          "coinalyzeSymbol": "BNBUSDT_PERP.A"
+        },
+        "oi": {
+          "inserted": 366,
+          "rows": 366,
+          "coinalyzeSymbol": "BNBUSDT_PERP.A"
+        },
+        "hourly": null
+      },
+      "liqSpikeOiDropAgreementPct": 4
+    }
+  }
+}

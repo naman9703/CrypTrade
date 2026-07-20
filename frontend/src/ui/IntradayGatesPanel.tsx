@@ -132,7 +132,7 @@ function LiquidityExitStages({
       <label className="mt-1 block text-[10px] text-slate-600 dark:text-slate-400">
         <span className="font-semibold text-slate-700 dark:text-slate-300">Max hold (bars)</span>
         <span className="ml-1 font-mono text-amber-900 dark:text-amber-100">
-          {Math.max(0, Math.min(2000, Math.round(Number(liq.intradayLiqMaxHoldBars ?? 48))))}
+          {Math.max(0, Math.min(2000, Math.round(Number(liq.intradayLiqMaxHoldBars ?? 0))))}
         </span>
         <span className="ml-1 text-slate-500">(0 = no time_stop)</span>
         <RangeSliderReleaseCommit
@@ -140,7 +140,7 @@ function LiquidityExitStages({
           min={0}
           max={200}
           step={1}
-          value={Math.max(0, Math.min(200, Math.round(Number(liq.intradayLiqMaxHoldBars ?? 48))))}
+          value={Math.max(0, Math.min(200, Math.round(Number(liq.intradayLiqMaxHoldBars ?? 0))))}
           aria-label="Liquidity max hold bars before time stop"
           onCommit={(bars) => {
             onStagePatch({ intradayLiqMaxHoldBars: Math.max(0, Math.min(2000, Math.round(bars))) });

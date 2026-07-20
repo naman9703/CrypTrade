@@ -1,0 +1,36 @@
+17mo    BNBUSDT   session_tierA          n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0%
+17mo    BNBUSDT   session_balanced       n= 10 cand= 11 WR=   10% ret= -22.94% PF= 0.27 DD=22.94%
+17mo    BNBUSDT   rolling_tierA          n=  3 cand=  3 WR= 66.7% ret=  11.91% PF= 4.67 DD= 3.04%
+17mo    BNBUSDT   session_tierA_uniform  n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0%
+17mo    BTCUSDT   session_tierA          n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0%
+17mo    BTCUSDT   session_balanced       n= 11 cand= 12 WR=  9.1% ret= -28.58% PF= 0.18 DD=28.58%
+17mo    BTCUSDT   rolling_tierA          n=  2 cand=  2 WR=    0% ret=  -5.87% PF=    0 DD= 5.87%
+17mo    BTCUSDT   session_tierA_uniform  n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0%
+17mo    ETHUSDT   session_tierA          n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0%
+17mo    ETHUSDT   session_balanced       n= 30 cand= 33 WR=   20% ret= -30.96% PF= 0.61 DD=39.96%
+17mo    ETHUSDT   rolling_tierA          n= 13 cand= 13 WR= 30.8% ret=   6.88% PF= 1.26 DD= 11.9%
+17mo    ETHUSDT   session_tierA_uniform  n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0%
+2026H1  BNBUSDT   session_tierA          n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0%
+2026H1  BNBUSDT   session_balanced       n=  2 cand=  3 WR=    0% ret=  -7.85% PF=    0 DD= 7.85%
+2026H1  BNBUSDT   rolling_tierA          n=  1 cand=  1 WR=  100% ret=   8.29% PF=  999 DD=    0%
+2026H1  BNBUSDT   session_tierA_uniform  n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0%
+2026H1  BTCUSDT   session_tierA          n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0%
+2026H1  BTCUSDT   session_balanced       n=  5 cand=  5 WR=   20% ret=  -9.89% PF= 0.44 DD= 16.3%
+2026H1  BTCUSDT   rolling_tierA          n=  1 cand=  1 WR=    0% ret=  -2.98% PF=    0 DD= 2.98%
+2026H1  BTCUSDT   session_tierA_uniform  n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0%
+2026H1  ETHUSDT   session_tierA          n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0%
+2026H1  ETHUSDT   session_balanced       n=  8 cand=  8 WR=   25% ret=  -9.98% PF= 0.59 DD= 21.7%
+2026H1  ETHUSDT   rolling_tierA          n=  2 cand=  2 WR=   50% ret=    5.9% PF= 2.99 DD= 2.97%
+2026H1  ETHUSDT   session_tierA_uniform  n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0%
+
+=== PROFITABLE (n>=5, ret>0, PF>=1.2) ===
+{"sym":"ETHUSDT","from":"2025-01-01","to":"2026-06-01","name":"rolling_tierA","picks":13,"candidates":13,"trades":13,"wr":30.8,"ret":6.88,"pf":1.26,"dd":11.9,"calmar":0.4,"tpm":0.76}
+
+best by return (n>=3):
+{"sym":"BNBUSDT","from":"2025-01-01","to":"2026-06-01","name":"rolling_tierA","picks":3,"candidates":3,"trades":3,"wr":66.7,"ret":11.91,"pf":4.67,"dd":3.04,"calmar":2.72,"tpm":0.17}
+{"sym":"ETHUSDT","from":"2025-01-01","to":"2026-06-01","name":"rolling_tierA","picks":13,"candidates":13,"trades":13,"wr":30.8,"ret":6.88,"pf":1.26,"dd":11.9,"calmar":0.4,"tpm":0.76}
+{"sym":"BTCUSDT","from":"2026-01-01","to":"2026-06-01","name":"session_balanced","picks":5,"candidates":5,"trades":5,"wr":20,"ret":-9.89,"pf":0.44,"dd":16.3,"calmar":-1.37,"tpm":0.99}
+{"sym":"ETHUSDT","from":"2026-01-01","to":"2026-06-01","name":"session_balanced","picks":8,"candidates":8,"trades":8,"wr":25,"ret":-9.98,"pf":0.59,"dd":21.7,"calmar":-1.03,"tpm":1.59}
+{"sym":"BNBUSDT","from":"2025-01-01","to":"2026-06-01","name":"session_balanced","picks":10,"candidates":11,"trades":10,"wr":10,"ret":-22.94,"pf":0.27,"dd":22.94,"calmar":-0.73,"tpm":0.58}
+{"sym":"BTCUSDT","from":"2025-01-01","to":"2026-06-01","name":"session_balanced","picks":11,"candidates":12,"trades":11,"wr":9.1,"ret":-28.58,"pf":0.18,"dd":28.58,"calmar":-0.74,"tpm":0.64}
+{"sym":"ETHUSDT","from":"2025-01-01","to":"2026-06-01","name":"session_balanced","picks":30,"candidates":33,"trades":30,"wr":20,"ret":-30.96,"pf":0.61,"dd":39.96,"calmar":-0.58,"tpm":1.74}

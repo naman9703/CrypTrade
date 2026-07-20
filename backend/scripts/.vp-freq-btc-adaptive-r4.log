@@ -1,0 +1,59 @@
+loading candles once…
+
+=== GW ===
+N=52 ret=27.2% DD=26.3% WR=40% negYears=2023-24
+  2022-23: n=15 wr=47% ret=4.1% net=$4.1
+  2023-24: n=12 wr=25% ret=-10.3% net=$-10.7
+  2024-25: n=13 wr=31% ret=6.4% net=$6.0
+  2025-26: n=12 wr=58% ret=27.9% net=$27.7
+  setups {"vp_val_breakdown":{"n":47,"net":-14.203720219216525},"vp_va_rejection":{"n":5,"net":41.36788788157743}}
+
+=== GW_p60bear ===
+N=30 ret=49.1% DD=19.9% WR=47% negYears=none
+  2022-23: n=8 wr=50% ret=5.1% net=$5.1
+  2023-24: n=3 wr=67% ret=8.3% net=$8.7
+  2024-25: n=9 wr=33% ret=11.5% net=$13.1
+  2025-26: n=10 wr=50% ret=17.5% net=$22.2
+  setups {"vp_va_rejection":{"n":5,"net":50.46533837663372},"vp_val_breakdown":{"n":25,"net":-1.37473987854675}}
+
+=== GW_p60bear_m03 ===
+N=31 ret=55.3% DD=19.9% WR=48% negYears=none
+  2022-23: n=8 wr=50% ret=5.1% net=$5.1
+  2023-24: n=3 wr=67% ret=8.3% net=$8.7
+  2024-25: n=9 wr=33% ret=11.5% net=$13.1
+  2025-26: n=11 wr=55% ret=22.4% net=$28.4
+  setups {"vp_va_rejection":{"n":5,"net":51.0553379795126},"vp_val_breakdown":{"n":26,"net":4.261304206156728}}
+
+=== GW_p60bear_m08 ===
+N=25 ret=41.2% DD=17.6% WR=44% negYears=none
+  2022-23: n=7 wr=43% ret=1.3% net=$1.3
+  2023-24: n=2 wr=50% ret=3.0% net=$3.0
+  2024-25: n=7 wr=29% ret=12.0% net=$12.5
+  2025-26: n=9 wr=56% ret=20.9% net=$24.4
+  setups {"vp_va_rejection":{"n":5,"net":46.62414240462331},"vp_val_breakdown":{"n":20,"net":-5.411611778416798}}
+
+=== GW_p60bear_vol115 ===
+N=28 ret=38.8% DD=19.9% WR=46% negYears=none
+  2022-23: n=7 wr=57% ret=8.2% net=$8.2
+  2023-24: n=3 wr=67% ret=8.3% net=$9.0
+  2024-25: n=9 wr=33% ret=11.5% net=$13.5
+  2025-26: n=9 wr=44% ret=6.3% net=$8.2
+  setups {"vp_va_rejection":{"n":5,"net":50.37607945281964},"vp_val_breakdown":{"n":23,"net":-11.571010334477517}}
+
+=== G_p60bear ===
+N=33 ret=34.5% DD=22.4% WR=42% negYears=none
+  2022-23: n=8 wr=50% ret=5.1% net=$5.1
+  2023-24: n=5 wr=40% ret=0.8% net=$0.8
+  2024-25: n=10 wr=30% ret=8.0% net=$8.5
+  2025-26: n=10 wr=50% ret=17.5% net=$20.0
+  setups {"vp_va_rejection":{"n":5,"net":47.18500336496937},"vp_val_breakdown":{"n":28,"net":-12.697176168431984}}
+
+=== GW_valBearOnly ===
+N=33 ret=24.4% DD=17.5% WR=39% negYears=2022-23
+  2022-23: n=9 wr=33% ret=-4.3% net=$-4.3
+  2023-24: n=7 wr=43% ret=4.8% net=$4.5
+  2024-25: n=8 wr=25% ret=8.5% net=$8.5
+  2025-26: n=9 wr=56% ret=14.4% net=$15.7
+  setups {"vp_val_breakdown":{"n":28,"net":-19.33886410965037},"vp_va_rejection":{"n":5,"net":43.76131690273522}}
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-btc-adaptive-r4.json

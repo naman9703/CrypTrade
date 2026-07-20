@@ -1,0 +1,415 @@
+{
+  "generatedAt": "2026-07-11T19:48:14.273Z",
+  "window": {
+    "from": "2025-01-01",
+    "to": "2026-01-01",
+    "holdoutFrom": "2025-10-01"
+  },
+  "coinBaseline": {
+    "BTCUSDT": {
+      "trades": 22,
+      "ret": 7.928638368628035,
+      "pf": 0.7811566407502091,
+      "wr": 50
+    },
+    "ETHUSDT": {
+      "trades": 5,
+      "ret": -2.7111552158687666,
+      "pf": 0,
+      "wr": 0
+    },
+    "BNBUSDT": {
+      "trades": 59,
+      "ret": -8.60745593643076,
+      "pf": 0.4668671728302923,
+      "wr": 42.3728813559322
+    },
+    "LINKUSDT": null,
+    "XRPUSDT": {
+      "trades": 38,
+      "ret": -15.274678378079571,
+      "pf": 0.31416364180660183,
+      "wr": 28.947368421052634
+    }
+  },
+  "autopsy": {
+    "BTCUSDT": {
+      "failureModes": [
+        {
+          "key": "sl_no_follow",
+          "n": 3,
+          "wr": 0,
+          "totalPnl": -738.2334388139518,
+          "avgPnl": -246.07781293798394
+        },
+        {
+          "key": "never_green",
+          "n": 3,
+          "wr": 0,
+          "totalPnl": -742.5060354207258,
+          "avgPnl": -247.5020118069086
+        },
+        {
+          "key": "time_stop_gave_back",
+          "n": 2,
+          "wr": 0,
+          "totalPnl": -95.33836250295096,
+          "avgPnl": -47.66918125147548
+        },
+        {
+          "key": "breakeven_after_partial",
+          "n": 2,
+          "wr": 0,
+          "totalPnl": -6.0237482819756565,
+          "avgPnl": -3.0118741409878282
+        },
+        {
+          "key": "sl_after_profit",
+          "n": 2,
+          "wr": 0,
+          "totalPnl": -458.84198673706,
+          "avgPnl": -229.42099336853
+        },
+        {
+          "key": "time_stop_scratch",
+          "n": 1,
+          "wr": 0,
+          "totalPnl": -146.55365715926717,
+          "avgPnl": -146.55365715926717
+        }
+      ],
+      "loserTags": {
+        "breakdownBiasWouldBlock": 12,
+        "vetoCtWouldBlock": 11,
+        "weakImpulse": 9,
+        "asia": 4
+      },
+      "winnerMean": {
+        "impulse": 1.1643111037613958,
+        "entryScore": 60.92307692307692,
+        "extension": 0.014327356031437248
+      },
+      "loserMean": {
+        "impulse": 0.8574046553348134,
+        "entryScore": 61,
+        "extension": 0.014963163813611784
+      },
+      "counterfactuals": [
+        {
+          "label": "skip breakdown-day long PDL / short PDH",
+          "kept": 4,
+          "removed": 22,
+          "keptPnl": 227.26305936377344,
+          "removedPnl": -572.8250370370943,
+          "removedLosses": 12,
+          "removedWins": 10,
+          "keptWr": 75
+        },
+        {
+          "label": "skip counter-HTF",
+          "kept": 3,
+          "removed": 23,
+          "keptPnl": 117.65113413108406,
+          "removedPnl": -463.21311180440483,
+          "removedLosses": 11,
+          "removedWins": 12,
+          "keptWr": 33.33333333333333
+        },
+        {
+          "label": "skip weak impulse (<1.25 ATR)",
+          "kept": 10,
+          "removed": 16,
+          "keptPnl": 109.83318246391025,
+          "removedPnl": -455.395160137231,
+          "removedLosses": 9,
+          "removedWins": 7,
+          "keptWr": 60
+        },
+        {
+          "label": "skip asia session",
+          "kept": 18,
+          "removed": 8,
+          "keptPnl": -411.3152351665982,
+          "removedPnl": 65.75325749327746,
+          "removedLosses": 4,
+          "removedWins": 4,
+          "keptWr": 50
+        },
+        {
+          "label": "breakdown + HTF bundle",
+          "kept": 0,
+          "removed": 26,
+          "keptPnl": 0,
+          "removedPnl": -345.5619776733209,
+          "removedLosses": 13,
+          "removedWins": 13,
+          "keptWr": 0
+        }
+      ]
+    },
+    "ETHUSDT": {
+      "failureModes": [
+        {
+          "key": "breakeven_after_partial",
+          "n": 2,
+          "wr": 0,
+          "totalPnl": -6.1638511533630895,
+          "avgPnl": -3.0819255766815448
+        },
+        {
+          "key": "never_green",
+          "n": 1,
+          "wr": 0,
+          "totalPnl": -233.54411445666068,
+          "avgPnl": -233.54411445666068
+        },
+        {
+          "key": "sl_after_profit",
+          "n": 1,
+          "wr": 0,
+          "totalPnl": -227.17782840411687,
+          "avgPnl": -227.17782840411687
+        },
+        {
+          "key": "sl_no_follow",
+          "n": 1,
+          "wr": 0,
+          "totalPnl": -212.3776722261805,
+          "avgPnl": -212.3776722261805
+        }
+      ],
+      "loserTags": {
+        "breakdownBiasWouldBlock": 3,
+        "vetoCtWouldBlock": 0,
+        "weakImpulse": 5,
+        "asia": 2
+      },
+      "winnerMean": {
+        "impulse": 0,
+        "entryScore": 95,
+        "extension": null
+      },
+      "loserMean": {
+        "impulse": 0,
+        "entryScore": 83.6,
+        "extension": null
+      },
+      "counterfactuals": [
+        {
+          "label": "skip breakdown-day long PDL / short PDH",
+          "kept": 2,
+          "removed": 4,
+          "keptPnl": -230.04515321857824,
+          "removedPnl": -313.14411099308296,
+          "removedLosses": 3,
+          "removedWins": 1,
+          "keptWr": 0
+        },
+        {
+          "label": "skip counter-HTF",
+          "kept": 6,
+          "removed": 0,
+          "keptPnl": -543.1892642116611,
+          "removedPnl": 0,
+          "removedLosses": 0,
+          "removedWins": 0,
+          "keptWr": 16.666666666666664
+        },
+        {
+          "label": "skip weak impulse (<1.25 ATR)",
+          "kept": 0,
+          "removed": 6,
+          "keptPnl": 0,
+          "removedPnl": -543.1892642116611,
+          "removedLosses": 5,
+          "removedWins": 1,
+          "keptWr": 0
+        },
+        {
+          "label": "skip asia session",
+          "kept": 4,
+          "removed": 2,
+          "keptPnl": -306.7778249405391,
+          "removedPnl": -236.41143927112205,
+          "removedLosses": 2,
+          "removedWins": 0,
+          "keptWr": 25
+        },
+        {
+          "label": "breakdown + HTF bundle",
+          "kept": 2,
+          "removed": 4,
+          "keptPnl": -230.04515321857824,
+          "removedPnl": -313.14411099308296,
+          "removedLosses": 3,
+          "removedWins": 1,
+          "keptWr": 0
+        }
+      ]
+    }
+  },
+  "variantResults": {
+    "baseline": {
+      "label": "Baseline INTRADAY_PRO_LIQ_15M",
+      "coins": {
+        "BTCUSDT": {
+          "train": {
+            "ret": 7.928638368628035,
+            "trades": 17,
+            "pf": 1.2290106936715215
+          },
+          "holdout": {
+            "ret": 7.928638368628035,
+            "trades": 5,
+            "pf": 0.2621067405329031
+          }
+        },
+        "ETHUSDT": {
+          "train": {
+            "ret": -2.7111552158687666,
+            "trades": 4,
+            "pf": 0
+          },
+          "holdout": {
+            "ret": -2.7111552158687666,
+            "trades": 1,
+            "pf": 0
+          }
+        }
+      }
+    },
+    "breakdown_bias": {
+      "label": "Breakdown/breakout day veto (no long PDL fade on breakdown days)",
+      "coins": {
+        "BTCUSDT": {
+          "train": {
+            "ret": 4.055821116792031,
+            "trades": 3,
+            "pf": 1.5369694757678312
+          },
+          "holdout": {
+            "ret": 4.055821116792031,
+            "trades": 0,
+            "pf": 0
+          }
+        },
+        "ETHUSDT": {
+          "train": {
+            "ret": -1.4019642385528277,
+            "trades": 2,
+            "pf": 0
+          },
+          "holdout": {
+            "ret": -1.4019642385528277,
+            "trades": 0,
+            "pf": 0
+          }
+        }
+      }
+    },
+    "veto_counter_trend": {
+      "label": "HTF counter-trend veto",
+      "coins": {
+        "BTCUSDT": {
+          "train": {
+            "ret": 2.7952981905253,
+            "trades": 2,
+            "pf": 2.93860910951641
+          },
+          "holdout": {
+            "ret": 2.7952981905253,
+            "trades": 0,
+            "pf": 0
+          }
+        },
+        "ETHUSDT": {
+          "train": {
+            "ret": -2.7111552158687666,
+            "trades": 4,
+            "pf": 0
+          },
+          "holdout": {
+            "ret": -2.7111552158687666,
+            "trades": 1,
+            "pf": 0
+          }
+        }
+      }
+    },
+    "day_situation_bias": {
+      "label": "Day situation bias (marketState layer)",
+      "coins": {
+        "BTCUSDT": {
+          "train": {
+            "ret": 4.055821116792031,
+            "trades": 3,
+            "pf": 1.5369694757678312
+          },
+          "holdout": {
+            "ret": 4.055821116792031,
+            "trades": 0,
+            "pf": 0
+          }
+        },
+        "ETHUSDT": {
+          "train": {
+            "ret": -1.4019642385528277,
+            "trades": 2,
+            "pf": 0
+          },
+          "holdout": {
+            "ret": -1.4019642385528277,
+            "trades": 0,
+            "pf": 0
+          }
+        }
+      }
+    },
+    "confirm_bundle": {
+      "label": "Breakdown bias + HTF veto + day situation",
+      "coins": {
+        "BTCUSDT": {
+          "train": {
+            "ret": 0,
+            "trades": 0,
+            "pf": 0
+          },
+          "holdout": {
+            "ret": 0,
+            "trades": 0,
+            "pf": 0
+          }
+        },
+        "ETHUSDT": {
+          "train": {
+            "ret": -1.4019642385528277,
+            "trades": 2,
+            "pf": 0
+          },
+          "holdout": {
+            "ret": -1.4019642385528277,
+            "trades": 0,
+            "pf": 0
+          }
+        }
+      }
+    }
+  },
+  "bestHoldout": {
+    "ret": 7.928638368628035,
+    "id": "baseline",
+    "sym": "BTCUSDT",
+    "train": 7.928638368628035,
+    "pf": 0.2621067405329031,
+    "trades": 5
+  },
+  "recommendation": {
+    "setup": "SR_INTRADAY INTRADAY_PRO_LIQ_15M",
+    "coin": "BTCUSDT",
+    "patch": {},
+    "variantId": "baseline",
+    "fullReturnPct": 7.928638368628035,
+    "holdoutReturnPct": 7.928638368628035,
+    "rationale": "BTC is the only coin with consistent positive edge on classical LIQ sweep+reclaim; structural confirmations eliminate breakdown-day fades and counter-HTF knives."
+  }
+}

@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import { useAppStore } from "../../ws/store";
 import { tradingModeToApiModeSlug } from "../../lib/tradingModeSlug";
-import { EMPTY_STRATEGIES } from "../../lib/stableEmptyArrays";
+import { EMPTY_BOT_INSTANCES, EMPTY_STRATEGIES } from "../../lib/stableEmptyArrays";
+import { isStrategyInUseForInstance } from "../../lib/strategyInUse";
+import { renameStrategyWithGuard } from "../../lib/strategyInstanceBind";
+import { buildStrategyVersionConfigSections } from "../../lib/strategyVersionFullConfig";
+import { strategyVersionBadgeLabels, pickBotFromStrategyVersion } from "../../lib/strategyVersionDisplay";
+import { strategyTypeLabel } from "../../lib/strategyConfigProfile";
 import type { Strategy } from "../../types/strategy";
 import type { StrategyPerformance } from "../../types/performance";
 import {
@@ -11,7 +16,8 @@ import {
   toneProfitFactor,
   toneWinRate,
 } from "../../lib/performanceMetricsUi";
-import { CloneVersionModal } from "./CloneVersionModal";
+import { CloneStrategyModal } from "./CloneStrategyModal";
+import { StrategyConfigDetail } from "./StrategyConfigDetail";
 import { SwitchStrategyModal } from "./SwitchStrategyModal";
 
 function formatAgo(iso: string) {
@@ -25,22 +31,10 @@ function formatAgo(iso: string) {
   return `${Math.floor(sec / 86400)}d ago`;
 }
 
-function capitalSummary(v: StrategyVersion) {
-  const mode = v.cfgCapitalMode;
-  if (mode === "WALLET_PCT" && v.cfgCapitalPct != null) {
-    return `${v.cfgCapitalPct}% wallet`;
-  }
-  if (v.cfgCapitalFixedUsdt != null && v.cfgCapitalFixedUsdt > 0) {
-    return `$${Number(v.cfgCapitalFixedUsdt).toLocaleString()} fixed`;
-  }
-  return "—";
-}
-
 type Props = {
   strategyId: string | null;
   open: boolean;
   onClose: () => void;
-  /** Called after set-active so parent can refresh */
   onActivated?: () => void;
 };
 
@@ -50,22 +44,24 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
   const runningByMode = useAppStore((s) => s.runningByMode);
   const bot = useAppStore((s) => s.bot);
   const strategies = useAppStore((s) => s.strategiesByMode[modeSlug] ?? EMPTY_STRATEGIES);
-  const activeVid = useAppStore((s) => s.activeStrategyVersionByMode[modeSlug]);
-  const setActiveStrategyVersionForMode = useAppStore((s) => s.setActiveStrategyVersionForMode);
-  const cloneStrategyVersionStore = useAppStore((s) => s.cloneStrategyVersionStore);
-  const updateStrategyMetaStore = useAppStore((s) => s.updateStrategyMetaStore);
+  const instances = useAppStore((s) => s.instancesByMode[modeSlug] ?? EMPTY_BOT_INSTANCES);
+  const activeInstanceId = useAppStore((s) => s.activeInstanceByMode[modeSlug]);
+  const bindInstanceStrategyStore = useAppStore((s) => s.bindInstanceStrategyStore);
+  const cloneStrategyAsNewStore = useAppStore((s) => s.cloneStrategyAsNewStore);
   const fetchStrategiesForMode = useAppStore((s) => s.fetchStrategiesForMode);
+  const fetchInstancesForMode = useAppStore((s) => s.fetchInstancesForMode);
+  const pushLog = useAppStore((s) => s.pushLog);
 
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [loading, setLoading] = useState(false);
-  const [cloneCtx, setCloneCtx] = useState<{ versionId: string } | null>(null);
+  const [cloneOpen, setCloneOpen] = useState(false);
   const [switchCtx, setSwitchCtx] = useState<{
-    versionId: string;
+    strategyId: string;
     label: string;
     currentLabel: string;
   } | null>(null);
   const [switchBusy, setSwitchBusy] = useState(false);
-  const [perfByVid, setPerfByVid] = useState<Record<string, StrategyPerformance>>({});
+  const [perf, setPerf] = useState<StrategyPerformance | null>(null);
 
   const running = Boolean(runningByMode?.[String(mode || "").toUpperCase()] ?? bot?.running);
 
@@ -77,64 +73,101 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
       setStrategy(st);
       try {
         const pr = await api.getStrategyPerformance(strategyId);
-        const m: Record<string, StrategyPerformance> = {};
-        for (const row of pr) {
-          if (row.metrics) m[row.versionId] = row.metrics;
-        }
-        setPerfByVid(m);
+        const vid = st.latestVersion?.id;
+        const row = vid ? pr.find((r) => r.versionId === vid) : pr[0];
+        setPerf(row?.metrics ?? null);
       } catch {
-        setPerfByVid({});
+        setPerf(null);
       }
-    } catch {
+    } catch (e) {
       setStrategy(null);
-      setPerfByVid({});
+      setPerf(null);
+      pushLog({
+        level: "error",
+        msg: `Could not load strategy: ${e instanceof Error ? e.message : String(e)}`,
+      });
     } finally {
       setLoading(false);
     }
-  }, [strategyId]);
+  }, [strategyId, pushLog]);
 
   useEffect(() => {
     if (open && strategyId) void load();
   }, [open, strategyId, load]);
 
-  async function runSetActive(versionId: string, label: string) {
-    const go = async () => {
-      await setActiveStrategyVersionForMode(modeSlug, versionId);
-      await fetchStrategiesForMode(modeSlug);
-      onActivated?.();
-    };
-    if (!running) {
-      await go();
-      useAppStore.getState().pushLog({
-        level: "info",
-        msg: `Active strategy set: ${label}`,
-        category: "config",
-        reason: "strategy_active",
-      });
+  const latest = strategy?.latestVersion;
+  const strategyType = latest
+    ? strategyTypeLabel(String(pickBotFromStrategyVersion(latest).manualStrategy ?? ""))
+    : null;
+  const inUse = strategyId
+    ? isStrategyInUseForInstance(strategyId, instances, activeInstanceId)
+    : false;
+  const configSections = useMemo(
+    () => (latest ? buildStrategyVersionConfigSections(latest) : []),
+    [latest],
+  );
+
+  async function runSetActiveForInstance() {
+    if (!strategyId || !strategy) return;
+    if (!activeInstanceId) {
+      pushLog({ level: "warn", msg: "Select an instance tab first, then Set active." });
       return;
     }
-    const owning = strategies.find((s) => s.latestVersion?.id === activeVid);
-    const cur = owning ? `${owning.name} (active)` : "Current strategy";
-    setSwitchCtx({ versionId, label, currentLabel: cur });
+    const label = strategy.name;
+    const go = async () => {
+      await bindInstanceStrategyStore(activeInstanceId, strategyId);
+      await fetchStrategiesForMode(modeSlug);
+      await fetchInstancesForMode(modeSlug);
+      onActivated?.();
+      pushLog({
+        level: "info",
+        msg: `Instance now uses strategy: ${label}`,
+        category: "config",
+        reason: "strategy_instance_bind",
+      });
+    };
+    if (!running) {
+      try {
+        await go();
+      } catch (e) {
+        pushLog({
+          level: "error",
+          msg: `Set active failed: ${e instanceof Error ? e.message : String(e)}`,
+        });
+      }
+      return;
+    }
+    const cur = strategies.find((s) => isStrategyInUseForInstance(s.id, instances, activeInstanceId));
+    setSwitchCtx({
+      strategyId,
+      label,
+      currentLabel: cur?.name ? `${cur.name} (in use)` : "Current strategy",
+    });
   }
 
   async function confirmSwitch() {
-    if (!switchCtx) return;
+    if (!switchCtx || !activeInstanceId) return;
     setSwitchBusy(true);
     try {
       await api.botStop({
         reason: "strategy_switch",
         mode: mode as "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE",
       });
-      await setActiveStrategyVersionForMode(modeSlug, switchCtx.versionId);
+      await bindInstanceStrategyStore(activeInstanceId, switchCtx.strategyId);
       await fetchStrategiesForMode(modeSlug);
+      await fetchInstancesForMode(modeSlug);
       onActivated?.();
-      setSwitchCtx(null);
-      useAppStore.getState().pushLog({
+      pushLog({
         level: "info",
-        msg: `Bot stopped and active strategy set: ${switchCtx.label}`,
+        msg: `Bot stopped — instance now uses: ${switchCtx.label}`,
         category: "config",
         reason: "strategy_switch",
+      });
+      setSwitchCtx(null);
+    } catch (e) {
+      pushLog({
+        level: "error",
+        msg: `Strategy switch failed: ${e instanceof Error ? e.message : String(e)}`,
       });
     } finally {
       setSwitchBusy(false);
@@ -143,52 +176,12 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
 
   if (!open || !strategyId) return null;
 
-  const latest = strategy?.latestVersion;
-
-  function perfSummaryEl(versionId: string) {
-    const pm = perfByVid[versionId];
-    if (!pm || pm.totalTrades <= 0) {
-      return <p className="mt-1 text-[10px] text-slate-500">No closed trades yet</p>;
-    }
-    const pnlStr =
-      pm.totalPnlUsdt >= 0
-        ? `+$${Math.abs(pm.totalPnlUsdt).toFixed(pm.totalPnlUsdt >= 100 ? 0 : 2)}`
-        : `−$${Math.abs(pm.totalPnlUsdt).toFixed(2)}`;
-    const pfStr =
-      pm.profitFactor != null && Number.isFinite(pm.profitFactor) ? pm.profitFactor.toFixed(1) : "—";
-    const ddStr =
-      pm.maxDrawdownPct != null && Number.isFinite(pm.maxDrawdownPct) ? `${pm.maxDrawdownPct.toFixed(1)}%` : "—";
-    return (
-      <p className="mt-1 text-[10px] leading-relaxed text-slate-600 dark:text-slate-400">
-        <span className={toneClass(toneWinRate(pm.winRatePct))}>W:{pm.winRatePct.toFixed(0)}%</span>
-        <span className="text-slate-400"> · </span>
-        <span
-          className={
-            pm.totalPnlUsdt >= 0
-              ? "text-emerald-600 dark:text-emerald-400"
-              : "text-rose-600 dark:text-rose-400"
-          }
-        >
-          PnL:{pnlStr}
-        </span>
-        <span className="text-slate-400"> · </span>
-        <span className={toneClass(toneProfitFactor(pm.profitFactor))}>PF:{pfStr}</span>
-        <span className="text-slate-400"> · </span>
-        <span className={toneClass(toneMaxDrawdown(pm.maxDrawdownPct))}>DD:{ddStr}</span>
-      </p>
-    );
-  }
-
   return (
     <>
       <div className="fixed inset-0 z-[70] bg-black/40" aria-hidden onClick={onClose} />
       <div className="fixed inset-y-0 right-0 z-[75] flex w-full max-w-lg flex-col border-l border-slate-200 bg-slate-50 shadow-2xl dark:border-slate-700 dark:bg-slate-950">
         <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-800">
-          <button
-            type="button"
-            className="text-sm text-sky-600 dark:text-sky-400"
-            onClick={onClose}
-          >
+          <button type="button" className="text-sm text-sky-600 dark:text-sky-400" onClick={onClose}>
             ← Back
           </button>
           <div className="min-w-0 flex-1">
@@ -196,8 +189,12 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
               {loading ? "…" : strategy?.name ?? "Strategy"}
             </h2>
             <p className="text-[10px] text-slate-500">
-              {strategy?.modeSlug ? strategy.modeSlug.toUpperCase() : "All modes"}{" "}
-              {strategy?.tags?.length ? `· ${strategy.tags.join(", ")}` : ""}
+              Signal brain · shared across modes
+              {strategyType ? (
+                <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 font-medium text-sky-800 dark:bg-sky-950 dark:text-sky-300">
+                  {strategyType}
+                </span>
+              ) : null}
             </p>
           </div>
           <button
@@ -206,7 +203,14 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
             onClick={() => {
               const n = window.prompt("Strategy name", strategy?.name ?? "");
               if (n == null || !strategyId) return;
-              void updateStrategyMetaStore(strategyId, { name: n.trim() || strategy?.name }).then(() => load());
+              void renameStrategyWithGuard(strategyId, n.trim() || strategy?.name)
+                .then(() => load())
+                .catch((e) =>
+                  pushLog({
+                    level: "error",
+                    msg: e instanceof Error ? e.message : `Rename failed: ${String(e)}`,
+                  }),
+                );
             }}
           >
             Edit
@@ -216,72 +220,84 @@ export function StrategyDetailDrawer({ strategyId, open, onClose, onActivated }:
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
           {loading ? (
             <p className="text-xs text-slate-500">Loading…</p>
-          ) : latest ? (
-            <section>
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current strategy</h3>
-                {activeVid === latest.id && (
-                  <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300">Active</span>
-                )}
+          ) : !latest ? (
+            <p className="text-xs text-slate-500">
+              No config saved yet. Use Save in the Trading panel to store the current signal-brain settings.
+            </p>
+          ) : (
+            <>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {strategyVersionBadgeLabels(latest).map((b) => (
+                  <span
+                    key={b}
+                    className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  >
+                    {b}
+                  </span>
+                ))}
+                {inUse ? (
+                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-300">
+                    ★ In use by active instance
+                  </span>
+                ) : null}
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-                      {strategy?.name}
-                    </p>
-                    <p className="text-[10px] text-slate-500">Last saved {formatAgo(latest.createdAt)}</p>
-                  </div>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-slate-600 dark:text-slate-400">
-                  <span className="text-slate-500">Market mode</span><span className="font-medium text-slate-800 dark:text-slate-200">{latest.cfgMarketMode ?? "—"}</span>
-                  <span className="text-slate-500">Timeframe</span><span className="font-medium text-slate-800 dark:text-slate-200">{latest.cfgTimeframe ?? "—"}</span>
-                  <span className="text-slate-500">ST period</span><span className="font-medium text-slate-800 dark:text-slate-200">{latest.cfgStPeriod ?? "—"} × {latest.cfgStMultiplier ?? "—"}</span>
-                  <span className="text-slate-500">Trailing</span><span className="font-medium text-slate-800 dark:text-slate-200">{latest.cfgTrailingMode ?? "—"}</span>
-                  <span className="text-slate-500">Capital</span><span className="font-medium text-slate-800 dark:text-slate-200">{capitalSummary(latest)}</span>
-                </div>
-                {perfSummaryEl(latest.id)}
-                <div className="mt-3 flex flex-wrap gap-2">
+              <p className="mb-3 text-[10px] text-slate-500">Last saved {formatAgo(latest.createdAt)}</p>
+
+              {perf && perf.totalTrades > 0 ? (
+                <p className="mb-3 text-[10px] leading-relaxed text-slate-600 dark:text-slate-400">
+                  <span className={toneClass(toneWinRate(perf.winRatePct))}>W:{perf.winRatePct.toFixed(0)}%</span>
+                  <span className="text-slate-400"> · </span>
+                  <span className={toneClass(toneProfitFactor(perf.profitFactor))}>
+                    PF:{perf.profitFactor != null ? perf.profitFactor.toFixed(1) : "—"}
+                  </span>
+                  <span className="text-slate-400"> · </span>
+                  <span className={toneClass(toneMaxDrawdown(perf.maxDrawdownPct))}>
+                    DD:{perf.maxDrawdownPct != null ? `${perf.maxDrawdownPct.toFixed(1)}%` : "—"}
+                  </span>
+                </p>
+              ) : (
+                <p className="mb-3 text-[10px] text-slate-500">No closed trades yet</p>
+              )}
+
+              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Saved configuration
+              </h3>
+              <StrategyConfigDetail sections={configSections} />
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-300 px-2 py-1 text-[11px] dark:border-slate-600"
+                  onClick={() => setCloneOpen(true)}
+                >
+                  Duplicate strategy
+                </button>
+                {!inUse ? (
                   <button
                     type="button"
-                    className="rounded-md border border-slate-300 px-2 py-1 text-[11px] dark:border-slate-600"
-                    onClick={() => setCloneCtx({ versionId: latest.id })}
+                    className="rounded-md bg-sky-600 px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-40"
+                    disabled={!activeInstanceId}
+                    title={!activeInstanceId ? "Select an instance tab first" : undefined}
+                    onClick={() => void runSetActiveForInstance()}
                   >
-                    Clone to new strategy
+                    Set active
                   </button>
-                  {activeVid !== latest.id && (
-                    <button
-                      type="button"
-                      className="rounded-md bg-sky-600 px-2 py-1 text-[11px] font-semibold text-white"
-                      onClick={() =>
-                        void runSetActive(latest.id, `${strategy?.name ?? "Strategy"}`)
-                      }
-                    >
-                      Set active
-                    </button>
-                  )}
-                </div>
+                ) : null}
               </div>
-            </section>
-          ) : (
-            <p className="text-xs text-slate-500">No version saved yet. Use Save in the Trading panel to save the current config to this strategy.</p>
+            </>
           )}
         </div>
       </div>
 
-      <CloneVersionModal
-        open={cloneCtx != null}
-        onClose={() => setCloneCtx(null)}
-        strategies={strategies}
-        defaultTargetStrategyId={strategyId}
-        onClone={async (targetStrategyId, label) => {
-          if (!cloneCtx || !strategyId) return;
-          await cloneStrategyVersionStore(strategyId, cloneCtx.versionId, {
-            targetStrategyId: targetStrategyId !== strategyId ? targetStrategyId : undefined,
-            label: label || undefined,
-          });
+      <CloneStrategyModal
+        open={cloneOpen}
+        sourceName={strategy?.name ?? "Strategy"}
+        onClose={() => setCloneOpen(false)}
+        onClone={async (name) => {
+          if (!strategyId) return;
+          await cloneStrategyAsNewStore(strategyId, name);
           await load();
-          setCloneCtx(null);
+          pushLog({ level: "info", msg: `Created strategy “${name}”`, category: "config" });
         }}
       />
 

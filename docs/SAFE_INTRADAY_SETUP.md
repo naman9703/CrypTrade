@@ -1,6 +1,6 @@
 # Safe Intraday Crypto Setup (`SAFE_INTRADAY`)
 
-> **Reality check:** **1% per day** (~30%/month compounded) is **not achievable** safely or repeatably on crypto perps with honest costs. This setup targets **~1% per month** (~0.03–0.05% average per calendar day) with controlled drawdowns — the same honest band as validated `SUPERTREND_ELITE` research.
+> **Reality check:** **1% per day** (~30%/month compounded) is **not achievable** safely or repeatably on crypto perps with honest costs. This setup targets **~1% per month** (~0.03–0.05% average per calendar day) with controlled drawdowns — research only; no strategy is currently certified deployable.
 
 ## What it is
 

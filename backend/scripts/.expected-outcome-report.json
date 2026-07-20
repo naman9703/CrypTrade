@@ -1,0 +1,604 @@
+{
+  "platform": "Market Decision Research Platform",
+  "phase": 2,
+  "version": "distributional_v1",
+  "outcome": "fwd_closeR_20",
+  "holdoutYear": 2026,
+  "trainN": 1675,
+  "holdoutN": 462,
+  "calibratedFeatures": 7,
+  "calibration": {
+    "sufficient": true,
+    "n": 462,
+    "brier": {
+      "pHit1R": {
+        "score": 0.244441589025974,
+        "n": 462
+      },
+      "pHit2R": {
+        "score": 0.19692743218614714,
+        "n": 462
+      },
+      "pSlFirst": {
+        "score": 0.2364606640043289,
+        "n": 462
+      }
+    },
+    "reliability": {
+      "pHit1R": {
+        "bins": [
+          {
+            "bin": 1,
+            "n": 47,
+            "meanPredicted": 0.49431914893617035,
+            "observedFreq": 0.3617021276595745,
+            "calibrationError": 0.13261702127659586
+          },
+          {
+            "bin": 2,
+            "n": 47,
+            "meanPredicted": 0.5127404255319148,
+            "observedFreq": 0.40425531914893614,
+            "calibrationError": 0.10848510638297865
+          },
+          {
+            "bin": 3,
+            "n": 47,
+            "meanPredicted": 0.5248595744680852,
+            "observedFreq": 0.5957446808510638,
+            "calibrationError": 0.07088510638297862
+          },
+          {
+            "bin": 4,
+            "n": 47,
+            "meanPredicted": 0.5383106382978724,
+            "observedFreq": 0.46808510638297873,
+            "calibrationError": 0.07022553191489367
+          },
+          {
+            "bin": 5,
+            "n": 47,
+            "meanPredicted": 0.5468319148936172,
+            "observedFreq": 0.5531914893617021,
+            "calibrationError": 0.006359574468084994
+          },
+          {
+            "bin": 6,
+            "n": 47,
+            "meanPredicted": 0.5554574468085106,
+            "observedFreq": 0.6595744680851063,
+            "calibrationError": 0.10411702127659572
+          },
+          {
+            "bin": 7,
+            "n": 47,
+            "meanPredicted": 0.567036170212766,
+            "observedFreq": 0.46808510638297873,
+            "calibrationError": 0.09895106382978724
+          },
+          {
+            "bin": 8,
+            "n": 47,
+            "meanPredicted": 0.5810446808510636,
+            "observedFreq": 0.46808510638297873,
+            "calibrationError": 0.11295957446808491
+          },
+          {
+            "bin": 9,
+            "n": 47,
+            "meanPredicted": 0.5924468085106385,
+            "observedFreq": 0.6808510638297872,
+            "calibrationError": 0.08840425531914875
+          },
+          {
+            "bin": 10,
+            "n": 39,
+            "meanPredicted": 0.6073,
+            "observedFreq": 0.7435897435897436,
+            "calibrationError": 0.13628974358974366
+          }
+        ],
+        "expectedCalibrationError": 0.0929293998908892,
+        "sufficient": true
+      },
+      "pSlFirst": {
+        "bins": [
+          {
+            "bin": 1,
+            "n": 47,
+            "meanPredicted": 0.41242340425531926,
+            "observedFreq": 0.2765957446808511,
+            "calibrationError": 0.13582765957446818
+          },
+          {
+            "bin": 2,
+            "n": 47,
+            "meanPredicted": 0.4262638297872341,
+            "observedFreq": 0.2127659574468085,
+            "calibrationError": 0.21349787234042558
+          },
+          {
+            "bin": 3,
+            "n": 47,
+            "meanPredicted": 0.43432127659574465,
+            "observedFreq": 0.425531914893617,
+            "calibrationError": 0.00878936170212763
+          },
+          {
+            "bin": 4,
+            "n": 47,
+            "meanPredicted": 0.43972978723404244,
+            "observedFreq": 0.2765957446808511,
+            "calibrationError": 0.16313404255319136
+          },
+          {
+            "bin": 5,
+            "n": 47,
+            "meanPredicted": 0.4449340425531914,
+            "observedFreq": 0.3617021276595745,
+            "calibrationError": 0.08323191489361692
+          },
+          {
+            "bin": 6,
+            "n": 47,
+            "meanPredicted": 0.45036170212765975,
+            "observedFreq": 0.44680851063829785,
+            "calibrationError": 0.0035531914893618954
+          },
+          {
+            "bin": 7,
+            "n": 47,
+            "meanPredicted": 0.4550553191489362,
+            "observedFreq": 0.40425531914893614,
+            "calibrationError": 0.05080000000000007
+          },
+          {
+            "bin": 8,
+            "n": 47,
+            "meanPredicted": 0.46164893617021263,
+            "observedFreq": 0.3829787234042553,
+            "calibrationError": 0.07867021276595731
+          },
+          {
+            "bin": 9,
+            "n": 47,
+            "meanPredicted": 0.46876595744680843,
+            "observedFreq": 0.3617021276595745,
+            "calibrationError": 0.10706382978723394
+          },
+          {
+            "bin": 10,
+            "n": 39,
+            "meanPredicted": 0.4809333333333333,
+            "observedFreq": 0.5384615384615384,
+            "calibrationError": 0.05752820512820511
+          }
+        ],
+        "expectedCalibrationError": 0.0902096290234588,
+        "sufficient": true
+      }
+    },
+    "expectedR": {
+      "meanError": -0.055525108225108186,
+      "rankCorrelation": -0.020046898375070298,
+      "avgPredicted": -0.01907748917748918,
+      "avgActual": 0.03644761904761907
+    }
+  },
+  "holdoutPolicyComparison": {
+    "max_score": {
+      "n": 362,
+      "avgOutcome": 0.020074585635359094
+    },
+    "max_expected_r": {
+      "n": 362,
+      "avgOutcome": 0.03478950276243095
+    },
+    "max_distributional_utility": {
+      "n": 362,
+      "avgOutcome": 0.03109861878453039
+    },
+    "oracle": {
+      "n": 75,
+      "avgOutcome": 0.45636800000000005
+    }
+  },
+  "oraclePredictability": {
+    "multiCandidateDays": 75,
+    "oraclePredictedCorrectly": 36,
+    "oraclePredictPct": 48,
+    "avgRankError": 0.610256,
+    "researchQuestion": "Can we predict which candidate would have become the oracle?"
+  },
+  "legacyScoreOraclePct": 44,
+  "oracleFailureAnalysis": {
+    "experimentFamily": "OFA",
+    "researchQuestion": "Why are we failing to distinguish the Oracle candidate?",
+    "multiCandidateDays": 75,
+    "failures": 40,
+    "successes": 35,
+    "failureRate": 0.5333333333333333,
+    "avgOpportunityCost": 0.6261,
+    "failureModes": {
+      "score_misrank": 11,
+      "similar_expected_r": 38,
+      "oracle_higher_variance": 12,
+      "regime_mismatch": 12,
+      "feature_indistinguishable": 0
+    },
+    "topFailureFeatures": [
+      {
+        "feature": "marketState_adx",
+        "avgAbsGap": 4.542799311343169
+      },
+      {
+        "feature": "cont_score",
+        "avgAbsGap": 4.025
+      },
+      {
+        "feature": "weightedQuality",
+        "avgAbsGap": 3.9162500000000007
+      },
+      {
+        "feature": "scoreV2_total",
+        "avgAbsGap": 1.725
+      },
+      {
+        "feature": "fwd_mfeR_20",
+        "avgAbsGap": 0.5598774999999999
+      }
+    ],
+    "regimeBreakdown": {
+      "TREND_UP": 15,
+      "TREND_DOWN": 17,
+      "RANGE": 2,
+      "VOLATILE_AVOID": 6
+    },
+    "hypotheses": [
+      "OFA-001: Candidates have similar E[R] but different variance — need distributional discrimination",
+      "OFA-002: Estimator still correlates with legacy score — decouple from scoreV2/weightedQuality",
+      "OFA-003: Oracle picks are higher-variance — mean-only ranking misses upside tails",
+      "OFA-005: Largest feature gap on failure days is marketState_adx — prioritize calibration",
+      "OFA-006: Most failures in TREND_DOWN regime (17 days) — regime-conditional estimator"
+    ]
+  },
+  "behaviorDiscovery": {
+    "sufficient": true,
+    "n": 1675,
+    "k": 6,
+    "features": [
+      "cont_score",
+      "sweep_velocityAtr",
+      "level_importance",
+      "marketState_adx",
+      "scoreV2_total"
+    ],
+    "clusters": [
+      {
+        "clusterId": 3,
+        "n": 404,
+        "suggestedBehavior": "Trend acceleration / continuation",
+        "centroid": {
+          "cont_score": 0.816,
+          "sweep_velocityAtr": 0.152,
+          "level_importance": 0.5,
+          "marketState_adx": 0.414,
+          "scoreV2_total": 0.571
+        },
+        "avgOutcome": -0.10584826732673255,
+        "pHit1R": 0.6410891089108911,
+        "pSlFirst": 0.46534653465346537,
+        "symbols": [
+          "BTCUSDT",
+          "BNBUSDT",
+          "ETHUSDT",
+          "SOLUSDT",
+          "XRPUSDT"
+        ]
+      },
+      {
+        "clusterId": 4,
+        "n": 361,
+        "suggestedBehavior": "Unclassified cluster",
+        "centroid": {
+          "cont_score": 0.48,
+          "sweep_velocityAtr": 0.092,
+          "level_importance": 0.5,
+          "marketState_adx": 0.35,
+          "scoreV2_total": 0.461
+        },
+        "avgOutcome": 0.057681994459833776,
+        "pHit1R": 0.46814404432132967,
+        "pSlFirst": 0.4182825484764543,
+        "symbols": [
+          "BTCUSDT",
+          "BNBUSDT",
+          "ETHUSDT",
+          "SOLUSDT",
+          "XRPUSDT"
+        ]
+      },
+      {
+        "clusterId": 2,
+        "n": 317,
+        "suggestedBehavior": "Unclassified cluster",
+        "centroid": {
+          "cont_score": 0.373,
+          "sweep_velocityAtr": 0.083,
+          "level_importance": 0,
+          "marketState_adx": 0.322,
+          "scoreV2_total": 0.446
+        },
+        "avgOutcome": 0.025742586750788662,
+        "pHit1R": 0.5394321766561514,
+        "pSlFirst": 0.4037854889589905,
+        "symbols": [
+          "BTCUSDT",
+          "BNBUSDT",
+          "ETHUSDT",
+          "SOLUSDT",
+          "XRPUSDT"
+        ]
+      },
+      {
+        "clusterId": 1,
+        "n": 207,
+        "suggestedBehavior": "Post-sweep continuation (range)",
+        "centroid": {
+          "cont_score": 0.665,
+          "sweep_velocityAtr": 0.18,
+          "level_importance": 0,
+          "marketState_adx": 0.252,
+          "scoreV2_total": 0.539
+        },
+        "avgOutcome": -0.0013009661835749011,
+        "pHit1R": 0.5990338164251208,
+        "pSlFirst": 0.48792270531400966,
+        "symbols": [
+          "BTCUSDT",
+          "BNBUSDT",
+          "ETHUSDT",
+          "SOLUSDT",
+          "XRPUSDT"
+        ]
+      },
+      {
+        "clusterId": 5,
+        "n": 200,
+        "suggestedBehavior": "Post-sweep continuation (range)",
+        "centroid": {
+          "cont_score": 0.81,
+          "sweep_velocityAtr": 0.122,
+          "level_importance": 1,
+          "marketState_adx": 0.375,
+          "scoreV2_total": 0.56
+        },
+        "avgOutcome": -0.07996099999999998,
+        "pHit1R": 0.48,
+        "pSlFirst": 0.48,
+        "symbols": [
+          "BTCUSDT",
+          "BNBUSDT",
+          "ETHUSDT",
+          "SOLUSDT",
+          "XRPUSDT"
+        ]
+      },
+      {
+        "clusterId": 0,
+        "n": 186,
+        "suggestedBehavior": "Trend acceleration / continuation",
+        "centroid": {
+          "cont_score": 0.786,
+          "sweep_velocityAtr": 0.141,
+          "level_importance": 0,
+          "marketState_adx": 0.566,
+          "scoreV2_total": 0.584
+        },
+        "avgOutcome": -0.03322526881720429,
+        "pHit1R": 0.6344086021505376,
+        "pSlFirst": 0.489247311827957,
+        "symbols": [
+          "BTCUSDT",
+          "BNBUSDT",
+          "ETHUSDT",
+          "SOLUSDT",
+          "XRPUSDT"
+        ]
+      }
+    ],
+    "note": "Discovered clusters — map to manual taxonomy for interpretation, not validation"
+  },
+  "portfolio": {
+    "max_score": {
+      "startCapital": 10000,
+      "endCapital": 10336.321333958927,
+      "netReturnPct": 3.3632133395892745,
+      "trades": 361,
+      "skippedExposure": 1,
+      "skippedCorrelation": 75,
+      "winRate": 53.31491712707182,
+      "avgR": 0.0188745856353591,
+      "maxConcurrent": 3,
+      "maxSymbolExposure": 2,
+      "feeBps": 4,
+      "slippageBps": 2,
+      "roundTripCostR": 0.0012,
+      "correlationMatrix": {
+        "XRPUSDT": {
+          "XRPUSDT": 1,
+          "SOLUSDT": -0.021,
+          "ETHUSDT": -0.028,
+          "BNBUSDT": 0.294,
+          "BTCUSDT": 0.21
+        },
+        "SOLUSDT": {
+          "XRPUSDT": -0.021,
+          "SOLUSDT": 1,
+          "ETHUSDT": 0.219,
+          "BNBUSDT": 0.263,
+          "BTCUSDT": 0.21
+        },
+        "ETHUSDT": {
+          "XRPUSDT": -0.028,
+          "SOLUSDT": 0.219,
+          "ETHUSDT": 1,
+          "BNBUSDT": -0.083,
+          "BTCUSDT": -0.073
+        },
+        "BNBUSDT": {
+          "XRPUSDT": 0.294,
+          "SOLUSDT": 0.263,
+          "ETHUSDT": -0.083,
+          "BNBUSDT": 1,
+          "BTCUSDT": 0.371
+        },
+        "BTCUSDT": {
+          "XRPUSDT": 0.21,
+          "SOLUSDT": 0.21,
+          "ETHUSDT": -0.073,
+          "BNBUSDT": 0.371,
+          "BTCUSDT": 1
+        }
+      }
+    },
+    "max_distributional_utility": {
+      "startCapital": 10000,
+      "endCapital": 10926.405484893941,
+      "netReturnPct": 9.264054848939413,
+      "trades": 361,
+      "skippedExposure": 1,
+      "skippedCorrelation": 76,
+      "winRate": 54.14364640883977,
+      "avgR": 0.02989861878453042,
+      "maxConcurrent": 3,
+      "maxSymbolExposure": 2,
+      "feeBps": 4,
+      "slippageBps": 2,
+      "roundTripCostR": 0.0012,
+      "correlationMatrix": {
+        "XRPUSDT": {
+          "XRPUSDT": 1,
+          "SOLUSDT": -0.077,
+          "ETHUSDT": -0.035,
+          "BNBUSDT": 0.24,
+          "BTCUSDT": 0.195
+        },
+        "SOLUSDT": {
+          "XRPUSDT": -0.077,
+          "SOLUSDT": 1,
+          "ETHUSDT": 0.182,
+          "BNBUSDT": 0.223,
+          "BTCUSDT": 0.193
+        },
+        "ETHUSDT": {
+          "XRPUSDT": -0.035,
+          "SOLUSDT": 0.182,
+          "ETHUSDT": 1,
+          "BNBUSDT": -0.006,
+          "BTCUSDT": -0.102
+        },
+        "BNBUSDT": {
+          "XRPUSDT": 0.24,
+          "SOLUSDT": 0.223,
+          "ETHUSDT": -0.006,
+          "BNBUSDT": 1,
+          "BTCUSDT": 0.38
+        },
+        "BTCUSDT": {
+          "XRPUSDT": 0.195,
+          "SOLUSDT": 0.193,
+          "ETHUSDT": -0.102,
+          "BNBUSDT": 0.38,
+          "BTCUSDT": 1
+        }
+      }
+    }
+  },
+  "diversification": {
+    "concentrated": {
+      "startCapital": 10000,
+      "endCapital": 10453.364269635196,
+      "netReturnPct": 4.533642696351962,
+      "trades": 188,
+      "skippedExposure": 12,
+      "skippedCorrelation": 91,
+      "winRate": 55.50000000000001,
+      "avgR": 0.034059000000000006,
+      "maxConcurrent": 3,
+      "maxSymbolExposure": 2,
+      "feeBps": 4,
+      "slippageBps": 2,
+      "roundTripCostR": 0.0012,
+      "correlationMatrix": {
+        "ETHUSDT": {
+          "ETHUSDT": 1,
+          "BNBUSDT": -0.003,
+          "BTCUSDT": -0.033
+        },
+        "BNBUSDT": {
+          "ETHUSDT": -0.003,
+          "BNBUSDT": 1,
+          "BTCUSDT": 0.004
+        },
+        "BTCUSDT": {
+          "ETHUSDT": -0.033,
+          "BNBUSDT": 0.004,
+          "BTCUSDT": 1
+        }
+      }
+    },
+    "diversified": {
+      "startCapital": 10000,
+      "endCapital": 10749.498576560001,
+      "netReturnPct": 7.494985765600013,
+      "trades": 4,
+      "skippedExposure": 0,
+      "skippedCorrelation": 0,
+      "winRate": 100,
+      "avgR": 1.8534000000000002,
+      "maxConcurrent": 3,
+      "maxSymbolExposure": 1,
+      "feeBps": 4,
+      "slippageBps": 2,
+      "roundTripCostR": 0.0012,
+      "correlationMatrix": {
+        "BTCUSDT": {
+          "BTCUSDT": 1,
+          "SOLUSDT": null,
+          "BNBUSDT": null,
+          "ETHUSDT": null
+        },
+        "SOLUSDT": {
+          "BTCUSDT": null,
+          "SOLUSDT": 1,
+          "BNBUSDT": null,
+          "ETHUSDT": null
+        },
+        "BNBUSDT": {
+          "BTCUSDT": null,
+          "SOLUSDT": null,
+          "BNBUSDT": 1,
+          "ETHUSDT": null
+        },
+        "ETHUSDT": {
+          "BTCUSDT": null,
+          "SOLUSDT": null,
+          "BNBUSDT": null,
+          "ETHUSDT": 1
+        }
+      }
+    },
+    "diversificationLift": 2.961343069248051,
+    "insight": "Mediocre uncorrelated signals can outperform concentrated excellent signals"
+  },
+  "negativeResultsCount": 6,
+  "interpretation": [
+    "Bottleneck is probabilistic modeling — not strategy design or research methodology.",
+    "Holdout E[R] rank correlation weak — improve calibration before production.",
+    "Holdout: distributional policy (0.031R) beats legacy score (0.020R) — decision upgrade justified OOS.",
+    "Oracle predictability holdout: 48.000% (score: 44.000%).",
+    "Do not optimize oracle % directly — investigate OFA failure modes.",
+    "6 behavior clusters discovered from feature vectors — validate against manual taxonomy."
+  ]
+}

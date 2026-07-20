@@ -24,7 +24,7 @@ export function InstancesPanel() {
   const fetchInstancesForMode = useAppStore((s) => s.fetchInstancesForMode);
   const fetchStrategiesForMode = useAppStore((s) => s.fetchStrategiesForMode);
   const selectInstance = useAppStore((s) => s.selectInstance);
-  const setActiveTradingInstanceForMode = useAppStore((s) => s.setActiveTradingInstanceForMode);
+  const enterInstance = useAppStore((s) => s.enterInstance);
   const setInstancesPanelCollapsed = useAppStore((s) => s.setInstancesPanelCollapsed);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -70,15 +70,10 @@ export function InstancesPanel() {
   }, [selected, versionsByStrategyId]);
 
   const onTabSelect = useCallback(
-    async (id: string) => {
-      selectInstance(id);
-      try {
-        await setActiveTradingInstanceForMode(modeSlug, id);
-      } catch {
-        /* offline */
-      }
+    (id: string) => {
+      void enterInstance(id);
     },
-    [selectInstance, setActiveTradingInstanceForMode, modeSlug],
+    [enterInstance],
   );
 
   const onRefresh = useCallback(() => {

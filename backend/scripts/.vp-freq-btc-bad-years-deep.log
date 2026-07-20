@@ -1,0 +1,83 @@
+running 2022-23…
+  reading candles 2022-23…
+running 2023-24…
+  reading candles 2023-24…
+running 2024-25…
+  reading candles 2024-25…
+running 2025-26…
+  reading candles 2025-26…
+
+== 2022-23 == N=49 WR=30.6% net=$-40.33
+  bySetup {"SELL:val_breakdown":{"n":40,"wr":30,"net":-35.89592272119263},"SELL:va_rejection":{"n":5,"wr":20,"net":7.862479731794314},"BUY:va_rejection":{"n":4,"wr":50,"net":-12.298710099472169}}
+  VAL bull/bear {"macroBull":{"n":19,"wr":36.84210526315789,"net":-6.871252541380979},"macroBear":{"n":21,"wr":23.809523809523807,"net":-29.024670179811658}}
+  VAL htf/chop/vac {"shallow":{"n":24,"wr":20.833333333333336,"net":-38.03017342613231},"strong":{"n":16,"wr":43.75,"net":2.1342507049396646},"chop":{"n":4,"wr":25,"net":-6.233591349521566},"vacuum":{"n":18,"wr":33.33333333333333,"net":-6.061991712787188},"structured":{"n":14,"wr":28.57142857142857,"net":-12.763200240402638}}
+  va_rej {"all":{"n":9,"wr":33.33333333333333,"net":-4.43623036767786},"sell":{"n":5,"wr":20,"net":7.862479731794314},"buy":{"n":4,"wr":50,"net":-12.298710099472169},"sellExtendedDown":{"n":2,"wr":50,"net":18.31835574524677},"sellMacroBull":{"n":1,"wr":0,"net":-4.339304930131903},"byPrior20d":[{"bucket":"[-1,-0.1)","n":1,"wr":100,"net":23.01414103767493},{"bucket":"[-0.1,-0.05)","n":1,"wr":0,"net":-4.695785292428159},{"bucket":"[-0.05,0)","n":0,"wr":0,"net":0},{"bucket":"[0,0.05)","n":2,"wr":0,"net":-6.116571083320555},{"bucket":"[0.05,1)","n":1,"wr":0,"net":-4.339304930131903}]}
+  CF block VAL short macroBull: drop 19 ($-6.9) → kept $-33.5 (Δ +6.9)
+  CF block VAL bull+shallow HTF: drop 12 ($-14.1) → kept $-26.2 (Δ +14.1)
+  CF block VAL htfSep<0.3%: drop 9 ($-6.6) → kept $-33.7 (Δ +6.6)
+  CF block VAL htfSep<0.5%: drop 24 ($-38.0) → kept $-2.3 (Δ +38.0)
+  CF block VAL weak-bear shallow HTF: drop 6 ($-10.6) → kept $-29.7 (Δ +10.6)
+  CF block VAL in chop |prior60d|<5%: drop 4 ($-6.2) → kept $-34.1 (Δ +6.2)
+  CF block VAL vacuum path≥2%: drop 18 ($-6.1) → kept $-34.3 (Δ +6.1)
+  CF block VAL after 5d bounce>4%: drop 1 ($-2.3) → kept $-38.0 (Δ +2.3)
+  CF block SELL va_rej extended down: drop 2 ($18.3) → kept $-58.7 (Δ -18.3)
+  CF block SELL va_rej macroBull: drop 1 ($-4.3) → kept $-36.0 (Δ +4.3)
+  CF block all va_rejection: drop 9 ($-4.4) → kept $-35.9 (Δ +4.4)
+  CF block all BUY: drop 4 ($-12.3) → kept $-28.0 (Δ +12.3)
+  CF counterfactual: SELL losers with MFE≥1% (exit leak): drop 6 ($-15.3) → kept $-25.0 (Δ +15.3)
+
+== 2023-24 == N=41 WR=19.5% net=$-52.78
+  bySetup {"SELL:val_breakdown":{"n":36,"wr":16.666666666666664,"net":-50.97513137887866},"BUY:va_rejection":{"n":4,"wr":50,"net":-0.15404649357941613},"SELL:va_rejection":{"n":1,"wr":0,"net":-1.6491520293176714}}
+  VAL bull/bear {"macroBull":{"n":20,"wr":10,"net":-33.60264058319832},"macroBear":{"n":16,"wr":25,"net":-17.37249079568034}}
+  VAL htf/chop/vac {"shallow":{"n":22,"wr":13.636363636363635,"net":-39.444675812263554},"strong":{"n":14,"wr":21.428571428571427,"net":-11.5304555666151},"chop":{"n":2,"wr":0,"net":-3.4198771995617676},"vacuum":{"n":13,"wr":23.076923076923077,"net":-8.712989411468815},"structured":{"n":15,"wr":20,"net":-19.580109867537107}}
+  va_rej {"all":{"n":5,"wr":40,"net":-1.8031985228970875},"sell":{"n":1,"wr":0,"net":-1.6491520293176714},"buy":{"n":4,"wr":50,"net":-0.15404649357941613},"sellExtendedDown":{"n":0,"wr":0,"net":0},"sellMacroBull":{"n":1,"wr":0,"net":-1.6491520293176714},"byPrior20d":[{"bucket":"[-1,-0.1)","n":0,"wr":0,"net":0},{"bucket":"[-0.1,-0.05)","n":0,"wr":0,"net":0},{"bucket":"[-0.05,0)","n":0,"wr":0,"net":0},{"bucket":"[0,0.05)","n":0,"wr":0,"net":0},{"bucket":"[0.05,1)","n":1,"wr":0,"net":-1.6491520293176714}]}
+  CF block VAL short macroBull: drop 20 ($-33.6) → kept $-19.2 (Δ +33.6)
+  CF block VAL bull+shallow HTF: drop 15 ($-24.6) → kept $-28.2 (Δ +24.6)
+  CF block VAL htfSep<0.3%: drop 14 ($-30.1) → kept $-22.6 (Δ +30.1)
+  CF block VAL htfSep<0.5%: drop 22 ($-39.4) → kept $-13.3 (Δ +39.4)
+  CF block VAL weak-bear shallow HTF: drop 5 ($-10.6) → kept $-42.2 (Δ +10.6)
+  CF block VAL in chop |prior60d|<5%: drop 2 ($-3.4) → kept $-49.4 (Δ +3.4)
+  CF block VAL vacuum path≥2%: drop 13 ($-8.7) → kept $-44.1 (Δ +8.7)
+  CF block SELL va_rej macroBull: drop 1 ($-1.6) → kept $-51.1 (Δ +1.6)
+  CF block all va_rejection: drop 5 ($-1.8) → kept $-51.0 (Δ +1.8)
+  CF block all BUY: drop 4 ($-0.2) → kept $-52.6 (Δ +0.2)
+  CF counterfactual: SELL losers with MFE≥1% (exit leak): drop 5 ($-9.4) → kept $-43.4 (Δ +9.4)
+
+== 2024-25 == N=42 WR=28.6% net=$-13.77
+  bySetup {"SELL:val_breakdown":{"n":36,"wr":27.77777777777778,"net":-29.156875718685402},"SELL:va_rejection":{"n":3,"wr":33.33333333333333,"net":1.8779735017828916},"BUY:va_rejection":{"n":3,"wr":33.33333333333333,"net":13.506183985752882}}
+  VAL bull/bear {"macroBull":{"n":15,"wr":33.33333333333333,"net":-10.567285014425748},"macroBear":{"n":21,"wr":23.809523809523807,"net":-18.589590704259656}}
+  VAL htf/chop/vac {"shallow":{"n":20,"wr":35,"net":-2.4156380534179376},"strong":{"n":16,"wr":18.75,"net":-26.741237665267466},"chop":{"n":8,"wr":75,"net":25.645623931429224},"vacuum":{"n":20,"wr":30,"net":-5.911631093165826},"structured":{"n":12,"wr":25,"net":-18.061211288408867}}
+  va_rej {"all":{"n":6,"wr":33.33333333333333,"net":15.384157487535775},"sell":{"n":3,"wr":33.33333333333333,"net":1.8779735017828916},"buy":{"n":3,"wr":33.33333333333333,"net":13.506183985752882},"sellExtendedDown":{"n":1,"wr":0,"net":-3.399432631829246},"sellMacroBull":{"n":2,"wr":50,"net":5.277406133612137},"byPrior20d":[{"bucket":"[-1,-0.1)","n":1,"wr":0,"net":-3.399432631829246},{"bucket":"[-0.1,-0.05)","n":0,"wr":0,"net":0},{"bucket":"[-0.05,0)","n":0,"wr":0,"net":0},{"bucket":"[0,0.05)","n":0,"wr":0,"net":0},{"bucket":"[0.05,1)","n":2,"wr":50,"net":5.277406133612137}]}
+  CF block VAL short macroBull: drop 15 ($-10.6) → kept $-3.2 (Δ +10.6)
+  CF block VAL bull+shallow HTF: drop 10 ($-8.7) → kept $-5.1 (Δ +8.7)
+  CF block VAL htfSep<0.3%: drop 10 ($14.5) → kept $-28.2 (Δ -14.5)
+  CF block VAL htfSep<0.5%: drop 20 ($-2.4) → kept $-11.4 (Δ +2.4)
+  CF block VAL weak-bear shallow HTF: drop 7 ($4.3) → kept $-18.1 (Δ -4.3)
+  CF block VAL in chop |prior60d|<5%: drop 8 ($25.6) → kept $-39.4 (Δ -25.6)
+  CF block VAL vacuum path≥2%: drop 20 ($-5.9) → kept $-7.9 (Δ +5.9)
+  CF block VAL after 5d bounce>4%: drop 2 ($2.7) → kept $-16.4 (Δ -2.7)
+  CF block SELL va_rej extended down: drop 1 ($-3.4) → kept $-10.4 (Δ +3.4)
+  CF block SELL va_rej macroBull: drop 2 ($5.3) → kept $-19.1 (Δ -5.3)
+  CF block all va_rejection: drop 6 ($15.4) → kept $-29.2 (Δ -15.4)
+  CF block all BUY: drop 3 ($13.5) → kept $-27.3 (Δ -13.5)
+  CF counterfactual: SELL losers with MFE≥1% (exit leak): drop 5 ($-13.9) → kept $0.1 (Δ +13.9)
+
+== 2025-26 == N=41 WR=46.3% net=$16.54
+  bySetup {"SELL:val_breakdown":{"n":37,"wr":45.94594594594595,"net":7.295090703346126},"BUY:va_rejection":{"n":1,"wr":0,"net":-2.619731928920175},"SELL:va_rejection":{"n":3,"wr":66.66666666666666,"net":11.866156040026624}}
+  VAL bull/bear {"macroBull":{"n":11,"wr":36.36363636363637,"net":-1.8516507874410375},"macroBear":{"n":26,"wr":50,"net":9.14674149078716}}
+  VAL htf/chop/vac {"shallow":{"n":22,"wr":45.45454545454545,"net":-2.69388016359564},"strong":{"n":15,"wr":46.666666666666664,"net":9.988970866941763},"chop":{"n":8,"wr":62.5,"net":3.2245488679659777},"vacuum":{"n":8,"wr":37.5,"net":5.898859267180762},"structured":{"n":16,"wr":50,"net":-2.117828585111759}}
+  va_rej {"all":{"n":4,"wr":50,"net":9.24642411110645},"sell":{"n":3,"wr":66.66666666666666,"net":11.866156040026624},"buy":{"n":1,"wr":0,"net":-2.619731928920175},"sellExtendedDown":{"n":1,"wr":0,"net":-3.5417347934792267},"sellMacroBull":{"n":1,"wr":100,"net":11.54545740865379},"byPrior20d":[{"bucket":"[-1,-0.1)","n":1,"wr":0,"net":-3.5417347934792267},{"bucket":"[-0.1,-0.05)","n":0,"wr":0,"net":0},{"bucket":"[-0.05,0)","n":1,"wr":100,"net":3.86243342485206},{"bucket":"[0,0.05)","n":0,"wr":0,"net":0},{"bucket":"[0.05,1)","n":1,"wr":100,"net":11.54545740865379}]}
+  CF block VAL short macroBull: drop 11 ($-1.9) → kept $18.4 (Δ +1.9)
+  CF block VAL bull+shallow HTF: drop 7 ($-10.1) → kept $26.6 (Δ +10.1)
+  CF block VAL htfSep<0.3%: drop 8 ($4.2) → kept $12.3 (Δ -4.2)
+  CF block VAL htfSep<0.5%: drop 22 ($-2.7) → kept $19.2 (Δ +2.7)
+  CF block VAL weak-bear shallow HTF: drop 11 ($-0.6) → kept $17.1 (Δ +0.6)
+  CF block VAL in chop |prior60d|<5%: drop 8 ($3.2) → kept $13.3 (Δ -3.2)
+  CF block VAL vacuum path≥2%: drop 8 ($5.9) → kept $10.6 (Δ -5.9)
+  CF block VAL after 5d bounce>4%: drop 1 ($3.5) → kept $13.0 (Δ -3.5)
+  CF block SELL va_rej extended down: drop 1 ($-3.5) → kept $20.1 (Δ +3.5)
+  CF block SELL va_rej macroBull: drop 1 ($11.5) → kept $5.0 (Δ -11.5)
+  CF block all va_rejection: drop 4 ($9.2) → kept $7.3 (Δ -9.2)
+  CF block all BUY: drop 1 ($-2.6) → kept $19.2 (Δ +2.6)
+  CF counterfactual: SELL losers with MFE≥1% (exit leak): drop 3 ($-8.8) → kept $25.4 (Δ +8.8)
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-btc-bad-years-deep.json

@@ -1,0 +1,89 @@
+
+=== LIQ Loser Elimination Research ===
+2025-01-01 → 2026-01-01 | holdout from 2025-10-01
+Coins: BTCUSDT, ETHUSDT, BNBUSDT, LINKUSDT, XRPUSDT | risk 2%
+
+Autopsy BTCUSDT…
+Autopsy ETHUSDT…
+Autopsy BNBUSDT…
+Autopsy LINKUSDT…
+Autopsy XRPUSDT…
+
+## Coin suitability (baseline full year)
+
+| Coin | Trades | Return% | WR% | PF | Verdict |
+|------|--------|---------|-----|-----|---------|
+| BTCUSDT | 22 | 7.9 | 50 | 0.78 | REJECT |
+| ETHUSDT | 5 | -2.7 | 0 | 0.00 | REJECT |
+| BNBUSDT | 59 | -8.6 | 42 | 0.47 | REJECT |
+| XRPUSDT | 38 | -15.3 | 29 | 0.31 | REJECT |
+
+## Why losers lose (failure modes)
+
+### BTCUSDT
+  sl_no_follow: n=3 totalPnL=$-738.23 avg=$-246.08
+  never_green: n=3 totalPnL=$-742.51 avg=$-247.50
+  time_stop_gave_back: n=2 totalPnL=$-95.34 avg=$-47.67
+  breakeven_after_partial: n=2 totalPnL=$-6.02 avg=$-3.01
+  sl_after_profit: n=2 totalPnL=$-458.84 avg=$-229.42
+  time_stop_scratch: n=1 totalPnL=$-146.55 avg=$-146.55
+  Winners impulse=1.16 vs losers 0.86
+  Losers blocked by breakdown bias: 12/13
+  Losers blocked by HTF veto: 11
+  Counterfactual (if blocked at entry):
+    skip breakdown-day long PDL / short PDH: remove 22 (10W/12L) removedPnL=$-572.83 → kept 4 WR=75% keptPnL=$227.26
+    skip counter-HTF: remove 23 (12W/11L) removedPnL=$-463.21 → kept 3 WR=33% keptPnL=$117.65
+    skip weak impulse (<1.25 ATR): remove 16 (7W/9L) removedPnL=$-455.40 → kept 10 WR=60% keptPnL=$109.83
+    skip asia session: remove 8 (4W/4L) removedPnL=$65.75 → kept 18 WR=50% keptPnL=$-411.32
+    breakdown + HTF bundle: remove 26 (13W/13L) removedPnL=$-345.56 → kept 0 WR=0% keptPnL=$0.00
+
+### ETHUSDT
+  breakeven_after_partial: n=2 totalPnL=$-6.16 avg=$-3.08
+  never_green: n=1 totalPnL=$-233.54 avg=$-233.54
+  sl_after_profit: n=1 totalPnL=$-227.18 avg=$-227.18
+  sl_no_follow: n=1 totalPnL=$-212.38 avg=$-212.38
+  Winners impulse=0.00 vs losers 0.00
+  Losers blocked by breakdown bias: 3/5
+  Losers blocked by HTF veto: 0
+  Counterfactual (if blocked at entry):
+    skip breakdown-day long PDL / short PDH: remove 4 (1W/3L) removedPnL=$-313.14 → kept 2 WR=0% keptPnL=$-230.05
+    skip counter-HTF: remove 0 (0W/0L) removedPnL=$0.00 → kept 6 WR=17% keptPnL=$-543.19
+    skip weak impulse (<1.25 ATR): remove 6 (1W/5L) removedPnL=$-543.19 → kept 0 WR=0% keptPnL=$0.00
+    skip asia session: remove 2 (0W/2L) removedPnL=$-236.41 → kept 4 WR=25% keptPnL=$-306.78
+    breakdown + HTF bundle: remove 4 (1W/3L) removedPnL=$-313.14 → kept 2 WR=0% keptPnL=$-230.05
+
+
+## Structural confirmation backtest (train vs holdout)
+
+| Variant | Coin | Train ret% | Holdout ret% | Hold trades | Hold PF |
+|---------|------|------------|--------------|-------------|---------|
+| baseline | BTCUSDT | 7.9 | 7.9 | 5 | 0.26 |
+| baseline | ETHUSDT | -2.7 | -2.7 | 1 | 0.00 |
+| breakdown_bias | BTCUSDT | 4.1 | 4.1 | 0 | 0.00 |
+| breakdown_bias | ETHUSDT | -1.4 | -1.4 | 0 | 0.00 |
+| veto_counter_trend | BTCUSDT | 2.8 | 2.8 | 0 | 0.00 |
+| veto_counter_trend | ETHUSDT | -2.7 | -2.7 | 1 | 0.00 |
+| day_situation_bias | BTCUSDT | 4.1 | 4.1 | 0 | 0.00 |
+| day_situation_bias | ETHUSDT | -1.4 | -1.4 | 0 | 0.00 |
+| confirm_bundle | BTCUSDT | 0.0 | 0.0 | 0 | 0.00 |
+| confirm_bundle | ETHUSDT | -1.4 | -1.4 | 0 | 0.00 |
+
+## BTC-only promoted setup
+
+  baseline           full=7.9% hold=7.9% train=7.9% n=22 PF=0.78
+  breakdown_bias     full=4.1% hold=4.1% train=4.1% n=3 PF=1.54
+  day_situation_bias full=4.1% hold=4.1% train=4.1% n=3 PF=1.54
+  veto_counter_trend full=2.8% hold=2.8% train=2.8% n=2 PF=2.94
+  confirm_bundle     full=0.0% hold=0.0% train=0.0% n=0 PF=0.00
+
+Recommendation: {
+  "setup": "SR_INTRADAY INTRADAY_PRO_LIQ_15M",
+  "coin": "BTCUSDT",
+  "patch": {},
+  "variantId": "baseline",
+  "fullReturnPct": 7.928638368628035,
+  "holdoutReturnPct": 7.928638368628035,
+  "rationale": "BTC is the only coin with consistent positive edge on classical LIQ sweep+reclaim; structural confirmations eliminate breakdown-day fades and counter-HTF knives."
+}
+
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.research-liq-loser-elimination.json

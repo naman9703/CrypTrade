@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-07-11T02:41:44.808Z",
+  "windowDays": 28,
+  "fromMs": 1781318504705,
+  "toMs": 1783737704705,
+  "coins": {
+    "BTCUSDT": {
+      "n": 672,
+      "pearsonOi": 0.3407118014321762,
+      "spearmanOi": 0.3592417435681022,
+      "sameDirection4hPct": 59.73053892215569,
+      "regimeAgreePct": 58.63095238095239,
+      "credibleProxy": false
+    },
+    "BNBUSDT": {
+      "n": 672,
+      "pearsonOi": 0.7048961681368549,
+      "spearmanOi": 0.6030747867580742,
+      "sameDirection4hPct": 64.67065868263472,
+      "regimeAgreePct": 70.83333333333334,
+      "credibleProxy": true
+    },
+    "ETHUSDT": {
+      "n": 672,
+      "pearsonOi": 0.7897744621790146,
+      "spearmanOi": 0.7747078451959947,
+      "sameDirection4hPct": 69.01197604790418,
+      "regimeAgreePct": 79.46428571428571,
+      "credibleProxy": true
+    },
+    "SOLUSDT": {
+      "n": 672,
+      "pearsonOi": 0.8606762138568025,
+      "spearmanOi": 0.7950423842350133,
+      "sameDirection4hPct": 69.76047904191617,
+      "regimeAgreePct": 76.78571428571429,
+      "credibleProxy": true
+    },
+    "XRPUSDT": {
+      "n": 672,
+      "pearsonOi": 0.11899596284181004,
+      "spearmanOi": 0.2000834920079555,
+      "sameDirection4hPct": 62.874251497005986,
+      "regimeAgreePct": 61.30952380952381,
+      "credibleProxy": false
+    }
+  }
+}

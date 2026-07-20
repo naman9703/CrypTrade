@@ -424,6 +424,90 @@ export function buildEliteStSignalSeries(candles, opts = {}) {
   return out;
 }
 
+/**
+ * Indicator context for research harvest (all gate inputs, no filtering).
+ */
+export function buildEliteStIndicatorContext(candles, opts = {}) {
+  return buildEliteStContext(candles, opts);
+}
+
+/**
+ * Evaluate Elite gate features at a bar without filtering — for FALS Family C harvest.
+ */
+export function computeEliteGateFeatures(ctx, barIdx, side, candles) {
+  const {
+    adxSeries,
+    volRatio,
+    htf1h,
+    h1Ema21,
+    h1Ema50,
+    htf4h,
+    trend4h,
+    atrSeries,
+    atrEmaLookback,
+  } = ctx;
+  const o = ctx.opts;
+  const i = barIdx;
+  const adxNow = adxSeries[i] ?? 0;
+  const adxPrev = adxSeries[Math.max(0, i - o.adxRisingLookback)] ?? 0;
+  const adxPass = adxNow >= o.minAdx && (!o.requireAdxRising || adxNow > adxPrev);
+  const vr = volRatio[i] ?? 1;
+  const volPass = vr >= o.minVolumeVsAvg;
+
+  let htf1hPass = true;
+  let htf1hSep = null;
+  if (o.requireHtf1hEmaAlign) {
+    const h1Idx = htfIdxFor(htf1h, candles[i].ts) - 1;
+    if (h1Idx < o.htf1hEma50Period) htf1hPass = false;
+    else {
+      const e21 = h1Ema21[h1Idx] ?? 0;
+      const e50 = h1Ema50[h1Idx] ?? 0;
+      if (e50 === 0) htf1hPass = false;
+      else {
+        htf1hSep = Math.abs(e21 - e50) / e50;
+        const aligned = side === "BUY" ? e21 > e50 : e21 < e50;
+        const minSep = resolveHtf1hMinSep(o, h1Idx, ctx);
+        htf1hPass = aligned && htf1hSep >= minSep;
+      }
+    }
+  }
+
+  let htf4hPass = true;
+  let trend4hDir = 0;
+  if (o.requireHtf4hAlign) {
+    const h4Idx = htfIdxFor(htf4h, candles[i].ts) - 1;
+    if (h4Idx < 0) htf4hPass = false;
+    else {
+      trend4hDir = trend4h[h4Idx] ?? 0;
+      htf4hPass = trend4hDir !== 0 && (side === "BUY" ? trend4hDir === 1 : trend4hDir === -1);
+    }
+  }
+
+  const atrNow = atrSeries[i] ?? 0;
+  const atrAvg = atrEmaLookback[i] ?? 0;
+  const atrExpansionRatio = atrAvg > 0 ? atrNow / atrAvg : 1;
+  const atrPass = !o.requireAtrExpansion || (atrAvg > 0 && atrNow >= o.minAtrExpansion * atrAvg);
+
+  const gates = [adxPass, volPass, htf1hPass, htf4hPass, atrPass];
+  const gatePassCount = gates.filter(Boolean).length;
+
+  return {
+    gate_adx: adxNow,
+    gate_adx_pass: adxPass ? 1 : 0,
+    gate_adx_rising: adxNow > adxPrev ? 1 : 0,
+    gate_vol_ratio: vr,
+    gate_vol_pass: volPass ? 1 : 0,
+    gate_htf1h_pass: htf1hPass ? 1 : 0,
+    gate_htf1h_sep: htf1hSep,
+    gate_htf4h_pass: htf4hPass ? 1 : 0,
+    gate_htf4h_dir: trend4hDir,
+    gate_atr_expansion: atrExpansionRatio,
+    gate_atr_pass: atrPass ? 1 : 0,
+    gate_pass_count: gatePassCount,
+    elite_composite_score: gatePassCount + (vr > 1 ? 0.5 : 0) + (atrExpansionRatio > 1.1 ? 0.5 : 0),
+  };
+}
+
 // ─── Backtest adapter ─────────────────────────────────────────────────────────
 
 /**
@@ -506,6 +590,7 @@ export const ELITE_ST_TRAIL_PATCH = {
   futuresTrailingStAdvanced: true,
   futuresTrailingStFeeBreakeven: true,
   futuresTrailingStopMode: "SUPERTREND",
+  trailSizingMode: "FIXED_PCT",
   trailBufferMode: "PERCENT",
   trailBufferRate: 0.0005,
   trailBufferAtrMult: 0,
@@ -514,6 +599,29 @@ export const ELITE_ST_TRAIL_PATCH = {
   trailActivationSlippageFrac: 0,
   trailT01LockSlippageFrac: 0,
 };
+
+/**
+ * Locked live = backtest exit contract (2026-07-14 honesty re-validation).
+ * Trail-only Supertrend + exit-on-flip. Fixed %-brackets OFF so winners are not
+ * capped by 0.2%/1.5% panel defaults. No disaster SL in this contract.
+ * RESEARCH: RISK_AT_SL sizes via backtestSizingStopPct (default 1%) when exit SL is off.
+ */
+export const ELITE_ST_EXIT_CONTRACT = {
+  trailingStopLossAuto: true,
+  futuresTrailingStopMode: "SUPERTREND",
+  supertrendFuturesExitOnFlip: true,
+  supertrendFuturesFixedSlPct: 0,
+  supertrendFuturesFixedTpPct: 0,
+  supertrendFuturesUseFixedSl: false,
+  supertrendFuturesUseFixedTp: false,
+  eliteStAutoBracketMode: "OFF",
+  ...ELITE_ST_TRAIL_PATCH,
+};
+
+/** Merge exit contract onto cfg (contract wins on exit keys). */
+export function applyEliteStExitContract(cfg = {}) {
+  return { ...cfg, ...ELITE_ST_EXIT_CONTRACT };
+}
 
 /** Trading-panel futures bracket defaults (TradingPanel.tsx / bot.js). */
 export const ELITE_PANEL_DEFAULT_SL_PCT = 0.002;
@@ -612,11 +720,11 @@ export function sanitizeEliteStContamination(cfg = {}) {
   out.intradayLiqMaxHoldBars = 0;
   out.intradayOfMaxHoldBars = 0;
 
-  const trailingOn = out.trailingStopLossAuto === true;
-  if (trailingOn) {
+  if (out.trailingStopLossAuto === true) {
     const mode = String(out.futuresTrailingStopMode ?? "SUPERTREND").toUpperCase();
     if (mode === "OFF") out.futuresTrailingStopMode = "SUPERTREND";
-    Object.assign(out, ELITE_ST_TRAIL_PATCH);
+    // Trail tier knobs come from Trading panel → Save; do not re-apply ELITE_ST_TRAIL_PATCH here
+    // (activation preset only) or user edits revert on every save/reload/backtest.
   }
   // Bracket SL/TP come from the saved strategy snapshot only — never re-default here.
 
@@ -661,13 +769,7 @@ export const ELITE_ST_ACTIVATION_PATCH = {
   eliteStMinVolumeVsAvg: 1.5,
   eliteStRequireAtrExpansion: true,
   eliteStLiqSweepEnabled: false,
-  trailingStopLossAuto: true,
-  supertrendFuturesExitOnFlip: true,
-  supertrendFuturesFixedSlPct: 0,
-  supertrendFuturesFixedTpPct: 0,
-  supertrendFuturesUseFixedSl: false,
-  supertrendFuturesUseFixedTp: false,
-  ...ELITE_ST_TRAIL_PATCH,
+  ...ELITE_ST_EXIT_CONTRACT,
   riskPerTrade: 5,
   riskPerTradeUnit: "PCT",
   futuresLeverage: 25,

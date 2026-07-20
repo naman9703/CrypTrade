@@ -1,5 +1,15 @@
 import { roundTo } from "./math.js";
 import {
+  buildDynamicTrailSnapshotFields,
+  computeDynamicAdvancedSl,
+  computeDynamicTieredMaxTrailStepFromExtreme,
+  computeDynamicT01LockFrac,
+  computeDynamicTrailBuffer,
+  computeInitialRiskFrac,
+  computePeakMfeR,
+  resolveEffectiveAtrPct,
+} from "./dynamicTrailing.js";
+import {
   applyMinTrailGapFromMark,
   computeSupertrendTrailingSlUpdate,
   feeRateBreakevenPadded,
@@ -711,11 +721,9 @@ export function applyTrailingStopBinanceMemory(opts) {
     const postT02BufRaw = Number(trailingOpts.postT02ActivationBufferRate);
     const postT02Buf =
       Number.isFinite(postT02BufRaw) && postT02BufRaw >= 0 ? Math.min(0.05, postT02BufRaw) : null;
-    const gateRtSpacing = {
-      roundTripFeeRate: roundTripFeeR,
-      postT02SpacingFrac: postT02SpacingUser,
-      postT02BufferRate: postT02Buf,
-    };
+
+    const trailSizingMode = String(trailingOpts.trailSizingMode ?? "FIXED_PCT").toUpperCase();
+    const isDynamicTrail = trailSizingMode === "DYNAMIC";
 
     const stFeeOnEvt = useFeeBeTrail;
     /** LOCK at exact fee BE (not padded with slipFrac) — see `feeBeLockRate` comment above. */
@@ -757,19 +765,45 @@ export function applyTrailingStopBinanceMemory(opts) {
       tr.trailStepLabelStyle = "tiered_st_fee_entry";
       /** Freeze ladder inputs once per open position so mid-trade config/ATR buffer changes cannot move rungs. */
       if (!tr.trailLadderSnapshotV1) {
-        tr.trailLadderSnapshotV1 = {
+        const snapBase = {
           entryPx: Number(tr.entryPrice),
           isLong,
           feeBeLockRate: feeBe,
           feeBeSt,
-          buf,
           postT02Buf,
           postT02SpacingFrac: postT02SpacingUser,
           roundTripFeeR,
-          t01LockSlipFrac,
         };
+        if (isDynamicTrail) {
+          const dynFields = buildDynamicTrailSnapshotFields(trailingOpts, trailingOpts.atrPct, prevSl);
+          const dynBuf = computeDynamicTrailBuffer({
+            entryAtrPct: dynFields.entryAtrPct,
+            dynamicBe: dynFields.dynamicBe,
+            fallbackBufferRate: Number(trailingOpts.bufferRate ?? 0.0005),
+          });
+          const dynT01 = computeDynamicT01LockFrac({
+            entryAtrPct: dynFields.entryAtrPct,
+            t01LockAtrMult: dynFields.dynamicBe.t01LockAtrMult,
+            fixedT01LockSlipFrac: trailingOpts.trailT01LockSlippageFrac,
+          });
+          tr.trailLadderSnapshotV1 = { ...snapBase, ...dynFields, buf: dynBuf, t01LockSlipFrac: dynT01 };
+        } else {
+          tr.trailLadderSnapshotV1 = { ...snapBase, buf, t01LockSlipFrac };
+        }
       }
-      const entryLadder = Number(tr.trailLadderSnapshotV1.entryPx);
+      buf = Number(tr.trailLadderSnapshotV1.buf);
+      t01LockSlipFrac = Number(tr.trailLadderSnapshotV1.t01LockSlipFrac);
+      const tierSnap = tr.trailLadderSnapshotV1;
+      const effectivePostT02Spacing =
+        isDynamicTrail && tierSnap.postT02SpacingFrac != null
+          ? Number(tierSnap.postT02SpacingFrac)
+          : postT02SpacingUser;
+      const gateRtSpacing = {
+        roundTripFeeRate: roundTripFeeR,
+        postT02SpacingFrac: effectivePostT02Spacing,
+        postT02BufferRate: postT02Buf,
+      };
+      const entryLadder = Number(tierSnap.entryPx);
       if (!Number.isFinite(entryLadder) || entryLadder <= 0) return false;
       const t01ActivationPx = isLong ? entryLadder * (1 + buf) : entryLadder * (1 - buf);
       const t02ActivationPx = isLong
@@ -800,16 +834,16 @@ export function applyTrailingStopBinanceMemory(opts) {
       tr.extremePx = hwm;
 
       const rawPriceStep = computeSupertrendTieredMaxTrailStepFromExtreme({
-        hwm,
-        entryPx: entryLadder,
-        isLong,
-        feeBe: feeBeSt,
-        bufferRate: buf,
-        useFeeBeTrail,
-        stLevels,
-        maxActivationSteps: maxTieredActivationSteps,
-        ...gateRtSpacing,
-      });
+            hwm,
+            entryPx: entryLadder,
+            isLong,
+            feeBe: feeBeSt,
+            bufferRate: buf,
+            useFeeBeTrail,
+            stLevels,
+            maxActivationSteps: maxTieredActivationSteps,
+            ...gateRtSpacing,
+          });
       /** Capping below 3 would strand the trade at T02 (never Supertrend / first ladder gate). */
       const maxStepCapTiered =
         maxStepCap != null ? Math.max(maxStepCap, 3) : null;
@@ -872,7 +906,7 @@ export function applyTrailingStopBinanceMemory(opts) {
           feeBeLockRate: feeBe,
           feeBeSt,
           roundTripFeeR,
-          postT02SpacingFrac: postT02SpacingUser,
+          postT02SpacingFrac: effectivePostT02Spacing,
           t01LockSlipFrac,
         });
         if (ladderRaw == null || !Number.isFinite(ladderRaw)) {

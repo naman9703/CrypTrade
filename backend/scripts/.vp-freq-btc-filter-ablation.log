@@ -1,0 +1,22 @@
+loading candles once…
+candles=142176
+0_old_soft_015               N=173 0.83/wk ret= -71.7% DD= 85.3% neg=2022-23,2023-24,2024-25
+1_locked                     N= 30 0.14/wk ret=  49.1% DD= 19.9% neg=none
+ablate_weakBear              N= 33 0.16/wk ret=  34.5% DD= 22.4% neg=none
+ablate_macroAdapt            N= 33 0.16/wk ret=  34.5% DD= 22.4% neg=none
+ablate_p60_VAL               N= 52 0.25/wk ret=  27.2% DD= 26.3% neg=2023-24
+ablate_htf_to_015            N= 54 0.26/wk ret=   9.7% DD= 43.7% neg=2022-23
+ablate_htf_to_03             N= 40 0.19/wk ret=   2.7% DD= 32.6% neg=2022-23,2024-25
+ablate_htf_to_04             N= 34 0.16/wk ret=  32.1% DD= 19.9% neg=none
+slim_htf05_only              N= 64 0.31/wk ret=     8% DD= 35.2% neg=2023-24,2024-25
+slim_htf05_p60               N= 33 0.16/wk ret=  34.5% DD= 22.4% neg=none
+slim_htf05_macro             N= 64 0.31/wk ret=     8% DD= 35.2% neg=2023-24,2024-25
+slim_htf05_macro_p60         N= 33 0.16/wk ret=  34.5% DD= 22.4% neg=none
+slim_htf03_p60               N= 61 0.29/wk ret=   -39% DD=   53% neg=2022-23,2024-25,2025-26
+slim_htf03_macro_p60         N= 54 0.26/wk ret= -31.2% DD= 50.7% neg=2022-23,2024-25,2025-26
+slim_htf015_p60              N= 94 0.45/wk ret= -53.8% DD= 72.2% neg=2022-23,2023-24,2024-25
+slim_p60_only                N=560 2.68/wk ret= -99.9% DD= 99.9% neg=2022-23,2023-24,2024-25,2025-26
+slim_htf05_p60_m03           N= 35 0.17/wk ret=  34.5% DD= 25.5% neg=none
+slim_htf05_p60_m02           N= 35 0.17/wk ret=  34.5% DD= 25.5% neg=none
+slim_htf05_p60_0             N= 40 0.19/wk ret=  32.2% DD= 25.5% neg=none
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-btc-filter-ablation.json

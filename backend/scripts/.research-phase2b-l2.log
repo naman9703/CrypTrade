@@ -1,0 +1,178 @@
+
+> backend@0.1.0 research:phase2b
+> node scripts/research-phase2b-l2.mjs
+
+# Phase 2b — Additional Observable Information
+
+Generated: 2026-07-11T06:30:13.922Z
+
+## Research Questions (split)
+
+1. **Funding (rigorous):** Does historical funding improve discrimination over L0–L1?
+2. **Open Interest (exploratory):** Does recent OI justify continuous collection? (exploratory)
+
+## Positioning Data Availability
+
+| Data | Historical | Live | Fidelity |
+|------|------------|------|----------|
+| Binance Funding | ✅ | ✅ | Native |
+| Binance OI | ⚠️ Partial | ✅ | Native |
+| Bybit OI | ✅ | ✅ | Cross-venue Proxy |
+| Coinalyze Daily OI | ✅ Daily | ✅ | Native Daily |
+| Order Book | ❌ | ✅ | Native |
+
+## Family A (LIQ)
+
+Candidates: 2137
+
+### Feature Coverage
+
+| Feature | Source | Fidelity | Coverage | Valid N | Confidence | Promo OK |
+|---------|--------|----------|----------|---------|------------|----------|
+| **Binance Funding** | binance | Native | 100.0% | 2137/2137 | promotion_grade | yes |
+| ↳ binance_funding_rate | binance | Native | 100.0% | 2137 | promotion_grade | yes |
+| ↳ binance_funding_zscore | binance | Native | 100.0% | 2137 | promotion_grade | yes |
+| **Binance OI** | binance | Native | 1.6% | 35/2137 | insufficient | no |
+| ↳ binance_oi_usdt | binance | Native | 1.6% | 35 | insufficient | no |
+| ↳ binance_oi_change_4h | binance | Native | 1.6% | 35 | insufficient | no |
+| ↳ binance_oi_change_24h | binance | Native | 1.6% | 35 | insufficient | no |
+| ↳ binance_long_short_ratio | binance | Native | 1.6% | 35 | insufficient | no |
+| **Bybit Positioning (proxy)** | bybit | Cross-venue Proxy | 100.0% | 2137/2137 | proxy_exploratory | no |
+| ↳ bybit_oi_usdt | bybit | Cross-venue Proxy | 100.0% | 2137 | proxy_exploratory | no |
+| ↳ bybit_oi_change_4h | bybit | Cross-venue Proxy | 100.0% | 2137 | proxy_exploratory | no |
+| ↳ bybit_oi_change_24h | bybit | Cross-venue Proxy | 100.0% | 2137 | proxy_exploratory | no |
+| ↳ bybit_long_short_ratio | bybit | Cross-venue Proxy | 100.0% | 2137 | proxy_exploratory | no |
+
+### Binance Funding (native, rigorous)
+
+| Feature | N | Coverage % | Research mono | Holdout mono | Spearman | Promo OK |
+|---------|---|------------|---------------|--------------|----------|----------|
+| binance_funding_rate | 1675 | 100 | -0.643 | -0.429 | -0.080 | yes |
+| binance_funding_zscore | 1675 | 100 | -0.714 | -0.143 | -0.032 | yes |
+
+### Bybit OI/L-S (cross-venue proxy)
+
+| Feature | N | Coverage % | Research mono | Holdout mono | Spearman | Promo OK |
+|---------|---|------------|---------------|--------------|----------|----------|
+| bybit_oi_usdt | 1675 | 100 | -0.262 | -0.257 | -0.042 | no |
+| bybit_oi_change_4h | 1675 | 100 | -0.405 | -0.371 | -0.001 | no |
+| bybit_oi_change_24h | 1675 | 100 | 0.286 | -0.429 | 0.046 | no |
+| bybit_long_short_ratio | 1675 | 100 | 0.000 | -0.657 | 0.009 | no |
+
+### Scientific Interpretation
+
+**Binance funding (native, rigorous):** Full coverage — discrimination results are promotion-grade.
+
+**Binance OI (native, partial history):** Only ~2% coverage — Binance API ~30d.
+
+**Bybit OI/L-S (cross-venue proxy):** ~100% coverage — exploratory only; run proxy validation before trusting.
+
+> Cross-venue proxies cannot be promoted without proxy fidelity validation + discrimination evidence.
+
+Binance funding best Spearman: -0.080
+Bybit OI best Spearman (proxy): 0.046
+
+## Family C (Trend)
+
+Candidates: 7021
+
+### Feature Coverage
+
+| Feature | Source | Fidelity | Coverage | Valid N | Confidence | Promo OK |
+|---------|--------|----------|----------|---------|------------|----------|
+| **Binance Funding** | binance | Native | 100.0% | 7021/7021 | promotion_grade | yes |
+| ↳ binance_funding_rate | binance | Native | 100.0% | 7021 | promotion_grade | yes |
+| ↳ binance_funding_zscore | binance | Native | 100.0% | 7021 | promotion_grade | yes |
+| **Binance OI** | binance | Native | 3.0% | 210/7021 | insufficient | no |
+| ↳ binance_oi_usdt | binance | Native | 3.0% | 210 | insufficient | no |
+| ↳ binance_oi_change_4h | binance | Native | 3.0% | 209 | insufficient | no |
+| ↳ binance_oi_change_24h | binance | Native | 2.9% | 203 | insufficient | no |
+| ↳ binance_long_short_ratio | binance | Native | 3.0% | 210 | insufficient | no |
+| **Bybit Positioning (proxy)** | bybit | Cross-venue Proxy | 100.0% | 7021/7021 | proxy_exploratory | no |
+| ↳ bybit_oi_usdt | bybit | Cross-venue Proxy | 100.0% | 7021 | proxy_exploratory | no |
+| ↳ bybit_oi_change_4h | bybit | Cross-venue Proxy | 100.0% | 7021 | proxy_exploratory | no |
+| ↳ bybit_oi_change_24h | bybit | Cross-venue Proxy | 100.0% | 7021 | proxy_exploratory | no |
+| ↳ bybit_long_short_ratio | bybit | Cross-venue Proxy | 100.0% | 7021 | proxy_exploratory | no |
+
+### Binance Funding (native, rigorous)
+
+| Feature | N | Coverage % | Research mono | Holdout mono | Spearman | Promo OK |
+|---------|---|------------|---------------|--------------|----------|----------|
+| binance_funding_rate | 5459 | 100 | 0.500 | -0.200 | 0.009 | yes |
+| binance_funding_zscore | 5459 | 100 | 0.405 | -0.029 | -0.003 | yes |
+
+### Bybit OI/L-S (cross-venue proxy)
+
+| Feature | N | Coverage % | Research mono | Holdout mono | Spearman | Promo OK |
+|---------|---|------------|---------------|--------------|----------|----------|
+| bybit_oi_usdt | 5459 | 100 | -0.119 | -0.257 | 0.002 | no |
+| bybit_oi_change_4h | 5459 | 100 | -0.381 | 0.257 | -0.013 | no |
+| bybit_oi_change_24h | 5459 | 100 | -0.619 | -0.771 | -0.012 | no |
+| bybit_long_short_ratio | 5459 | 100 | 0.405 | 0.086 | 0.034 | no |
+
+### Scientific Interpretation
+
+**Binance funding (native, rigorous):** Full coverage — discrimination results are promotion-grade.
+
+**Binance OI (native, partial history):** Only ~3% coverage — Binance API ~30d.
+
+**Bybit OI/L-S (cross-venue proxy):** ~100% coverage — exploratory only; run proxy validation before trusting.
+
+> Cross-venue proxies cannot be promoted without proxy fidelity validation + discrimination evidence.
+
+Binance funding best Spearman: 0.009
+Bybit OI best Spearman (proxy): 0.034
+
+## Family D (Vol)
+
+Candidates: 32274
+
+### Feature Coverage
+
+| Feature | Source | Fidelity | Coverage | Valid N | Confidence | Promo OK |
+|---------|--------|----------|----------|---------|------------|----------|
+| **Binance Funding** | binance | Native | 100.0% | 32274/32274 | promotion_grade | yes |
+| ↳ binance_funding_rate | binance | Native | 100.0% | 32274 | promotion_grade | yes |
+| ↳ binance_funding_zscore | binance | Native | 100.0% | 32274 | promotion_grade | yes |
+| **Binance OI** | binance | Native | 2.7% | 874/32274 | insufficient | no |
+| ↳ binance_oi_usdt | binance | Native | 2.7% | 874 | insufficient | no |
+| ↳ binance_oi_change_4h | binance | Native | 2.7% | 868 | insufficient | no |
+| ↳ binance_oi_change_24h | binance | Native | 2.6% | 837 | insufficient | no |
+| ↳ binance_long_short_ratio | binance | Native | 2.7% | 874 | insufficient | no |
+| **Bybit Positioning (proxy)** | bybit | Cross-venue Proxy | 100.0% | 32274/32274 | proxy_exploratory | no |
+| ↳ bybit_oi_usdt | bybit | Cross-venue Proxy | 100.0% | 32274 | proxy_exploratory | no |
+| ↳ bybit_oi_change_4h | bybit | Cross-venue Proxy | 100.0% | 32274 | proxy_exploratory | no |
+| ↳ bybit_oi_change_24h | bybit | Cross-venue Proxy | 100.0% | 32274 | proxy_exploratory | no |
+| ↳ bybit_long_short_ratio | bybit | Cross-venue Proxy | 100.0% | 32274 | proxy_exploratory | no |
+
+### Binance Funding (native, rigorous)
+
+| Feature | N | Coverage % | Research mono | Holdout mono | Spearman | Promo OK |
+|---------|---|------------|---------------|--------------|----------|----------|
+| binance_funding_rate | 25208 | 100 | 0.119 | 0.829 | 0.003 | yes |
+| binance_funding_zscore | 25208 | 100 | 0.833 | 0.657 | 0.008 | yes |
+
+### Bybit OI/L-S (cross-venue proxy)
+
+| Feature | N | Coverage % | Research mono | Holdout mono | Spearman | Promo OK |
+|---------|---|------------|---------------|--------------|----------|----------|
+| bybit_oi_usdt | 25208 | 100 | 0.071 | -0.371 | -0.002 | no |
+| bybit_oi_change_4h | 25208 | 100 | 0.357 | 0.771 | -0.006 | no |
+| bybit_oi_change_24h | 25208 | 100 | -0.095 | -0.600 | 0.004 | no |
+| bybit_long_short_ratio | 25208 | 100 | 0.429 | 0.543 | 0.013 | no |
+
+### Scientific Interpretation
+
+**Binance funding (native, rigorous):** Full coverage — discrimination results are promotion-grade.
+
+**Binance OI (native, partial history):** Only ~3% coverage — Binance API ~30d.
+
+**Bybit OI/L-S (cross-venue proxy):** ~100% coverage — exploratory only; run proxy validation before trusting.
+
+> Cross-venue proxies cannot be promoted without proxy fidelity validation + discrimination evidence.
+
+Binance funding best Spearman: 0.008
+Bybit OI best Spearman (proxy): 0.013
+
+
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.research-phase2b-l2.json

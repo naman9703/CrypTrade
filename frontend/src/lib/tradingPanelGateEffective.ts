@@ -57,8 +57,10 @@ const PANEL_MANUAL_KEYS = new Set([
   "VOLUME_PROFILE",
   "REGIME_ADAPTIVE",
   "CRT_TBS",
+  "SCALP_MR",
   "TOKYO_SESSION",
   "UNIFIED_ELITE",
+  "LIQUIDITY_MAP",
 ]);
 
 export function manualStrategyKey(cfg: TradingPanelCfg): string {

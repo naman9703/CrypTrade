@@ -96,7 +96,13 @@ export function inferOrderFlowSide(candles, idx, pre, cfg = {}, ofOpts = null) {
   const bar = candles[idx];
   const price = bar.close;
   const vpLookback = 192;
-  const vp = buildVolumeProfile(candles, idx, { lookback: vpLookback });
+  const vp = buildVolumeProfile(candles, idx, {
+    mode: opts.vpProfileMode ?? "composite_utc",
+    lookback: vpLookback,
+    bins: opts.vpBins ?? 50,
+    distribute: opts.vpVolumeDistribute ?? "close_weighted",
+    vpCompositeDays: opts.vpCompositeDays ?? 5,
+  });
   if (vp) {
     if (passesPremiumDiscountZone("BUY", vp, price, opts)) {
       const buyCtx = buildKeyLevelContext(candles, idx, pre, "BUY", opts);
@@ -138,7 +144,13 @@ export function buildKeyLevelContext(candles, idx, pre, side, ofOpts) {
   push("asian_low", pre.asianLow?.[idx], "BUY");
 
   const vpLookback = 192;
-  const vp = buildVolumeProfile(candles, idx, { lookback: vpLookback });
+  const vp = buildVolumeProfile(candles, idx, {
+    mode: opts.vpProfileMode ?? "composite_utc",
+    lookback: vpLookback,
+    bins: opts.vpBins ?? 50,
+    distribute: opts.vpVolumeDistribute ?? "close_weighted",
+    vpCompositeDays: opts.vpCompositeDays ?? 5,
+  });
   const vwapSeries = pre?.sessionVwap ?? buildSessionVwapSeries(candles);
   const vwap = vwapSeries?.[idx] ?? null;
   push("vwap", vwap, "neutral");

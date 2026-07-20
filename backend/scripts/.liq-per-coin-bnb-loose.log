@@ -1,0 +1,127 @@
+
+========================================================================
+LIQ per-coin OOS tune | BNBUSDT 15m
+Months: 2025-03, 2025-07, 2025-10, 2026-01, 2026-04 | tune=2025-03,2025-07,2025-10 | oos=2026-01,2026-04
+Grid size: 7 | risk=2.5% lev=12x
+
+--- TOP 8 on tune months ---
+#1 score=-5.7 tuneRet=-0.28% tr/mo=2.3 ext=NaN% rr=undefined body=undefined htf=off score=undefined pick=undefined maxTd=undefined
+#2 score=-5.7 tuneRet=-0.28% tr/mo=2.3 ext=0.80% rr=1.5 body=0.35 htf=0.0008 score=undefined pick=true maxTd=undefined
+#3 score=-21.7 tuneRet=-5.73% tr/mo=4.3 ext=0.50% rr=1.25 body=undefined htf=off score=undefined pick=undefined maxTd=undefined
+#4 score=-24.0 tuneRet=-6.30% tr/mo=5.0 ext=0.50% rr=1.25 body=0.25 htf=0.0005 score=5 pick=undefined maxTd=undefined
+#5 score=-34.6 tuneRet=-12.13% tr/mo=8.0 ext=0.30% rr=0 body=0 htf=off score=5 pick=undefined maxTd=undefined
+#6 score=-36.9 tuneRet=-12.95% tr/mo=8.3 ext=0.30% rr=1 body=0 htf=off score=4 pick=false maxTd=5
+#7 score=-38.3 tuneRet=-13.14% tr/mo=14.7 ext=0.30% rr=1 body=undefined htf=off score=5 pick=undefined maxTd=undefined
+
+--- OOS hold-out (2026-01, 2026-04) ---
+#1 oosRet=0.00% tr/mo=0.0 posMo=0/2 months=2026-01:0.0%/0tr 2026-04:0.0%/0tr
+#2 oosRet=0.00% tr/mo=0.0 posMo=0/2 months=2026-01:0.0%/0tr 2026-04:0.0%/0tr
+#3 oosRet=0.22% tr/mo=2.0 posMo=1/2 months=2026-01:0.9%/1tr 2026-04:-0.5%/3tr
+#4 oosRet=-0.52% tr/mo=2.0 posMo=1/2 months=2026-01:1.0%/1tr 2026-04:-2.1%/3tr
+#5 oosRet=-0.48% tr/mo=4.0 posMo=0/2 months=2026-01:-1.0%/3tr 2026-04:-0.0%/5tr
+#6 oosRet=-0.87% tr/mo=4.0 posMo=0/2 months=2026-01:-1.0%/3tr 2026-04:-0.8%/5tr
+#7 oosRet=-2.01% tr/mo=8.5 posMo=1/2 months=2026-01:7.0%/7tr 2026-04:-11.0%/10tr
+
+--- ACCEPTANCE GATES (top OOS candidates) ---
+#7 gates=FAIL fullRet=-51.6% calmar=-0.87 mcP5=-71.0% wfDeg=-12.4% oosWF=-52.8%
+    FAIL oosPositive: -52.85 (need > 0)
+    FAIL mcP5Positive: -70.99 (need > 0)
+    FAIL calmarOver1: -0.87 (need > 1)
+    PASS wfDegradationOk: -12.41 (need < 35%)
+#3 gates=FAIL fullRet=0.2% calmar=0.01 mcP5=-33.3% wfDeg=-84.0% oosWF=1.9%
+    PASS oosPositive: 1.92 (need > 0)
+    FAIL mcP5Positive: -33.33 (need > 0)
+    FAIL calmarOver1: 0.01 (need > 1)
+    PASS wfDegradationOk: -83.96 (need < 35%)
+#4 gates=FAIL fullRet=-5.7% calmar=-0.19 mcP5=-29.0% wfDeg=191.8% oosWF=-8.2%
+    FAIL oosPositive: -8.22 (need > 0)
+    FAIL mcP5Positive: -28.95 (need > 0)
+    FAIL calmarOver1: -0.19 (need > 1)
+    FAIL wfDegradationOk: 191.84 (need < 35%)
+#5 gates=FAIL fullRet=-41.9% calmar=-0.83 mcP5=-59.9% wfDeg=-10.8% oosWF=-40.6%
+    FAIL oosPositive: -40.60 (need > 0)
+    FAIL mcP5Positive: -59.89 (need > 0)
+    FAIL calmarOver1: -0.83 (need > 1)
+    PASS wfDegradationOk: -10.84 (need < 35%)
+#6 gates=FAIL fullRet=-40.7% calmar=-0.82 mcP5=-59.1% wfDeg=-40.0% oosWF=-31.0%
+    FAIL oosPositive: -31.00 (need > 0)
+    FAIL mcP5Positive: -59.14 (need > 0)
+    FAIL calmarOver1: -0.82 (need > 1)
+    PASS wfDegradationOk: -39.97 (need < 35%)
+
+========================================================================
+BEST CANDIDATE SUMMARY
+{
+  "symbol": "BNBUSDT",
+  "months": [
+    "2025-03",
+    "2025-07",
+    "2025-10",
+    "2026-01",
+    "2026-04"
+  ],
+  "tuneMonths": [
+    "2025-03",
+    "2025-07",
+    "2025-10"
+  ],
+  "oosMonths": [
+    "2026-01",
+    "2026-04"
+  ],
+  "bestPatch": {
+    "srIntradaySweepPct": 0.001,
+    "intradayLiqMinSweepExtensionPct": 0.003,
+    "intradayLiqMinRr": 1,
+    "intradayLiqMinScore": 5,
+    "intradayLiqRequireHtfAlign": false,
+    "intradayLiqSessionExtreme": true,
+    "intradayLiqSessionExtremeMinTouches": 2,
+    "intradayLiqSessionExtremeMinExtensionPct": 0.001,
+    "__label": "loose_session_ext"
+  },
+  "tuneScore": -38.33618641614512,
+  "oosAvgRetMo": -2.011586169924849,
+  "oosAvgTradesMo": 8.5,
+  "all5AvgRetMo": -8.68755982502584,
+  "all5AvgTradesMo": 12.2,
+  "monthly": [
+    {
+      "month": "2025-03",
+      "ret": -7.278893217404621,
+      "trades": 11,
+      "pf": 0.5876523658357119,
+      "dd": 12.303499696709787
+    },
+    {
+      "month": "2025-07",
+      "ret": -17.390798507425007,
+      "trades": 15,
+      "pf": 0.28804380567391125,
+      "dd": 18.725888382737338
+    },
+    {
+      "month": "2025-10",
+      "ret": -14.74493506044988,
+      "trades": 18,
+      "pf": 0.5062145521557437,
+      "dd": 22.831686040806833
+    },
+    {
+      "month": "2026-01",
+      "ret": 7.022733232114915,
+      "trades": 7,
+      "pf": 2.9112294700897348,
+      "dd": 2.9073320510834124
+    },
+    {
+      "month": "2026-04",
+      "ret": -11.045905571964614,
+      "trades": 10,
+      "pf": 0.3871979779980282,
+      "dd": 14.149213582333367
+    }
+  ],
+  "passesGates": false,
+  "gateDetail": null
+}

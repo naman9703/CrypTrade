@@ -1,4 +1,5 @@
 import { applySmcEngineExclusivity } from "./intradayGates.js";
+import { resolveTrailOnlyAfterTp2Fill } from "../lib/trailingOptsFromCfg.js";
 
 /**
  * Bot keys mirrored from the Trading Panel intraday / SMC section into backtest snapshots.
@@ -93,7 +94,11 @@ export const INTRADAY_PANEL_OVERRIDE_KEYS = [
   "intradayLiqMinRr",
   "intradayLiqMaxHoldBars",
   "intradayLiqMaxTpRr",
+  "intradayLiqTp1Rr",
+  "intradayLiqTp2Rr",
+  "intradayLiqTp2PartialFrac",
   "intradayLiqMinSweepExtensionPct",
+  "intradayLiqSlBufferPct",
   // Regime-adaptive strategy + institutional risk overlay.
   "regimeAdaptiveEnableTrend",
   "regimeAdaptiveEnableRange",
@@ -126,6 +131,22 @@ export const INTRADAY_PANEL_OVERRIDE_KEYS = [
   "riskWeeklyMaxLossPct",
 ];
 
+/** Exit / trailing keys merged from live panel into backtest snapshots (not intraday-gate panel). */
+const TRAILING_PANEL_KEYS = [
+  "trailingStopLossAuto",
+  "futuresTrailingStopMode",
+  "trailBufferRate",
+  "trailBufferMode",
+  "trailOnlyAfterTp2Fill",
+  "trailOnlyAfterPartialFill",
+  "trailPostT02ActivationBufferRate",
+  "trailMinGapFromMarkFrac",
+  "futuresTrailingStFeeBreakeven",
+  "intradayLiqPartialFrac",
+  "supertrendPeriod",
+  "supertrendMultiplier",
+];
+
 const LEGACY_GATE_KEYS = [
   "intradayGateLiquidity",
   "intradayGateSession",
@@ -141,6 +162,7 @@ export function pickRawIntradayPanelFromBot(bot = {}) {
   const keys = [
     ...LEGACY_GATE_KEYS,
     ...INTRADAY_PANEL_OVERRIDE_KEYS,
+    ...TRAILING_PANEL_KEYS,
     "intradaySrAPlusMode",
     "srIntradayMaxTradesPerDay",
     "srIntradayMinBarGap",
@@ -309,9 +331,34 @@ export function materializeIntradayPanelFromBot(bot = {}) {
   return out;
 }
 
+/** Materialize liq-ladder trailing gate so snapshots/backtests match engine behavior. */
+export function materializeLiqTrailingGateOnCfg(cfg = {}) {
+  const liqOn =
+    cfg.intradayGateLiquidity !== false ||
+    cfg.intradayGateInstitutionalSr === true ||
+    cfg.intradaySrAPlusMode === true;
+  const smcOn = cfg.intradayGateSmcIct === true || cfg.intradaySmcIctMode === true;
+  const trailOnlyAfterTp2Fill = resolveTrailOnlyAfterTp2Fill(cfg);
+  let out = cfg;
+  if (cfg.trailOnlyAfterTp2Fill !== trailOnlyAfterTp2Fill) {
+    out = { ...out, trailOnlyAfterTp2Fill };
+  }
+  if (
+    liqOn &&
+    !smcOn &&
+    Object.prototype.hasOwnProperty.call(cfg, "intradayLiqMaxHoldBars") &&
+    Number(cfg.intradayLiqMaxHoldBars) === 0 &&
+    out.intradaySmcMaxHoldBars !== 0
+  ) {
+    out = { ...out, intradaySmcMaxHoldBars: 0 };
+  }
+  return out;
+}
+
 /** @param {Record<string, unknown>} cfg */
 export function materializeIntradayPanelOnCfg(cfg = {}) {
-  return { ...cfg, ...materializeIntradayPanelFromBot(cfg) };
+  const panel = materializeIntradayPanelFromBot(cfg);
+  return materializeLiqTrailingGateOnCfg({ ...cfg, ...panel });
 }
 
 /** @deprecated use materializeIntradayPanelFromBot */

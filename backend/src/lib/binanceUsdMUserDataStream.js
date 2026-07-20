@@ -70,6 +70,8 @@ export function createUsdMUserDataStream({
   let keepAliveTimer = null;
   let reconnectTimer = null;
   let stopped = false;
+  let startPromise = null;
+  let suppressCloseReconnect = false;
   /** @type {Record<string, unknown> | null} */
   let mergedAccount = null;
   let lastEventAt = 0;
@@ -106,8 +108,9 @@ export function createUsdMUserDataStream({
     reconnectTimer = null;
   }
 
-  function closeWs() {
+  function closeWs({ suppressReconnect = false } = {}) {
     connected = false;
+    if (suppressReconnect && ws) suppressCloseReconnect = true;
     try {
       ws?.terminate?.();
     } catch {
@@ -226,14 +229,21 @@ export function createUsdMUserDataStream({
     socket.on("close", () => {
       connected = false;
       log?.warn?.(`${tag}_user_stream_ws_close`, {});
+      if (suppressCloseReconnect) {
+        suppressCloseReconnect = false;
+        return;
+      }
       scheduleReconnect();
     });
   }
 
   async function start() {
     if (stopped || !apiKey) return;
+    if (startPromise) return startPromise;
+    if (connected || reconnectTimer || listenKey) return;
+    startPromise = (async () => {
     clearTimers();
-    closeWs();
+    closeWs({ suppressReconnect: true });
     try {
       listenKey = await createListenKey();
     } catch (e) {
@@ -248,12 +258,17 @@ export function createUsdMUserDataStream({
     }, keepAliveIntervalMs);
     keepAliveTimer.unref?.();
     await openWs();
+    })().finally(() => {
+      startPromise = null;
+    });
+    return startPromise;
   }
 
   function stop() {
     stopped = true;
+    startPromise = null;
     clearTimers();
-    closeWs();
+    closeWs({ suppressReconnect: true });
     listenKey = null;
     mergedAccount = null;
     lastEventAt = 0;

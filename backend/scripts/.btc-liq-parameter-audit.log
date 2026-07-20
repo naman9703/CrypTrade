@@ -1,0 +1,85 @@
+
+=== BTCUSDT LIQ parameter audit ===
+
+--- Setup funnel (full year, raw cycles vs listed setups) ---
+preset_partial_tp        cycles=3613 ext_ok=3613 listed=  26 trail=false ctxScore=true disp=false
+preset_no_entry_score    cycles=3613 ext_ok=3613 listed=  28 trail=false ctxScore=false disp=false
+btc_trail_default        cycles=10682 ext_ok=10682 listed=  40 trail=true ctxScore=true disp=true
+
+--- Variant backtests (full / h1 / h2) ---
+variant                    full_n   full%     h1%     h2%   tpm exit
+preset_partial_tp              27  -12.79   -7.60   -5.61  2.22 partial
+preset_no_entry_score          52  -33.48  -18.44  -18.44  4.27 partial
+preset_loose_classic          210  -51.17  -29.81  -30.44 17.26 partial
+btc_trail_default              32  -32.81  -10.31  -25.08  2.63 trail
+btc_trail_trend_pb              9  -11.65   -0.59  -11.13  0.74 trail
+btc_trail_fade_loose           66  -59.49  -32.76  -39.75  5.42 trail
+btc_partial_no_score          157  -43.51  -25.31  -24.37 12.90 partial
+
+--- Single-parameter sweeps (full year) ---
+
+intradayLiqMinEntryScore (base=btc_trail)
+   value     n     ret%     PF   WR%
+       0    32   -32.81   0.08    13
+      40    32   -32.81   0.08    13
+      45    32   -32.81   0.08    13
+      48    32   -32.81   0.08    13
+      52    32   -32.81   0.08    13
+
+intradayLiqSweepDisplacementMinAtrMult (base=btc_trail)
+   value     n     ret%     PF   WR%
+       0    33   -33.40   0.08    12
+       1    32   -32.81   0.08    13
+     1.2    32   -32.81   0.08    13
+     1.5    30   -27.09   0.10    13
+       2    20   -21.42   0.10    15
+
+intradayLiqReclaimHoldBars (base=btc_trail)
+   value     n     ret%     PF   WR%
+       0    58   -51.32   0.06    12
+       1    32   -32.81   0.08    13
+       2    45   -27.74   0.02     4
+
+intradayLiqMinSweepExtensionPct (base=preset_partial)
+   value     n     ret%     PF   WR%
+   0.003   137   -19.35   0.82    55
+   0.004   111   -11.95   0.86    56
+   0.006    57    -5.36   0.88    58
+   0.008    27   -12.79   0.47    44
+
+intradayLiqMinEntryScore (base=preset_partial)
+   value     n     ret%     PF   WR%
+      42    28   -12.76   0.47    46
+      45    28   -12.76   0.47    46
+      48    28   -12.76   0.47    46
+      52    27   -12.79   0.47    44
+      55    27   -12.79   0.47    44
+
+--- Trade list: preset_partial_tp (full year) ---
+2025-06-03T17:00 SELL pdh          pnl=0.533 exit=time_stop q=76
+2025-08-01T14:30 BUY  pdl          pnl=-2.761 exit=sl q=78
+2025-11-16T18:15 BUY  pdl          pnl=-2.707 exit=sl q=71
+2025-11-21T05:15 BUY  pdl          pnl=-2.666 exit=sl q=58
+2025-12-05T15:15 BUY  pdl          pnl=-2.520 exit=sl q=73
+2025-12-18T21:30 BUY  pdl          pnl=0.984 exit=tp1_partial q=64
+2025-12-18T21:30 BUY  pdl          pnl=2.753 exit=time_stop q=64
+2025-12-23T18:45 BUY  pdl          pnl=-2.646 exit=sl q=56
+2026-01-08T16:00 BUY  pdl          pnl=0.280 exit=time_stop q=74
+2026-01-16T18:30 BUY  pdl          pnl=-0.145 exit=time_stop q=74
+2026-01-30T19:00 BUY  pdl          pnl=-0.521 exit=time_stop q=66
+2026-02-03T19:30 BUY  pdl          pnl=1.592 exit=time_stop q=69
+2026-02-04T18:30 BUY  pdl          pnl=-2.430 exit=sl q=60
+2026-02-09T14:30 BUY  pdl          pnl=1.005 exit=tp1_partial q=58
+2026-02-09T14:30 BUY  pdl          pnl=0.828 exit=time_stop q=58
+2026-02-14T13:30 SELL pdh          pnl=-0.175 exit=time_stop q=80
+2026-02-15T21:15 BUY  pdl          pnl=0.073 exit=time_stop q=92
+2026-02-16T18:15 BUY  pdl          pnl=1.024 exit=tp1_partial q=63
+2026-02-16T18:15 BUY  pdl          pnl=-0.040 exit=be q=63
+2026-02-17T16:00 BUY  pdl          pnl=-0.581 exit=time_stop q=76
+2026-02-25T05:45 SELL pdh          pnl=-2.442 exit=sl q=98
+2026-03-16T08:45 SELL pdh          pnl=-1.857 exit=time_stop q=86
+2026-03-25T12:30 SELL pdh          pnl=-0.353 exit=time_stop q=77
+2026-03-30T17:30 SELL pdh          pnl=-2.385 exit=sl q=80
+2026-04-14T15:15 SELL pdh          pnl=0.548 exit=time_stop q=77
+2026-05-23T14:45 BUY  pdl          pnl=0.983 exit=tp1_partial q=78
+2026-05-23T14:45 BUY  pdl          pnl=0.840 exit=time_stop q=78

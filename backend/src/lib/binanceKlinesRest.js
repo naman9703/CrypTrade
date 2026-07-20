@@ -1,4 +1,5 @@
 import axios from "axios";
+import { tfToMs } from "../backtest/data/timeframe.js";
 
 function binanceKlinesHttp(feedKindOverride) {
   const mf = String(
@@ -120,22 +121,30 @@ export async function fetchBinanceKlinesRows({
   }
 }
 
+function rowCapForRange(start, end, stepMs, maxRows) {
+  if (maxRows != null && Number.isFinite(Number(maxRows))) return Number(maxRows);
+  return Math.max(1, Math.ceil((end - start) / stepMs) + 2);
+}
+
 /**
  * Paginated klines between startTime and endTime (both ms, Binance semantics).
  * Used to resolve signal-list verdicts over long histories.
  */
-export async function fetchBinanceKlinesRange({ symbol, interval, startTime, endTime, maxRows = 50_000, feedKind } = {}) {
+export async function fetchBinanceKlinesRange({ symbol, interval, startTime, endTime, maxRows, feedKind } = {}) {
   const h = binanceKlinesHttp(feedKind);
   if (!h) return [];
   const sym = String(symbol || "").toUpperCase();
   const intv = String(interval || "1m");
+  const stepMs = tfToMs(intv);
   const start = Math.max(0, Number(startTime) || 0);
   const end = Math.max(start, Number(endTime) || 0);
   const page = 1000;
+  const rowCap = rowCapForRange(start, end, stepMs, maxRows);
+  const pageGuard = Math.max(200, Math.ceil(rowCap / page) + 10);
   const byTs = new Map();
   let cur = start;
   let guard = 0;
-  while (cur <= end && byTs.size < maxRows && guard < 200) {
+  while (cur <= end && byTs.size < rowCap && guard < pageGuard) {
     guard += 1;
     const { data } = await axios.get(`${h.base}${h.path}`, {
       params: {

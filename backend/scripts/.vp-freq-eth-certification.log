@@ -1,0 +1,28 @@
+
+=== ETH VP FREQ certification — ETHUSDT 15m 2020-01-01→2026-05-31 ===
+locked preset · risk%=2.5 lev=12x · expanding WF folds=5
+
+candles=224832 funding=5386 first=2020-01-01T00:00:00.000Z last=2026-05-30T23:45:00.000Z
+FULL: trades=318 (0.95/wk) net=178.7% CAGR=17.3% Calmar=0.29 maxDD=58.9% Sharpe=0.61 PF=1.33 WR=40%
+  years: 2019-20=-11.1%/22  2020-21=-26.0%/74  2021-22=-27.5%/56  2022-23=23.9%/38  2023-24=43.3%/23  2024-25=38.9%/52  2025-26=137.2%/53
+  negYears=2019-20,2020-21,2021-22
+MC(1% risk): ret p5=-7.0% p50=62.2% p95=199.1%  maxDD p95=35.8% ruin=0.3%
+
+WF expanding folds=5 embargo=96bars (~1d)
+  fold 0: 2021-01-25→2022-02-19  trainN=61 testN=82 testRet=-25.2% DD=34.6% WR=35%
+  fold 1: 2022-02-19→2023-03-16  trainN=144 testN=42 testRet=27.2% DD=17.5% WR=40%
+  fold 2: 2023-03-17→2024-04-10  trainN=186 testN=22 testRet=47.7% DD=13.9% WR=55%
+  fold 3: 2024-04-10→2025-05-05  trainN=208 testN=52 testRet=0.5% DD=23.3% WR=37%
+  fold 4: 2025-05-05→2026-05-30  trainN=260 testN=58 testRet=181.6% DD=8.7% WR=50%
+
+WF: degradation=-677.3% OOSsumRet=231.8% OOStrades=256
+GATES: PASS:oosPositive FAIL:mcP5Positive FAIL:calmarOver1 PASS:wfDegradationOk
+EXTRA: PASS:oosTradesGe30 FAIL:frequencyDeployable FAIL:noCatastrophicYear
+
+COST STRESS (full window):
+  slip_x2      N=318 ret=-37.7% DD=77.5%
+  slip_x4      N=318 ret=-92.0% DD=95.2%
+  liq_crunch   N=318 ret=-99.8% DD=99.8%
+
+VERDICT: REJECT_CERTIFICATION (gates=fail freq=low)
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-certification.json

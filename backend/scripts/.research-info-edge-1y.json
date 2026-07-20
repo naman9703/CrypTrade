@@ -1,0 +1,2241 @@
+{
+  "generatedAt": "2026-07-11T18:22:49.723Z",
+  "from": "2025-01-01",
+  "to": "2026-01-01",
+  "coins": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT"
+  ],
+  "holdoutFrom": "2025-10-01",
+  "supertrend": {
+    "name": "SUPERTREND_ELITE",
+    "trades": 39,
+    "trainN": 31,
+    "holdN": 8,
+    "coverage": {
+      "fundingPct": 100,
+      "bybitOiPct": 100
+    },
+    "baseline": {
+      "train": {
+        "n": 31,
+        "winRate": 45.16129032258064,
+        "meanR": 0.05081659838709896,
+        "sumR": 1.5753145500000678,
+        "pf": 1.3189061371525612
+      },
+      "hold": {
+        "n": 8,
+        "winRate": 50,
+        "meanR": 0.03815629687500262,
+        "sumR": 0.30525037500002095,
+        "pf": 1.1221954392254718
+      },
+      "portHold": {
+        "returnPct": 0.9031721076758913,
+        "maxDdPct": 11.382150217562865
+      }
+    },
+    "rules": [
+      {
+        "id": "by_oi_drop2",
+        "label": "Skip when Bybit OI −4h < −2% (cascade proxy)",
+        "skipPctTrain": 6.451612903225806,
+        "skipPctHold": 12.5,
+        "train": {
+          "kept": {
+            "n": 29,
+            "winRate": 44.827586206896555,
+            "meanR": 0.05368994741379517,
+            "sumR": 1.55700847500006,
+            "pf": 1.325069665160876
+          },
+          "skipped": {
+            "n": 2,
+            "winRate": 50,
+            "meanR": 0.009153037500003916,
+            "sumR": 0.018306075000007832,
+            "pf": 1.122060843473965
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 7,
+            "winRate": 57.14285714285714,
+            "meanR": 0.20774651785714499,
+            "sumR": 1.454225625000015,
+            "pf": 2.0779425772940328
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 0,
+            "meanR": -1.148975249999994,
+            "sumR": -1.148975249999994,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 7.053248771185062,
+            "maxDdPct": 5.980867398270108
+          }
+        },
+        "wrDeltaHold": 7.142857142857139,
+        "meanRDeltaHold": 0.16959022098214238,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "by_oi_drop3",
+        "label": "Skip when Bybit OI −4h < −3%",
+        "skipPctTrain": 3.225806451612903,
+        "skipPctHold": 12.5,
+        "train": {
+          "kept": {
+            "n": 30,
+            "winRate": 43.333333333333336,
+            "meanR": 0.046901115833335345,
+            "sumR": 1.4070334750000604,
+            "pf": 1.2848393740517374
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 100,
+            "meanR": 0.16828107500000725,
+            "sumR": 0.16828107500000725,
+            "pf": 999
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 7,
+            "winRate": 57.14285714285714,
+            "meanR": 0.20774651785714499,
+            "sumR": 1.454225625000015,
+            "pf": 2.0779425772940328
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 0,
+            "meanR": -1.148975249999994,
+            "sumR": -1.148975249999994,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 7.053248771185062,
+            "maxDdPct": 5.980867398270108
+          }
+        },
+        "wrDeltaHold": 7.142857142857139,
+        "meanRDeltaHold": 0.16959022098214238,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "by_oi_drop24_5",
+        "label": "Skip when Bybit OI −24h < −5%",
+        "skipPctTrain": 9.67741935483871,
+        "skipPctHold": 12.5,
+        "train": {
+          "kept": {
+            "n": 28,
+            "winRate": 42.857142857142854,
+            "meanR": 0.05090319285714441,
+            "sumR": 1.4252894000000436,
+            "pf": 1.2975695736115638
+          },
+          "skipped": {
+            "n": 3,
+            "winRate": 66.66666666666666,
+            "meanR": 0.05000838333334135,
+            "sumR": 0.15002515000002406,
+            "pf": 2.000334389065091
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 7,
+            "winRate": 57.14285714285714,
+            "meanR": 0.20774651785714499,
+            "sumR": 1.454225625000015,
+            "pf": 2.0779425772940328
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 0,
+            "meanR": -1.148975249999994,
+            "sumR": -1.148975249999994,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 7.053248771185062,
+            "maxDdPct": 5.980867398270108
+          }
+        },
+        "wrDeltaHold": 7.142857142857139,
+        "meanRDeltaHold": 0.16959022098214238,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "weak_short_oi",
+        "label": "Skip short when OI −4h < −2% (squeeze risk)",
+        "skipPctTrain": 6.451612903225806,
+        "skipPctHold": 12.5,
+        "train": {
+          "kept": {
+            "n": 29,
+            "winRate": 44.827586206896555,
+            "meanR": 0.05368994741379517,
+            "sumR": 1.55700847500006,
+            "pf": 1.325069665160876
+          },
+          "skipped": {
+            "n": 2,
+            "winRate": 50,
+            "meanR": 0.009153037500003916,
+            "sumR": 0.018306075000007832,
+            "pf": 1.122060843473965
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 7,
+            "winRate": 57.14285714285714,
+            "meanR": 0.20774651785714499,
+            "sumR": 1.454225625000015,
+            "pf": 2.0779425772940328
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 0,
+            "meanR": -1.148975249999994,
+            "sumR": -1.148975249999994,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 7.053248771185062,
+            "maxDdPct": 5.980867398270108
+          }
+        },
+        "wrDeltaHold": 7.142857142857139,
+        "meanRDeltaHold": 0.16959022098214238,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "combo_oi_cascade",
+        "label": "Skip OI drop 3% OR weak-side OI",
+        "skipPctTrain": 6.451612903225806,
+        "skipPctHold": 12.5,
+        "train": {
+          "kept": {
+            "n": 29,
+            "winRate": 44.827586206896555,
+            "meanR": 0.05368994741379517,
+            "sumR": 1.55700847500006,
+            "pf": 1.325069665160876
+          },
+          "skipped": {
+            "n": 2,
+            "winRate": 50,
+            "meanR": 0.009153037500003916,
+            "sumR": 0.018306075000007832,
+            "pf": 1.122060843473965
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 7,
+            "winRate": 57.14285714285714,
+            "meanR": 0.20774651785714499,
+            "sumR": 1.454225625000015,
+            "pf": 2.0779425772940328
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 0,
+            "meanR": -1.148975249999994,
+            "sumR": -1.148975249999994,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 7.053248771185062,
+            "maxDdPct": 5.980867398270108
+          }
+        },
+        "wrDeltaHold": 7.142857142857139,
+        "meanRDeltaHold": 0.16959022098214238,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "baseline",
+        "label": "Always trade",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 31,
+            "winRate": 45.16129032258064,
+            "meanR": 0.05081659838709896,
+            "sumR": 1.5753145500000678,
+            "pf": 1.3189061371525612
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "bn_fund_z_gt15",
+        "label": "Skip if funding z crowded vs side (|z|>1.5)",
+        "skipPctTrain": 6.451612903225806,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 29,
+            "winRate": 48.275862068965516,
+            "meanR": 0.06466774310345026,
+            "sumR": 1.8753645500000578,
+            "pf": 1.4042000855401482
+          },
+          "skipped": {
+            "n": 2,
+            "winRate": 0,
+            "meanR": -0.15002499999999502,
+            "sumR": -0.30004999999999005,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "bn_fund_long_pos",
+        "label": "Skip longs when funding rate > 0.03%/8h",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 31,
+            "winRate": 45.16129032258064,
+            "meanR": 0.05081659838709896,
+            "sumR": 1.5753145500000678,
+            "pf": 1.3189061371525612
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "weak_long_oi",
+        "label": "Skip long when OI −4h < −2% (weak rally)",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 31,
+            "winRate": 45.16129032258064,
+            "meanR": 0.05081659838709896,
+            "sumR": 1.5753145500000678,
+            "pf": 1.3189061371525612
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "by_lsr_long_17",
+        "label": "Skip long when Bybit L/S ratio > 1.7",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 31,
+            "winRate": 45.16129032258064,
+            "meanR": 0.05081659838709896,
+            "sumR": 1.5753145500000678,
+            "pf": 1.3189061371525612
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "by_lsr_short_07",
+        "label": "Skip short when Bybit L/S ratio < 0.7",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 31,
+            "winRate": 45.16129032258064,
+            "meanR": 0.05081659838709896,
+            "sumR": 1.5753145500000678,
+            "pf": 1.3189061371525612
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "favor_long_neg_fund",
+        "label": "Skip long unless funding z < 0 (shorts pay)",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 31,
+            "winRate": 45.16129032258064,
+            "meanR": 0.05081659838709896,
+            "sumR": 1.5753145500000678,
+            "pf": 1.3189061371525612
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "favor_long_oi_up",
+        "label": "Skip long unless OI −4h > 0",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 31,
+            "winRate": 45.16129032258064,
+            "meanR": 0.05081659838709896,
+            "sumR": 1.5753145500000678,
+            "pf": 1.3189061371525612
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "combo_crowd",
+        "label": "Skip funding z>1.5 OR L/S crowd",
+        "skipPctTrain": 6.451612903225806,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 29,
+            "winRate": 48.275862068965516,
+            "meanR": 0.06466774310345026,
+            "sumR": 1.8753645500000578,
+            "pf": 1.4042000855401482
+          },
+          "skipped": {
+            "n": 2,
+            "winRate": 0,
+            "meanR": -0.15002499999999502,
+            "sumR": -0.30004999999999005,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "cz_liq_4h_5m",
+        "label": "Skip when Coinalyze liq 4h > $5M",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 31,
+            "winRate": 45.16129032258064,
+            "meanR": 0.05081659838709896,
+            "sumR": 1.5753145500000678,
+            "pf": 1.3189061371525612
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "cz_liq_4h_10m",
+        "label": "Skip when Coinalyze liq 4h > $10M",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 31,
+            "winRate": 45.16129032258064,
+            "meanR": 0.05081659838709896,
+            "sumR": 1.5753145500000678,
+            "pf": 1.3189061371525612
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "cz_liq_24h_p90",
+        "label": "Skip when Coinalyze liq 24h > $30M (high vol day)",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 31,
+            "winRate": 45.16129032258064,
+            "meanR": 0.05081659838709896,
+            "sumR": 1.5753145500000678,
+            "pf": 1.3189061371525612
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "cz_oi_drop3",
+        "label": "Skip when Coinalyze OI −4h < −3%",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 31,
+            "winRate": 45.16129032258064,
+            "meanR": 0.05081659838709896,
+            "sumR": 1.5753145500000678,
+            "pf": 1.3189061371525612
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 8,
+            "winRate": 50,
+            "meanR": 0.03815629687500262,
+            "sumR": 0.30525037500002095,
+            "pf": 1.1221954392254718
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 0.9031721076758913,
+            "maxDdPct": 11.382150217562865
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "bn_fund_z_gt1",
+        "label": "Skip if funding z crowded vs side (|z|>1)",
+        "skipPctTrain": 12.903225806451612,
+        "skipPctHold": 12.5,
+        "train": {
+          "kept": {
+            "n": 27,
+            "winRate": 48.148148148148145,
+            "meanR": 0.032098675000002526,
+            "sumR": 0.8666642250000682,
+            "pf": 1.192606234379145
+          },
+          "skipped": {
+            "n": 4,
+            "winRate": 25,
+            "meanR": 0.17716258124999984,
+            "sumR": 0.7086503249999994,
+            "pf": 2.6102944384480327
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 7,
+            "winRate": 42.857142857142854,
+            "meanR": -0.12086070714285388,
+            "sumR": -0.8460249499999771,
+            "pf": 0.6613259185645628
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 100,
+            "meanR": 1.151275324999998,
+            "sumR": 1.151275324999998,
+            "pf": 999
+          },
+          "port": {
+            "returnPct": -4.589041977613342,
+            "maxDdPct": 12.04689486324337
+          }
+        },
+        "wrDeltaHold": -7.142857142857146,
+        "meanRDeltaHold": -0.1590170040178565,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      }
+    ],
+    "winners": [
+      {
+        "id": "by_oi_drop2",
+        "label": "Skip when Bybit OI −4h < −2% (cascade proxy)",
+        "skipPctTrain": 6.451612903225806,
+        "skipPctHold": 12.5,
+        "train": {
+          "kept": {
+            "n": 29,
+            "winRate": 44.827586206896555,
+            "meanR": 0.05368994741379517,
+            "sumR": 1.55700847500006,
+            "pf": 1.325069665160876
+          },
+          "skipped": {
+            "n": 2,
+            "winRate": 50,
+            "meanR": 0.009153037500003916,
+            "sumR": 0.018306075000007832,
+            "pf": 1.122060843473965
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 7,
+            "winRate": 57.14285714285714,
+            "meanR": 0.20774651785714499,
+            "sumR": 1.454225625000015,
+            "pf": 2.0779425772940328
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 0,
+            "meanR": -1.148975249999994,
+            "sumR": -1.148975249999994,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 7.053248771185062,
+            "maxDdPct": 5.980867398270108
+          }
+        },
+        "wrDeltaHold": 7.142857142857139,
+        "meanRDeltaHold": 0.16959022098214238,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "by_oi_drop3",
+        "label": "Skip when Bybit OI −4h < −3%",
+        "skipPctTrain": 3.225806451612903,
+        "skipPctHold": 12.5,
+        "train": {
+          "kept": {
+            "n": 30,
+            "winRate": 43.333333333333336,
+            "meanR": 0.046901115833335345,
+            "sumR": 1.4070334750000604,
+            "pf": 1.2848393740517374
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 100,
+            "meanR": 0.16828107500000725,
+            "sumR": 0.16828107500000725,
+            "pf": 999
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 7,
+            "winRate": 57.14285714285714,
+            "meanR": 0.20774651785714499,
+            "sumR": 1.454225625000015,
+            "pf": 2.0779425772940328
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 0,
+            "meanR": -1.148975249999994,
+            "sumR": -1.148975249999994,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 7.053248771185062,
+            "maxDdPct": 5.980867398270108
+          }
+        },
+        "wrDeltaHold": 7.142857142857139,
+        "meanRDeltaHold": 0.16959022098214238,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "by_oi_drop24_5",
+        "label": "Skip when Bybit OI −24h < −5%",
+        "skipPctTrain": 9.67741935483871,
+        "skipPctHold": 12.5,
+        "train": {
+          "kept": {
+            "n": 28,
+            "winRate": 42.857142857142854,
+            "meanR": 0.05090319285714441,
+            "sumR": 1.4252894000000436,
+            "pf": 1.2975695736115638
+          },
+          "skipped": {
+            "n": 3,
+            "winRate": 66.66666666666666,
+            "meanR": 0.05000838333334135,
+            "sumR": 0.15002515000002406,
+            "pf": 2.000334389065091
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 7,
+            "winRate": 57.14285714285714,
+            "meanR": 0.20774651785714499,
+            "sumR": 1.454225625000015,
+            "pf": 2.0779425772940328
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 0,
+            "meanR": -1.148975249999994,
+            "sumR": -1.148975249999994,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 7.053248771185062,
+            "maxDdPct": 5.980867398270108
+          }
+        },
+        "wrDeltaHold": 7.142857142857139,
+        "meanRDeltaHold": 0.16959022098214238,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "weak_short_oi",
+        "label": "Skip short when OI −4h < −2% (squeeze risk)",
+        "skipPctTrain": 6.451612903225806,
+        "skipPctHold": 12.5,
+        "train": {
+          "kept": {
+            "n": 29,
+            "winRate": 44.827586206896555,
+            "meanR": 0.05368994741379517,
+            "sumR": 1.55700847500006,
+            "pf": 1.325069665160876
+          },
+          "skipped": {
+            "n": 2,
+            "winRate": 50,
+            "meanR": 0.009153037500003916,
+            "sumR": 0.018306075000007832,
+            "pf": 1.122060843473965
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 7,
+            "winRate": 57.14285714285714,
+            "meanR": 0.20774651785714499,
+            "sumR": 1.454225625000015,
+            "pf": 2.0779425772940328
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 0,
+            "meanR": -1.148975249999994,
+            "sumR": -1.148975249999994,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 7.053248771185062,
+            "maxDdPct": 5.980867398270108
+          }
+        },
+        "wrDeltaHold": 7.142857142857139,
+        "meanRDeltaHold": 0.16959022098214238,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "combo_oi_cascade",
+        "label": "Skip OI drop 3% OR weak-side OI",
+        "skipPctTrain": 6.451612903225806,
+        "skipPctHold": 12.5,
+        "train": {
+          "kept": {
+            "n": 29,
+            "winRate": 44.827586206896555,
+            "meanR": 0.05368994741379517,
+            "sumR": 1.55700847500006,
+            "pf": 1.325069665160876
+          },
+          "skipped": {
+            "n": 2,
+            "winRate": 50,
+            "meanR": 0.009153037500003916,
+            "sumR": 0.018306075000007832,
+            "pf": 1.122060843473965
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 7,
+            "winRate": 57.14285714285714,
+            "meanR": 0.20774651785714499,
+            "sumR": 1.454225625000015,
+            "pf": 2.0779425772940328
+          },
+          "skipped": {
+            "n": 1,
+            "winRate": 0,
+            "meanR": -1.148975249999994,
+            "sumR": -1.148975249999994,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": 7.053248771185062,
+            "maxDdPct": 5.980867398270108
+          }
+        },
+        "wrDeltaHold": 7.142857142857139,
+        "meanRDeltaHold": 0.16959022098214238,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      }
+    ]
+  },
+  "liqSweep": {
+    "name": "LIQ_SWEEP (harvest)",
+    "trades": 493,
+    "trainN": 352,
+    "holdN": 141,
+    "coverage": {
+      "fundingPct": 100,
+      "bybitOiPct": 100
+    },
+    "baseline": {
+      "train": {
+        "n": 352,
+        "winRate": 50.56818181818182,
+        "meanR": -0.08201278409090915,
+        "sumR": -28.86850000000002,
+        "pf": 0.886162078606271
+      },
+      "hold": {
+        "n": 141,
+        "winRate": 49.645390070921984,
+        "meanR": -0.10627375886524815,
+        "sumR": -14.984599999999988,
+        "pf": 0.8637304036179476
+      },
+      "portHold": {
+        "returnPct": -79.69210152315429,
+        "maxDdPct": 90.62509788696718
+      }
+    },
+    "rules": [
+      {
+        "id": "by_lsr_long_17",
+        "label": "Skip long when Bybit L/S ratio > 1.7",
+        "skipPctTrain": 52.84090909090909,
+        "skipPctHold": 53.191489361702125,
+        "train": {
+          "kept": {
+            "n": 166,
+            "winRate": 48.795180722891565,
+            "meanR": -0.13611144578313256,
+            "sumR": -22.594500000000004,
+            "pf": 0.7956567391357431
+          },
+          "skipped": {
+            "n": 186,
+            "winRate": 52.1505376344086,
+            "meanR": -0.03373118279569891,
+            "sumR": -6.2739999999999965,
+            "pf": 0.956132530937613
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 66,
+            "winRate": 56.060606060606055,
+            "meanR": 0.25001969696969706,
+            "sumR": 16.501300000000004,
+            "pf": 1.3990148736189734
+          },
+          "skipped": {
+            "n": 75,
+            "winRate": 44,
+            "meanR": -0.4198119999999999,
+            "sumR": -31.485899999999994,
+            "pf": 0.5410740469742505
+          },
+          "port": {
+            "returnPct": 44.18800219542513,
+            "maxDdPct": 72.20164387649348
+          }
+        },
+        "wrDeltaHold": 6.4152159896840715,
+        "meanRDeltaHold": 0.3562934558349452,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "combo_crowd",
+        "label": "Skip funding z>1.5 OR L/S crowd",
+        "skipPctTrain": 54.54545454545454,
+        "skipPctHold": 57.446808510638306,
+        "train": {
+          "kept": {
+            "n": 160,
+            "winRate": 49.375,
+            "meanR": -0.132633125,
+            "sumR": -21.2213,
+            "pf": 0.7992471757264782
+          },
+          "skipped": {
+            "n": 192,
+            "winRate": 51.5625,
+            "meanR": -0.03982916666666666,
+            "sumR": -7.647199999999998,
+            "pf": 0.9482893395111323
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 60,
+            "winRate": 56.666666666666664,
+            "meanR": 0.12745000000000004,
+            "sumR": 7.647000000000002,
+            "pf": 1.1913524794246666
+          },
+          "skipped": {
+            "n": 81,
+            "winRate": 44.44444444444444,
+            "meanR": -0.27940246913580236,
+            "sumR": -22.63159999999999,
+            "pf": 0.6766914285714288
+          },
+          "port": {
+            "returnPct": -1.875039771333977,
+            "maxDdPct": 72.20164387649348
+          }
+        },
+        "wrDeltaHold": 7.0212765957446805,
+        "meanRDeltaHold": 0.23372375886524818,
+        "skippedWorseHold": true,
+        "beatsHold": false
+      },
+      {
+        "id": "favor_long_neg_fund",
+        "label": "Skip long unless funding z < 0 (shorts pay)",
+        "skipPctTrain": 30.681818181818183,
+        "skipPctHold": 26.95035460992908,
+        "train": {
+          "kept": {
+            "n": 244,
+            "winRate": 50.409836065573764,
+            "meanR": -0.10475081967213114,
+            "sumR": -25.559199999999997,
+            "pf": 0.8534896465069147
+          },
+          "skipped": {
+            "n": 108,
+            "winRate": 50.92592592592593,
+            "meanR": -0.03064166666666667,
+            "sumR": -3.3093000000000004,
+            "pf": 0.9581841248019327
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 103,
+            "winRate": 54.36893203883495,
+            "meanR": 0.08148737864077679,
+            "sumR": 8.393200000000009,
+            "pf": 1.1259844883512529
+          },
+          "skipped": {
+            "n": 38,
+            "winRate": 36.84210526315789,
+            "meanR": -0.6152052631578947,
+            "sumR": -23.377799999999997,
+            "pf": 0.46062018365557655
+          },
+          "port": {
+            "returnPct": -13.89421535379477,
+            "maxDdPct": 72.20164387649348
+          }
+        },
+        "wrDeltaHold": 4.723541967912965,
+        "meanRDeltaHold": 0.18776113750602494,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "by_oi_drop24_5",
+        "label": "Skip when Bybit OI −24h < −5%",
+        "skipPctTrain": 16.193181818181817,
+        "skipPctHold": 14.893617021276595,
+        "train": {
+          "kept": {
+            "n": 295,
+            "winRate": 50.847457627118644,
+            "meanR": -0.054370847457627075,
+            "sumR": -16.039399999999986,
+            "pf": 0.9223330776620805
+          },
+          "skipped": {
+            "n": 57,
+            "winRate": 49.122807017543856,
+            "meanR": -0.2250719298245613,
+            "sumR": -12.829099999999995,
+            "pf": 0.7274915140469603
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 120,
+            "winRate": 51.66666666666667,
+            "meanR": 0.022642499999999986,
+            "sumR": 2.717099999999998,
+            "pf": 1.0343957172135558
+          },
+          "skipped": {
+            "n": 21,
+            "winRate": 38.095238095238095,
+            "meanR": -0.8429380952380954,
+            "sumR": -17.701700000000002,
+            "pf": 0.42837998424159457
+          },
+          "port": {
+            "returnPct": -31.030424446854717,
+            "maxDdPct": 66.39971260687571
+          }
+        },
+        "wrDeltaHold": 2.0212765957446877,
+        "meanRDeltaHold": 0.12891625886524813,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "favor_long_oi_up",
+        "label": "Skip long unless OI −4h > 0",
+        "skipPctTrain": 32.95454545454545,
+        "skipPctHold": 28.368794326241137,
+        "train": {
+          "kept": {
+            "n": 236,
+            "winRate": 48.30508474576271,
+            "meanR": -0.20766355932203395,
+            "sumR": -49.008600000000015,
+            "pf": 0.7309738574433611
+          },
+          "skipped": {
+            "n": 116,
+            "winRate": 55.172413793103445,
+            "meanR": 0.17362155172413787,
+            "sumR": 20.140099999999993,
+            "pf": 1.2819849739438218
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 101,
+            "winRate": 50.495049504950494,
+            "meanR": -0.0020920792079207337,
+            "sumR": -0.2112999999999941,
+            "pf": 0.9969323461091755
+          },
+          "skipped": {
+            "n": 40,
+            "winRate": 47.5,
+            "meanR": -0.36933249999999995,
+            "sumR": -14.773299999999999,
+            "pf": 0.6404026979594917
+          },
+          "port": {
+            "returnPct": -42.74326739013463,
+            "maxDdPct": 70.97902765086273
+          }
+        },
+        "wrDeltaHold": 0.84965943402851,
+        "meanRDeltaHold": 0.10418167965732741,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "by_oi_drop3",
+        "label": "Skip when Bybit OI −4h < −3%",
+        "skipPctTrain": 9.943181818181818,
+        "skipPctHold": 7.801418439716312,
+        "train": {
+          "kept": {
+            "n": 317,
+            "winRate": 50.473186119873816,
+            "meanR": -0.07035362776025234,
+            "sumR": -22.30209999999999,
+            "pf": 0.8999117241701202
+          },
+          "skipped": {
+            "n": 35,
+            "winRate": 51.42857142857142,
+            "meanR": -0.1876114285714286,
+            "sumR": -6.566400000000001,
+            "pf": 0.7865883186484964
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 130,
+            "winRate": 49.23076923076923,
+            "meanR": -0.07636461538461538,
+            "sumR": -9.927399999999999,
+            "pf": 0.8971357283257538
+          },
+          "skipped": {
+            "n": 11,
+            "winRate": 54.54545454545454,
+            "meanR": -0.45974545454545446,
+            "sumR": -5.057199999999999,
+            "pf": 0.6240894359706242
+          },
+          "port": {
+            "returnPct": -71.16982916605875,
+            "maxDdPct": 85.00710121089656
+          }
+        },
+        "wrDeltaHold": -0.41462084015275025,
+        "meanRDeltaHold": 0.02990914348063277,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "baseline",
+        "label": "Always trade",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 352,
+            "winRate": 50.56818181818182,
+            "meanR": -0.08201278409090915,
+            "sumR": -28.86850000000002,
+            "pf": 0.886162078606271
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 141,
+            "winRate": 49.645390070921984,
+            "meanR": -0.10627375886524815,
+            "sumR": -14.984599999999988,
+            "pf": 0.8637304036179476
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": -79.69210152315429,
+            "maxDdPct": 90.62509788696718
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      },
+      {
+        "id": "bn_fund_long_pos",
+        "label": "Skip longs when funding rate > 0.03%/8h",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 352,
+            "winRate": 50.56818181818182,
+            "meanR": -0.08201278409090915,
+            "sumR": -28.86850000000002,
+            "pf": 0.886162078606271
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 141,
+            "winRate": 49.645390070921984,
+            "meanR": -0.10627375886524815,
+            "sumR": -14.984599999999988,
+            "pf": 0.8637304036179476
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": -79.69210152315429,
+            "maxDdPct": 90.62509788696718
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      },
+      {
+        "id": "by_lsr_short_07",
+        "label": "Skip short when Bybit L/S ratio < 0.7",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 352,
+            "winRate": 50.56818181818182,
+            "meanR": -0.08201278409090915,
+            "sumR": -28.86850000000002,
+            "pf": 0.886162078606271
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 141,
+            "winRate": 49.645390070921984,
+            "meanR": -0.10627375886524815,
+            "sumR": -14.984599999999988,
+            "pf": 0.8637304036179476
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": -79.69210152315429,
+            "maxDdPct": 90.62509788696718
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      },
+      {
+        "id": "cz_liq_4h_5m",
+        "label": "Skip when Coinalyze liq 4h > $5M",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 352,
+            "winRate": 50.56818181818182,
+            "meanR": -0.08201278409090915,
+            "sumR": -28.86850000000002,
+            "pf": 0.886162078606271
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 141,
+            "winRate": 49.645390070921984,
+            "meanR": -0.10627375886524815,
+            "sumR": -14.984599999999988,
+            "pf": 0.8637304036179476
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": -79.69210152315429,
+            "maxDdPct": 90.62509788696718
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      },
+      {
+        "id": "cz_liq_4h_10m",
+        "label": "Skip when Coinalyze liq 4h > $10M",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 352,
+            "winRate": 50.56818181818182,
+            "meanR": -0.08201278409090915,
+            "sumR": -28.86850000000002,
+            "pf": 0.886162078606271
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 141,
+            "winRate": 49.645390070921984,
+            "meanR": -0.10627375886524815,
+            "sumR": -14.984599999999988,
+            "pf": 0.8637304036179476
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": -79.69210152315429,
+            "maxDdPct": 90.62509788696718
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      },
+      {
+        "id": "cz_liq_24h_p90",
+        "label": "Skip when Coinalyze liq 24h > $30M (high vol day)",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 352,
+            "winRate": 50.56818181818182,
+            "meanR": -0.08201278409090915,
+            "sumR": -28.86850000000002,
+            "pf": 0.886162078606271
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 141,
+            "winRate": 49.645390070921984,
+            "meanR": -0.10627375886524815,
+            "sumR": -14.984599999999988,
+            "pf": 0.8637304036179476
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": -79.69210152315429,
+            "maxDdPct": 90.62509788696718
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      },
+      {
+        "id": "cz_oi_drop3",
+        "label": "Skip when Coinalyze OI −4h < −3%",
+        "skipPctTrain": 0,
+        "skipPctHold": 0,
+        "train": {
+          "kept": {
+            "n": 352,
+            "winRate": 50.56818181818182,
+            "meanR": -0.08201278409090915,
+            "sumR": -28.86850000000002,
+            "pf": 0.886162078606271
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 141,
+            "winRate": 49.645390070921984,
+            "meanR": -0.10627375886524815,
+            "sumR": -14.984599999999988,
+            "pf": 0.8637304036179476
+          },
+          "skipped": {
+            "n": 0,
+            "winRate": 0,
+            "meanR": 0,
+            "sumR": 0,
+            "pf": 0
+          },
+          "port": {
+            "returnPct": -79.69210152315429,
+            "maxDdPct": 90.62509788696718
+          }
+        },
+        "wrDeltaHold": 0,
+        "meanRDeltaHold": 0,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      },
+      {
+        "id": "weak_short_oi",
+        "label": "Skip short when OI −4h < −2% (squeeze risk)",
+        "skipPctTrain": 7.1022727272727275,
+        "skipPctHold": 7.092198581560284,
+        "train": {
+          "kept": {
+            "n": 327,
+            "winRate": 49.84709480122324,
+            "meanR": -0.10985993883792051,
+            "sumR": -35.924200000000006,
+            "pf": 0.8522569310212661
+          },
+          "skipped": {
+            "n": 25,
+            "winRate": 60,
+            "meanR": 0.282228,
+            "sumR": 7.0557,
+            "pf": 1.675846280580088
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 131,
+            "winRate": 48.854961832061065,
+            "meanR": -0.11947404580152664,
+            "sumR": -15.651099999999989,
+            "pf": 0.8536751142703016
+          },
+          "skipped": {
+            "n": 10,
+            "winRate": 60,
+            "meanR": 0.06665000000000001,
+            "sumR": 0.6665000000000002,
+            "pf": 1.222048240938166
+          },
+          "port": {
+            "returnPct": -80.16956698089804,
+            "maxDdPct": 90.94105155349486
+          }
+        },
+        "wrDeltaHold": -0.790428238860919,
+        "meanRDeltaHold": -0.01320028693627849,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      },
+      {
+        "id": "weak_long_oi",
+        "label": "Skip long when OI −4h < −2% (weak rally)",
+        "skipPctTrain": 12.5,
+        "skipPctHold": 10.638297872340425,
+        "train": {
+          "kept": {
+            "n": 308,
+            "winRate": 50.324675324675326,
+            "meanR": -0.09390714285714286,
+            "sumR": -28.9234,
+            "pf": 0.8683093583157966
+          },
+          "skipped": {
+            "n": 44,
+            "winRate": 52.27272727272727,
+            "meanR": 0.0012477272727273068,
+            "sumR": 0.0549000000000015,
+            "pf": 1.0016165316121735
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 126,
+            "winRate": 47.61904761904761,
+            "meanR": -0.12339523809523802,
+            "sumR": -15.54779999999999,
+            "pf": 0.8405976741396438
+          },
+          "skipped": {
+            "n": 15,
+            "winRate": 66.66666666666666,
+            "meanR": 0.037546666666666735,
+            "sumR": 0.563200000000001,
+            "pf": 1.045328697443822
+          },
+          "port": {
+            "returnPct": -78.09768423599036,
+            "maxDdPct": 86.94416586021244
+          }
+        },
+        "wrDeltaHold": -2.0263424518743705,
+        "meanRDeltaHold": -0.01712147922998987,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      },
+      {
+        "id": "by_oi_drop2",
+        "label": "Skip when Bybit OI −4h < −2% (cascade proxy)",
+        "skipPctTrain": 19.602272727272727,
+        "skipPctHold": 17.73049645390071,
+        "train": {
+          "kept": {
+            "n": 283,
+            "winRate": 49.46996466431096,
+            "meanR": -0.12713462897526498,
+            "sumR": -35.97909999999999,
+            "pf": 0.8280088684249276
+          },
+          "skipped": {
+            "n": 69,
+            "winRate": 55.072463768115945,
+            "meanR": 0.1030521739130436,
+            "sumR": 7.110600000000008,
+            "pf": 1.1601435990757045
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 116,
+            "winRate": 46.55172413793103,
+            "meanR": -0.13977844827586208,
+            "sumR": -16.2143,
+            "pf": 0.8284863518323613
+          },
+          "skipped": {
+            "n": 25,
+            "winRate": 64,
+            "meanR": 0.04918800000000005,
+            "sumR": 1.2297000000000013,
+            "pf": 1.0797139967847325
+          },
+          "port": {
+            "returnPct": -78.6126365454986,
+            "maxDdPct": 87.38417457884304
+          }
+        },
+        "wrDeltaHold": -3.0936659329909517,
+        "meanRDeltaHold": -0.033504689410613936,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      },
+      {
+        "id": "combo_oi_cascade",
+        "label": "Skip OI drop 3% OR weak-side OI",
+        "skipPctTrain": 19.602272727272727,
+        "skipPctHold": 17.73049645390071,
+        "train": {
+          "kept": {
+            "n": 283,
+            "winRate": 49.46996466431096,
+            "meanR": -0.12713462897526498,
+            "sumR": -35.97909999999999,
+            "pf": 0.8280088684249276
+          },
+          "skipped": {
+            "n": 69,
+            "winRate": 55.072463768115945,
+            "meanR": 0.1030521739130436,
+            "sumR": 7.110600000000008,
+            "pf": 1.1601435990757045
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 116,
+            "winRate": 46.55172413793103,
+            "meanR": -0.13977844827586208,
+            "sumR": -16.2143,
+            "pf": 0.8284863518323613
+          },
+          "skipped": {
+            "n": 25,
+            "winRate": 64,
+            "meanR": 0.04918800000000005,
+            "sumR": 1.2297000000000013,
+            "pf": 1.0797139967847325
+          },
+          "port": {
+            "returnPct": -78.6126365454986,
+            "maxDdPct": 87.38417457884304
+          }
+        },
+        "wrDeltaHold": -3.0936659329909517,
+        "meanRDeltaHold": -0.033504689410613936,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      },
+      {
+        "id": "bn_fund_z_gt1",
+        "label": "Skip if funding z crowded vs side (|z|>1)",
+        "skipPctTrain": 8.522727272727272,
+        "skipPctHold": 10.638297872340425,
+        "train": {
+          "kept": {
+            "n": 322,
+            "winRate": 50.621118012422365,
+            "meanR": -0.08569378881987576,
+            "sumR": -27.593399999999995,
+            "pf": 0.8833454877515176
+          },
+          "skipped": {
+            "n": 30,
+            "winRate": 50,
+            "meanR": -0.042503333333333365,
+            "sumR": -1.275100000000001,
+            "pf": 0.9252294250447123
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 126,
+            "winRate": 51.587301587301596,
+            "meanR": -0.16424365079365075,
+            "sumR": -20.694699999999994,
+            "pf": 0.7985327088519363
+          },
+          "skipped": {
+            "n": 15,
+            "winRate": 33.33333333333333,
+            "meanR": 0.3806733333333334,
+            "sumR": 5.7101000000000015,
+            "pf": 1.78836117630816
+          },
+          "port": {
+            "returnPct": -83.55228137829607,
+            "maxDdPct": 92.87145201329935
+          }
+        },
+        "wrDeltaHold": 1.9419115163796121,
+        "meanRDeltaHold": -0.0579698919284026,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      },
+      {
+        "id": "bn_fund_z_gt15",
+        "label": "Skip if funding z crowded vs side (|z|>1.5)",
+        "skipPctTrain": 2.272727272727273,
+        "skipPctHold": 6.382978723404255,
+        "train": {
+          "kept": {
+            "n": 344,
+            "winRate": 50.872093023255815,
+            "meanR": -0.08534970930232562,
+            "sumR": -29.360300000000013,
+            "pf": 0.881456583311632
+          },
+          "skipped": {
+            "n": 8,
+            "winRate": 37.5,
+            "meanR": 0.061474999999999974,
+            "sumR": 0.4917999999999998,
+            "pf": 1.0831094212082804
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 132,
+            "winRate": 50,
+            "meanR": -0.19051590909090912,
+            "sumR": -25.148100000000003,
+            "pf": 0.765591225458623
+          },
+          "skipped": {
+            "n": 9,
+            "winRate": 44.44444444444444,
+            "meanR": 1.1292777777777778,
+            "sumR": 10.1635,
+            "pf": 4.792633778640197
+          },
+          "port": {
+            "returnPct": -86.93866544748502,
+            "maxDdPct": 93.57865967096302
+          }
+        },
+        "wrDeltaHold": 0.35460992907801625,
+        "meanRDeltaHold": -0.08424215022566098,
+        "skippedWorseHold": false,
+        "beatsHold": false
+      }
+    ],
+    "winners": [
+      {
+        "id": "favor_long_neg_fund",
+        "label": "Skip long unless funding z < 0 (shorts pay)",
+        "skipPctTrain": 30.681818181818183,
+        "skipPctHold": 26.95035460992908,
+        "train": {
+          "kept": {
+            "n": 244,
+            "winRate": 50.409836065573764,
+            "meanR": -0.10475081967213114,
+            "sumR": -25.559199999999997,
+            "pf": 0.8534896465069147
+          },
+          "skipped": {
+            "n": 108,
+            "winRate": 50.92592592592593,
+            "meanR": -0.03064166666666667,
+            "sumR": -3.3093000000000004,
+            "pf": 0.9581841248019327
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 103,
+            "winRate": 54.36893203883495,
+            "meanR": 0.08148737864077679,
+            "sumR": 8.393200000000009,
+            "pf": 1.1259844883512529
+          },
+          "skipped": {
+            "n": 38,
+            "winRate": 36.84210526315789,
+            "meanR": -0.6152052631578947,
+            "sumR": -23.377799999999997,
+            "pf": 0.46062018365557655
+          },
+          "port": {
+            "returnPct": -13.89421535379477,
+            "maxDdPct": 72.20164387649348
+          }
+        },
+        "wrDeltaHold": 4.723541967912965,
+        "meanRDeltaHold": 0.18776113750602494,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "by_oi_drop24_5",
+        "label": "Skip when Bybit OI −24h < −5%",
+        "skipPctTrain": 16.193181818181817,
+        "skipPctHold": 14.893617021276595,
+        "train": {
+          "kept": {
+            "n": 295,
+            "winRate": 50.847457627118644,
+            "meanR": -0.054370847457627075,
+            "sumR": -16.039399999999986,
+            "pf": 0.9223330776620805
+          },
+          "skipped": {
+            "n": 57,
+            "winRate": 49.122807017543856,
+            "meanR": -0.2250719298245613,
+            "sumR": -12.829099999999995,
+            "pf": 0.7274915140469603
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 120,
+            "winRate": 51.66666666666667,
+            "meanR": 0.022642499999999986,
+            "sumR": 2.717099999999998,
+            "pf": 1.0343957172135558
+          },
+          "skipped": {
+            "n": 21,
+            "winRate": 38.095238095238095,
+            "meanR": -0.8429380952380954,
+            "sumR": -17.701700000000002,
+            "pf": 0.42837998424159457
+          },
+          "port": {
+            "returnPct": -31.030424446854717,
+            "maxDdPct": 66.39971260687571
+          }
+        },
+        "wrDeltaHold": 2.0212765957446877,
+        "meanRDeltaHold": 0.12891625886524813,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "favor_long_oi_up",
+        "label": "Skip long unless OI −4h > 0",
+        "skipPctTrain": 32.95454545454545,
+        "skipPctHold": 28.368794326241137,
+        "train": {
+          "kept": {
+            "n": 236,
+            "winRate": 48.30508474576271,
+            "meanR": -0.20766355932203395,
+            "sumR": -49.008600000000015,
+            "pf": 0.7309738574433611
+          },
+          "skipped": {
+            "n": 116,
+            "winRate": 55.172413793103445,
+            "meanR": 0.17362155172413787,
+            "sumR": 20.140099999999993,
+            "pf": 1.2819849739438218
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 101,
+            "winRate": 50.495049504950494,
+            "meanR": -0.0020920792079207337,
+            "sumR": -0.2112999999999941,
+            "pf": 0.9969323461091755
+          },
+          "skipped": {
+            "n": 40,
+            "winRate": 47.5,
+            "meanR": -0.36933249999999995,
+            "sumR": -14.773299999999999,
+            "pf": 0.6404026979594917
+          },
+          "port": {
+            "returnPct": -42.74326739013463,
+            "maxDdPct": 70.97902765086273
+          }
+        },
+        "wrDeltaHold": 0.84965943402851,
+        "meanRDeltaHold": 0.10418167965732741,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      },
+      {
+        "id": "by_oi_drop3",
+        "label": "Skip when Bybit OI −4h < −3%",
+        "skipPctTrain": 9.943181818181818,
+        "skipPctHold": 7.801418439716312,
+        "train": {
+          "kept": {
+            "n": 317,
+            "winRate": 50.473186119873816,
+            "meanR": -0.07035362776025234,
+            "sumR": -22.30209999999999,
+            "pf": 0.8999117241701202
+          },
+          "skipped": {
+            "n": 35,
+            "winRate": 51.42857142857142,
+            "meanR": -0.1876114285714286,
+            "sumR": -6.566400000000001,
+            "pf": 0.7865883186484964
+          }
+        },
+        "hold": {
+          "kept": {
+            "n": 130,
+            "winRate": 49.23076923076923,
+            "meanR": -0.07636461538461538,
+            "sumR": -9.927399999999999,
+            "pf": 0.8971357283257538
+          },
+          "skipped": {
+            "n": 11,
+            "winRate": 54.54545454545454,
+            "meanR": -0.45974545454545446,
+            "sumR": -5.057199999999999,
+            "pf": 0.6240894359706242
+          },
+          "port": {
+            "returnPct": -71.16982916605875,
+            "maxDdPct": 85.00710121089656
+          }
+        },
+        "wrDeltaHold": -0.41462084015275025,
+        "meanRDeltaHold": 0.02990914348063277,
+        "skippedWorseHold": true,
+        "beatsHold": true
+      }
+    ]
+  }
+}

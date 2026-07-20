@@ -1,0 +1,13 @@
+
+=== Trail compare (1m mark micro) ===
+SUPERTREND_ELITE | BTCUSDT 1h | 2025-06-01 → 2026-06-16
+run 1845b3b6 | stored ret -31.1%
+
+  saved (tight)                ret=  -31.1% DD=32.1% trail=24 sl=7 trail$=-10.6 PF=0.26
+  tuned FIXED %                ret=   14.3% DD=26.4% trail=17 sl=13 trail$=95.7 PF=1.18
+  DYNAMIC v2 defaults          ret=  -27.8% DD=40.4% trail=19 sl=12 trail$=28.8 PF=0.54
+  DYNAMIC sl=1.0 be=1.0        ret=  -27.8% DD=40.4% trail=19 sl=12 trail$=28.8 PF=0.54
+  DYNAMIC alt-wide (3% ATR coins) ret=  -23.2% DD=42.4% trail=18 sl=13 trail$=37.0 PF=0.64
+
+--- Verdict ---
+Tuned Fixed: 14.33% | Best Dynamic: DYNAMIC alt-wide (3% ATR coins) → -23.25% (Δ -37.58%)

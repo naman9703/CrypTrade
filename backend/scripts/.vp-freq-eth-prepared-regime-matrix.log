@@ -1,0 +1,86 @@
+loading candles…
+candles=224832
+
+=== BASELINE ===
+{"n":318,"wr":39.62264150943396,"net":180.58645746310114,"avg":0.5678819417078652}
+
+=== CELLS (status) ===
+unprepared_bleed   SELL|val_breakdown|weak_bear|vacuum                  n= 30 net=  -23.5 avg=-0.78 years+/1 -/5
+unknown_thin       BUY|va_rejection|bull_chop|structured                n=  3 net=  -11.1 avg=-3.71 years+/1 -/2
+unprepared_bleed   BUY|vah_breakout|bull_trend|vacuum                   n= 33 net=  -10.6 avg=-0.32 years+/4 -/2
+unknown_thin       BUY|va_rejection|bull_trend|structured               n=  3 net=   -8.2 avg=-2.74 years+/0 -/3
+unknown_thin       BUY|vah_breakout|weak_bear|structured                n=  2 net=   -7.8 avg=-3.92 years+/0 -/2
+unknown_thin       SELL|val_breakdown|bull_chop|tight                   n=  3 net=   -5.9 avg=-1.98 years+/1 -/2
+unprepared_bleed   SELL|val_breakdown|bull_trend|structured             n=  9 net=   -4.9 avg=-0.54 years+/1 -/2
+unknown_thin       BUY|vah_breakout|bull_chop|tight                     n=  2 net=   -4.6 avg=-2.32 years+/0 -/2
+unknown_thin       BUY|vah_breakout|bull_chop|vacuum                    n=  2 net=   -4.2 avg=-2.12 years+/0 -/2
+unknown_thin       SELL|va_rejection|bull_trend|vacuum                  n=  1 net=   -3.9 avg=-3.93 years+/0 -/1
+unknown_thin       SELL|poc_bounce|bear_trend|structured                n=  1 net=   -3.7 avg=-3.73 years+/0 -/1
+unknown_thin       BUY|poc_bounce|bull_chop|structured                  n=  1 net=   -3.4 avg=-3.43 years+/0 -/1
+unknown_thin       BUY|va_rejection|bull_trend|vacuum                   n=  1 net=   -2.8 avg=-2.75 years+/0 -/1
+unknown_thin       BUY|vah_breakout|bear_trend|vacuum                   n=  1 net=   -2.5 avg=-2.54 years+/0 -/1
+unknown_thin       SELL|val_breakdown|bull_trend|tight                  n=  3 net=   -2.4 avg=-0.81 years+/1 -/2
+unknown_thin       BUY|poc_bounce|bull_trend|vacuum                     n=  1 net=   -2.4 avg=-2.37 years+/0 -/1
+unprepared_bleed   SELL|val_breakdown|weak_bear|structured              n=  6 net=   -1.8 avg=-0.31 years+/2 -/4
+unknown_thin       BUY|poc_bounce|bull_trend|tight                      n=  1 net=   -1.6 avg=-1.64 years+/0 -/1
+unprepared_bleed   SELL|val_breakdown|bull_chop|structured              n=  8 net=   -1.6 avg=-0.20 years+/2 -/3
+unknown_thin       BUY|va_rejection|bear_trend|vacuum                   n=  1 net=   -1.5 avg=-1.45 years+/0 -/1
+unknown_thin       BUY|vah_breakout|bull_trend|tight                    n=  3 net=   -1.0 avg=-0.33 years+/1 -/1
+unknown_thin       BUY|vah_breakout|bear_trend|structured               n=  2 net=    0.0 avg=0.02 years+/1 -/0
+unknown_thin       BUY|vah_breakout|bear_trend|tight                    n=  1 net=    1.4 avg=1.41 years+/1 -/0
+unknown_thin       SELL|poc_bounce|weak_bear|vacuum                     n=  1 net=    2.8 avg=2.84 years+/1 -/0
+unknown_thin       BUY|poc_bounce|bull_trend|structured                 n=  1 net=    3.6 avg=3.57 years+/1 -/0
+unknown_thin       BUY|va_rejection|bull_chop|tight                     n=  4 net=    4.7 avg=1.16 years+/3 -/1
+prepared           SELL|val_breakdown|bull_chop|vacuum                  n= 15 net=    5.1 avg=0.34 years+/2 -/2
+unknown_thin       SELL|val_breakdown|weak_bear|tight                   n=  4 net=    7.7 avg=1.91 years+/1 -/2
+prepared           BUY|vah_breakout|bull_trend|structured               n= 22 net=    7.9 avg=0.36 years+/5 -/2
+unknown_thin       SELL|poc_bounce|bull_trend|vacuum                    n=  2 net=   11.2 avg=5.62 years+/1 -/1
+prepared           BUY|vah_breakout|weak_bear|vacuum                    n= 12 net=   12.7 avg=1.05 years+/3 -/3
+unknown_thin       BUY|va_rejection|bull_chop|vacuum                    n=  2 net=   12.7 avg=6.36 years+/2 -/0
+prepared           SELL|val_breakdown|bear_trend|tight                  n=  9 net=   19.4 avg=2.15 years+/2 -/2
+unknown_thin       SELL|va_rejection|bull_chop|structured               n=  1 net=   23.8 avg=23.77 years+/1 -/0
+prepared           BUY|va_rejection|bull_trend|tight                    n=  7 net=   27.3 avg=3.90 years+/3 -/2
+prepared           SELL|val_breakdown|bull_trend|vacuum                 n= 42 net=   30.6 avg=0.73 years+/4 -/2
+prepared           BUY|vah_breakout|bull_chop|structured                n= 16 net=   31.3 avg=1.96 years+/5 -/1
+prepared           SELL|val_breakdown|bear_trend|structured             n= 15 net=   42.0 avg=2.80 years+/3 -/2
+fragile_positive   SELL|val_breakdown|bear_trend|vacuum                 n= 47 net=   46.2 avg=0.98 years+/3 -/4
+
+=== COUNTERFACTUALS ===
+abstain: keep ONLY prepared cells
+  drop 180 ($4.4) → kept n=138 net=$176.1 wr=51%
+  byYear {"2019-20":{"n":9,"wr":33.33333333333333,"net":-4.519467847476442,"avg":-0.502163094164049},"2020-21":{"n":36,"wr":38.88888888888889,"net":-4.535889822739553,"avg":-0.12599693952054314},"2021-22":{"n":21,"wr":42.857142857142854,"net":-4.138862696351783,"avg":-0.1970886998262754},"2022-23":{"n":18,"wr":50,"net":14.813773301348002,"avg":0.8229874056304446},"2023-24":{"n":11,"wr":63.63636363636363,"net":17.929041380120736,"avg":1.6299128527382487},"2024-25":{"n":20,"wr":60,"net":35.58717271479482,"avg":1.7793586357397408},"2025-26":{"n":23,"wr":73.91304347826086,"net":121.01092842195145,"avg":5.261344713997889}}
+abstain: drop unprepared_bleed cells only
+  drop 86 ($-42.4) → kept n=232 net=$223.0 wr=44%
+  byYear {"2019-20":{"n":16,"wr":25,"net":-16.37151401308125,"avg":-1.023219625817578},"2020-21":{"n":43,"wr":39.53488372093023,"net":-2.8720083977301325,"avg":-0.0667908929704682},"2021-22":{"n":38,"wr":36.84210526315789,"net":-11.546837076137905,"avg":-0.30386413358257647},"2022-23":{"n":32,"wr":43.75,"net":17.613823843963928,"avg":0.5504319951238728},"2023-24":{"n":15,"wr":60,"net":27.76238589762155,"avg":1.8508257265081032},"2024-25":{"n":45,"wr":42.22222222222222,"net":37.75756430489544,"avg":0.839056984553232},"2025-26":{"n":43,"wr":58.139534883720934,"net":170.62928667392353,"avg":3.9681229459051983}}
+abstain: all vacuum VAH
+  drop 48 ($-4.7) → kept n=270 net=$185.3 wr=41%
+  byYear {"2019-20":{"n":22,"wr":31.818181818181817,"net":-11.108925246533314,"avg":-0.5049511475696961},"2020-21":{"n":57,"wr":35.08771929824561,"net":-19.8593725526768,"avg":-0.3484100447838035},"2021-22":{"n":49,"wr":32.6530612244898,"net":-21.15318093846664,"avg":-0.4316975701727886},"2022-23":{"n":31,"wr":41.935483870967744,"net":12.952112478259213,"avg":0.4178100799438456},"2023-24":{"n":19,"wr":47.368421052631575,"net":14.672639307889582,"avg":0.7722441740994517},"2024-25":{"n":45,"wr":42.22222222222222,"net":34.02596635456206,"avg":0.7561325856569346},"2025-26":{"n":47,"wr":55.319148936170215,"net":175.7545145715433,"avg":3.7394577568413467}}
+abstain: all vacuum VAL
+  drop 134 ($58.3) → kept n=184 net=$122.3 wr=45%
+  byYear {"2019-20":{"n":10,"wr":50,"net":6.337908575940311,"avg":0.6337908575940311},"2020-21":{"n":38,"wr":34.21052631578947,"net":-11.29721967108906,"avg":-0.2972952545023437},"2021-22":{"n":29,"wr":37.93103448275862,"net":-7.984738557671363,"avg":-0.2753358123334953},"2022-23":{"n":24,"wr":41.66666666666667,"net":5.543170105063092,"avg":0.23096542104429552},"2023-24":{"n":16,"wr":56.25,"net":17.050814516263344,"avg":1.065675907266459},"2024-25":{"n":32,"wr":50,"net":40.64279482311034,"avg":1.2700873382221982},"2025-26":{"n":35,"wr":51.42857142857142,"net":71.96976561996622,"avg":2.0562790177133206}}
+abstain: BUY chase_hi (prior5d>8%)
+  drop 6 ($8.8) → kept n=312 net=$171.8 wr=39%
+  byYear {"2019-20":{"n":22,"wr":31.818181818181817,"net":-11.108925246533314,"avg":-0.5049511475696961},"2020-21":{"n":72,"wr":33.33333333333333,"net":-23.00064680853464,"avg":-0.3194534278963144},"2021-22":{"n":55,"wr":32.72727272727273,"net":-20.849609072361275,"avg":-0.37908380131565955},"2022-23":{"n":36,"wr":38.88888888888889,"net":7.778547691056696,"avg":0.21607076919601934},"2023-24":{"n":23,"wr":52.17391304347826,"net":25.823101113562856,"avg":1.122743526676646},"2024-25":{"n":51,"wr":39.21568627450981,"net":30.825061066041275,"avg":0.6044129620792407},"2025-26":{"n":53,"wr":50.943396226415096,"net":162.29418038533095,"avg":3.0621543468930366}}
+abstain: BUY chase_hi+mid (prior5d>2%)
+  drop 36 ($29.9) → kept n=282 net=$150.7 wr=39%
+  byYear {"2019-20":{"n":21,"wr":33.33333333333333,"net":-8.275023371915017,"avg":-0.3940487319959532},"2020-21":{"n":69,"wr":33.33333333333333,"net":-21.115646377570663,"avg":-0.30602386054450237},"2021-22":{"n":50,"wr":32,"net":-19.552888795646567,"avg":-0.39105777591293134},"2022-23":{"n":31,"wr":41.935483870967744,"net":13.207223336919753,"avg":0.4260394624812824},"2023-24":{"n":19,"wr":57.89473684210527,"net":29.569964484469352,"avg":1.556313920235229},"2024-25":{"n":45,"wr":37.77777777777778,"net":27.018485498302432,"avg":0.6004107888511652},"2025-26":{"n":47,"wr":46.808510638297875,"net":129.88188802354932,"avg":2.7634444260329643}}
+abstain: SELL va_rejection when prior20d<=0
+  drop 0 ($0.0) → kept n=318 net=$180.6 wr=40%
+  byYear {"2019-20":{"n":22,"wr":31.818181818181817,"net":-11.108925246533314,"avg":-0.5049511475696961},"2020-21":{"n":74,"wr":33.78378378378378,"net":-23.13549527259884,"avg":-0.3126418280080924},"2021-22":{"n":56,"wr":33.92857142857143,"net":-17.959729016794494,"avg":-0.3207094467284731},"2022-23":{"n":38,"wr":39.473684210526315,"net":11.484922306055081,"avg":0.3022347975277653},"2023-24":{"n":23,"wr":52.17391304347826,"net":25.823101113562856,"avg":1.122743526676646},"2024-25":{"n":52,"wr":40.38461538461539,"net":33.18840319407889,"avg":0.6382385229630555},"2025-26":{"n":53,"wr":50.943396226415096,"net":162.29418038533095,"avg":3.0621543468930366}}
+abstain: SELL in bull_trend
+  drop 57 ($30.6) → kept n=261 net=$149.9 wr=39%
+  byYear {"2019-20":{"n":21,"wr":33.33333333333333,"net":-7.813700372946391,"avg":-0.37208097014030433},"2020-21":{"n":45,"wr":31.11111111111111,"net":-21.06151139887639,"avg":-0.4680335866416976},"2021-22":{"n":48,"wr":35.41666666666667,"net":-13.529485172530203,"avg":-0.28186427442771256},"2022-23":{"n":33,"wr":42.42424242424242,"net":16.7450791438741,"avg":0.5074266407234576},"2023-24":{"n":20,"wr":45,"net":14.277233326008734,"avg":0.7138616663004367},"2024-25":{"n":46,"wr":39.130434782608695,"net":5.224922092329889,"avg":0.11358526287673672},"2025-26":{"n":48,"wr":50,"net":156.10491318569416,"avg":3.2521856913686285}}
+abstain: SELL in any bull macro
+  drop 84 ($51.9) → kept n=234 net=$128.6 wr=38%
+  byYear {"2019-20":{"n":12,"wr":33.33333333333333,"net":-4.171325247122999,"avg":-0.3476104372602499},"2020-21":{"n":44,"wr":29.545454545454547,"net":-22.699445895389502,"avg":-0.5158964976224887},"2021-22":{"n":41,"wr":34.146341463414636,"net":-9.381987853195916,"avg":-0.2288289720291687},"2022-23":{"n":27,"wr":37.03703703703704,"net":1.4543764933060164,"avg":0.053865796048370974},"2023-24":{"n":20,"wr":45,"net":14.277233326008734,"avg":0.7138616663004367},"2024-25":{"n":45,"wr":37.77777777777778,"net":2.7013024551378884,"avg":0.06002894344750863},"2025-26":{"n":45,"wr":51.11111111111111,"net":146.46169315782683,"avg":3.2547042923961516}}
+sanity: (noop-ish) BUY val_breakdown
+  drop 0 ($0.0) → kept n=318 net=$180.6 wr=40%
+  byYear {"2019-20":{"n":22,"wr":31.818181818181817,"net":-11.108925246533314,"avg":-0.5049511475696961},"2020-21":{"n":74,"wr":33.78378378378378,"net":-23.13549527259884,"avg":-0.3126418280080924},"2021-22":{"n":56,"wr":33.92857142857143,"net":-17.959729016794494,"avg":-0.3207094467284731},"2022-23":{"n":38,"wr":39.473684210526315,"net":11.484922306055081,"avg":0.3022347975277653},"2023-24":{"n":23,"wr":52.17391304347826,"net":25.823101113562856,"avg":1.122743526676646},"2024-25":{"n":52,"wr":40.38461538461539,"net":33.18840319407889,"avg":0.6382385229630555},"2025-26":{"n":53,"wr":50.943396226415096,"net":162.29418038533095,"avg":3.0621543468930366}}
+
+=== FOLD CELL OOS ===
+fold 0 2021-01-25→2022-02-19 {"prepared":{"n":10,"wr":40,"net":4.039969459410102,"avg":0.4039969459410102},"unprepared_bleed":{"n":50,"wr":38,"net":-4.325688252086933,"avg":-0.08651376504173866},"unknown_thin":{"n":17,"wr":29.411764705882355,"net":-10.558422480596965,"avg":-0.6210836753292333},"fragile_positive":{"n":0,"wr":0,"net":0,"avg":0},"unseen":{"n":5,"wr":20,"net":-6.669681754076632,"avg":-1.3339363508153264}}
+fold 1 2022-02-19→2023-03-16 {"prepared":{"n":7,"wr":57.14285714285714,"net":4.361940051968547,"avg":0.6231342931383639},"unprepared_bleed":{"n":21,"wr":33.33333333333333,"net":4.504800240418783,"avg":0.21451429716279918},"unknown_thin":{"n":9,"wr":55.55555555555556,"net":5.534203496805304,"avg":0.6149114996450338},"fragile_positive":{"n":0,"wr":0,"net":0,"avg":0},"unseen":{"n":5,"wr":20,"net":-0.0349377397033237,"avg":-0.00698754794066474}}
+fold 2 2023-03-17→2024-04-10 {"prepared":{"n":8,"wr":50,"net":5.225277188177219,"avg":0.6531596485221524},"unprepared_bleed":{"n":8,"wr":62.5,"net":20.855186922495296,"avg":2.606898365311912},"unknown_thin":{"n":4,"wr":25,"net":-4.015585139510491,"avg":-1.0038962848776227},"fragile_positive":{"n":1,"wr":100,"net":6.597051827875874,"avg":6.597051827875874},"unseen":{"n":1,"wr":100,"net":3.5656354385509474,"avg":3.5656354385509474}}
+fold 3 2024-04-10→2025-05-05 {"prepared":{"n":18,"wr":55.55555555555556,"net":26.5159511243739,"avg":1.47310839579855},"unprepared_bleed":{"n":4,"wr":0,"net":-11.298825864894635,"avg":-2.8247064662236587},"unknown_thin":{"n":5,"wr":60,"net":9.776035094797404,"avg":1.9552070189594808},"fragile_positive":{"n":18,"wr":27.77777777777778,"net":-9.290445043881087,"avg":-0.5161358357711715},"unseen":{"n":7,"wr":14.285714285714285,"net":-15.239843045504065,"avg":-2.1771204350720095}}
+fold 4 2025-05-05→2026-05-30 {"prepared":{"n":26,"wr":53.84615384615385,"net":59.543261518682215,"avg":2.290125443026239},"unprepared_bleed":{"n":15,"wr":46.666666666666664,"net":77.20093859566762,"avg":5.146729239711175},"unknown_thin":{"n":12,"wr":33.33333333333333,"net":-2.1916560984530697,"avg":-0.18263800820442247},"fragile_positive":{"n":1,"wr":100,"net":8.555494007909184,"avg":8.555494007909184},"unseen":{"n":4,"wr":75,"net":37.86129634380719,"avg":9.465324085951798}}
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-prepared-regime-matrix.json

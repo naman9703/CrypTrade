@@ -168,6 +168,10 @@ async function readCandlesSlice(symbol, tf, fromMs, toMs, opts = {}) {
   }));
 }
 
+export async function upsertOhlcvCandles(symbol, tf, rows, source = "binance") {
+  return upsertCandles(symbol, tf, rows, source);
+}
+
 export async function readCandles(symbol, tf, fromMs, toMs, opts = {}) {
   const from = Number(fromMs);
   const to = Number(toMs);
@@ -182,7 +186,7 @@ export async function readCandles(symbol, tf, fromMs, toMs, opts = {}) {
   for (let cursor = from; cursor < to; cursor += READ_CANDLES_SLICE_MS) {
     const sliceTo = Math.min(to, cursor + READ_CANDLES_SLICE_MS);
     const part = await readCandlesSlice(symbol, tf, cursor, sliceTo, opts);
-    if (part.length) out.push(...part);
+    for (const bar of part) out.push(bar);
   }
   return out;
 }

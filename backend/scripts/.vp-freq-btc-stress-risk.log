@@ -1,0 +1,29 @@
+
+=== BTC VP FREQ stress/risk — 2022-06-01→2026-05-31 bars=142176 ===
+
+baseline N=32 ret=115.3% DD=8.9%
+
+RISK OVERLAY ABLATION:
+  kill_dd_15   N=32 ret=115.3% DD=8.9% Calmar=2.34
+  weekly_8     N=32 ret=115.3% DD=8.9% Calmar=2.34
+  consec_3     N=32 ret=115.3% DD=8.9% Calmar=2.34
+  stack_safe   N=32 ret=80.4% DD=11.4% Calmar=1.37
+
+SYNTHETIC STRESS:
+  flash_crash_15       N=34 ret=151.1% DD=8.9%
+  flash_crash_30       N=33 ret=109.3% DD=8.9%
+  sustained_bear_30    N=32 ret=102.4% DD=13.3%
+  exchange_gap         N=32 ret=115.3% DD=8.9%
+  liquidity_crunch     N=32 ret=-28.0% DD=28.0%
+  slip_x2              N=32 ret=102.4% DD=9.5%
+  slip_x4              N=32 ret=77.9% DD=10.9%
+  liq_x8               N=32 ret=-28.0% DD=28.0%
+
+REAL CRASH WINDOWS:
+  covid_2020     N=1 ret=-2.8% DD=2.8%
+  may_2021       N=2 ret=-5.5% DD=5.5%
+  ftx_2022       N=0 ret=0.0% DD=0.0%
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-btc-stress-risk.json
+
+RISK OVERLAY RECOMMENDATION: KEEP OFF (research default)

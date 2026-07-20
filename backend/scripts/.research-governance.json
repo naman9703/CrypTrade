@@ -1,0 +1,3982 @@
+{
+  "platform": "Quantitative Market Research Platform",
+  "platformDescription": "A quantitative market research platform that measures the predictive value of observable information under rigorous validation constraints. The trading system is one consumer of its outputs.",
+  "projectPhases": {
+    "PHASE_0_ENGINEERING": {
+      "id": 0,
+      "name": "Engineering",
+      "question": "Can we build a reliable backtester?",
+      "status": "solved"
+    },
+    "PHASE_1_STRATEGY": {
+      "id": 1,
+      "name": "Strategy Evaluation",
+      "question": "Can we build a better liquidity strategy?",
+      "status": "solved_no_edge_at_L0_L1"
+    },
+    "PHASE_2_SCIENTIFIC": {
+      "id": 2,
+      "name": "Information Evaluation",
+      "question": "What observable information is actually predictive?",
+      "status": "phase_2b_active",
+      "subphases": {
+        "2a": {
+          "name": "Price-derived falsification (Families A/C/D)",
+          "status": "complete"
+        },
+        "2b": {
+          "name": "Additional observable information — funding (rigorous) + OI (exploratory)",
+          "status": "active"
+        }
+      }
+    },
+    "PHASE_3_ACQUISITION": {
+      "id": 3,
+      "name": "Data Acquisition Decisions",
+      "question": "What should we learn next?",
+      "status": "oi_funding_justified"
+    }
+  },
+  "primaryObjective": "Empirically determine which aspects of financial markets are predictable with the observable information available, how much confidence that prediction deserves, and whether acquiring additional information is justified.",
+  "progressMetrics": {
+    "correctRejection": "Did the platform correctly reject a weak hypothesis?",
+    "holdoutSurvival": "Did a reproducible effect survive holdout testing?",
+    "uncertaintyReduction": "Did research reduce uncertainty about market behavior?",
+    "decisionQuality": "Did decision quality improve on unseen data?",
+    "researchEfficiency": "How much did we learn per unit of research effort?",
+    "l0l1Falsification": "Have unrelated L0–L1 families been tested before data investment?"
+  },
+  "progress": {
+    "correctRejection": {
+      "met": true,
+      "detail": "5 hypotheses correctly rejected"
+    },
+    "holdoutSurvival": {
+      "met": true,
+      "detail": "Some holdout slices positive"
+    },
+    "uncertaintyReduction": {
+      "met": true,
+      "detail": "UOA: 5 hypotheses"
+    },
+    "decisionQuality": {
+      "met": true,
+      "detail": "Holdout distributional beats score",
+      "note": "Bottleneck: observable information at L0–L1, not estimator"
+    },
+    "researchEfficiency": {
+      "met": true,
+      "detail": "Avg efficiency 0.191; top EXP-005"
+    },
+    "l0l1Falsification": {
+      "met": true,
+      "detail": "FALS-001 complete (3 families)"
+    }
+  },
+  "familyGovernance": [
+    {
+      "verdict": {
+        "familyId": "A",
+        "familyName": "Liquidity continuation",
+        "status": "confirmed_negative",
+        "lifecycle": "provisional_negative",
+        "lifecycleLabel": "Provisional negative",
+        "experimentsRun": 5,
+        "accepted": 0,
+        "partial": 1,
+        "promotedFeatures": 0,
+        "verdict": "provisional_negative",
+        "recommendation": "Provisional negative — failed promotion; confirm on full parity run (same universe, window, data source as Family A) before confirmed negative",
+        "exit": {
+          "familyId": "A",
+          "familyName": "Liquidity continuation",
+          "shouldArchive": true,
+          "triggers": [
+            "repeated_holdout_failures",
+            "no_stable_effect_across_assets"
+          ],
+          "checks": {
+            "hypothesisBudget": false,
+            "holdoutFailures": true,
+            "assetStability": true,
+            "informationGain": false,
+            "effortExhausted": false,
+            "manualFreeze": false
+          },
+          "recommendation": "Archive family A — repeated_holdout_failures, no_stable_effect_across_assets",
+          "exitCriteria": {
+            "maxIndependentHypothesesWithoutPromotion": 6,
+            "maxHoldoutFailures": 2,
+            "minAssetStabilityRatio": 0.4,
+            "minInformationGain": 0.01,
+            "maxResearchEffortCycles": 3
+          }
+        },
+        "productionObjective": "universal",
+        "runParity": null
+      },
+      "exit": {
+        "familyId": "A",
+        "familyName": "Liquidity continuation",
+        "shouldArchive": true,
+        "triggers": [
+          "repeated_holdout_failures",
+          "no_stable_effect_across_assets"
+        ],
+        "checks": {
+          "hypothesisBudget": false,
+          "holdoutFailures": true,
+          "assetStability": true,
+          "informationGain": false,
+          "effortExhausted": false,
+          "manualFreeze": false
+        },
+        "recommendation": "Archive family A — repeated_holdout_failures, no_stable_effect_across_assets",
+        "exitCriteria": {
+          "maxIndependentHypothesesWithoutPromotion": 6,
+          "maxHoldoutFailures": 2,
+          "minAssetStabilityRatio": 0.4,
+          "minInformationGain": 0.01,
+          "maxResearchEffortCycles": 3
+        }
+      },
+      "negativeResult": {
+        "verdict": "confirmed_negative_at_L0_L1",
+        "testedLevels": [
+          "L0",
+          "L1"
+        ],
+        "result": "No promotion after 6 hypotheses on full parity run",
+        "nextTestLevels": [
+          "L2"
+        ],
+        "nextTestAction": "Integrate OI + funding (free) before L3 microstructure",
+        "scientificStatement": "With OHLCV and derived features (L0–L1), liquidity continuation cannot be distinguished from noise at promotion gates. OI/funding (L2) untested.",
+        "confirmedAt": "2026-07-10"
+      }
+    },
+    {
+      "verdict": {
+        "familyId": "B",
+        "familyName": "Liquidity reversal",
+        "status": "planned",
+        "lifecycle": "validation",
+        "lifecycleLabel": "Validation",
+        "experimentsRun": 0,
+        "accepted": 0,
+        "partial": 0,
+        "promotedFeatures": 0,
+        "verdict": "insufficient_evidence",
+        "recommendation": "Continue research or freeze family",
+        "exit": {
+          "familyId": "B",
+          "familyName": "Liquidity reversal",
+          "shouldArchive": false,
+          "triggers": [],
+          "checks": {
+            "hypothesisBudget": false,
+            "holdoutFailures": false,
+            "assetStability": false,
+            "informationGain": false,
+            "effortExhausted": false,
+            "manualFreeze": false
+          },
+          "recommendation": "Continue research — exit criteria not met",
+          "exitCriteria": {
+            "maxIndependentHypothesesWithoutPromotion": 6,
+            "maxHoldoutFailures": 2,
+            "minAssetStabilityRatio": 0.4,
+            "minInformationGain": 0.01,
+            "maxResearchEffortCycles": 3
+          }
+        },
+        "productionObjective": "universal",
+        "runParity": null
+      },
+      "exit": {
+        "familyId": "B",
+        "familyName": "Liquidity reversal",
+        "shouldArchive": false,
+        "triggers": [],
+        "checks": {
+          "hypothesisBudget": false,
+          "holdoutFailures": false,
+          "assetStability": false,
+          "informationGain": false,
+          "effortExhausted": false,
+          "manualFreeze": false
+        },
+        "recommendation": "Continue research — exit criteria not met",
+        "exitCriteria": {
+          "maxIndependentHypothesesWithoutPromotion": 6,
+          "maxHoldoutFailures": 2,
+          "minAssetStabilityRatio": 0.4,
+          "minInformationGain": 0.01,
+          "maxResearchEffortCycles": 3
+        }
+      },
+      "negativeResult": null
+    },
+    {
+      "verdict": {
+        "familyId": "C",
+        "familyName": "Trend continuation",
+        "status": "confirmed_negative",
+        "lifecycle": "validation",
+        "lifecycleLabel": "Validation",
+        "experimentsRun": 0,
+        "accepted": 0,
+        "partial": 0,
+        "promotedFeatures": 0,
+        "verdict": "insufficient_evidence",
+        "recommendation": "Continue research or freeze family",
+        "exit": {
+          "familyId": "C",
+          "familyName": "Trend continuation",
+          "shouldArchive": false,
+          "triggers": [],
+          "checks": {
+            "hypothesisBudget": false,
+            "holdoutFailures": false,
+            "assetStability": false,
+            "informationGain": false,
+            "effortExhausted": false,
+            "manualFreeze": false
+          },
+          "recommendation": "Continue research — exit criteria not met",
+          "exitCriteria": {
+            "maxIndependentHypothesesWithoutPromotion": 6,
+            "maxHoldoutFailures": 2,
+            "minAssetStabilityRatio": 0.4,
+            "minInformationGain": 0.01,
+            "maxResearchEffortCycles": 3
+          }
+        },
+        "productionObjective": "per_coin",
+        "runParity": null
+      },
+      "exit": {
+        "familyId": "C",
+        "familyName": "Trend continuation",
+        "shouldArchive": false,
+        "triggers": [],
+        "checks": {
+          "hypothesisBudget": false,
+          "holdoutFailures": false,
+          "assetStability": false,
+          "informationGain": false,
+          "effortExhausted": false,
+          "manualFreeze": false
+        },
+        "recommendation": "Continue research — exit criteria not met",
+        "exitCriteria": {
+          "maxIndependentHypothesesWithoutPromotion": 6,
+          "maxHoldoutFailures": 2,
+          "minAssetStabilityRatio": 0.4,
+          "minInformationGain": 0.01,
+          "maxResearchEffortCycles": 3
+        }
+      },
+      "negativeResult": {
+        "verdict": "confirmed_negative_at_L0_L1",
+        "testedLevels": [
+          "L0",
+          "L1"
+        ],
+        "result": "No promotion after 6 hypotheses",
+        "nextTestLevels": [
+          "L2"
+        ],
+        "nextTestAction": "Integrate OI + funding before L3 microstructure",
+        "scientificStatement": "Trend acceleration (ST flip) using price-derived L0–L1 features did not achieve promotion. Not archived — retest with L2 OI/funding.",
+        "confirmedAt": null
+      }
+    },
+    {
+      "verdict": {
+        "familyId": "D",
+        "familyName": "Volatility expansion",
+        "status": "confirmed_negative",
+        "lifecycle": "validation",
+        "lifecycleLabel": "Validation",
+        "experimentsRun": 0,
+        "accepted": 0,
+        "partial": 0,
+        "promotedFeatures": 0,
+        "verdict": "insufficient_evidence",
+        "recommendation": "Continue research or freeze family",
+        "exit": {
+          "familyId": "D",
+          "familyName": "Volatility expansion",
+          "shouldArchive": false,
+          "triggers": [],
+          "checks": {
+            "hypothesisBudget": false,
+            "holdoutFailures": false,
+            "assetStability": false,
+            "informationGain": false,
+            "effortExhausted": false,
+            "manualFreeze": false
+          },
+          "recommendation": "Continue research — exit criteria not met",
+          "exitCriteria": {
+            "maxIndependentHypothesesWithoutPromotion": 6,
+            "maxHoldoutFailures": 2,
+            "minAssetStabilityRatio": 0.4,
+            "minInformationGain": 0.01,
+            "maxResearchEffortCycles": 3
+          }
+        },
+        "productionObjective": "universal",
+        "runParity": null
+      },
+      "exit": {
+        "familyId": "D",
+        "familyName": "Volatility expansion",
+        "shouldArchive": false,
+        "triggers": [],
+        "checks": {
+          "hypothesisBudget": false,
+          "holdoutFailures": false,
+          "assetStability": false,
+          "informationGain": false,
+          "effortExhausted": false,
+          "manualFreeze": false
+        },
+        "recommendation": "Continue research — exit criteria not met",
+        "exitCriteria": {
+          "maxIndependentHypothesesWithoutPromotion": 6,
+          "maxHoldoutFailures": 2,
+          "minAssetStabilityRatio": 0.4,
+          "minInformationGain": 0.01,
+          "maxResearchEffortCycles": 3
+        }
+      },
+      "negativeResult": {
+        "verdict": "confirmed_negative_at_L0_L1",
+        "testedLevels": [
+          "L0",
+          "L1"
+        ],
+        "result": "No promotion after 6 hypotheses",
+        "nextTestLevels": [
+          "L2"
+        ],
+        "nextTestAction": "Integrate OI + funding before L3 microstructure",
+        "scientificStatement": "Volatility expansion events using price-derived L0–L1 features did not achieve promotion. Not archived — retest with L2 OI/funding.",
+        "confirmedAt": null
+      }
+    },
+    {
+      "verdict": {
+        "familyId": "E",
+        "familyName": "Mean reversion",
+        "status": "planned",
+        "lifecycle": "validation",
+        "lifecycleLabel": "Validation",
+        "experimentsRun": 0,
+        "accepted": 0,
+        "partial": 0,
+        "promotedFeatures": 0,
+        "verdict": "insufficient_evidence",
+        "recommendation": "Continue research or freeze family",
+        "exit": {
+          "familyId": "E",
+          "familyName": "Mean reversion",
+          "shouldArchive": false,
+          "triggers": [],
+          "checks": {
+            "hypothesisBudget": false,
+            "holdoutFailures": false,
+            "assetStability": false,
+            "informationGain": false,
+            "effortExhausted": false,
+            "manualFreeze": false
+          },
+          "recommendation": "Continue research — exit criteria not met",
+          "exitCriteria": {
+            "maxIndependentHypothesesWithoutPromotion": 6,
+            "maxHoldoutFailures": 2,
+            "minAssetStabilityRatio": 0.4,
+            "minInformationGain": 0.01,
+            "maxResearchEffortCycles": 3
+          }
+        },
+        "productionObjective": "universal",
+        "runParity": null
+      },
+      "exit": {
+        "familyId": "E",
+        "familyName": "Mean reversion",
+        "shouldArchive": false,
+        "triggers": [],
+        "checks": {
+          "hypothesisBudget": false,
+          "holdoutFailures": false,
+          "assetStability": false,
+          "informationGain": false,
+          "effortExhausted": false,
+          "manualFreeze": false
+        },
+        "recommendation": "Continue research — exit criteria not met",
+        "exitCriteria": {
+          "maxIndependentHypothesesWithoutPromotion": 6,
+          "maxHoldoutFailures": 2,
+          "minAssetStabilityRatio": 0.4,
+          "minInformationGain": 0.01,
+          "maxResearchEffortCycles": 3
+        }
+      },
+      "negativeResult": null
+    }
+  ],
+  "backlog": [
+    {
+      "id": "FALS-001",
+      "title": "Is L0–L1 observable information sufficient to justify continued research?",
+      "category": "falsification",
+      "informationLevels": [
+        "L0",
+        "L1"
+      ],
+      "informationLatency": "candle_close",
+      "informationGain": "very_high",
+      "phase": "validation",
+      "rationale": "Neutral question — four outcomes (A: insufficient info, B: weak formulation, C: timeframe/universe, D: little edge). Does NOT auto-imply L3 purchase",
+      "status": "completed",
+      "blocksDataInvestment": false,
+      "blockedBy": null
+    },
+    {
+      "id": "UOA-001",
+      "title": "Unexplained outcome analysis — can variance be explained by observable information?",
+      "category": "unexplained_outcome_analysis",
+      "informationLevels": [
+        "L0",
+        "L1"
+      ],
+      "informationGain": "high",
+      "rationale": "Three outcomes: missing information, irreducible noise, no edge",
+      "status": "active",
+      "blockedBy": null
+    },
+    {
+      "id": "DISC-001",
+      "title": "Holdout rank correlation (discrimination at L0–L1)",
+      "category": "probabilistic_modeling",
+      "informationGain": "high",
+      "rationale": "E[R] rank correlation -0.02 — ranking bottleneck",
+      "status": "active",
+      "blockedBy": null
+    },
+    {
+      "id": "PHASE2B-FUNDING",
+      "title": "Phase 2b — does historical funding improve discrimination over L0–L1?",
+      "category": "probabilistic_modeling",
+      "informationLevels": [
+        "L2"
+      ],
+      "informationLatency": "minutes",
+      "informationGain": "high",
+      "rationale": "Rigorous validation — full 2022–2026 funding coverage",
+      "status": "active",
+      "blockedBy": null
+    },
+    {
+      "id": "DATA-001-OI",
+      "title": "Integrate OI streaming + partial historical (30d API window)",
+      "category": "information_acquisition",
+      "informationLevels": [
+        "L2"
+      ],
+      "informationLatency": "minutes",
+      "informationGain": "high",
+      "rationale": "Binance OI hist limited to ~30d — accumulate via sync; exploratory only until coverage grows",
+      "status": "partial",
+      "blockedBy": null
+    },
+    {
+      "id": "PORT-001",
+      "title": "Portfolio-level decision quality",
+      "category": "portfolio",
+      "informationGain": "high",
+      "rationale": "Evaluate at portfolio level — correlation, concentration, costs",
+      "status": "planned",
+      "blockedBy": null
+    },
+    {
+      "id": "FALS-002",
+      "title": "Family C — trend acceleration harvester (SUPERTREND_ELITE candidates)",
+      "category": "falsification",
+      "informationLevels": [
+        "L0",
+        "L1"
+      ],
+      "informationLatency": "candle_close",
+      "informationGain": "high",
+      "phase": "validation",
+      "rationale": "First falsification family — expressible at L0–L1, unrelated to liquidity continuation",
+      "status": "completed",
+      "blockedBy": null
+    },
+    {
+      "id": "FALS-003",
+      "title": "Family D — volatility expansion harvester",
+      "category": "falsification",
+      "informationLevels": [
+        "L0",
+        "L1"
+      ],
+      "informationLatency": "candle_close",
+      "informationGain": "high",
+      "phase": "validation",
+      "rationale": "Second falsification family — regime transition at L0–L1",
+      "status": "completed",
+      "blockedBy": null
+    },
+    {
+      "id": "DATA-001-FUNDING",
+      "title": "Integrate funding into additional observable information pipeline",
+      "category": "information_acquisition",
+      "informationLevels": [
+        "L2"
+      ],
+      "informationLatency": "minutes",
+      "informationGain": "high",
+      "rationale": "Full Binance historical funding — ready for rigorous Phase 2b validation",
+      "status": "completed",
+      "blockedBy": null
+    },
+    {
+      "id": "PHASE2B-OI",
+      "title": "Phase 2b — does recent OI justify continuous collection?",
+      "category": "probabilistic_modeling",
+      "informationLevels": [
+        "L2"
+      ],
+      "informationLatency": "minutes",
+      "informationGain": "medium",
+      "rationale": "Exploratory / feasibility — do NOT generalize partial OI to full research window",
+      "status": "active",
+      "blockedBy": null
+    }
+  ],
+  "efficiency": [
+    {
+      "id": "EXP-005",
+      "devDays": 2,
+      "compute": "low",
+      "informationGain": "high",
+      "decision": "reject",
+      "verdict": "disproven",
+      "efficiency": 0.5303,
+      "hypothesis": "scoreV2_total negative correlation is selection bias — decompose components vs f"
+    },
+    {
+      "id": "EXP-001",
+      "devDays": 2,
+      "compute": "medium",
+      "informationGain": "high",
+      "decision": "reject",
+      "verdict": "disproven",
+      "efficiency": 0.2652,
+      "hypothesis": "Continuation room (cont_score) improves forward expectancy — more room before op"
+    },
+    {
+      "id": "EXP-003",
+      "devDays": 2,
+      "compute": "medium",
+      "informationGain": "medium",
+      "decision": "reject",
+      "verdict": "inconclusive",
+      "efficiency": 0.1768,
+      "hypothesis": "Weekly/daily external liquidity (level_importance) predicts hit2R rate."
+    },
+    {
+      "id": "EXP-004",
+      "devDays": 3,
+      "compute": "medium",
+      "informationGain": "low",
+      "decision": "reject",
+      "verdict": "disproven",
+      "efficiency": 0.0722,
+      "hypothesis": "Market ADX × continuation score interaction improves forward R (nonlinear combo)"
+    },
+    {
+      "id": "EXP-006",
+      "devDays": 3,
+      "compute": "medium",
+      "informationGain": "low",
+      "decision": "reject",
+      "verdict": "disproven",
+      "efficiency": 0.0722,
+      "hypothesis": "Session narrative × level type interaction improves forward R across coins and r"
+    },
+    {
+      "id": "EXP-002",
+      "devDays": 4,
+      "compute": "high",
+      "informationGain": "low",
+      "decision": "reject",
+      "verdict": "disproven",
+      "efficiency": 0.0313,
+      "hypothesis": "Sweep velocity alone is weak; sweep_velocityAtr × level_importance interaction l"
+    }
+  ],
+  "beliefLog": {
+    "propositions": {
+      "liq_continuation_ohlcv": {
+        "prior": 0.7,
+        "alpha": 11.89999999999999,
+        "beta": 51.69999999999999,
+        "proposition": "Liquidity continuation after reclaim is predictable from OHLCV (L0–L1)",
+        "informationLevels": [
+          "L0",
+          "L1"
+        ],
+        "reusableAcross": [
+          "Family A",
+          "LIQ_MAP"
+        ],
+        "posterior": 0.1871,
+        "lastEvent": {
+          "type": "uoa_unexplained_variance",
+          "detail": "Identical L1 features, divergent outcomes — L0–L1 may be exhausted for this formulation",
+          "weight": 2
+        }
+      },
+      "regime_conditional_continuation": {
+        "prior": 0.5,
+        "alpha": 5,
+        "beta": 5,
+        "proposition": "Continuation probability depends on market regime (L1)",
+        "informationLevels": [
+          "L0",
+          "L1"
+        ],
+        "reusableAcross": [
+          "Family A",
+          "Family C"
+        ]
+      },
+      "orderflow_improves_discrimination": {
+        "prior": 0.55,
+        "alpha": 12.099999999999996,
+        "beta": 8.900000000000004,
+        "proposition": "Historical order-book microstructure (L3) materially improves discrimination",
+        "informationLevels": [
+          "L3"
+        ],
+        "requiredLevels": [
+          "L3"
+        ],
+        "untestable": true,
+        "reusableAcross": [
+          "execution",
+          "microstructure hypotheses"
+        ],
+        "posterior": 0.5762,
+        "lastEvent": {
+          "type": "uoa_missing_information",
+          "detail": "Unexplained variance suggests L2+ information may be required — proposition untestable until ingested",
+          "weight": 1
+        }
+      },
+      "oi_liquidations_improve_liq": {
+        "prior": 0.45,
+        "alpha": 4.5,
+        "beta": 5.5,
+        "proposition": "Open interest and funding (L2) improve hypothesis discrimination vs L0–L1 alone",
+        "informationLevels": [
+          "L2"
+        ],
+        "requiredLevels": [
+          "L2"
+        ],
+        "untestable": false,
+        "reusableAcross": [
+          "Family A retest",
+          "positioning hypotheses"
+        ]
+      },
+      "trend_ohlcv_predictable": {
+        "prior": 0.35,
+        "alpha": 3.5,
+        "beta": 6.5,
+        "proposition": "Trend acceleration is predictable from OHLCV-derived features (L0–L1)",
+        "informationLevels": [
+          "L0",
+          "L1"
+        ],
+        "reusableAcross": [
+          "Family C",
+          "SUPERTREND_ELITE"
+        ]
+      }
+    },
+    "history": [
+      {
+        "at": "2026-07-10T02:21:53.212Z",
+        "events": [
+          {
+            "belief": "liquidity_continuation",
+            "strength": 0.19999999999999996,
+            "posterior": 0.6348
+          }
+        ]
+      },
+      {
+        "at": "2026-07-10T02:21:53.318Z",
+        "events": [
+          {
+            "belief": "liquidity_continuation",
+            "strength": 0.3599999999999999,
+            "posterior": 0.5857
+          },
+          {
+            "belief": "liquidity_continuation",
+            "strength": 0.15,
+            "note": "latent_state_incomplete"
+          }
+        ]
+      },
+      {
+        "at": "2026-07-10T03:02:45.337Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.075,
+            "posterior": 0.633
+          }
+        ]
+      },
+      {
+        "at": "2026-07-10T03:25:00.596Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.075,
+            "posterior": 0.579
+          }
+        ]
+      },
+      {
+        "at": "2026-07-10T03:25:00.840Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.09,
+            "posterior": 0.5111
+          },
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "note": "L0-L1 plateau suspected"
+          },
+          {
+            "proposition": "orderflow_improves_discrimination",
+            "note": "L2 may be needed"
+          }
+        ]
+      },
+      {
+        "at": "2026-07-10T03:29:31.176Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.09,
+            "posterior": 0.4207
+          },
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "note": "L0-L1 plateau suspected"
+          },
+          {
+            "proposition": "orderflow_improves_discrimination",
+            "note": "L2 may be needed"
+          }
+        ]
+      },
+      {
+        "at": "2026-07-10T04:08:10.341Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.075,
+            "posterior": 0.3718
+          }
+        ]
+      },
+      {
+        "at": "2026-07-10T04:14:19.322Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.075,
+            "posterior": 0.3561
+          }
+        ]
+      },
+      {
+        "at": "2026-07-10T04:17:23.301Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.075,
+            "posterior": 0.3421
+          }
+        ]
+      },
+      {
+        "at": "2026-07-10T04:19:29.539Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.09,
+            "posterior": 0.3227
+          },
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "note": "L0-L1 plateau suspected"
+          },
+          {
+            "proposition": "orderflow_improves_discrimination",
+            "note": "L2 may be needed"
+          }
+        ]
+      },
+      {
+        "at": "2026-07-10T15:02:31.169Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.075,
+            "posterior": 0.2973
+          }
+        ]
+      },
+      {
+        "at": "2026-07-10T19:18:36.843Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.09,
+            "posterior": 0.284
+          },
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "note": "L0-L1 plateau suspected"
+          },
+          {
+            "proposition": "orderflow_improves_discrimination",
+            "note": "L2 may be needed"
+          }
+        ]
+      },
+      {
+        "at": "2026-07-10T19:18:37.176Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.075,
+            "posterior": 0.266
+          }
+        ]
+      },
+      {
+        "at": "2026-07-11T01:29:11.726Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.09,
+            "posterior": 0.2563
+          },
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "note": "L0-L1 plateau suspected"
+          },
+          {
+            "proposition": "orderflow_improves_discrimination",
+            "note": "L2 may be needed"
+          }
+        ]
+      },
+      {
+        "at": "2026-07-11T01:37:37.666Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.075,
+            "posterior": 0.2429
+          }
+        ]
+      },
+      {
+        "at": "2026-07-11T01:38:03.803Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.09,
+            "posterior": 0.2356
+          },
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "note": "L0-L1 plateau suspected"
+          },
+          {
+            "proposition": "orderflow_improves_discrimination",
+            "note": "L2 may be needed"
+          }
+        ]
+      },
+      {
+        "at": "2026-07-11T01:38:55.417Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.09,
+            "posterior": 0.2232
+          },
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "note": "L0-L1 plateau suspected"
+          },
+          {
+            "proposition": "orderflow_improves_discrimination",
+            "note": "L2 may be needed"
+          }
+        ]
+      },
+      {
+        "at": "2026-07-11T01:39:41.608Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.09,
+            "posterior": 0.2129
+          },
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "note": "L0-L1 plateau suspected"
+          },
+          {
+            "proposition": "orderflow_improves_discrimination",
+            "note": "L2 may be needed"
+          }
+        ]
+      },
+      {
+        "at": "2026-07-11T01:50:11.196Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.09,
+            "posterior": 0.2041
+          },
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "note": "L0-L1 plateau suspected"
+          },
+          {
+            "proposition": "orderflow_improves_discrimination",
+            "note": "L2 may be needed"
+          }
+        ]
+      },
+      {
+        "at": "2026-07-11T02:06:49.205Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.09,
+            "posterior": 0.1965
+          },
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "note": "L0-L1 plateau suspected"
+          },
+          {
+            "proposition": "orderflow_improves_discrimination",
+            "note": "L2 may be needed"
+          }
+        ]
+      },
+      {
+        "at": "2026-07-11T02:08:51.186Z",
+        "events": [
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "strength": 0.09,
+            "posterior": 0.1899
+          },
+          {
+            "proposition": "liq_continuation_ohlcv",
+            "note": "L0-L1 plateau suspected"
+          },
+          {
+            "proposition": "orderflow_improves_discrimination",
+            "note": "L2 may be needed"
+          }
+        ]
+      }
+    ],
+    "updatedAt": null
+  },
+  "informationLimit": {
+    "question": "Can the remaining variance be explained by observable information available to us?",
+    "conclusion": "missing_information",
+    "testedLevels": [
+      "L0",
+      "L1"
+    ],
+    "maxAvailableLevel": "L2",
+    "requiredLevelsForRetest": [
+      "L2"
+    ],
+    "signals": [
+      "MI plateau below 0.02 at L0–L1",
+      "Holdout rank correlation near zero — cannot rank opportunities",
+      "51% UOA failures from indistinguishable candidates at L0–L1"
+    ],
+    "metrics": {
+      "maxMutualInfo": 0.01,
+      "holdoutRankCorrelation": -0.020046898375070298,
+      "similarExpectedRRate": 0.5066666666666667,
+      "experimentsRun": 6
+    },
+    "recommendation": "Exhausted explanatory power at L0–L1. Retest requires L2. Status: untestable until ingested.",
+    "threeOutcomes": {
+      "missingInformation": "concluded",
+      "irreducibleRandomness": "possible",
+      "noExploitableRelationship": "possible"
+    }
+  },
+  "acquisitionPlan": {
+    "question": "What should we learn next?",
+    "fals001": {
+      "question": "Is current observable information sufficient to justify continued L0–L1 research?",
+      "outcome": "no_price_derived_family_promotion",
+      "summary": "No L0–L2 (price-derived) hypothesis family achieved promotion under the current validation framework. The next evidence-based research step is to evaluate whether additional observable information (Open Interest and Funding) improves decision quality before considering higher-cost market microstructure data.",
+      "interpretations": [
+        "Evidence is insufficient to distinguish between the plausible explanations below — do not assume a single cause",
+        "- Weak formulation — implementations may be poor (not ruled out)",
+        "- Insufficient observable information — all families used price-derived features; OI/funding (L2) untested",
+        "- Validation conservatism — strict promotion gates increase false negatives; no promotion ≠ no signal",
+        "- Market/timeframe dependence — phenomenon may exist on different horizon or universe",
+        "Some holdout slices showed weak signal — consistent with validation conservatism or weak formulation, not uniquely insufficient information",
+        "Case C always possible: phenomenon may exist on different timeframe than 15m or outside crypto_futures"
+      ],
+      "nextSteps": [
+        {
+          "action": "Integrate free L2: OI + funding — genuinely new information, not another OHLCV transform",
+          "priority": 1
+        },
+        {
+          "action": "Retest price-derived families with L2 features before any L3 microstructure investment",
+          "priority": 2
+        },
+        {
+          "action": "Only consider L3 historical order book if OI/funding measurably improve discrimination",
+          "priority": 3
+        }
+      ],
+      "sufficientForContinuedL01Research": false,
+      "sufficientForContinuedPriceDerivedResearch": false,
+      "phase": "2a_complete",
+      "endOfPhase2a": true,
+      "nextPhase": "2b_l2_oi_funding",
+      "cases": {
+        "weakFormulation": "plausible — not uniquely identified",
+        "insufficientInformation": "plausible — L2 OI/funding untested",
+        "validationConservatism": "plausible — no promotion ≠ no signal",
+        "marketTimeframeDependence": "plausible — alternate horizon/universe",
+        "littleExploitableEdge": "possible — legitimate scientific outcome"
+      },
+      "families": {
+        "A": "failed",
+        "C": null,
+        "D": null
+      },
+      "runParity": null
+    },
+    "currentBottleneck": "missing_information",
+    "blockers": [],
+    "recommendations": [
+      {
+        "priority": 1,
+        "action": "Integrate free L2: OI + funding — genuinely new information, not another OHLCV transform",
+        "detail": "",
+        "rationale": ""
+      },
+      {
+        "priority": 2,
+        "action": "Retest price-derived families with L2 features before any L3 microstructure investment",
+        "detail": "",
+        "rationale": ""
+      },
+      {
+        "priority": 2,
+        "action": "Integrate free L2: OI + funding (Phase 1)",
+        "detail": "Highest score in investment matrix — free, low engineering",
+        "rationale": "Test before expensive L3 microstructure; not automatic from family failures"
+      },
+      {
+        "priority": 3,
+        "action": "Only consider L3 historical order book if OI/funding measurably improve discrimination",
+        "detail": "",
+        "rationale": ""
+      }
+    ],
+    "rankedInvestments": [
+      {
+        "investment": "Integrate OI + funding (L2)",
+        "type": "data_integration",
+        "cost": "low",
+        "engineering": "low",
+        "expectedInformationGain": "high",
+        "levels": [
+          "L2"
+        ],
+        "free": true,
+        "score": 1.5
+      },
+      {
+        "investment": "New L0–L1 hypothesis family",
+        "type": "hypothesis",
+        "cost": "low",
+        "engineering": "low",
+        "expectedInformationGain": "medium",
+        "levels": [
+          "L0",
+          "L1"
+        ],
+        "score": 1
+      },
+      {
+        "investment": "Longer historical data",
+        "type": "data",
+        "cost": "low",
+        "engineering": "low",
+        "expectedInformationGain": "medium",
+        "levels": [
+          "L0"
+        ],
+        "score": 1
+      },
+      {
+        "investment": "More assets / universe",
+        "type": "universe",
+        "cost": "low",
+        "engineering": "medium",
+        "expectedInformationGain": "medium",
+        "levels": [
+          "L0",
+          "L1"
+        ],
+        "score": 0.6666666666666666
+      },
+      {
+        "investment": "Alternate timeframe (5m)",
+        "type": "timeframe",
+        "cost": "low",
+        "engineering": "medium",
+        "expectedInformationGain": "medium",
+        "levels": [
+          "L0",
+          "L1"
+        ],
+        "score": 0.6666666666666666
+      },
+      {
+        "investment": "Trade flow ingestion",
+        "type": "data",
+        "cost": "low",
+        "engineering": "medium",
+        "expectedInformationGain": "medium",
+        "levels": [
+          "L2",
+          "L3"
+        ],
+        "score": 0.6666666666666666
+      }
+    ],
+    "caution": "Family failures do not automatically imply L3 order book. Consider Cases B (formulation), C (timeframe/universe), D (little edge)."
+  },
+  "falsification": {
+    "question": "Is current observable information sufficient to justify continued L0–L1 research?",
+    "outcome": "no_price_derived_family_promotion",
+    "summary": "No L0–L2 (price-derived) hypothesis family achieved promotion under the current validation framework. The next evidence-based research step is to evaluate whether additional observable information (Open Interest and Funding) improves decision quality before considering higher-cost market microstructure data.",
+    "interpretations": [
+      "Evidence is insufficient to distinguish between the plausible explanations below — do not assume a single cause",
+      "- Weak formulation — implementations may be poor (not ruled out)",
+      "- Insufficient observable information — all families used price-derived features; OI/funding (L2) untested",
+      "- Validation conservatism — strict promotion gates increase false negatives; no promotion ≠ no signal",
+      "- Market/timeframe dependence — phenomenon may exist on different horizon or universe",
+      "Some holdout slices showed weak signal — consistent with validation conservatism or weak formulation, not uniquely insufficient information",
+      "Case C always possible: phenomenon may exist on different timeframe than 15m or outside crypto_futures"
+    ],
+    "nextSteps": [
+      {
+        "action": "Integrate free L2: OI + funding — genuinely new information, not another OHLCV transform",
+        "priority": 1
+      },
+      {
+        "action": "Retest price-derived families with L2 features before any L3 microstructure investment",
+        "priority": 2
+      },
+      {
+        "action": "Only consider L3 historical order book if OI/funding measurably improve discrimination",
+        "priority": 3
+      }
+    ],
+    "sufficientForContinuedL01Research": false,
+    "sufficientForContinuedPriceDerivedResearch": false,
+    "phase": "2a_complete",
+    "endOfPhase2a": true,
+    "nextPhase": "2b_l2_oi_funding",
+    "cases": {
+      "weakFormulation": "plausible — not uniquely identified",
+      "insufficientInformation": "plausible — L2 OI/funding untested",
+      "validationConservatism": "plausible — no promotion ≠ no signal",
+      "marketTimeframeDependence": "plausible — alternate horizon/universe",
+      "littleExploitableEdge": "possible — legitimate scientific outcome"
+    },
+    "families": {
+      "A": "failed",
+      "C": "failed",
+      "D": "failed"
+    },
+    "runParity": {
+      "parityWithFamilyA": true,
+      "checks": {
+        "sameCoins": true,
+        "sameWindow": true,
+        "sameTimeframe": true,
+        "sameDataSource": true
+      },
+      "baseline": {
+        "from": "2022-01-01",
+        "to": "2026-06-01",
+        "coins": [
+          "BTCUSDT",
+          "BNBUSDT",
+          "ETHUSDT",
+          "SOLUSDT",
+          "XRPUSDT"
+        ],
+        "timeframe": "15m",
+        "dataSource": "timescale"
+      },
+      "run": {
+        "from": "2022-01-01",
+        "to": "2026-06-01",
+        "coins": [
+          "BNBUSDT",
+          "BTCUSDT",
+          "ETHUSDT",
+          "SOLUSDT",
+          "XRPUSDT"
+        ],
+        "timeframe": "15m",
+        "dataSource": "timescale"
+      }
+    },
+    "familiesTested": 3,
+    "familiesPassed": 0
+  },
+  "decisionBoundary": {
+    "question": "Given observable information currently available, what is the best achievable decision quality?",
+    "maxAvailableLevel": "L2",
+    "metrics": {
+      "holdoutRankCorrelation": -0.020046898375070298,
+      "holdoutPolicyLift": 0.011024033149171296,
+      "oraclePredictPct": 48,
+      "brierScore": 0.244441589025974,
+      "calibratedFeatures": 7
+    },
+    "estimatedCeiling": 0.408,
+    "currentDecisionQuality": 0.286,
+    "headroom": 0.122,
+    "interpretation": "Moderate headroom — discrimination improvements possible within L0–L2",
+    "note": "Different from 'does more information exist?' — measures proximity to ceiling imposed by current data."
+  },
+  "researchDebt": [
+    {
+      "id": "RD-001",
+      "item": "FALS-001 complete — Families A/C/D tested at L0–L1",
+      "severity": "low",
+      "category": "replication",
+      "resolved": true
+    },
+    {
+      "id": "RD-002",
+      "item": "Funding integration complete — full historical pipeline",
+      "severity": "high",
+      "category": "data_integration",
+      "resolved": true
+    },
+    {
+      "id": "RD-002b",
+      "item": "OI integration partial — streaming yes, historical ~30d API only",
+      "severity": "medium",
+      "category": "data_integration"
+    },
+    {
+      "id": "RD-003",
+      "item": "Holdout rank correlation near zero — discrimination debt",
+      "severity": "medium",
+      "category": "robustness"
+    },
+    {
+      "id": "RD-004",
+      "item": "Phase 2b L2 discrimination test not yet run on full candidate exports",
+      "severity": "medium",
+      "category": "replication"
+    },
+    {
+      "id": "RD-005",
+      "item": "Cross-market validation limited to 5 crypto futures symbols",
+      "severity": "low",
+      "category": "cross_market"
+    },
+    {
+      "id": "RD-006",
+      "item": "Quarterly RROI not yet tracked",
+      "severity": "low",
+      "category": "governance"
+    }
+  ],
+  "rroi": {
+    "period": "current",
+    "hypothesesTested": 6,
+    "hypothesesRejected": 5,
+    "hypothesesPromoted": 0,
+    "uncertaintyReduction": 5,
+    "holdoutDecisionQualityDelta": 0.011024033149171296,
+    "engineeringDays": 12,
+    "computeCost": "medium",
+    "informationGain": 11.555,
+    "rroi": 0.481,
+    "interpretation": "Moderate — rejections and uncertainty reduction contributing",
+    "note": "RROI measures platform learning, not trading returns."
+  },
+  "capabilityMatrix": [
+    {
+      "domain": "Liquidity (L0–L1)",
+      "capability": "full",
+      "informationLevel": "L0–L1",
+      "blockingDependency": "None",
+      "notes": "Family A tested; no edge at formulation"
+    },
+    {
+      "domain": "OI + Funding",
+      "capability": "planned",
+      "informationLevel": "L2",
+      "blockingDependency": "Phase 1 ingestion",
+      "notes": "Free — integrate before L3 microstructure"
+    },
+    {
+      "domain": "Trend / momentum",
+      "capability": "full",
+      "informationLevel": "L0–L1",
+      "blockingDependency": "None",
+      "notes": "Family C tested; no edge at L0–L1 formulation"
+    },
+    {
+      "domain": "Volatility regime",
+      "capability": "full",
+      "informationLevel": "L0–L1",
+      "blockingDependency": "None",
+      "notes": "Family D tested; no edge at L0–L1 formulation"
+    },
+    {
+      "domain": "Portfolio / allocation",
+      "capability": "partial",
+      "informationLevel": "L0–L1",
+      "blockingDependency": "Multi-family",
+      "notes": "Simulator v2"
+    },
+    {
+      "domain": "Order book microstructure",
+      "capability": "not_possible",
+      "informationLevel": "L3",
+      "blockingDependency": "Continuous L2 collection or commercial historical data",
+      "notes": "Historical L2 generally unavailable"
+    },
+    {
+      "domain": "Liquidations",
+      "capability": "not_possible",
+      "informationLevel": "L2–L3",
+      "blockingDependency": "Liquidation stream",
+      "notes": "Limited live, poor historical"
+    },
+    {
+      "domain": "Options surface",
+      "capability": "partial",
+      "informationLevel": "L4",
+      "blockingDependency": "options chain data",
+      "notes": "Partial availability"
+    },
+    {
+      "domain": "Macro (FRED)",
+      "capability": "partial",
+      "informationLevel": "L5",
+      "blockingDependency": "Macro feed integration",
+      "notes": "Free historical"
+    }
+  ],
+  "experimentVerdicts": [
+    {
+      "id": "EXP-001",
+      "verdict": "disproven",
+      "label": "Disproven — hypothesis rejected with available data"
+    },
+    {
+      "id": "EXP-002",
+      "verdict": "disproven",
+      "label": "Disproven — hypothesis rejected with available data"
+    },
+    {
+      "id": "EXP-003",
+      "verdict": "inconclusive",
+      "label": "Inconclusive — more research needed"
+    },
+    {
+      "id": "EXP-004",
+      "verdict": "disproven",
+      "label": "Disproven — hypothesis rejected with available data"
+    },
+    {
+      "id": "EXP-005",
+      "verdict": "disproven",
+      "label": "Disproven — hypothesis rejected with available data"
+    },
+    {
+      "id": "EXP-006",
+      "verdict": "disproven",
+      "label": "Disproven — hypothesis rejected with available data"
+    }
+  ],
+  "productionAlpha": {
+    "status": "unknown_not_demonstrated",
+    "note": "Platform measures predictability of observable information — not demonstrated alpha"
+  },
+  "l0l1Falsification": {
+    "complete": true,
+    "familiesTested": 3,
+    "familiesPassed": 0,
+    "requiredBeforeDataInvestment": true,
+    "familyResults": {
+      "C": {
+        "candidates": 7021,
+        "experiments": 6,
+        "accepted": 0,
+        "partial": 0,
+        "rejected": 6,
+        "verdict": {
+          "familyId": "C",
+          "familyName": "Trend continuation",
+          "status": "confirmed_negative",
+          "lifecycle": "confirmed_negative",
+          "lifecycleLabel": "Confirmed negative",
+          "experimentsRun": 6,
+          "accepted": 0,
+          "partial": 0,
+          "promotedFeatures": 0,
+          "verdict": "confirmed_negative",
+          "recommendation": "Confirmed negative at tested information levels — not archived; retest with L2 OI/funding before closing family",
+          "exit": {
+            "familyId": "C",
+            "familyName": "Trend continuation",
+            "shouldArchive": true,
+            "triggers": [
+              "no_promoted_feature_after_n_hypotheses",
+              "no_stable_effect_across_assets"
+            ],
+            "checks": {
+              "hypothesisBudget": true,
+              "holdoutFailures": false,
+              "assetStability": true,
+              "informationGain": false,
+              "effortExhausted": false,
+              "manualFreeze": false
+            },
+            "recommendation": "Archive family C — no_promoted_feature_after_n_hypotheses, no_stable_effect_across_assets",
+            "exitCriteria": {
+              "maxIndependentHypothesesWithoutPromotion": 6,
+              "maxHoldoutFailures": 2,
+              "minAssetStabilityRatio": 0.4,
+              "minInformationGain": 0.01,
+              "maxResearchEffortCycles": 3
+            }
+          },
+          "productionObjective": "per_coin",
+          "runParity": {
+            "parityWithFamilyA": true,
+            "checks": {
+              "sameCoins": true,
+              "sameWindow": true,
+              "sameTimeframe": true,
+              "sameDataSource": true
+            },
+            "baseline": {
+              "from": "2022-01-01",
+              "to": "2026-06-01",
+              "coins": [
+                "BTCUSDT",
+                "BNBUSDT",
+                "ETHUSDT",
+                "SOLUSDT",
+                "XRPUSDT"
+              ],
+              "timeframe": "15m",
+              "dataSource": "timescale"
+            },
+            "run": {
+              "from": "2022-01-01",
+              "to": "2026-06-01",
+              "coins": [
+                "BNBUSDT",
+                "BTCUSDT",
+                "ETHUSDT",
+                "SOLUSDT",
+                "XRPUSDT"
+              ],
+              "timeframe": "15m",
+              "dataSource": "timescale"
+            }
+          }
+        },
+        "passed": false,
+        "anyHoldoutSlicePositive": true,
+        "runParity": {
+          "parityWithFamilyA": true,
+          "checks": {
+            "sameCoins": true,
+            "sameWindow": true,
+            "sameTimeframe": true,
+            "sameDataSource": true
+          },
+          "baseline": {
+            "from": "2022-01-01",
+            "to": "2026-06-01",
+            "coins": [
+              "BTCUSDT",
+              "BNBUSDT",
+              "ETHUSDT",
+              "SOLUSDT",
+              "XRPUSDT"
+            ],
+            "timeframe": "15m",
+            "dataSource": "timescale"
+          },
+          "run": {
+            "from": "2022-01-01",
+            "to": "2026-06-01",
+            "coins": [
+              "BNBUSDT",
+              "BTCUSDT",
+              "ETHUSDT",
+              "SOLUSDT",
+              "XRPUSDT"
+            ],
+            "timeframe": "15m",
+            "dataSource": "timescale"
+          }
+        },
+        "results": [
+          {
+            "id": "EXP-C01",
+            "familyId": "C",
+            "layer": "research",
+            "hypothesis": "Elite gate pass count improves forward R — more gates aligned → higher avg R.",
+            "outcome": "fwd_closeR_20",
+            "n": 5459,
+            "bucket": {
+              "monotonicity": null,
+              "spread": 0.22422307692307697,
+              "buckets": [
+                {
+                  "bucket": 1,
+                  "n": 545,
+                  "featureMin": 5,
+                  "featureMax": 5,
+                  "featureMid": 5,
+                  "avgR": 0.02604807339449539,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 2,
+                  "n": 546,
+                  "featureMin": 5,
+                  "featureMax": 5,
+                  "featureMid": 5,
+                  "avgR": -0.046952564102564105,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 3,
+                  "n": 546,
+                  "featureMin": 5,
+                  "featureMax": 5,
+                  "featureMid": 5,
+                  "avgR": 0.17046684981684992,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 4,
+                  "n": 546,
+                  "featureMin": 5,
+                  "featureMax": 5,
+                  "featureMid": 5,
+                  "avgR": -0.00346630036630041,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 5,
+                  "n": 546,
+                  "featureMin": 5,
+                  "featureMax": 5,
+                  "featureMid": 5,
+                  "avgR": -0.03024084249084249,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 6,
+                  "n": 546,
+                  "featureMin": 5,
+                  "featureMax": 5,
+                  "featureMid": 5,
+                  "avgR": 0.17727051282051287,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 7,
+                  "n": 546,
+                  "featureMin": 5,
+                  "featureMax": 5,
+                  "featureMid": 5,
+                  "avgR": 0.08528699633699632,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 8,
+                  "n": 546,
+                  "featureMin": 5,
+                  "featureMax": 5,
+                  "featureMid": 5,
+                  "avgR": 0.07498644688644691,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 9,
+                  "n": 546,
+                  "featureMin": 5,
+                  "featureMax": 5,
+                  "featureMid": 5,
+                  "avgR": 0.1770091575091577,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 10,
+                  "n": 546,
+                  "featureMin": 5,
+                  "featureMax": 5,
+                  "featureMid": 5,
+                  "avgR": 0.15766684981684972,
+                  "winPct": 0
+                }
+              ]
+            },
+            "uncertainty": {
+              "permutation": {
+                "pValue": 1,
+                "observed": 0
+              },
+              "outcomeMeanCI": {
+                "mean": 0.07881718263418214,
+                "ciLow": 0.011697380472613974,
+                "ciHigh": 0.1455711485620075,
+                "n": 5459
+              }
+            },
+            "permutationP": 1,
+            "slices": {
+              "coin": {
+                "tested": 5,
+                "positive": 0,
+                "ratio": 0,
+                "slices": {
+                  "BTCUSDT": {
+                    "n": 1306,
+                    "monotonicity": null,
+                    "spread": 0.4819565467382573,
+                    "avgOutcome": 0.046838437978560486
+                  },
+                  "BNBUSDT": {
+                    "n": 2040,
+                    "monotonicity": null,
+                    "spread": 0.4308926470588236,
+                    "avgOutcome": 0.072095
+                  },
+                  "ETHUSDT": {
+                    "n": 1192,
+                    "monotonicity": null,
+                    "spread": 0.43912110552763817,
+                    "avgOutcome": 0.10114471476510063
+                  },
+                  "SOLUSDT": {
+                    "n": 484,
+                    "monotonicity": null,
+                    "spread": 0.4229234567901234,
+                    "avgOutcome": 0.11004483471074378
+                  },
+                  "XRPUSDT": {
+                    "n": 437,
+                    "monotonicity": null,
+                    "spread": 0.45312602739726027,
+                    "avgOutcome": 0.11027917620137304
+                  }
+                }
+              },
+              "regime": {
+                "tested": 1,
+                "positive": 0,
+                "ratio": 0,
+                "slices": {
+                  "": {
+                    "n": 5459,
+                    "monotonicity": null,
+                    "spread": 0.22950549450549454,
+                    "avgOutcome": 0.07881718263418214
+                  }
+                }
+              }
+            },
+            "holdout": {
+              "n": 1562,
+              "sufficient": true,
+              "monotonicity": null,
+              "spread": 0.3118086531093428,
+              "avgOutcome": 0.0007395006402048785
+            },
+            "walkForward": [
+              {
+                "label": "WF1",
+                "trainN": 703,
+                "validateN": 1325,
+                "trainMono": null,
+                "validateMono": null,
+                "trainSpread": 0.6228439916405435,
+                "validateSpread": 0.29923090909090916
+              },
+              {
+                "label": "WF2",
+                "trainN": 2028,
+                "validateN": 3431,
+                "trainMono": null,
+                "validateMono": null,
+                "trainSpread": 0.2740147987924436,
+                "validateSpread": 0.30017777923011574
+              }
+            ],
+            "result": "mono=— spread=0.224 p=1.000 coin-weak",
+            "accepted": false,
+            "fdrAdjustedP": 1,
+            "fdrSignificant": false,
+            "promotion": {
+              "layer": "research",
+              "nextLayer": null,
+              "passed": false,
+              "checks": {
+                "sampleSize": true,
+                "monotonicity": false,
+                "bucketSpread": true,
+                "permutation": false,
+                "coinStability": false,
+                "regimeStability": true,
+                "walkForward": true,
+                "fdr": false,
+                "holdout": true,
+                "incremental": true,
+                "explainable": true,
+                "informationGain": true
+              },
+              "failed": [
+                "monotonicity",
+                "permutation",
+                "coinStability",
+                "fdr"
+              ],
+              "recommendation": "Remain in research — failed: monotonicity, permutation, coinStability, fdr"
+            }
+          },
+          {
+            "id": "EXP-C02",
+            "familyId": "C",
+            "layer": "research",
+            "hypothesis": "ATR expansion at ST flip × ADX interaction lifts forward expectancy.",
+            "outcome": "fwd_closeR_20",
+            "n": 5459,
+            "bucket": {
+              "monotonicity": 0.5393939393939394,
+              "spread": 0.3616919413919414,
+              "buckets": [
+                {
+                  "bucket": 1,
+                  "n": 545,
+                  "featureMin": 0.5948571863069054,
+                  "featureMax": 0.8903003833706304,
+                  "featureMid": 0.7425787848387679,
+                  "avgR": 0.06933577981651379,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 2,
+                  "n": 546,
+                  "featureMin": 0.8907174567359236,
+                  "featureMax": 0.9414969961427462,
+                  "featureMid": 0.9161072264393348,
+                  "avgR": 0.027726739926739925,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 3,
+                  "n": 546,
+                  "featureMin": 0.9416007617274583,
+                  "featureMax": 0.9794382142148879,
+                  "featureMid": 0.9605194879711731,
+                  "avgR": -0.021309157509157507,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 4,
+                  "n": 546,
+                  "featureMin": 0.9794551961501962,
+                  "featureMax": 1.0117830191595212,
+                  "featureMid": 0.9956191076548586,
+                  "avgR": -0.09692912087912081,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 5,
+                  "n": 546,
+                  "featureMin": 1.0118008193292694,
+                  "featureMax": 1.042553506095301,
+                  "featureMid": 1.0271771627122852,
+                  "avgR": 0.19215256410256382,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 6,
+                  "n": 546,
+                  "featureMin": 1.0425572865184973,
+                  "featureMax": 1.07796477901666,
+                  "featureMid": 1.0602610327675785,
+                  "avgR": 0.14781227106227113,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 7,
+                  "n": 546,
+                  "featureMin": 1.078065614022833,
+                  "featureMax": 1.118373520452066,
+                  "featureMid": 1.0982195672374495,
+                  "avgR": -0.12361190476190476,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 8,
+                  "n": 546,
+                  "featureMin": 1.1184570109064051,
+                  "featureMax": 1.1758122221890652,
+                  "featureMid": 1.1471346165477352,
+                  "avgR": 0.14713644688644692,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 9,
+                  "n": 546,
+                  "featureMin": 1.1758378774112705,
+                  "featureMax": 1.2541071021940224,
+                  "featureMid": 1.2149724898026464,
+                  "avgR": 0.2380800366300366,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 10,
+                  "n": 546,
+                  "featureMin": 1.2544726315246009,
+                  "featureMax": 2.238042907618604,
+                  "featureMid": 1.7462577695716024,
+                  "avgR": 0.20776080586080603,
+                  "winPct": 0
+                }
+              ]
+            },
+            "uncertainty": {
+              "permutation": {
+                "pValue": 0.18333333333333332,
+                "observed": 0.017788879603084538
+              },
+              "outcomeMeanCI": {
+                "mean": 0.07881718263418214,
+                "ciLow": 0.014501648653599639,
+                "ciHigh": 0.1520443487818278,
+                "n": 5459
+              }
+            },
+            "permutationP": 0.18333333333333332,
+            "interaction": {
+              "partner": "gate_adx",
+              "lift": 0.18955396022296084,
+              "bestCell": {
+                "aBin": 4,
+                "bBin": 2,
+                "n": 350,
+                "avgR": 0.268371142857143
+              }
+            },
+            "slices": {
+              "coin": {
+                "tested": 5,
+                "positive": 4,
+                "ratio": 0.8,
+                "slices": {
+                  "BTCUSDT": {
+                    "n": 1306,
+                    "monotonicity": 0.2,
+                    "spread": 0.47575399949266484,
+                    "avgOutcome": 0.046838437978560486
+                  },
+                  "BNBUSDT": {
+                    "n": 2040,
+                    "monotonicity": -0.3142857142857143,
+                    "spread": 0.48764264705882354,
+                    "avgOutcome": 0.072095
+                  },
+                  "ETHUSDT": {
+                    "n": 1192,
+                    "monotonicity": 0.8857142857142857,
+                    "spread": 0.5238783919597986,
+                    "avgOutcome": 0.10114471476510063
+                  },
+                  "SOLUSDT": {
+                    "n": 484,
+                    "monotonicity": 0.4857142857142857,
+                    "spread": 0.6454456790123457,
+                    "avgOutcome": 0.11004483471074378
+                  },
+                  "XRPUSDT": {
+                    "n": 437,
+                    "monotonicity": 0.6,
+                    "spread": 0.9620826484018262,
+                    "avgOutcome": 0.11027917620137304
+                  }
+                }
+              },
+              "regime": {
+                "tested": 1,
+                "positive": 1,
+                "ratio": 1,
+                "slices": {
+                  "": {
+                    "n": 5459,
+                    "monotonicity": 0.7142857142857143,
+                    "spread": 0.20592307692307665,
+                    "avgOutcome": 0.07881718263418214
+                  }
+                }
+              }
+            },
+            "holdout": {
+              "n": 1562,
+              "sufficient": true,
+              "monotonicity": -0.14285714285714285,
+              "spread": 0.40575478927203046,
+              "avgOutcome": 0.0007395006402048785
+            },
+            "walkForward": [
+              {
+                "label": "WF1",
+                "trainN": 703,
+                "validateN": 1325,
+                "trainMono": 0.21428571428571427,
+                "validateMono": 0.7619047619047619,
+                "trainSpread": 1.1224579545454545,
+                "validateSpread": 0.649914910551296
+              },
+              {
+                "label": "WF2",
+                "trainN": 2028,
+                "validateN": 3431,
+                "trainMono": 0.40476190476190477,
+                "validateMono": 0.5952380952380952,
+                "trainSpread": 0.6561438735177865,
+                "validateSpread": 0.48527179487179495
+              }
+            ],
+            "result": "lift=0.190 mono=0.539 p=0.183",
+            "accepted": false,
+            "fdrAdjustedP": 0.36666666666666664,
+            "fdrSignificant": false,
+            "promotion": {
+              "layer": "research",
+              "nextLayer": null,
+              "passed": false,
+              "checks": {
+                "sampleSize": true,
+                "monotonicity": true,
+                "bucketSpread": true,
+                "permutation": false,
+                "coinStability": true,
+                "regimeStability": true,
+                "walkForward": true,
+                "fdr": false,
+                "holdout": true,
+                "incremental": true,
+                "explainable": true,
+                "informationGain": true
+              },
+              "failed": [
+                "permutation",
+                "fdr"
+              ],
+              "recommendation": "Remain in research — failed: permutation, fdr"
+            }
+          },
+          {
+            "id": "EXP-C03",
+            "familyId": "C",
+            "layer": "research",
+            "hypothesis": "4H supertrend alignment predicts hit2R rate on trend flips.",
+            "outcome": "hit2R_flag",
+            "n": 5459,
+            "bucket": {
+              "monotonicity": null,
+              "spread": 0.07326007326007322,
+              "buckets": [
+                {
+                  "bucket": 1,
+                  "n": 545,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.618348623853211,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 2,
+                  "n": 546,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.5934065934065934,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 3,
+                  "n": 546,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.6373626373626373,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 4,
+                  "n": 546,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.6190476190476191,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 5,
+                  "n": 546,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.6483516483516484,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 6,
+                  "n": 546,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.6208791208791209,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 7,
+                  "n": 546,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.6410256410256411,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 8,
+                  "n": 546,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.6410256410256411,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 9,
+                  "n": 546,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.6666666666666666,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 10,
+                  "n": 546,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.6483516483516484,
+                  "winPct": 0
+                }
+              ]
+            },
+            "uncertainty": {
+              "permutation": {
+                "pValue": 1,
+                "observed": 0
+              },
+              "outcomeMeanCI": {
+                "mean": 0.6334493496977468,
+                "ciLow": 0.6213592233009708,
+                "ciHigh": 0.6460890272943762,
+                "n": 5459
+              }
+            },
+            "permutationP": 1,
+            "slices": {
+              "coin": {
+                "tested": 5,
+                "positive": 0,
+                "ratio": 0,
+                "slices": {
+                  "BTCUSDT": {
+                    "n": 1306,
+                    "monotonicity": null,
+                    "spread": 0.07834101382488479,
+                    "avgOutcome": 0.610260336906585
+                  },
+                  "BNBUSDT": {
+                    "n": 2040,
+                    "monotonicity": null,
+                    "spread": 0.0676470588235294,
+                    "avgOutcome": 0.6352941176470588
+                  },
+                  "ETHUSDT": {
+                    "n": 1192,
+                    "monotonicity": null,
+                    "spread": 0.09045226130653272,
+                    "avgOutcome": 0.6350671140939598
+                  },
+                  "SOLUSDT": {
+                    "n": 484,
+                    "monotonicity": null,
+                    "spread": 0.11111111111111105,
+                    "avgOutcome": 0.6838842975206612
+                  },
+                  "XRPUSDT": {
+                    "n": 437,
+                    "monotonicity": null,
+                    "spread": 0.11529680365296802,
+                    "avgOutcome": 0.6338672768878718
+                  }
+                }
+              },
+              "regime": {
+                "tested": 1,
+                "positive": 0,
+                "ratio": 0,
+                "slices": {
+                  "": {
+                    "n": 5459,
+                    "monotonicity": null,
+                    "spread": 0.053180043279053124,
+                    "avgOutcome": 0.6334493496977468
+                  }
+                }
+              }
+            },
+            "holdout": {
+              "n": 1562,
+              "sufficient": true,
+              "monotonicity": null,
+              "spread": 0.036000589448865306,
+              "avgOutcome": 0.6222791293213829
+            },
+            "walkForward": [
+              {
+                "label": "WF1",
+                "trainN": 703,
+                "validateN": 1325,
+                "trainMono": null,
+                "validateMono": null,
+                "trainSpread": 0.1555642633228841,
+                "validateSpread": 0.09036144578313254
+              },
+              {
+                "label": "WF2",
+                "trainN": 2028,
+                "validateN": 3431,
+                "trainMono": null,
+                "validateMono": null,
+                "trainSpread": 0.07086614173228356,
+                "validateSpread": 0.0825163932640568
+              }
+            ],
+            "result": "mono=— spread=0.073 p=1.000 coin-weak",
+            "accepted": false,
+            "fdrAdjustedP": 1,
+            "fdrSignificant": false,
+            "promotion": {
+              "layer": "research",
+              "nextLayer": null,
+              "passed": false,
+              "checks": {
+                "sampleSize": true,
+                "monotonicity": false,
+                "bucketSpread": false,
+                "permutation": false,
+                "coinStability": false,
+                "regimeStability": true,
+                "walkForward": true,
+                "fdr": false,
+                "holdout": true,
+                "incremental": true,
+                "explainable": true,
+                "informationGain": true
+              },
+              "failed": [
+                "monotonicity",
+                "bucketSpread",
+                "permutation",
+                "coinStability",
+                "fdr"
+              ],
+              "recommendation": "Remain in research — failed: monotonicity, bucketSpread, permutation, coinStability, fdr"
+            }
+          },
+          {
+            "id": "EXP-C04",
+            "familyId": "C",
+            "layer": "research",
+            "hypothesis": "Volume ratio at entry monotonically improves forward R.",
+            "outcome": "fwd_closeR_20",
+            "n": 5459,
+            "bucket": {
+              "monotonicity": 0.09090909090909091,
+              "spread": 0.4795728937728937,
+              "buckets": [
+                {
+                  "bucket": 1,
+                  "n": 545,
+                  "featureMin": 0.22669804146845496,
+                  "featureMax": 0.7701880066836492,
+                  "featureMid": 0.49844302407605207,
+                  "avgR": 0.039346972477064264,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 2,
+                  "n": 546,
+                  "featureMin": 0.7709708234102549,
+                  "featureMax": 0.9880040884895941,
+                  "featureMid": 0.8794874559499245,
+                  "avgR": 0.12767582417582424,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 3,
+                  "n": 546,
+                  "featureMin": 0.9881806251878288,
+                  "featureMax": 1.184457167336761,
+                  "featureMid": 1.086318896262295,
+                  "avgR": 0.015092307692307655,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 4,
+                  "n": 546,
+                  "featureMin": 1.184668119033967,
+                  "featureMax": 1.3741215765942145,
+                  "featureMid": 1.2793948478140909,
+                  "avgR": -0.05821593406593407,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 5,
+                  "n": 546,
+                  "featureMin": 1.374224343550708,
+                  "featureMax": 1.5789089904324727,
+                  "featureMid": 1.4765666669915904,
+                  "avgR": 0.07983406593406572,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 6,
+                  "n": 546,
+                  "featureMin": 1.579322423031427,
+                  "featureMax": 1.8036793583320887,
+                  "featureMid": 1.6915008906817577,
+                  "avgR": 0.06576978021978022,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 7,
+                  "n": 546,
+                  "featureMin": 1.8037844838266024,
+                  "featureMax": 2.083298673633737,
+                  "featureMid": 1.9435415787301697,
+                  "avgR": 0.21363809523809552,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 8,
+                  "n": 546,
+                  "featureMin": 2.083527842495678,
+                  "featureMax": 2.456860266493685,
+                  "featureMid": 2.2701940544946817,
+                  "avgR": -0.09961080586080581,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 9,
+                  "n": 546,
+                  "featureMin": 2.4591558323076184,
+                  "featureMax": 3.1391176316241136,
+                  "featureMid": 2.799136731965866,
+                  "avgR": 0.3799620879120879,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 10,
+                  "n": 546,
+                  "featureMin": 3.1394562248721076,
+                  "featureMax": 7.689856071971641,
+                  "featureMid": 5.414656148421875,
+                  "avgR": 0.02460714285714287,
+                  "winPct": 0
+                }
+              ]
+            },
+            "uncertainty": {
+              "permutation": {
+                "pValue": 0.94,
+                "observed": 0.0007833313671393206
+              },
+              "outcomeMeanCI": {
+                "mean": 0.07881718263418214,
+                "ciLow": 0.007968730536728409,
+                "ciHigh": 0.14643130610001784,
+                "n": 5459
+              }
+            },
+            "permutationP": 0.94,
+            "slices": {
+              "coin": {
+                "tested": 5,
+                "positive": 3,
+                "ratio": 0.6,
+                "slices": {
+                  "BTCUSDT": {
+                    "n": 1306,
+                    "monotonicity": 0.02857142857142857,
+                    "spread": 0.4460255950619372,
+                    "avgOutcome": 0.046838437978560486
+                  },
+                  "BNBUSDT": {
+                    "n": 2040,
+                    "monotonicity": 0.02857142857142857,
+                    "spread": 0.39636117647058833,
+                    "avgOutcome": 0.072095
+                  },
+                  "ETHUSDT": {
+                    "n": 1192,
+                    "monotonicity": 0.14285714285714285,
+                    "spread": 0.5055341327851378,
+                    "avgOutcome": 0.10114471476510063
+                  },
+                  "SOLUSDT": {
+                    "n": 484,
+                    "monotonicity": -0.08571428571428572,
+                    "spread": 0.5133123456790124,
+                    "avgOutcome": 0.11004483471074378
+                  },
+                  "XRPUSDT": {
+                    "n": 437,
+                    "monotonicity": -0.2,
+                    "spread": 0.5256006468797564,
+                    "avgOutcome": 0.11027917620137304
+                  }
+                }
+              },
+              "regime": {
+                "tested": 1,
+                "positive": 1,
+                "ratio": 1,
+                "slices": {
+                  "": {
+                    "n": 5459,
+                    "monotonicity": 0.42857142857142855,
+                    "spread": 0.19359967032967004,
+                    "avgOutcome": 0.07881718263418214
+                  }
+                }
+              }
+            },
+            "holdout": {
+              "n": 1562,
+              "sufficient": true,
+              "monotonicity": 0.37142857142857144,
+              "spread": 0.5085318066607722,
+              "avgOutcome": 0.0007395006402048785
+            },
+            "walkForward": [
+              {
+                "label": "WF1",
+                "trainN": 703,
+                "validateN": 1325,
+                "trainMono": -0.2857142857142857,
+                "validateMono": 0.7380952380952381,
+                "trainSpread": 1.2945625,
+                "validateSpread": 0.613015060240964
+              },
+              {
+                "label": "WF2",
+                "trainN": 2028,
+                "validateN": 3431,
+                "trainMono": 0.2619047619047619,
+                "validateMono": 0.11904761904761904,
+                "trainSpread": 0.37885590551181103,
+                "validateSpread": 0.20417692307692323
+              }
+            ],
+            "result": "mono=0.091 spread=0.480 p=0.940 WF-mixed",
+            "accepted": false,
+            "fdrAdjustedP": 1,
+            "fdrSignificant": false,
+            "promotion": {
+              "layer": "research",
+              "nextLayer": null,
+              "passed": false,
+              "checks": {
+                "sampleSize": true,
+                "monotonicity": false,
+                "bucketSpread": true,
+                "permutation": false,
+                "coinStability": true,
+                "regimeStability": true,
+                "walkForward": false,
+                "fdr": false,
+                "holdout": true,
+                "incremental": true,
+                "explainable": true,
+                "informationGain": true
+              },
+              "failed": [
+                "monotonicity",
+                "permutation",
+                "walkForward",
+                "fdr"
+              ],
+              "recommendation": "Remain in research — failed: monotonicity, permutation, walkForward, fdr"
+            }
+          },
+          {
+            "id": "EXP-C05",
+            "familyId": "C",
+            "layer": "research",
+            "hypothesis": "Composite score negative correlation is selection bias — test all flips.",
+            "outcome": "fwd_closeR_20",
+            "n": 5459,
+            "bias": {
+              "all": {
+                "n": 5459,
+                "spread": 0.42071359471539643,
+                "mono": 0.6383372009823072
+              },
+              "picked": {
+                "n": 4041,
+                "spread": 0.41809793605447504,
+                "mono": 0.10012523486435178
+              },
+              "rejected": {
+                "n": 1418,
+                "spread": 0.4382252459848917,
+                "mono": 0.5491201525567068
+              }
+            },
+            "accepted": false,
+            "result": "all mono=0.638 picked=0.100 rejected=0.549",
+            "permutationP": 0.17666666666666667,
+            "fdrAdjustedP": 0.36666666666666664,
+            "fdrSignificant": false,
+            "promotion": {
+              "layer": "research",
+              "nextLayer": null,
+              "passed": false,
+              "checks": {
+                "sampleSize": true,
+                "monotonicity": false,
+                "bucketSpread": false,
+                "permutation": false,
+                "coinStability": false,
+                "regimeStability": true,
+                "walkForward": true,
+                "fdr": false,
+                "holdout": true,
+                "incremental": true,
+                "explainable": true,
+                "informationGain": true
+              },
+              "failed": [
+                "monotonicity",
+                "bucketSpread",
+                "permutation",
+                "coinStability",
+                "fdr"
+              ],
+              "recommendation": "Remain in research — failed: monotonicity, bucketSpread, permutation, coinStability, fdr"
+            }
+          },
+          {
+            "id": "EXP-C06",
+            "familyId": "C",
+            "layer": "research",
+            "hypothesis": "1H EMA align × gate pass count interaction improves forward R across coins.",
+            "outcome": "fwd_closeR_20",
+            "n": 5459,
+            "interaction": {
+              "lift": 0,
+              "best": {
+                "a": "1",
+                "b": "5",
+                "n": 5459,
+                "avgR": 0.07881718263418214
+              },
+              "cells": 1
+            },
+            "slices": {
+              "coin": {
+                "tested": 5,
+                "positive": 0,
+                "ratio": 0,
+                "slices": {
+                  "BTCUSDT": {
+                    "n": 1306,
+                    "monotonicity": null,
+                    "spread": 0.4819565467382573,
+                    "avgOutcome": 0.046838437978560486
+                  },
+                  "BNBUSDT": {
+                    "n": 2040,
+                    "monotonicity": null,
+                    "spread": 0.4308926470588236,
+                    "avgOutcome": 0.072095
+                  },
+                  "ETHUSDT": {
+                    "n": 1192,
+                    "monotonicity": null,
+                    "spread": 0.43912110552763817,
+                    "avgOutcome": 0.10114471476510063
+                  },
+                  "SOLUSDT": {
+                    "n": 484,
+                    "monotonicity": null,
+                    "spread": 0.4229234567901234,
+                    "avgOutcome": 0.11004483471074378
+                  },
+                  "XRPUSDT": {
+                    "n": 437,
+                    "monotonicity": null,
+                    "spread": 0.45312602739726027,
+                    "avgOutcome": 0.11027917620137304
+                  }
+                }
+              },
+              "regime": {
+                "tested": 1,
+                "positive": 0,
+                "ratio": 0,
+                "slices": {
+                  "": {
+                    "n": 5459,
+                    "monotonicity": null,
+                    "spread": 0.22950549450549454,
+                    "avgOutcome": 0.07881718263418214
+                  }
+                }
+              }
+            },
+            "holdout": {
+              "n": 1562,
+              "sufficient": true,
+              "monotonicity": null,
+              "spread": 0.3118086531093428,
+              "avgOutcome": 0.0007395006402048785
+            },
+            "accepted": false,
+            "result": "lift=0.000 coin=0% regime=0%",
+            "permutationP": 0.05,
+            "fdrAdjustedP": 0.30000000000000004,
+            "fdrSignificant": false,
+            "promotion": {
+              "layer": "research",
+              "nextLayer": null,
+              "passed": false,
+              "checks": {
+                "sampleSize": true,
+                "monotonicity": false,
+                "bucketSpread": false,
+                "permutation": true,
+                "coinStability": false,
+                "regimeStability": true,
+                "walkForward": true,
+                "fdr": false,
+                "holdout": true,
+                "incremental": true,
+                "explainable": true,
+                "informationGain": true
+              },
+              "failed": [
+                "monotonicity",
+                "bucketSpread",
+                "coinStability",
+                "fdr"
+              ],
+              "recommendation": "Remain in research — failed: monotonicity, bucketSpread, coinStability, fdr"
+            }
+          }
+        ]
+      },
+      "D": {
+        "candidates": 32274,
+        "experiments": 6,
+        "accepted": 0,
+        "partial": 2,
+        "rejected": 4,
+        "verdict": {
+          "familyId": "D",
+          "familyName": "Volatility expansion",
+          "status": "confirmed_negative",
+          "lifecycle": "confirmed_negative",
+          "lifecycleLabel": "Confirmed negative",
+          "experimentsRun": 6,
+          "accepted": 0,
+          "partial": 2,
+          "promotedFeatures": 0,
+          "verdict": "confirmed_negative",
+          "recommendation": "Confirmed negative at tested information levels — not archived; retest with L2 OI/funding before closing family",
+          "exit": {
+            "familyId": "D",
+            "familyName": "Volatility expansion",
+            "shouldArchive": true,
+            "triggers": [
+              "no_promoted_feature_after_n_hypotheses",
+              "repeated_holdout_failures"
+            ],
+            "checks": {
+              "hypothesisBudget": true,
+              "holdoutFailures": true,
+              "assetStability": false,
+              "informationGain": false,
+              "effortExhausted": false,
+              "manualFreeze": false
+            },
+            "recommendation": "Archive family D — no_promoted_feature_after_n_hypotheses, repeated_holdout_failures",
+            "exitCriteria": {
+              "maxIndependentHypothesesWithoutPromotion": 6,
+              "maxHoldoutFailures": 2,
+              "minAssetStabilityRatio": 0.4,
+              "minInformationGain": 0.01,
+              "maxResearchEffortCycles": 3
+            }
+          },
+          "productionObjective": "universal",
+          "runParity": {
+            "parityWithFamilyA": true,
+            "checks": {
+              "sameCoins": true,
+              "sameWindow": true,
+              "sameTimeframe": true,
+              "sameDataSource": true
+            },
+            "baseline": {
+              "from": "2022-01-01",
+              "to": "2026-06-01",
+              "coins": [
+                "BTCUSDT",
+                "BNBUSDT",
+                "ETHUSDT",
+                "SOLUSDT",
+                "XRPUSDT"
+              ],
+              "timeframe": "15m",
+              "dataSource": "timescale"
+            },
+            "run": {
+              "from": "2022-01-01",
+              "to": "2026-06-01",
+              "coins": [
+                "BNBUSDT",
+                "BTCUSDT",
+                "ETHUSDT",
+                "SOLUSDT",
+                "XRPUSDT"
+              ],
+              "timeframe": "15m",
+              "dataSource": "timescale"
+            }
+          }
+        },
+        "passed": false,
+        "anyHoldoutSlicePositive": true,
+        "runParity": {
+          "parityWithFamilyA": true,
+          "checks": {
+            "sameCoins": true,
+            "sameWindow": true,
+            "sameTimeframe": true,
+            "sameDataSource": true
+          },
+          "baseline": {
+            "from": "2022-01-01",
+            "to": "2026-06-01",
+            "coins": [
+              "BTCUSDT",
+              "BNBUSDT",
+              "ETHUSDT",
+              "SOLUSDT",
+              "XRPUSDT"
+            ],
+            "timeframe": "15m",
+            "dataSource": "timescale"
+          },
+          "run": {
+            "from": "2022-01-01",
+            "to": "2026-06-01",
+            "coins": [
+              "BNBUSDT",
+              "BTCUSDT",
+              "ETHUSDT",
+              "SOLUSDT",
+              "XRPUSDT"
+            ],
+            "timeframe": "15m",
+            "dataSource": "timescale"
+          }
+        },
+        "results": [
+          {
+            "id": "EXP-D01",
+            "familyId": "D",
+            "layer": "research",
+            "hypothesis": "ATR expansion ratio at entry improves forward R on vol expansion events.",
+            "outcome": "fwd_closeR_20",
+            "n": 25208,
+            "bucket": {
+              "monotonicity": 0.6727272727272727,
+              "spread": 0.10321285204284017,
+              "buckets": [
+                {
+                  "bucket": 1,
+                  "n": 2520,
+                  "featureMin": 0.15739951362914212,
+                  "featureMax": 0.8739402375700872,
+                  "featureMid": 0.5156698755996146,
+                  "avgR": -0.010516349206349302,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 2,
+                  "n": 2521,
+                  "featureMin": 0.873955741841564,
+                  "featureMax": 0.9286334836606339,
+                  "featureMid": 0.901294612751099,
+                  "avgR": -0.04335589051963506,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 3,
+                  "n": 2521,
+                  "featureMin": 0.9286385706505573,
+                  "featureMax": 0.9698535091058487,
+                  "featureMid": 0.949246039878203,
+                  "avgR": -0.006899523998413311,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 4,
+                  "n": 2521,
+                  "featureMin": 0.9698598946951841,
+                  "featureMax": 1.0066290038057761,
+                  "featureMid": 0.98824444925048,
+                  "avgR": 0.0009965886552955002,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 5,
+                  "n": 2521,
+                  "featureMin": 1.0066715711988732,
+                  "featureMax": 1.0449312416531946,
+                  "featureMid": 1.025801406426034,
+                  "avgR": 0.0428736215787386,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 6,
+                  "n": 2520,
+                  "featureMin": 1.0449778984928229,
+                  "featureMax": 1.085481736130757,
+                  "featureMid": 1.0652298173117898,
+                  "avgR": 0.03548305555555553,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 7,
+                  "n": 2521,
+                  "featureMin": 1.0854828784428703,
+                  "featureMax": 1.134189864204181,
+                  "featureMid": 1.1098363713235257,
+                  "avgR": -0.0009883776279254342,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 8,
+                  "n": 2521,
+                  "featureMin": 1.1341971867460616,
+                  "featureMax": 1.1855807206613962,
+                  "featureMid": 1.159888953703729,
+                  "avgR": 0.05985696152320512,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 9,
+                  "n": 2521,
+                  "featureMin": 1.1855968814136222,
+                  "featureMax": 1.2633248657829834,
+                  "featureMid": 1.2244608735983027,
+                  "avgR": 0.002206227687425651,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 10,
+                  "n": 2521,
+                  "featureMin": 1.2633592880721698,
+                  "featureMax": 4.795294119362685,
+                  "featureMid": 3.0293267037174276,
+                  "avgR": 0.028314954383181313,
+                  "winPct": 0
+                }
+              ]
+            },
+            "uncertainty": {
+              "permutation": {
+                "pValue": 0.53,
+                "observed": 0.004037998988316689
+              },
+              "outcomeMeanCI": {
+                "mean": 0.010796993018089451,
+                "ciLow": -0.005735635512535678,
+                "ciHigh": 0.025794592986353497,
+                "n": 25208
+              }
+            },
+            "permutationP": 0.53,
+            "slices": {
+              "coin": {
+                "tested": 5,
+                "positive": 5,
+                "ratio": 1,
+                "slices": {
+                  "BTCUSDT": {
+                    "n": 5820,
+                    "monotonicity": 0.5428571428571428,
+                    "spread": 0.1335686597938144,
+                    "avgOutcome": 0.00043525773195875325
+                  },
+                  "BNBUSDT": {
+                    "n": 9789,
+                    "monotonicity": 0.2,
+                    "spread": 0.1353065603923972,
+                    "avgOutcome": 0.005398416590050075
+                  },
+                  "ETHUSDT": {
+                    "n": 5195,
+                    "monotonicity": 0.5428571428571428,
+                    "spread": 0.07325000440534508,
+                    "avgOutcome": 0.03246852743022126
+                  },
+                  "SOLUSDT": {
+                    "n": 2232,
+                    "monotonicity": 0.37142857142857144,
+                    "spread": 0.23530967741935485,
+                    "avgOutcome": -0.006542697132616527
+                  },
+                  "XRPUSDT": {
+                    "n": 2172,
+                    "monotonicity": 0.8285714285714286,
+                    "spread": 0.1491737569060773,
+                    "avgOutcome": 0.028877348066298315
+                  }
+                }
+              },
+              "regime": {
+                "tested": 5,
+                "positive": 4,
+                "ratio": 0.8,
+                "slices": {
+                  "RANGE": {
+                    "n": 2206,
+                    "monotonicity": 0.5428571428571428,
+                    "spread": 0.19675517340954868,
+                    "avgOutcome": 0.007828513145965553
+                  },
+                  "TREND_DOWN": {
+                    "n": 9844,
+                    "monotonicity": 0.4857142857142857,
+                    "spread": 0.18239279674053593,
+                    "avgOutcome": 0.019617370987403474
+                  },
+                  "SQUEEZE": {
+                    "n": 2036,
+                    "monotonicity": 0.02857142857142857,
+                    "spread": 0.1795906689224365,
+                    "avgOutcome": -0.06325142436149317
+                  },
+                  "TREND_UP": {
+                    "n": 10385,
+                    "monotonicity": -0.02857142857142857,
+                    "spread": 0.05837056544548081,
+                    "avgOutcome": 0.02025011073663933
+                  },
+                  "VOLATILE_AVOID": {
+                    "n": 737,
+                    "monotonicity": 0.6,
+                    "spread": 0.29062113821138225,
+                    "avgOutcome": -0.02677069199457261
+                  }
+                }
+              }
+            },
+            "holdout": {
+              "n": 7066,
+              "sufficient": true,
+              "monotonicity": -0.14285714285714285,
+              "spread": 0.09021782682512736,
+              "avgOutcome": 0.002463204075856228
+            },
+            "walkForward": [
+              {
+                "label": "WF1",
+                "trainN": 3236,
+                "validateN": 6076,
+                "trainMono": 0.5952380952380952,
+                "validateMono": 0.023809523809523808,
+                "trainSpread": 0.3840937226500428,
+                "validateSpread": 0.11118937244296521
+              },
+              {
+                "label": "WF2",
+                "trainN": 9312,
+                "validateN": 15896,
+                "trainMono": 0.6190476190476191,
+                "validateMono": 0.6904761904761905,
+                "trainSpread": 0.11092018900343642,
+                "validateSpread": 0.0633038751887267
+              }
+            ],
+            "result": "mono=0.673 spread=0.103 p=0.530",
+            "accepted": false,
+            "fdrAdjustedP": 0.636,
+            "fdrSignificant": false,
+            "promotion": {
+              "layer": "research",
+              "nextLayer": null,
+              "passed": false,
+              "checks": {
+                "sampleSize": true,
+                "monotonicity": true,
+                "bucketSpread": false,
+                "permutation": false,
+                "coinStability": true,
+                "regimeStability": true,
+                "walkForward": true,
+                "fdr": false,
+                "holdout": true,
+                "incremental": true,
+                "explainable": true,
+                "informationGain": true
+              },
+              "failed": [
+                "bucketSpread",
+                "permutation",
+                "fdr"
+              ],
+              "recommendation": "Remain in research — failed: bucketSpread, permutation, fdr"
+            }
+          },
+          {
+            "id": "EXP-D02",
+            "familyId": "D",
+            "layer": "research",
+            "hypothesis": "Lower BB percentile (deeper squeeze) before expansion → higher hit2R.",
+            "outcome": "hit2R_flag",
+            "n": 25208,
+            "bucket": {
+              "monotonicity": -1,
+              "spread": 0.3337682514497271,
+              "buckets": [
+                {
+                  "bucket": 1,
+                  "n": 2520,
+                  "featureMin": 0.005208333333333333,
+                  "featureMax": 0.13020833333333334,
+                  "featureMid": 0.06770833333333334,
+                  "avgR": 0.4297619047619048,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 2,
+                  "n": 2521,
+                  "featureMin": 0.13020833333333334,
+                  "featureMax": 0.24479166666666666,
+                  "featureMid": 0.1875,
+                  "avgR": 0.3974613248710829,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 3,
+                  "n": 2521,
+                  "featureMin": 0.24479166666666666,
+                  "featureMax": 0.3541666666666667,
+                  "featureMid": 0.2994791666666667,
+                  "avgR": 0.33280444268147563,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 4,
+                  "n": 2521,
+                  "featureMin": 0.3541666666666667,
+                  "featureMax": 0.4635416666666667,
+                  "featureMid": 0.4088541666666667,
+                  "avgR": 0.2994843316144387,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 5,
+                  "n": 2521,
+                  "featureMin": 0.4635416666666667,
+                  "featureMax": 0.5729166666666666,
+                  "featureMid": 0.5182291666666666,
+                  "avgR": 0.27251090836969455,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 6,
+                  "n": 2520,
+                  "featureMin": 0.5729166666666666,
+                  "featureMax": 0.671875,
+                  "featureMid": 0.6223958333333333,
+                  "avgR": 0.2523809523809524,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 7,
+                  "n": 2521,
+                  "featureMin": 0.671875,
+                  "featureMax": 0.7708333333333334,
+                  "featureMid": 0.7213541666666667,
+                  "avgR": 0.20071400238000794,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 8,
+                  "n": 2521,
+                  "featureMin": 0.7708333333333334,
+                  "featureMax": 0.8645833333333334,
+                  "featureMid": 0.8177083333333334,
+                  "avgR": 0.1729472431574772,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 9,
+                  "n": 2521,
+                  "featureMin": 0.8645833333333334,
+                  "featureMax": 0.9479166666666666,
+                  "featureMid": 0.90625,
+                  "avgR": 0.13764379214597383,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 10,
+                  "n": 2521,
+                  "featureMin": 0.9479166666666666,
+                  "featureMax": 1,
+                  "featureMid": 0.9739583333333333,
+                  "avgR": 0.09599365331217771,
+                  "winPct": 0
+                }
+              ]
+            },
+            "uncertainty": {
+              "permutation": {
+                "pValue": 0,
+                "observed": 0.23804935722154108
+              },
+              "outcomeMeanCI": {
+                "mean": 0.25916375753728976,
+                "ciLow": 0.2540463344969851,
+                "ciHigh": 0.2642811805775944,
+                "n": 25208
+              }
+            },
+            "permutationP": 0,
+            "slices": {
+              "coin": {
+                "tested": 5,
+                "positive": 0,
+                "ratio": 0,
+                "slices": {
+                  "BTCUSDT": {
+                    "n": 5820,
+                    "monotonicity": -1,
+                    "spread": 0.3350515463917526,
+                    "avgOutcome": 0.26219931271477664
+                  },
+                  "BNBUSDT": {
+                    "n": 9789,
+                    "monotonicity": -1,
+                    "spread": 0.2655523046128323,
+                    "avgOutcome": 0.246807641229952
+                  },
+                  "ETHUSDT": {
+                    "n": 5195,
+                    "monotonicity": -1,
+                    "spread": 0.34464083087479475,
+                    "avgOutcome": 0.28431183830606355
+                  },
+                  "SOLUSDT": {
+                    "n": 2232,
+                    "monotonicity": -1,
+                    "spread": 0.3602150537634409,
+                    "avgOutcome": 0.24014336917562723
+                  },
+                  "XRPUSDT": {
+                    "n": 2172,
+                    "monotonicity": -1,
+                    "spread": 0.3342541436464088,
+                    "avgOutcome": 0.26611418047882135
+                  }
+                }
+              },
+              "regime": {
+                "tested": 5,
+                "positive": 0,
+                "ratio": 0,
+                "slices": {
+                  "RANGE": {
+                    "n": 2206,
+                    "monotonicity": -0.9428571428571428,
+                    "spread": 0.16032608695652173,
+                    "avgOutcome": 0.2497733454215775
+                  },
+                  "TREND_DOWN": {
+                    "n": 9844,
+                    "monotonicity": -1,
+                    "spread": 0.2891046506443127,
+                    "avgOutcome": 0.2598537180008127
+                  },
+                  "SQUEEZE": {
+                    "n": 2036,
+                    "monotonicity": -1,
+                    "spread": 0.15126670137081383,
+                    "avgOutcome": 0.35903732809430255
+                  },
+                  "TREND_UP": {
+                    "n": 10385,
+                    "monotonicity": -1,
+                    "spread": 0.3549650541135299,
+                    "avgOutcome": 0.25276841598459315
+                  },
+                  "VOLATILE_AVOID": {
+                    "n": 737,
+                    "monotonicity": -0.9428571428571428,
+                    "spread": 0.13141410102625614,
+                    "avgOutcome": 0.09226594301221167
+                  }
+                }
+              }
+            },
+            "holdout": {
+              "n": 7066,
+              "sufficient": true,
+              "monotonicity": -1,
+              "spread": 0.3382286120651479,
+              "avgOutcome": 0.2722898386640249
+            },
+            "walkForward": [
+              {
+                "label": "WF1",
+                "trainN": 3236,
+                "validateN": 6076,
+                "trainMono": -1,
+                "validateMono": -1,
+                "trainSpread": 0.2873181762620706,
+                "validateSpread": 0.3031932598294154
+              },
+              {
+                "label": "WF2",
+                "trainN": 9312,
+                "validateN": 15896,
+                "trainMono": -1,
+                "validateMono": -1,
+                "trainSpread": 0.306701030927835,
+                "validateSpread": 0.3442375440362355
+              }
+            ],
+            "result": "mono=-1.000 spread=0.334 p=0.000 coin-weak",
+            "accepted": "partial",
+            "fdrAdjustedP": 0,
+            "fdrSignificant": true,
+            "promotion": {
+              "layer": "research",
+              "nextLayer": null,
+              "passed": false,
+              "checks": {
+                "sampleSize": true,
+                "monotonicity": true,
+                "bucketSpread": true,
+                "permutation": true,
+                "coinStability": false,
+                "regimeStability": true,
+                "walkForward": true,
+                "fdr": true,
+                "holdout": true,
+                "incremental": true,
+                "explainable": true,
+                "informationGain": true
+              },
+              "failed": [
+                "coinStability"
+              ],
+              "recommendation": "Remain in research — failed: coinStability"
+            }
+          },
+          {
+            "id": "EXP-D03",
+            "familyId": "D",
+            "layer": "research",
+            "hypothesis": "Relative volume at expansion entry monotonically improves forward R.",
+            "outcome": "fwd_closeR_20",
+            "n": 25208,
+            "bucket": {
+              "monotonicity": null,
+              "spread": 0.05296069662454438,
+              "buckets": [
+                {
+                  "bucket": 1,
+                  "n": 2520,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": -0.01831619047619052,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 2,
+                  "n": 2521,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.03077707259024195,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 3,
+                  "n": 2521,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": -0.010797064656882216,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 4,
+                  "n": 2521,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": -0.01695402618008723,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 5,
+                  "n": 2521,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.015628044426814758,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 6,
+                  "n": 2520,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.02159988095238094,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 7,
+                  "n": 2521,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.025917136057120045,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 8,
+                  "n": 2521,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.03464450614835386,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 9,
+                  "n": 2521,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.0038992066640222626,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 10,
+                  "n": 2521,
+                  "featureMin": 1,
+                  "featureMax": 1,
+                  "featureMid": 1,
+                  "avgR": 0.021564101547005117,
+                  "winPct": 0
+                }
+              ]
+            },
+            "uncertainty": {
+              "permutation": {
+                "pValue": 1,
+                "observed": 0
+              },
+              "outcomeMeanCI": {
+                "mean": 0.010796993018089451,
+                "ciLow": -0.0050371191685179345,
+                "ciHigh": 0.028515356236115327,
+                "n": 25208
+              }
+            },
+            "permutationP": 1,
+            "slices": {
+              "coin": {
+                "tested": 5,
+                "positive": 0,
+                "ratio": 0,
+                "slices": {
+                  "BTCUSDT": {
+                    "n": 5820,
+                    "monotonicity": null,
+                    "spread": 0.0898976288659794,
+                    "avgOutcome": 0.00043525773195875325
+                  },
+                  "BNBUSDT": {
+                    "n": 9789,
+                    "monotonicity": null,
+                    "spread": 0.07002438819411885,
+                    "avgOutcome": 0.005398416590050075
+                  },
+                  "ETHUSDT": {
+                    "n": 5195,
+                    "monotonicity": null,
+                    "spread": 0.05863038673590616,
+                    "avgOutcome": 0.03246852743022126
+                  },
+                  "SOLUSDT": {
+                    "n": 2232,
+                    "monotonicity": null,
+                    "spread": 0.19771693548387093,
+                    "avgOutcome": -0.006542697132616527
+                  },
+                  "XRPUSDT": {
+                    "n": 2172,
+                    "monotonicity": null,
+                    "spread": 0.26098646408839793,
+                    "avgOutcome": 0.028877348066298315
+                  }
+                }
+              },
+              "regime": {
+                "tested": 5,
+                "positive": 0,
+                "ratio": 0,
+                "slices": {
+                  "RANGE": {
+                    "n": 2206,
+                    "monotonicity": null,
+                    "spread": 0.13260923913043476,
+                    "avgOutcome": 0.007828513145965553
+                  },
+                  "TREND_DOWN": {
+                    "n": 9844,
+                    "monotonicity": null,
+                    "spread": 0.11624893357708715,
+                    "avgOutcome": 0.019617370987403474
+                  },
+                  "SQUEEZE": {
+                    "n": 2036,
+                    "monotonicity": null,
+                    "spread": 0.25973107235814674,
+                    "avgOutcome": -0.06325142436149317
+                  },
+                  "TREND_UP": {
+                    "n": 10385,
+                    "monotonicity": null,
+                    "spread": 0.09040063547082619,
+                    "avgOutcome": 0.02025011073663933
+                  },
+                  "VOLATILE_AVOID": {
+                    "n": 737,
+                    "monotonicity": null,
+                    "spread": 0.2323943089430895,
+                    "avgOutcome": -0.02677069199457261
+                  }
+                }
+              }
+            },
+            "holdout": {
+              "n": 7066,
+              "sufficient": true,
+              "monotonicity": null,
+              "spread": 0.07778978150833823,
+              "avgOutcome": 0.002463204075856228
+            },
+            "walkForward": [
+              {
+                "label": "WF1",
+                "trainN": 3236,
+                "validateN": 6076,
+                "trainMono": null,
+                "validateMono": null,
+                "trainSpread": 0.25851417002811394,
+                "validateSpread": 0.14863488870397332
+              },
+              {
+                "label": "WF2",
+                "trainN": 9312,
+                "validateN": 15896,
+                "trainMono": null,
+                "validateMono": null,
+                "trainSpread": 0.08670206185567003,
+                "validateSpread": 0.046797785606441954
+              }
+            ],
+            "result": "mono=— spread=0.053 p=1.000 coin-weak",
+            "accepted": false,
+            "fdrAdjustedP": 1,
+            "fdrSignificant": false,
+            "promotion": {
+              "layer": "research",
+              "nextLayer": null,
+              "passed": false,
+              "checks": {
+                "sampleSize": true,
+                "monotonicity": false,
+                "bucketSpread": false,
+                "permutation": false,
+                "coinStability": false,
+                "regimeStability": true,
+                "walkForward": true,
+                "fdr": false,
+                "holdout": true,
+                "incremental": true,
+                "explainable": true,
+                "informationGain": true
+              },
+              "failed": [
+                "monotonicity",
+                "bucketSpread",
+                "permutation",
+                "coinStability",
+                "fdr"
+              ],
+              "recommendation": "Remain in research — failed: monotonicity, bucketSpread, permutation, coinStability, fdr"
+            }
+          },
+          {
+            "id": "EXP-D04",
+            "familyId": "D",
+            "layer": "research",
+            "hypothesis": "ADX at expansion entry × ATR expansion interaction lifts expectancy.",
+            "outcome": "fwd_closeR_20",
+            "n": 25208,
+            "bucket": {
+              "monotonicity": 0.3939393939393939,
+              "spread": 0.06225561869187715,
+              "buckets": [
+                {
+                  "bucket": 1,
+                  "n": 2520,
+                  "featureMin": 7.4733926665200965,
+                  "featureMax": 20.214234078813462,
+                  "featureMid": 13.84381337266678,
+                  "avgR": -0.018614722222222244,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 2,
+                  "n": 2521,
+                  "featureMin": 20.214722569381372,
+                  "featureMax": 24.333105532764286,
+                  "featureMid": 22.27391405107283,
+                  "avgR": 0.011562038873462905,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 3,
+                  "n": 2521,
+                  "featureMin": 24.333939202299035,
+                  "featureMax": 27.054959920539947,
+                  "featureMid": 25.69444956141949,
+                  "avgR": 0.014274613248710828,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 4,
+                  "n": 2521,
+                  "featureMin": 27.055238126260683,
+                  "featureMax": 30.06286135870237,
+                  "featureMid": 28.559049742481527,
+                  "avgR": -0.01572086473621578,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 5,
+                  "n": 2521,
+                  "featureMin": 30.06286135870237,
+                  "featureMax": 33.8011262137035,
+                  "featureMid": 31.931993786202934,
+                  "avgR": 0.039916144387148,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 6,
+                  "n": 2520,
+                  "featureMin": 33.80186566689329,
+                  "featureMax": 38.05308731020651,
+                  "featureMid": 35.9274764885499,
+                  "avgR": 0.012879126984126972,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 7,
+                  "n": 2521,
+                  "featureMin": 38.05385608493059,
+                  "featureMax": 42.97361639412995,
+                  "featureMid": 40.51373623953027,
+                  "avgR": 0.042531178103927,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 8,
+                  "n": 2521,
+                  "featureMin": 42.97388043761803,
+                  "featureMax": 49.24332365513229,
+                  "featureMid": 46.10860204637516,
+                  "avgR": -0.01809877032923435,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 9,
+                  "n": 2521,
+                  "featureMin": 49.24402889859683,
+                  "featureMax": 58.12735822766858,
+                  "featureMid": 53.6856935631327,
+                  "avgR": -0.004410551368504562,
+                  "winPct": 0
+                },
+                {
+                  "bucket": 10,
+                  "n": 2521,
+                  "featureMin": 58.13085136306759,
+                  "featureMax": 92.35103328935242,
+                  "featureMid": 75.24094232621,
+                  "avgR": 0.04364089646965491,
+                  "winPct": 0
+                }
+              ]
+            },
+            "uncertainty": {
+              "permutation": {
+                "pValue": 0.03333333333333333,
+                "observed": 0.013691308767925372
+              },
+              "outcomeMeanCI": {
+                "mean": 0.010796993018089451,
+                "ciLow": -0.004493454458901934,
+                "ciHigh": 0.02509152649952398,
+                "n": 25208
+              }
+            },
+            "permutationP": 0.03333333333333333,
+            "interaction": {
+              "partner": "vol_atr_expansion",
+              "lift": 0.05870386224506845,
+              "bestCell": {
+                "aBin": 2,
+                "bBin": 3,
+                "n": 1520,
+                "avgR": 0.0695008552631579
+              }
+            },
+            "slices": {
+              "coin": {
+                "tested": 5,
+                "positive": 3,
+                "ratio": 0.6,
+                "slices": {
+                  "BTCUSDT": {
+                    "n": 5820,
+                    "monotonicity": -0.02857142857142857,
+                    "spread": 0.12975340206185565,
+                    "avgOutcome": 0.00043525773195875325
+                  },
+                  "BNBUSDT": {
+                    "n": 9789,
+                    "monotonicity": -0.7714285714285715,
+                    "spread": 0.053298406599764314,
+                    "avgOutcome": 0.005398416590050075
+                  },
+                  "ETHUSDT": {
+                    "n": 5195,
+                    "monotonicity": 0.08571428571428572,
+                    "spread": 0.03644657851526521,
+                    "avgOutcome": 0.03246852743022126
+                  },
+                  "SOLUSDT": {
+                    "n": 2232,
+                    "monotonicity": 0.9428571428571428,
+                    "spread": 0.14445026881720432,
+                    "avgOutcome": -0.006542697132616527
+                  },
+                  "XRPUSDT": {
+                    "n": 2172,
+                    "monotonicity": 0.8857142857142857,
+                    "spread": 0.2529085635359115,
+                    "avgOutcome": 0.028877348066298315
+                  }
+                }
+              },
+              "regime": {
+                "tested": 5,
+                "positive": 3,
+                "ratio": 0.6,
+                "slices": {
+                  "RANGE": {
+                    "n": 2206,
+                    "monotonicity": -0.8285714285714286,
+                    "spread": 0.15453992121786503,
+                    "avgOutcome": 0.007828513145965553
+                  },
+                  "TREND_DOWN": {
+                    "n": 9844,
+                    "monotonicity": 0.08571428571428572,
+                    "spread": 0.06748275664749329,
+                    "avgOutcome": 0.019617370987403474
+                  },
+                  "SQUEEZE": {
+                    "n": 2036,
+                    "monotonicity": 0.6,
+                    "spread": 0.23341740412979356,
+                    "avgOutcome": -0.06325142436149317
+                  },
+                  "TREND_UP": {
+                    "n": 10385,
+                    "monotonicity": -0.14285714285714285,
+                    "spread": 0.035903235124205665,
+                    "avgOutcome": 0.02025011073663933
+                  },
+                  "VOLATILE_AVOID": {
+                    "n": 737,
+                    "monotonicity": 0.02857142857142857,
+                    "spread": 0.08475528455284553,
+                    "avgOutcome": -0.02677069199457261
+                  }
+                }
+              }
+            },
+            "holdout": {
+              "n": 7066,
+              "sufficient": true,
+              "monotonicity": 0.02857142857142857,
+              "spread": 0.08111035653650253,
+              "avgOutcome": 0.002463204075856228
+            },
+            "walkForward": [
+              {
+                "label": "WF1",
+                "trainN": 3236,
+                "validateN": 6076,
+                "trainMono": -0.30952380952380953,
+                "validateMono": -0.23809523809523808,
+                "trainSpread": 0.35648415841584136,
+                "validateSpread": 0.08742131578947371
+              },
+              {
+                "label": "WF2",
+                "trainN": 9312,
+                "validateN": 15896,
+                "trainMono": -0.47619047619047616,
+                "validateMono": 0.6190476190476191,
+                "trainSpread": 0.12987018900343633,
+                "validateSpread": 0.11467916456970312
+              }
+            ],
+            "result": "lift=0.059 mono=0.394 p=0.033 WF-mixed",
+            "accepted": false,
+            "fdrAdjustedP": 0.1,
+            "fdrSignificant": true,
+            "promotion": {
+              "layer": "research",
+              "nextLayer": null,
+              "passed": false,
+              "checks": {
+                "sampleSize": true,
+                "monotonicity": true,
+                "bucketSpread": false,
+                "permutation": true,
+                "coinStability": true,
+                "regimeStability": true,
+                "walkForward": false,
+                "fdr": true,
+                "holdout": true,
+                "incremental": true,
+                "explainable": true,
+                "informationGain": true
+              },
+              "failed": [
+                "bucketSpread",
+                "walkForward"
+              ],
+              "recommendation": "Remain in research — failed: bucketSpread, walkForward"
+            }
+          },
+          {
+            "id": "EXP-D05",
+            "familyId": "D",
+            "layer": "research",
+            "hypothesis": "Vol expansion composite score selection bias check on all candidates.",
+            "outcome": "fwd_closeR_20",
+            "n": 25208,
+            "bias": {
+              "all": {
+                "n": 25208,
+                "spread": 0.08234392256426544,
+                "mono": 0.6257415691925262
+              },
+              "picked": {
+                "n": 4644,
+                "spread": 0.4044271274259598,
+                "mono": 0.8556058190999849
+              },
+              "rejected": {
+                "n": 20564,
+                "spread": 0.13204767756796465,
+                "mono": 0.17757120130114434
+              }
+            },
+            "accepted": "partial",
+            "result": "all mono=0.626 picked=0.856 rejected=0.178",
+            "permutationP": 0.28,
+            "fdrAdjustedP": 0.42000000000000004,
+            "fdrSignificant": false,
+            "promotion": {
+              "layer": "research",
+              "nextLayer": null,
+              "passed": false,
+              "checks": {
+                "sampleSize": true,
+                "monotonicity": false,
+                "bucketSpread": false,
+                "permutation": false,
+                "coinStability": false,
+                "regimeStability": true,
+                "walkForward": true,
+                "fdr": false,
+                "holdout": true,
+                "incremental": true,
+                "explainable": true,
+                "informationGain": true
+              },
+              "failed": [
+                "monotonicity",
+                "bucketSpread",
+                "permutation",
+                "coinStability",
+                "fdr"
+              ],
+              "recommendation": "Remain in research — failed: monotonicity, bucketSpread, permutation, coinStability, fdr"
+            }
+          },
+          {
+            "id": "EXP-D06",
+            "familyId": "D",
+            "layer": "research",
+            "hypothesis": "Trigger type × expansion score interaction across coins and regimes.",
+            "outcome": "fwd_closeR_20",
+            "n": 25208,
+            "interaction": {
+              "lift": 0.12540168247859917,
+              "best": {
+                "a": "1",
+                "b": "regime_expansion",
+                "n": 302,
+                "avgR": 0.13619867549668863
+              },
+              "cells": 7
+            },
+            "slices": {
+              "coin": {
+                "tested": 5,
+                "positive": 3,
+                "ratio": 0.6,
+                "slices": {
+                  "BTCUSDT": {
+                    "n": 5820,
+                    "monotonicity": 0.5161002296110788,
+                    "spread": 0.13829979381443286,
+                    "avgOutcome": 0.00043525773195875325
+                  },
+                  "BNBUSDT": {
+                    "n": 9789,
+                    "monotonicity": -0.33394720739540396,
+                    "spread": 0.12528362967504597,
+                    "avgOutcome": 0.005398416590050075
+                  },
+                  "ETHUSDT": {
+                    "n": 5195,
+                    "monotonicity": -0.057977103565244846,
+                    "spread": 0.09143406466512695,
+                    "avgOutcome": 0.03246852743022126
+                  },
+                  "SOLUSDT": {
+                    "n": 2232,
+                    "monotonicity": 0.5161002296110788,
+                    "spread": 0.2578408602150538,
+                    "avgOutcome": -0.006542697132616527
+                  },
+                  "XRPUSDT": {
+                    "n": 2172,
+                    "monotonicity": 0.5768179036829705,
+                    "spread": 0.09647292817679554,
+                    "avgOutcome": 0.028877348066298315
+                  }
+                }
+              },
+              "regime": {
+                "tested": 5,
+                "positive": 4,
+                "ratio": 0.8,
+                "slices": {
+                  "RANGE": {
+                    "n": 2206,
+                    "monotonicity": 0.9276336570439175,
+                    "spread": 0.13060905772420334,
+                    "avgOutcome": 0.007828513145965553
+                  },
+                  "TREND_DOWN": {
+                    "n": 9844,
+                    "monotonicity": 0.33394720739540396,
+                    "spread": 0.12549697722982722,
+                    "avgOutcome": 0.019617370987403474
+                  },
+                  "SQUEEZE": {
+                    "n": 2036,
+                    "monotonicity": -0.09107651110783745,
+                    "spread": 0.32412023078257834,
+                    "avgOutcome": -0.06325142436149317
+                  },
+                  "TREND_UP": {
+                    "n": 10385,
+                    "monotonicity": 0.2732295333235123,
+                    "spread": 0.1174407810647726,
+                    "avgOutcome": 0.02025011073663933
+                  },
+                  "VOLATILE_AVOID": {
+                    "n": 737,
+                    "monotonicity": 0.44136741475237473,
+                    "spread": 0.26754146341463414,
+                    "avgOutcome": -0.02677069199457261
+                  }
+                }
+              }
+            },
+            "holdout": {
+              "n": 7066,
+              "sufficient": true,
+              "monotonicity": 0.3768511731740915,
+              "spread": 0.08457308998302204,
+              "avgOutcome": 0.002463204075856228
+            },
+            "accepted": false,
+            "result": "lift=0.125 coin=60% regime=80%",
+            "permutationP": 0.05,
+            "fdrAdjustedP": 0.10000000000000002,
+            "fdrSignificant": false,
+            "promotion": {
+              "layer": "research",
+              "nextLayer": null,
+              "passed": false,
+              "checks": {
+                "sampleSize": true,
+                "monotonicity": false,
+                "bucketSpread": false,
+                "permutation": true,
+                "coinStability": true,
+                "regimeStability": true,
+                "walkForward": true,
+                "fdr": false,
+                "holdout": true,
+                "incremental": true,
+                "explainable": true,
+                "informationGain": true
+              },
+              "failed": [
+                "monotonicity",
+                "bucketSpread",
+                "fdr"
+              ],
+              "recommendation": "Remain in research — failed: monotonicity, bucketSpread, fdr"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,5 +1,15 @@
 import { roundTo } from "../../lib/math.js";
 import {
+  buildDynamicTrailSnapshotFields,
+  computeDynamicAdvancedSl,
+  computeDynamicTieredMaxTrailStepFromExtreme,
+  computeDynamicT01LockFrac,
+  computeDynamicTrailBuffer,
+  computeInitialRiskFrac,
+  computePeakMfeR,
+  resolveEffectiveAtrPct,
+} from "../../lib/dynamicTrailing.js";
+import {
   mergeStopWithTrail,
   clampFeeRate,
   advanceTrailingStopState,
@@ -270,7 +280,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
           }
           const lev = Number(pos.leverage ?? pos.meta?.leverage ?? defaultLeverage);
           const feeR = clampFeeRate(trailingStopLoss.feeRate);
-          const buf = computeEffectiveTrailBuffer(trailingStopLoss);
+          let buf = computeEffectiveTrailBuffer(trailingStopLoss);
           const mm = Number.isFinite(Number(trailingStopLoss.maintenanceMarginRate))
             ? Number(trailingStopLoss.maintenanceMarginRate)
             : 0.005;
@@ -409,10 +419,12 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                   postT02SpacingFrac: postT02SpacingUser,
                   postT02BufferRate: postT02BufPf,
                 };
+                const isDynamicTrail =
+                  String(trailingStopLoss.trailSizingMode ?? "FIXED_PCT").toUpperCase() === "DYNAMIC";
 
                 if (tieredStMode) {
                   migrateTieredTrailLegacySchema(pos.meta);
-                  const t01LockSlip = Math.max(
+                  let t01LockSlip = Math.max(
                     0,
                     Math.min(0.01, Number(trailingStopLoss.trailT01LockSlippageFrac ?? 0)),
                   );
@@ -426,19 +438,54 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                   const feeBeLockRatePaper = feeBe;
                   const feeBeStPaper = Math.min(0.02, feeBe + slipFracPaper);
                   if (!pos.meta.trailLadderSnapshotV1) {
-                    pos.meta.trailLadderSnapshotV1 = {
+                    const snapBase = {
                       entryPx: Number(entryPx),
                       isLong,
                       feeBeLockRate: feeBeLockRatePaper,
                       feeBeSt: feeBeStPaper,
-                      buf,
                       postT02Buf: postT02BufPf,
                       postT02SpacingFrac: postT02SpacingUser,
                       roundTripFeeRate: rtRateST,
-                      t01LockSlipFrac: t01LockSlip,
                     };
+                    if (isDynamicTrail) {
+                      const dynFields = buildDynamicTrailSnapshotFields(
+                        trailingStopLoss,
+                        trailingStopLoss.atrPct,
+                        prevSl,
+                      );
+                      const dynBuf = computeDynamicTrailBuffer({
+                        entryAtrPct: dynFields.entryAtrPct,
+                        dynamicBe: dynFields.dynamicBe,
+                        fallbackBufferRate: Number(trailingStopLoss.bufferRate ?? 0.0005),
+                      });
+                      const dynT01 = computeDynamicT01LockFrac({
+                        entryAtrPct: dynFields.entryAtrPct,
+                        t01LockAtrMult: dynFields.dynamicBe.t01LockAtrMult,
+                        fixedT01LockSlipFrac: trailingStopLoss.trailT01LockSlippageFrac,
+                      });
+                      pos.meta.trailLadderSnapshotV1 = {
+                        ...snapBase,
+                        ...dynFields,
+                        buf: dynBuf,
+                        t01LockSlipFrac: dynT01,
+                      };
+                    } else {
+                      pos.meta.trailLadderSnapshotV1 = { ...snapBase, buf, t01LockSlipFrac: t01LockSlip };
+                    }
                   }
-                  const entryLadder = Number(pos.meta.trailLadderSnapshotV1.entryPx);
+                  buf = Number(pos.meta.trailLadderSnapshotV1.buf);
+                  t01LockSlip = Number(pos.meta.trailLadderSnapshotV1.t01LockSlipFrac);
+                  const tierSnap = pos.meta.trailLadderSnapshotV1;
+                  const effectivePostT02Spacing =
+                    isDynamicTrail && tierSnap.postT02SpacingFrac != null
+                      ? Number(tierSnap.postT02SpacingFrac)
+                      : postT02SpacingUser;
+                  const gateRtSpacingDyn = {
+                    roundTripFeeRate: rtRateST,
+                    postT02SpacingFrac: effectivePostT02Spacing,
+                    postT02BufferRate: postT02BufPf,
+                  };
+                  const entryLadder = Number(tierSnap.entryPx);
                   if (!Number.isFinite(entryLadder) || entryLadder <= 0) {
                     /* skip */
                   } else {
@@ -450,16 +497,16 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                   const c = confirmedPaper();
                   const prevTrailStep = Math.max(0, Math.floor(Number(pos.meta.trailStep) || 0));
                   const rawPriceStep = computeSupertrendTieredMaxTrailStepFromExtreme({
-                    hwm,
-                    entryPx: entryLadder,
-                    isLong,
-                    feeBe: feeBeStPaper,
-                    bufferRate: buf,
-                    useFeeBeTrail,
-                    stLevels,
-                    maxActivationSteps: maxTieredActivationSteps,
-                    ...gateRtSpacing,
-                  });
+                        hwm,
+                        entryPx: entryLadder,
+                        isLong,
+                        feeBe: feeBeStPaper,
+                        bufferRate: buf,
+                        useFeeBeTrail,
+                        stLevels,
+                        maxActivationSteps: maxTieredActivationSteps,
+                        ...gateRtSpacingDyn,
+                      });
                   const maxStepCapTiered =
                     maxStepCap != null ? Math.max(maxStepCap, 3) : null;
                   const priceStep = maxStepCapTiered != null ? Math.min(rawPriceStep, maxStepCapTiered) : rawPriceStep;
@@ -478,7 +525,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                                 bufferRate: buf,
                                 useFeeBeTrail,
                                 stLevels,
-                                ...gateRtSpacing,
+                                ...gateRtSpacingDyn,
                               }).activationPx;
                       const pxForCompute = isLong ? Math.max(px, gateForGeometry) : Math.min(px, gateForGeometry);
                       const computeBreakevenPx =
@@ -498,7 +545,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
                           feeBeLockRate: feeBeLockRatePaper,
                           feeBeSt: feeBeStPaper,
                           roundTripFeeR: rtRateST,
-                          postT02SpacingFrac: postT02SpacingUser,
+                          postT02SpacingFrac: effectivePostT02Spacing,
                           t01LockSlipFrac: t01LockSlip,
                         });
                         if (ladderRaw != null && Number.isFinite(ladderRaw)) {

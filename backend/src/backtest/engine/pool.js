@@ -17,10 +17,11 @@ import { BACKTEST_ENGINE_VERSION } from "./version.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const WORKER_PATH = path.join(__dirname, "worker.js");
+const WORKER_EXEC_ARGV = process.execArgv.filter((arg) => !String(arg).startsWith("--input-type"));
 
 /** Serial by default — parallel workers thrash CPU and stall SR_INTRADAY signal builds. */
 const MAX_CONCURRENCY = Math.max(1, Number(process.env.BACKTEST_WORKER_CONCURRENCY || 1));
-const USE_WARM_WORKER = process.env.BACKTEST_DISABLE_WARM_WORKER !== "true" && MAX_CONCURRENCY === 1;
+const USE_WARM_WORKER = process.env.BACKTEST_ENABLE_WARM_WORKER === "true" && MAX_CONCURRENCY === 1;
 
 /** @type {Set<{ runId:string, worker:Worker, warm?: boolean }>} */
 const active = new Set();
@@ -310,7 +311,7 @@ function ensureWarmWorker() {
   warmReady = new Promise((resolve, reject) => {
     warmReadyResolve = resolve;
     warmReadyReject = reject;
-    const worker = new Worker(WORKER_PATH, { workerData: { persistent: true } });
+    const worker = new Worker(WORKER_PATH, { workerData: { persistent: true }, execArgv: WORKER_EXEC_ARGV });
     warmWorker = worker;
     let settled = false;
     const settle = (fn, val) => {
@@ -446,6 +447,7 @@ function spawnWarm(job) {
 function spawn(job) {
   const worker = new Worker(WORKER_PATH, {
     workerData: { runId: job.runId },
+    execArgv: WORKER_EXEC_ARGV,
   });
   const entry = { runId: job.runId, worker };
   active.add(entry);

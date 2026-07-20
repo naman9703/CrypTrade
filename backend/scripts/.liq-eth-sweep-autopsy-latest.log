@@ -1,0 +1,47 @@
+
+═══ ETH SWEEP_RECLAIM ENTRY AUTOPSY ═══
+Window: 2025-06-01 → 2026-06-01
+
+── Signal funnel (baseline ETH preset) ──
+  Raw reclaim signals at entry bar:     84
+  + reclaim strength pass:              84
+  + displacement impulse ≥ 1.2 ATR:     83
+  + entry score ≥ 45:                   0
+  + HTF trend_pullback align:           12
+
+── Baseline backtest ──
+  n=7 ret=-5.8% WR=14% PF=0.05
+
+── Per-trade diagnosis ──
+ # | entry          | side | level | pnl    | exit       | day      | HTF    | impulse | choch | vol× | fake flags
+ 1 | 2025-05-18T14:15 | SELL | pdh   |  -4.20 | sl         | range    | dn     |    0.00 | N |  0.0 | —
+ 2 | 2025-06-17T00:30 | BUY  | session_low |   0.31 | trail      | range    | up     |    0.00 | N |  0.0 | —
+ 3 | 2025-06-25T14:45 | BUY  | session_low |  -0.26 | trail      | range    | up     |    0.00 | N |  0.0 | —
+ 4 | 2025-07-02T11:30 | SELL | session_high |  -0.69 | trail      | range    | dn     |    0.00 | N |  0.0 | —
+ 5 | 2025-09-23T09:30 | SELL | session_high |  -0.46 | trail      | range    | dn     |    0.00 | N |  0.0 | —
+ 6 | 2026-02-07T04:45 | SELL | pdh   |  -0.28 | trail      | range    | dn     |    0.00 | N |  0.0 | —
+ 7 | 2026-04-16T15:00 | BUY  | pdl   |  -0.25 | trail      | range    | up     |    0.00 | N |  0.0 | —
+
+── Loser fake-pattern counts ──
+
+── Winner vs loser averages ──
+  impulse ATR:  wins=0.00  losses=0.00
+  sweep vol×:   wins=0.00  losses=0.00
+  extension:    wins=0.0000  losses=0.0000
+  entry score:  wins=0.0  losses=0.0
+  immediate fail bars (0-3): wins=0.0 losses=1.7
+
+── Config matrix (entry-focused, same exit/trail) ──
+  label                          | n   | ret%   | WR%  | PF   | t/day
+  BASELINE                       |   7 |   -5.8 |   14 | 0.05 | 0.02
+  fade_not_trend_pullback        |  30 |  -25.4 |   13 | 0.06 | 0.08
+  fade+choch                     |   1 |    0.4 |  100 | 999.00 | 0.00
+  no_onePick                     |   7 |   -5.8 |   14 | 0.05 | 0.02
+  no_entry_score                 |   7 |   -5.8 |   14 | 0.05 | 0.02
+  no_displacement                |   7 |   -5.8 |   14 | 0.05 | 0.02
+  no_adx_band                    |   7 |   -5.8 |   14 | 0.05 | 0.02
+  no_session_extreme             |   3 |   -4.7 |    0 | 0.00 | 0.01
+  no_htf_required                |   7 |   -5.8 |   14 | 0.05 | 0.02
+  classical_fade_loose           |  22 |  -21.0 |   14 | 0.05 | 0.06
+  PROPOSED_v2                    |   0 |    0.0 |    0 | 0.00 | 0.00
+  PROPOSED_v3_more_trades        |   6 |   -5.6 |   17 | 0.05 | 0.02

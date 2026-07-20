@@ -1,0 +1,28 @@
+
+=== BTC VP FREQ certification — BTCUSDT 15m 2020-01-01→2026-05-31 ===
+locked preset · risk%=2.5 lev=12x · expanding WF folds=5
+
+candles=224832 funding=6481 first=2020-01-01T00:00:00.000Z last=2026-05-30T23:45:00.000Z
+FULL: trades=75 (0.22/wk) net=145.4% CAGR=15.0% Calmar=1.10 maxDD=13.7% Sharpe=0.93 PF=2.17 WR=57%
+  years: 2019-20=3.5%/7  2020-21=12.1%/13  2021-22=1.3%/20  2022-23=8.0%/11  2023-24=6.4%/5  2024-25=33.9%/10  2025-26=35.5%/9
+  negYears=none
+MC(1% risk): ret p5=13.2% p50=44.9% p95=91.4%  maxDD p95=11.5% ruin=0.0%
+
+WF expanding folds=5 embargo=96bars (~1d)
+  fold 0: 2021-01-25→2022-02-19  trainN=14 testN=19 testRet=-4.0% DD=12.8% WR=42%
+  fold 1: 2022-02-19→2023-03-16  trainN=33 testN=17 testRet=18.0% DD=6.2% WR=59%
+  fold 2: 2023-03-17→2024-04-10  trainN=50 testN=6 testRet=3.4% DD=5.6% WR=50%
+  fold 3: 2024-04-10→2025-05-05  trainN=56 testN=10 testRet=33.9% DD=5.9% WR=60%
+  fold 4: 2025-05-05→2026-05-30  trainN=66 testN=9 testRet=35.5% DD=3.6% WR=78%
+
+WF: degradation=-124.7% OOSsumRet=86.9% OOStrades=61
+GATES: PASS:oosPositive PASS:mcP5Positive PASS:calmarOver1 PASS:wfDegradationOk
+EXTRA: PASS:oosTradesGe30 FAIL:frequencyDeployable PASS:noCatastrophicYear
+
+COST STRESS (full window):
+  slip_x2      N=75 ret=103.8% DD=15.5%
+  slip_x4      N=75 ret=48.7% DD=19.9%
+  liq_crunch   N=76 ret=-55.0% DD=55.0%
+
+VERDICT: RESEARCH_SLEEVE_LOW_FREQ (gates=pass freq=low)
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-btc-certification.json

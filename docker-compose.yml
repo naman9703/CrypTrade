@@ -80,6 +80,8 @@ services:
       PORT: "8000"
       SERVE_FRONTEND: "1"
       AI_BASE_URL: http://ai:8001
+      # Inside Docker, use the Compose service name. `127.0.0.1:54333` is only for host-run Node/scripts.
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-tradingdev}@timescale:5432/trading
     volumes:
       - trading-data:/app/backend/data
       - ./backend/.env:/app/backend/.env:ro

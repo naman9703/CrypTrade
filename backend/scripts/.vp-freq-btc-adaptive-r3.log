@@ -1,0 +1,52 @@
+loading candles once…
+candles=142176
+
+=== GW_htf05_weakBear ===
+N=52 ret=27.2% DD=26.3% WR=40%
+  2022-23: n=15 wr=47% ret=4.1% net=$4.1
+  2023-24: n=12 wr=25% ret=-10.3% net=$-10.7
+  2024-25: n=13 wr=31% ret=6.4% net=$6.0
+  2025-26: n=12 wr=58% ret=27.9% net=$27.7
+  setups {"vp_val_breakdown":{"n":47,"net":-14.203720219216525},"vp_va_rejection":{"n":5,"net":41.36788788157743}}
+
+=== GW_plus_valBearOnly ===
+N=33 ret=24.4% DD=17.5% WR=39%
+  2022-23: n=9 wr=33% ret=-4.3% net=$-4.3
+  2023-24: n=7 wr=43% ret=4.8% net=$4.5
+  2024-25: n=8 wr=25% ret=8.5% net=$8.5
+  2025-26: n=9 wr=56% ret=14.4% net=$15.7
+  setups {"vp_val_breakdown":{"n":28,"net":-19.33886410965037},"vp_va_rejection":{"n":5,"net":43.76131690273522}}
+
+=== GW_plus_vol115 ===
+N=47 ret=20.6% DD=21.0% WR=40%
+  2022-23: n=13 wr=54% ret=10.7% net=$10.7
+  2023-24: n=11 wr=27% ret=-7.0% net=$-7.8
+  2024-25: n=12 wr=25% ret=1.2% net=$1.3
+  2025-26: n=11 wr=55% ret=15.7% net=$16.4
+  setups {"vp_val_breakdown":{"n":42,"net":-21.45512450877546},"vp_va_rejection":{"n":5,"net":42.098234378838285}}
+
+=== GW_valBearOnly_vol115 ===
+N=32 ret=28.0% DD=17.3% WR=41%
+  2022-23: n=8 wr=38% ret=-1.5% net=$-1.5
+  2023-24: n=7 wr=43% ret=4.8% net=$4.7
+  2024-25: n=8 wr=25% ret=8.5% net=$8.8
+  2025-26: n=9 wr=56% ret=14.4% net=$16.1
+  setups {"vp_val_breakdown":{"n":27,"net":-16.840063416756237},"vp_va_rejection":{"n":5,"net":44.866528687838056}}
+
+=== G_htf05_valBearOnly ===
+N=45 ret=5.7% DD=26.0% WR=36%
+  2022-23: n=10 wr=40% ret=0.1% net=$0.1
+  2023-24: n=11 wr=36% ret=-1.7% net=$-1.7
+  2024-25: n=13 wr=15% ret=-7.9% net=$-7.7
+  2025-26: n=11 wr=55% ret=16.6% net=$15.1
+  setups {"vp_val_breakdown":{"n":40,"net":-32.99518604620134},"vp_va_rejection":{"n":5,"net":38.70932097656261}}
+
+=== GW_valBearOnly_score8 ===
+N=33 ret=24.4% DD=17.5% WR=39%
+  2022-23: n=9 wr=33% ret=-4.3% net=$-4.3
+  2023-24: n=7 wr=43% ret=4.8% net=$4.5
+  2024-25: n=8 wr=25% ret=8.5% net=$8.5
+  2025-26: n=9 wr=56% ret=14.4% net=$15.7
+  setups {"vp_val_breakdown":{"n":28,"net":-19.33886410965037},"vp_va_rejection":{"n":5,"net":43.76131690273522}}
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-btc-adaptive-r3.json

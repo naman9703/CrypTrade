@@ -1,0 +1,48 @@
+
+========================================================================
+LIQ per-coin OOS tune | BNBUSDT 15m
+Months: 2025-03, 2025-07, 2025-10, 2026-01, 2026-04 | tune=2025-03,2025-07,2025-10 | oos=2026-01,2026-04
+Grid size: 576 | risk=2.5% lev=12x
+  grid 50/576
+  grid 100/576
+  grid 150/576
+  grid 200/576
+  grid 250/576
+  grid 300/576
+  grid 350/576
+  grid 400/576
+  grid 450/576
+  grid 500/576
+  grid 550/576
+
+--- TOP 8 on tune months ---
+#1 score=-5.7 tuneRet=-0.28% tr/mo=2.3 ext=0.80% rr=1 body=0.35 htf=off score=4 pick=true maxTd=3
+#2 score=-5.7 tuneRet=-0.28% tr/mo=2.3 ext=0.80% rr=1 body=0.35 htf=off score=4 pick=true maxTd=4
+#3 score=-5.7 tuneRet=-0.28% tr/mo=2.3 ext=0.80% rr=1 body=0.35 htf=off score=4 pick=false maxTd=3
+#4 score=-5.7 tuneRet=-0.28% tr/mo=2.3 ext=0.80% rr=1 body=0.35 htf=off score=4 pick=false maxTd=4
+#5 score=-5.7 tuneRet=-0.28% tr/mo=2.3 ext=0.80% rr=1 body=0.35 htf=off score=5 pick=true maxTd=3
+#6 score=-5.7 tuneRet=-0.28% tr/mo=2.3 ext=0.80% rr=1 body=0.35 htf=off score=5 pick=true maxTd=4
+#7 score=-5.7 tuneRet=-0.28% tr/mo=2.3 ext=0.80% rr=1 body=0.35 htf=off score=5 pick=false maxTd=3
+#8 score=-5.7 tuneRet=-0.28% tr/mo=2.3 ext=0.80% rr=1 body=0.35 htf=off score=5 pick=false maxTd=4
+
+--- OOS hold-out (2026-01, 2026-04) ---
+#1 oosRet=0.00% tr/mo=0.0 posMo=0/2 months=2026-01:0.0%/0tr 2026-04:0.0%/0tr
+#2 oosRet=0.00% tr/mo=0.0 posMo=0/2 months=2026-01:0.0%/0tr 2026-04:0.0%/0tr
+#3 oosRet=0.00% tr/mo=0.0 posMo=0/2 months=2026-01:0.0%/0tr 2026-04:0.0%/0tr
+#4 oosRet=0.00% tr/mo=0.0 posMo=0/2 months=2026-01:0.0%/0tr 2026-04:0.0%/0tr
+#5 oosRet=0.00% tr/mo=0.0 posMo=0/2 months=2026-01:0.0%/0tr 2026-04:0.0%/0tr
+#6 oosRet=0.00% tr/mo=0.0 posMo=0/2 months=2026-01:0.0%/0tr 2026-04:0.0%/0tr
+#7 oosRet=0.00% tr/mo=0.0 posMo=0/2 months=2026-01:0.0%/0tr 2026-04:0.0%/0tr
+#8 oosRet=0.00% tr/mo=0.0 posMo=0/2 months=2026-01:0.0%/0tr 2026-04:0.0%/0tr
+
+--- ACCEPTANCE GATES (top OOS candidates) ---
+file:///Users/namanpaliwal/Desktop/trading/backend/scripts/backtest-liq-per-coin-oos.mjs:299
+    calmar: m.calmar ?? -1,
+              ^
+
+TypeError: Cannot read properties of undefined (reading 'calmar')
+    at validateGates (file:///Users/namanpaliwal/Desktop/trading/backend/scripts/backtest-liq-per-coin-oos.mjs:299:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async file:///Users/namanpaliwal/Desktop/trading/backend/scripts/backtest-liq-per-coin-oos.mjs:377:13
+
+Node.js v22.19.0

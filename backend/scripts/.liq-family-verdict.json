@@ -1,0 +1,100 @@
+{
+  "generatedAt": "2026-07-10T00:28:03.772Z",
+  "familyVerdicts": [
+    {
+      "familyId": "A",
+      "familyName": "Liquidity continuation",
+      "status": "research_frozen",
+      "experimentsRun": 5,
+      "accepted": 0,
+      "partial": 1,
+      "promotedFeatures": 0,
+      "verdict": "weak_signal",
+      "recommendation": "Partial signals only — do not promote; consider alternate family formulation",
+      "productionObjective": "universal"
+    },
+    {
+      "familyId": "B",
+      "familyName": "Liquidity reversal",
+      "status": "planned",
+      "experimentsRun": 0,
+      "accepted": 0,
+      "partial": 0,
+      "promotedFeatures": 0,
+      "verdict": "insufficient_evidence",
+      "recommendation": "Continue research or freeze family",
+      "productionObjective": "universal"
+    },
+    {
+      "familyId": "C",
+      "familyName": "Trend continuation",
+      "status": "planned",
+      "experimentsRun": 0,
+      "accepted": 0,
+      "partial": 0,
+      "promotedFeatures": 0,
+      "verdict": "insufficient_evidence",
+      "recommendation": "Continue research or freeze family",
+      "productionObjective": "per_coin"
+    },
+    {
+      "familyId": "D",
+      "familyName": "Volatility expansion",
+      "status": "planned",
+      "experimentsRun": 0,
+      "accepted": 0,
+      "partial": 0,
+      "promotedFeatures": 0,
+      "verdict": "insufficient_evidence",
+      "recommendation": "Continue research or freeze family",
+      "productionObjective": "universal"
+    },
+    {
+      "familyId": "E",
+      "familyName": "Mean reversion",
+      "status": "planned",
+      "experimentsRun": 0,
+      "accepted": 0,
+      "partial": 0,
+      "promotedFeatures": 0,
+      "verdict": "insufficient_evidence",
+      "recommendation": "Continue research or freeze family",
+      "productionObjective": "universal"
+    }
+  ],
+  "researchPoolFeatures": [
+    {
+      "feature": "cont_score",
+      "mutualInfo": 0.032549826885708344,
+      "informationGain": 0.032549826885708344,
+      "researchPoolWorthy": true,
+      "note": "Features with IG ≥ 0.01 may stay in research pool even if not promoted alone",
+      "coinPositive": 2
+    },
+    {
+      "feature": "sweep_velocityAtr",
+      "mutualInfo": 0.025313360718574304,
+      "informationGain": 0.025313360718574304,
+      "researchPoolWorthy": true,
+      "note": "Features with IG ≥ 0.01 may stay in research pool even if not promoted alone",
+      "coinPositive": 2
+    },
+    {
+      "feature": "marketState_adx",
+      "mutualInfo": 0.01165309760871805,
+      "informationGain": 0.01165309760871805,
+      "researchPoolWorthy": true,
+      "note": "Features with IG ≥ 0.01 may stay in research pool even if not promoted alone",
+      "coinPositive": 2
+    },
+    {
+      "feature": "scoreV2_total",
+      "mutualInfo": 0.01074892410791035,
+      "informationGain": 0.01074892410791035,
+      "researchPoolWorthy": true,
+      "note": "Features with IG ≥ 0.01 may stay in research pool even if not promoted alone",
+      "coinPositive": 1
+    }
+  ],
+  "platformNote": "Family A frozen. Platform ready for families B–E. Zero promotions is successful disproof, not failure."
+}

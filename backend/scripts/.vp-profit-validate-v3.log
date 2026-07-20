@@ -1,0 +1,24 @@
+=== Default composite_utc Tier-A preset ===
+17mo    BNBUSDT   n=  2 cand=  2 WR=    0% ret=  -5.72% PF=    0 DD= 5.72%
+2026H1  BNBUSDT   n=  1 cand=  1 WR=    0% ret=  -2.97% PF=    0 DD= 2.97%
+17mo    BTCUSDT   n=  7 cand=  7 WR= 28.6% ret=  -4.34% PF=  0.7 DD= 8.67%
+2026H1  BTCUSDT   n=  2 cand=  2 WR=    0% ret=  -5.91% PF=    0 DD= 5.91%
+17mo    ETHUSDT   n= 14 cand= 14 WR=  7.1% ret= -28.39% PF= 0.18 DD=28.39%
+2026H1  ETHUSDT   n=  6 cand=  6 WR= 16.7% ret=  -7.31% PF= 0.52 DD=11.59%
+
+=== rolling Tier-A compare 17mo ===
+17mo    BNBUSDT   n=  3 WR=66.7% ret=11.91% PF=4.67
+17mo    BTCUSDT   n=  2 WR=0.0% ret=-5.87% PF=0.00
+17mo    ETHUSDT   n= 13 WR=30.8% ret=6.88% PF=1.26
+
+=== Portfolio shared-account R-replay (composite Tier-A, 17mo) ===
+{"events":23,"bySym":{"ETHUSDT":14,"BNBUSDT":2,"BTCUSDT":7},"risk2_5":{"n":23,"ret":-35.42,"cagr":-26.55,"maxDD":35.42,"calmar":-0.75},"risk5":{"n":23,"ret":-59.57,"cagr":-47.23,"maxDD":59.57,"calmar":-0.79}}
+
+=== Gates on best composite n>=5 ===
+best 17mo BTCUSDT -4.34% n=7
+  fold 0: train n=2 te n=1 teRet=-3.0%
+  fold 1: train n=3 te n=2 teRet=11.4%
+  fold 2: train n=5 te n=2 teRet=-5.9%
+  fold 3: train n=6 te n=0 teRet=0.0%
+fullRet -4.34 MC_p5 -8.07 WF_deg -95.9 OOSsum 2.5
+GATES ✅oosPositive ❌mcP5Positive ❌calmarOver1 ✅wfDegradationOk -> REJECTED

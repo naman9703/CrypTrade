@@ -1,0 +1,127 @@
+{
+  "results": [
+    {
+      "id": "EXP-001",
+      "hypothesis": "Continuation room (cont_score) improves forward expectancy — more room before opposing liquidity → higher avg R.",
+      "whyRejected": [
+        "fdr_not_significant",
+        "permutation",
+        "coinStability",
+        "fdr"
+      ],
+      "failureConditions": [
+        "Mixed across regimes — failed in TREND_DOWN, TREND_UP, RANGE, SQUEEZE",
+        "Unstable across assets — negative on BTCUSDT, BNBUSDT, ETHUSDT",
+        "Lost significance after FDR correction",
+        "Holdout monotonicity negative"
+      ],
+      "result": "mono=-0.406 spread=0.232 p=0.627",
+      "accepted": false,
+      "recordedAt": "2026-07-10T01:36:29.297Z",
+      "doNotRevisitUntil": "new_data_regime_or_formulation_change"
+    },
+    {
+      "id": "EXP-002",
+      "hypothesis": "Sweep velocity alone is weak; sweep_velocityAtr × level_importance interaction lifts expectancy.",
+      "whyRejected": [
+        "walk_forward_inconsistent",
+        "fdr_not_significant",
+        "monotonicity",
+        "permutation",
+        "walkForward",
+        "fdr"
+      ],
+      "failureConditions": [
+        "Mixed across regimes — failed in TREND_UP, RANGE, VOLATILE_AVOID",
+        "Lost significance after FDR correction",
+        "Walk-forward inconsistent across folds"
+      ],
+      "result": "lift=0.140 mono=-0.212 p=0.447 WF-mixed",
+      "accepted": false,
+      "recordedAt": "2026-07-10T01:36:29.302Z",
+      "doNotRevisitUntil": "new_data_regime_or_formulation_change"
+    },
+    {
+      "id": "EXP-003",
+      "hypothesis": "Weekly/daily external liquidity (level_importance) predicts hit2R rate.",
+      "whyRejected": [
+        "unstable_across_asset_groups",
+        "fdr_not_significant",
+        "coinStability",
+        "fdr"
+      ],
+      "failureConditions": [
+        "Mixed across regimes — failed in TREND_DOWN, RANGE, VOLATILE_AVOID, SQUEEZE",
+        "Stable only on SOLUSDT",
+        "Unstable across assets — negative on BTCUSDT, BNBUSDT, ETHUSDT, XRPUSDT",
+        "Lost significance after FDR correction",
+        "Holdout monotonicity negative"
+      ],
+      "result": "mono=-0.266 spread=0.124 p=0.043 coin-weak",
+      "accepted": "partial",
+      "recordedAt": "2026-07-10T01:36:29.302Z",
+      "doNotRevisitUntil": "new_data_regime_or_formulation_change"
+    },
+    {
+      "id": "EXP-004",
+      "hypothesis": "Market ADX × continuation score interaction improves forward R (nonlinear combo).",
+      "whyRejected": [
+        "walk_forward_inconsistent",
+        "fdr_not_significant",
+        "permutation",
+        "walkForward",
+        "fdr"
+      ],
+      "failureConditions": [
+        "Mixed across regimes — failed in TREND_DOWN, TREND_UP, RANGE",
+        "Lost significance after FDR correction",
+        "Walk-forward inconsistent across folds",
+        "Holdout monotonicity negative"
+      ],
+      "result": "lift=0.198 mono=-0.261 p=0.337 WF-mixed",
+      "accepted": false,
+      "recordedAt": "2026-07-10T01:36:29.302Z",
+      "doNotRevisitUntil": "new_data_regime_or_formulation_change"
+    },
+    {
+      "id": "EXP-005",
+      "hypothesis": "scoreV2_total negative correlation is selection bias — decompose components vs forward R on all candidates.",
+      "whyRejected": [
+        "fdr_not_significant",
+        "monotonicity",
+        "bucketSpread",
+        "permutation",
+        "coinStability",
+        "fdr"
+      ],
+      "failureConditions": [
+        "Lost significance after FDR correction"
+      ],
+      "result": "all mono=-0.238 picked=-0.452 rejected=0.810",
+      "accepted": false,
+      "recordedAt": "2026-07-10T01:36:29.302Z",
+      "doNotRevisitUntil": "new_data_regime_or_formulation_change"
+    },
+    {
+      "id": "EXP-006",
+      "hypothesis": "Session narrative × level type interaction improves forward R across coins and regimes.",
+      "whyRejected": [
+        "fdr_not_significant",
+        "monotonicity",
+        "bucketSpread",
+        "coinStability",
+        "fdr"
+      ],
+      "failureConditions": [
+        "Failed in all regimes (TREND_DOWN, TREND_UP, RANGE, VOLATILE_AVOID, SQUEEZE)",
+        "Unstable across assets — negative on BTCUSDT, BNBUSDT, ETHUSDT, SOLUSDT, XRPUSDT",
+        "Lost significance after FDR correction"
+      ],
+      "result": "lift=0.405 coin=0% regime=0%",
+      "accepted": false,
+      "recordedAt": "2026-07-10T01:36:29.302Z",
+      "doNotRevisitUntil": "new_data_regime_or_formulation_change"
+    }
+  ],
+  "updatedAt": "2026-07-10T01:36:29.319Z"
+}

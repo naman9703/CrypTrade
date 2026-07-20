@@ -1,0 +1,171 @@
+loading…
+
+=== BASELINE (ETH surgical lock) ===
+full n=284 net=387.3 wr=42%
+2021-22 n=49 net=-9.0 wr=39%
+flags dump=true nonVac=true allowlist=undefined
+
+=== 2021-22 CELLS (worst first) ===
+  BUY|vah_breakout|bull_trend|tight                    21-22 n= 2 net=  -4.2 | FULL n=  3 net=   -1.9 +/-1/1
+    2020-21:1/2.2 2021-22:2/-4.2
+  SELL|val_breakdown|bull_trend|vacuum                 21-22 n= 7 net=  -3.5 | FULL n= 38 net=   58.6 +/-4/2
+    2020-21:21/4.5 2021-22:7/-3.5 2022-23:2/-5.4 2023-24:2/16.9 2024-25:3/12.3 2025-26:3/33.7
+  BUY|va_rejection|bull_trend|vacuum                   21-22 n= 1 net=  -2.9 | FULL n=  2 net=   -7.2 +/-0/2
+    2021-22:1/-2.9 2024-25:1/-4.3
+  BUY|poc_bounce|bull_trend|vacuum                     21-22 n= 1 net=  -2.9 | FULL n=  1 net=   -2.9 +/-0/1
+    2021-22:1/-2.9
+  SELL|val_breakdown|bull_chop|tight                   21-22 n= 1 net=  -2.7 | FULL n=  3 net=  -10.2 +/-1/2
+    2021-22:1/-2.7 2022-23:1/4.7 2025-26:1/-12.2
+  BUY|va_rejection|bull_trend|tight                    21-22 n= 1 net=  -2.7 | FULL n=  7 net=   43.7 +/-3/2
+    2020-21:2/5.1 2021-22:1/-2.7 2022-23:2/-0.9 2023-24:1/9.7 2025-26:1/32.5
+  SELL|val_breakdown|weak_bear|tight                   21-22 n= 1 net=  -2.6 | FULL n=  2 net=   26.0 +/-1/1
+    2021-22:1/-2.6 2025-26:1/28.5
+  SELL|val_breakdown|bull_trend|tight                  21-22 n= 1 net=  -2.5 | FULL n=  3 net=   -1.6 +/-1/2
+    2019-20:1/-3.1 2021-22:1/-2.5 2022-23:1/4.0
+  BUY|va_rejection|bull_trend|structured               21-22 n= 1 net=  -2.5 | FULL n=  3 net=   -8.4 +/-0/3
+    2019-20:1/-2.7 2020-21:1/-3.3 2021-22:1/-2.5
+  BUY|vah_breakout|weak_bear|vacuum                    21-22 n= 1 net=  -2.4 | FULL n= 12 net=   23.9 +/-4/2
+    2020-21:4/-1.9 2021-22:1/-2.4 2022-23:3/0.3 2023-24:1/7.5 2024-25:2/5.5 2025-26:1/14.9
+  SELL|val_breakdown|bull_chop|vacuum                  21-22 n= 4 net=  -2.2 | FULL n= 15 net=   10.1 +/-2/2
+    2019-20:6/-8.5 2020-21:1/1.5 2021-22:4/-2.2 2022-23:4/19.3
+  BUY|vah_breakout|bull_chop|structured                21-22 n= 3 net=  -2.0 | FULL n= 16 net=   51.7 +/-5/1
+    2019-20:2/1.5 2021-22:3/-2.0 2022-23:3/3.4 2023-24:1/2.9 2024-25:4/8.7 2025-26:3/37.3
+  BUY|va_rejection|bear_trend|vacuum                   21-22 n= 1 net=  -2.0 | FULL n=  1 net=   -2.0 +/-0/1
+    2021-22:1/-2.0
+  SELL|val_breakdown|bear_trend|structured             21-22 n= 2 net=  -0.1 | FULL n= 15 net=   70.0 +/-3/2
+    2021-22:2/-0.1 2022-23:1/6.5 2023-24:3/-4.0 2024-25:5/19.5 2025-26:4/48.0
+  SELL|val_breakdown|bull_chop|structured              21-22 n= 2 net=   0.1 | FULL n=  8 net=   -5.8 +/-3/2
+    2019-20:3/5.4 2021-22:2/0.1 2022-23:1/-3.0 2024-25:1/4.1 2025-26:1/-12.4
+  BUY|vah_breakout|bear_trend|tight                    21-22 n= 1 net=   1.9 | FULL n=  1 net=    1.9 +/-1/0
+    2021-22:1/1.9
+  SELL|val_breakdown|weak_bear|vacuum                  21-22 n= 2 net=   2.7 | FULL n= 11 net=   18.8 +/-2/4
+    2019-20:2/-5.7 2020-21:3/-7.7 2021-22:2/2.7 2023-24:1/-3.5 2024-25:1/-4.5 2025-26:2/37.6
+  BUY|va_rejection|bull_chop|tight                     21-22 n= 1 net=   3.4 | FULL n=  4 net=   -0.5 +/-3/1
+    2020-21:1/7.0 2021-22:1/3.4 2024-25:1/8.9 2025-26:1/-19.8
+  SELL|val_breakdown|bear_trend|vacuum                 21-22 n= 7 net=   4.4 | FULL n= 47 net=   83.2 +/-3/4
+    2019-20:4/-2.7 2020-21:1/-2.1 2021-22:7/4.4 2022-23:8/-5.9 2023-24:2/11.5 2024-25:14/-19.9 2025-26:11/98.0
+  BUY|vah_breakout|bull_trend|vacuum                   21-22 n= 6 net=   6.4 | FULL n= 33 net=  -20.4 +/-4/2
+    2020-21:13/-1.1 2021-22:6/6.4 2022-23:3/0.2 2023-24:3/9.2 2024-25:3/1.2 2025-26:5/-36.3
+  BUY|vah_breakout|bull_trend|structured               21-22 n= 3 net=   7.2 | FULL n= 22 net=   12.7 +/-5/2
+    2019-20:1/2.6 2020-21:5/-6.6 2021-22:3/7.2 2022-23:2/0.2 2023-24:3/-3.2 2024-25:4/0.8 2025-26:4/11.7
+
+=== CANDIDATE DENY (multi-year / net≤0 evidence) ===
+  DENY? BUY|vah_breakout|bull_trend|tight | 21-22 2t/-4.2 | full 3t/-1.9 +/-1/1
+
+=== 2021-22 FEATURE SLICES ===
+  SELL                                     n=27 net=   -6.3 wr=37%
+  BUY                                      n=22 net=   -2.7 wr=41%
+  SELL val_breakdown                       n=27 net=   -6.3 wr=37%
+  BUY vah_breakout                         n=16 net=    6.9 wr=50%
+  BUY va_rejection                         n= 5 net=   -6.7 wr=20%
+  macro bull_trend                         n=23 net=   -7.5 wr=35%
+  macro bull_chop                          n=11 net=   -3.4 wr=45%
+  macro weak_bear                          n= 4 net=   -2.3 wr=25%
+  macro bear_trend                         n=11 net=    4.2 wr=45%
+  path vacuum                              n=30 net=   -2.4 wr=37%
+  path structured                          n=11 net=    2.7 wr=55%
+  path tight                               n= 8 net=   -9.4 wr=25%
+  SELL + prior20d<=0                       n=14 net=    1.4 wr=43%
+  SELL + prior20d>0                        n=13 net=   -7.7 wr=31%
+  BUY chase mid/hi prior5d>2%              n= 6 net=    1.5 wr=50%
+  SELL bull_trend vacuum VAL               n= 7 net=   -3.5 wr=29%
+  SELL bull_chop vacuum VAL                n= 4 net=   -2.2 wr=50%
+  unknown-ish thin cells (n<5 full)        n=11 net=  -17.0 wr=18%
+
+CF drop all candidate deny cells
+  drop 3 ($-1.9) → kept n=281 net=$389.3
+  byYear {
+  '2019-20': 'n=21 net=-16.1',
+  '2020-21': 'n=59 net=-11.4',
+  '2021-22': 'n=47 net=-4.8',
+  '2022-23': 'n=36 net=21.4',
+  '2023-24': 'n=19 net=49.5',
+  '2024-25': 'n=50 net=53.5',
+  '2025-26': 'n=49 net=297.1'
+}
+
+CF drop SELL bull_trend vacuum VAL
+  drop 38 ($58.6) → kept n=246 net=$328.8
+  byYear {
+  '2019-20': 'n=21 net=-16.1',
+  '2020-21': 'n=39 net=-13.6',
+  '2021-22': 'n=42 net=-5.5',
+  '2022-23': 'n=34 net=26.8',
+  '2023-24': 'n=17 net=32.6',
+  '2024-25': 'n=47 net=41.2',
+  '2025-26': 'n=46 net=263.4'
+}
+
+CF drop SELL bull_chop vacuum VAL
+  drop 15 ($10.1) → kept n=269 net=$377.2
+  byYear {
+  '2019-20': 'n=15 net=-7.6',
+  '2020-21': 'n=59 net=-10.6',
+  '2021-22': 'n=45 net=-6.8',
+  '2022-23': 'n=32 net=2.1',
+  '2023-24': 'n=19 net=49.5',
+  '2024-25': 'n=50 net=53.5',
+  '2025-26': 'n=49 net=297.1'
+}
+
+CF drop all BUY va_rejection
+  drop 22 ($23.7) → kept n=262 net=$363.6
+  byYear {
+  '2019-20': 'n=20 net=-13.4',
+  '2020-21': 'n=55 net=-20.4',
+  '2021-22': 'n=44 net=-2.3',
+  '2022-23': 'n=32 net=15.6',
+  '2023-24': 'n=18 net=39.8',
+  '2024-25': 'n=47 net=40.5',
+  '2025-26': 'n=46 net=303.8'
+}
+
+CF drop SELL rej prior20d<=0
+  drop 0 ($0.0) → kept n=284 net=$387.3
+  byYear {
+  '2019-20': 'n=21 net=-16.1',
+  '2020-21': 'n=60 net=-9.1',
+  '2021-22': 'n=49 net=-9.0',
+  '2022-23': 'n=36 net=21.4',
+  '2023-24': 'n=19 net=49.5',
+  '2024-25': 'n=50 net=53.5',
+  '2025-26': 'n=49 net=297.1'
+}
+
+CF drop thin cells n<4
+  drop 43 ($9.4) → kept n=241 net=$377.9
+  byYear {
+  '2019-20': 'n=18 net=-7.5',
+  '2020-21': 'n=55 net=-5.4',
+  '2021-22': 'n=39 net=11.4',
+  '2022-23': 'n=31 net=8.5',
+  '2023-24': 'n=17 net=46.9',
+  '2024-25': 'n=39 net=42.4',
+  '2025-26': 'n=42 net=281.6'
+}
+
+CF drop BUY vacuum VAH except weak_bear
+  drop 42 ($-24.3) → kept n=242 net=$411.7
+  byYear {
+  '2019-20': 'n=21 net=-16.1',
+  '2020-21': 'n=47 net=-8.0',
+  '2021-22': 'n=40 net=-7.5',
+  '2022-23': 'n=31 net=13.4',
+  '2023-24': 'n=16 net=40.4',
+  '2024-25': 'n=43 net=56.1',
+  '2025-26': 'n=44 net=333.3'
+}
+
+CF drop SELL bull_chop vacuum VAL
+  drop 15 ($10.1) → kept n=269 net=$377.2
+  byYear {
+  '2019-20': 'n=15 net=-7.6',
+  '2020-21': 'n=59 net=-10.6',
+  '2021-22': 'n=45 net=-6.8',
+  '2022-23': 'n=32 net=2.1',
+  '2023-24': 'n=19 net=49.5',
+  '2024-25': 'n=50 net=53.5',
+  '2025-26': 'n=49 net=297.1'
+}
+
+wrote .vp-freq-eth-2122-residual-autopsy.json

@@ -1,0 +1,145 @@
+{
+  "profiles": {
+    "SUPERTREND_ELITE": {
+      "label": "Supertrend Elite",
+      "category": "trend",
+      "nativePrefixes": ["eliteSt"],
+      "overlays": ["intelligence", "marketDecision", "moveQuality", "bigMove", "signalStrength", "stConfirmation", "htf4h", "futuresAiConfidence", "surfPulseMl"],
+      "prepare": "elite",
+      "chartMarkup": "elite",
+      "usesIntradayMaxHold": false,
+      "uiSections": ["routing", "entryGates", "marketDecision", "elite", "exitTrailing", "leverageAi"]
+    },
+    "UNIFIED_ELITE": {
+      "label": "Unified Elite",
+      "category": "trend",
+      "nativePrefixes": ["eliteSt", "unified"],
+      "overlays": ["intelligence", "marketDecision", "moveQuality", "bigMove", "signalStrength", "stConfirmation", "htf4h", "futuresAiConfidence", "intradayGates"],
+      "prepare": "elite",
+      "chartMarkup": "elite",
+      "usesIntradayMaxHold": true,
+      "uiSections": ["routing", "entryGates", "marketDecision", "elite", "intradayGates", "exitTrailing", "leverageAi"]
+    },
+    "SAFE_INTRADAY": {
+      "label": "Safe Intraday",
+      "category": "trend",
+      "nativePrefixes": ["eliteSt", "safeIntraday", "intradaySmc"],
+      "overlays": ["intelligence", "marketDecision", "moveQuality", "signalStrength", "htf4h"],
+      "prepare": "elite",
+      "chartMarkup": "elite",
+      "usesIntradayMaxHold": false,
+      "uiSections": ["routing", "entryGates", "marketDecision", "elite", "exitTrailing", "leverageAi"]
+    },
+    "SR_INTRADAY": {
+      "label": "S/R Intraday",
+      "category": "intraday",
+      "nativePrefixes": ["intraday", "srIntraday"],
+      "overlays": ["intelligence", "marketDecision", "signalStrength", "volumeProfileGates"],
+      "prepare": "none",
+      "chartMarkup": "smc_ict",
+      "usesIntradayMaxHold": true,
+      "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
+    },
+    "SITUATION_INTRADAY": {
+      "label": "Situation Intraday",
+      "category": "intraday",
+      "nativePrefixes": ["intraday", "srIntraday", "situation"],
+      "overlays": ["intelligence", "marketDecision", "signalStrength"],
+      "prepare": "situation",
+      "chartMarkup": "smc_ict",
+      "usesIntradayMaxHold": true,
+      "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
+    },
+    "TREND_HTF_ST": {
+      "label": "Trend HTF ST",
+      "category": "trend",
+      "nativePrefixes": ["trendHtfSt"],
+      "overlays": ["intelligence", "marketDecision", "moveQuality", "signalStrength", "htf4h"],
+      "prepare": "none",
+      "chartMarkup": "none",
+      "usesIntradayMaxHold": false,
+      "uiSections": ["routing", "entryGates", "marketDecision", "exitTrailing", "leverageAi"]
+    },
+    "VOLUME_PROFILE": {
+      "label": "Volume Profile",
+      "category": "specialized",
+      "nativePrefixes": ["volumeProfile", "vp", "intradayVp", "intradayGateVp"],
+      "nativeKeys": ["requireVpSetup"],
+      "overlays": ["intelligence", "marketDecision", "signalStrength", "volumeProfileGates"],
+      "prepare": "vp",
+      "chartMarkup": "none",
+      "usesIntradayMaxHold": false,
+      "uiSections": ["routing", "entryGates", "marketDecision", "volumeProfile", "exitTrailing", "leverageAi"]
+    },
+    "REGIME_ADAPTIVE": {
+      "label": "Regime Adaptive",
+      "category": "intraday",
+      "nativePrefixes": ["regime", "intraday"],
+      "overlays": ["intelligence", "marketDecision", "signalStrength"],
+      "prepare": "regime",
+      "chartMarkup": "none",
+      "usesIntradayMaxHold": true,
+      "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
+    },
+    "CRT_TBS": {
+      "label": "CRT TBS",
+      "category": "intraday",
+      "nativePrefixes": ["crt", "intraday"],
+      "overlays": ["intelligence", "marketDecision", "signalStrength"],
+      "prepare": "crt",
+      "chartMarkup": "smc_ict",
+      "usesIntradayMaxHold": true,
+      "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
+    },
+    "TOKYO_SESSION": {
+      "label": "Tokyo Session",
+      "category": "intraday",
+      "nativePrefixes": ["tokyoSession", "intraday"],
+      "overlays": ["intelligence", "marketDecision"],
+      "prepare": "tokyo",
+      "chartMarkup": "tokyo",
+      "usesIntradayMaxHold": true,
+      "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
+    },
+    "LIQUIDITY_MAP": {
+      "label": "Liquidity Map",
+      "category": "intraday",
+      "nativePrefixes": ["liqMap", "intradayLiq"],
+      "overlays": ["intelligence", "marketDecision", "signalStrength"],
+      "prepare": "none",
+      "chartMarkup": "smc_ict",
+      "usesIntradayMaxHold": true,
+      "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
+    },
+    "SURF_PULSE_ML": {
+      "label": "SurfPulse ML",
+      "category": "specialized",
+      "nativePrefixes": ["surfPulse"],
+      "overlays": ["intelligence", "marketDecision", "signalStrength", "surfPulseMl"],
+      "prepare": "none",
+      "chartMarkup": "none",
+      "usesIntradayMaxHold": false,
+      "uiSections": ["routing", "entryGates", "marketDecision", "surfPulse", "exitTrailing", "leverageAi"]
+    },
+    "SUPERTREND": {
+      "label": "Supertrend",
+      "category": "trend",
+      "nativePrefixes": [],
+      "overlays": ["intelligence", "marketDecision", "moveQuality", "bigMove", "signalStrength", "stConfirmation", "htf4h", "futuresAiConfidence", "surfPulseMl"],
+      "prepare": "none",
+      "chartMarkup": "none",
+      "usesIntradayMaxHold": false,
+      "uiSections": ["routing", "entryGates", "marketDecision", "exitTrailing", "leverageAi"]
+    },
+    "baseline": {
+      "label": "Baseline",
+      "category": "baseline",
+      "nativePrefixes": [],
+      "overlays": ["intelligence", "marketDecision", "signalStrength"],
+      "prepare": "none",
+      "chartMarkup": "none",
+      "usesIntradayMaxHold": false,
+      "uiSections": ["routing", "entryGates", "marketDecision", "exitTrailing", "leverageAi"]
+    }
+  }
+}

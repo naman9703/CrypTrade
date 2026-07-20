@@ -1,0 +1,86 @@
+
+Sweep displacement validation (INTRADAY_PRO_LIQ_15M)
+
+  baseline BTCUSDT train  baseline BTCUSDT val  baseline BTCUSDT oos  baseline ETHUSDT train  baseline ETHUSDT val  baseline ETHUSDT oos  baseline BNBUSDT train  baseline BNBUSDT val  baseline BNBUSDT oos  baseline SOLUSDT train  baseline SOLUSDT val  baseline SOLUSDT oos  baseline XRPUSDT train  baseline XRPUSDT val  baseline XRPUSDT oos  baseline LINKUSDT train  baseline LINKUSDT val  baseline LINKUSDT oos  disp_1.5 BTCUSDT train  disp_1.5 BTCUSDT val  disp_1.5 BTCUSDT oos  disp_1.5 ETHUSDT train  disp_1.5 ETHUSDT val  disp_1.5 ETHUSDT oos  disp_1.5 BNBUSDT train  disp_1.5 BNBUSDT val  disp_1.5 BNBUSDT oos  disp_1.5 SOLUSDT train  disp_1.5 SOLUSDT val  disp_1.5 SOLUSDT oos  disp_1.5 XRPUSDT train  disp_1.5 XRPUSDT val  disp_1.5 XRPUSDT oos  disp_1.5 LINKUSDT train  disp_1.5 LINKUSDT val  disp_1.5 LINKUSDT oos  disp_2.0 BTCUSDT train  disp_2.0 BTCUSDT val  disp_2.0 BTCUSDT oos  disp_2.0 ETHUSDT train  disp_2.0 ETHUSDT val  disp_2.0 ETHUSDT oos  disp_2.0 BNBUSDT train  disp_2.0 BNBUSDT val  disp_2.0 BNBUSDT oos  disp_2.0 SOLUSDT train  disp_2.0 SOLUSDT val  disp_2.0 SOLUSDT oos  disp_2.0 XRPUSDT train  disp_2.0 XRPUSDT val  disp_2.0 XRPUSDT oos  disp_2.0 LINKUSDT train  disp_2.0 LINKUSDT val  disp_2.0 LINKUSDT oos  disp_1.5_hold1 BTCUSDT train  disp_1.5_hold1 BTCUSDT val  disp_1.5_hold1 BTCUSDT oos  disp_1.5_hold1 ETHUSDT train  disp_1.5_hold1 ETHUSDT val  disp_1.5_hold1 ETHUSDT oos  disp_1.5_hold1 BNBUSDT train  disp_1.5_hold1 BNBUSDT val  disp_1.5_hold1 BNBUSDT oos  disp_1.5_hold1 SOLUSDT train  disp_1.5_hold1 SOLUSDT val  disp_1.5_hold1 SOLUSDT oos  disp_1.5_hold1 XRPUSDT train  disp_1.5_hold1 XRPUSDT val  disp_1.5_hold1 XRPUSDT oos  disp_1.5_hold1 LINKUSDT train  disp_1.5_hold1 LINKUSDT val  disp_1.5_hold1 LINKUSDT oos
+
+train  summary (Σret%, total trades, avg tpm, coins+):
+  baseline         retΣ=   -9.49% n=  46 tpm=0.89 coins+=2/3
+  disp_1.5         retΣ=   -4.46% n=  44 tpm=0.85 coins+=2/3
+  disp_2.0         retΣ=    3.18% n=  38 tpm=0.74 coins+=2/3
+  disp_1.5_hold1   retΣ=   -8.35% n=  28 tpm=0.54 coins+=1/3
+
+val    summary (Σret%, total trades, avg tpm, coins+):
+  baseline         retΣ=    7.95% n=  56 tpm=1.84 coins+=2/5
+  disp_1.5         retΣ=    4.58% n=  48 tpm=1.57 coins+=2/5
+  disp_2.0         retΣ=    7.04% n=  36 tpm=1.18 coins+=2/5
+  disp_1.5_hold1   retΣ=   -1.21% n=  36 tpm=1.18 coins+=2/5
+
+oos    summary (Σret%, total trades, avg tpm, coins+):
+  baseline         retΣ=  -15.08% n=  41 tpm=1.13 coins+=2/6
+  disp_1.5         retΣ=  -13.80% n=  35 tpm=0.96 coins+=2/6
+  disp_2.0         retΣ=   -7.26% n=  29 tpm=0.80 coins+=2/6
+  disp_1.5_hold1   retΣ=   -3.44% n=  23 tpm=0.63 coins+=2/6
+
+all    summary (Σret%, total trades, avg tpm, coins+):
+  baseline         retΣ=  -16.61% n= 143 tpm=1.33 coins+=6/14
+  disp_1.5         retΣ=  -13.67% n= 127 tpm=1.16 coins+=6/14
+  disp_2.0         retΣ=    2.97% n= 103 tpm=0.92 coins+=6/14
+  disp_1.5_hold1   retΣ=  -12.99% n=  87 tpm=0.81 coins+=5/14
+
+variant          coin       win       n   tpm     ret%     PF    exp$
+baseline         BNBUSDT    train    25  1.45   -14.92   0.47  -0.597
+baseline         BNBUSDT    val      16  2.62     5.71   1.53   0.357
+baseline         BNBUSDT    oos       7  1.15     6.02  16.89   0.860
+baseline         BTCUSDT    train    19  1.10     4.36   1.37   0.229
+baseline         BTCUSDT    val       0  0.00     0.00   0.00   0.000
+baseline         BTCUSDT    oos       2  0.33     2.78 999.00   1.392
+baseline         ETHUSDT    train     2  0.12     1.08  26.24   0.540
+baseline         ETHUSDT    val       1  0.16    -2.75   0.00  -2.754
+baseline         ETHUSDT    oos       4  0.66    -0.54   0.81  -0.135
+baseline         LINKUSDT   oos       5  0.82    -9.60   0.10  -1.919
+baseline         SOLUSDT    val      22  3.61     5.54   1.38   0.252
+baseline         SOLUSDT    oos      12  1.98    -7.99   0.41  -0.666
+baseline         XRPUSDT    val      17  2.79    -0.55   0.95  -0.032
+baseline         XRPUSDT    oos      11  1.81    -5.75   0.59  -0.523
+disp_1.5         BNBUSDT    train    23  1.33    -9.89   0.58  -0.430
+disp_1.5         BNBUSDT    val      13  2.13     4.31   1.53   0.332
+disp_1.5         BNBUSDT    oos       5  0.82     4.93  16.33   0.985
+disp_1.5         BTCUSDT    train    19  1.10     4.36   1.37   0.229
+disp_1.5         BTCUSDT    val       0  0.00     0.00   0.00   0.000
+disp_1.5         BTCUSDT    oos       2  0.33     2.78 999.00   1.392
+disp_1.5         ETHUSDT    train     2  0.12     1.08  26.24   0.540
+disp_1.5         ETHUSDT    val       1  0.16    -2.75   0.00  -2.754
+disp_1.5         ETHUSDT    oos       4  0.66    -0.54   0.81  -0.135
+disp_1.5         LINKUSDT   oos       5  0.82    -9.60   0.10  -1.919
+disp_1.5         SOLUSDT    val      19  3.11     4.57   1.38   0.240
+disp_1.5         SOLUSDT    oos       9  1.48    -8.30   0.23  -0.922
+disp_1.5         XRPUSDT    val      15  2.46    -1.54   0.86  -0.103
+disp_1.5         XRPUSDT    oos      10  1.65    -3.07   0.73  -0.307
+disp_1.5_hold1   BNBUSDT    train    16  0.93    -9.13   0.45  -0.571
+disp_1.5_hold1   BNBUSDT    val       7  1.15    -3.53   0.56  -0.504
+disp_1.5_hold1   BNBUSDT    oos       4  0.66     6.74 999.00   1.686
+disp_1.5_hold1   BTCUSDT    train    10  0.58    -0.29   0.96  -0.029
+disp_1.5_hold1   BTCUSDT    val       0  0.00     0.00   0.00   0.000
+disp_1.5_hold1   BTCUSDT    oos       0  0.00     0.00   0.00   0.000
+disp_1.5_hold1   ETHUSDT    train     2  0.12     1.07  25.20   0.537
+disp_1.5_hold1   ETHUSDT    val       1  0.16    -2.80   0.00  -2.803
+disp_1.5_hold1   ETHUSDT    oos       1  0.16    -2.73   0.00  -2.732
+disp_1.5_hold1   LINKUSDT   oos       5  0.82    -3.57   0.36  -0.714
+disp_1.5_hold1   SOLUSDT    val      15  2.46     3.76   1.43   0.251
+disp_1.5_hold1   SOLUSDT    oos       9  1.48     0.43   1.07   0.048
+disp_1.5_hold1   XRPUSDT    val      13  2.13     1.37   1.19   0.105
+disp_1.5_hold1   XRPUSDT    oos       4  0.66    -4.31   0.21  -1.079
+disp_2.0         BNBUSDT    train    19  1.10    -8.35   0.55  -0.439
+disp_2.0         BNBUSDT    val      11  1.80     3.20   1.39   0.291
+disp_2.0         BNBUSDT    oos       5  0.82     4.93  16.33   0.985
+disp_2.0         BTCUSDT    train    17  0.99    10.45   2.69   0.615
+disp_2.0         BTCUSDT    val       0  0.00     0.00   0.00   0.000
+disp_2.0         BTCUSDT    oos       2  0.33     2.78 999.00   1.392
+disp_2.0         ETHUSDT    train     2  0.12     1.08  26.24   0.540
+disp_2.0         ETHUSDT    val       0  0.00     0.00   0.00   0.000
+disp_2.0         ETHUSDT    oos       3  0.49    -1.70   0.39  -0.567
+disp_2.0         LINKUSDT   oos       4  0.66    -6.28   0.15  -1.570
+disp_2.0         SOLUSDT    val      14  2.30     9.17   2.50   0.655
+disp_2.0         SOLUSDT    oos       6  0.99    -6.65   0.17  -1.108
+disp_2.0         XRPUSDT    val      11  1.80    -5.33   0.52  -0.485
+disp_2.0         XRPUSDT    oos       9  1.48    -0.34   0.96  -0.038

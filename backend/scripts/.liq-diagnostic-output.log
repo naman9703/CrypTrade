@@ -1,0 +1,65 @@
+
+LIQ trade diagnostic — multi-coin, train/val/oos
+
+  BTCUSDT train…  BTCUSDT val…  BTCUSDT oos…  ETHUSDT train…  ETHUSDT val…  ETHUSDT oos…  BNBUSDT train…  BNBUSDT val…  BNBUSDT oos…  SOLUSDT train…  SOLUSDT val…  SOLUSDT oos…  XRPUSDT train…  XRPUSDT val…  XRPUSDT oos…  LINKUSDT train…  LINKUSDT val…  LINKUSDT oos…
+
+=== Window performance (base INTRADAY_PRO_LIQ_15M) ===
+coin       win       n     ret%     PF    WR%
+BTCUSDT    train    19     4.36   1.37   63.2
+BTCUSDT    val       0     0.00   0.00    0.0
+BTCUSDT    oos       2     2.78 999.00  100.0
+ETHUSDT    train     2     1.08  26.24   50.0
+ETHUSDT    val       1    -2.75   0.00    0.0
+ETHUSDT    oos       4    -0.54   0.81   50.0
+BNBUSDT    train    25   -14.92   0.47   48.0
+BNBUSDT    val      16     5.71   1.53   62.5
+BNBUSDT    oos       7     6.02  16.89   71.4
+SOLUSDT    val      22     5.54   1.38   59.1
+SOLUSDT    oos      12    -7.99   0.41   41.7
+XRPUSDT    val      17    -0.55   0.95   52.9
+XRPUSDT    oos      11    -5.75   0.59   54.5
+LINKUSDT   oos       5    -9.60   0.10   20.0
+
+=== Enriched trades: 136 total, 75 wins, 61 losses ===
+
+=== Tag frequency (all trades) ===
+tag                        n    WR%     avg$   loss%
+counter_htf              108   58.3    0.088    41.7
+fast_reclaim              99   53.5   -0.053    46.5
+exhausted_high_adx        81   55.6   -0.010    44.4
+fake_reclaim              55   47.3   -0.521    52.7
+no_displacement            9   44.4   -0.274    55.6
+low_volume                 8   37.5   -1.192    62.5
+dead_volatility            5   40.0   -1.053    60.0
+chop_low_adx               2    0.0   -2.735   100.0
+unclassified               1    0.0   -2.673   100.0
+
+=== Dominant tags on LOSERS only ===
+fast_reclaim           n=  46 avg$=-1.742
+counter_htf            n=  45 avg$=-1.709
+exhausted_high_adx     n=  36 avg$=-1.792
+fake_reclaim           n=  29 avg$=-2.364
+low_volume             n=   5 avg$=-2.748
+no_displacement        n=   5 avg$=-1.696
+dead_volatility        n=   3 avg$=-2.740
+chop_low_adx           n=   2 avg$=-2.735
+unclassified           n=   1 avg$=-2.673
+
+=== By level type ===
+  pdl            n=77 WR=49.4% net=$-21.76
+  pdh            n=59 WR=62.7% net=$7.36
+
+=== By session ===
+  asia       n=68 WR=57.4% net=$13.40
+  overlap    n=41 WR=53.7% net=$-11.62
+  london     n=16 WR=62.5% net=$-4.58
+  ny         n=9 WR=33.3% net=$-9.68
+  late       n=2 WR=50.0% net=$-1.92
+
+=== no_displacement vs has displacement ===
+  no_displacement { n: 9, wr: 44.44444444444444, pnl: -2.461728778666075 }
+  has_displacement { n: 127, wr: 55.90551181102362, pnl: -11.939073946657434 }
+
+=== fake_reclaim vs not ===
+  fake_reclaim { n: 55, wr: 47.27272727272727, pnl: -28.672355408423652 }
+  not_fake { n: 81, wr: 60.49382716049383, pnl: 14.271552683100143 }

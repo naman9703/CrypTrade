@@ -1,0 +1,70 @@
+running 2021-22…
+running 2022-23…
+running 2023-24…
+running 2024-25…
+running 2025-26…
+
+========== PHASE 1 — YEAR HEADLINES (ABC stack, no surgical) ==========
+2021-22: 55t / $-32.2 / WR31% | macroBull 58% bull60 55% bear60 25% | avg prior60d=15.7%
+    SELL:val_breakdown           35t / $-35.8 / WR23%
+    BUY:va_rejection             4t / $-3.5 / WR25%
+    BUY:poc_bounce               1t / $-3.4 / WR0%
+    BUY:vah_breakout             15t / $10.4 / WR53%
+2022-23: 38t / $24.0 / WR39% | macroBull 63% bull60 42% bear60 39% | avg prior60d=4.9%
+    BUY:vah_breakout             12t / $2.5 / WR42%
+    BUY:va_rejection             4t / $8.9 / WR50%
+    SELL:val_breakdown           22t / $12.7 / WR36%
+2023-24: 23t / $43.6 / WR52% | macroBull 57% bull60 70% bear60 26% | avg prior60d=14.6%
+    BUY:poc_bounce               1t / $6.0 / WR100%
+    SELL:val_breakdown           12t / $10.6 / WR42%
+    BUY:va_rejection             1t / $11.1 / WR100%
+    BUY:vah_breakout             9t / $15.8 / WR56%
+2024-25: 52t / $39.0 / WR40% | macroBull 42% bull60 25% bear60 54% | avg prior60d=-7.4%
+    SELL:va_rejection            1t / $-4.6 / WR0%
+    BUY:vah_breakout             18t / $3.3 / WR44%
+    BUY:va_rejection             3t / $9.4 / WR67%
+    SELL:val_breakdown           28t / $10.1 / WR36%
+    SELL:poc_bounce              2t / $20.8 / WR50%
+2025-26: 51t / $151.1 / WR53% | macroBull 41% bull60 27% bear60 57% | avg prior60d=-6.0%
+    SELL:poc_bounce              2t / $-6.6 / WR50%
+    BUY:va_rejection             3t / $-3.5 / WR33%
+    BUY:vah_breakout             12t / $14.6 / WR58%
+    SELL:va_rejection            1t / $21.3 / WR100%
+    SELL:val_breakdown           33t / $125.3 / WR52%
+
+========== PHASE 2 — 2021-22 VAL / VAH PHYSICS ==========
+VAL all: 35t / $-35.8 / WR23%
+  bull60: 16t / $-25.4 / WR13% | bear60: 10t / $-2.5 / WR40% | flat60: 2t / $-5.2 / WR0%
+  bull60 vacuum: 14t / $-19.5 / WR14% | nonVac: 2t / $-5.9 / WR0%
+  bull60 dump20: 6t / $-14.0 / WR0% | up20: 7t / $-4.0 / WR29%
+  macroBull: 15t / $-12.5 / WR27% | macroBear: 20t / $-23.2 / WR20%
+  shallowHtf: 2t / $2.1 / WR50% | strongHtf: 33t / $-37.9 / WR21%
+  WL prior60d win/loss: { win: 0.048824759415858794, loss: 0.1159846142786397, nW: 8, nL: 27 }
+  WL prior20d win/loss: {
+  win: -0.06850944240621225,
+  loss: -0.042640098189491445,
+  nW: 8,
+  nL: 27
+}
+  WL htfSep win/loss: {
+  win: 0.012658225794109825,
+  loss: 0.012120564298331825,
+  nW: 8,
+  nL: 27
+}
+VAH all: 15t / $10.4 / WR53%
+  vacuum: 6t / $7.1 / WR50% | structured: 6t / $6.0 / WR67%
+va_rej buy/sell: 4t / $-3.5 / WR25% / —
+
+========== CROSS-YEAR SLICE VERDICTS ==========
+YEAR_SPECIFIC_do_not_blanket     VAL_bull60               2021-22:16/-25 2022-23:6/-16 2023-24:7/1 2024-25:5/9 2025-26:6/33
+YEAR_SPECIFIC_do_not_blanket     VAL_bull60_vac           2021-22:14/-20 2022-23:2/-8 2023-24:5/1 2024-25:5/9 2025-26:5/37
+year_specific_or_thin            VAL_bull60_nonVac        2021-22:2/-6 2022-23:4/-8 2023-24:2/-0 2024-25:0/0 2025-26:1/-4
+UNIVERSAL_BLEED_candidate        VAL_bull60_dump          2021-22:6/-14 2022-23:1/-5 2023-24:3/-14 2024-25:1/-3 2025-26:0/0
+YEAR_SPECIFIC_do_not_blanket     VAL_prior20_up           2021-22:13/-4 2022-23:11/25 2023-24:3/19 2024-25:6/12 2025-26:9/19
+year_specific_or_thin            VAL_macroBull_shallow    2021-22:0/0 2022-23:0/0 2023-24:0/0 2024-25:0/0 2025-26:0/0
+year_specific_or_thin            VAH_vacuum               2021-22:6/7 2022-23:7/-3 2023-24:4/19 2024-25:7/-1 2025-26:4/-6
+year_specific_or_thin            BUY_va_rej               2021-22:4/-4 2022-23:4/9 2023-24:1/11 2024-25:3/9 2025-26:3/-3
+year_specific_or_thin            SELL_va_rej              2021-22:0/0 2022-23:0/0 2023-24:0/0 2024-25:1/-5 2025-26:1/21
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-2021-22-regime.json

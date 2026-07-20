@@ -1,0 +1,13 @@
+audit_log before: 50.72 GB | 360,584 rows
+DB before: 53.78 GB
+Docker VM before: 59.22 GB
+
+VACUUM audit_log (maintenance_work_mem=32MB)...
+SET
+VACUUM
+ANALYZE
+
+audit_log after: 50.72 GB (Δ -760 KB freed)
+Rows: 360,584
+DB after: 53.78 GB (Δ -760 KB freed)
+Docker VM after: 59.22 GB (Δ -1548 KB freed)

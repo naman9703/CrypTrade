@@ -86,6 +86,10 @@ import {
 } from "../strategy/supertrendHtf4hFilter.js";
 import { ELITE_ST_ACTIVATION_PATCH } from "../strategy/supertrendElite.js";
 import {
+  applyVolumeProfilePatchToState,
+  volumeProfilePublicSnapshot,
+} from "../strategy/volumeProfileConfigKeys.js";
+import {
   manualStrategyUsesLiveBarClose,
   manualStrategyUsesBarCloseAdapter,
   manualStrategyKey,
@@ -604,6 +608,15 @@ export function createBot({
     riskConsecutiveLossLimit: 0,
     /** Weekly drawdown cap: halt new entries once the rolling 7-day equity is down this % (0 = off). */
     riskWeeklyMaxLossPct: 0,
+    /** Equity at start of current UTC week (for weekly risk cap). */
+    weekStartEquity: 0,
+    weekStartMs: 0,
+    /** Recent closed trades for consecutive-loss overlay (capped). */
+    recentClosedTrades: [],
+    /** VP FREQ novelty monitor — opt-in only (BTC bleed list must not auto-attach on ETH). */
+    vpNoveltyEnabled: false,
+    vpNoveltyUnknownPolicy: "trade",
+    vpNoveltyMonitor: null,
 
     // ── Regime-adaptive strategy (REGIME_ADAPTIVE) ──────────────────────────
     /** Per-regime playbook enables. */
@@ -629,6 +642,25 @@ export function createBot({
     regimeAdaptiveTrendAdx: 25,
     regimeAdaptiveSqueezePctile: 0.2,
     regimeAdaptiveVolatileAtrPct: 0.012,
+    // ── Scalp mean-reversion (SCALP_MR) ─────────────────────────────────────
+    scalpMrBbPeriod: 20,
+    scalpMrBbMult: 2,
+    scalpMrRsiPeriod: 14,
+    scalpMrRsiBuyMax: 38,
+    scalpMrRsiSellMin: 62,
+    scalpMrMaxAdx: 22,
+    scalpMrMinAtrPct: 0.08,
+    scalpMrMaxAtrPct: 0.55,
+    scalpMrMinVolVsAvg: 1.15,
+    scalpMrVolLookback: 20,
+    scalpMrRangeRR: 1.5,
+    scalpMrAtrSlMult: 0.55,
+    scalpMrMinReclaimAtr: 0.2,
+    scalpMrRequireConfirmCandle: true,
+    scalpMrUsePartialTp: false,
+    scalpMrMaxTradesPerDay: 10,
+    scalpMrMinBarGap: 3,
+    scalpMrKillzoneMode: "LONDON_NY",
     /**
      * With fixed USDT capital (risk + max daily both USDT) and MULTIPLE pins (2+), divide `riskPerTrade` by pin count
      * so each active coin gets an equal slice of the per-trade budget.
@@ -886,11 +918,118 @@ export function createBot({
     intradayLiqTp2Enabled: true,
     intradayLiqBreakevenAfterPartial: true,
     intradayLiqPartialTp: true,
+    intradayLiqPartialFrac: 0.5,
+    intradayLiqTp1Rr: 1,
+    intradayLiqTp2Rr: 0,
+    intradayLiqTp2PartialFrac: 0,
     intradayLiqMinRr: clamp(Number(process.env.INTRADAY_LIQ_MIN_RR ?? 1.5), 0, 5),
     intradayLiqMaxTpRr: clamp(Number(process.env.INTRADAY_LIQ_MAX_TP_RR ?? 5), 0, 20),
-    intradayLiqMaxHoldBars: 48,
-    vpLookbackBars: clamp(Math.round(Number(process.env.VP_LOOKBACK_BARS ?? 672)), 48, 2000),
-    vpMinRR: clamp(Number(process.env.VP_MIN_RR ?? 1.5), 0.8, 5),
+    intradayLiqMaxHoldBars: 0,
+    liqMapLookbackBars: 72,
+    liqMapMaxAgeBars: 72,
+    liqMapMinTouches: 1,
+    liqMapMinWickRatio: 0.25,
+    liqMapMinRvol: 1.1,
+    liqMapMinBodyRatio: 0,
+    liqMapSweepPct: 0.0006,
+    liqMapEqualTolPct: 0.0008,
+    liqMapNormalizeThresholds: true,
+    liqMapSweepAtrFrac: 0.13,
+    liqMapEqualTolAtrFrac: 0.18,
+    liqMapAutoCalibrate: true,
+    liqMapAutoTrailTune: true,
+    liqMapHybridExit: true,
+    liqMapAutoProfileBars: 200,
+    liqMapQualityGate: false,
+    liqMapQualityGateMode: "HARD",
+    liqMapSoftGateScoreBand: 0.25,
+    liqMapQualityAuto: true,
+    liqMapMinQualityScore: 6.2,
+    liqMapRequireUnresolved: true,
+    liqMapRequireDirectionalClose: true,
+    liqMapEntryModel: "HTF_SWEEP",
+    liqMapHtfPoolTfs: "1h,4h",
+    liqMapHtfLookbackBars: 72,
+    liqMapHtfSwingLeft: 2,
+    liqMapHtfSwingRight: 2,
+    liqMapHtfEqualMinTouches: 2,
+    liqMapUseDailyWeeklyPools: true,
+    liqMapUseTrendlinePools: true,
+    liqMapEntryTiming: "FVG_OR_OB",
+    liqMapRequireMss: true,
+    liqMapRequireChoch: false,
+    liqMapRequireRetrace: true,
+    liqMapRequireReclaimHold: true,
+    liqMapStructureLookbackBars: 24,
+    liqMapMssMaxBarsAfterSweep: 10,
+    liqMapEntryZoneMode: "FVG",
+    liqMapFvgEntryMode: "ZONE",
+    liqMapMssRequireDisplacement: true,
+    liqMapDisplacementBodyMult: 1.15,
+    liqMapDisplacementAtrMult: 0.35,
+    liqMapFvgMinGapPct: 0.00005,
+    liqMapStrictPdZone: true,
+    liqMapObMinDisplacementAtr: 0.6,
+    liqMapRr: 1.25,
+    liqMapHtfMode: "against",
+    liqMapKillzone: "ALL",
+    liqMapMinAtrPctile: 0,
+    liqMapMaxAtrPctile: 0,
+    liqMapAtrPctileLookback: 2880,
+    liqMapMinAdx: 0,
+    liqMapMaxAdx: 0,
+    liqMapMinAtrPct: 0,
+    liqMapMaxAtrPct: 0,
+    liqMapMaxHoldBars: 0,
+    liqMapMaxSlPct: 0.05,
+    liqMapSlBufferPct: 0.0015,
+    liqMapSlBufferAtrFrac: 0.2,
+    liqMapOnePerDay: true,
+    liqMapOnePerSidePerDay: false,
+    liqMapExitMode: "SCALED_FIXED",
+    liqMapTrailMode: "SUPERTREND",
+    liqMapMaxTpRr: 10,
+    liqMapMaxOpposingRr: 2,
+    liqMapPartialFrac: 0.75,
+    liqMapBreakevenAfterPartial: false,
+    liqMapUse4hConfirm: false,
+    liqMapSlMode: "ATR_FLOOR",
+    liqMapAtrSlMult: 1.0,
+    liqMapSlRegimeAdjust: true,
+    liqMapSlRegimeLowMult: 0.75,
+    liqMapSlRegimeHighMult: 1.15,
+    liqMapTrailStPeriod: 10,
+    liqMapTrailStMult: 3.0,
+    liqMapTrailAtrHwmMult: 2.75,
+    liqMapTrailMfeGiveback: 0.16,
+    liqMapTrailMfeMinR: 1.5,
+    liqMapTrailStepAtrMult: 0.6,
+    liqMapTrailMergeSt: true,
+    liqMapDynamicRunnerMaxTpRr: 15,
+    liqMapDynamicRunnerMinTpRr: 3,
+    liqMapProjectedTpAtrMult: 4,
+    liqMapProjectedTpRangeMult: 0.5,
+    liqMapProjectionLookbackBars: 24,
+    liqMapDynamicExitPolicy: false,
+    liqMapDynExitQualityHi: 6.4,
+    liqMapDynExitQualityMid: 5.8,
+    liqMapDynExitRrHi: 3.0,
+    liqMapDynExitRrMid: 2.0,
+    liqMapDynExitPartialHi: 0.35,
+    liqMapDynExitPartialMid: 0.5,
+    liqMapDynExitPartialBase: 0.75,
+    liqMapDynExitTrailAtrHi: 5.5,
+    liqMapDynExitTrailAtrMid: 4.5,
+    liqMapDynExitTrailAtrBase: 3.0,
+    liqMapDynExitWeakTp1Rr: 0.7,
+    liqMapDeadTradeExitBars: 0,
+    liqMapDeadTradeMinMfeR: 0.5,
+    liqMapDeadTradeMaxLossR: 0.55,
+    liqMapStructuralTp1Rr: 0.75,
+    ...volumeProfilePublicSnapshot({
+      vpLookbackBars: clamp(Math.round(Number(process.env.VP_LOOKBACK_BARS ?? 672)), 48, 2000),
+      vpMinRR: clamp(Number(process.env.VP_MIN_RR ?? 1.5), 0.8, 5),
+    }),
 
     /**
      * Unified Supertrend entry filter (indicator section): signal strength + move quality targeting T1+.
@@ -1014,6 +1153,8 @@ export function createBot({
     surfPulseMlThreshold: clamp(Number(process.env.SURF_PULSE_ML_THRESHOLD ?? 0.6), 0, 1),
     /** Futures autotrade: fee breakeven, fee-based first scalping, then optional %-of-entry locks (see `trailingStopLoss.js`). */
     trailingStopLossAuto: false,
+    /** When true, trailing only arms after the TP2 partial leg fills (liq 3-stage ladder). */
+    trailOnlyAfterTp2Fill: false,
     /** `SUPERTREND` = ST line + fee activation (see `supertrendTrailingSl.js`). `FEE_LADDER` = discrete fee/% locks (`advanceTrailingStopState`). */
     futuresTrailingStopMode: "SUPERTREND",
     /** Supertrend mode: fee breakeven floor / activation (see `computeSupertrendTrailingSlUpdate`). HTF_RSI backtests: off + advanced on beats tiered T01/T02. */
@@ -1125,6 +1266,17 @@ export function createBot({
       10,
       Math.min(500, Math.floor(Number(process.env.TRAIL_POST_T02_MAX_EXTRA_TIERS ?? 150))),
     ),
+    /** `FIXED_PCT` = tiered fee ladder; `DYNAMIC` = ATR/MFE chandelier (LIQUIDITY_MAP runner). */
+    trailSizingMode: (() => {
+      const m = String(process.env.TRAIL_SIZING_MODE ?? "FIXED_PCT").toUpperCase();
+      return m === "DYNAMIC" ? "DYNAMIC" : "FIXED_PCT";
+    })(),
+    trailDynamicAdvAtrHwmMult: clamp(Number(process.env.TRAIL_DYNAMIC_ADV_ATR_HWM_MULT ?? 2.5), 0, 6),
+    trailDynamicAdvMfeGivebackFrac: clamp(Number(process.env.TRAIL_DYNAMIC_ADV_MFE_GIVEBACK_FRAC ?? 0.18), 0, 0.9),
+    trailDynamicAdvMfeMinR: clamp(Number(process.env.TRAIL_DYNAMIC_ADV_MFE_MIN_R ?? 1.2), 0, 10),
+    trailDynamicAdvPostT02StepAtrMult: clamp(Number(process.env.TRAIL_DYNAMIC_ADV_POST_T02_STEP_ATR_MULT ?? 0.6), 0, 2),
+    trailDynamicAdvMergeSupertrend: String(process.env.TRAIL_DYNAMIC_ADV_MERGE_ST ?? "1").toLowerCase() !== "0",
+    trailDynamicAdvAtrSource: "ROLLING",
     /**
      * Futures Supertrend: false = 1-way (BUY opens long; SELL closes long only).
      * true = 2-way (BUY closes short then opens long; SELL closes long then opens short).
@@ -1852,6 +2004,187 @@ export function createBot({
     };
   }
 
+  /** Dynamic trailing fields — shared by persist payload and WS/HTTP public state. */
+  function trailAdvancedPublicSnapshot() {
+    return {
+      trailSizingMode:
+        String(state.trailSizingMode ?? "FIXED_PCT").toUpperCase() === "DYNAMIC" ? "DYNAMIC" : "FIXED_PCT",
+      trailDynamicAdvAtrHwmMult: Number(state.trailDynamicAdvAtrHwmMult ?? 2.5),
+      trailDynamicAdvMfeGivebackFrac: Number(state.trailDynamicAdvMfeGivebackFrac ?? 0.18),
+      trailDynamicAdvMfeMinR: Number(state.trailDynamicAdvMfeMinR ?? 1.2),
+      trailDynamicAdvPostT02StepAtrMult: Number(state.trailDynamicAdvPostT02StepAtrMult ?? 0.6),
+      trailDynamicAdvMergeSupertrend: state.trailDynamicAdvMergeSupertrend !== false,
+      trailDynamicAdvAtrSource:
+        String(state.trailDynamicAdvAtrSource ?? "ROLLING").toUpperCase() === "ROLLING" ? "ROLLING" : "ROLLING",
+    };
+  }
+
+  function applyTrailAdvancedPatchToState(patch) {
+    if (!patch || typeof patch !== "object") return;
+    if (patch.trailSizingMode != null) {
+      const m = String(patch.trailSizingMode).toUpperCase();
+      state.trailSizingMode = m === "DYNAMIC" ? "DYNAMIC" : "FIXED_PCT";
+    }
+    if (patch.trailDynamicAdvAtrHwmMult != null && Number.isFinite(Number(patch.trailDynamicAdvAtrHwmMult))) {
+      state.trailDynamicAdvAtrHwmMult = clamp(Number(patch.trailDynamicAdvAtrHwmMult), 0, 6);
+    }
+    if (patch.trailDynamicAdvMfeGivebackFrac != null && Number.isFinite(Number(patch.trailDynamicAdvMfeGivebackFrac))) {
+      state.trailDynamicAdvMfeGivebackFrac = clamp(Number(patch.trailDynamicAdvMfeGivebackFrac), 0, 0.9);
+    }
+    if (patch.trailDynamicAdvMfeMinR != null && Number.isFinite(Number(patch.trailDynamicAdvMfeMinR))) {
+      state.trailDynamicAdvMfeMinR = clamp(Number(patch.trailDynamicAdvMfeMinR), 0, 10);
+    }
+    if (
+      patch.trailDynamicAdvPostT02StepAtrMult != null &&
+      Number.isFinite(Number(patch.trailDynamicAdvPostT02StepAtrMult))
+    ) {
+      state.trailDynamicAdvPostT02StepAtrMult = clamp(Number(patch.trailDynamicAdvPostT02StepAtrMult), 0, 2);
+    }
+    if (patch.trailDynamicAdvMergeSupertrend != null) {
+      state.trailDynamicAdvMergeSupertrend = Boolean(patch.trailDynamicAdvMergeSupertrend);
+    }
+    if (patch.trailDynamicAdvAtrSource != null) {
+      state.trailDynamicAdvAtrSource = "ROLLING";
+    }
+  }
+
+  /** LIQUIDITY_MAP signal-brain fields — shared by persist payload and WS/HTTP public state. */
+  function liqMapPublicSnapshot(src = state) {
+    return {
+      liqMapLookbackBars: clamp(Math.round(Number(src.liqMapLookbackBars ?? 72)), 8, 300),
+      liqMapMaxAgeBars: clamp(Math.round(Number(src.liqMapMaxAgeBars ?? 72)), 4, 300),
+      liqMapMinTouches: clamp(Math.round(Number(src.liqMapMinTouches ?? 1)), 1, 10),
+      liqMapMinWickRatio: clamp(Number(src.liqMapMinWickRatio ?? 0.25), 0, 1),
+      liqMapMinRvol: clamp(Number(src.liqMapMinRvol ?? 1.1), 0, 10),
+      liqMapMinBodyRatio: clamp(Number(src.liqMapMinBodyRatio ?? 0), 0, 1),
+      liqMapSweepPct: clamp(Number(src.liqMapSweepPct ?? 0.0006), 0, 0.05),
+      liqMapEqualTolPct: clamp(Number(src.liqMapEqualTolPct ?? 0.0008), 0, 0.02),
+      liqMapNormalizeThresholds: src.liqMapNormalizeThresholds !== false,
+      liqMapSweepAtrFrac: clamp(Number(src.liqMapSweepAtrFrac ?? 0.13), 0, 2),
+      liqMapEqualTolAtrFrac: clamp(Number(src.liqMapEqualTolAtrFrac ?? 0.18), 0, 2),
+      liqMapAutoCalibrate: src.liqMapAutoCalibrate === true,
+      liqMapAutoProfileBars: clamp(Math.round(Number(src.liqMapAutoProfileBars ?? 200)), 40, 200),
+      liqMapAutoTrailTune: src.liqMapAutoTrailTune !== false,
+      liqMapHybridExit: src.liqMapHybridExit !== false,
+      liqMapQualityGate: src.liqMapQualityGate === true,
+      liqMapQualityGateMode: String(src.liqMapQualityGateMode).toUpperCase() === "SOFT" ? "SOFT" : "HARD",
+      liqMapSoftGateScoreBand: clamp(Number(src.liqMapSoftGateScoreBand ?? 0.25), 0, 3),
+      liqMapQualityAuto: src.liqMapQualityAuto !== false,
+      liqMapMinQualityScore: clamp(Number(src.liqMapMinQualityScore ?? 6.2), 0, 12),
+      liqMapRequireUnresolved: src.liqMapRequireUnresolved !== false,
+      liqMapRequireDirectionalClose: src.liqMapRequireDirectionalClose === true,
+      liqMapEntryModel: ["HTF_SWEEP", "STRUCTURAL", "SWEEP_RECLAIM"].includes(String(src.liqMapEntryModel).toUpperCase())
+        ? String(src.liqMapEntryModel).toUpperCase()
+        : "HTF_SWEEP",
+      liqMapHtfPoolTfs: String(src.liqMapHtfPoolTfs ?? "1h,4h"),
+      liqMapHtfLookbackBars: clamp(Math.round(Number(src.liqMapHtfLookbackBars ?? 72)), 12, 500),
+      liqMapHtfSwingLeft: clamp(Math.round(Number(src.liqMapHtfSwingLeft ?? 2)), 1, 10),
+      liqMapHtfSwingRight: clamp(Math.round(Number(src.liqMapHtfSwingRight ?? 2)), 1, 10),
+      liqMapHtfEqualMinTouches: clamp(Math.round(Number(src.liqMapHtfEqualMinTouches ?? 2)), 2, 8),
+      liqMapUseDailyWeeklyPools: src.liqMapUseDailyWeeklyPools !== false,
+      liqMapUseTrendlinePools: src.liqMapUseTrendlinePools !== false,
+      liqMapEntryTiming: ["FVG_OR_OB", "NEXT_OPEN", "CONFIRMATION_CLOSE", "TWO_BAR_CONFIRM"].includes(String(src.liqMapEntryTiming).toUpperCase())
+        ? String(src.liqMapEntryTiming).toUpperCase()
+        : "FVG_OR_OB",
+      liqMapRequireMss: src.liqMapRequireMss !== false,
+      liqMapRequireChoch: src.liqMapRequireChoch === true,
+      liqMapRequireRetrace: src.liqMapRequireRetrace !== false,
+      liqMapRequireReclaimHold: src.liqMapRequireReclaimHold !== false,
+      liqMapStructureLookbackBars: clamp(Math.round(Number(src.liqMapStructureLookbackBars ?? 24)), 3, 200),
+      liqMapMssMaxBarsAfterSweep: clamp(Math.round(Number(src.liqMapMssMaxBarsAfterSweep ?? 10)), 1, 100),
+      liqMapEntryZoneMode: ["FVG", "OB", "EITHER"].includes(String(src.liqMapEntryZoneMode).toUpperCase())
+        ? String(src.liqMapEntryZoneMode).toUpperCase()
+        : "EITHER",
+      liqMapFvgEntryMode: ["ZONE", "MIDPOINT", "CE"].includes(String(src.liqMapFvgEntryMode).toUpperCase())
+        ? String(src.liqMapFvgEntryMode).toUpperCase()
+        : "ZONE",
+      liqMapMssRequireDisplacement: src.liqMapMssRequireDisplacement !== false,
+      liqMapDisplacementBodyMult: clamp(Number(src.liqMapDisplacementBodyMult ?? 1.15), 0, 5),
+      liqMapDisplacementAtrMult: clamp(Number(src.liqMapDisplacementAtrMult ?? 0.35), 0, 5),
+      liqMapFvgMinGapPct: clamp(Number(src.liqMapFvgMinGapPct ?? 0.00005), 0, 0.02),
+      liqMapStrictPdZone: src.liqMapStrictPdZone !== false,
+      liqMapObMinDisplacementAtr: clamp(Number(src.liqMapObMinDisplacementAtr ?? 0.6), 0, 5),
+      liqMapRr: clamp(Number(src.liqMapRr ?? 1.25), 0.2, 10),
+      liqMapHtfMode: ["none", "with", "against"].includes(String(src.liqMapHtfMode))
+        ? String(src.liqMapHtfMode)
+        : "with",
+      liqMapKillzone: String(src.liqMapKillzone ?? "ALL"),
+      liqMapMinAtrPctile: clamp(Number(src.liqMapMinAtrPctile ?? 0), 0, 100),
+      liqMapMaxAtrPctile: clamp(Number(src.liqMapMaxAtrPctile ?? 0), 0, 100),
+      liqMapAtrPctileLookback: clamp(Math.round(Number(src.liqMapAtrPctileLookback ?? 2880)), 200, 10000),
+      liqMapMinAdx: clamp(Number(src.liqMapMinAdx ?? 0), 0, 100),
+      liqMapMaxAdx: clamp(Number(src.liqMapMaxAdx ?? 0), 0, 100),
+      liqMapMinAtrPct: clamp(Number(src.liqMapMinAtrPct ?? 0), 0, 0.1),
+      liqMapMaxAtrPct: clamp(Number(src.liqMapMaxAtrPct ?? 0), 0, 0.1),
+      liqMapMaxHoldBars: clamp(Math.round(Number(src.liqMapMaxHoldBars ?? 0)), 0, 2000),
+      liqMapMaxSlPct: clamp(Number(src.liqMapMaxSlPct ?? 0.05), 0, 0.2),
+      liqMapSlBufferPct: clamp(Number(src.liqMapSlBufferPct ?? 0.0015), 0, 0.05),
+      liqMapSlBufferAtrFrac: clamp(Number(src.liqMapSlBufferAtrFrac ?? 0.2), 0, 2),
+      liqMapOnePerDay: src.liqMapOnePerDay !== false,
+      liqMapOnePerSidePerDay: src.liqMapOnePerSidePerDay === true,
+      liqMapExitMode: ["PARTIAL_RUNNER", "SCALED_FIXED"].includes(String(src.liqMapExitMode))
+        ? String(src.liqMapExitMode)
+        : "SCALED_FIXED",
+      liqMapTrailMode: ["FEE_LADDER", "SUPERTREND", "DYNAMIC_ATR"].includes(String(src.liqMapTrailMode))
+        ? String(src.liqMapTrailMode)
+        : "SUPERTREND",
+      liqMapMaxTpRr: clamp(Number(src.liqMapMaxTpRr ?? 10), 0, 50),
+      liqMapMaxOpposingRr: clamp(Number(src.liqMapMaxOpposingRr ?? 2), 0, 50),
+      liqMapMinTp2Rr: clamp(Number(src.liqMapMinTp2Rr ?? 1.5), 0, 20),
+      liqMapFallbackTpRr: clamp(Number(src.liqMapFallbackTpRr ?? 3), 0, 50),
+      liqMapDynamicRunnerMaxTpRr: clamp(Number(src.liqMapDynamicRunnerMaxTpRr ?? 15), 0, 50),
+      liqMapDynamicRunnerMinTpRr: clamp(Number(src.liqMapDynamicRunnerMinTpRr ?? 3), 1, 20),
+      liqMapProjectedTpAtrMult: clamp(Number(src.liqMapProjectedTpAtrMult ?? 4), 0, 20),
+      liqMapProjectedTpRangeMult: clamp(Number(src.liqMapProjectedTpRangeMult ?? 0.5), 0, 5),
+      liqMapProjectionLookbackBars: clamp(Math.round(Number(src.liqMapProjectionLookbackBars ?? 24)), 2, 300),
+      liqMapDynamicExitPolicy: src.liqMapDynamicExitPolicy === true,
+      liqMapDynExitQualityHi: clamp(Number(src.liqMapDynExitQualityHi ?? 6.4), 0, 12),
+      liqMapDynExitQualityMid: clamp(Number(src.liqMapDynExitQualityMid ?? 5.8), 0, 12),
+      liqMapDynExitRrHi: clamp(Number(src.liqMapDynExitRrHi ?? 3.0), 0, 20),
+      liqMapDynExitRrMid: clamp(Number(src.liqMapDynExitRrMid ?? 2.0), 0, 20),
+      liqMapDynExitPartialHi: clamp(Number(src.liqMapDynExitPartialHi ?? 0.35), 0.25, 0.75),
+      liqMapDynExitPartialMid: clamp(Number(src.liqMapDynExitPartialMid ?? 0.5), 0.25, 0.75),
+      liqMapDynExitPartialBase: clamp(Number(src.liqMapDynExitPartialBase ?? 0.75), 0.25, 0.75),
+      liqMapDynExitTrailAtrHi: clamp(Number(src.liqMapDynExitTrailAtrHi ?? 5.5), 0, 6),
+      liqMapDynExitTrailAtrMid: clamp(Number(src.liqMapDynExitTrailAtrMid ?? 4.5), 0, 6),
+      liqMapDynExitTrailAtrBase: clamp(Number(src.liqMapDynExitTrailAtrBase ?? 3.0), 0, 6),
+      liqMapDynExitWeakTp1Rr: clamp(Number(src.liqMapDynExitWeakTp1Rr ?? 0.7), 0.45, 1),
+      liqMapStructuralTp1Rr: clamp(Number(src.liqMapStructuralTp1Rr ?? 0.75), 0.5, 1),
+      liqMapPartialFrac: clamp(Number(src.liqMapPartialFrac ?? 0.75), 0.25, 0.75),
+      liqMapBreakevenAfterPartial: src.liqMapBreakevenAfterPartial === true,
+      liqMapUse4hConfirm: src.liqMapUse4hConfirm === true,
+      liqMapSlMode: ["ATR_FLOOR", "REVERSAL_WICK"].includes(String(src.liqMapSlMode))
+        ? String(src.liqMapSlMode)
+        : "ATR_FLOOR",
+      liqMapAtrSlMult: clamp(Number(src.liqMapAtrSlMult ?? 1.0), 0, 5),
+      liqMapSlRegimeAdjust: src.liqMapSlRegimeAdjust !== false,
+      liqMapSlRegimeLowMult: clamp(Number(src.liqMapSlRegimeLowMult ?? 0.75), 0.2, 2),
+      liqMapSlRegimeHighMult: clamp(Number(src.liqMapSlRegimeHighMult ?? 1.15), 0.2, 3),
+      liqMapTrailStPeriod: clamp(Math.round(Number(src.liqMapTrailStPeriod ?? 10)), 2, 100),
+      liqMapTrailStMult: clamp(Number(src.liqMapTrailStMult ?? 3.0), 0.5, 10),
+      liqMapTrailAtrHwmMult: clamp(Number(src.liqMapTrailAtrHwmMult ?? 2.75), 0, 6),
+      liqMapTrailMfeGiveback: clamp(Number(src.liqMapTrailMfeGiveback ?? 0.16), 0, 0.9),
+      liqMapTrailMfeMinR: clamp(Number(src.liqMapTrailMfeMinR ?? 1.5), 0, 10),
+      liqMapTrailStepAtrMult: clamp(Number(src.liqMapTrailStepAtrMult ?? 0.6), 0, 2),
+      liqMapTrailMergeSt: src.liqMapTrailMergeSt !== false,
+      liqMapDeadTradeExitBars: clamp(Math.round(Number(src.liqMapDeadTradeExitBars ?? 0)), 0, 2000),
+      liqMapDeadTradeMinMfeR: clamp(Number(src.liqMapDeadTradeMinMfeR ?? 0.5), 0, 5),
+      liqMapDeadTradeMaxLossR: clamp(Number(src.liqMapDeadTradeMaxLossR ?? 0.55), 0, 5),
+    };
+  }
+
+  function applyLiqMapPatchToState(patch) {
+    if (!patch || typeof patch !== "object") return;
+    const snapKeys = Object.keys(liqMapPublicSnapshot());
+    const hasLiqMapKey = snapKeys.some((k) => Object.prototype.hasOwnProperty.call(patch, k));
+    if (!hasLiqMapKey) return;
+    const merged = { ...state };
+    for (const k of snapKeys) {
+      if (Object.prototype.hasOwnProperty.call(patch, k)) merged[k] = patch[k];
+    }
+    Object.assign(state, liqMapPublicSnapshot(merged));
+  }
+
   function buildTradingConfigPersistPayload() {
     return {
       v: 1,
@@ -1983,6 +2316,10 @@ export function createBot({
         intradayLiqTp2Enabled: state.intradayLiqTp2Enabled !== false,
         intradayLiqBreakevenAfterPartial: state.intradayLiqBreakevenAfterPartial !== false,
         intradayLiqPartialTp: state.intradayLiqPartialTp !== false,
+        intradayLiqPartialFrac: clamp(Number(state.intradayLiqPartialFrac ?? 0.5), 0.1, 0.75),
+        intradayLiqTp1Rr: Number(state.intradayLiqTp1Rr ?? 1),
+        intradayLiqTp2Rr: Number(state.intradayLiqTp2Rr ?? 0),
+        intradayLiqTp2PartialFrac: Number(state.intradayLiqTp2PartialFrac ?? 0),
         intradayLiqMinRr: Number(state.intradayLiqMinRr ?? 1.5),
         intradayLiqStrictMode: state.intradayLiqStrictMode !== false,
         intradayLiqMinSweepExtensionPct: Number(state.intradayLiqMinSweepExtensionPct ?? 0.003),
@@ -2014,11 +2351,11 @@ export function createBot({
         intradayLiqMaxSweepBars: clamp(Math.round(Number(state.intradayLiqMaxSweepBars ?? 40)), 4, 200),
         intradayLiqFirstCycleOnly: state.intradayLiqFirstCycleOnly === true,
         intradayLiqEntryAtSignalClose: state.intradayLiqEntryAtSignalClose !== false,
-        intradayLiqMaxHoldBars: clamp(Math.round(Number(state.intradayLiqMaxHoldBars ?? 48)), 0, 2000),
+        intradayLiqMaxHoldBars: clamp(Math.round(Number(state.intradayLiqMaxHoldBars ?? 0)), 0, 2000),
+        ...liqMapPublicSnapshot(),
         srIntradayMaxTradesPerDay: clamp(Math.round(Number(state.srIntradayMaxTradesPerDay ?? 5)), 1, 50),
         srIntradayMinBarGap: clamp(Math.round(Number(state.srIntradayMinBarGap ?? 4)), 1, 200),
-        vpLookbackBars: state.vpLookbackBars,
-        vpMinRR: state.vpMinRR,
+        ...volumeProfilePublicSnapshot(state),
         supertrendBigMoveGateEnabled: state.supertrendBigMoveGateEnabled === true,
         supertrendBigMoveMinStrength: state.supertrendBigMoveMinStrength,
         supertrendBigMoveMinMoveSlRatio: state.supertrendBigMoveMinMoveSlRatio,
@@ -2057,6 +2394,7 @@ export function createBot({
         intelligenceGateManualStrategies: state.intelligenceGateManualStrategies === true,
         supertrendFuturesExitOnFlip: state.supertrendFuturesExitOnFlip !== false,
         trailingStopLossAuto: state.trailingStopLossAuto,
+        trailOnlyAfterTp2Fill: state.trailOnlyAfterTp2Fill === true,
         futuresTrailingStopMode: normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode),
         futuresTrailingStFeeBreakeven: state.futuresTrailingStFeeBreakeven !== false,
         futuresTrailingStAdvanced: state.futuresTrailingStAdvanced !== false,
@@ -2079,6 +2417,7 @@ export function createBot({
         trailMaintMarginRate: state.trailMaintMarginRate,
         trailPostT02SpacingFrac: state.trailPostT02SpacingFrac,
         trailPostT02MaxExtraTiers: state.trailPostT02MaxExtraTiers,
+        ...trailAdvancedPublicSnapshot(),
         supertrendFuturesFixedSlPct: state.supertrendFuturesFixedSlPct,
         supertrendFuturesFixedTpPct: state.supertrendFuturesFixedTpPct,
         supertrendFuturesUseFixedSl: state.supertrendFuturesUseFixedSl !== false,
@@ -3861,11 +4200,11 @@ export function createBot({
     const bmFut = manualAdapterPath
       ? null
       : bigMoveBlocksOpen({
-          openingSide,
-          candles,
-          latest: indicators.latest,
-          venue: "FUTURES",
-        });
+      openingSide,
+      candles,
+      latest: indicators.latest,
+      venue: "FUTURES",
+    });
     if (bmFut) {
       wsHub?.broadcast?.("log", {
         level: "info",
@@ -3883,8 +4222,8 @@ export function createBot({
     const gate = manualAdapterPath
       ? null
       : state.supertrendBigMoveGateEnabled
-        ? null
-        : signalStrengthBlocksOpen({ openingSide, decisionSnapshot: snapUsedForOpen });
+      ? null
+      : signalStrengthBlocksOpen({ openingSide, decisionSnapshot: snapUsedForOpen });
     if (gate) {
       const ss = snapUsedForOpen?.signalStrength;
       wsHub?.broadcast?.("log", {
@@ -3912,12 +4251,12 @@ export function createBot({
       const mdFut = manualAdapterPath
         ? null
         : marketDecisionBlocksOpen({
-            openingSide,
-            candles,
-            cTs: barTsMd,
-            decisionSnapshotBar: snapUsedForOpen,
-            symbol: orderSymbol,
-          });
+        openingSide,
+        candles,
+        cTs: barTsMd,
+        decisionSnapshotBar: snapUsedForOpen,
+        symbol: orderSymbol,
+      });
       if (mdFut) {
         const sn = mdFut.detail?.snapshot;
         wsHub?.broadcast?.("log", {
@@ -3936,13 +4275,13 @@ export function createBot({
       const mqFut = manualAdapterPath
         ? null
         : state.supertrendBigMoveGateEnabled
-          ? null
-          : moveQualityBlocksOpen({
-              openingSide,
-              candles,
-              latest: indicators.latest,
-              venue: "FUTURES",
-            });
+        ? null
+        : moveQualityBlocksOpen({
+            openingSide,
+            candles,
+            latest: indicators.latest,
+            venue: "FUTURES",
+          });
       if (mqFut) {
         const mq = mqFut.detail?.mq;
         wsHub?.broadcast?.("log", {
@@ -4218,9 +4557,14 @@ export function createBot({
       if (structBr?.slPrice > 0 && state.supertrendFuturesUseFixedSl !== false) {
         stopLoss = structBr.slPrice;
         const liqLegs = liqBr ? mapLiquidityEntryLegs(liqBr, state) : null;
-        if (liqLegs && state.supertrendFuturesUseFixedTp !== false) {
-          if (liqLegs.tp > 0) takeProfit = liqLegs.tp;
-        } else if (structBr.tpPrice > 0 && state.supertrendFuturesUseFixedTp !== false) {
+        if (liqLegs?.tp > 0) {
+          takeProfit = liqLegs.tp;
+        }
+        if (liqLegs?.partialTp && liqLegs.tp1 > 0) {
+          plan.takeProfitPartial = liqLegs.tp1;
+          plan.takeProfitPartialFrac = liqLegs.partialFrac ?? 0.5;
+        }
+        if (!takeProfit && structBr.tpPrice > 0 && state.supertrendFuturesUseFixedTp !== false) {
           takeProfit = structBr.tp2Price ?? structBr.tpPrice;
         }
         const perUnitRisk = Math.abs(pxEntry - stopLoss);
@@ -6085,16 +6429,16 @@ export function createBot({
     const decisionSnapshotBar =
       evBar.decisionSnapshotBar ??
       computeDecisionSnapshot({
-        candles: rawCandles,
-        indicatorsLatest: indicatorsBarClose.latest,
-        supertrendLastRow: row,
-        symbol: state.symbol,
-        supertrendOpts: {
-          period: state.supertrendPeriod,
-          multiplier: state.supertrendMultiplier,
-          wilderAtr: state.supertrendWilderAtr,
-        },
-      });
+      candles: rawCandles,
+      indicatorsLatest: indicatorsBarClose.latest,
+      supertrendLastRow: row,
+      symbol: state.symbol,
+      supertrendOpts: {
+        period: state.supertrendPeriod,
+        multiplier: state.supertrendMultiplier,
+        wilderAtr: state.supertrendWilderAtr,
+      },
+    });
 
     let moveQualityAtBar = null;
     try {
@@ -6498,27 +6842,27 @@ export function createBot({
     if (!stSpot && !stFut) {
       await flushSupertrendFlipSignalHistoryIfNeeded();
       if (!shouldSuppressBarCloseAutotradeOffActivity(state)) {
-        if (wsHubRef) {
-          emitSignalActionActivity(wsHubRef, {
+      if (wsHubRef) {
+        emitSignalActionActivity(wsHubRef, {
             strategyKey: barCloseStrategyKey(),
-            venue: "—",
-            side: allowBuy ? "BUY" : "SELL",
-            action: "skipped",
-            reason: "supertrend_autotrade_off_or_market_mode_mismatch",
-            supertrendStrength01: supertrendStrength01 ?? undefined,
-          });
-        }
-        persistSupertrendSkippedSignal({
-          gateReason: "supertrend_autotrade_off_or_market_mode_mismatch",
-          direction: allowBuy ? "LONG" : "SHORT",
-          row,
-          cTs,
-          symbolU: String(state.symbol || "").trim().toUpperCase(),
-          decisionSnapshotBar,
-          supertrendStrength01,
-          stSpot,
-          stFut,
+          venue: "—",
+          side: allowBuy ? "BUY" : "SELL",
+          action: "skipped",
+          reason: "supertrend_autotrade_off_or_market_mode_mismatch",
+          supertrendStrength01: supertrendStrength01 ?? undefined,
         });
+      }
+      persistSupertrendSkippedSignal({
+        gateReason: "supertrend_autotrade_off_or_market_mode_mismatch",
+        direction: allowBuy ? "LONG" : "SHORT",
+        row,
+        cTs,
+        symbolU: String(state.symbol || "").trim().toUpperCase(),
+        decisionSnapshotBar,
+        supertrendStrength01,
+        stSpot,
+        stFut,
+      });
       }
       return;
     }
@@ -6911,18 +7255,18 @@ export function createBot({
     const snap = state.universe;
     const rankedSyms = Array.isArray(snap?.ranked) ? snap.ranked.map((r) => r?.symbol).filter(Boolean) : [];
     const selectedSyms = Array.isArray(snap?.selected) && snap.selected.length ? snap.selected : [];
-    const seen = new Set();
+      const seen = new Set();
     const merged = [];
-    for (const s of selectedSyms) {
-      const u = String(s || "").trim().toUpperCase();
-      if (!u || seen.has(u)) continue;
-      seen.add(u);
+      for (const s of selectedSyms) {
+        const u = String(s || "").trim().toUpperCase();
+        if (!u || seen.has(u)) continue;
+        seen.add(u);
       merged.push(u);
-    }
-    for (const s of rankedSyms) {
-      const u = String(s || "").trim().toUpperCase();
-      if (!u || seen.has(u)) continue;
-      seen.add(u);
+      }
+      for (const s of rankedSyms) {
+        const u = String(s || "").trim().toUpperCase();
+        if (!u || seen.has(u)) continue;
+        seen.add(u);
       merged.push(u);
     }
     return merged.slice(0, 12);
@@ -7092,20 +7436,25 @@ export function createBot({
       } catch {
         /* never block trading on OHLC archive */
       }
-      try {
-        const sym = String(c.symbol || state.symbol || "").toUpperCase();
-        const tf = String(state.timeframe || "15m");
-        const allCandles =
-          typeof feed.getCandlesForSymbol === "function"
-            ? feed.getCandlesForSymbol(sym)
-            : feed.getCandles();
-        if (sym && allCandles.length) {
-          updateIntelligenceCandles(sym, tf, allCandles);
-          await computeAndBroadcastIntelligenceSnapshot(sym, wsHubRef).catch(() => {});
-        }
-      } catch {
-        /* never block on intelligence */
-      }
+      const intelligenceTimer = setTimeout(() => {
+        void (async () => {
+          try {
+            const sym = String(c.symbol || state.symbol || "").toUpperCase();
+            const tf = String(state.timeframe || "15m");
+            const allCandles =
+              typeof feed.getCandlesForSymbol === "function"
+                ? feed.getCandlesForSymbol(sym)
+                : feed.getCandles();
+            if (sym && allCandles.length) {
+              updateIntelligenceCandles(sym, tf, allCandles);
+              await computeAndBroadcastIntelligenceSnapshot(sym, wsHubRef).catch(() => {});
+            }
+          } catch {
+            /* never block on intelligence */
+          }
+        })();
+      }, 0);
+      intelligenceTimer.unref?.();
       void processBarCloseTrading(c);
       void maybeAutoMultiBarClose(c);
     },
@@ -7114,6 +7463,9 @@ export function createBot({
       const hub = wsHubRef;
       if (!hub || typeof hub.broadcast !== "function") return;
       if (typeof hub.clientCount === "function" && hub.clientCount() === 0) return;
+      const payloadSym = String(payload?.symbol || "").trim().toUpperCase();
+      const selectedChartSym = String(state.uiChartFocusSymbol || state.symbol || "").trim().toUpperCase();
+      if (payloadSym && selectedChartSym && payloadSym !== selectedChartSym) return;
       try {
         hub.broadcast("market", {
           ...payload,
@@ -7656,7 +8008,7 @@ export function createBot({
   }
 
   let _destroyed = false;
-  const BOT_TICK_MS = Math.max(500, Math.min(10_000, Number(process.env.BOT_TICK_MS || 1000)));
+  const BOT_TICK_MS = Math.max(1_000, Math.min(30_000, Number(process.env.BOT_TICK_MS || 5000)));
   const _tickTimer = setInterval(() => {
     if (_destroyed) return;
     if (tickInFlight) return;
@@ -8120,25 +8472,25 @@ export function createBot({
   function buildChartSnapshotFromRawCandles(symU, rawCandles, hours) {
     const candles = sanitizeCandlesForSt(rawCandles, symU);
     if (!candles.length) return null;
-    const st = computeSupertrendChartModel(candles, { symbol: symU });
-    return {
-      symbol: symU,
-      timeframe: state.timeframe,
-      hours,
-      candles,
-      supertrendLine: st.line,
-      supertrendSignals: st.signals,
-      supertrend: st.lastRow
-        ? {
-            ts: st.lastRow.ts,
-            up: st.lastRow.up,
-            dn: st.lastRow.dn,
-            trend: st.lastRow.trend,
-            line: st.lastRow.line,
-          }
-        : null,
-    };
-  }
+        const st = computeSupertrendChartModel(candles, { symbol: symU });
+        return {
+          symbol: symU,
+          timeframe: state.timeframe,
+          hours,
+          candles,
+          supertrendLine: st.line,
+          supertrendSignals: st.signals,
+          supertrend: st.lastRow
+            ? {
+                ts: st.lastRow.ts,
+                up: st.lastRow.up,
+                dn: st.lastRow.dn,
+                trend: st.lastRow.trend,
+                line: st.lastRow.line,
+              }
+            : null,
+        };
+      }
 
   function getChartSnapshotFromFeedBuffer(symU, hours) {
     if (!marketFeedUsesLiveBinance() || typeof feed.getCandlesForSymbol !== "function") return null;
@@ -8175,14 +8527,14 @@ export function createBot({
       rows = [];
     }
     if (Array.isArray(rows) && rows.length) {
-      const raw = rows.map((r) => ({
-        ts: r.ts,
-        open: r.open,
-        high: r.high,
-        low: r.low,
-        close: r.close,
-        volume: r.volume,
-      }));
+    const raw = rows.map((r) => ({
+      ts: r.ts,
+      open: r.open,
+      high: r.high,
+      low: r.low,
+      close: r.close,
+      volume: r.volume,
+    }));
       const fromRest = buildChartSnapshotFromRawCandles(symU, raw, hours);
       if (fromRest?.candles?.length) {
         if (typeof feed.seedCandlesForSymbol === "function") {
@@ -8389,7 +8741,31 @@ export function createBot({
       intradayLiqTp2Enabled: state.intradayLiqTp2Enabled !== false,
       intradayLiqBreakevenAfterPartial: state.intradayLiqBreakevenAfterPartial !== false,
       intradayLiqPartialTp: state.intradayLiqPartialTp !== false,
+      intradayLiqPartialFrac: clamp(Number(state.intradayLiqPartialFrac ?? 0.5), 0.1, 0.75),
+      intradayLiqTp1Rr: clamp(Number(state.intradayLiqTp1Rr ?? 1), 0.25, 2),
+      intradayLiqTp2Rr: clamp(Number(state.intradayLiqTp2Rr ?? 0), 0, 20),
+      intradayLiqTp2PartialFrac: clamp(Number(state.intradayLiqTp2PartialFrac ?? 0), 0, 0.75),
       intradayLiqMinRr: clamp(Number(state.intradayLiqMinRr ?? 1.5), 0, 5),
+      intradayLiqStrictMode: state.intradayLiqStrictMode !== false,
+      intradayLiqMinSweepExtensionPct: clamp(Number(state.intradayLiqMinSweepExtensionPct ?? 0.003), 0, 0.05),
+      intradayLiqSessionExtreme: state.intradayLiqSessionExtreme === true,
+      intradayLiqMinScore: clamp(Math.round(Number(state.intradayLiqMinScore ?? 6)), 0, 20),
+      intradayLiqMinReclaimBodyRatio: clamp(Number(state.intradayLiqMinReclaimBodyRatio ?? 0), 0, 1),
+      intradayLiqRejectSameBarReclaim: state.intradayLiqRejectSameBarReclaim !== false,
+      intradayLiqOnePickPerDay: state.intradayLiqOnePickPerDay !== false,
+      intradayLiqRequireHtfAlign: state.intradayLiqRequireHtfAlign !== false,
+      intradayLiqSlBufferPct: clamp(Number(state.intradayLiqSlBufferPct ?? 0.0015), 0, 0.01),
+      intradayLiqSessionExtremeMinTouches: clamp(
+        Math.round(Number(state.intradayLiqSessionExtremeMinTouches ?? 3)),
+        1,
+        20,
+      ),
+      intradayLiqSessionExtremeMinExtensionPct: clamp(
+        Number(state.intradayLiqSessionExtremeMinExtensionPct ?? 0.008),
+        0,
+        0.05,
+      ),
+      srIntradaySweepPct: clamp(Number(state.srIntradaySweepPct ?? 0.0015), 0, 0.05),
       intradayLiqMaxTpRr: clamp(
         Number(
           Object.prototype.hasOwnProperty.call(state, "intradayLiqMaxTpRr")
@@ -8399,9 +8775,9 @@ export function createBot({
         0,
         20,
       ),
-      intradayLiqMaxHoldBars: clamp(Math.round(Number(state.intradayLiqMaxHoldBars ?? 48)), 0, 2000),
-      vpLookbackBars: clamp(Math.round(Number(state.vpLookbackBars ?? 672)), 48, 2000),
-      vpMinRR: clamp(Number(state.vpMinRR ?? 1.5), 0.8, 5),
+      intradayLiqMaxHoldBars: clamp(Math.round(Number(state.intradayLiqMaxHoldBars ?? 0)), 0, 2000),
+      ...liqMapPublicSnapshot(),
+      ...volumeProfilePublicSnapshot(state),
       supertrendBigMoveGateEnabled: state.supertrendBigMoveGateEnabled === true,
       supertrendBigMoveMinStrength: clamp(Math.round(Number(state.supertrendBigMoveMinStrength ?? 65)), 0, 100),
       supertrendBigMoveMinMoveSlRatio: Math.max(1, Number(state.supertrendBigMoveMinMoveSlRatio ?? 1.5)),
@@ -8450,6 +8826,7 @@ export function createBot({
       intelligenceGateManualStrategies: state.intelligenceGateManualStrategies === true,
       supertrendFuturesExitOnFlip: state.supertrendFuturesExitOnFlip !== false,
       trailingStopLossAuto: state.trailingStopLossAuto === true,
+      trailOnlyAfterTp2Fill: state.trailOnlyAfterTp2Fill === true,
       futuresTrailingStopMode: normalizeFuturesTrailingStopMode(state.futuresTrailingStopMode),
       futuresTrailingStFeeBreakeven: state.futuresTrailingStFeeBreakeven !== false,
       futuresTrailingStAdvanced: state.futuresTrailingStAdvanced !== false,
@@ -8490,6 +8867,7 @@ export function createBot({
         10,
         Math.min(500, Math.floor(Number(state.trailPostT02MaxExtraTiers ?? 150))),
       ),
+      ...trailAdvancedPublicSnapshot(),
       supertrendFuturesFixedSlPct: clamp(Number(state.supertrendFuturesFixedSlPct ?? 0.002), 0.00005, 0.2),
       supertrendFuturesFixedTpPct: clamp(Number(state.supertrendFuturesFixedTpPct ?? 0.015), 0.00005, 0.5),
       supertrendFuturesUseFixedSl: state.supertrendFuturesUseFixedSl !== false,
@@ -8582,6 +8960,34 @@ export function createBot({
       }
       const enrichedClose = enrichCloseTradeForHistory({ ...t });
       broadcastTrade(wsHub, enrichedClose);
+
+      // Feed institutional consecutive-loss overlay + VP novelty monitor.
+      {
+        const net = Number(enrichedClose.pnl ?? 0);
+        const exitTs = Date.parse(enrichedClose.ts) || Date.now();
+        if (!Array.isArray(state.recentClosedTrades)) state.recentClosedTrades = [];
+        state.recentClosedTrades.push({
+          netPnl: net,
+          exitTs,
+          exitReason: enrichedClose.reason ?? enrichedClose.meta?.exitReason ?? null,
+          entryReason: enrichedClose.meta?.entryReason ?? enrichedClose.entryReason ?? null,
+          vpConditionCellKey: enrichedClose.meta?.vpConditionCellKey ?? null,
+        });
+        if (state.recentClosedTrades.length > 80) {
+          state.recentClosedTrades = state.recentClosedTrades.slice(-80);
+        }
+        const cellKey = enrichedClose.meta?.vpConditionCellKey;
+        if (cellKey && state.vpNoveltyEnabled !== false) {
+          try {
+            const { recordLiveVpCellTrade } = await import("../strategy/vpNoveltyLive.js");
+            const riskUsd = Number(enrichedClose.meta?.riskUsd ?? enrichedClose.meta?.riskAtSl ?? 0);
+            const rMult = riskUsd > 0 ? net / riskUsd : net / Math.max(1, Number(state.equity ?? 100) * 0.025);
+            recordLiveVpCellTrade(state, String(cellKey), rMult, exitTs);
+          } catch {
+            /* optional */
+          }
+        }
+      }
 
       if (isIncomeLedgerClose(t)) {
         continue;
@@ -8712,6 +9118,12 @@ export function createBot({
       if (eqIngest != null) {
         const equity = eqIngest;
         if (equity > (state.peakEquity || 0)) state.peakEquity = equity;
+        const weekFloor = Math.floor(Date.now() / (7 * 86_400_000)) * (7 * 86_400_000);
+        if (!state.weekStartMs || state.weekStartMs < weekFloor) {
+          state.weekStartMs = weekFloor;
+          state.weekStartEquity = equity;
+        }
+        if (!(state.weekStartEquity > 0)) state.weekStartEquity = equity;
         if (state.peakEquity > 0) {
           const dd = (state.peakEquity - equity) / state.peakEquity;
           if (dd > (state.maxDrawdownPct || 0)) state.maxDrawdownPct = dd;
@@ -8826,6 +9238,15 @@ export function createBot({
     }
   }
 
+  function broadcastRuntimeState(wsHub, payload = {}) {
+    if (!wsHub?.broadcast) return;
+    wsHub.broadcast("runtime_state", {
+      mode: runtimeTradingMode(),
+      running: Boolean(state.running),
+      ...payload,
+    });
+  }
+
   /** Refresh Portfolio (positions + account + trade tail) over WS right after Supertrend fills. */
   async function pushImmediateState(wsHub, options = {}) {
     const withTrades = options.withTrades !== false;
@@ -8898,9 +9319,7 @@ export function createBot({
               dailyPnlPctByVenue: dv.dailyPnlPctByVenue || undefined,
             };
 
-      wsHub.broadcast("state", {
-        mode: runtimeTradingMode(),
-        ...getPublicState(),
+      broadcastRuntimeState(wsHub, {
         account: acctPayload,
         positions: positionsMtM,
       });
@@ -9619,9 +10038,7 @@ export function createBot({
           dailyPnlPctByVenue: dailyPnlPctByVenue || undefined,
         },
       });
-      wsHub?.broadcast("state", {
-        mode: runtimeTradingMode(),
-        ...getPublicState(),
+      broadcastRuntimeState(wsHub, {
         account: acctBroadcast,
         positions: positionsMtM,
       });
@@ -9676,6 +10093,7 @@ export function createBot({
       strategyKey === "INTRADAY_PRO" ||
       strategyKey === "SITUATION_INTRADAY" ||
       strategyKey === "CRT_TBS" ||
+      strategyKey === "SCALP_MR" ||
       strategyKey === "TOKYO_SESSION"
     ) {
       const symKey = String(state.symbol || "")
@@ -9698,9 +10116,7 @@ export function createBot({
       action: signal?.action,
     });
 
-    wsHub?.broadcast("state", {
-      mode: runtimeTradingMode(),
-      ...getPublicState(),
+    broadcastRuntimeState(wsHub, {
       account: acctBroadcast,
       positions: positionsMtM,
     });
@@ -10029,6 +10445,34 @@ export function createBot({
       });
       return;
     }
+    // Institutional risk overlay (account DD / weekly / consecutive losses) — mirrors runner.js.
+    {
+      const { evaluateInstitutionalRiskOverlay } = await import("../risk/institutionalRiskOverlay.js");
+      const equityNow = Number(state.equity ?? state.paperEquity ?? state.peakEquity ?? 0);
+      const peak = Number(state.peakEquity ?? equityNow);
+      const weekStart = Number(state.weekStartEquity ?? peak);
+      const overlay = evaluateInstitutionalRiskOverlay({
+        equity: equityNow,
+        peakEquity: peak,
+        weekStartEquity: weekStart,
+        barDayMs: Math.floor(Date.now() / 86_400_000) * 86_400_000,
+        trades: Array.isArray(state.recentClosedTrades) ? state.recentClosedTrades : [],
+        cfg: state,
+      });
+      if (overlay.blocked) {
+        noteTradeBlock({ reason: overlay.blocked, detail: overlay.detail, symbol: state.symbol, strategyKey });
+        emitSignalActionActivity(wsHub, {
+          kind: "strategy",
+          strategyKey,
+          venue: stratVenue,
+          side: tradeAction,
+          action: "skipped",
+          reason: overlay.blocked,
+          probability: prob,
+        });
+        return;
+      }
+    }
     // Correlation-aware portfolio: skip if already holding the same or highly correlated symbol
     if (Array.isArray(positions) && positions.length > 0) {
       const sym = state.symbol.toUpperCase();
@@ -10098,7 +10542,7 @@ export function createBot({
           : 0;
       const guard = evaluateLiquidityGuards({
         book,
-        side: tradeAction,
+          side: tradeAction,
         referenceMid: Number(last?.close),
         orderNotionalUsd: estNotional,
         config: liqCfgStrategy,
@@ -10240,13 +10684,14 @@ export function createBot({
       liqLegs = liqBr ? mapLiquidityEntryLegs(liqBr, state) : null;
       if (structBr?.slPrice > 0 && state.supertrendFuturesUseFixedSl !== false) {
         plan.stopLoss = structBr.slPrice;
-        if (liqLegs && state.supertrendFuturesUseFixedTp !== false) {
-          if (liqLegs.tp > 0) plan.takeProfit = liqLegs.tp;
-          if (liqLegs.partialTp && liqLegs.tp1 > 0) {
-            plan.takeProfitPartial = liqLegs.tp1;
-            plan.takeProfitPartialFrac = liqLegs.partialFrac ?? 0.5;
-          }
-        } else if (structBr.tpPrice > 0 && state.supertrendFuturesUseFixedTp !== false) {
+        if (liqLegs?.tp > 0) {
+          plan.takeProfit = liqLegs.tp;
+        }
+        if (liqLegs?.partialTp && liqLegs.tp1 > 0) {
+          plan.takeProfitPartial = liqLegs.tp1;
+          plan.takeProfitPartialFrac = liqLegs.partialFrac ?? 0.5;
+        }
+        if (!plan.takeProfit && structBr.tpPrice > 0 && state.supertrendFuturesUseFixedTp !== false) {
           plan.takeProfit = structBr.tp2Price ?? structBr.tpPrice;
         }
         const perUnitRisk = Math.abs(last.close - plan.stopLoss);
@@ -10725,12 +11170,12 @@ export function createBot({
       state.uiChartFocusSymbol != null && String(state.uiChartFocusSymbol).trim()
         ? String(state.uiChartFocusSymbol).trim().toUpperCase()
         : "";
-    if (rawF == null || rawF === "") {
-      state.uiChartFocusSymbol = null;
-    } else {
-      const u = String(rawF).trim().toUpperCase();
-      state.uiChartFocusSymbol = SYM_RE.test(u) ? u : null;
-    }
+      if (rawF == null || rawF === "") {
+        state.uiChartFocusSymbol = null;
+      } else {
+        const u = String(rawF).trim().toUpperCase();
+        state.uiChartFocusSymbol = SYM_RE.test(u) ? u : null;
+      }
     const focusU = state.uiChartFocusSymbol ? String(state.uiChartFocusSymbol).trim().toUpperCase() : "";
     const primaryU = String(state.symbol || "").trim().toUpperCase();
     const focusChanged = focusU !== prevFocusU;
@@ -10771,14 +11216,14 @@ export function createBot({
       const primaryU = String(state.symbol || "").trim().toUpperCase();
       const focusChanged = focusU !== prevFocusU;
       if (focusChanged && !fromPersisted) {
-        /** Order book WS stayed on `state.symbol` while `market` followed `uiChartFocusSymbol` → UI hid all rows as “mismatch”. */
-        if (depth && marketFeedUsesLiveBinance()) {
-          try {
-            const depthSymU =
-              state.uiChartFocusSymbol && String(state.uiChartFocusSymbol).trim()
-                ? String(state.uiChartFocusSymbol).trim().toUpperCase()
-                : String(state.symbol || "").trim().toUpperCase();
-            if (depthSymU) depth.setSymbol(depthSymU);
+      /** Order book WS stayed on `state.symbol` while `market` followed `uiChartFocusSymbol` → UI hid all rows as “mismatch”. */
+      if (depth && marketFeedUsesLiveBinance()) {
+        try {
+          const depthSymU =
+            state.uiChartFocusSymbol && String(state.uiChartFocusSymbol).trim()
+              ? String(state.uiChartFocusSymbol).trim().toUpperCase()
+              : String(state.symbol || "").trim().toUpperCase();
+          if (depthSymU) depth.setSymbol(depthSymU);
           } catch {
             /* ignore */
           }
@@ -10797,21 +11242,21 @@ export function createBot({
     if (patch.symbol) {
       state.symbol = patch.symbol;
       if (!fromPersisted) {
-        state.coinLastSwitchedAt = Date.now();
+      state.coinLastSwitchedAt = Date.now();
         feed?.setSymbol?.(patch.symbol);
-        state.feedExecutionPause = null;
-        state.supertrendStHandledCloseKey = null;
-        state.supertrendLastBarClose = null;
-        state.supertrendLastFlipBarClose = null;
-        state.supertrendSignalHistory = [];
-        state.pendingSupertrendAction = null;
-        state.pendingSupertrendBreakout = null;
-        state._pendingSupertrendFlushOnNextTick = false;
-        state.pendingAutoRestartAfterFeedStale = false;
-        try {
-          depth?.setSymbol?.(patch.symbol);
-        } catch {
-          // ignore
+      state.feedExecutionPause = null;
+      state.supertrendStHandledCloseKey = null;
+      state.supertrendLastBarClose = null;
+      state.supertrendLastFlipBarClose = null;
+      state.supertrendSignalHistory = [];
+      state.pendingSupertrendAction = null;
+      state.pendingSupertrendBreakout = null;
+      state._pendingSupertrendFlushOnNextTick = false;
+      state.pendingAutoRestartAfterFeedStale = false;
+      try {
+        depth?.setSymbol?.(patch.symbol);
+      } catch {
+        // ignore
         }
       }
     }
@@ -10872,21 +11317,21 @@ export function createBot({
         state.symbolMode = "AUTO";
         state.symbol = state.universePinnedSymbol;
         if (!fromPersisted) {
-          state.coinLastSwitchedAt = Date.now();
+        state.coinLastSwitchedAt = Date.now();
           feed?.setSymbol?.(state.universePinnedSymbol);
-          state.feedExecutionPause = null;
-          state.supertrendStHandledCloseKey = null;
-          state.supertrendLastBarClose = null;
-          state.supertrendLastFlipBarClose = null;
-          state.supertrendSignalHistory = [];
-          state.pendingSupertrendAction = null;
-          state.pendingSupertrendBreakout = null;
-          state._pendingSupertrendFlushOnNextTick = false;
-          state.pendingAutoRestartAfterFeedStale = false;
-          try {
-            depth?.setSymbol?.(state.universePinnedSymbol);
-          } catch {
-            // ignore
+        state.feedExecutionPause = null;
+        state.supertrendStHandledCloseKey = null;
+        state.supertrendLastBarClose = null;
+        state.supertrendLastFlipBarClose = null;
+        state.supertrendSignalHistory = [];
+        state.pendingSupertrendAction = null;
+        state.pendingSupertrendBreakout = null;
+        state._pendingSupertrendFlushOnNextTick = false;
+        state.pendingAutoRestartAfterFeedStale = false;
+        try {
+          depth?.setSymbol?.(state.universePinnedSymbol);
+        } catch {
+          // ignore
           }
         }
       }
@@ -10905,21 +11350,21 @@ export function createBot({
           state.symbolMode = "AUTO";
           state.symbol = up;
           if (!fromPersisted) {
-            state.coinLastSwitchedAt = Date.now();
+          state.coinLastSwitchedAt = Date.now();
             feed?.setSymbol?.(up);
-            state.feedExecutionPause = null;
-            state.supertrendStHandledCloseKey = null;
-            state.supertrendLastBarClose = null;
-            state.supertrendLastFlipBarClose = null;
-            state.supertrendSignalHistory = [];
-            state.pendingSupertrendAction = null;
-            state.pendingSupertrendBreakout = null;
-            state._pendingSupertrendFlushOnNextTick = false;
-            state.pendingAutoRestartAfterFeedStale = false;
-            try {
-              depth?.setSymbol?.(up);
-            } catch {
-              // ignore
+          state.feedExecutionPause = null;
+          state.supertrendStHandledCloseKey = null;
+          state.supertrendLastBarClose = null;
+          state.supertrendLastFlipBarClose = null;
+          state.supertrendSignalHistory = [];
+          state.pendingSupertrendAction = null;
+          state.pendingSupertrendBreakout = null;
+          state._pendingSupertrendFlushOnNextTick = false;
+          state.pendingAutoRestartAfterFeedStale = false;
+          try {
+            depth?.setSymbol?.(up);
+          } catch {
+            // ignore
             }
           }
         }
@@ -10929,15 +11374,15 @@ export function createBot({
       state.timeframe = patch.timeframe;
       if (!fromPersisted) {
         feed?.setTimeframe?.(patch.timeframe);
-        state.feedExecutionPause = null;
-        state.supertrendStHandledCloseKey = null;
-        state.supertrendLastBarClose = null;
-        state.supertrendLastFlipBarClose = null;
-        state.supertrendSignalHistory = [];
-        state.pendingSupertrendAction = null;
-        state.pendingSupertrendBreakout = null;
-        state._pendingSupertrendFlushOnNextTick = false;
-        state.pendingAutoRestartAfterFeedStale = false;
+      state.feedExecutionPause = null;
+      state.supertrendStHandledCloseKey = null;
+      state.supertrendLastBarClose = null;
+      state.supertrendLastFlipBarClose = null;
+      state.supertrendSignalHistory = [];
+      state.pendingSupertrendAction = null;
+      state.pendingSupertrendBreakout = null;
+      state._pendingSupertrendFlushOnNextTick = false;
+      state.pendingAutoRestartAfterFeedStale = false;
       }
     }
     if (patch.aiThreshold != null) state.aiThreshold = clamp(Number(patch.aiThreshold), 0, 1);
@@ -11260,18 +11705,61 @@ export function createBot({
     if (patch.intradayLiqMinRr != null && Number.isFinite(Number(patch.intradayLiqMinRr))) {
       state.intradayLiqMinRr = clamp(Number(patch.intradayLiqMinRr), 0, 5);
     }
+    if (patch.intradayLiqTp1Rr != null && Number.isFinite(Number(patch.intradayLiqTp1Rr))) {
+      state.intradayLiqTp1Rr = clamp(Number(patch.intradayLiqTp1Rr), 0.25, 2);
+    }
+    if (patch.intradayLiqTp2Rr != null && Number.isFinite(Number(patch.intradayLiqTp2Rr))) {
+      state.intradayLiqTp2Rr = clamp(Number(patch.intradayLiqTp2Rr), 0, 20);
+    }
+    if (patch.intradayLiqTp2PartialFrac != null && Number.isFinite(Number(patch.intradayLiqTp2PartialFrac))) {
+      state.intradayLiqTp2PartialFrac = clamp(Number(patch.intradayLiqTp2PartialFrac), 0, 0.75);
+    }
     if (patch.intradayLiqMaxTpRr != null && Number.isFinite(Number(patch.intradayLiqMaxTpRr))) {
       state.intradayLiqMaxTpRr = clamp(Number(patch.intradayLiqMaxTpRr), 0, 20);
     }
     if (patch.intradayLiqMaxHoldBars != null && Number.isFinite(Number(patch.intradayLiqMaxHoldBars))) {
       state.intradayLiqMaxHoldBars = clamp(Math.round(Number(patch.intradayLiqMaxHoldBars)), 0, 2000);
     }
-    if (patch.vpLookbackBars != null && Number.isFinite(Number(patch.vpLookbackBars))) {
-      state.vpLookbackBars = clamp(Math.round(Number(patch.vpLookbackBars)), 48, 2000);
+    if (patch.intradayLiqPartialFrac != null && Number.isFinite(Number(patch.intradayLiqPartialFrac))) {
+      state.intradayLiqPartialFrac = clamp(Number(patch.intradayLiqPartialFrac), 0.1, 0.75);
     }
-    if (patch.vpMinRR != null && Number.isFinite(Number(patch.vpMinRR))) {
-      state.vpMinRR = clamp(Number(patch.vpMinRR), 0.8, 5);
+    if (patch.intradayLiqMinScore != null && Number.isFinite(Number(patch.intradayLiqMinScore))) {
+      state.intradayLiqMinScore = clamp(Math.round(Number(patch.intradayLiqMinScore)), 0, 20);
     }
+    if (patch.intradayLiqMinReclaimBodyRatio != null && Number.isFinite(Number(patch.intradayLiqMinReclaimBodyRatio))) {
+      state.intradayLiqMinReclaimBodyRatio = clamp(Number(patch.intradayLiqMinReclaimBodyRatio), 0, 1);
+    }
+    if (patch.intradayLiqRequireHtfAlign != null) {
+      state.intradayLiqRequireHtfAlign = Boolean(patch.intradayLiqRequireHtfAlign);
+    }
+    if (patch.intradayLiqRejectSameBarReclaim != null) {
+      state.intradayLiqRejectSameBarReclaim = Boolean(patch.intradayLiqRejectSameBarReclaim);
+    }
+    if (patch.intradayLiqBreakevenAfterPartial != null) {
+      state.intradayLiqBreakevenAfterPartial = Boolean(patch.intradayLiqBreakevenAfterPartial);
+    }
+    if (patch.intradayLiqTp1Enabled != null) {
+      state.intradayLiqTp1Enabled = Boolean(patch.intradayLiqTp1Enabled);
+    }
+    if (patch.intradayLiqTp2Enabled != null) {
+      state.intradayLiqTp2Enabled = Boolean(patch.intradayLiqTp2Enabled);
+    }
+    if (patch.intradayLiqPartialTp != null) {
+      state.intradayLiqPartialTp = Boolean(patch.intradayLiqPartialTp);
+    }
+    if (patch.intradayLiqSlBufferPct != null && Number.isFinite(Number(patch.intradayLiqSlBufferPct))) {
+      state.intradayLiqSlBufferPct = clamp(Number(patch.intradayLiqSlBufferPct), 0, 0.01);
+    }
+    if (patch.intradayLiqSessionExtremeMinTouches != null && Number.isFinite(Number(patch.intradayLiqSessionExtremeMinTouches))) {
+      state.intradayLiqSessionExtremeMinTouches = clamp(Math.round(Number(patch.intradayLiqSessionExtremeMinTouches)), 1, 20);
+    }
+    if (patch.intradayLiqSessionExtremeMinExtensionPct != null && Number.isFinite(Number(patch.intradayLiqSessionExtremeMinExtensionPct))) {
+      state.intradayLiqSessionExtremeMinExtensionPct = clamp(Number(patch.intradayLiqSessionExtremeMinExtensionPct), 0, 0.05);
+    }
+    if (patch.srIntradaySweepPct != null && Number.isFinite(Number(patch.srIntradaySweepPct))) {
+      state.srIntradaySweepPct = clamp(Number(patch.srIntradaySweepPct), 0, 0.05);
+    }
+    applyVolumeProfilePatchToState(state, patch);
     if (patch.supertrendBigMoveGateEnabled != null) state.supertrendBigMoveGateEnabled = Boolean(patch.supertrendBigMoveGateEnabled);
     if (patch.supertrendBigMoveMinStrength != null && Number.isFinite(Number(patch.supertrendBigMoveMinStrength))) {
       state.supertrendBigMoveMinStrength = clamp(Math.round(Number(patch.supertrendBigMoveMinStrength)), 0, 100);
@@ -11294,6 +11782,7 @@ export function createBot({
     if (patch.supertrendBigMoveExpectedMoveAtrMult != null && Number.isFinite(Number(patch.supertrendBigMoveExpectedMoveAtrMult))) {
       state.supertrendBigMoveExpectedMoveAtrMult = Math.max(0.1, Number(patch.supertrendBigMoveExpectedMoveAtrMult));
     }
+    applyLiqMapPatchToState(patch);
     // ── SUPERTREND_ELITE gate config ─────────────────────────────────────────
     if (patch.eliteStRequireHtf4hAlign   != null) state.eliteStRequireHtf4hAlign   = Boolean(patch.eliteStRequireHtf4hAlign);
     if (patch.eliteStHtf4hPeriod         != null && Number.isFinite(Number(patch.eliteStHtf4hPeriod)))
@@ -11387,6 +11876,9 @@ export function createBot({
       state.surfPulseMlThreshold = clamp(Number(patch.surfPulseMlThreshold), 0, 1);
     }
     if (patch.trailingStopLossAuto != null) state.trailingStopLossAuto = Boolean(patch.trailingStopLossAuto);
+    if (patch.trailOnlyAfterTp2Fill != null) {
+      state.trailOnlyAfterTp2Fill = Boolean(patch.trailOnlyAfterTp2Fill);
+    }
     if (patch.futuresTrailingStopMode != null) {
       state.futuresTrailingStopMode = normalizeFuturesTrailingStopMode(patch.futuresTrailingStopMode);
     }
@@ -11508,6 +12000,7 @@ export function createBot({
     if (patch.trailPostT02MaxExtraTiers != null && Number.isFinite(Number(patch.trailPostT02MaxExtraTiers))) {
       state.trailPostT02MaxExtraTiers = Math.max(10, Math.min(500, Math.floor(Number(patch.trailPostT02MaxExtraTiers))));
     }
+    applyTrailAdvancedPatchToState(patch);
 
     if (patch.tradingFormDefaults && typeof patch.tradingFormDefaults === "object") {
       const t = patch.tradingFormDefaults;
@@ -11574,14 +12067,14 @@ export function createBot({
       Object.keys(patch).filter((k) => patch[k] !== undefined).length === 1 &&
       patch.uiChartFocusSymbol !== undefined;
     if (!focusOnlyPatch && !fromPersisted) {
-      syncFeedWatchSymbols();
+    syncFeedWatchSymbols();
     }
 
     if (!fromPersisted) {
-      clampAllowedBudgetToFreeMargin();
-      if (capitalCycleResetNeeded && capitalCycleModeActive()) {
-        resetCapitalCycleFromAllowedBase();
-      }
+    clampAllowedBudgetToFreeMargin();
+    if (capitalCycleResetNeeded && capitalCycleModeActive()) {
+      resetCapitalCycleFromAllowedBase();
+    }
     }
     if (!focusOnlyPatch) persistTradingConfigToDisk();
 

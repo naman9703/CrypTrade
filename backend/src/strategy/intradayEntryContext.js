@@ -58,7 +58,14 @@ export function buildIntradayEntryContext(candles, idx, pre, sig, opts = {}) {
 
   const swing = swingHighLow(candles, i, 48);
   const fibHit = nearFibLevel(bar.close, fibLevels(swing, side === "BUY" ? "up" : "down"), sweepPct * 2.5);
-  const vp = buildVolumeProfile(candles, i, { lookback: Number(opts.vpLookbackBars ?? 192) });
+  const vp = buildVolumeProfile(candles, i, {
+    mode: opts.vpProfileMode ?? "composite_utc",
+    lookback: Number(opts.vpLookbackBars ?? 192),
+    bins: opts.vpBins ?? 50,
+    distribute: opts.vpVolumeDistribute ?? "close_weighted",
+    valueAreaPct: opts.vpValueAreaPct,
+    vpCompositeDays: opts.vpCompositeDays ?? 5,
+  });
   const vpScored = scoreVolumeProfile(candles, i, side, vp, opts);
   const vpOk = vpScored.blocked ? false : volumeProfileBias(bar, vp, side).ok || Boolean(vpScored.setup);
   const vpPath = vp ? pathToNextHvn(bar.close, side, vp) : null;

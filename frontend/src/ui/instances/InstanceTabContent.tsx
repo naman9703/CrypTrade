@@ -8,6 +8,15 @@ import type { Account } from "../../types/accounts";
 import type { Trade, TradeFill } from "../../types/trade";
 import { api } from "../../api/client";
 import { useAppStore } from "../../ws/store";
+import {
+  effectiveInstanceRiskLabel,
+  effectiveInstanceSymbol,
+  effectiveInstanceTimeframe,
+} from "../../lib/backtestInstanceConfig";
+import {
+  strategyVersionStLine,
+  strategyVersionTrailingLabel,
+} from "../../lib/strategyVersionDisplay";
 import { ApiKeyModal } from "../accounts/ApiKeyModal";
 
 const TRADE_PAGE = 20;
@@ -66,7 +75,6 @@ export function InstanceTabContent({
 }: Props) {
   const mode = useAppStore((s) => s.mode);
   const runningByMode = useAppStore((s) => s.runningByMode);
-  const bot = useAppStore((s) => s.bot);
   const pushLog = useAppStore((s) => s.pushLog);
   const fetchAccountsForMode = useAppStore((s) => s.fetchAccountsForMode);
   const fetchTradesForInstance = useAppStore((s) => s.fetchTradesForInstance);
@@ -221,7 +229,11 @@ export function InstanceTabContent({
   }
 
   const allot = instance.allotment;
-  const cfg = version;
+  const displaySymbol = effectiveInstanceSymbol(instance, version);
+  const displayTf = effectiveInstanceTimeframe(instance, version);
+  const displayRisk = effectiveInstanceRiskLabel(instance, version);
+  const displaySt = strategyVersionStLine(version);
+  const displayTrail = strategyVersionTrailingLabel(version);
   const reservedPct =
     allot && allot.configuredUsdt > 0 ? Math.min(100, (allot.reservedUsdt / allot.configuredUsdt) * 100) : 0;
   const pnl = instance.totalPnlUsdt;
@@ -334,18 +346,20 @@ export function InstanceTabContent({
           <div className="flex justify-between gap-2">
             <dt className="text-slate-500">Symbol</dt>
             <dd className="text-right font-mono text-slate-800 dark:text-slate-200">
-              {cfg?.cfgSymbol ?? bot?.symbol ?? "—"} · {cfg?.cfgTimeframe ?? bot?.timeframe ?? "—"}
+              {displaySymbol} · {displayTf}
             </dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">Risk / trade</dt>
+            <dd className="text-right font-mono text-slate-800 dark:text-slate-200">{displayRisk}</dd>
           </div>
           <div className="flex justify-between gap-2">
             <dt className="text-slate-500">Supertrend</dt>
-            <dd className="text-right text-slate-800 dark:text-slate-200">
-              {cfg?.cfgStPeriod ?? "—"} · {cfg?.cfgStMultiplier ?? "—"}
-            </dd>
+            <dd className="text-right text-slate-800 dark:text-slate-200">{displaySt}</dd>
           </div>
           <div className="flex justify-between gap-2">
             <dt className="text-slate-500">Trailing</dt>
-            <dd className="text-right text-slate-800 dark:text-slate-200">{cfg?.cfgTrailingMode ?? "—"}</dd>
+            <dd className="text-right text-slate-800 dark:text-slate-200">{displayTrail}</dd>
           </div>
           <div className="flex justify-between gap-2 sm:col-span-2">
             <dt className="text-slate-500">Started / stopped</dt>

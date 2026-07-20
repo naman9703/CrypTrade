@@ -1,0 +1,16 @@
+# Phase 3A Stream Validation — SUPERTREND_ELITE
+
+Window: 2025-01-01 → 2026-06-01 | Holdout: last 25% | Risk: 5%
+
+| Symbol | Holdout ret% | PF | MaxDD% | Gates |
+|--------|--------------|-----|--------|-------|
+| BTCUSDT | 0.0 | 0.19 | 3.2 | ❌ |
+| BNBUSDT | 0.0 | 1.63 | 1.5 | ❌ |
+| ETHUSDT | 0.0 | 999.00 | 0.0 | ❌ |
+| LINKUSDT | 0.0 | 999.00 | 0.0 | ❌ |
+| XRPUSDT | 0.0 | 0.74 | 1.0 | ❌ |
+
+**Portfolio holdout sum return:** 0.0%
+**Status:** flat
+
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.research-phase3a-stream.json

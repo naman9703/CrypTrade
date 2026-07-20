@@ -1,7 +1,7 @@
 /**
  * SAFE_INTRADAY — conservative intraday futures trend follower.
  *
- * Signal core: SUPERTREND_ELITE 5-gate stack (validated OOS in research).
+ * Signal core: SUPERTREND_ELITE 5-gate stack (research candidate; deploy claim revoked).
  * Safety overlays:
  *   - London/NY session only (skip thin Asia chop)
  *   - Max trades per UTC day

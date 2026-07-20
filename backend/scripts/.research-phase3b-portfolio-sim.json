@@ -1,0 +1,99 @@
+{
+  "generatedAt": "2026-07-11T16:49:42.053Z",
+  "phase": "3B",
+  "strategy": "SUPERTREND_ELITE",
+  "symbols": [
+    "BTCUSDT",
+    "BNBUSDT",
+    "ETHUSDT",
+    "LINKUSDT",
+    "XRPUSDT"
+  ],
+  "from": "2025-01-01",
+  "to": "2026-06-01",
+  "holdoutFrom": "2026-01-23",
+  "startingUsdt": 10000,
+  "riskPct": 5,
+  "nullPolicy": "No portfolio optimization — every strategy trades independently",
+  "exposureBySymbol": {
+    "BTCUSDT": 23,
+    "BNBUSDT": 19,
+    "ETHUSDT": 15,
+    "LINKUSDT": 5,
+    "XRPUSDT": 7
+  },
+  "policies": {
+    "full": {
+      "null": {
+        "label": "Null Policy",
+        "trades": 69,
+        "returnPct": 0.4825611280856179,
+        "finalEquity": 10048.256112808562,
+        "maxDdPct": null,
+        "note": "Independent coin sims — no shared account"
+      },
+      "equalWeight": {
+        "label": "Equal-weight slice",
+        "trades": 69,
+        "returnPct": 0.9787504640407861,
+        "cagrPct": 0.6913598589741277,
+        "maxDdPct": 0.6977483021452182,
+        "calmar": 0.9908442010515119,
+        "pf": 1.4780381185202311,
+        "expectancy": 1.418478933392437,
+        "finalEquity": 10097.875046404079,
+        "winRate": 0.4492753623188406,
+        "avgUtilizationPct": 20.10312678506811,
+        "maxConcurrentEstimate": 5
+      },
+      "rMultiple": {
+        "label": "R-multiple portfolio (5% risk)",
+        "trades": 69,
+        "returnPct": 24.244739041918876,
+        "cagrPct": 16.59777083487719,
+        "maxDdPct": 16.47313602297475,
+        "calmar": 1.0075659432259052,
+        "pf": 1.4158029205945752,
+        "expectancy": 35.13730295930266,
+        "finalEquity": 12424.473904191887,
+        "winRate": 0.4492753623188406
+      }
+    },
+    "holdout": {
+      "null": {
+        "label": "Null Policy",
+        "trades": 23,
+        "returnPct": 0.12615178340673414,
+        "finalEquity": 10012.615178340673,
+        "maxDdPct": null,
+        "note": "Independent coin sims — no shared account"
+      },
+      "equalWeight": {
+        "label": "Equal-weight slice",
+        "trades": 23,
+        "returnPct": 0.25180411352788723,
+        "cagrPct": 0.7141690671582657,
+        "maxDdPct": 0.09821899821278024,
+        "calmar": 7.271190708045097,
+        "pf": 1.8717285663816692,
+        "expectancy": 1.0948004935996034,
+        "finalEquity": 10025.180411352789,
+        "winRate": 0.43478260869565216,
+        "avgUtilizationPct": 20.047601908042925,
+        "maxConcurrentEstimate": 5
+      },
+      "rMultiple": {
+        "label": "R-multiple portfolio (5% risk)",
+        "trades": 23,
+        "returnPct": 6.314063185154155,
+        "cagrPct": 18.91684404462812,
+        "maxDdPct": 2.460659994133217,
+        "calmar": 7.687711463481447,
+        "pf": 1.8232085474208317,
+        "expectancy": 27.45244863110501,
+        "finalEquity": 10631.406318515415,
+        "winRate": 0.43478260869565216
+      }
+    }
+  }
+}

@@ -1,0 +1,2034 @@
+{
+  "generatedAt": "2026-07-11T06:30:13.922Z",
+  "phase": "2b_additional_observable_information",
+  "positioningMatrix": [
+    {
+      "data": "Funding",
+      "historical": "full",
+      "live": true
+    },
+    {
+      "data": "Open Interest",
+      "historical": "partial",
+      "live": true
+    },
+    {
+      "data": "Order Book",
+      "historical": false,
+      "live": true
+    }
+  ],
+  "questions": {
+    "funding": "Does historical funding improve discrimination over L0–L1?",
+    "open_interest": "Does recent OI justify continuous collection? (exploratory)"
+  },
+  "datasets": [
+    {
+      "name": "Family A (LIQ)",
+      "candidates": 2137,
+      "observableAttached": true,
+      "coverage": {
+        "totalCandidates": 2137,
+        "groups": [
+          {
+            "group": "binance_funding",
+            "label": "Binance Funding",
+            "source": "binance",
+            "fidelity": "native",
+            "evaluationMode": "rigorous",
+            "totalCandidates": 2137,
+            "validCount": 2137,
+            "coveragePct": 100,
+            "meetsPromotionThreshold": true,
+            "evaluationConfidence": "promotion_grade",
+            "features": [
+              {
+                "feature": "binance_funding_rate",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 2137,
+                "validCount": 2137,
+                "coveragePct": 100,
+                "researchValidCount": 1675,
+                "holdoutValidCount": 462,
+                "historicalWindow": {
+                  "fromMs": 1641148200000,
+                  "toMs": 1780267500000,
+                  "spanMs": 139119300000
+                },
+                "meetsPromotionThreshold": true,
+                "evaluationConfidence": "promotion_grade"
+              },
+              {
+                "feature": "binance_funding_zscore",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 2137,
+                "validCount": 2137,
+                "coveragePct": 100,
+                "researchValidCount": 1675,
+                "holdoutValidCount": 462,
+                "historicalWindow": {
+                  "fromMs": 1641148200000,
+                  "toMs": 1780267500000,
+                  "spanMs": 139119300000
+                },
+                "meetsPromotionThreshold": true,
+                "evaluationConfidence": "promotion_grade"
+              }
+            ]
+          },
+          {
+            "group": "binance_oi",
+            "label": "Binance OI",
+            "source": "binance",
+            "fidelity": "native",
+            "evaluationMode": "exploratory",
+            "totalCandidates": 2137,
+            "validCount": 35,
+            "coveragePct": 1.6378100140383716,
+            "meetsPromotionThreshold": false,
+            "evaluationConfidence": "insufficient",
+            "features": [
+              {
+                "feature": "binance_oi_usdt",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 2137,
+                "validCount": 35,
+                "coveragePct": 1.6378100140383716,
+                "researchValidCount": 0,
+                "holdoutValidCount": 35,
+                "historicalWindow": {
+                  "fromMs": 1778001300000,
+                  "toMs": 1780267500000,
+                  "spanMs": 2266200000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "insufficient"
+              },
+              {
+                "feature": "binance_oi_change_4h",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 2137,
+                "validCount": 35,
+                "coveragePct": 1.6378100140383716,
+                "researchValidCount": 0,
+                "holdoutValidCount": 35,
+                "historicalWindow": {
+                  "fromMs": 1778001300000,
+                  "toMs": 1780267500000,
+                  "spanMs": 2266200000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "insufficient"
+              },
+              {
+                "feature": "binance_oi_change_24h",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 2137,
+                "validCount": 35,
+                "coveragePct": 1.6378100140383716,
+                "researchValidCount": 0,
+                "holdoutValidCount": 35,
+                "historicalWindow": {
+                  "fromMs": 1778001300000,
+                  "toMs": 1780267500000,
+                  "spanMs": 2266200000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "insufficient"
+              },
+              {
+                "feature": "binance_long_short_ratio",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 2137,
+                "validCount": 35,
+                "coveragePct": 1.6378100140383716,
+                "researchValidCount": 0,
+                "holdoutValidCount": 35,
+                "historicalWindow": {
+                  "fromMs": 1778001300000,
+                  "toMs": 1780267500000,
+                  "spanMs": 2266200000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "insufficient"
+              }
+            ]
+          },
+          {
+            "group": "bybit_positioning",
+            "label": "Bybit Positioning (proxy)",
+            "source": "bybit",
+            "fidelity": "cross_venue_proxy",
+            "evaluationMode": "exploratory",
+            "totalCandidates": 2137,
+            "validCount": 2137,
+            "coveragePct": 100,
+            "meetsPromotionThreshold": false,
+            "evaluationConfidence": "proxy_exploratory",
+            "features": [
+              {
+                "feature": "bybit_oi_usdt",
+                "source": "bybit",
+                "fidelity": "cross_venue_proxy",
+                "fidelityLabel": "Cross-venue Proxy",
+                "totalCandidates": 2137,
+                "validCount": 2137,
+                "coveragePct": 100,
+                "researchValidCount": 1675,
+                "holdoutValidCount": 462,
+                "historicalWindow": {
+                  "fromMs": 1641148200000,
+                  "toMs": 1780267500000,
+                  "spanMs": 139119300000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "proxy_exploratory"
+              },
+              {
+                "feature": "bybit_oi_change_4h",
+                "source": "bybit",
+                "fidelity": "cross_venue_proxy",
+                "fidelityLabel": "Cross-venue Proxy",
+                "totalCandidates": 2137,
+                "validCount": 2137,
+                "coveragePct": 100,
+                "researchValidCount": 1675,
+                "holdoutValidCount": 462,
+                "historicalWindow": {
+                  "fromMs": 1641148200000,
+                  "toMs": 1780267500000,
+                  "spanMs": 139119300000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "proxy_exploratory"
+              },
+              {
+                "feature": "bybit_oi_change_24h",
+                "source": "bybit",
+                "fidelity": "cross_venue_proxy",
+                "fidelityLabel": "Cross-venue Proxy",
+                "totalCandidates": 2137,
+                "validCount": 2137,
+                "coveragePct": 100,
+                "researchValidCount": 1675,
+                "holdoutValidCount": 462,
+                "historicalWindow": {
+                  "fromMs": 1641148200000,
+                  "toMs": 1780267500000,
+                  "spanMs": 139119300000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "proxy_exploratory"
+              },
+              {
+                "feature": "bybit_long_short_ratio",
+                "source": "bybit",
+                "fidelity": "cross_venue_proxy",
+                "fidelityLabel": "Cross-venue Proxy",
+                "totalCandidates": 2137,
+                "validCount": 2137,
+                "coveragePct": 100,
+                "researchValidCount": 1675,
+                "holdoutValidCount": 462,
+                "historicalWindow": {
+                  "fromMs": 1641148200000,
+                  "toMs": 1780267500000,
+                  "spanMs": 139119300000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "proxy_exploratory"
+              }
+            ]
+          }
+        ],
+        "summary": [
+          {
+            "label": "Binance Funding",
+            "source": "binance",
+            "fidelity": "native",
+            "coveragePct": 100,
+            "evaluationMode": "rigorous",
+            "evaluationConfidence": "promotion_grade",
+            "meetsPromotionThreshold": true
+          },
+          {
+            "label": "Binance OI",
+            "source": "binance",
+            "fidelity": "native",
+            "coveragePct": 1.6378100140383716,
+            "evaluationMode": "exploratory",
+            "evaluationConfidence": "insufficient",
+            "meetsPromotionThreshold": false
+          },
+          {
+            "label": "Bybit Positioning (proxy)",
+            "source": "bybit",
+            "fidelity": "cross_venue_proxy",
+            "coveragePct": 100,
+            "evaluationMode": "exploratory",
+            "evaluationConfidence": "proxy_exploratory",
+            "meetsPromotionThreshold": false
+          }
+        ]
+      },
+      "binanceFunding": {
+        "results": [
+          {
+            "feature": "binance_funding_rate",
+            "group": "binance_funding",
+            "evaluationMode": "rigorous",
+            "n": 1675,
+            "coveragePct": 100,
+            "researchValidCount": 1675,
+            "holdoutValidCount": 462,
+            "researchMono": -0.6428571428571429,
+            "researchSpread": 0.30280956937799053,
+            "holdoutMono": -0.42857142857142855,
+            "spearmanR": -0.08042210409855781,
+            "meetsPromotionThreshold": true,
+            "interpretable": true
+          },
+          {
+            "feature": "binance_funding_zscore",
+            "group": "binance_funding",
+            "evaluationMode": "rigorous",
+            "n": 1675,
+            "coveragePct": 100,
+            "researchValidCount": 1675,
+            "holdoutValidCount": 462,
+            "researchMono": -0.7142857142857143,
+            "researchSpread": 0.2016769674185464,
+            "holdoutMono": -0.14285714285714285,
+            "spearmanR": -0.032111915418956236,
+            "meetsPromotionThreshold": true,
+            "interpretable": true
+          }
+        ],
+        "best": {
+          "feature": "binance_funding_rate",
+          "group": "binance_funding",
+          "evaluationMode": "rigorous",
+          "n": 1675,
+          "coveragePct": 100,
+          "researchValidCount": 1675,
+          "holdoutValidCount": 462,
+          "researchMono": -0.6428571428571429,
+          "researchSpread": 0.30280956937799053,
+          "holdoutMono": -0.42857142857142855,
+          "spearmanR": -0.08042210409855781,
+          "meetsPromotionThreshold": true,
+          "interpretable": true
+        }
+      },
+      "binanceOi": {
+        "results": [
+          {
+            "feature": "binance_oi_usdt",
+            "group": "binance_oi",
+            "evaluationMode": "exploratory",
+            "n": 0,
+            "coveragePct": 1.6378100140383716,
+            "researchValidCount": 0,
+            "holdoutValidCount": 35,
+            "holdoutMono": 0.14285714285714285,
+            "spearmanR": null,
+            "meetsPromotionThreshold": false,
+            "interpretable": false
+          },
+          {
+            "feature": "binance_oi_change_4h",
+            "group": "binance_oi",
+            "evaluationMode": "exploratory",
+            "n": 0,
+            "coveragePct": 1.6378100140383716,
+            "researchValidCount": 0,
+            "holdoutValidCount": 35,
+            "holdoutMono": -0.7714285714285715,
+            "spearmanR": null,
+            "meetsPromotionThreshold": false,
+            "interpretable": false
+          },
+          {
+            "feature": "binance_oi_change_24h",
+            "group": "binance_oi",
+            "evaluationMode": "exploratory",
+            "n": 0,
+            "coveragePct": 1.6378100140383716,
+            "researchValidCount": 0,
+            "holdoutValidCount": 35,
+            "holdoutMono": -0.6,
+            "spearmanR": null,
+            "meetsPromotionThreshold": false,
+            "interpretable": false
+          },
+          {
+            "feature": "binance_long_short_ratio",
+            "group": "binance_oi",
+            "evaluationMode": "exploratory",
+            "n": 0,
+            "coveragePct": 1.6378100140383716,
+            "researchValidCount": 0,
+            "holdoutValidCount": 35,
+            "holdoutMono": -0.6,
+            "spearmanR": null,
+            "meetsPromotionThreshold": false,
+            "interpretable": false
+          }
+        ]
+      },
+      "bybitProxy": {
+        "results": [
+          {
+            "feature": "bybit_oi_usdt",
+            "group": "bybit_positioning",
+            "evaluationMode": "exploratory",
+            "n": 1675,
+            "coveragePct": 100,
+            "researchValidCount": 1675,
+            "holdoutValidCount": 462,
+            "researchMono": -0.2619047619047619,
+            "researchSpread": 0.22090375939849635,
+            "holdoutMono": -0.2571428571428571,
+            "spearmanR": -0.042403951440204146,
+            "meetsPromotionThreshold": false,
+            "interpretable": true
+          },
+          {
+            "feature": "bybit_oi_change_4h",
+            "group": "bybit_positioning",
+            "evaluationMode": "exploratory",
+            "n": 1675,
+            "coveragePct": 100,
+            "researchValidCount": 1675,
+            "holdoutValidCount": 462,
+            "researchMono": -0.40476190476190477,
+            "researchSpread": 0.22064927318295735,
+            "holdoutMono": -0.37142857142857144,
+            "spearmanR": -0.001272085513597639,
+            "meetsPromotionThreshold": false,
+            "interpretable": true
+          },
+          {
+            "feature": "bybit_oi_change_24h",
+            "group": "bybit_positioning",
+            "evaluationMode": "exploratory",
+            "n": 1675,
+            "coveragePct": 100,
+            "researchValidCount": 1675,
+            "holdoutValidCount": 462,
+            "researchMono": 0.2857142857142857,
+            "researchSpread": 0.33885980861244,
+            "holdoutMono": -0.42857142857142855,
+            "spearmanR": 0.04632685263262319,
+            "meetsPromotionThreshold": false,
+            "interpretable": true
+          },
+          {
+            "feature": "bybit_long_short_ratio",
+            "group": "bybit_positioning",
+            "evaluationMode": "exploratory",
+            "n": 1675,
+            "coveragePct": 100,
+            "researchValidCount": 1675,
+            "holdoutValidCount": 462,
+            "researchMono": 0,
+            "researchSpread": 0.31304742993848256,
+            "holdoutMono": -0.6571428571428571,
+            "spearmanR": 0.009283386949671145,
+            "meetsPromotionThreshold": false,
+            "interpretable": true
+          }
+        ],
+        "best": {
+          "feature": "bybit_oi_change_24h",
+          "group": "bybit_positioning",
+          "evaluationMode": "exploratory",
+          "n": 1675,
+          "coveragePct": 100,
+          "researchValidCount": 1675,
+          "holdoutValidCount": 462,
+          "researchMono": 0.2857142857142857,
+          "researchSpread": 0.33885980861244,
+          "holdoutMono": -0.42857142857142855,
+          "spearmanR": 0.04632685263262319,
+          "meetsPromotionThreshold": false,
+          "interpretable": true
+        }
+      },
+      "interpretation": {
+        "binanceFunding": {
+          "group": "binance_funding",
+          "label": "Binance Funding",
+          "source": "binance",
+          "fidelity": "native",
+          "evaluationMode": "rigorous",
+          "totalCandidates": 2137,
+          "validCount": 2137,
+          "coveragePct": 100,
+          "meetsPromotionThreshold": true,
+          "evaluationConfidence": "promotion_grade",
+          "features": [
+            {
+              "feature": "binance_funding_rate",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 2137,
+              "validCount": 2137,
+              "coveragePct": 100,
+              "researchValidCount": 1675,
+              "holdoutValidCount": 462,
+              "historicalWindow": {
+                "fromMs": 1641148200000,
+                "toMs": 1780267500000,
+                "spanMs": 139119300000
+              },
+              "meetsPromotionThreshold": true,
+              "evaluationConfidence": "promotion_grade"
+            },
+            {
+              "feature": "binance_funding_zscore",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 2137,
+              "validCount": 2137,
+              "coveragePct": 100,
+              "researchValidCount": 1675,
+              "holdoutValidCount": 462,
+              "historicalWindow": {
+                "fromMs": 1641148200000,
+                "toMs": 1780267500000,
+                "spanMs": 139119300000
+              },
+              "meetsPromotionThreshold": true,
+              "evaluationConfidence": "promotion_grade"
+            }
+          ]
+        },
+        "binanceOi": {
+          "group": "binance_oi",
+          "label": "Binance OI",
+          "source": "binance",
+          "fidelity": "native",
+          "evaluationMode": "exploratory",
+          "totalCandidates": 2137,
+          "validCount": 35,
+          "coveragePct": 1.6378100140383716,
+          "meetsPromotionThreshold": false,
+          "evaluationConfidence": "insufficient",
+          "features": [
+            {
+              "feature": "binance_oi_usdt",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 2137,
+              "validCount": 35,
+              "coveragePct": 1.6378100140383716,
+              "researchValidCount": 0,
+              "holdoutValidCount": 35,
+              "historicalWindow": {
+                "fromMs": 1778001300000,
+                "toMs": 1780267500000,
+                "spanMs": 2266200000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "insufficient"
+            },
+            {
+              "feature": "binance_oi_change_4h",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 2137,
+              "validCount": 35,
+              "coveragePct": 1.6378100140383716,
+              "researchValidCount": 0,
+              "holdoutValidCount": 35,
+              "historicalWindow": {
+                "fromMs": 1778001300000,
+                "toMs": 1780267500000,
+                "spanMs": 2266200000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "insufficient"
+            },
+            {
+              "feature": "binance_oi_change_24h",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 2137,
+              "validCount": 35,
+              "coveragePct": 1.6378100140383716,
+              "researchValidCount": 0,
+              "holdoutValidCount": 35,
+              "historicalWindow": {
+                "fromMs": 1778001300000,
+                "toMs": 1780267500000,
+                "spanMs": 2266200000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "insufficient"
+            },
+            {
+              "feature": "binance_long_short_ratio",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 2137,
+              "validCount": 35,
+              "coveragePct": 1.6378100140383716,
+              "researchValidCount": 0,
+              "holdoutValidCount": 35,
+              "historicalWindow": {
+                "fromMs": 1778001300000,
+                "toMs": 1780267500000,
+                "spanMs": 2266200000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "insufficient"
+            }
+          ]
+        },
+        "bybitProxy": {
+          "group": "bybit_positioning",
+          "label": "Bybit Positioning (proxy)",
+          "source": "bybit",
+          "fidelity": "cross_venue_proxy",
+          "evaluationMode": "exploratory",
+          "totalCandidates": 2137,
+          "validCount": 2137,
+          "coveragePct": 100,
+          "meetsPromotionThreshold": false,
+          "evaluationConfidence": "proxy_exploratory",
+          "features": [
+            {
+              "feature": "bybit_oi_usdt",
+              "source": "bybit",
+              "fidelity": "cross_venue_proxy",
+              "fidelityLabel": "Cross-venue Proxy",
+              "totalCandidates": 2137,
+              "validCount": 2137,
+              "coveragePct": 100,
+              "researchValidCount": 1675,
+              "holdoutValidCount": 462,
+              "historicalWindow": {
+                "fromMs": 1641148200000,
+                "toMs": 1780267500000,
+                "spanMs": 139119300000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "proxy_exploratory"
+            },
+            {
+              "feature": "bybit_oi_change_4h",
+              "source": "bybit",
+              "fidelity": "cross_venue_proxy",
+              "fidelityLabel": "Cross-venue Proxy",
+              "totalCandidates": 2137,
+              "validCount": 2137,
+              "coveragePct": 100,
+              "researchValidCount": 1675,
+              "holdoutValidCount": 462,
+              "historicalWindow": {
+                "fromMs": 1641148200000,
+                "toMs": 1780267500000,
+                "spanMs": 139119300000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "proxy_exploratory"
+            },
+            {
+              "feature": "bybit_oi_change_24h",
+              "source": "bybit",
+              "fidelity": "cross_venue_proxy",
+              "fidelityLabel": "Cross-venue Proxy",
+              "totalCandidates": 2137,
+              "validCount": 2137,
+              "coveragePct": 100,
+              "researchValidCount": 1675,
+              "holdoutValidCount": 462,
+              "historicalWindow": {
+                "fromMs": 1641148200000,
+                "toMs": 1780267500000,
+                "spanMs": 139119300000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "proxy_exploratory"
+            },
+            {
+              "feature": "bybit_long_short_ratio",
+              "source": "bybit",
+              "fidelity": "cross_venue_proxy",
+              "fidelityLabel": "Cross-venue Proxy",
+              "totalCandidates": 2137,
+              "validCount": 2137,
+              "coveragePct": 100,
+              "researchValidCount": 1675,
+              "holdoutValidCount": 462,
+              "historicalWindow": {
+                "fromMs": 1641148200000,
+                "toMs": 1780267500000,
+                "spanMs": 139119300000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "proxy_exploratory"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Family C (Trend)",
+      "candidates": 7021,
+      "observableAttached": true,
+      "coverage": {
+        "totalCandidates": 7021,
+        "groups": [
+          {
+            "group": "binance_funding",
+            "label": "Binance Funding",
+            "source": "binance",
+            "fidelity": "native",
+            "evaluationMode": "rigorous",
+            "totalCandidates": 7021,
+            "validCount": 7021,
+            "coveragePct": 100,
+            "meetsPromotionThreshold": true,
+            "evaluationConfidence": "promotion_grade",
+            "features": [
+              {
+                "feature": "binance_funding_rate",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 7021,
+                "validCount": 7021,
+                "coveragePct": 100,
+                "researchValidCount": 5459,
+                "holdoutValidCount": 1562,
+                "historicalWindow": {
+                  "fromMs": 1641135600000,
+                  "toMs": 1780270200000,
+                  "spanMs": 139134600000
+                },
+                "meetsPromotionThreshold": true,
+                "evaluationConfidence": "promotion_grade"
+              },
+              {
+                "feature": "binance_funding_zscore",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 7021,
+                "validCount": 7021,
+                "coveragePct": 100,
+                "researchValidCount": 5459,
+                "holdoutValidCount": 1562,
+                "historicalWindow": {
+                  "fromMs": 1641135600000,
+                  "toMs": 1780270200000,
+                  "spanMs": 139134600000
+                },
+                "meetsPromotionThreshold": true,
+                "evaluationConfidence": "promotion_grade"
+              }
+            ]
+          },
+          {
+            "group": "binance_oi",
+            "label": "Binance OI",
+            "source": "binance",
+            "fidelity": "native",
+            "evaluationMode": "exploratory",
+            "totalCandidates": 7021,
+            "validCount": 210,
+            "coveragePct": 2.991026919242273,
+            "meetsPromotionThreshold": false,
+            "evaluationConfidence": "insufficient",
+            "features": [
+              {
+                "feature": "binance_oi_usdt",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 7021,
+                "validCount": 210,
+                "coveragePct": 2.991026919242273,
+                "researchValidCount": 0,
+                "holdoutValidCount": 210,
+                "historicalWindow": {
+                  "fromMs": 1777726800000,
+                  "toMs": 1780270200000,
+                  "spanMs": 2543400000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "insufficient"
+              },
+              {
+                "feature": "binance_oi_change_4h",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 7021,
+                "validCount": 209,
+                "coveragePct": 2.9767839339125484,
+                "researchValidCount": 0,
+                "holdoutValidCount": 209,
+                "historicalWindow": {
+                  "fromMs": 1777726800000,
+                  "toMs": 1780270200000,
+                  "spanMs": 2543400000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "insufficient"
+              },
+              {
+                "feature": "binance_oi_change_24h",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 7021,
+                "validCount": 203,
+                "coveragePct": 2.8913260219341974,
+                "researchValidCount": 0,
+                "holdoutValidCount": 203,
+                "historicalWindow": {
+                  "fromMs": 1777791600000,
+                  "toMs": 1780270200000,
+                  "spanMs": 2478600000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "insufficient"
+              },
+              {
+                "feature": "binance_long_short_ratio",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 7021,
+                "validCount": 210,
+                "coveragePct": 2.991026919242273,
+                "researchValidCount": 0,
+                "holdoutValidCount": 210,
+                "historicalWindow": {
+                  "fromMs": 1777726800000,
+                  "toMs": 1780270200000,
+                  "spanMs": 2543400000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "insufficient"
+              }
+            ]
+          },
+          {
+            "group": "bybit_positioning",
+            "label": "Bybit Positioning (proxy)",
+            "source": "bybit",
+            "fidelity": "cross_venue_proxy",
+            "evaluationMode": "exploratory",
+            "totalCandidates": 7021,
+            "validCount": 7021,
+            "coveragePct": 100,
+            "meetsPromotionThreshold": false,
+            "evaluationConfidence": "proxy_exploratory",
+            "features": [
+              {
+                "feature": "bybit_oi_usdt",
+                "source": "bybit",
+                "fidelity": "cross_venue_proxy",
+                "fidelityLabel": "Cross-venue Proxy",
+                "totalCandidates": 7021,
+                "validCount": 7021,
+                "coveragePct": 100,
+                "researchValidCount": 5459,
+                "holdoutValidCount": 1562,
+                "historicalWindow": {
+                  "fromMs": 1641135600000,
+                  "toMs": 1780270200000,
+                  "spanMs": 139134600000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "proxy_exploratory"
+              },
+              {
+                "feature": "bybit_oi_change_4h",
+                "source": "bybit",
+                "fidelity": "cross_venue_proxy",
+                "fidelityLabel": "Cross-venue Proxy",
+                "totalCandidates": 7021,
+                "validCount": 7021,
+                "coveragePct": 100,
+                "researchValidCount": 5459,
+                "holdoutValidCount": 1562,
+                "historicalWindow": {
+                  "fromMs": 1641135600000,
+                  "toMs": 1780270200000,
+                  "spanMs": 139134600000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "proxy_exploratory"
+              },
+              {
+                "feature": "bybit_oi_change_24h",
+                "source": "bybit",
+                "fidelity": "cross_venue_proxy",
+                "fidelityLabel": "Cross-venue Proxy",
+                "totalCandidates": 7021,
+                "validCount": 7021,
+                "coveragePct": 100,
+                "researchValidCount": 5459,
+                "holdoutValidCount": 1562,
+                "historicalWindow": {
+                  "fromMs": 1641135600000,
+                  "toMs": 1780270200000,
+                  "spanMs": 139134600000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "proxy_exploratory"
+              },
+              {
+                "feature": "bybit_long_short_ratio",
+                "source": "bybit",
+                "fidelity": "cross_venue_proxy",
+                "fidelityLabel": "Cross-venue Proxy",
+                "totalCandidates": 7021,
+                "validCount": 7021,
+                "coveragePct": 100,
+                "researchValidCount": 5459,
+                "holdoutValidCount": 1562,
+                "historicalWindow": {
+                  "fromMs": 1641135600000,
+                  "toMs": 1780270200000,
+                  "spanMs": 139134600000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "proxy_exploratory"
+              }
+            ]
+          }
+        ],
+        "summary": [
+          {
+            "label": "Binance Funding",
+            "source": "binance",
+            "fidelity": "native",
+            "coveragePct": 100,
+            "evaluationMode": "rigorous",
+            "evaluationConfidence": "promotion_grade",
+            "meetsPromotionThreshold": true
+          },
+          {
+            "label": "Binance OI",
+            "source": "binance",
+            "fidelity": "native",
+            "coveragePct": 2.991026919242273,
+            "evaluationMode": "exploratory",
+            "evaluationConfidence": "insufficient",
+            "meetsPromotionThreshold": false
+          },
+          {
+            "label": "Bybit Positioning (proxy)",
+            "source": "bybit",
+            "fidelity": "cross_venue_proxy",
+            "coveragePct": 100,
+            "evaluationMode": "exploratory",
+            "evaluationConfidence": "proxy_exploratory",
+            "meetsPromotionThreshold": false
+          }
+        ]
+      },
+      "binanceFunding": {
+        "results": [
+          {
+            "feature": "binance_funding_rate",
+            "group": "binance_funding",
+            "evaluationMode": "rigorous",
+            "n": 5459,
+            "coveragePct": 100,
+            "researchValidCount": 5459,
+            "holdoutValidCount": 1562,
+            "researchMono": 0.5,
+            "researchSpread": 0.25440146627565996,
+            "holdoutMono": -0.2,
+            "spearmanR": 0.009397204680192842,
+            "meetsPromotionThreshold": true,
+            "interpretable": true
+          },
+          {
+            "feature": "binance_funding_zscore",
+            "group": "binance_funding",
+            "evaluationMode": "rigorous",
+            "n": 5459,
+            "coveragePct": 100,
+            "researchValidCount": 5459,
+            "holdoutValidCount": 1562,
+            "researchMono": 0.40476190476190477,
+            "researchSpread": 0.40290768388556597,
+            "holdoutMono": -0.02857142857142857,
+            "spearmanR": -0.0026344778759380756,
+            "meetsPromotionThreshold": true,
+            "interpretable": true
+          }
+        ],
+        "best": {
+          "feature": "binance_funding_rate",
+          "group": "binance_funding",
+          "evaluationMode": "rigorous",
+          "n": 5459,
+          "coveragePct": 100,
+          "researchValidCount": 5459,
+          "holdoutValidCount": 1562,
+          "researchMono": 0.5,
+          "researchSpread": 0.25440146627565996,
+          "holdoutMono": -0.2,
+          "spearmanR": 0.009397204680192842,
+          "meetsPromotionThreshold": true,
+          "interpretable": true
+        }
+      },
+      "binanceOi": {
+        "results": [
+          {
+            "feature": "binance_oi_usdt",
+            "group": "binance_oi",
+            "evaluationMode": "exploratory",
+            "n": 0,
+            "coveragePct": 2.991026919242273,
+            "researchValidCount": 0,
+            "holdoutValidCount": 210,
+            "holdoutMono": 0.7142857142857143,
+            "spearmanR": null,
+            "meetsPromotionThreshold": false,
+            "interpretable": false
+          },
+          {
+            "feature": "binance_oi_change_4h",
+            "group": "binance_oi",
+            "evaluationMode": "exploratory",
+            "n": 0,
+            "coveragePct": 2.9767839339125484,
+            "researchValidCount": 0,
+            "holdoutValidCount": 209,
+            "holdoutMono": -0.14285714285714285,
+            "spearmanR": null,
+            "meetsPromotionThreshold": false,
+            "interpretable": false
+          },
+          {
+            "feature": "binance_oi_change_24h",
+            "group": "binance_oi",
+            "evaluationMode": "exploratory",
+            "n": 0,
+            "coveragePct": 2.8913260219341974,
+            "researchValidCount": 0,
+            "holdoutValidCount": 203,
+            "holdoutMono": 0.2571428571428571,
+            "spearmanR": null,
+            "meetsPromotionThreshold": false,
+            "interpretable": false
+          },
+          {
+            "feature": "binance_long_short_ratio",
+            "group": "binance_oi",
+            "evaluationMode": "exploratory",
+            "n": 0,
+            "coveragePct": 2.991026919242273,
+            "researchValidCount": 0,
+            "holdoutValidCount": 210,
+            "holdoutMono": 0.4857142857142857,
+            "spearmanR": null,
+            "meetsPromotionThreshold": false,
+            "interpretable": false
+          }
+        ]
+      },
+      "bybitProxy": {
+        "results": [
+          {
+            "feature": "bybit_oi_usdt",
+            "group": "bybit_positioning",
+            "evaluationMode": "exploratory",
+            "n": 5459,
+            "coveragePct": 100,
+            "researchValidCount": 5459,
+            "holdoutValidCount": 1562,
+            "researchMono": -0.11904761904761904,
+            "researchSpread": 0.1806626099706745,
+            "holdoutMono": -0.2571428571428571,
+            "spearmanR": 0.0024679385971814126,
+            "meetsPromotionThreshold": false,
+            "interpretable": true
+          },
+          {
+            "feature": "bybit_oi_change_4h",
+            "group": "bybit_positioning",
+            "evaluationMode": "exploratory",
+            "n": 5459,
+            "coveragePct": 100,
+            "researchValidCount": 5459,
+            "holdoutValidCount": 1562,
+            "researchMono": -0.38095238095238093,
+            "researchSpread": 0.3435952604732442,
+            "holdoutMono": 0.2571428571428571,
+            "spearmanR": -0.012546183539947511,
+            "meetsPromotionThreshold": false,
+            "interpretable": true
+          },
+          {
+            "feature": "bybit_oi_change_24h",
+            "group": "bybit_positioning",
+            "evaluationMode": "exploratory",
+            "n": 5459,
+            "coveragePct": 100,
+            "researchValidCount": 5459,
+            "holdoutValidCount": 1562,
+            "researchMono": -0.6190476190476191,
+            "researchSpread": 0.284877893157237,
+            "holdoutMono": -0.7714285714285715,
+            "spearmanR": -0.012443010938493393,
+            "meetsPromotionThreshold": false,
+            "interpretable": true
+          },
+          {
+            "feature": "bybit_long_short_ratio",
+            "group": "bybit_positioning",
+            "evaluationMode": "exploratory",
+            "n": 5459,
+            "coveragePct": 100,
+            "researchValidCount": 5459,
+            "holdoutValidCount": 1562,
+            "researchMono": 0.40476190476190477,
+            "researchSpread": 0.2662650981309814,
+            "holdoutMono": 0.08571428571428572,
+            "spearmanR": 0.03424516887089367,
+            "meetsPromotionThreshold": false,
+            "interpretable": true
+          }
+        ],
+        "best": {
+          "feature": "bybit_long_short_ratio",
+          "group": "bybit_positioning",
+          "evaluationMode": "exploratory",
+          "n": 5459,
+          "coveragePct": 100,
+          "researchValidCount": 5459,
+          "holdoutValidCount": 1562,
+          "researchMono": 0.40476190476190477,
+          "researchSpread": 0.2662650981309814,
+          "holdoutMono": 0.08571428571428572,
+          "spearmanR": 0.03424516887089367,
+          "meetsPromotionThreshold": false,
+          "interpretable": true
+        }
+      },
+      "interpretation": {
+        "binanceFunding": {
+          "group": "binance_funding",
+          "label": "Binance Funding",
+          "source": "binance",
+          "fidelity": "native",
+          "evaluationMode": "rigorous",
+          "totalCandidates": 7021,
+          "validCount": 7021,
+          "coveragePct": 100,
+          "meetsPromotionThreshold": true,
+          "evaluationConfidence": "promotion_grade",
+          "features": [
+            {
+              "feature": "binance_funding_rate",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 7021,
+              "validCount": 7021,
+              "coveragePct": 100,
+              "researchValidCount": 5459,
+              "holdoutValidCount": 1562,
+              "historicalWindow": {
+                "fromMs": 1641135600000,
+                "toMs": 1780270200000,
+                "spanMs": 139134600000
+              },
+              "meetsPromotionThreshold": true,
+              "evaluationConfidence": "promotion_grade"
+            },
+            {
+              "feature": "binance_funding_zscore",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 7021,
+              "validCount": 7021,
+              "coveragePct": 100,
+              "researchValidCount": 5459,
+              "holdoutValidCount": 1562,
+              "historicalWindow": {
+                "fromMs": 1641135600000,
+                "toMs": 1780270200000,
+                "spanMs": 139134600000
+              },
+              "meetsPromotionThreshold": true,
+              "evaluationConfidence": "promotion_grade"
+            }
+          ]
+        },
+        "binanceOi": {
+          "group": "binance_oi",
+          "label": "Binance OI",
+          "source": "binance",
+          "fidelity": "native",
+          "evaluationMode": "exploratory",
+          "totalCandidates": 7021,
+          "validCount": 210,
+          "coveragePct": 2.991026919242273,
+          "meetsPromotionThreshold": false,
+          "evaluationConfidence": "insufficient",
+          "features": [
+            {
+              "feature": "binance_oi_usdt",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 7021,
+              "validCount": 210,
+              "coveragePct": 2.991026919242273,
+              "researchValidCount": 0,
+              "holdoutValidCount": 210,
+              "historicalWindow": {
+                "fromMs": 1777726800000,
+                "toMs": 1780270200000,
+                "spanMs": 2543400000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "insufficient"
+            },
+            {
+              "feature": "binance_oi_change_4h",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 7021,
+              "validCount": 209,
+              "coveragePct": 2.9767839339125484,
+              "researchValidCount": 0,
+              "holdoutValidCount": 209,
+              "historicalWindow": {
+                "fromMs": 1777726800000,
+                "toMs": 1780270200000,
+                "spanMs": 2543400000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "insufficient"
+            },
+            {
+              "feature": "binance_oi_change_24h",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 7021,
+              "validCount": 203,
+              "coveragePct": 2.8913260219341974,
+              "researchValidCount": 0,
+              "holdoutValidCount": 203,
+              "historicalWindow": {
+                "fromMs": 1777791600000,
+                "toMs": 1780270200000,
+                "spanMs": 2478600000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "insufficient"
+            },
+            {
+              "feature": "binance_long_short_ratio",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 7021,
+              "validCount": 210,
+              "coveragePct": 2.991026919242273,
+              "researchValidCount": 0,
+              "holdoutValidCount": 210,
+              "historicalWindow": {
+                "fromMs": 1777726800000,
+                "toMs": 1780270200000,
+                "spanMs": 2543400000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "insufficient"
+            }
+          ]
+        },
+        "bybitProxy": {
+          "group": "bybit_positioning",
+          "label": "Bybit Positioning (proxy)",
+          "source": "bybit",
+          "fidelity": "cross_venue_proxy",
+          "evaluationMode": "exploratory",
+          "totalCandidates": 7021,
+          "validCount": 7021,
+          "coveragePct": 100,
+          "meetsPromotionThreshold": false,
+          "evaluationConfidence": "proxy_exploratory",
+          "features": [
+            {
+              "feature": "bybit_oi_usdt",
+              "source": "bybit",
+              "fidelity": "cross_venue_proxy",
+              "fidelityLabel": "Cross-venue Proxy",
+              "totalCandidates": 7021,
+              "validCount": 7021,
+              "coveragePct": 100,
+              "researchValidCount": 5459,
+              "holdoutValidCount": 1562,
+              "historicalWindow": {
+                "fromMs": 1641135600000,
+                "toMs": 1780270200000,
+                "spanMs": 139134600000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "proxy_exploratory"
+            },
+            {
+              "feature": "bybit_oi_change_4h",
+              "source": "bybit",
+              "fidelity": "cross_venue_proxy",
+              "fidelityLabel": "Cross-venue Proxy",
+              "totalCandidates": 7021,
+              "validCount": 7021,
+              "coveragePct": 100,
+              "researchValidCount": 5459,
+              "holdoutValidCount": 1562,
+              "historicalWindow": {
+                "fromMs": 1641135600000,
+                "toMs": 1780270200000,
+                "spanMs": 139134600000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "proxy_exploratory"
+            },
+            {
+              "feature": "bybit_oi_change_24h",
+              "source": "bybit",
+              "fidelity": "cross_venue_proxy",
+              "fidelityLabel": "Cross-venue Proxy",
+              "totalCandidates": 7021,
+              "validCount": 7021,
+              "coveragePct": 100,
+              "researchValidCount": 5459,
+              "holdoutValidCount": 1562,
+              "historicalWindow": {
+                "fromMs": 1641135600000,
+                "toMs": 1780270200000,
+                "spanMs": 139134600000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "proxy_exploratory"
+            },
+            {
+              "feature": "bybit_long_short_ratio",
+              "source": "bybit",
+              "fidelity": "cross_venue_proxy",
+              "fidelityLabel": "Cross-venue Proxy",
+              "totalCandidates": 7021,
+              "validCount": 7021,
+              "coveragePct": 100,
+              "researchValidCount": 5459,
+              "holdoutValidCount": 1562,
+              "historicalWindow": {
+                "fromMs": 1641135600000,
+                "toMs": 1780270200000,
+                "spanMs": 139134600000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "proxy_exploratory"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Family D (Vol)",
+      "candidates": 32274,
+      "observableAttached": true,
+      "coverage": {
+        "totalCandidates": 32274,
+        "groups": [
+          {
+            "group": "binance_funding",
+            "label": "Binance Funding",
+            "source": "binance",
+            "fidelity": "native",
+            "evaluationMode": "rigorous",
+            "totalCandidates": 32274,
+            "validCount": 32274,
+            "coveragePct": 100,
+            "meetsPromotionThreshold": true,
+            "evaluationConfidence": "promotion_grade",
+            "features": [
+              {
+                "feature": "binance_funding_rate",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 32274,
+                "validCount": 32274,
+                "coveragePct": 100,
+                "researchValidCount": 25208,
+                "holdoutValidCount": 7066,
+                "historicalWindow": {
+                  "fromMs": 1641204000000,
+                  "toMs": 1780264800000,
+                  "spanMs": 139060800000
+                },
+                "meetsPromotionThreshold": true,
+                "evaluationConfidence": "promotion_grade"
+              },
+              {
+                "feature": "binance_funding_zscore",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 32274,
+                "validCount": 32274,
+                "coveragePct": 100,
+                "researchValidCount": 25208,
+                "holdoutValidCount": 7066,
+                "historicalWindow": {
+                  "fromMs": 1641204000000,
+                  "toMs": 1780264800000,
+                  "spanMs": 139060800000
+                },
+                "meetsPromotionThreshold": true,
+                "evaluationConfidence": "promotion_grade"
+              }
+            ]
+          },
+          {
+            "group": "binance_oi",
+            "label": "Binance OI",
+            "source": "binance",
+            "fidelity": "native",
+            "evaluationMode": "exploratory",
+            "totalCandidates": 32274,
+            "validCount": 874,
+            "coveragePct": 2.708062217264671,
+            "meetsPromotionThreshold": false,
+            "evaluationConfidence": "insufficient",
+            "features": [
+              {
+                "feature": "binance_oi_usdt",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 32274,
+                "validCount": 874,
+                "coveragePct": 2.708062217264671,
+                "researchValidCount": 0,
+                "holdoutValidCount": 874,
+                "historicalWindow": {
+                  "fromMs": 1777724100000,
+                  "toMs": 1780264800000,
+                  "spanMs": 2540700000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "insufficient"
+              },
+              {
+                "feature": "binance_oi_change_4h",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 32274,
+                "validCount": 868,
+                "coveragePct": 2.689471401127843,
+                "researchValidCount": 0,
+                "holdoutValidCount": 868,
+                "historicalWindow": {
+                  "fromMs": 1777724100000,
+                  "toMs": 1780264800000,
+                  "spanMs": 2540700000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "insufficient"
+              },
+              {
+                "feature": "binance_oi_change_24h",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 32274,
+                "validCount": 837,
+                "coveragePct": 2.593418851087563,
+                "researchValidCount": 0,
+                "holdoutValidCount": 837,
+                "historicalWindow": {
+                  "fromMs": 1777780800000,
+                  "toMs": 1780264800000,
+                  "spanMs": 2484000000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "insufficient"
+              },
+              {
+                "feature": "binance_long_short_ratio",
+                "source": "binance",
+                "fidelity": "native",
+                "fidelityLabel": "Native",
+                "totalCandidates": 32274,
+                "validCount": 874,
+                "coveragePct": 2.708062217264671,
+                "researchValidCount": 0,
+                "holdoutValidCount": 874,
+                "historicalWindow": {
+                  "fromMs": 1777724100000,
+                  "toMs": 1780264800000,
+                  "spanMs": 2540700000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "insufficient"
+              }
+            ]
+          },
+          {
+            "group": "bybit_positioning",
+            "label": "Bybit Positioning (proxy)",
+            "source": "bybit",
+            "fidelity": "cross_venue_proxy",
+            "evaluationMode": "exploratory",
+            "totalCandidates": 32274,
+            "validCount": 32274,
+            "coveragePct": 100,
+            "meetsPromotionThreshold": false,
+            "evaluationConfidence": "proxy_exploratory",
+            "features": [
+              {
+                "feature": "bybit_oi_usdt",
+                "source": "bybit",
+                "fidelity": "cross_venue_proxy",
+                "fidelityLabel": "Cross-venue Proxy",
+                "totalCandidates": 32274,
+                "validCount": 32274,
+                "coveragePct": 100,
+                "researchValidCount": 25208,
+                "holdoutValidCount": 7066,
+                "historicalWindow": {
+                  "fromMs": 1641204000000,
+                  "toMs": 1780264800000,
+                  "spanMs": 139060800000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "proxy_exploratory"
+              },
+              {
+                "feature": "bybit_oi_change_4h",
+                "source": "bybit",
+                "fidelity": "cross_venue_proxy",
+                "fidelityLabel": "Cross-venue Proxy",
+                "totalCandidates": 32274,
+                "validCount": 32274,
+                "coveragePct": 100,
+                "researchValidCount": 25208,
+                "holdoutValidCount": 7066,
+                "historicalWindow": {
+                  "fromMs": 1641204000000,
+                  "toMs": 1780264800000,
+                  "spanMs": 139060800000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "proxy_exploratory"
+              },
+              {
+                "feature": "bybit_oi_change_24h",
+                "source": "bybit",
+                "fidelity": "cross_venue_proxy",
+                "fidelityLabel": "Cross-venue Proxy",
+                "totalCandidates": 32274,
+                "validCount": 32274,
+                "coveragePct": 100,
+                "researchValidCount": 25208,
+                "holdoutValidCount": 7066,
+                "historicalWindow": {
+                  "fromMs": 1641204000000,
+                  "toMs": 1780264800000,
+                  "spanMs": 139060800000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "proxy_exploratory"
+              },
+              {
+                "feature": "bybit_long_short_ratio",
+                "source": "bybit",
+                "fidelity": "cross_venue_proxy",
+                "fidelityLabel": "Cross-venue Proxy",
+                "totalCandidates": 32274,
+                "validCount": 32274,
+                "coveragePct": 100,
+                "researchValidCount": 25208,
+                "holdoutValidCount": 7066,
+                "historicalWindow": {
+                  "fromMs": 1641204000000,
+                  "toMs": 1780264800000,
+                  "spanMs": 139060800000
+                },
+                "meetsPromotionThreshold": false,
+                "evaluationConfidence": "proxy_exploratory"
+              }
+            ]
+          }
+        ],
+        "summary": [
+          {
+            "label": "Binance Funding",
+            "source": "binance",
+            "fidelity": "native",
+            "coveragePct": 100,
+            "evaluationMode": "rigorous",
+            "evaluationConfidence": "promotion_grade",
+            "meetsPromotionThreshold": true
+          },
+          {
+            "label": "Binance OI",
+            "source": "binance",
+            "fidelity": "native",
+            "coveragePct": 2.708062217264671,
+            "evaluationMode": "exploratory",
+            "evaluationConfidence": "insufficient",
+            "meetsPromotionThreshold": false
+          },
+          {
+            "label": "Bybit Positioning (proxy)",
+            "source": "bybit",
+            "fidelity": "cross_venue_proxy",
+            "coveragePct": 100,
+            "evaluationMode": "exploratory",
+            "evaluationConfidence": "proxy_exploratory",
+            "meetsPromotionThreshold": false
+          }
+        ]
+      },
+      "binanceFunding": {
+        "results": [
+          {
+            "feature": "binance_funding_rate",
+            "group": "binance_funding",
+            "evaluationMode": "rigorous",
+            "n": 25208,
+            "coveragePct": 100,
+            "researchValidCount": 25208,
+            "holdoutValidCount": 7066,
+            "researchMono": 0.11904761904761904,
+            "researchSpread": 0.1752798476674074,
+            "holdoutMono": 0.8285714285714286,
+            "spearmanR": 0.002803938141328313,
+            "meetsPromotionThreshold": true,
+            "interpretable": true
+          },
+          {
+            "feature": "binance_funding_zscore",
+            "group": "binance_funding",
+            "evaluationMode": "rigorous",
+            "n": 25208,
+            "coveragePct": 100,
+            "researchValidCount": 25208,
+            "holdoutValidCount": 7066,
+            "researchMono": 0.8333333333333334,
+            "researchSpread": 0.10528191050460148,
+            "holdoutMono": 0.6571428571428571,
+            "spearmanR": 0.008130299486166935,
+            "meetsPromotionThreshold": true,
+            "interpretable": true
+          }
+        ],
+        "best": {
+          "feature": "binance_funding_zscore",
+          "group": "binance_funding",
+          "evaluationMode": "rigorous",
+          "n": 25208,
+          "coveragePct": 100,
+          "researchValidCount": 25208,
+          "holdoutValidCount": 7066,
+          "researchMono": 0.8333333333333334,
+          "researchSpread": 0.10528191050460148,
+          "holdoutMono": 0.6571428571428571,
+          "spearmanR": 0.008130299486166935,
+          "meetsPromotionThreshold": true,
+          "interpretable": true
+        }
+      },
+      "binanceOi": {
+        "results": [
+          {
+            "feature": "binance_oi_usdt",
+            "group": "binance_oi",
+            "evaluationMode": "exploratory",
+            "n": 0,
+            "coveragePct": 2.708062217264671,
+            "researchValidCount": 0,
+            "holdoutValidCount": 874,
+            "holdoutMono": 0.2571428571428571,
+            "spearmanR": null,
+            "meetsPromotionThreshold": false,
+            "interpretable": false
+          },
+          {
+            "feature": "binance_oi_change_4h",
+            "group": "binance_oi",
+            "evaluationMode": "exploratory",
+            "n": 0,
+            "coveragePct": 2.689471401127843,
+            "researchValidCount": 0,
+            "holdoutValidCount": 868,
+            "holdoutMono": 0.6,
+            "spearmanR": null,
+            "meetsPromotionThreshold": false,
+            "interpretable": false
+          },
+          {
+            "feature": "binance_oi_change_24h",
+            "group": "binance_oi",
+            "evaluationMode": "exploratory",
+            "n": 0,
+            "coveragePct": 2.593418851087563,
+            "researchValidCount": 0,
+            "holdoutValidCount": 837,
+            "holdoutMono": 0.8857142857142857,
+            "spearmanR": null,
+            "meetsPromotionThreshold": false,
+            "interpretable": false
+          },
+          {
+            "feature": "binance_long_short_ratio",
+            "group": "binance_oi",
+            "evaluationMode": "exploratory",
+            "n": 0,
+            "coveragePct": 2.708062217264671,
+            "researchValidCount": 0,
+            "holdoutValidCount": 874,
+            "holdoutMono": 0.4857142857142857,
+            "spearmanR": null,
+            "meetsPromotionThreshold": false,
+            "interpretable": false
+          }
+        ]
+      },
+      "bybitProxy": {
+        "results": [
+          {
+            "feature": "bybit_oi_usdt",
+            "group": "bybit_positioning",
+            "evaluationMode": "exploratory",
+            "n": 25208,
+            "coveragePct": 100,
+            "researchValidCount": 25208,
+            "holdoutValidCount": 7066,
+            "researchMono": 0.07142857142857142,
+            "researchSpread": 0.06392135829895265,
+            "holdoutMono": -0.37142857142857144,
+            "spearmanR": -0.0021859526711025395,
+            "meetsPromotionThreshold": false,
+            "interpretable": true
+          },
+          {
+            "feature": "bybit_oi_change_4h",
+            "group": "bybit_positioning",
+            "evaluationMode": "exploratory",
+            "n": 25208,
+            "coveragePct": 100,
+            "researchValidCount": 25208,
+            "holdoutValidCount": 7066,
+            "researchMono": 0.35714285714285715,
+            "researchSpread": 0.052395969533481426,
+            "holdoutMono": 0.7714285714285715,
+            "spearmanR": -0.005809623178293122,
+            "meetsPromotionThreshold": false,
+            "interpretable": true
+          },
+          {
+            "feature": "bybit_oi_change_24h",
+            "group": "bybit_positioning",
+            "evaluationMode": "exploratory",
+            "n": 25208,
+            "coveragePct": 100,
+            "researchValidCount": 25208,
+            "holdoutValidCount": 7066,
+            "researchMono": -0.09523809523809523,
+            "researchSpread": 0.11105607743573477,
+            "holdoutMono": -0.6,
+            "spearmanR": 0.004495435463266393,
+            "meetsPromotionThreshold": false,
+            "interpretable": true
+          },
+          {
+            "feature": "bybit_long_short_ratio",
+            "group": "bybit_positioning",
+            "evaluationMode": "exploratory",
+            "n": 25208,
+            "coveragePct": 100,
+            "researchValidCount": 25208,
+            "holdoutValidCount": 7066,
+            "researchMono": 0.42857142857142855,
+            "researchSpread": 0.09346372580133278,
+            "holdoutMono": 0.5428571428571428,
+            "spearmanR": 0.01347331443990176,
+            "meetsPromotionThreshold": false,
+            "interpretable": true
+          }
+        ],
+        "best": {
+          "feature": "bybit_long_short_ratio",
+          "group": "bybit_positioning",
+          "evaluationMode": "exploratory",
+          "n": 25208,
+          "coveragePct": 100,
+          "researchValidCount": 25208,
+          "holdoutValidCount": 7066,
+          "researchMono": 0.42857142857142855,
+          "researchSpread": 0.09346372580133278,
+          "holdoutMono": 0.5428571428571428,
+          "spearmanR": 0.01347331443990176,
+          "meetsPromotionThreshold": false,
+          "interpretable": true
+        }
+      },
+      "interpretation": {
+        "binanceFunding": {
+          "group": "binance_funding",
+          "label": "Binance Funding",
+          "source": "binance",
+          "fidelity": "native",
+          "evaluationMode": "rigorous",
+          "totalCandidates": 32274,
+          "validCount": 32274,
+          "coveragePct": 100,
+          "meetsPromotionThreshold": true,
+          "evaluationConfidence": "promotion_grade",
+          "features": [
+            {
+              "feature": "binance_funding_rate",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 32274,
+              "validCount": 32274,
+              "coveragePct": 100,
+              "researchValidCount": 25208,
+              "holdoutValidCount": 7066,
+              "historicalWindow": {
+                "fromMs": 1641204000000,
+                "toMs": 1780264800000,
+                "spanMs": 139060800000
+              },
+              "meetsPromotionThreshold": true,
+              "evaluationConfidence": "promotion_grade"
+            },
+            {
+              "feature": "binance_funding_zscore",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 32274,
+              "validCount": 32274,
+              "coveragePct": 100,
+              "researchValidCount": 25208,
+              "holdoutValidCount": 7066,
+              "historicalWindow": {
+                "fromMs": 1641204000000,
+                "toMs": 1780264800000,
+                "spanMs": 139060800000
+              },
+              "meetsPromotionThreshold": true,
+              "evaluationConfidence": "promotion_grade"
+            }
+          ]
+        },
+        "binanceOi": {
+          "group": "binance_oi",
+          "label": "Binance OI",
+          "source": "binance",
+          "fidelity": "native",
+          "evaluationMode": "exploratory",
+          "totalCandidates": 32274,
+          "validCount": 874,
+          "coveragePct": 2.708062217264671,
+          "meetsPromotionThreshold": false,
+          "evaluationConfidence": "insufficient",
+          "features": [
+            {
+              "feature": "binance_oi_usdt",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 32274,
+              "validCount": 874,
+              "coveragePct": 2.708062217264671,
+              "researchValidCount": 0,
+              "holdoutValidCount": 874,
+              "historicalWindow": {
+                "fromMs": 1777724100000,
+                "toMs": 1780264800000,
+                "spanMs": 2540700000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "insufficient"
+            },
+            {
+              "feature": "binance_oi_change_4h",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 32274,
+              "validCount": 868,
+              "coveragePct": 2.689471401127843,
+              "researchValidCount": 0,
+              "holdoutValidCount": 868,
+              "historicalWindow": {
+                "fromMs": 1777724100000,
+                "toMs": 1780264800000,
+                "spanMs": 2540700000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "insufficient"
+            },
+            {
+              "feature": "binance_oi_change_24h",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 32274,
+              "validCount": 837,
+              "coveragePct": 2.593418851087563,
+              "researchValidCount": 0,
+              "holdoutValidCount": 837,
+              "historicalWindow": {
+                "fromMs": 1777780800000,
+                "toMs": 1780264800000,
+                "spanMs": 2484000000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "insufficient"
+            },
+            {
+              "feature": "binance_long_short_ratio",
+              "source": "binance",
+              "fidelity": "native",
+              "fidelityLabel": "Native",
+              "totalCandidates": 32274,
+              "validCount": 874,
+              "coveragePct": 2.708062217264671,
+              "researchValidCount": 0,
+              "holdoutValidCount": 874,
+              "historicalWindow": {
+                "fromMs": 1777724100000,
+                "toMs": 1780264800000,
+                "spanMs": 2540700000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "insufficient"
+            }
+          ]
+        },
+        "bybitProxy": {
+          "group": "bybit_positioning",
+          "label": "Bybit Positioning (proxy)",
+          "source": "bybit",
+          "fidelity": "cross_venue_proxy",
+          "evaluationMode": "exploratory",
+          "totalCandidates": 32274,
+          "validCount": 32274,
+          "coveragePct": 100,
+          "meetsPromotionThreshold": false,
+          "evaluationConfidence": "proxy_exploratory",
+          "features": [
+            {
+              "feature": "bybit_oi_usdt",
+              "source": "bybit",
+              "fidelity": "cross_venue_proxy",
+              "fidelityLabel": "Cross-venue Proxy",
+              "totalCandidates": 32274,
+              "validCount": 32274,
+              "coveragePct": 100,
+              "researchValidCount": 25208,
+              "holdoutValidCount": 7066,
+              "historicalWindow": {
+                "fromMs": 1641204000000,
+                "toMs": 1780264800000,
+                "spanMs": 139060800000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "proxy_exploratory"
+            },
+            {
+              "feature": "bybit_oi_change_4h",
+              "source": "bybit",
+              "fidelity": "cross_venue_proxy",
+              "fidelityLabel": "Cross-venue Proxy",
+              "totalCandidates": 32274,
+              "validCount": 32274,
+              "coveragePct": 100,
+              "researchValidCount": 25208,
+              "holdoutValidCount": 7066,
+              "historicalWindow": {
+                "fromMs": 1641204000000,
+                "toMs": 1780264800000,
+                "spanMs": 139060800000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "proxy_exploratory"
+            },
+            {
+              "feature": "bybit_oi_change_24h",
+              "source": "bybit",
+              "fidelity": "cross_venue_proxy",
+              "fidelityLabel": "Cross-venue Proxy",
+              "totalCandidates": 32274,
+              "validCount": 32274,
+              "coveragePct": 100,
+              "researchValidCount": 25208,
+              "holdoutValidCount": 7066,
+              "historicalWindow": {
+                "fromMs": 1641204000000,
+                "toMs": 1780264800000,
+                "spanMs": 139060800000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "proxy_exploratory"
+            },
+            {
+              "feature": "bybit_long_short_ratio",
+              "source": "bybit",
+              "fidelity": "cross_venue_proxy",
+              "fidelityLabel": "Cross-venue Proxy",
+              "totalCandidates": 32274,
+              "validCount": 32274,
+              "coveragePct": 100,
+              "researchValidCount": 25208,
+              "holdoutValidCount": 7066,
+              "historicalWindow": {
+                "fromMs": 1641204000000,
+                "toMs": 1780264800000,
+                "spanMs": 139060800000
+              },
+              "meetsPromotionThreshold": false,
+              "evaluationConfidence": "proxy_exploratory"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

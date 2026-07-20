@@ -1,0 +1,125 @@
+
+allowlisted trades: total=194 bad2021-22=31 goodLate=67
+2021-22 net=-9.1
+
+== 2021-22 by cell ==
+  SELL|val_breakdown|bull_trend|vacuum n=  7 net=   -3.4 wr=29%
+  BUY|va_rejection|bull_trend|vacuum n=  1 net=   -3.3 wr=0%
+  SELL|val_breakdown|bull_chop|tight n=  1 net=   -3.1 wr=0%
+  BUY|va_rejection|bull_trend|tight n=  1 net=   -3.0 wr=0%
+  SELL|val_breakdown|bull_trend|tight n=  1 net=   -2.5 wr=0%
+  BUY|vah_breakout|weak_bear|vacuum n=  1 net=   -2.4 wr=0%
+  SELL|val_breakdown|bull_chop|vacuum n=  4 net=   -2.3 wr=50%
+  BUY|vah_breakout|bull_chop|structured n=  3 net=   -2.2 wr=33%
+  SELL|val_breakdown|bear_trend|structured n=  2 net=   -0.1 wr=50%
+  SELL|val_breakdown|bear_trend|vacuum n=  7 net=    5.2 wr=43%
+  BUY|vah_breakout|bull_trend|structured n=  3 net=    8.0 wr=100%
+
+== 2021-22 by side ==
+  SELL                         n= 22 net=   -6.2 wr=36%
+  BUY                          n=  9 net=   -2.8 wr=44%
+
+== 2021-22 by prior5d ==
+  p5_hi                        n=  3 net=   -8.0 wr=0%
+  p5_wash                      n= 12 net=   -2.9 wr=33%
+  p5_flat                      n= 10 net=    0.7 wr=50%
+  p5_mid                       n=  6 net=    1.1 wr=50%
+
+== 2021-22 by prior20d ==
+  p20_hi                       n=  9 net=   -6.4 wr=33%
+  p20_mild_dn                  n=  4 net=   -5.5 wr=25%
+  p20_up                       n=  5 net=   -1.4 wr=40%
+  p20_deep                     n= 13 net=    4.3 wr=46%
+
+== 2021-22 by session ==
+  us                           n= 10 net=  -20.3 wr=10%
+  asia                         n=  7 net=   -8.1 wr=29%
+  eu                           n= 14 net=   19.3 wr=64%
+
+== 2021-22 by side|setup ==
+  BUY|va_rejection             n=  2 net=   -6.3 wr=0%
+  SELL|val_breakdown           n= 22 net=   -6.2 wr=36%
+  BUY|vah_breakout             n=  7 net=    3.4 wr=57%
+
+== 2024-26 by prior5d ==
+  p5_wash                      n= 27 net=   24.5 wr=41%
+  p5_hi                        n=  7 net=   47.7 wr=86%
+  p5_mid                       n= 12 net=   77.1 wr=67%
+  p5_flat                      n= 21 net=  123.7 wr=52%
+
+== 2024-26 by side|setup ==
+  BUY|va_rejection             n=  1 net=    5.9 wr=100%
+  BUY|vah_breakout             n= 19 net=   64.9 wr=68%
+  SELL|val_breakdown           n= 47 net=  202.3 wr=47%
+
+== 2024-26 by prior20d ==
+  p20_up                       n=  6 net=   23.4 wr=50%
+  p20_deep                     n= 32 net=   39.1 wr=47%
+  p20_hi                       n=  9 net=   68.6 wr=78%
+  p20_mild_dn                  n= 20 net=  141.9 wr=55%
+
+CF drop BUY prior5d>1%: kept n=162 net=266.0
+  byYear {
+  '2019-20': 'n=13 net=-13.9',
+  '2020-21': 'n=34 net=3.8',
+  '2021-22': 'n=25 net=-9.7',
+  '2022-23': 'n=25 net=28.4',
+  '2023-24': 'n=9 net=36.0',
+  '2024-25': 'n=29 net=26.2',
+  '2025-26': 'n=27 net=195.4'
+}
+
+CF drop BUY prior5d>5%: kept n=179 net=290.1
+  byYear {
+  '2019-20': 'n=14 net=-16.7',
+  '2020-21': 'n=36 net=3.6',
+  '2021-22': 'n=29 net=-3.9',
+  '2022-23': 'n=27 net=30.3',
+  '2023-24': 'n=11 net=29.3',
+  '2024-25': 'n=32 net=30.7',
+  '2025-26': 'n=30 net=216.8'
+}
+
+CF drop SELL prior20d>10%: kept n=151 net=241.8
+  byYear {
+  '2019-20': 'n=9 net=-11.4',
+  '2020-21': 'n=18 net=-15.6',
+  '2021-22': 'n=26 net=-2.5',
+  '2022-23': 'n=24 net=25.3',
+  '2023-24': 'n=12 net=22.8',
+  '2024-25': 'n=33 net=18.0',
+  '2025-26': 'n=29 net=205.3'
+}
+
+CF drop SELL prior20d>0: kept n=135 net=208.2
+  byYear {
+  '2019-20': 'n=8 net=-8.4',
+  '2020-21': 'n=13 net=-3.6',
+  '2021-22': 'n=21 net=-1.1',
+  '2022-23': 'n=23 net=3.4',
+  '2023-24': 'n=11 net=13.7',
+  '2024-25': 'n=31 net=26.6',
+  '2025-26': 'n=28 net=177.5'
+}
+
+CF drop bull_trend vac VAL when prior20d>0: kept n=157 net=245.7
+  byYear {
+  '2019-20': 'n=14 net=-16.7',
+  '2020-21': 'n=17 net=-2.5',
+  '2021-22': 'n=25 net=-7.9',
+  '2022-23': 'n=29 net=30.9',
+  '2023-24': 'n=11 net=13.7',
+  '2024-25': 'n=32 net=22.8',
+  '2025-26': 'n=29 net=205.3'
+}
+
+CF drop VAH BUY prior5d>1%: kept n=165 net=269.3
+  byYear {
+  '2019-20': 'n=13 net=-13.9',
+  '2020-21': 'n=35 net=5.1',
+  '2021-22': 'n=26 net=-12.7',
+  '2022-23': 'n=26 net=33.4',
+  '2023-24': 'n=9 net=36.0',
+  '2024-25': 'n=29 net=26.2',
+  '2025-26': 'n=27 net=195.4'
+}

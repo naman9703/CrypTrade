@@ -1,0 +1,27 @@
+
+=== baseline current lock ===
+N=166 ret=487.1% DD=24.6% WR=45%
+  2022-2023: n=38 wr=39% ret=24.0% net=$24.0
+  2023-2024: n=23 wr=52% ret=43.6% net=$54.0
+  2024-2025: n=52 wr=40% ret=39.0% net=$69.4
+  2025-2026: n=53 wr=51% ret=137.2% net=$339.6
+
+=== vacuum prior5d<=1% ===
+N=166 ret=487.1% DD=24.6% WR=45%
+  2022-2023: n=38 wr=39% ret=24.0% net=$24.0
+  2023-2024: n=23 wr=52% ret=43.6% net=$54.0
+  2024-2025: n=52 wr=40% ret=39.0% net=$69.4
+  2025-2026: n=53 wr=51% ret=137.2% net=$339.6
+/Users/namanpaliwal/Desktop/trading/node_modules/pg-pool/index.js:45
+    Error.captureStackTrace(err)
+          ^
+
+Error: Connection terminated unexpectedly
+    at /Users/namanpaliwal/Desktop/trading/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async readCandlesSlice (file:///Users/namanpaliwal/Desktop/trading/backend/src/backtest/data/klineIngest.js:145:13)
+    at async readCandles (file:///Users/namanpaliwal/Desktop/trading/backend/src/backtest/data/klineIngest.js:188:18)
+    at async runCfg (file:///Users/namanpaliwal/Desktop/trading/backend/scripts/backtest-vp-freq-eth-vacuum-prior5d.mjs:72:19)
+    at async file:///Users/namanpaliwal/Desktop/trading/backend/scripts/backtest-vp-freq-eth-vacuum-prior5d.mjs:111:14
+
+Node.js v22.19.0

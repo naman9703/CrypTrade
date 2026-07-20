@@ -8,6 +8,9 @@
  *   GET    /api/backtest/runs/:id                 detail (run + metrics)
  *   GET    /api/backtest/runs/:id/trades          paginated trade list
  *   GET    /api/backtest/runs/:id/equity-curve    downsampled curve
+ *   GET    /api/backtest/runs/:id/trail-tick-audit/estimate
+ *   POST   /api/backtest/runs/:id/trail-tick-audit
+ *   GET    /api/backtest/runs/:id/trail-tick-audit
  *   POST   /api/backtest/runs/:id/cancel          cooperative cancel
  *   DELETE /api/backtest/runs/:id                 cancel-or-delete
  *   GET    /api/backtest/data/coverage            (symbol, tf[, from, to])
@@ -27,10 +30,10 @@ import * as instanceService from "../db/services/instanceService.js";
 import { getPaperSystemAccountId } from "../db/services/walletService.js";
 import { normalizeModeSlugParam } from "../lib/modeSlug.js";
 import { normalizeTradingMode } from "../state/appState.js";
-import { pickRawIntradayPanelFromBot, materializeIntradayPanelOnCfg } from "../strategy/intradayPanelKeys.js";
+import { pickRawIntradayPanelFromBot, materializeIntradayPanelOnCfg, materializeLiqTrailingGateOnCfg } from "../strategy/intradayPanelKeys.js";
 import { fillSmcSoloPresetDefaults, materializeIntradayEngineCfgSync } from "../strategy/presets/srIntradayOptimized.js";
 import { mergeInstanceIntoCfgRaw, ensureBacktestMarketMode, stripInstanceFieldsFromCfgRaw, uiOperationalPatchToInstColumns, applyInstanceOperationalToConfigSnapshot, applyInstanceOperationalToBot, INSTANCE_FIELD_KEYS } from "../lib/strategyInstanceSplit.js";
-import { sanitizeSignalBrainCfgRaw, sanitizeBacktestConfigSnapshot } from "../lib/strategySignalBrain.js";
+import { sanitizeSignalBrainCfgRaw, sanitizeBacktestConfigSnapshot, BACKTEST_SNAPSHOT_META_KEYS } from "../lib/strategySignalBrain.js";
 import { resolveSituationRouterCfg } from "../strategy/situationIntraday.js";
 import { resolveCrtTbsCfg } from "../strategy/crtTbsIntraday.js";
 import { resolveTokyoSessionCfg } from "../strategy/tokyoSessionIntraday.js";
@@ -43,11 +46,13 @@ import {
 } from "../backtest/engine/pool.js";
 import { failRun } from "../backtest/engine/persistence.js";
 import { ensureKlines, readCandles } from "../backtest/data/klineIngest.js";
+import { ensureMarkKlines, getMarkCoverage, getMarkMonthlyCoverage } from "../backtest/data/markPriceIngest.js";
 import { ensureFunding } from "../backtest/data/fundingIngest.js";
 import { ensureFearGreed } from "../backtest/data/fearGreedIngest.js";
 import { ensureOpenInterest } from "../backtest/data/openInterestIngest.js";
 import { getCoverage, getMonthlyCoverage } from "../backtest/data/dataCoverage.js";
-import { SUPPORTED_TIMEFRAMES } from "../backtest/data/timeframe.js";
+import { SUPPORTED_TIMEFRAMES, tfToMs } from "../backtest/data/timeframe.js";
+import { resolveTrailActivationOn } from "../backtest/engine/trailingSim.js";
 import { BACKTEST_ENGINE_VERSION } from "../backtest/engine/version.js";
 
 const SYMBOL_RE = /^[A-Z0-9]{5,20}$/;
@@ -78,7 +83,18 @@ const createRunBody = z
       })
       .optional(),
     /** `FULL_EQUITY_MARGIN` = each trade uses all equity as futures margin (compounded). */
-    positionSizing: z.enum(["RISK_AT_SL", "FULL_EQUITY_MARGIN"]).optional(),
+    positionSizing: z.enum(["RISK_AT_SL", "RISK_AT_SL_FULL_MARGIN", "FULL_EQUITY_MARGIN"]).optional(),
+    /**
+     * Portfolio-only capital model:
+     * - EQUAL_SLICE_FULL_MARGIN: 100% of equal slice (default)
+     * - EQUAL_SLICE_RISK_AT_SL: risk-at-SL vs equal slice
+     * - TOTAL_CAPITAL_RISK_AT_SL: risk-at-SL vs total capital; skip overlapping later entries
+     */
+    portfolioPositionSizing: z
+      .enum(["EQUAL_SLICE_FULL_MARGIN", "EQUAL_SLICE_RISK_AT_SL", "TOTAL_CAPITAL_RISK_AT_SL"])
+      .optional(),
+    /** Trailing micro timeframe for backtest replay (`off`, `1m`, `5m`, …). */
+    trailMicroTf: z.enum(["off", "1m", "3m", "5m", "15m", "30m"]).optional(),
     /** When true (default), merge live engine intraday/SMC panel fields into the snapshot. */
     useLivePanelOverrides: z.boolean().optional(),
     /** Instance-owned operational fields from the UI at submit time (risk, market mode, etc.). */
@@ -182,6 +198,8 @@ export function createBacktestRouter({ appState }) {
         symbol: isPortfolio ? portfolioSymbols[0] : runSymbol,
         timeframe: data.timeframe,
         positionSizing: data.positionSizing,
+        portfolioPositionSizing: isPortfolio ? data.portfolioPositionSizing : undefined,
+        trailMicroTf: data.trailMicroTf,
         useLivePanelOverrides: data.useLivePanelOverrides === true,
         instanceOperational: data.instanceOperational,
         req,
@@ -198,8 +216,14 @@ export function createBacktestRouter({ appState }) {
           console.warn("backtest_instance_operational_persist_failed", String(err?.message || err));
         }
       }
-      /** Intelligence replay mode follows saved strategy snapshot only (live parity); ignore client gateMode. */
       const snapBot = pickBotFromConfigSnapshot(snapshot.configSnapshot);
+      const trailTfSaved = snapBot.backtestTrailMicroTf ?? null;
+      if (data.trailMicroTf != null && trailTfSaved !== data.trailMicroTf) {
+        console.warn(
+          "[backtest] trailMicroTf mismatch after snapshot build",
+          { requested: data.trailMicroTf, saved: trailTfSaved },
+        );
+      }
       const gateModeEffective = snapBot.intelligenceGateEnabled === true ? "approx" : "off";
       const engineType = pickEngineType(snapshot.configSnapshot);
       const ins = await query(
@@ -238,6 +262,11 @@ export function createBacktestRouter({ appState }) {
         ],
       );
       const runId = String(ins.rows[0].id);
+      if (trailTfSaved) {
+        console.info(`[backtest] run ${runId} trailMicroTf=${trailTfSaved}`);
+      } else if (data.trailMicroTf) {
+        console.warn(`[backtest] run ${runId} trailMicroTf not persisted (requested ${data.trailMicroTf})`);
+      }
       await query(
         `UPDATE backtest_runs
             SET status = 'failed',
@@ -374,6 +403,72 @@ export function createBacktestRouter({ appState }) {
       res.json({ ok: true, points });
     } catch (e) {
       res.status(notFoundFor(e)).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/runs/:id/trail-tick-audit/estimate", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const userId = uid(req);
+    if (!userId) return res.status(403).json({ ok: false, error: "db_user_required" });
+    try {
+      const { estimateTrailTickAuditForRun } = await import("../backtest/engine/trailTickAudit.js");
+      const estimate = await estimateTrailTickAuditForRun(String(req.params.id), userId);
+      res.json({ ok: true, estimate });
+    } catch (e) {
+      res.status(statusForError(e)).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/runs/:id/trail-tick-audit", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const userId = uid(req);
+    if (!userId) return res.status(403).json({ ok: false, error: "db_user_required" });
+    try {
+      const { getTrailTickAudit, isTrailTickAuditRunning } = await import("../backtest/engine/trailTickAudit.js");
+      const audit = await getTrailTickAudit(String(req.params.id), userId);
+      res.json({
+        ok: true,
+        audit,
+        running: isTrailTickAuditRunning(String(req.params.id)),
+      });
+    } catch (e) {
+      res.status(statusForError(e)).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.post("/runs/:id/trail-tick-audit", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const userId = uid(req);
+    if (!userId) return res.status(403).json({ ok: false, error: "db_user_required" });
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const modeRaw = String(body.mode ?? "mark_1m_ohlc").toLowerCase();
+    const mode = ["hybrid", "mark_1m_ohlc", "aggtrade_proxy", "aggTrade_proxy"].includes(modeRaw)
+      ? modeRaw === "aggtrade_proxy"
+        ? "aggTrade_proxy"
+        : modeRaw
+      : "mark_1m_ohlc";
+    const force = body.force === true;
+    const forceInline = body.forceInline === true;
+    try {
+      await assertRunOwned(String(req.params.id), userId);
+      const {
+        runTrailTickAuditInlineOrBackground,
+        isTrailTickAuditRunning,
+      } = await import("../backtest/engine/trailTickAudit.js");
+      if (isTrailTickAuditRunning(String(req.params.id))) {
+        return res.status(409).json({ ok: false, error: "audit_already_running" });
+      }
+      const out = await runTrailTickAuditInlineOrBackground({
+        runId: String(req.params.id),
+        userId,
+        mode,
+        force,
+        forceInline,
+        wsHub: appState.wsHub,
+      });
+      res.json({ ok: true, ...out });
+    } catch (e) {
+      res.status(statusForError(e)).json({ ok: false, error: String(e?.message || e) });
     }
   });
 
@@ -632,7 +727,13 @@ export function createBacktestRouter({ appState }) {
       if (from != null && to != null) {
         monthly = await getMonthlyCoverage(symbol, tf, from, to);
       }
-      res.json({ ok: true, coverage: summary, monthly });
+      let markCoverage = null;
+      let markMonthly = [];
+      if (from != null && to != null) {
+        markCoverage = await getMarkCoverage(symbol, { from, to });
+        markMonthly = await getMarkMonthlyCoverage(symbol, from, to);
+      }
+      res.json({ ok: true, coverage: summary, monthly, markCoverage, markMonthly });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
@@ -668,6 +769,22 @@ export function createBacktestRouter({ appState }) {
     }
   });
 
+  r.post("/data/sync-mark", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const symbol = String(body.symbol ?? "").toUpperCase();
+    const from = body.from != null ? toMs(body.from) : null;
+    const to = body.to != null ? toMs(body.to) : Date.now();
+    if (!SYMBOL_RE.test(symbol)) return res.status(400).json({ ok: false, error: "invalid_symbol" });
+    if (from == null) return res.status(400).json({ ok: false, error: "from_required" });
+    try {
+      const markKlines = await ensureMarkKlines(symbol, { from, to });
+      res.json({ ok: true, markKlines });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
   r.post("/data/sync", requireDbUserSession, async (req, res) => {
     if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
     const body = req.body && typeof req.body === "object" ? req.body : {};
@@ -681,6 +798,13 @@ export function createBacktestRouter({ appState }) {
     const market = String(body.market || "futures").toLowerCase() === "spot" ? "spot" : "futures";
     try {
       const klines = await ensureKlines(symbol, tf, { from, to, market });
+      let markKlines = { inserted: 0, gaps: 0 };
+      if (market === "futures") {
+        markKlines = await ensureMarkKlines(symbol, { from, to }).catch(() => ({ inserted: 0, gaps: 0 }));
+        if (tf !== "1m") {
+          await ensureKlines(symbol, "1m", { from, to, market: "futures" }).catch(() => ({ inserted: 0, gaps: 0 }));
+        }
+      }
       let funding = { inserted: 0 };
       if (market === "futures") {
         funding = await ensureFunding(symbol, { from, to }).catch(() => ({ inserted: 0 }));
@@ -690,7 +814,7 @@ export function createBacktestRouter({ appState }) {
         market === "futures"
           ? await ensureOpenInterest(symbol, { from, to, period: "1h" }).catch(() => ({ inserted: 0 }))
           : { inserted: 0 };
-      res.json({ ok: true, klines, funding, fearGreed: fng, openInterest: oi });
+      res.json({ ok: true, klines, markKlines, funding, fearGreed: fng, openInterest: oi });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
@@ -1092,6 +1216,19 @@ async function overlayLiveIntradayPanelOnSnapshot(configSnapshot, { appState, re
   return configSnapshot;
 }
 
+function materializeTrailingGateOnSnapshot(configSnapshot) {
+  if (!configSnapshot || typeof configSnapshot !== "object") return configSnapshot;
+  if (configSnapshot.bot && typeof configSnapshot.bot === "object") {
+    const prior = configSnapshot.bot;
+    const bot = materializeLiqTrailingGateOnCfg(materializeIntradayPanelOnCfg(prior));
+    return {
+      ...configSnapshot,
+      bot: retainSnapshotBotMeta(prior, bot),
+    };
+  }
+  return materializeLiqTrailingGateOnCfg(materializeIntradayPanelOnCfg(configSnapshot));
+}
+
 async function buildRunConfigSnapshot({
   ver,
   userId,
@@ -1100,15 +1237,20 @@ async function buildRunConfigSnapshot({
   symbol,
   timeframe,
   positionSizing,
+  portfolioPositionSizing,
+  trailMicroTf,
   useLivePanelOverrides = false,
   instanceOperational,
   req,
   appState,
 }) {
-  const base = sanitizeSignalBrainCfgRaw(cloneStrategyCfgSnapshot(ver?.cfgRaw));
+  const base = sanitizeSignalBrainCfgRaw(cloneStrategyCfgSnapshot(ver?.cfgRaw), { hydrate: true });
   if (!botInstanceId) {
     let configSnapshot = withBacktestRunOptions(withRequestedMarket(base, symbol, timeframe), {
       positionSizing,
+      portfolioPositionSizing,
+      trailMicroTf,
+      strategyTimeframe: timeframe,
     });
     configSnapshot = await overlayOperationalDefaultsOnSnapshot(configSnapshot, { req, appState });
     if (useLivePanelOverrides) {
@@ -1118,6 +1260,7 @@ async function buildRunConfigSnapshot({
         botInstanceId: null,
       });
     }
+    configSnapshot = finalizeBacktestConfigSnapshot(configSnapshot);
     return {
       configSnapshot: sanitizeBacktestConfigSnapshot(configSnapshot),
       botInstanceId: null,
@@ -1139,6 +1282,9 @@ async function buildRunConfigSnapshot({
   const merged = mergeInstanceIntoCfgRaw(base, operationalConfig);
   let configSnapshot = withBacktestRunOptions(withRequestedMarket(merged, symbol, timeframe), {
     positionSizing,
+    portfolioPositionSizing,
+    trailMicroTf,
+    strategyTimeframe: timeframe,
   });
   applyInstanceOperationalToConfigSnapshot(configSnapshot, operationalConfig);
   if (useLivePanelOverrides) {
@@ -1148,6 +1294,7 @@ async function buildRunConfigSnapshot({
       botInstanceId,
     });
   }
+  configSnapshot = finalizeBacktestConfigSnapshot(configSnapshot);
   return {
     configSnapshot: sanitizeBacktestConfigSnapshot(configSnapshot),
     botInstanceId: String(botInstanceId),
@@ -1167,6 +1314,15 @@ function resolveInstanceOperationalForBacktest(binding, { instanceOperational })
 }
 
 /** Materialize intraday/SMC engine cfg on the snapshot so backtest = saved panel values. */
+function retainSnapshotBotMeta(priorBot, engine) {
+  const out = { ...engine };
+  for (const key of BACKTEST_SNAPSHOT_META_KEYS) {
+    if (priorBot[key] !== undefined) out[key] = priorBot[key];
+  }
+  return out;
+}
+
+/** Materialize intraday/SMC engine cfg on the snapshot so backtest = saved panel values. */
 function materializeBacktestEngineSnapshot(cfgRaw) {
   const root = cloneStrategyCfgSnapshot(cfgRaw);
   const b = pickBotFromConfigSnapshot(root);
@@ -1176,6 +1332,7 @@ function materializeBacktestEngineSnapshot(cfgRaw) {
   }
   const strat = String(b.manualStrategy ?? "").toUpperCase();
   let engine = b;
+  let didIntradayMaterialize = false;
   if (strat === "SITUATION_INTRADAY") {
     // SR_INTRADAY materialized keys pollute situation bracket simulation.
     engine = { ...resolveSituationRouterCfg(b), ...preserved };
@@ -1188,15 +1345,21 @@ function materializeBacktestEngineSnapshot(cfgRaw) {
   } else {
     engine = materializeIntradayEngineCfgSync(b, materializeIntradayPanelOnCfg);
     Object.assign(engine, preserved);
+    didIntradayMaterialize = true;
   }
   engine._intradayEngineMaterialized = true;
   engine._intradayEngineMaterializedAt = new Date().toISOString();
-  if (strat === "SITUATION_INTRADAY" || strat === "CRT_TBS" || strat === "TOKYO_SESSION") {
-    // Replace bot cfg — merging leaves stale intradayLiq* keys that break simulation.
+  const replaceBotRoot =
+    strat === "SITUATION_INTRADAY" ||
+    strat === "CRT_TBS" ||
+    strat === "TOKYO_SESSION" ||
+    didIntradayMaterialize;
+  if (replaceBotRoot) {
+    const botOut = retainSnapshotBotMeta(b, engine);
     if (root.bot && typeof root.bot === "object") {
-      root.bot = engine;
+      root.bot = botOut;
     } else {
-      return { v: root.v ?? 1, bot: engine };
+      return { v: root.v ?? 1, bot: botOut };
     }
   } else if (root.bot && typeof root.bot === "object") {
     root.bot = { ...root.bot, ...engine };
@@ -1207,12 +1370,48 @@ function materializeBacktestEngineSnapshot(cfgRaw) {
 }
 
 /** Per-run simulator options stored on the strategy snapshot (`config_snapshot.bot`). */
-function withBacktestRunOptions(cfgRaw, { positionSizing } = {}) {
-  const root = materializeBacktestEngineSnapshot(cfgRaw);
+function withBacktestRunOptions(
+  cfgRaw,
+  { positionSizing, portfolioPositionSizing, trailMicroTf, strategyTimeframe } = {},
+) {
+  const root = cloneStrategyCfgSnapshot(cfgRaw);
   const b = pickBotFromConfigSnapshot(root);
   if (positionSizing) b.backtestPositionSizing = positionSizing;
+  if (portfolioPositionSizing) {
+    b.portfolioPositionSizing = portfolioPositionSizing;
+    // Unit-sim sizing implied by portfolio mode (worker also re-applies).
+    if (portfolioPositionSizing === "EQUAL_SLICE_FULL_MARGIN") {
+      b.backtestPositionSizing = "FULL_EQUITY_MARGIN";
+    } else {
+      b.backtestPositionSizing = "RISK_AT_SL";
+    }
+  }
+  if (trailMicroTf != null) {
+    const tf = String(trailMicroTf).trim().toLowerCase();
+    const stratTf = String(strategyTimeframe ?? b.timeframe ?? "15m").trim().toLowerCase();
+    let microTf = tf;
+    if (microTf !== "off") {
+      try {
+        const microMs = tfToMs(microTf);
+        const stratMs = tfToMs(stratTf);
+        // Micro TF must not be coarser than the strategy bar (5m trail on 15m ok; 30m on 15m invalid).
+        if (!Number.isFinite(microMs) || !Number.isFinite(stratMs) || microMs > stratMs) microTf = "1m";
+      } catch {
+        microTf = "1m";
+      }
+    }
+    b.backtestTrailMicroTf = microTf;
+    b.backtestTrailActivationOn = resolveTrailActivationOn(microTf);
+  }
   b._engineVersion = BACKTEST_ENGINE_VERSION;
   return root;
+}
+
+/** Materialize engine + trailing gates — call after optional live-panel overlay. */
+function finalizeBacktestConfigSnapshot(configSnapshot) {
+  let out = materializeBacktestEngineSnapshot(configSnapshot);
+  out = materializeTrailingGateOnSnapshot(out);
+  return out;
 }
 
 function pickBotFromConfigSnapshot(snap) {
@@ -1433,18 +1632,47 @@ function mapRunRow(row, opts = {}) {
   };
 }
 
+function parseTradeSignalContext(row) {
+  const sc = row.signal_context;
+  if (!sc) return null;
+  if (typeof sc === "object") return sc;
+  try {
+    return JSON.parse(sc);
+  } catch {
+    return null;
+  }
+}
+
+function signalContextMsToIso(sc, key) {
+  const v = sc?.[key];
+  if (v == null || !Number.isFinite(Number(v))) return null;
+  return new Date(Number(v)).toISOString();
+}
+
 function mapTradeRow(row) {
+  const sc = parseTradeSignalContext(row);
   return {
     tradeNumber: Number(row.trade_number),
     symbol: row.symbol != null ? String(row.symbol) : null,
     direction: String(row.direction),
     entryTs: row.entry_time,
+    entryBarTs: signalContextMsToIso(sc, "entryBarTs") ?? row.entry_time,
+    entryFillTs: signalContextMsToIso(sc, "entryFillTs"),
+    entrySameBar: sc?.entrySameBar === true ? true : sc?.entrySameBar === false ? false : null,
+    entryMarkPx: sc?.entryMarkPx != null && Number.isFinite(Number(sc.entryMarkPx)) ? Number(sc.entryMarkPx) : null,
     exitTs: row.exit_time,
+    exitFillTs: signalContextMsToIso(sc, "exitFillTs"),
     entryPrice: Number(row.entry_price ?? 0),
     exitPrice: row.exit_price != null ? Number(row.exit_price) : null,
     qty: Number(row.quantity ?? 0),
-    slPrice: row.sl_price != null ? Number(row.sl_price) : null,
-    tpPrice: row.tp_price != null ? Number(row.tp_price) : null,
+    slPrice: (() => {
+      const n = Number(row.sl_price);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    })(),
+    tpPrice: (() => {
+      const n = Number(row.tp_price);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    })(),
     exitReason: row.exit_reason != null ? String(row.exit_reason) : null,
     grossPnl: row.gross_pnl != null ? Number(row.gross_pnl) : 0,
     fees: row.fees_usdt != null ? Number(row.fees_usdt) : 0,
@@ -1457,68 +1685,63 @@ function mapTradeRow(row) {
     intelScoreAtEntry: row.intel_score_at_entry != null ? Number(row.intel_score_at_entry) : null,
     gateAction: row.gate_action != null ? String(row.gate_action) : null,
     trailTierLabel: (() => {
-      const sc = row.signal_context;
       if (!sc) return null;
-      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
-      return obj?.trailTierLabel != null ? String(obj.trailTierLabel) : null;
+      return sc.trailTierLabel != null ? String(sc.trailTierLabel) : null;
     })(),
     trailStep: (() => {
-      const sc = row.signal_context;
       if (!sc) return 0;
-      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
-      return obj?.trailStep != null ? Number(obj.trailStep) : 0;
+      return sc.trailStep != null ? Number(sc.trailStep) : 0;
+    })(),
+    trailEvents: (() => {
+      if (!sc || !Array.isArray(sc.trailEvents)) return null;
+      return sc.trailEvents.map((ev) => ({
+        ts: ev.ts != null ? Number(ev.ts) : null,
+        step: ev.step != null ? Number(ev.step) : 0,
+        tierLabel: ev.tierLabel != null ? String(ev.tierLabel) : null,
+        slPrice: ev.slPrice != null && Number.isFinite(Number(ev.slPrice)) ? Number(ev.slPrice) : null,
+        favorablePx:
+          ev.favorablePx != null && Number.isFinite(Number(ev.favorablePx)) ? Number(ev.favorablePx) : null,
+        nextActivationPx:
+          ev.nextActivationPx != null && Number.isFinite(Number(ev.nextActivationPx))
+            ? Number(ev.nextActivationPx)
+            : null,
+      }));
     })(),
     equityAtEntry: (() => {
-      const sc = row.signal_context;
       if (!sc) return null;
-      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
-      const v = obj?.equityAtEntry;
+      const v = sc.equityAtEntry;
       return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
     })(),
     marginUsdt: (() => {
-      const sc = row.signal_context;
       if (!sc) return null;
-      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
-      const v = obj?.marginUsdt;
+      const v = sc.marginUsdt;
       return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
     })(),
     initialSlPrice: (() => {
-      const sc = row.signal_context;
       if (!sc) return null;
-      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
-      const v = obj?.initialSlPrice;
+      const v = sc.initialSlPrice;
       return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
     })(),
     initialRiskUsd: (() => {
-      const sc = row.signal_context;
       if (!sc) return null;
-      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
-      const v = obj?.initialRiskUsd;
+      const v = sc.initialRiskUsd;
       return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
     })(),
     entryQuality: (() => {
-      const sc = row.signal_context;
       if (!sc) return null;
-      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
-      return obj?.entryQuality ?? null;
+      return sc.entryQuality ?? null;
     })(),
     lossPattern: (() => {
-      const sc = row.signal_context;
       if (!sc) return null;
-      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
-      return obj?.lossPattern != null ? String(obj.lossPattern) : null;
+      return sc.lossPattern != null ? String(sc.lossPattern) : null;
     })(),
     entryReason: (() => {
-      const sc = row.signal_context;
       if (!sc) return null;
-      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
-      return obj?.entryReason != null ? String(obj.entryReason) : null;
+      return sc.entryReason != null ? String(sc.entryReason) : null;
     })(),
     liqContext: (() => {
-      const sc = row.signal_context;
       if (!sc) return null;
-      const obj = typeof sc === "string" ? (() => { try { return JSON.parse(sc); } catch { return null; } })() : sc;
-      const liq = obj?.liq;
+      const liq = sc.liq;
       return liq && typeof liq === "object" ? liq : null;
     })(),
   };

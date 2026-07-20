@@ -3,6 +3,7 @@
  */
 import type { SeriesMarker, UTCTimestamp } from "lightweight-charts";
 import type { BacktestTrade } from "../../types/backtest";
+import { activeBracketPrice } from "./backtestChartTime";
 import type { StrategyTaOverlay } from "./backtestChartOverlays";
 import type { SmcChartMarkup } from "./smcChartMarkup";
 
@@ -34,7 +35,8 @@ export type ChartOverlayLayerId =
   | "reward_band"
   | "partial_tp"
   | "mae_mfe"
-  | "tokyo_session_box";
+  | "tokyo_session_box"
+  | "trail_tiers";
 
 export type OverlayToggleItem = {
   id: ChartOverlayLayerId;
@@ -73,6 +75,7 @@ export const OVERLAY_TOGGLE_META: Record<ChartOverlayLayerId, Omit<OverlayToggle
   partial_tp: { label: "Partial take-profit @ 1R", prefix: "╌╌", prefixClass: "text-yellow-400" },
   mae_mfe: { label: "MAE / MFE", prefix: "·", prefixClass: "text-slate-500" },
   tokyo_session_box: { label: "Tokyo session range", prefix: "▬", prefixClass: "text-orange-400" },
+  trail_tiers: { label: "Trail tiers + activations", prefix: "╌╌", prefixClass: "text-amber-400" },
 };
 
 const ALL_LAYER_IDS = Object.keys(OVERLAY_TOGGLE_META) as ChartOverlayLayerId[];
@@ -152,6 +155,7 @@ export function buildDetailOverlayToggleList(opts: {
   taOverlay: StrategyTaOverlay | null;
   patternLegend: string[] | undefined;
   strategyKind: string;
+  showTrailTiers?: boolean;
 }): OverlayToggleItem[] {
   const ids: ChartOverlayLayerId[] = [];
 
@@ -159,11 +163,15 @@ export function buildDetailOverlayToggleList(opts: {
     ids.push("session_pdh", "session_pdl", "session_pwh", "session_pwl");
   }
   if (opts.hasTrade) {
-    ids.push("bracket_entry", "bracket_sl", "bracket_tp", "bracket_exit", "trade_link");
+    ids.push("bracket_entry", "bracket_exit", "trade_link");
+    if (activeBracketPrice(opts.trade?.slPrice) != null) ids.push("bracket_sl");
+    if (activeBracketPrice(opts.trade?.tpPrice) != null) ids.push("bracket_tp");
   }
   if (opts.strategyKind === "liquidity") {
     ids.push("liq_sr_zone", "liq_sweep_wick", "liq_opposing", "swings", "sweep_events");
-    ids.push("strategy_entry", "strategy_sl", "strategy_tp", "strategy_tp1");
+    ids.push("strategy_entry", "strategy_sl");
+    if (activeBracketPrice(opts.trade?.tpPrice) != null) ids.push("strategy_tp");
+    if (activeBracketPrice(opts.trade?.liqContext?.tp1Price) != null) ids.push("strategy_tp1");
   } else if (opts.strategyKind === "smc_ict" && opts.markup) {
     ids.push(...layersFromMarkupLegend(opts.markup.legend));
     if (opts.markup.swings.length) ids.push("swings");
@@ -178,6 +186,9 @@ export function buildDetailOverlayToggleList(opts: {
   ids.push(...layersFromPatternLegend(opts.patternLegend));
   if (opts.trade && (opts.trade.maePct != null || opts.trade.mfePct != null)) {
     ids.push("mae_mfe");
+  }
+  if (opts.showTrailTiers) {
+    ids.push("trail_tiers");
   }
 
   return dedupe(ids).map((id) => ({

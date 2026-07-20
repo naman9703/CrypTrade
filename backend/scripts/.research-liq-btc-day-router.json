@@ -1,0 +1,164 @@
+{
+  "window": {
+    "from": "2025-01-01",
+    "to": "2026-01-01"
+  },
+  "rows": [
+    {
+      "id": "baseline_classical",
+      "label": "Baseline classical (fade always)",
+      "trades": 22,
+      "tradeDays": 22,
+      "tradingDays": 365,
+      "tradesPerDay": 0.06027397260273973,
+      "daysWithTradePct": 6.027397260273973,
+      "returnPct": 7.986851242997109,
+      "pf": 0.783869015990607,
+      "wr": 50,
+      "maxDd": 8.548358451525482,
+      "classical": {
+        "n": 22,
+        "wr": 50,
+        "pnl": -463.42395534634323,
+        "pf": 0.783869015990607
+      },
+      "trendCont": {
+        "n": 0,
+        "wr": 0,
+        "pnl": 0,
+        "pf": 0
+      },
+      "netPnl": -463.42395534634323
+    },
+    {
+      "id": "breakdown_veto_only",
+      "label": "Breakdown veto only (no continuation)",
+      "trades": 3,
+      "tradeDays": 3,
+      "tradingDays": 365,
+      "tradesPerDay": 0.00821917808219178,
+      "daysWithTradePct": 0.821917808219178,
+      "returnPct": 4.065223457837346,
+      "pf": 1.54700084152795,
+      "wr": 66.66666666666666,
+      "maxDd": 2.190348671724496,
+      "classical": {
+        "n": 3,
+        "wr": 66.66666666666666,
+        "pnl": 125.16518182260826,
+        "pf": 1.54700084152795
+      },
+      "trendCont": {
+        "n": 0,
+        "wr": 0,
+        "pnl": 0,
+        "pf": 0
+      },
+      "netPnl": 125.16518182260826
+    },
+    {
+      "id": "btc_day_router",
+      "label": "BTC day router (range fade + trend cont.)",
+      "trades": 205,
+      "tradeDays": 205,
+      "tradingDays": 365,
+      "tradesPerDay": 0.5616438356164384,
+      "daysWithTradePct": 56.16438356164384,
+      "returnPct": -89.02465897186612,
+      "pf": 0.11951424673764671,
+      "wr": 29.756097560975608,
+      "maxDd": 89.17614604110076,
+      "classical": {
+        "n": 2,
+        "wr": 100,
+        "pnl": 264.5271933018643,
+        "pf": 99
+      },
+      "trendCont": {
+        "n": 203,
+        "wr": 29.064039408866993,
+        "pnl": -10103.487824472468,
+        "pf": 0.09584178439290648
+      },
+      "netPnl": -9838.960631170605
+    },
+    {
+      "id": "btc_day_router_loose_trend",
+      "label": "Router + looser trend (minScore 5, ADX 14)",
+      "trades": 208,
+      "tradeDays": 208,
+      "tradingDays": 365,
+      "tradesPerDay": 0.5698630136986301,
+      "daysWithTradePct": 56.986301369863014,
+      "returnPct": -89.66371129550488,
+      "pf": 0.1181417429700366,
+      "wr": 29.326923076923077,
+      "maxDd": 89.8063778494273,
+      "classical": {
+        "n": 2,
+        "wr": 100,
+        "pnl": 264.5271933018643,
+        "pf": 99
+      },
+      "trendCont": {
+        "n": 206,
+        "wr": 28.640776699029125,
+        "pnl": -10153.609937465633,
+        "pf": 0.09455254914314883
+      },
+      "netPnl": -9889.08274416377
+    },
+    {
+      "id": "liq_daily_preset",
+      "label": "LIQ_DAILY preset (classic OFF, cont. only)",
+      "trades": 47,
+      "tradeDays": 47,
+      "tradingDays": 365,
+      "tradesPerDay": 0.12876712328767123,
+      "daysWithTradePct": 12.876712328767123,
+      "returnPct": -31.47544183734054,
+      "pf": 0.24990416870429755,
+      "wr": 25.53191489361702,
+      "maxDd": 34.94721556346556,
+      "classical": {
+        "n": 0,
+        "wr": 0,
+        "pnl": 0,
+        "pf": 0
+      },
+      "trendCont": {
+        "n": 47,
+        "wr": 25.53191489361702,
+        "pnl": -4022.3650318878204,
+        "pf": 0.24990416870429755
+      },
+      "netPnl": -4022.3650318878204
+    },
+    {
+      "id": "liq_daily_plus_classic",
+      "label": "LIQ_DAILY + classic on range days",
+      "trades": 105,
+      "tradeDays": 105,
+      "tradingDays": 365,
+      "tradesPerDay": 0.2876712328767123,
+      "daysWithTradePct": 28.767123287671232,
+      "returnPct": -59.78250266296662,
+      "pf": 0.2344887924527706,
+      "wr": 27.61904761904762,
+      "maxDd": 60.68300639295441,
+      "classical": {
+        "n": 0,
+        "wr": 0,
+        "pnl": 0,
+        "pf": 0
+      },
+      "trendCont": {
+        "n": 105,
+        "wr": 27.61904761904762,
+        "pnl": -7148.916941040716,
+        "pf": 0.2344887924527706
+      },
+      "netPnl": -7148.916941040716
+    }
+  ]
+}

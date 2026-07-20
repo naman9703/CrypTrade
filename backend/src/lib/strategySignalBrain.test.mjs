@@ -94,7 +94,24 @@ test("sanitizeBacktestConfigSnapshot keeps instance + backtest meta, drops runti
   assert.equal(b._engineVersion, "test-engine");
   assert.equal(b.eliteStRequireHtf4hAlign, true);
   assert.equal(b.feed, undefined);
-  assert.equal(b.intradaySmcMaxHoldBars, 48);
+  assert.equal(b.intradaySmcMaxHoldBars, undefined);
+});
+
+test("sanitizeSignalBrainCfgRaw strips cross-strategy pollution on Elite save", () => {
+  const raw = sanitizeSignalBrainCfgRaw({
+    v: 1,
+    bot: {
+      manualStrategy: "SUPERTREND_ELITE",
+      eliteStHtf1hSepMode: "ADX",
+      intradayGateSmcIct: true,
+      intradaySmcMaxHoldBars: 48,
+    },
+  });
+  assert.equal(raw.bot.intradayGateSmcIct, undefined);
+  assert.equal(raw.bot.intradaySmcMaxHoldBars, undefined);
+  assert.equal(raw.bot.eliteStHtf1hSepMode, "ADX");
+  assert.ok(raw.byStrategy?.SUPERTREND_ELITE);
+  assert.equal(raw.byStrategy.SUPERTREND_ELITE.intradayGateSmcIct, undefined);
 });
 
 test("isRuntimePollutionKey identifies WS-only fields", () => {

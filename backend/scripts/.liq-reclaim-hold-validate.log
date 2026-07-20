@@ -1,0 +1,39 @@
+
+Reclaim-hold validation (INTRADAY_PRO_LIQ_15M)
+
+  baseline BTCUSDT train  baseline BTCUSDT val  baseline BTCUSDT oos  baseline ETHUSDT train  baseline ETHUSDT val  baseline ETHUSDT oos  baseline BNBUSDT train  baseline BNBUSDT val  baseline BNBUSDT oos  baseline SOLUSDT train  baseline SOLUSDT val  baseline SOLUSDT oos  baseline XRPUSDT train  baseline XRPUSDT val  baseline XRPUSDT oos  baseline LINKUSDT train  baseline LINKUSDT val  baseline LINKUSDT oos  reclaim_hold_1 BTCUSDT train  reclaim_hold_1 BTCUSDT val  reclaim_hold_1 BTCUSDT oos  reclaim_hold_1 ETHUSDT train  reclaim_hold_1 ETHUSDT val  reclaim_hold_1 ETHUSDT oos  reclaim_hold_1 BNBUSDT train  reclaim_hold_1 BNBUSDT val  reclaim_hold_1 BNBUSDT oos  reclaim_hold_1 SOLUSDT train  reclaim_hold_1 SOLUSDT val  reclaim_hold_1 SOLUSDT oos  reclaim_hold_1 XRPUSDT train  reclaim_hold_1 XRPUSDT val  reclaim_hold_1 XRPUSDT oos  reclaim_hold_1 LINKUSDT train  reclaim_hold_1 LINKUSDT val  reclaim_hold_1 LINKUSDT oos
+
+train  baseline: trades=46 retΣ=-9.49% coins+=2/3 | hold: trades=0 retΣ=0.00% coins+=0/3
+val    baseline: trades=56 retΣ=7.95% coins+=2/5 | hold: trades=0 retΣ=0.00% coins+=0/5
+oos    baseline: trades=41 retΣ=-15.08% coins+=2/6 | hold: trades=0 retΣ=0.00% coins+=0/6
+all    baseline: trades=143 retΣ=-16.61% coins+=6/14 | hold: trades=0 retΣ=0.00% coins+=0/14
+
+variant          coin       win       n   tpm     ret%     PF
+baseline         BNBUSDT    train    25  1.45   -14.92   0.47
+baseline         BNBUSDT    val      16  2.62     5.71   1.53
+baseline         BNBUSDT    oos       7  1.15     6.02  16.89
+baseline         BTCUSDT    train    19  1.10     4.36   1.37
+baseline         BTCUSDT    val       0  0.00     0.00   0.00
+baseline         BTCUSDT    oos       2  0.33     2.78 999.00
+baseline         ETHUSDT    train     2  0.12     1.08  26.24
+baseline         ETHUSDT    val       1  0.16    -2.75   0.00
+baseline         ETHUSDT    oos       4  0.66    -0.54   0.81
+baseline         LINKUSDT   oos       5  0.82    -9.60   0.10
+baseline         SOLUSDT    val      22  3.61     5.54   1.38
+baseline         SOLUSDT    oos      12  1.98    -7.99   0.41
+baseline         XRPUSDT    val      17  2.79    -0.55   0.95
+baseline         XRPUSDT    oos      11  1.81    -5.75   0.59
+reclaim_hold_1   BNBUSDT    train     0  0.00     0.00   0.00
+reclaim_hold_1   BNBUSDT    val       0  0.00     0.00   0.00
+reclaim_hold_1   BNBUSDT    oos       0  0.00     0.00   0.00
+reclaim_hold_1   BTCUSDT    train     0  0.00     0.00   0.00
+reclaim_hold_1   BTCUSDT    val       0  0.00     0.00   0.00
+reclaim_hold_1   BTCUSDT    oos       0  0.00     0.00   0.00
+reclaim_hold_1   ETHUSDT    train     0  0.00     0.00   0.00
+reclaim_hold_1   ETHUSDT    val       0  0.00     0.00   0.00
+reclaim_hold_1   ETHUSDT    oos       0  0.00     0.00   0.00
+reclaim_hold_1   LINKUSDT   oos       0  0.00     0.00   0.00
+reclaim_hold_1   SOLUSDT    val       0  0.00     0.00   0.00
+reclaim_hold_1   SOLUSDT    oos       0  0.00     0.00   0.00
+reclaim_hold_1   XRPUSDT    val       0  0.00     0.00   0.00
+reclaim_hold_1   XRPUSDT    oos       0  0.00     0.00   0.00

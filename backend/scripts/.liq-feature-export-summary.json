@@ -1,0 +1,51 @@
+{
+  "generatedAt": "2026-07-09T22:47:35.250Z",
+  "from": "2022-01-01",
+  "to": "2026-06-01",
+  "coins": [
+    "BTCUSDT",
+    "BNBUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "presetMode": "V1",
+  "runs": [
+    {
+      "symbol": "BTCUSDT",
+      "preset": "V1",
+      "trades": 88,
+      "withFeatures": 88,
+      "candleCount": 68981
+    },
+    {
+      "symbol": "BNBUSDT",
+      "preset": "V1",
+      "trades": 237,
+      "withFeatures": 237,
+      "candleCount": 100024
+    },
+    {
+      "symbol": "ETHUSDT",
+      "preset": "V1",
+      "trades": 13,
+      "withFeatures": 13,
+      "candleCount": 68981
+    },
+    {
+      "symbol": "SOLUSDT",
+      "preset": "V1",
+      "trades": 135,
+      "withFeatures": 135,
+      "candleCount": 35040
+    },
+    {
+      "symbol": "XRPUSDT",
+      "preset": "V1",
+      "trades": 79,
+      "withFeatures": 79,
+      "candleCount": 34086
+    }
+  ],
+  "totalRows": 552
+}

@@ -5,11 +5,18 @@
  */
 import { computeTradePriceRr, formatTradeRr } from "../../lib/backtestTradeRr";
 import type { BacktestTrade } from "../../types/backtest";
+import {
+  formatTsIST,
+  resolveTradeEntryFillMs,
+  resolveTradeExitFillMs,
+} from "./backtestChartTime";
 
 type Props = {
   trades: BacktestTrade[];
   /** From run config; used to estimate margin on legacy runs missing `marginUsdt`. */
   futuresLeverage?: number;
+  runTimeframe?: string;
+  engineType?: string | null;
   variant?: "compact" | "detailed";
   selectedTradeNumber?: number | null;
   onSelectTrade?: (trade: BacktestTrade | null) => void;
@@ -33,6 +40,8 @@ function fmtPrice(n: number | null | undefined): string {
 export function TradeListTable({
   trades,
   futuresLeverage = 5,
+  runTimeframe = "1h",
+  engineType = null,
   variant = "compact",
   selectedTradeNumber = null,
   onSelectTrade,
@@ -51,7 +60,7 @@ export function TradeListTable({
               <th className="px-2 py-1.5">#</th>
               {showCoinCol ? <th className="px-2 py-1.5">Coin</th> : null}
               <th className="px-2 py-1.5">Side</th>
-              <th className="px-2 py-1.5">Entry (UTC)</th>
+              <th className="px-2 py-1.5">Fill (IST)</th>
               <th className="px-2 py-1.5">Entry (price)</th>
               <th className="px-2 py-1.5">Exit (price)</th>
               <th className="px-2 py-1.5 text-right">Net</th>
@@ -85,13 +94,16 @@ export function TradeListTable({
                   >
                     {t.direction}
                   </td>
-                  <td className="px-2 py-1 font-mono text-[10px] text-slate-600 dark:text-slate-400">
-                    {fmtTsShort(t.entryTs)}
+                  <td
+                    className="px-2 py-1 font-mono text-[10px] text-slate-600 dark:text-slate-400"
+                    title={fillTimeTitle(t, runTimeframe, engineType)}
+                  >
+                    {fmtFillRangeIST(t, runTimeframe, engineType)}
                   </td>
-                  <td className="px-2 py-1 font-mono" title={fmtTs(t.entryTs)}>
+                  <td className="px-2 py-1 font-mono" title={entryPriceTitle(t)}>
                     {fmtPrice(t.entryPrice)}
                   </td>
-                  <td className="px-2 py-1 font-mono" title={fmtTs(t.exitTs)}>
+                  <td className="px-2 py-1 font-mono" title={exitPriceTitle(t, runTimeframe)}>
                     {fmtPrice(t.exitPrice)}
                   </td>
                   <td className={`px-2 py-1 text-right font-mono font-semibold ${sign}`}>{t.netPnl.toFixed(2)}</td>
@@ -114,8 +126,8 @@ export function TradeListTable({
             <th className="px-2 py-1.5">#</th>
             {showCoinCol ? <th className="px-2 py-1.5">Coin</th> : null}
             <th className="px-2 py-1.5">Side</th>
-            <th className="px-2 py-1.5">Entry</th>
-            <th className="px-2 py-1.5">Exit (UTC)</th>
+            <th className="px-2 py-1.5">Entry (IST)</th>
+            <th className="px-2 py-1.5">Exit (IST)</th>
             <th className="px-2 py-1.5">Bars</th>
             <th className="px-2 py-1.5" title="Initial margin at entry (notional ÷ leverage)">
               Margin
@@ -164,8 +176,12 @@ export function TradeListTable({
                 <td className={`px-2 py-1 font-semibold ${t.direction === "BUY" ? "text-emerald-600" : "text-rose-600"}`}>
                   {t.direction}
                 </td>
-                <td className="px-2 py-1 font-mono text-[11px]">{fmtTs(t.entryTs)}</td>
-                <td className="px-2 py-1 font-mono text-[11px]">{fmtTs(t.exitTs)}</td>
+                <td className="px-2 py-1 font-mono text-[11px]" title={entryTimeTitle(t, runTimeframe, engineType)}>
+                  {fmtEntryFillIST(t, runTimeframe, engineType)}
+                </td>
+                <td className="px-2 py-1 font-mono text-[11px]" title={exitTimeTitle(t, runTimeframe)}>
+                  {fmtExitFillIST(t, runTimeframe)}
+                </td>
                 <td className="px-2 py-1 text-right">{t.barsHeld}</td>
                 <td className="px-2 py-1 text-right font-mono text-slate-700 dark:text-slate-300">
                   {margin != null ? margin.toFixed(2) : "—"}
@@ -228,35 +244,54 @@ function structureClass(risk: string): string {
   return "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
 }
 
-function fmtTs(s: string) {
-  try {
-    const d = new Date(s);
-    return d.toLocaleString("en-GB", {
-      timeZone: "UTC",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  } catch {
-    return s;
-  }
+function fmtEntryFillIST(t: BacktestTrade, runTimeframe: string, engineType?: string | null): string {
+  const ms = resolveTradeEntryFillMs(t, runTimeframe, engineType);
+  return Number.isFinite(ms) ? formatTsIST(ms) : "—";
 }
 
-/** Compact trade list — UTC so entries are not mistaken for same-bar pairs. */
-function fmtTsShort(s: string) {
-  try {
-    const d = new Date(s);
-    return d.toLocaleString("en-GB", {
-      timeZone: "UTC",
-      day: "2-digit",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  } catch {
-    return s;
+function fmtExitFillIST(t: BacktestTrade, runTimeframe: string): string {
+  const ms = resolveTradeExitFillMs(t, runTimeframe);
+  return Number.isFinite(ms) ? formatTsIST(ms) : "—";
+}
+
+function fmtFillRangeIST(t: BacktestTrade, runTimeframe: string, engineType?: string | null): string {
+  const en = fmtEntryFillIST(t, runTimeframe, engineType);
+  const ex = fmtExitFillIST(t, runTimeframe);
+  if (en === "—") return ex;
+  if (ex === "—") return en;
+  return `${en.split(", ").pop() ?? en} → ${ex.split(", ").pop() ?? ex}`;
+}
+
+function entryTimeTitle(t: BacktestTrade, runTimeframe: string, engineType?: string | null): string {
+  const bar = t.entryBarTs ?? t.entryTs;
+  const fillMs = resolveTradeEntryFillMs(t, runTimeframe, engineType);
+  const barMs = new Date(bar).getTime();
+  const lines = [`Signal bar open (IST): ${formatTsIST(barMs)}`, `Fill (IST): ${formatTsIST(fillMs)}`];
+  if (t.entryMarkPx != null && Number.isFinite(t.entryMarkPx)) {
+    lines.push(`Bar close: ${t.entryMarkPx.toFixed(2)}`);
   }
+  lines.push(`Fill incl. slip: ${Number(t.entryPrice).toFixed(2)}`);
+  if (t.barsHeld != null) lines.push(`Held: ${t.barsHeld}×${runTimeframe}`);
+  return lines.join("\n");
+}
+
+function exitTimeTitle(t: BacktestTrade, runTimeframe: string): string {
+  const barMs = new Date(t.exitTs).getTime();
+  const fillMs = resolveTradeExitFillMs(t, runTimeframe);
+  return [`Exit bar open (IST): ${formatTsIST(barMs)}`, `Fill (IST): ${formatTsIST(fillMs)}`].join("\n");
+}
+
+function fillTimeTitle(t: BacktestTrade, runTimeframe: string, engineType?: string | null): string {
+  return `${entryTimeTitle(t, runTimeframe, engineType)}\n${exitTimeTitle(t, runTimeframe)}`;
+}
+
+function entryPriceTitle(t: BacktestTrade): string {
+  if (t.entryMarkPx != null && Number.isFinite(t.entryMarkPx)) {
+    return `Bar close: ${t.entryMarkPx.toFixed(2)}\nIncl. slippage: ${Number(t.entryPrice).toFixed(2)}`;
+  }
+  return `Entry fill: ${Number(t.entryPrice).toFixed(2)}`;
+}
+
+function exitPriceTitle(t: BacktestTrade, runTimeframe: string): string {
+  return `${exitTimeTitle(t, runTimeframe)}\nExit fill: ${Number(t.exitPrice ?? 0).toFixed(2)}`;
 }

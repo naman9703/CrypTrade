@@ -1,0 +1,406 @@
+{
+  "generatedAt": "2026-07-19T04:58:44.022Z",
+  "scored": [
+    {
+      "id": "buy_rej_close_lt_055",
+      "verdict": "reject",
+      "improve21": 0,
+      "lockCost": 43.9,
+      "d21": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 7,
+        "net": 43.86,
+        "wr": 57.1
+      },
+      "d25": {
+        "n": 2,
+        "net": 6.62,
+        "wr": 50
+      }
+    },
+    {
+      "id": "buy_rej_close_lt_045",
+      "verdict": "reject",
+      "improve21": 0,
+      "lockCost": -15.5,
+      "d21": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 5,
+        "net": -15.52,
+        "wr": 40
+      },
+      "d25": {
+        "n": 1,
+        "net": -10.4,
+        "wr": 0
+      }
+    },
+    {
+      "id": "buy_rej_bull_trend",
+      "verdict": "reject",
+      "improve21": 7.4,
+      "lockCost": 60.5,
+      "d21": {
+        "n": 2,
+        "net": -7.4,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 5,
+        "net": 60.47,
+        "wr": 60
+      },
+      "d25": {
+        "n": 1,
+        "net": 17.03,
+        "wr": 100
+      }
+    },
+    {
+      "id": "buy_rej_bull_and_close_lt_06",
+      "verdict": "reject",
+      "improve21": 0,
+      "lockCost": 60.5,
+      "d21": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 5,
+        "net": 60.47,
+        "wr": 60
+      },
+      "d25": {
+        "n": 1,
+        "net": 17.03,
+        "wr": 100
+      }
+    },
+    {
+      "id": "buy_rej_bull_and_p120_gt_25",
+      "verdict": "PROMISING",
+      "improve21": 7.4,
+      "lockCost": 16.2,
+      "d21": {
+        "n": 2,
+        "net": -7.4,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 1,
+        "net": 16.19,
+        "wr": 100
+      },
+      "d25": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      }
+    },
+    {
+      "id": "buy_rej_p120_gt_40",
+      "verdict": "PROMISING",
+      "improve21": 7.4,
+      "lockCost": 0,
+      "d21": {
+        "n": 2,
+        "net": -7.4,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "d25": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      }
+    },
+    {
+      "id": "vah_tight_bull",
+      "verdict": "reject",
+      "improve21": 2.8,
+      "lockCost": 0,
+      "d21": {
+        "n": 1,
+        "net": -2.81,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "d25": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      }
+    },
+    {
+      "id": "s1_weak_bear_vac",
+      "verdict": "reject",
+      "improve21": 9.1,
+      "lockCost": 93.6,
+      "d21": {
+        "n": 6,
+        "net": -9.06,
+        "wr": 16.7
+      },
+      "dLock": {
+        "n": 8,
+        "net": 93.58,
+        "wr": 37.5
+      },
+      "d25": {
+        "n": 4,
+        "net": 31.24,
+        "wr": 50
+      }
+    },
+    {
+      "id": "val_weak_bear_any",
+      "verdict": "reject",
+      "improve21": 9.1,
+      "lockCost": 97.6,
+      "d21": {
+        "n": 6,
+        "net": -9.06,
+        "wr": 16.7
+      },
+      "dLock": {
+        "n": 10,
+        "net": 97.61,
+        "wr": 40
+      },
+      "d25": {
+        "n": 5,
+        "net": 33.98,
+        "wr": 60
+      }
+    },
+    {
+      "id": "val_ext_gt_08_bull60",
+      "verdict": "reject",
+      "improve21": 0,
+      "lockCost": 0,
+      "d21": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "d25": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      }
+    },
+    {
+      "id": "val_prior120_gt_40",
+      "verdict": "reject",
+      "improve21": 3.5,
+      "lockCost": 285,
+      "d21": {
+        "n": 1,
+        "net": -3.45,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 11,
+        "net": 284.97,
+        "wr": 81.8
+      },
+      "d25": {
+        "n": 6,
+        "net": 58.57,
+        "wr": 66.7
+      }
+    },
+    {
+      "id": "val_prior120_gt_50",
+      "verdict": "reject",
+      "improve21": 3.5,
+      "lockCost": 247.7,
+      "d21": {
+        "n": 1,
+        "net": -3.45,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 10,
+        "net": 247.66,
+        "wr": 80
+      },
+      "d25": {
+        "n": 6,
+        "net": 58.57,
+        "wr": 66.7
+      }
+    },
+    {
+      "id": "buy_any_prior120_gt_50",
+      "verdict": "reject",
+      "improve21": -3.8,
+      "lockCost": -13.6,
+      "d21": {
+        "n": 7,
+        "net": 3.79,
+        "wr": 57.1
+      },
+      "dLock": {
+        "n": 11,
+        "net": -13.63,
+        "wr": 27.3
+      },
+      "d25": {
+        "n": 3,
+        "net": 7.98,
+        "wr": 66.7
+      }
+    },
+    {
+      "id": "buy_rej_or_vah_tight",
+      "verdict": "reject",
+      "improve21": 2.8,
+      "lockCost": 43.9,
+      "d21": {
+        "n": 1,
+        "net": -2.81,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 7,
+        "net": 43.86,
+        "wr": 57.1
+      },
+      "d25": {
+        "n": 2,
+        "net": 6.62,
+        "wr": 50
+      }
+    },
+    {
+      "id": "s4_or_vah_tight",
+      "verdict": "reject",
+      "improve21": 10.2,
+      "lockCost": 60.5,
+      "d21": {
+        "n": 3,
+        "net": -10.21,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 5,
+        "net": 60.47,
+        "wr": 60
+      },
+      "d25": {
+        "n": 1,
+        "net": 17.03,
+        "wr": 100
+      }
+    },
+    {
+      "id": "instant_loss_pat",
+      "verdict": "worth_sim",
+      "improve21": 75.4,
+      "lockCost": -551.3,
+      "d21": {
+        "n": 25,
+        "net": -75.43,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 57,
+        "net": -551.26,
+        "wr": 0
+      },
+      "d25": {
+        "n": 17,
+        "net": -98.82,
+        "wr": 0
+      }
+    },
+    {
+      "id": "val_cycle_bull_not_bear",
+      "verdict": "reject",
+      "improve21": 3.5,
+      "lockCost": 169.3,
+      "d21": {
+        "n": 1,
+        "net": -3.45,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 8,
+        "net": 169.33,
+        "wr": 87.5
+      },
+      "d25": {
+        "n": 1,
+        "net": 22.58,
+        "wr": 100
+      }
+    },
+    {
+      "id": "val_macro_bull_trend",
+      "verdict": "reject",
+      "improve21": 5.2,
+      "lockCost": 99.9,
+      "d21": {
+        "n": 4,
+        "net": -5.16,
+        "wr": 25
+      },
+      "dLock": {
+        "n": 7,
+        "net": 99.86,
+        "wr": 85.7
+      },
+      "d25": {
+        "n": 2,
+        "net": 12.15,
+        "wr": 100
+      }
+    },
+    {
+      "id": "buy_poc_bull_trend",
+      "verdict": "worth_sim",
+      "improve21": 3.9,
+      "lockCost": 8.8,
+      "d21": {
+        "n": 1,
+        "net": -3.88,
+        "wr": 0
+      },
+      "dLock": {
+        "n": 1,
+        "net": 8.75,
+        "wr": 100
+      },
+      "d25": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      }
+    }
+  ],
+  "n21": 46,
+  "nLock": 149
+}

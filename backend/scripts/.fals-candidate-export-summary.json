@@ -1,0 +1,116 @@
+{
+  "generatedAt": "2026-07-11T06:28:32.399Z",
+  "from": "2022-01-01",
+  "to": "2026-06-01",
+  "timeframe": "15m",
+  "dataSource": "timescale",
+  "coins": [
+    "BTCUSDT",
+    "BNBUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "quick": false,
+  "observableEnabled": true,
+  "bybitEnabled": true,
+  "families": {
+    "BTCUSDT_C": {
+      "candidates": 1628,
+      "picked": 1190,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    "BTCUSDT_D": {
+      "candidates": 7244,
+      "picked": 1367,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    "BNBUSDT_C": {
+      "candidates": 2370,
+      "picked": 1736,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    "BNBUSDT_D": {
+      "candidates": 11366,
+      "picked": 1998,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    "ETHUSDT_C": {
+      "candidates": 1497,
+      "picked": 1141,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    "ETHUSDT_D": {
+      "candidates": 6433,
+      "picked": 1358,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    "SOLUSDT_C": {
+      "candidates": 793,
+      "picked": 588,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    "SOLUSDT_D": {
+      "candidates": 3599,
+      "picked": 692,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    "XRPUSDT_C": {
+      "candidates": 733,
+      "picked": 561,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    },
+    "XRPUSDT_D": {
+      "candidates": 3632,
+      "picked": 663,
+      "binanceFundingPct": 100,
+      "bybitOiPct": 100
+    }
+  },
+  "runParity": {
+    "parityWithFamilyA": true,
+    "checks": {
+      "sameCoins": true,
+      "sameWindow": true,
+      "sameTimeframe": true,
+      "sameDataSource": true
+    },
+    "baseline": {
+      "from": "2022-01-01",
+      "to": "2026-06-01",
+      "coins": [
+        "BTCUSDT",
+        "BNBUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "XRPUSDT"
+      ],
+      "timeframe": "15m",
+      "dataSource": "timescale"
+    },
+    "run": {
+      "from": "2022-01-01",
+      "to": "2026-06-01",
+      "coins": [
+        "BNBUSDT",
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "XRPUSDT"
+      ],
+      "timeframe": "15m",
+      "dataSource": "timescale"
+    }
+  },
+  "parityWithFamilyA": true,
+  "totalCandidates": 39295
+}

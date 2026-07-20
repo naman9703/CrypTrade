@@ -1,0 +1,154 @@
+{
+  "generatedAt": "2026-07-17T07:25:10.837Z",
+  "window": {
+    "from": "2022-06-01",
+    "to": "2026-05-31"
+  },
+  "baseline": {
+    "n": 32,
+    "ret": 115.31442553034898,
+    "dd": 8.888822385017608,
+    "pf": 3.471060319711636,
+    "calmar": 2.3406813384485927
+  },
+  "riskRows": [
+    {
+      "label": "kill_dd_15",
+      "n": 32,
+      "ret": 115.31442553034898,
+      "dd": 8.888822385017608,
+      "pf": 3.471060319711636,
+      "calmar": 2.3406813384485927
+    },
+    {
+      "label": "weekly_8",
+      "n": 32,
+      "ret": 115.31442553034898,
+      "dd": 8.888822385017608,
+      "pf": 3.471060319711636,
+      "calmar": 2.3406813384485927
+    },
+    {
+      "label": "consec_3",
+      "n": 32,
+      "ret": 115.31442553034898,
+      "dd": 8.888822385017608,
+      "pf": 3.471060319711636,
+      "calmar": 2.3406813384485927
+    },
+    {
+      "label": "stack_safe",
+      "n": 32,
+      "ret": 80.37076362376229,
+      "dd": 11.39355236523211,
+      "pf": 2.748867775723193,
+      "calmar": 1.3733094816430949
+    }
+  ],
+  "stressRows": [
+    {
+      "id": "flash_crash_15",
+      "label": "Flash crash −15% (1 bar, 60% recovery)",
+      "n": 34,
+      "ret": 151.06908448059477,
+      "dd": 8.888822385017523,
+      "pf": 3.7538113238383266,
+      "calmar": 2.865132421969119
+    },
+    {
+      "id": "flash_crash_30",
+      "label": "Flash crash −30% (1 bar, 40% recovery)",
+      "n": 33,
+      "ret": 109.25321096302312,
+      "dd": 8.888822385017587,
+      "pf": 3.2213836584216016,
+      "calmar": 2.2453732419406958
+    },
+    {
+      "id": "sustained_bear_30",
+      "label": "Sustained bear −30% (grinding, no recovery)",
+      "n": 32,
+      "ret": 102.40327956132434,
+      "dd": 13.282301956416735,
+      "pf": 3.144506051343386,
+      "calmar": 1.4288751422270665
+    },
+    {
+      "id": "exchange_gap",
+      "label": "Exchange outage + reopen gap −8%",
+      "n": 32,
+      "ret": 115.31442553034749,
+      "dd": 8.88882238501751,
+      "pf": 3.4710603197116234,
+      "calmar": 2.3406813384485963
+    },
+    {
+      "id": "liquidity_crunch",
+      "label": "Liquidity crunch (slippage ×8, taker-only)",
+      "n": 32,
+      "ret": -28.04785421121585,
+      "dd": 28.04785421121585,
+      "pf": 0.636553237303498,
+      "calmar": -0.2778195929485732
+    },
+    {
+      "id": "slip_x2",
+      "label": "slip_x2",
+      "n": 32,
+      "ret": 102.3806157200134,
+      "dd": 9.457213470458594,
+      "pf": 3.116322462436287,
+      "calmar": 2.0064543958229484
+    },
+    {
+      "id": "slip_x4",
+      "label": "slip_x4",
+      "n": 32,
+      "ret": 77.93880556682743,
+      "dd": 10.930560323652744,
+      "pf": 2.500643482081791,
+      "calmar": 1.3961416714999362
+    },
+    {
+      "id": "liq_x8",
+      "label": "liq_x8",
+      "n": 32,
+      "ret": -28.04785421121585,
+      "dd": 28.04785421121585,
+      "pf": 0.636553237303498,
+      "calmar": -0.2778195929485732
+    }
+  ],
+  "crashRows": [
+    {
+      "id": "covid_2020",
+      "label": "COVID crash (Feb–Apr 2020)",
+      "n": 1,
+      "ret": -2.8099485416666568,
+      "dd": 2.8099485416666568
+    },
+    {
+      "id": "may_2021",
+      "label": "May 2021 deleveraging",
+      "n": 2,
+      "ret": -5.540938975265135,
+      "dd": 5.540938975265135
+    },
+    {
+      "id": "ftx_2022",
+      "label": "FTX collapse (Nov–Dec 2022)",
+      "n": 0,
+      "ret": 0,
+      "dd": 0
+    }
+  ],
+  "riskOverlayLock": {
+    "note": "keep overlays OFF (0) — ablation did not clearly improve risk/return without masking edge"
+  },
+  "recommendedOverlay": {
+    "riskKillSwitchDdPct": 0,
+    "riskWeeklyMaxLossPct": 0,
+    "riskConsecutiveLossLimit": 0,
+    "volTargetSizing": false
+  }
+}

@@ -71,6 +71,34 @@ export const SUPERTREND_ELITE_BTC_1H_ADX = {
   eliteStAdxRisingLookback: 3,
 };
 
+/**
+ * Micro-validated intraday target portfolio preset.
+ *
+ * Sync with backend SUPERTREND_ELITE_INTRADAY_TARGET_1H_PRESET.
+ * Backtest: Jan-2025 -> Jun-2026, 1m trade micro trailing replay, 10-symbol
+ * equal-slice portfolio, ~1.00 entries/day, accepted WF/MC gates.
+ */
+export const SUPERTREND_ELITE_INTRADAY_TARGET_1H_SYMBOLS = [
+  "BTCUSDT",
+  "ETHUSDT",
+  "BNBUSDT",
+  "ADAUSDT",
+  "AVAXUSDT",
+  "UNIUSDT",
+  "DOTUSDT",
+  "ATOMUSDT",
+  "APTUSDT",
+  "INJUSDT",
+] as const;
+
+export const SUPERTREND_ELITE_INTRADAY_TARGET_1H = {
+  ...SUPERTREND_ELITE_1H_BASE,
+  timeframe: "1h",
+  futuresLeverage: 12,
+  riskPerTrade: 2,
+  riskPerTradeUnit: "PCT" as const,
+};
+
 const ELITE_ST_DYNAMIC_SEP_DEFAULTS = {
   eliteStHtf1hMinSepAtrMult: 0.25,
   eliteStHtf1hMinSepFloor: 0.0002,
@@ -99,6 +127,36 @@ export const SUPERTREND_ELITE_AUTO_1H = {
   futuresLeverage: 10,
   riskPerTrade: 5,
   riskPerTradeUnit: "PCT" as const,
+};
+
+/**
+ * Optimized 1H — 1% disaster SL, no fixed TP, 1% trail buffer (trail-tune winner).
+ * Keep in sync with backend SUPERTREND_ELITE_OPTIMIZED_1H_PRESET.
+ */
+export const SUPERTREND_ELITE_OPTIMIZED_1H = {
+  ...SUPERTREND_ELITE_1H_BASE,
+  strategyMode: "MANUAL" as const,
+  manualStrategy: "SUPERTREND_ELITE",
+  marketMode: "FUTURES" as const,
+  timeframe: "1h",
+  supertrendFuturesAuto: false,
+  supertrendFuturesUseFixedSl: true,
+  supertrendFuturesFixedSlPct: 0.01,
+  supertrendFuturesUseFixedTp: false,
+  supertrendFuturesFixedTpPct: 0,
+  trailBufferRate: 0.01,
+  trailPostT02ActivationBufferRate: 0.001,
+  riskPerTrade: 3,
+  riskPerTradeUnit: "PCT" as const,
+  futuresLeverage: 10,
+};
+
+/** BTC 1H optimized trail + 0.08% EMA min sep. */
+export const SUPERTREND_ELITE_OPTIMIZED_BTC_1H = {
+  ...SUPERTREND_ELITE_OPTIMIZED_1H,
+  symbol: "BTCUSDT",
+  timeframe: "1h",
+  eliteStHtf1hMinSep: 0.0008,
 };
 
 /** @deprecated Full auto-tune derives LINK settings from coin profile. */

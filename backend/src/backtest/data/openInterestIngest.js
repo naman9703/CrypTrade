@@ -3,15 +3,44 @@ import { getPool } from "../../db/pool.js";
 
 const FAPI = process.env.BINANCE_FUTURES_REST_BASE || "https://fapi.binance.com";
 
+/** Binance `/futures/data/openInterestHist` only serves the latest ~30 days. */
+export const OI_API_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
 function normalizeSymbol(symbol) {
   return String(symbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 }
 
-async function fetchOiHist(symbol, period, fromMs, toMs) {
+function liveOiApiWindow() {
+  const now = Date.now();
+  return {
+    fromMs: now - OI_API_RETENTION_MS + 60_000,
+    toMs: now,
+  };
+}
+
+/** Intersect a research window with what Binance can serve (last 30d ending now). */
+export function resolveOiApiWindow(requestedFromMs, requestedToMs) {
+  const live = liveOiApiWindow();
+  const fromMs = Math.max(Number(requestedFromMs), live.fromMs);
+  const toMs = Math.min(Number(requestedToMs ?? live.toMs), live.toMs);
+  const apiUnavailable = toMs < live.fromMs || fromMs > live.toMs;
+  return {
+    fromMs: apiUnavailable ? live.fromMs : fromMs,
+    toMs: apiUnavailable ? live.toMs : toMs,
+    apiUnavailable,
+    apiLimited: fromMs > Number(requestedFromMs) || toMs < Number(requestedToMs ?? live.toMs),
+    liveSync: true,
+  };
+}
+
+async function fetchOiHist(symbol, period, win) {
+  if (win.apiUnavailable) {
+    return { rows: [], ...win };
+  }
   const out = [];
-  let end = toMs;
+  let end = win.toMs;
   let guard = 0;
-  while (end > fromMs && guard < 100) {
+  while (end > win.fromMs && guard < 100) {
     guard += 1;
     const { data } = await axios.get(`${FAPI}/futures/data/openInterestHist`, {
       params: {
@@ -25,46 +54,83 @@ async function fetchOiHist(symbol, period, fromMs, toMs) {
     if (!Array.isArray(data) || !data.length) break;
     for (const row of data) {
       const ts = Number(row.timestamp);
-      const oi = Number(row.sumOpenInterest ?? row.sumOpenInterestValue);
-      if (!Number.isFinite(ts) || !Number.isFinite(oi)) continue;
+      const oi = Number(row.sumOpenInterestValue ?? row.sumOpenInterest);
+      if (!Number.isFinite(ts) || !Number.isFinite(oi) || ts < win.fromMs) continue;
       out.push({ ts, oiUsdt: oi });
     }
     const first = Number(data[0].timestamp);
     if (!Number.isFinite(first) || data.length < 500) break;
     end = first - 1;
-    if (first <= fromMs) break;
+    if (first <= win.fromMs) break;
   }
   const byTs = new Map(out.map((r) => [r.ts, r]));
-  return [...byTs.values()].sort((a, b) => a.ts - b.ts);
+  return { rows: [...byTs.values()].sort((a, b) => a.ts - b.ts), ...win };
 }
 
-async function fetchLatestLsr(symbol) {
-  try {
-    const { data } = await axios.get(`${FAPI}/futures/data/globalLongShortAccountRatio`, {
-      params: { symbol, period: "1h", limit: 1 },
-      timeout: 10_000,
-    });
-    const row = Array.isArray(data) ? data[0] : null;
-    const ts = Number(row?.timestamp);
-    const lsr = Number(row?.longShortRatio);
-    if (Number.isFinite(ts) && Number.isFinite(lsr)) return { ts, longShortRatio: lsr };
-  } catch {
-    /* optional */
+/** Historical global long/short account ratio (same 30-day API window as OI). */
+async function fetchLsrHist(symbol, period, win) {
+  if (win.apiUnavailable) {
+    return { rows: [], ...win };
   }
-  return null;
+  const out = [];
+  let end = win.toMs;
+  let guard = 0;
+  while (end > win.fromMs && guard < 100) {
+    guard += 1;
+    const { data } = await axios.get(`${FAPI}/futures/data/globalLongShortAccountRatio`, {
+      params: {
+        symbol,
+        period,
+        limit: 500,
+        endTime: Math.floor(end),
+      },
+      timeout: 20_000,
+    });
+    if (!Array.isArray(data) || !data.length) break;
+    for (const row of data) {
+      const ts = Number(row.timestamp);
+      const lsr = Number(row.longShortRatio);
+      if (!Number.isFinite(ts) || !Number.isFinite(lsr) || ts < win.fromMs) continue;
+      out.push({ ts, longShortRatio: lsr });
+    }
+    const first = Number(data[0].timestamp);
+    if (!Number.isFinite(first) || data.length < 500) break;
+    end = first - 1;
+    if (first <= win.fromMs) break;
+  }
+  const byTs = new Map(out.map((r) => [r.ts, r]));
+  return { rows: [...byTs.values()].sort((a, b) => a.ts - b.ts), ...win };
+}
+
+function mergeOiAndLsr(oiRows, lsrRows) {
+  const lsrByTs = new Map(lsrRows.map((r) => [r.ts, r.longShortRatio]));
+  return oiRows.map((r) => ({
+    ts: r.ts,
+    oiUsdt: r.oiUsdt,
+    longShortRatio: lsrByTs.get(r.ts) ?? null,
+  }));
 }
 
 /**
- * @returns {Promise<{ inserted: number }>}
+ * @returns {Promise<{ inserted: number, oiPoints: number, lsrPoints: number }>}
  */
 export async function ensureOpenInterest(symbol, { from, to, period = "1h" } = {}) {
   const pool = getPool();
   if (!pool) throw new Error("db_not_configured");
   const sym = normalizeSymbol(symbol);
-  const fromMs = Number(from);
-  const toMs = Number(to ?? Date.now());
-  const rows = await fetchOiHist(sym, period, fromMs, toMs);
-  const lsr = await fetchLatestLsr(sym);
+  const requestedFromMs = Number(from);
+  const requestedToMs = Number(to ?? Date.now());
+  // Always sync the live 30d window — Binance cannot serve older OI; DB accumulates over time.
+  const win = liveOiApiWindow();
+  const [oiPack, lsrPack] = await Promise.all([
+    fetchOiHist(sym, period, { ...win, apiUnavailable: false, apiLimited: true, liveSync: true }),
+    fetchLsrHist(sym, period, { ...win, apiUnavailable: false, apiLimited: true, liveSync: true }).catch(() => ({
+      rows: [],
+      apiLimited: true,
+      ...win,
+    })),
+  ]);
+  const merged = mergeOiAndLsr(oiPack.rows, lsrPack.rows);
   const sql = `
     INSERT INTO historical_open_interest (symbol, ts, oi_usdt, long_short_ratio)
     VALUES ($1, to_timestamp($2 / 1000.0), $3, $4)
@@ -73,11 +139,21 @@ export async function ensureOpenInterest(symbol, { from, to, period = "1h" } = {
       long_short_ratio = COALESCE(EXCLUDED.long_short_ratio, historical_open_interest.long_short_ratio)
   `;
   let inserted = 0;
-  for (const r of rows) {
-    const res = await pool.query(sql, [sym, r.ts, r.oiUsdt, lsr?.longShortRatio ?? null]);
+  for (const r of merged) {
+    const res = await pool.query(sql, [sym, r.ts, r.oiUsdt, r.longShortRatio]);
     if (res.rowCount > 0) inserted += 1;
   }
-  return { inserted };
+  return {
+    inserted,
+    oiPoints: oiPack.rows.length,
+    lsrPoints: lsrPack.rows.length,
+    apiLimited: true,
+    liveSync: true,
+    requestedFromMs,
+    requestedToMs,
+    effectiveFromMs: oiPack.fromMs,
+    effectiveToMs: oiPack.toMs,
+  };
 }
 
 /**
@@ -101,7 +177,6 @@ export async function readOpenInterest(symbol, fromMs, toMs) {
   return r.rows.map((row) => ({
     ts: Math.round(Number(row.ts)),
     oiUsdt: Number(row.oi_usdt),
-    longShortRatio:
-      row.long_short_ratio != null ? Number(row.long_short_ratio) : undefined,
+    longShortRatio: row.long_short_ratio != null ? Number(row.long_short_ratio) : undefined,
   }));
 }

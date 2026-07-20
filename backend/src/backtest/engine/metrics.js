@@ -262,9 +262,14 @@ export function rollingSharpe(curve, tf, windowBars = 480) {
     const std = Math.sqrt(variance);
     series.push(std > 0 ? (mean / std) * Math.sqrt(barsPerYear) : 0);
   }
+  let min = 0;
+  if (series.length) {
+    min = series[0];
+    for (let i = 1; i < series.length; i++) if (series[i] < min) min = series[i];
+  }
   return {
     series,
-    min: series.length ? Math.min(...series) : 0,
+    min,
     last: series.length ? series[series.length - 1] : 0,
   };
 }

@@ -136,6 +136,39 @@ export function resolveBacktestMarginCapUsdt({ cfg = {}, equity, symbol = "", op
 }
 
 /**
+ * Per-position leverage (dynamic sizing modes store `effectiveLeverage` on the open leg).
+ * @param {object} [pos]
+ * @param {import("./costModel.js").ResolvedCostModel} cm
+ */
+export function resolvePositionLeverage(pos, cm) {
+  const eff = Number(pos?.effectiveLeverage);
+  if (Number.isFinite(eff) && eff > 0) return eff;
+  return Math.max(1, Number(cm?.leverage) || 1);
+}
+
+function sizingModeKey(cfg = {}) {
+  return String(cfg?.backtestPositionSizing ?? "RISK_AT_SL").toUpperCase();
+}
+
+function isFullMarginDynamicSizing(cfg = {}) {
+  const m = sizingModeKey(cfg);
+  return m === "RISK_AT_SL_FULL_MARGIN" || m === "FULL_MARGIN_DYNAMIC_LEV";
+}
+
+/** Reconcile margin + effective leverage after qty/notional caps. */
+function marginFromQty({ qty, entry, marginCapUsdt, isFutures }) {
+  const notional = Math.abs(qty) * entry;
+  if (!isFutures || notional <= 0) {
+    return { marginUsdt: notional, effectiveLeverage: 1 };
+  }
+  const M = Math.max(0, Number(marginCapUsdt) || 0);
+  if (M > 0 && notional > M * 1.000001) {
+    return { marginUsdt: M, effectiveLeverage: notional / M };
+  }
+  return { marginUsdt: notional, effectiveLeverage: 1 };
+}
+
+/**
  * @param {object} p
  * @param {number} p.equity
  * @param {number} p.entryFill
@@ -146,7 +179,7 @@ export function resolveBacktestMarginCapUsdt({ cfg = {}, equity, symbol = "", op
  * @param {number} [p.sizeMult]
  * @param {string} [p.symbol]
  * @param {number} [p.openMarginUsdt]
- * @returns {{ qty: number, marginUsdt: number, leverageCapped: boolean, allotmentCapped: boolean, uncappedQty: number, marginCapUsdt: number, allowedPoolUsdt: number, policyCapUsdt: number, maxNotionalUsdt: number }}
+ * @returns {{ qty: number, marginUsdt: number, effectiveLeverage: number, leverageCapped: boolean, allotmentCapped: boolean, uncappedQty: number, marginCapUsdt: number, allowedPoolUsdt: number, policyCapUsdt: number, maxNotionalUsdt: number }}
  */
 export function computeEntryQtyDetailed({
   equity,
@@ -163,6 +196,7 @@ export function computeEntryQtyDetailed({
   const empty = {
     qty: 0,
     marginUsdt: 0,
+    effectiveLeverage: 1,
     leverageCapped: false,
     allotmentCapped: false,
     uncappedQty: 0,
@@ -183,7 +217,8 @@ export function computeEntryQtyDetailed({
   const allotmentMaxNotional = isFutures ? marginCapUsdt * lev : marginCapUsdt;
   const maxNotionalUsdt = Math.min(walletMaxNotional, allotmentMaxNotional);
 
-  const sizing = String(cfg?.backtestPositionSizing ?? "RISK_AT_SL").toUpperCase();
+  const sizing = sizingModeKey(cfg);
+  const fullMarginDynamic = isFullMarginDynamicSizing(cfg);
   let uncappedQty;
 
   if (sizing === "FULL_EQUITY_MARGIN" || sizing === "FULL_EQUITY") {
@@ -206,11 +241,33 @@ export function computeEntryQtyDetailed({
   const uncappedNotional = Math.abs(uncappedQty) * entry;
   let leverageCapped = false;
   let allotmentCapped = false;
+  let marginUsdt = 0;
+  let effectiveLeverage = lev;
+
+  if (fullMarginDynamic && isFutures && marginCapUsdt > 0) {
+    const M = marginCapUsdt;
+    const L_ideal = uncappedNotional / M;
+    if (L_ideal < 1) {
+      effectiveLeverage = 1;
+      marginUsdt = uncappedNotional;
+      qty = uncappedQty;
+    } else {
+      effectiveLeverage = Math.min(L_ideal, lev);
+      marginUsdt = M;
+      qty = (M * effectiveLeverage) / entry;
+      if (L_ideal > lev * 1.000001) leverageCapped = true;
+    }
+  }
 
   if (maxNotionalUsdt > 0 && uncappedNotional > maxNotionalUsdt * 1.000001) {
     leverageCapped = true;
     if (allotmentMaxNotional < walletMaxNotional * 0.999) allotmentCapped = true;
     qty = maxNotionalUsdt / entry;
+    if (fullMarginDynamic && isFutures) {
+      const ml = marginFromQty({ qty, entry, marginCapUsdt, isFutures });
+      marginUsdt = ml.marginUsdt;
+      effectiveLeverage = ml.effectiveLeverage;
+    }
   }
 
   const bracketCap = Number(cfg?.backtestBracketNotionalCap ?? 0);
@@ -219,14 +276,23 @@ export function computeEntryQtyDetailed({
     if (notional > bracketCap) {
       leverageCapped = true;
       qty = bracketCap / entry;
+      if (fullMarginDynamic) {
+        const ml = marginFromQty({ qty, entry, marginCapUsdt, isFutures });
+        marginUsdt = ml.marginUsdt;
+        effectiveLeverage = ml.effectiveLeverage;
+      }
     }
   }
 
-  const marginUsdt = isFutures && lev > 0 ? (Math.abs(qty) * entry) / lev : Math.abs(qty) * entry;
+  if (!fullMarginDynamic || !isFutures || marginCapUsdt <= 0) {
+    marginUsdt = isFutures && lev > 0 ? (Math.abs(qty) * entry) / lev : Math.abs(qty) * entry;
+    effectiveLeverage = isFutures ? lev : 1;
+  }
 
   return {
     qty,
     marginUsdt,
+    effectiveLeverage,
     leverageCapped,
     allotmentCapped,
     uncappedQty,

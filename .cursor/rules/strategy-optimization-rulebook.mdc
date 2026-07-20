@@ -1,0 +1,49 @@
+---
+description: Strategy research must maximize validated returns AND frequency — iterate until targets met or path archived
+alwaysApply: true
+---
+
+# Strategy optimization rulebook
+
+**Read `docs/STRATEGY_OPTIMIZATION_RULEBOOK.md` and `STRATEGY_RESEARCH_HANDOFF.md` before strategy work.**
+
+## Aim
+
+Maximize **honest, repeatable, risk-adjusted returns** (OOS CAGR, Calmar, portfolio return) **and deployable trade frequency** — the optimum passes validation gates with the **best** metrics, not the best in-sample curve on 3 trades/year.
+
+**User mandate:** Higher returns + higher frequency + profitable — together. Do not “solve” misses by throttling to ~0 trades/month.
+
+## Baseline to beat
+
+**None certified.** Do not treat `SUPERTREND_ELITE` as deployable or as the default answer — prior ~10–21% CAGR claims used wrong trailing (revoked 2026-07-14). New streams must pass WF + MC + 4-gate harness with **correct exits**.
+
+## Frequency floor
+
+- Target **≥2 trades/week per active coin** (or equivalent multi-coin portfolio), unless user explicitly accepts lower.
+- **≥30 OOS trades** (per coin or pooled) before promote language.
+- 3–16 trades/17mo is **insufficient** — checkpoint only, not a deliverable.
+
+## Required workflow (no firing in the dark)
+
+1. Hypothesis from **trade autopsy** (named failure mode)
+2. **One** change per experiment
+3. Full `runSimulation` with realistic costs
+4. Baseline vs change on **holdout / walk-forward**
+5. Validation gates before any “promising” claim
+6. **If targets missed** — autopsy → next hypothesis → re-test; do not report-and-stop
+
+## Reject immediately
+
+- Harvest-only or meanR wins that full sim does not confirm
+- Filters that only reduce losses but OOS return ≤ 0
+- Multi-filter stacks without isolated tests
+- New data/presets without a written hypothesis
+- **Ultra-low frequency presented as success** (Tier-A / veto / onePickPerDay crush with no plan to restore N)
+- **Report-and-stop** after one failed backtest
+- **Excluding hard OOS years** to green a curve (lock windows ≠ ignore 2021). Survive via relative rules / measurable abstain — never calendar cherry-pick for “live readiness”
+- Auto-applying another coin’s prepared/bleed matrix without coin-native evidence (BTC novelty on ETH is a foot-gun)
+
+## Progress = gates pass + better OOS return + acceptable frequency
+
+“Less negative,” higher WR alone, or positive return on **tiny N** is **not** success. Log experiments in `backend/scripts/.research-decisions/`.
+Do **not** default recommendations to SUPERTREND_ELITE.

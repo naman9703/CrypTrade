@@ -1,16 +1,14 @@
 #!/usr/bin/env node
 /**
- * Multi-coin PORTFOLIO of the validated SUPERTREND_ELITE strategy.
+ * Multi-coin PORTFOLIO of SUPERTREND_ELITE under locked trail-only exit contract.
  *
  * Runs the SAME (un-tuned-per-coin) config on every coin, then replays all
  * trades chronologically on ONE shared account with proper compounding. Each
- * trade risks `risk%` of CURRENT shared equity (R-multiple based), so this is a
- * legitimate portfolio equity curve with a real combined drawdown — the honest
- * "maximum" you get from diversifying the edge across many markets.
+ * trade risks `risk%` of CURRENT shared equity (R-multiple based).
  *
  * Usage:
  *   node scripts/backtest-portfolio-supertrend.mjs
- *   SYMBOLS=BTCUSDT,ETHUSDT,BNBUSDT,LINKUSDT,XRPUSDT FROM=2026-01-01 node scripts/backtest-portfolio-supertrend.mjs
+ *   SYMBOLS=BTCUSDT,ETHUSDT,BNBUSDT,LINKUSDT,XRPUSDT FROM=2025-01-01 node scripts/backtest-portfolio-supertrend.mjs
  */
 import path from "path";
 import { fileURLToPath } from "url";
@@ -21,7 +19,7 @@ dotenv.config({ path: path.resolve(__dirname, "..", ".env"), override: false });
 
 const SYMBOLS = (process.env.SYMBOLS || "BTCUSDT,ETHUSDT,BNBUSDT,LINKUSDT,XRPUSDT").split(",").map((s) => s.trim()).filter(Boolean);
 const TF = process.env.TF || "15m";
-const FROM = process.env.FROM || "2026-01-01";
+const FROM = process.env.FROM || "2025-01-01";
 const TO = process.env.TO || "2026-06-01";
 const MULT = Number(process.env.MULT || 3.0);
 const MIN_ADX = Number(process.env.MIN_ADX || 20);
@@ -31,21 +29,25 @@ if (!getPool?.()) await initPool({ info: () => {}, warn: () => {}, error: consol
 const { readCandles } = await import("../src/backtest/data/klineIngest.js");
 const { readFundingRates } = await import("../src/backtest/data/fundingIngest.js");
 const { runSimulation } = await import("../src/backtest/engine/runner.js");
-const { buildEliteStBacktestAdapter, buildEliteStOptsFromCfg } = await import("../src/strategy/supertrendElite.js");
+const {
+  buildEliteStBacktestAdapter,
+  buildEliteStOptsFromCfg,
+  applyEliteStExitContract,
+} = await import("../src/strategy/supertrendElite.js");
+const { resolveTradeRiskUsd } = await import("../src/backtest/engine/portfolioReplay.js");
 
 const fromMs = new Date(FROM).getTime();
 const toMs = new Date(TO).getTime();
 
 function cfg(sym) {
-  return {
+  return applyEliteStExitContract({
     symbol: sym, marketMode: "FUTURES", futuresLeverage: 25,
     backtestPositionSizing: "RISK_AT_SL", riskPerTrade: 1, riskPerTradeUnit: "PCT",
-    slippagePct: 0.0005, trailingStopLossAuto: true, futuresTrailingStopMode: "SUPERTREND",
-    supertrendFuturesExitOnFlip: true, supertrendFuturesFixedSlPct: 0, supertrendFuturesFixedTpPct: 0,
+    slippagePct: 0.0005,
     supertrendWilderAtr: true, supertrendPeriod: 10, supertrendMultiplier: MULT,
     eliteStRequireHtf4hAlign: true, eliteStRequireHtf1hEmaAlign: true,
     eliteStMinAdx: MIN_ADX, eliteStRequireAdxRising: true, eliteStMinVolumeVsAvg: 1.5, eliteStRequireAtrExpansion: true,
-  };
+  });
 }
 
 // Collect per-coin trades as R-multiples (netPnl / entry-time dollar risk).
@@ -73,10 +75,10 @@ for (const sym of SYMBOLS) {
   let n = 0, wins = 0, rSum = 0;
   for (const t of sim.trades) {
     if (t.exitReason === "tp1_partial") continue;
-    const risk = Number(t.initialRiskUsd) || 0;
+    const risk = resolveTradeRiskUsd(t, 1);
     if (risk <= 0) continue;
     const R = Number(t.netPnl ?? 0) / risk;
-    allTrades.push({ ts: Number(t.exitTs ?? t.entryTs), R, sym });
+    allTrades.push({ ts: Number(t.exitTs ?? t.entryTs), R, sym, exitReason: t.exitReason });
     n++; if (R > 0) wins++; rSum += R;
   }
   perCoin[sym] = { n, wr: n ? (wins / n) * 100 : 0, expR: n ? rSum / n : 0, span };

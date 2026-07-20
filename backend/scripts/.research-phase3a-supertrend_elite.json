@@ -1,0 +1,229 @@
+{
+  "generatedAt": "2026-07-14T04:22:34.454Z",
+  "phase": "3A",
+  "strategy": "SUPERTREND_ELITE",
+  "symbols": [
+    "BTCUSDT",
+    "BNBUSDT",
+    "ETHUSDT",
+    "LINKUSDT",
+    "XRPUSDT"
+  ],
+  "tf": "15m",
+  "from": "2025-01-01",
+  "to": "2026-06-01",
+  "holdoutFrac": 0.25,
+  "riskPct": 5,
+  "coins": {
+    "BTCUSDT": {
+      "research": {
+        "trades": 16,
+        "returnPct": -5.07159144562891,
+        "maxDdPct": 18.855905958224312,
+        "pf": 0.7715955064636644,
+        "expectancy": -31.69744653518064
+      },
+      "holdout": {
+        "trades": 7,
+        "returnPct": -3.1766165681541136,
+        "maxDdPct": 3.1766165681541136,
+        "pf": 0.18802583523852812,
+        "expectancy": -45.38023668791608,
+        "gates": {
+          "allPass": false,
+          "gates": {
+            "oosPositive": {
+              "pass": false,
+              "value": -3.1766165681541136,
+              "threshold": "> 0"
+            },
+            "mcP5Positive": {
+              "pass": false,
+              "value": -6.006591798158977,
+              "threshold": "> 0"
+            },
+            "calmarOver1": {
+              "pass": false,
+              "value": -2.7481756443315777,
+              "threshold": "> 1"
+            },
+            "wfDegradationOk": {
+              "pass": false,
+              "threshold": "< 35%"
+            }
+          }
+        },
+        "passes": false
+      }
+    },
+    "BNBUSDT": {
+      "research": {
+        "trades": 13,
+        "returnPct": 11.7223394749842,
+        "maxDdPct": 0.9986217504689034,
+        "pf": 4.678947523761317,
+        "expectancy": 90.17184211526305
+      },
+      "holdout": {
+        "trades": 6,
+        "returnPct": 1.4300909780248001,
+        "maxDdPct": 1.493009637610039,
+        "pf": 1.6251932554432995,
+        "expectancy": 23.834849633746728,
+        "gates": {
+          "allPass": false,
+          "gates": {
+            "oosPositive": {
+              "pass": true,
+              "value": 1.4300909780248001,
+              "threshold": "> 0"
+            },
+            "mcP5Positive": {
+              "pass": false,
+              "value": -3.450740101503602,
+              "threshold": "> 0"
+            },
+            "calmarOver1": {
+              "pass": true,
+              "value": 2.7460378128421437,
+              "threshold": "> 1"
+            },
+            "wfDegradationOk": {
+              "pass": false,
+              "threshold": "< 35%"
+            }
+          }
+        },
+        "passes": false
+      }
+    },
+    "ETHUSDT": {
+      "research": {
+        "trades": 11,
+        "returnPct": 24.308310373058227,
+        "maxDdPct": 0.25037487500002237,
+        "pf": 32.061108365577745,
+        "expectancy": 220.9846397550746
+      },
+      "holdout": {
+        "trades": 4,
+        "returnPct": 6.125296175572075,
+        "maxDdPct": 0,
+        "pf": 999,
+        "expectancy": 153.13240438930177,
+        "gates": {
+          "allPass": false,
+          "gates": {
+            "oosPositive": {
+              "pass": true,
+              "value": 6.125296175572075,
+              "threshold": "> 0"
+            },
+            "mcP5Positive": {
+              "pass": false,
+              "value": 0,
+              "threshold": "> 0"
+            },
+            "calmarOver1": {
+              "pass": false,
+              "value": 0,
+              "threshold": "> 1"
+            },
+            "wfDegradationOk": {
+              "pass": false,
+              "threshold": "< 35%"
+            }
+          }
+        },
+        "passes": false
+      }
+    },
+    "LINKUSDT": {
+      "research": {
+        "trades": 2,
+        "returnPct": 3.5158131882565433,
+        "maxDdPct": 0,
+        "pf": 999,
+        "expectancy": 175.79065941282724
+      },
+      "holdout": {
+        "trades": 3,
+        "returnPct": 4.310552174901204,
+        "maxDdPct": 0,
+        "pf": 999,
+        "expectancy": 143.6850724967064,
+        "gates": {
+          "allPass": false,
+          "gates": {
+            "oosPositive": {
+              "pass": true,
+              "value": 4.310552174901204,
+              "threshold": "> 0"
+            },
+            "mcP5Positive": {
+              "pass": false,
+              "value": 0,
+              "threshold": "> 0"
+            },
+            "calmarOver1": {
+              "pass": false,
+              "value": 0,
+              "threshold": "> 1"
+            },
+            "wfDegradationOk": {
+              "pass": false,
+              "threshold": "< 35%"
+            }
+          }
+        },
+        "passes": false
+      }
+    },
+    "XRPUSDT": {
+      "research": {
+        "trades": 4,
+        "returnPct": 14.138462409803651,
+        "maxDdPct": 0.2503748750000159,
+        "pf": 57.4691741126287,
+        "expectancy": 353.46156024509105
+      },
+      "holdout": {
+        "trades": 3,
+        "returnPct": 0.7442066616612283,
+        "maxDdPct": 0.7501249999999392,
+        "pf": 1.9847381971608986,
+        "expectancy": 24.806888722040455,
+        "gates": {
+          "allPass": false,
+          "gates": {
+            "oosPositive": {
+              "pass": true,
+              "value": 0.7442066616612283,
+              "threshold": "> 0"
+            },
+            "mcP5Positive": {
+              "pass": false,
+              "value": 0,
+              "threshold": "> 0"
+            },
+            "calmarOver1": {
+              "pass": true,
+              "value": 2.826512935077571,
+              "threshold": "> 1"
+            },
+            "wfDegradationOk": {
+              "pass": false,
+              "threshold": "< 35%"
+            }
+          }
+        },
+        "passes": false
+      }
+    }
+  },
+  "portfolio": {
+    "researchReturnPctSum": 48.61333400047371,
+    "holdoutReturnPctSum": 9.433529422005195,
+    "streamStatus": "holdout_positive"
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "generatedAt": "2026-07-14T01:52:40.299Z",
+  "window": {
+    "fromMs": 1781401957445,
+    "toMs": 1783993957445,
+    "days": 30
+  },
+  "live": false,
+  "cfg": {
+    "minAnnualizedYieldPct": 8,
+    "exitAnnualizedYieldPct": 2,
+    "stabilityIntervals": 2
+  },
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT",
+    "SOLUSDT"
+  ],
+  "opportunities": [
+    {
+      "symbol": "BTCUSDT",
+      "ok": true,
+      "rate": 0.00008256,
+      "predicted": null,
+      "annualizedPct": 9.04032,
+      "avg3Ann": 8.43588,
+      "side": "LONG_SPOT_SHORT_PERP",
+      "basis": 0,
+      "spotPx": 62511,
+      "perpPx": 62511,
+      "bias": null,
+      "nextFundingTs": null,
+      "lastSettlementTs": 1783987200000,
+      "enter": true,
+      "enterReason": "threshold_ok",
+      "exit": false,
+      "exitReason": "flat",
+      "settlementCount": 90
+    },
+    {
+      "symbol": "SOLUSDT",
+      "ok": true,
+      "rate": 0.00000427,
+      "predicted": null,
+      "annualizedPct": 0.467565,
+      "avg3Ann": -1.1497500000000003,
+      "side": "LONG_SPOT_SHORT_PERP",
+      "basis": 0,
+      "spotPx": 75.36,
+      "perpPx": 75.36,
+      "bias": null,
+      "nextFundingTs": null,
+      "lastSettlementTs": 1783987200000,
+      "enter": false,
+      "enterReason": "below_min_annualized",
+      "exit": false,
+      "exitReason": "flat",
+      "settlementCount": 90
+    },
+    {
+      "symbol": "ETHUSDT",
+      "ok": true,
+      "rate": 0.00000126,
+      "predicted": null,
+      "annualizedPct": 0.13797,
+      "avg3Ann": 0.9625050000000002,
+      "side": "LONG_SPOT_SHORT_PERP",
+      "basis": 0,
+      "spotPx": 1785.33,
+      "perpPx": 1785.33,
+      "bias": null,
+      "nextFundingTs": null,
+      "lastSettlementTs": 1783987200000,
+      "enter": false,
+      "enterReason": "below_min_annualized",
+      "exit": false,
+      "exitReason": "flat",
+      "settlementCount": 90
+    },
+    {
+      "symbol": "BNBUSDT",
+      "ok": true,
+      "rate": 0,
+      "predicted": null,
+      "annualizedPct": 0,
+      "avg3Ann": 1.436275,
+      "side": null,
+      "basis": 0,
+      "spotPx": 569.99,
+      "perpPx": 569.99,
+      "bias": null,
+      "nextFundingTs": null,
+      "lastSettlementTs": 1783987200000,
+      "enter": false,
+      "enterReason": "rate_near_zero",
+      "exit": false,
+      "exitReason": "flat",
+      "settlementCount": 90
+    }
+  ],
+  "enterableCount": 1
+}

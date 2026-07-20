@@ -1,0 +1,17 @@
+allowlist trades 194 2021-22 32 net -6.0
+recomputed NOT on TRAINED: 3
+  OK SELL|val_breakdown|bull_trend|vacuum                 n=7 net=-3.8
+  LEAK BUY|va_rejection|bull_trend|vacuum                   n=1 net=-3.4
+  LEAK SELL|val_breakdown|bull_chop|tight                   n=1 net=-3.3
+  OK BUY|va_rejection|bull_trend|tight                    n=1 net=-3.1
+  LEAK SELL|val_breakdown|bull_trend|tight                  n=1 net=-2.6
+  OK SELL|val_breakdown|bull_chop|vacuum                  n=4 net=-2.6
+  OK BUY|vah_breakout|weak_bear|vacuum                    n=1 net=-2.5
+  OK BUY|vah_breakout|bull_chop|structured                n=3 net=-2.2
+  OK SELL|val_breakdown|bear_trend|structured             n=2 net=-0.1
+  OK BUY|va_rejection|bull_chop|tight                     n=1 net=4.0
+  OK SELL|val_breakdown|bear_trend|vacuum                 n=7 net=5.2
+  OK BUY|vah_breakout|bull_trend|structured               n=3 net=8.3
+
+SELL prior20d>0 10 -8.6
+SELL prior20d<=0 12 1.5

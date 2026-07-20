@@ -5,6 +5,21 @@ import {
   pickBotSubtree,
 } from "../../lib/strategyInstanceSplit.js";
 import { sanitizeSignalBrainCfgRaw } from "../../lib/strategySignalBrain.js";
+import { BY_STRATEGY_ROOT_KEY } from "../../lib/strategyConfigSlices.js";
+
+function mergeIncomingWithExistingSlices(incoming, existingCfgRaw) {
+  const inc = incoming && typeof incoming === "object" ? incoming : {};
+  const prev = existingCfgRaw && typeof existingCfgRaw === "object" ? existingCfgRaw : null;
+  if (!prev?.[BY_STRATEGY_ROOT_KEY] || typeof prev[BY_STRATEGY_ROOT_KEY] !== "object") return inc;
+  return {
+    ...inc,
+    v: inc.v ?? prev.v ?? 1,
+    [BY_STRATEGY_ROOT_KEY]: prev[BY_STRATEGY_ROOT_KEY],
+    ...(prev.tradingFormDefaults && !inc.tradingFormDefaults
+      ? { tradingFormDefaults: prev.tradingFormDefaults }
+      : {}),
+  };
+}
 
 /**
  * Map persisted trading config (`{ v, bot, tradingFormDefaults }` or legacy flat bot) into cfg_* columns.
@@ -368,10 +383,14 @@ export async function updateVersion(versionId, userId, configRaw, label = undefi
   );
   if (!owned.rows.length) return null;
 
-  const cols = extractCfgColumns(configRaw);
-  const blocks = buildSignalBrainBlocks(configRaw);
+  const prevRow = await query(`SELECT cfg_raw FROM strategy_versions WHERE id = $1`, [versionId]);
+  const prevRaw = prevRow.rows[0]?.cfg_raw ?? null;
+  const mergedIncoming = mergeIncomingWithExistingSlices(configRaw, prevRaw);
+
+  const cols = extractCfgColumns(mergedIncoming);
+  const blocks = buildSignalBrainBlocks(mergedIncoming);
   const cleanRaw = sanitizeSignalBrainCfgRaw(
-    configRaw && typeof configRaw === "object" ? configRaw : {},
+    mergedIncoming && typeof mergedIncoming === "object" ? mergedIncoming : {},
   );
 
   const vals = [];
@@ -448,6 +467,37 @@ export async function getLatestVersion(strategyId) {
     [strategyId],
   );
   return mapVersionRow(r.rows[0]);
+}
+
+/**
+ * Duplicate a strategy's saved config into a brand-new strategy row (single v1 snapshot).
+ * @param {string} userId
+ * @param {string} sourceStrategyId
+ * @param {string} name
+ */
+export async function cloneStrategyAsNew(userId, sourceStrategyId, name) {
+  const owned = await assertStrategyOwnedByUser(sourceStrategyId, userId);
+  if (!owned) return null;
+  const latest = await getLatestVersion(sourceStrategyId);
+  if (!latest?.cfgRaw || typeof latest.cfgRaw !== "object") {
+    throw new Error("source_strategy_empty");
+  }
+  const strategy = await createStrategy(
+    userId,
+    null,
+    String(name || "").trim() || `${owned.name} copy`,
+    owned.description,
+    Array.isArray(owned.tags) ? [...owned.tags] : [],
+  );
+  if (!strategy?.id) throw new Error("create_strategy_failed");
+  const version = await createVersion(
+    strategy.id,
+    userId,
+    latest.cfgRaw,
+    "Saved config",
+    latest.id,
+  );
+  return { strategy, version };
 }
 
 /** @param {string} strategyId */

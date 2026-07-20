@@ -18,17 +18,55 @@ function Sep() {
 
 /** Status ticker: venue, WS, feed, AI health, exec sync, regime, AI prob, decision engine, model, signal, pending Supertrend. */
 export function HeaderSignalsStrip() {
-  const bot = useAppStore((s) => s.bot);
+  const botRunning = useAppStore((s) => Boolean(s.bot?.running));
+  const lastStopReason = useAppStore((s) =>
+    s.bot?.lastStopReason != null ? String(s.bot.lastStopReason) : "",
+  );
   const mode = useAppStore((s) => s.mode);
   const pushLog = useAppStore((s) => s.pushLog);
   const connected = useAppStore((s) => s.ws.connected);
+  const aiProb = useAppStore((s) => s.bot?.lastAi?.probability);
+  const aiGate = useAppStore((s) => s.bot?.lastAi?.gateProbability);
+  const modelKind = useAppStore((s) => s.bot?.lastAi?.model_kind ?? s.bot?.lastAi?.modelKind);
+  const feedOk = useAppStore((s) => Boolean(s.bot?.feed?.ok));
+  const feedSourceRaw = useAppStore((s) => s.bot?.feed?.source || "—");
+  const exchangeName = useAppStore((s) => s.bot?.exchange?.name || mode || "—");
+  const udf = useAppStore((s) => s.bot?.exchangeStatus?.udf) as
+    | { ok?: boolean; syncMode?: string; error?: string | null }
+    | undefined;
+
+  const feedError = useAppStore((s) => s.bot?.feed?.error);
+  const pendingSt = useAppStore((s) => s.bot?.pendingSupertrendAction) as
+    | { side?: string; venue?: string }
+    | undefined;
+  const lastRegimeType = useAppStore((s) => s.bot?.lastRegime?.type);
+  const lastDecisionAction = useAppStore((s) => s.bot?.lastDecision?.signal?.action);
+  const decisionEngine = useAppStore((s) => s.bot?.decisionEngine) as
+    | {
+        long?: { total?: number; max?: number; breakdown?: Record<string, number> };
+        short?: { total?: number; max?: number; breakdown?: Record<string, number> };
+        expectedMoveLong?: number | null;
+        expectedMoveShort?: number | null;
+        features?: { price?: number | null };
+        signalStrength?: {
+          strength?: number;
+          action?: string;
+          signal?: string;
+          componentScores?: Record<string, number>;
+          reason?: string;
+        } | null;
+      }
+    | undefined;
 
   const [aiOk, setAiOk] = useState(false);
   const [aiMeta, setAiMeta] = useState<{ modelLoaded?: boolean; xgboostAvailable?: boolean }>({});
 
   useEffect(() => {
     let alive = true;
+    let inFlight = false;
     const run = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const r = await api.aiHealth();
         if (!alive) return;
@@ -41,25 +79,19 @@ export function HeaderSignalsStrip() {
         if (!alive) return;
         setAiOk(false);
         setAiMeta({});
+      } finally {
+        inFlight = false;
       }
     };
     void run();
-    const id = setInterval(run, 4000);
+    const pollMs = connected ? 60_000 : 20_000;
+    const id = setInterval(run, pollMs);
     return () => {
       alive = false;
       clearInterval(id);
     };
-  }, []);
-
-  const botRunning = Boolean(bot?.running);
-  const lastStopReason = bot?.lastStopReason != null ? String(bot.lastStopReason) : "";
+  }, [connected]);
   const showDailyLossReset = !botRunning && lastStopReason === "max_daily_loss";
-  const aiProb = bot?.lastAi?.probability;
-  const aiGate = bot?.lastAi?.gateProbability;
-  const modelKind = bot?.lastAi?.model_kind || bot?.lastAi?.modelKind;
-  const feedOk = Boolean(bot?.feed?.ok);
-  /** Backend reports the public data product (e.g. BINANCE_FUTURES); demo mode still uses that stream for OHLC. */
-  const feedSourceRaw = bot?.feed?.source || "—";
   const feedSource =
     mode === "BINANCE_DEMO_API"
       ? feedSourceRaw === "BINANCE_FUTURES"
@@ -68,11 +100,6 @@ export function HeaderSignalsStrip() {
           ? "SPOT·demo"
           : feedSourceRaw
       : feedSourceRaw;
-  const exchangeName = bot?.exchange?.name || mode || "—";
-
-  const udf = bot?.exchangeStatus?.udf as
-    | { ok?: boolean; syncMode?: string; error?: string | null }
-    | undefined;
   const showExecSync =
     exchangeName === "binance_testnet_spot" ||
     mode === "BINANCE_TESTNET" ||
@@ -95,13 +122,12 @@ export function HeaderSignalsStrip() {
     !mode || mode === "PAPER" || /DEMO|TESTNET/i.test(String(mode));
 
   const feedTitle =
-    feedOk && !bot?.feed?.error
+    feedOk && !feedError
       ? mode === "BINANCE_DEMO_API"
         ? `Market data: ${feedSourceRaw} (public Binance klines; orders on Futures Demo API)`
         : `Market data: ${feedSource}`
-      : [feedSource, bot?.feed?.error].filter(Boolean).join(" — ") || "Market feed";
+      : [feedSource, feedError].filter(Boolean).join(" — ") || "Market feed";
 
-  const pendingSt = bot?.pendingSupertrendAction as { side?: string; venue?: string } | undefined;
   const botStaleHint = botRunning
     ? undefined
     : pendingSt?.side
@@ -109,26 +135,10 @@ export function HeaderSignalsStrip() {
       : "Start bot — Regime / AI / Model / Signal update on each tick while running.";
 
   const pnlHint = useMemo(() => {
-    const d = bot?.lastDecision?.signal?.action;
-    return d ? String(d) : "—";
-  }, [bot]);
+    return lastDecisionAction ? String(lastDecisionAction) : "—";
+  }, [lastDecisionAction]);
 
-  const de = bot?.decisionEngine as
-    | {
-        long?: { total?: number; max?: number; breakdown?: Record<string, number> };
-        short?: { total?: number; max?: number; breakdown?: Record<string, number> };
-        expectedMoveLong?: number | null;
-        expectedMoveShort?: number | null;
-        features?: { price?: number | null };
-        signalStrength?: {
-          strength?: number;
-          action?: string;
-          signal?: string;
-          componentScores?: Record<string, number>;
-          reason?: string;
-        } | null;
-      }
-    | undefined;
+  const de = decisionEngine;
 
   const decisionTitle = useMemo(() => {
     const ss = de?.signalStrength;
@@ -246,7 +256,7 @@ export function HeaderSignalsStrip() {
         ) : null}
         <Sep />
         <span className="shrink-0 text-slate-600 dark:text-slate-400" title={botStaleHint || undefined}>
-          Regime: <span className="text-slate-900 dark:text-slate-100">{bot?.lastRegime?.type ?? "—"}</span>
+          Regime: <span className="text-slate-900 dark:text-slate-100">{lastRegimeType ?? "—"}</span>
         </span>
         <Sep />
         <span

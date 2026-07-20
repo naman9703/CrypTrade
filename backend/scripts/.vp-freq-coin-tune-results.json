@@ -1,0 +1,503 @@
+{
+  "window": "2025-06-01→2026-05-31",
+  "risk": 2.5,
+  "rows": [
+    {
+      "symbol": "BNBUSDT",
+      "variant": "uniform_eth_shaped",
+      "label": "Uniform ETH-shaped (all setups + soft HTF)",
+      "candidates": 109,
+      "picks": 81,
+      "trades": 76,
+      "tradesPerWeek": 1.46,
+      "wr": 35.5,
+      "ret": -14.39,
+      "pf": 0.89,
+      "dd": 33.59,
+      "setups": {
+        "val_breakdown": {
+          "n": 45,
+          "pnl": -8.077724271143353,
+          "wins": 13
+        },
+        "vah_breakout": {
+          "n": 26,
+          "pnl": 6.361909884644289,
+          "wins": 13
+        },
+        "poc_bounce": {
+          "n": 4,
+          "pnl": -9.064647418488923,
+          "wins": 1
+        },
+        "va_rejection": {
+          "n": 1,
+          "pnl": -3.702141662389252,
+          "wins": 0
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "val_breakdown",
+        "poc_bounce",
+        "va_rejection",
+        "naked_poc"
+      ],
+      "htfAlign": true,
+      "htfSep": 0.0015
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "resolved",
+      "label": "Coin-resolved FREQ preset",
+      "candidates": 61,
+      "picks": 41,
+      "trades": 35,
+      "tradesPerWeek": 0.67,
+      "wr": 48.6,
+      "ret": 21.01,
+      "pf": 1.32,
+      "dd": 17.84,
+      "setups": {
+        "vah_breakout": {
+          "n": 35,
+          "pnl": 17.505121676812905,
+          "wins": 17
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "naked_poc"
+      ],
+      "htfAlign": false,
+      "htfSep": 0.0035
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "bnb_long_bias",
+      "label": "BNB long bias (vah + lvn + naked)",
+      "candidates": 42,
+      "picks": 30,
+      "trades": 26,
+      "tradesPerWeek": 0.5,
+      "wr": 50,
+      "ret": 12.1,
+      "pf": 1.21,
+      "dd": 10.62,
+      "setups": {
+        "vah_breakout": {
+          "n": 26,
+          "pnl": 8.59033953830144,
+          "wins": 13
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "naked_poc"
+      ],
+      "htfAlign": true,
+      "htfSep": 0.0015
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "bnb_no_val_bd",
+      "label": "BNB drop val_breakdown only",
+      "candidates": 49,
+      "picks": 37,
+      "trades": 33,
+      "tradesPerWeek": 0.63,
+      "wr": 42.4,
+      "ret": -12.55,
+      "pf": 0.78,
+      "dd": 20.05,
+      "setups": {
+        "vah_breakout": {
+          "n": 26,
+          "pnl": 7.87511101565123,
+          "wins": 13
+        },
+        "poc_bounce": {
+          "n": 4,
+          "pnl": -9.315638740630792,
+          "wins": 1
+        },
+        "va_rejection": {
+          "n": 3,
+          "pnl": -10.685007482910924,
+          "wins": 0
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "poc_bounce",
+        "va_rejection",
+        "naked_poc"
+      ],
+      "htfAlign": true,
+      "htfSep": 0.0015
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "bnb_no_rej_no_bd",
+      "label": "BNB drop val_bd + va_rejection",
+      "candidates": 45,
+      "picks": 33,
+      "trades": 30,
+      "tradesPerWeek": 0.58,
+      "wr": 46.7,
+      "ret": -2.24,
+      "pf": 0.96,
+      "dd": 14.02,
+      "setups": {
+        "vah_breakout": {
+          "n": 26,
+          "pnl": 7.905930263356932,
+          "wins": 13
+        },
+        "poc_bounce": {
+          "n": 4,
+          "pnl": -9.718029653445878,
+          "wins": 1
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "poc_bounce",
+        "naked_poc"
+      ],
+      "htfAlign": true,
+      "htfSep": 0.0015
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "bnb_soft_htf_tighter",
+      "label": "BNB all setups + HTF sep 0.25%",
+      "candidates": 90,
+      "picks": 71,
+      "trades": 67,
+      "tradesPerWeek": 1.29,
+      "wr": 35.8,
+      "ret": -10.69,
+      "pf": 0.93,
+      "dd": 32.09,
+      "setups": {
+        "val_breakdown": {
+          "n": 39,
+          "pnl": -3.0369486522704023,
+          "wins": 11
+        },
+        "vah_breakout": {
+          "n": 22,
+          "pnl": 11.729893527438515,
+          "wins": 12
+        },
+        "poc_bounce": {
+          "n": 4,
+          "pnl": -9.533040974848971,
+          "wins": 1
+        },
+        "va_rejection": {
+          "n": 2,
+          "pnl": -7.240157926620189,
+          "wins": 0
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "val_breakdown",
+        "poc_bounce",
+        "va_rejection",
+        "naked_poc"
+      ],
+      "htfAlign": true,
+      "htfSep": 0.0025
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "uniform_eth_shaped",
+      "label": "Uniform ETH-shaped (all setups + soft HTF)",
+      "candidates": 122,
+      "picks": 86,
+      "trades": 79,
+      "tradesPerWeek": 1.52,
+      "wr": 45.6,
+      "ret": 167.45,
+      "pf": 1.71,
+      "dd": 21.15,
+      "setups": {
+        "vah_breakout": {
+          "n": 31,
+          "pnl": 16.95791260632396,
+          "wins": 13
+        },
+        "val_breakdown": {
+          "n": 39,
+          "pnl": 139.22068262005837,
+          "wins": 20
+        },
+        "poc_bounce": {
+          "n": 2,
+          "pnl": -5.8640995528238955,
+          "wins": 1
+        },
+        "va_rejection": {
+          "n": 7,
+          "pnl": 1.3339560800682602,
+          "wins": 2
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "val_breakdown",
+        "poc_bounce",
+        "va_rejection",
+        "naked_poc"
+      ],
+      "htfAlign": true,
+      "htfSep": 0.0015
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "resolved",
+      "label": "Coin-resolved FREQ preset",
+      "candidates": 122,
+      "picks": 86,
+      "trades": 79,
+      "tradesPerWeek": 1.52,
+      "wr": 45.6,
+      "ret": 167.45,
+      "pf": 1.71,
+      "dd": 21.15,
+      "setups": {
+        "vah_breakout": {
+          "n": 31,
+          "pnl": 16.95791260632396,
+          "wins": 13
+        },
+        "val_breakdown": {
+          "n": 39,
+          "pnl": 139.22068262005837,
+          "wins": 20
+        },
+        "poc_bounce": {
+          "n": 2,
+          "pnl": -5.8640995528238955,
+          "wins": 1
+        },
+        "va_rejection": {
+          "n": 7,
+          "pnl": 1.3339560800682602,
+          "wins": 2
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "val_breakdown",
+        "poc_bounce",
+        "va_rejection",
+        "naked_poc"
+      ],
+      "htfAlign": true,
+      "htfSep": 0.0015
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "uniform_eth_shaped",
+      "label": "Uniform ETH-shaped (all setups + soft HTF)",
+      "candidates": 98,
+      "picks": 71,
+      "trades": 67,
+      "tradesPerWeek": 1.29,
+      "wr": 38.8,
+      "ret": -13.39,
+      "pf": 0.93,
+      "dd": 31.64,
+      "setups": {
+        "vah_breakout": {
+          "n": 29,
+          "pnl": -22.893790059899214,
+          "wins": 8
+        },
+        "val_breakdown": {
+          "n": 35,
+          "pnl": 5.545691307688438,
+          "wins": 16
+        },
+        "va_rejection": {
+          "n": 3,
+          "pnl": 9.481100942018106,
+          "wins": 2
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "val_breakdown",
+        "poc_bounce",
+        "va_rejection",
+        "naked_poc"
+      ],
+      "htfAlign": true,
+      "htfSep": 0.0015
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "resolved",
+      "label": "Coin-resolved FREQ preset",
+      "candidates": 291,
+      "picks": 159,
+      "trades": 143,
+      "tradesPerWeek": 2.75,
+      "wr": 30.8,
+      "ret": -58.6,
+      "pf": 0.84,
+      "dd": 60.2,
+      "setups": {
+        "va_rejection": {
+          "n": 58,
+          "pnl": -8.392668840392492,
+          "wins": 14
+        },
+        "vah_breakout": {
+          "n": 39,
+          "pnl": -20.446323379423134,
+          "wins": 11
+        },
+        "val_breakdown": {
+          "n": 46,
+          "pnl": -3.0573494197135673,
+          "wins": 19
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "val_breakdown",
+        "poc_bounce",
+        "va_rejection",
+        "naked_poc"
+      ],
+      "htfAlign": false,
+      "htfSep": 0.0035
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "btc_no_poc_rej",
+      "label": "BTC drop poc_bounce + va_rejection",
+      "candidates": 91,
+      "picks": 67,
+      "trades": 64,
+      "tradesPerWeek": 1.23,
+      "wr": 37.5,
+      "ret": -22.68,
+      "pf": 0.83,
+      "dd": 33.53,
+      "setups": {
+        "vah_breakout": {
+          "n": 29,
+          "pnl": -22.455471632466285,
+          "wins": 8
+        },
+        "val_breakdown": {
+          "n": 35,
+          "pnl": 5.3020419328549275,
+          "wins": 16
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "val_breakdown",
+        "naked_poc"
+      ],
+      "htfAlign": true,
+      "htfSep": 0.0015
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "btc_a_plus_b_breaks",
+      "label": "BTC breaks + lvn + naked only",
+      "candidates": 91,
+      "picks": 67,
+      "trades": 64,
+      "tradesPerWeek": 1.23,
+      "wr": 37.5,
+      "ret": -22.68,
+      "pf": 0.83,
+      "dd": 33.53,
+      "setups": {
+        "vah_breakout": {
+          "n": 29,
+          "pnl": -22.455471632466285,
+          "wins": 8
+        },
+        "val_breakdown": {
+          "n": 35,
+          "pnl": 5.3020419328549275,
+          "wins": 16
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "val_breakdown",
+        "naked_poc"
+      ],
+      "htfAlign": true,
+      "htfSep": 0.0015
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "btc_htf_tighter",
+      "label": "BTC all setups + HTF sep 0.25%",
+      "candidates": 77,
+      "picks": 61,
+      "trades": 59,
+      "tradesPerWeek": 1.13,
+      "wr": 32.2,
+      "ret": -36.32,
+      "pf": 0.66,
+      "dd": 41.6,
+      "setups": {
+        "vah_breakout": {
+          "n": 26,
+          "pnl": -19.921257802174587,
+          "wins": 7
+        },
+        "val_breakdown": {
+          "n": 31,
+          "pnl": -15.079496061236911,
+          "wins": 11
+        },
+        "poc_bounce": {
+          "n": 1,
+          "pnl": -2.4152030899100296,
+          "wins": 0
+        },
+        "va_rejection": {
+          "n": 1,
+          "pnl": 6.561416695816101,
+          "wins": 1
+        }
+      },
+      "allowed": [
+        "lvn_vacuum",
+        "vah_breakout",
+        "val_breakdown",
+        "poc_bounce",
+        "va_rejection",
+        "naked_poc"
+      ],
+      "htfAlign": true,
+      "htfSep": 0.0025
+    }
+  ]
+}

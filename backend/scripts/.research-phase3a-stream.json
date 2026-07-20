@@ -1,0 +1,103 @@
+{
+  "generatedAt": "2026-07-11T16:49:58.061Z",
+  "phase": "3A",
+  "strategy": "SCALP_MR",
+  "symbols": [
+    "BNBUSDT",
+    "ETHUSDT"
+  ],
+  "tf": "5m",
+  "from": "2025-01-01",
+  "to": "2026-06-01",
+  "holdoutFrac": 0.25,
+  "riskPct": 2,
+  "coins": {
+    "BNBUSDT": {
+      "research": {
+        "trades": 0,
+        "returnPct": 0,
+        "maxDdPct": 0,
+        "pf": 0,
+        "expectancy": 0
+      },
+      "holdout": {
+        "trades": 0,
+        "returnPct": 0,
+        "maxDdPct": 0,
+        "pf": 0,
+        "expectancy": 0,
+        "gates": {
+          "allPass": false,
+          "gates": {
+            "oosPositive": {
+              "pass": false,
+              "value": 0,
+              "threshold": "> 0"
+            },
+            "mcP5Positive": {
+              "pass": false,
+              "value": 0,
+              "threshold": "> 0"
+            },
+            "calmarOver1": {
+              "pass": false,
+              "value": 0,
+              "threshold": "> 1"
+            },
+            "wfDegradationOk": {
+              "pass": false,
+              "threshold": "< 35%"
+            }
+          }
+        },
+        "passes": false
+      }
+    },
+    "ETHUSDT": {
+      "research": {
+        "trades": 0,
+        "returnPct": 0,
+        "maxDdPct": 0,
+        "pf": 0,
+        "expectancy": 0
+      },
+      "holdout": {
+        "trades": 0,
+        "returnPct": 0,
+        "maxDdPct": 0,
+        "pf": 0,
+        "expectancy": 0,
+        "gates": {
+          "allPass": false,
+          "gates": {
+            "oosPositive": {
+              "pass": false,
+              "value": 0,
+              "threshold": "> 0"
+            },
+            "mcP5Positive": {
+              "pass": false,
+              "value": 0,
+              "threshold": "> 0"
+            },
+            "calmarOver1": {
+              "pass": false,
+              "value": 0,
+              "threshold": "> 1"
+            },
+            "wfDegradationOk": {
+              "pass": false,
+              "threshold": "< 35%"
+            }
+          }
+        },
+        "passes": false
+      }
+    }
+  },
+  "portfolio": {
+    "researchReturnPctSum": 0,
+    "holdoutReturnPctSum": 0,
+    "streamStatus": "flat"
+  }
+}

@@ -40,11 +40,14 @@ async function materializeCfg(runRow) {
   try {
     const { stripRuntimePollutionFromBot, mergeMissingSignalBrainBot, sanitizeSignalBrainCfgRaw } =
       await import("../src/lib/strategySignalBrain.js");
+    const { sanitizeCfgForStrategy } = await import("../src/strategy/strategyConfigProfile.js");
     stripRuntimePollutionFromBot(cfg);
     if (runRow.strategy_cfg_raw && typeof runRow.strategy_cfg_raw === "object") {
-      const versionBrain = sanitizeSignalBrainCfgRaw(runRow.strategy_cfg_raw).bot ?? {};
+      const versionBrain = sanitizeSignalBrainCfgRaw(runRow.strategy_cfg_raw, { hydrate: true }).bot ?? {};
       mergeMissingSignalBrainBot(cfg, versionBrain);
     }
+    const stratKey = String(cfg.manualStrategy ?? "").toUpperCase();
+    Object.assign(cfg, sanitizeCfgForStrategy(stratKey, cfg, { phase: "runtime" }));
   } catch {
     /* optional */
   }
@@ -52,18 +55,18 @@ async function materializeCfg(runRow) {
     const { materializeIntradayEngineCfgSync } = await import("../src/strategy/presets/srIntradayOptimized.js");
     const { materializeIntradayPanelOnCfg } = await import("../src/strategy/intradayPanelKeys.js");
     const { ensureBacktestMarketMode, applyInstanceOperationalToBot } = await import("../src/lib/strategyInstanceSplit.js");
-    const { normalizeEliteStRunCfg } = await import("../strategy/supertrendElite.js");
+    const { normalizeEliteStRunCfg } = await import("../src/strategy/supertrendElite.js");
     const stratEarly = String(cfg.manualStrategy ?? "").toUpperCase();
     if (stratEarly === "SITUATION_INTRADAY") {
-      const { resolveSituationRouterCfg } = await import("../strategy/situationIntraday.js");
+      const { resolveSituationRouterCfg } = await import("../src/strategy/situationIntraday.js");
       cfg = resolveSituationRouterCfg(cfg);
       cfg._intradayEngineMaterialized = true;
     } else if (stratEarly === "CRT_TBS") {
-      const { resolveCrtTbsCfg } = await import("../strategy/crtTbsIntraday.js");
+      const { resolveCrtTbsCfg } = await import("../src/strategy/crtTbsIntraday.js");
       cfg = resolveCrtTbsCfg(cfg);
       cfg._intradayEngineMaterialized = true;
     } else if (stratEarly === "TOKYO_SESSION") {
-      const { resolveTokyoSessionCfg } = await import("../strategy/tokyoSessionIntraday.js");
+      const { resolveTokyoSessionCfg } = await import("../src/strategy/tokyoSessionIntraday.js");
       cfg = resolveTokyoSessionCfg(cfg);
       cfg._intradayEngineMaterialized = true;
     } else if (stratEarly === "SUPERTREND_ELITE" || stratEarly === "UNIFIED_ELITE") {
@@ -120,6 +123,24 @@ const funding = isFutures ? await readFundingRates(run.symbol, fromMs, toMs).cat
 let simCfg = { ...cfg };
 if (isFutures) simCfg = await applyBacktestBracketCap(simCfg, run.symbol);
 
+let sharedTrailMicro = null;
+async function resolveTrailMicroForCfg(c) {
+  const futuresTrailMode = String(c?.futuresTrailingStopMode ?? "SUPERTREND").toUpperCase();
+  const trailEnabled =
+    c?.trailingStopLossAuto === true && isFutures && futuresTrailMode !== "OFF";
+  if (!trailEnabled) return null;
+  if (sharedTrailMicro) return sharedTrailMicro;
+  const { buildTrailMicroContext } = await import("../src/backtest/engine/trailMicroSim.js");
+  sharedTrailMicro = await buildTrailMicroContext({
+    symbol: run.symbol,
+    fromMs,
+    toMs,
+    cfg: c,
+    trailEnabled: true,
+  });
+  return sharedTrailMicro;
+}
+
 async function runReplay(label, baseCfg) {
   let c = { ...baseCfg };
   if (isFutures) c = await applyBacktestBracketCap(c, run.symbol);
@@ -131,6 +152,7 @@ async function runReplay(label, baseCfg) {
     candles,
     fromMs,
   });
+  const trailMicro = await resolveTrailMicroForCfg(c);
   const s = await runSimulation({
     strategyKey,
     candles,
@@ -141,6 +163,7 @@ async function runReplay(label, baseCfg) {
     timeframe: run.timeframe,
     adapters: ad,
     symbol: run.symbol,
+    trailMicro,
   });
   const m = computeAllMetrics({
     trades: s.trades,

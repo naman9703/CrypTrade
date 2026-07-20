@@ -10,20 +10,42 @@ import {
   resolveEliteBracketCfg,
 } from "./supertrendElite.js";
 
-test("sanitizeEliteStContamination resets Supertrend ladder trail knobs that break 1H Elite", () => {
-  const poisoned = {
+test("sanitizeEliteStContamination preserves saved trailing-stop panel knobs", () => {
+  const saved = {
     trailingStopLossAuto: true,
+    futuresTrailingStopMode: "SUPERTREND",
+    futuresTrailingStAdvanced: true,
+    futuresTrailingStFeeBreakeven: true,
     trailBufferMode: "ATR",
     trailBufferRate: 0.0015,
     trailBufferAtrMult: 0.5,
     trailPostT02ActivationBufferRate: 0.0025,
     trailPostT02SpacingFrac: 0.002,
     trailActivationSlippageFrac: 0.0002,
+    trailT01LockSlippageFrac: 0.0001,
+    trailMinSlDistFrac: 0.003,
+    trailMinGapFromMarkFrac: 0.005,
+    trailMaintMarginRate: 0.006,
+    trailPostT02MaxExtraTiers: 120,
+    trailSizingMode: "DYNAMIC",
+    trailDynamicBeAtrMult: 0.6,
+    trailDynamicAdvAtrHwmMult: 1.1,
   };
-  const out = normalizeEliteStRunCfg(poisoned);
-  for (const [k, v] of Object.entries(ELITE_ST_TRAIL_PATCH)) {
-    assert.equal(out[k], v, `expected ${k}`);
-  }
+  const out = normalizeEliteStRunCfg(saved);
+  assert.equal(out.trailBufferMode, "ATR");
+  assert.equal(out.trailSizingMode, "DYNAMIC");
+  assert.equal(out.trailDynamicBeAtrMult, 0.6);
+  assert.equal(out.trailDynamicAdvAtrHwmMult, 1.1);
+  assert.equal(out.trailBufferRate, 0.0015);
+  assert.equal(out.trailBufferAtrMult, 0.5);
+  assert.equal(out.trailPostT02ActivationBufferRate, 0.0025);
+  assert.equal(out.trailPostT02SpacingFrac, 0.002);
+  assert.equal(out.trailActivationSlippageFrac, 0.0002);
+  assert.equal(out.trailT01LockSlippageFrac, 0.0001);
+  assert.equal(out.trailMinSlDistFrac, 0.003);
+  assert.equal(out.trailMinGapFromMarkFrac, 0.005);
+  assert.equal(out.trailMaintMarginRate, 0.006);
+  assert.equal(out.trailPostT02MaxExtraTiers, 120);
 });
 
 test("sanitizeEliteStContamination preserves saved 1H EMA min sep per symbol", () => {

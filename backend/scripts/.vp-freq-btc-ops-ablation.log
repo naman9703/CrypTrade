@@ -1,0 +1,77 @@
+loading candles once…
+locked                           N= 30 0.14/wk ret=  49.1% DD= 19.9% neg=none
+  2022-23: n=8 ret=5.1%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=9 ret=11.5%
+  2025-26: n=10 ret=17.5%
+maxDay2                          N= 33 0.16/wk ret=  48.4% DD= 22.2% neg=none
+  2022-23: n=9 ret=2.2%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=10 ret=8.4%
+  2025-26: n=11 ret=23.8%
+maxDay3                          N= 34 0.16/wk ret=  44.2% DD= 22.2% neg=2022-23
+  2022-23: n=10 ret=-0.7%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=10 ret=8.4%
+  2025-26: n=11 ret=23.8%
+gap2                             N= 30 0.14/wk ret=  49.1% DD= 19.9% neg=none
+  2022-23: n=8 ret=5.1%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=9 ret=11.5%
+  2025-26: n=10 ret=17.5%
+gap1                             N= 30 0.14/wk ret=  49.1% DD= 19.9% neg=none
+  2022-23: n=8 ret=5.1%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=9 ret=11.5%
+  2025-26: n=10 ret=17.5%
+gap0                             N= 30 0.14/wk ret=  49.1% DD= 19.9% neg=none
+  2022-23: n=8 ret=5.1%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=9 ret=11.5%
+  2025-26: n=10 ret=17.5%
+score6                           N= 31 0.15/wk ret=  62.3% DD= 19.9% neg=none
+  2022-23: n=8 ret=5.1%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=10 ret=21.4%
+  2025-26: n=10 ret=17.5%
+score5                           N= 31 0.15/wk ret=  62.3% DD= 19.9% neg=none
+  2022-23: n=8 ret=5.1%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=10 ret=21.4%
+  2025-26: n=10 ret=17.5%
+max2_gap1                        N= 33 0.16/wk ret=  48.4% DD= 22.2% neg=none
+  2022-23: n=9 ret=2.2%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=10 ret=8.4%
+  2025-26: n=11 ret=23.8%
+max2_gap1_score6                 N= 34 0.16/wk ret=  61.5% DD= 22.2% neg=none
+  2022-23: n=9 ret=2.2%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=11 ret=18.0%
+  2025-26: n=11 ret=23.8%
+max3_gap0_score5                 N= 35 0.17/wk ret=  57.0% DD= 22.2% neg=2022-23
+  2022-23: n=10 ret=-0.7%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=11 ret=18.0%
+  2025-26: n=11 ret=23.8%
+no_weakBear_max2_gap1            N= 36 0.17/wk ret=  33.9% DD= 24.6% neg=none
+  2022-23: n=9 ret=2.2%
+  2023-24: n=5 ret=0.8%
+  2024-25: n=11 ret=5.0%
+  2025-26: n=11 ret=23.8%
+no_macro_max2_gap1               N= 36 0.17/wk ret=  33.9% DD= 24.6% neg=none
+  2022-23: n=9 ret=2.2%
+  2023-24: n=5 ret=0.8%
+  2024-25: n=11 ret=5.0%
+  2025-26: n=11 ret=23.8%
+htf04_max2_gap1                  N= 37 0.18/wk ret=  31.5% DD= 22.2% neg=2022-23
+  2022-23: n=10 ret=-0.7%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=12 ret=1.8%
+  2025-26: n=12 ret=20.2%
+htf04_weak08_max2_gap1           N= 37 0.18/wk ret=  31.5% DD= 22.2% neg=2022-23
+  2022-23: n=10 ret=-0.7%
+  2023-24: n=3 ret=8.3%
+  2024-25: n=12 ret=1.8%
+  2025-26: n=12 ret=20.2%
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-btc-ops-ablation.json

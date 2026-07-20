@@ -1,0 +1,21 @@
+
+=== SUPERTREND_ELITE PORTFOLIO — BTCUSDT, BNBUSDT, ETHUSDT, LINKUSDT, XRPUSDT 15m 2025-01-01->2026-06-01 ===
+uniform config m3/adx20 (no per-coin tuning) · span≈17.0 months
+
+Per-coin edge:
+coin        trades    WR%    expR
+BTCUSDT         23     39  -0.027
+BNBUSDT         19     32   0.046
+ETHUSDT         15     60   0.150
+LINKUSDT         5     80   0.230
+XRPUSDT          7     43   0.179
+TOTAL           69  (4.1/month across portfolio)
+
+Portfolio (shared account, compounding, risk% of equity per trade):
+ risk%   totRet%  monthly%    CAGR%   maxDD%  Calmar    finalEq$
+     5      24.2       1.3     16.6     16.5    1.01        1242
+    10      46.2       2.3     30.9     31.0    1.00        1462
+    15      63.1       2.9     41.4     43.7    0.95        1631
+    20      72.3       3.3     47.0     54.8    0.86        1723
+    25      72.0       3.2     46.8     64.2    0.73        1720
+    30      61.5       2.9     40.4     72.3    0.56        1615

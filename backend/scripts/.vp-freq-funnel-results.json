@@ -1,0 +1,115 @@
+{
+  "window": "2025-01-01→2026-06-01",
+  "risk": 2.5,
+  "symbols": [
+    "BNBUSDT",
+    "ETHUSDT"
+  ],
+  "target": {
+    "tradesPerDay": 1,
+    "minReturnPct": 0,
+    "minPf": 1
+  },
+  "rows": [
+    {
+      "symbol": "BNBUSDT",
+      "variant": "tier_a",
+      "label": "Tier-A baseline (over-gated)",
+      "candidates": 3,
+      "picks": 3,
+      "trades": 3,
+      "tradesPerDay": 0.006,
+      "tradesPerWeek": 0.04,
+      "wr": 66.7,
+      "ret": 12.21,
+      "pf": 4.93,
+      "dd": 2.91,
+      "setups": {
+        "vah_breakout": {
+          "n": 1,
+          "pnl": 6.661014934184385
+        },
+        "val_breakdown": {
+          "n": 2,
+          "pnl": 5.546469563239286
+        }
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "freq",
+      "label": "FREQ coin-resolved (BNB no-rej / ETH soft HTF)",
+      "candidates": 79,
+      "picks": 55,
+      "trades": 49,
+      "tradesPerDay": 0.095,
+      "tradesPerWeek": 0.66,
+      "wr": 42.9,
+      "ret": 7.53,
+      "pf": 1.04,
+      "dd": 18.64,
+      "setups": {
+        "vah_breakout": {
+          "n": 49,
+          "pnl": 3.307301659438638
+        }
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "tier_a",
+      "label": "Tier-A baseline (over-gated)",
+      "candidates": 14,
+      "picks": 14,
+      "trades": 13,
+      "tradesPerDay": 0.025,
+      "tradesPerWeek": 0.18,
+      "wr": 30.8,
+      "ret": 16.93,
+      "pf": 1.31,
+      "dd": 11.42,
+      "setups": {
+        "vah_breakout": {
+          "n": 8,
+          "pnl": -14.859443337052099
+        },
+        "val_breakdown": {
+          "n": 5,
+          "pnl": 23.4506169046046
+        }
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "freq",
+      "label": "FREQ coin-resolved (BNB no-rej / ETH soft HTF)",
+      "candidates": 194,
+      "picks": 131,
+      "trades": 125,
+      "tradesPerDay": 0.242,
+      "tradesPerWeek": 1.7,
+      "wr": 40,
+      "ret": 189.69,
+      "pf": 1.57,
+      "dd": 31.22,
+      "setups": {
+        "val_breakdown": {
+          "n": 58,
+          "pnl": 136.8517340465895
+        },
+        "va_rejection": {
+          "n": 13,
+          "pnl": 19.20037581873376
+        },
+        "vah_breakout": {
+          "n": 52,
+          "pnl": 2.509783079657028
+        },
+        "poc_bounce": {
+          "n": 2,
+          "pnl": 25.139802877729203
+        }
+      }
+    }
+  ]
+}

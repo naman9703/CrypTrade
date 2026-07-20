@@ -357,6 +357,6 @@ console.log(`\nNotes:`);
 console.log(`- Per-coin dynamic auto-tune (profile → sep/ST/brackets) applies only to SUPERTREND_ELITE / UNIFIED_ELITE when dynamic=Y.`);
 console.log(`- Other strategies use static optimized presets (mostly tuned on 15m/BNB; 1h portfolio may underperform).`);
 console.log(`- Portfolio replay: equal capital slice, shared account compounding (${PORTFOLIO.length} coins).`);
-console.log(`- Only SUPERTREND_ELITE passes full OOS validation in research; high % figures can still be window/sizing sensitive.`);
+console.log(`- No strategy currently certified deployable; high % figures can still be window/sizing/trailing sensitive.`);
 
 await closePool?.();

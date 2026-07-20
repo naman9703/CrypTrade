@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-07-20T06:54:54.519Z",
+  "metrics": {
+    "n": 174,
+    "ret": 259.4617489536906,
+    "dd": 28.915550265045454,
+    "calmar": 0.7779341313900355
+  },
+  "cells": {
+    "[OBJECT OBJECT]|undefined|undefined|undefined": {
+      "n": 174,
+      "wr": 39.6551724137931,
+      "net": 259.4617489536903,
+      "avg": 1.4911594767453464
+    }
+  },
+  "cells2324": {
+    "[OBJECT OBJECT]|undefined|undefined|undefined": {
+      "n": 19,
+      "wr": 21.052631578947366,
+      "net": -69.88288046665971,
+      "avg": -3.678046340350511
+    }
+  }
+}

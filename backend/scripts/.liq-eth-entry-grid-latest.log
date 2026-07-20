@@ -1,0 +1,18 @@
+
+=== full_year ===
+full_year/new_preset         n   1 ret   -0.3% WR   0% PF 0.00
+full_year/score_35           n   1 ret   -0.3% WR   0% PF 0.00
+full_year/score_45           n   1 ret   -0.3% WR   0% PF 0.00
+full_year/no_sweep_quality   n  11 ret   -0.5% WR  18% PF 0.84
+full_year/no_poke_wick       n   5 ret   -0.7% WR  20% PF 0.37
+full_year/hold_1             n   1 ret    0.3% WR 100% PF 999.00
+full_year/pdh_pdl_only       n   0 ret    0.0% WR   0% PF 0.00
+
+=== jan_may_2026 ===
+jan_may_2026/new_preset      n   0 ret    0.0% WR   0% PF 0.00
+jan_may_2026/score_35        n   0 ret    0.0% WR   0% PF 0.00
+jan_may_2026/score_45        n   0 ret    0.0% WR   0% PF 0.00
+jan_may_2026/no_sweep_quality n   4 ret   -1.1% WR   0% PF 0.00
+jan_may_2026/no_poke_wick    n   3 ret   -0.8% WR   0% PF 0.00
+jan_may_2026/hold_1          n   0 ret    0.0% WR   0% PF 0.00
+jan_may_2026/pdh_pdl_only    n   0 ret    0.0% WR   0% PF 0.00

@@ -1,0 +1,91 @@
+{
+  "window": "2025-01-01→2026-06-01",
+  "preset": "VOLUME_PROFILE_15M rolling Tier-A",
+  "coins": [
+    {
+      "sym": "BNBUSDT",
+      "trades": 3,
+      "wr": 66.7,
+      "ret": 11.91,
+      "pf": 4.67,
+      "dd": 3.04,
+      "calmar": 2.72,
+      "picks": 3
+    },
+    {
+      "sym": "ETHUSDT",
+      "trades": 13,
+      "wr": 30.8,
+      "ret": 6.88,
+      "pf": 1.26,
+      "dd": 11.9,
+      "calmar": 0.4,
+      "picks": 13
+    },
+    {
+      "sym": "BTCUSDT",
+      "trades": 2,
+      "wr": 0,
+      "ret": -5.87,
+      "pf": 0,
+      "dd": 5.87,
+      "calmar": -0.71,
+      "picks": 2
+    }
+  ],
+  "portfolio": {
+    "coins": "BNB+ETH",
+    "risk2_5": {
+      "n": 16,
+      "ret": 19.61,
+      "cagr": 13.47,
+      "maxDD": 11.9,
+      "calmar": 1.13
+    },
+    "risk5": {
+      "n": 16,
+      "ret": 36.22,
+      "cagr": 24.38,
+      "maxDD": 23.13,
+      "calmar": 1.05
+    }
+  },
+  "ethGates": {
+    "folds": [
+      {
+        "fold": 0,
+        "trainN": 6,
+        "testN": 4,
+        "testRet": -2.29
+      },
+      {
+        "fold": 1,
+        "trainN": 10,
+        "testN": 1,
+        "testRet": 13.68
+      },
+      {
+        "fold": 2,
+        "trainN": 11,
+        "testN": 2,
+        "testRet": 5.9
+      },
+      {
+        "fold": 3,
+        "trainN": 13,
+        "testN": 0,
+        "testRet": 0
+      }
+    ],
+    "mcP5": -8.37,
+    "wfDeg": -878.3,
+    "oosSum": 17.29,
+    "allPass": false,
+    "gates": {
+      "oosPositive": true,
+      "mcP5Positive": false,
+      "calmarOver1": false,
+      "wfDegradationOk": true
+    }
+  }
+}

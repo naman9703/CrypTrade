@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Deep validation of SUPERTREND_ELITE — the only strategy showing a real edge.
+ * Deep validation of SUPERTREND_ELITE (research candidate).
+ * Prior “only validated edge” claims are revoked until correct trailing is used.
  *
  * - Param sweep (multiplier × minAdx × HTF-gate toggles) per symbol, full history.
  * - Walk-forward (purged, embargo) + Monte Carlo + acceptance gates on the best.
@@ -31,7 +32,11 @@ const { readCandles } = await import("../src/backtest/data/klineIngest.js");
 const { readFundingRates } = await import("../src/backtest/data/fundingIngest.js");
 const { runSimulation } = await import("../src/backtest/engine/runner.js");
 const { computeAllMetrics, rMultipleStats } = await import("../src/backtest/engine/metrics.js");
-const { buildEliteStBacktestAdapter, buildEliteStOptsFromCfg } = await import("../src/strategy/supertrendElite.js");
+const {
+  buildEliteStBacktestAdapter,
+  buildEliteStOptsFromCfg,
+  applyEliteStExitContract,
+} = await import("../src/strategy/supertrendElite.js");
 const { monteCarloBootstrap, purgedWalkForwardSplits, acceptanceGates } = await import(
   "../src/backtest/engine/validation.js"
 );
@@ -40,7 +45,7 @@ const fromMs = new Date(FROM).getTime();
 const toMs = new Date(TO).getTime();
 
 function eliteCfg(sym, over = {}) {
-  return {
+  return applyEliteStExitContract({
     symbol: sym,
     marketMode: "FUTURES",
     futuresLeverage: LEVERAGE,
@@ -48,12 +53,6 @@ function eliteCfg(sym, over = {}) {
     riskPerTrade: RISK_PCT,
     riskPerTradeUnit: "PCT",
     slippagePct: 0.0005,
-    // Elite ST: trailing Supertrend exit, exit on flip (let winners run).
-    trailingStopLossAuto: true,
-    futuresTrailingStopMode: "SUPERTREND",
-    supertrendFuturesExitOnFlip: true,
-    supertrendFuturesFixedSlPct: 0,
-    supertrendFuturesFixedTpPct: 0,
     supertrendWilderAtr: true,
     supertrendPeriod: 10,
     supertrendMultiplier: 3.0,
@@ -64,7 +63,7 @@ function eliteCfg(sym, over = {}) {
     eliteStMinVolumeVsAvg: 1.5,
     eliteStRequireAtrExpansion: true,
     ...over,
-  };
+  });
 }
 
 const data = {};

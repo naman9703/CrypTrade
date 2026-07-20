@@ -1,0 +1,38 @@
+
+> backend@0.1.0 research:bybit:proxy-validate
+> node scripts/research-bybit-proxy-validate.mjs
+
+Proxy validate BTCUSDT...
+Proxy validate BNBUSDT...
+Proxy validate ETHUSDT...
+Proxy validate SOLUSDT...
+Proxy validate XRPUSDT...
+# Source Fidelity
+
+| Feature | Source | Fidelity | Proxy validation required | Auto-promotion |
+|---------|--------|----------|-------------------------|----------------|
+| binance_funding_rate | binance | Native | no | yes |
+| binance_funding_zscore | binance | Native | no | yes |
+| binance_oi_usdt | binance | Native | no | no |
+| binance_oi_change_4h | binance | Native | no | no |
+| binance_oi_change_24h | binance | Native | no | no |
+| binance_long_short_ratio | binance | Native | no | no |
+| bybit_oi_usdt | bybit | Cross-venue Proxy | yes | no |
+| bybit_oi_change_4h | bybit | Cross-venue Proxy | yes | no |
+| bybit_oi_change_24h | bybit | Cross-venue Proxy | yes | no |
+| bybit_long_short_ratio | bybit | Cross-venue Proxy | yes | no |
+| coinalyze_daily_oi | coinalyze | Native Daily | no | no |
+
+## Proxy validation (Bybit vs Binance OI)
+
+| Symbol | Pearson | Spearman | Same-direction 4h % | Regime agree % |
+|--------|---------|----------|---------------------|----------------|
+| BTCUSDT | — | — | — | — |
+| BNBUSDT | — | — | — | — |
+| ETHUSDT | — | — | — | — |
+| SOLUSDT | — | — | — | — |
+| XRPUSDT | — | — | — | — |
+
+> Cross-venue proxy features require proxy validation + discrimination evidence before production promotion.
+
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.research-bybit-proxy-validation.json

@@ -1,0 +1,21 @@
+# Phase 3B Portfolio Simulator
+
+**SUPERTREND_ELITE** · BTCUSDT, BNBUSDT, ETHUSDT, LINKUSDT, XRPUSDT · 2025-01-01 → 2026-06-01
+
+## Full window
+
+| Policy | Return% | MaxDD% | Calmar | Trades | Final $ |
+|--------|---------|--------|--------|--------|---------|
+| Null Policy | 0.5 | — | — | 69 | 10048 |
+| Equal-weight slice | 1.0 | 0.7 | 0.99 | 69 | 10098 |
+| R-multiple portfolio (5% risk) | 24.2 | 16.5 | 1.01 | 69 | 12424 |
+
+## Holdout (last 25%)
+
+| Policy | Return% | MaxDD% | Calmar | Trades |
+|--------|---------|--------|--------|--------|
+| Null Policy | 0.1 | — | — | 23 |
+| Equal-weight slice | 0.3 | 0.1 | 7.27 | 23 |
+| R-multiple portfolio (5% risk) | 6.3 | 2.5 | 7.69 | 23 |
+
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.research-phase3b-portfolio-sim.json

@@ -1,0 +1,571 @@
+{
+  "generatedAt": "2026-07-17T07:06:02.771Z",
+  "results": [
+    {
+      "window": "oos_2020-21",
+      "label": "0_locked_baseline",
+      "n": 24,
+      "tPerWk": 0.2968197879858657,
+      "ret": 19.576388069724814,
+      "dd": 9.053513020780159,
+      "wr": 58.333333333333336,
+      "bySetup": {
+        "BUY:va_rejection": {
+          "n": 2,
+          "net": 1.235700571300388
+        },
+        "BUY:vah_breakout": {
+          "n": 17,
+          "net": 18.11763619306125
+        },
+        "SELL:va_rejection": {
+          "n": 1,
+          "net": -3.204826767453149
+        },
+        "SELL:val_breakdown": {
+          "n": 4,
+          "net": 3.427878072816319
+        }
+      }
+    },
+    {
+      "window": "oos_2020-21",
+      "label": "1_buy_rej_score5",
+      "n": 24,
+      "tPerWk": 0.2968197879858657,
+      "ret": 19.576388069724814,
+      "dd": 9.053513020780159,
+      "wr": 58.333333333333336,
+      "bySetup": {
+        "BUY:va_rejection": {
+          "n": 2,
+          "net": 1.235700571300388
+        },
+        "BUY:vah_breakout": {
+          "n": 17,
+          "net": 18.11763619306125
+        },
+        "SELL:va_rejection": {
+          "n": 1,
+          "net": -3.204826767453149
+        },
+        "SELL:val_breakdown": {
+          "n": 4,
+          "net": 3.427878072816319
+        }
+      }
+    },
+    {
+      "window": "oos_2020-21",
+      "label": "2_rej_wick_soft",
+      "n": 21,
+      "tPerWk": 0.2597173144876325,
+      "ret": 22.6192848600474,
+      "dd": 8.1795943984471,
+      "wr": 61.904761904761905,
+      "bySetup": {
+        "BUY:vah_breakout": {
+          "n": 17,
+          "net": 19.104176529202988
+        },
+        "SELL:val_breakdown": {
+          "n": 4,
+          "net": 3.515108330844415
+        }
+      }
+    },
+    {
+      "window": "oos_2020-21",
+      "label": "3_add_poc_bounce",
+      "n": 24,
+      "tPerWk": 0.2968197879858657,
+      "ret": 19.576388069724814,
+      "dd": 9.053513020780159,
+      "wr": 58.333333333333336,
+      "bySetup": {
+        "BUY:va_rejection": {
+          "n": 2,
+          "net": 1.235700571300388
+        },
+        "BUY:vah_breakout": {
+          "n": 17,
+          "net": 18.11763619306125
+        },
+        "SELL:va_rejection": {
+          "n": 1,
+          "net": -3.204826767453149
+        },
+        "SELL:val_breakdown": {
+          "n": 4,
+          "net": 3.427878072816319
+        }
+      }
+    },
+    {
+      "window": "oos_2020-21",
+      "label": "4_max3_gap0",
+      "n": 24,
+      "tPerWk": 0.2968197879858657,
+      "ret": 19.576388069724814,
+      "dd": 9.053513020780159,
+      "wr": 58.333333333333336,
+      "bySetup": {
+        "BUY:va_rejection": {
+          "n": 2,
+          "net": 1.235700571300388
+        },
+        "BUY:vah_breakout": {
+          "n": 17,
+          "net": 18.11763619306125
+        },
+        "SELL:va_rejection": {
+          "n": 1,
+          "net": -3.204826767453149
+        },
+        "SELL:val_breakdown": {
+          "n": 4,
+          "net": 3.427878072816319
+        }
+      }
+    },
+    {
+      "window": "oos_2021-22",
+      "label": "0_locked_baseline",
+      "n": 18,
+      "tPerWk": 0.36627906976744184,
+      "ret": 7.4891785330459015,
+      "dd": 13.676999575459503,
+      "wr": 50,
+      "bySetup": {
+        "BUY:vah_breakout": {
+          "n": 5,
+          "net": -2.302682611922967
+        },
+        "SELL:val_breakdown": {
+          "n": 12,
+          "net": 4.116948478375662
+        },
+        "BUY:va_rejection": {
+          "n": 1,
+          "net": 5.674912666593211
+        }
+      }
+    },
+    {
+      "window": "oos_2021-22",
+      "label": "1_buy_rej_score5",
+      "n": 18,
+      "tPerWk": 0.36627906976744184,
+      "ret": 7.4891785330459015,
+      "dd": 13.676999575459503,
+      "wr": 50,
+      "bySetup": {
+        "BUY:vah_breakout": {
+          "n": 5,
+          "net": -2.302682611922967
+        },
+        "SELL:val_breakdown": {
+          "n": 12,
+          "net": 4.116948478375662
+        },
+        "BUY:va_rejection": {
+          "n": 1,
+          "net": 5.674912666593211
+        }
+      }
+    },
+    {
+      "window": "oos_2021-22",
+      "label": "2_rej_wick_soft",
+      "n": 17,
+      "tPerWk": 0.34593023255813954,
+      "ret": 1.6263056641532643,
+      "dd": 13.676999575459503,
+      "wr": 47.05882352941176,
+      "bySetup": {
+        "BUY:vah_breakout": {
+          "n": 5,
+          "net": -2.302682611922967
+        },
+        "SELL:val_breakdown": {
+          "n": 12,
+          "net": 3.9289882760762507
+        }
+      }
+    },
+    {
+      "window": "oos_2021-22",
+      "label": "3_add_poc_bounce",
+      "n": 21,
+      "tPerWk": 0.4273255813953488,
+      "ret": 10.344184086796133,
+      "dd": 11.38418601978905,
+      "wr": 47.61904761904761,
+      "bySetup": {
+        "BUY:vah_breakout": {
+          "n": 5,
+          "net": -2.3362448152793776
+        },
+        "SELL:poc_bounce": {
+          "n": 3,
+          "net": 2.4054202602161743
+        },
+        "SELL:val_breakdown": {
+          "n": 12,
+          "net": 4.449365386370712
+        },
+        "BUY:va_rejection": {
+          "n": 1,
+          "net": 5.825643255488632
+        }
+      }
+    },
+    {
+      "window": "oos_2021-22",
+      "label": "4_max3_gap0",
+      "n": 18,
+      "tPerWk": 0.36627906976744184,
+      "ret": 7.4891785330459015,
+      "dd": 13.676999575459503,
+      "wr": 50,
+      "bySetup": {
+        "BUY:vah_breakout": {
+          "n": 5,
+          "net": -2.302682611922967
+        },
+        "SELL:val_breakdown": {
+          "n": 12,
+          "net": 4.116948478375662
+        },
+        "BUY:va_rejection": {
+          "n": 1,
+          "net": 5.674912666593211
+        }
+      }
+    },
+    {
+      "window": "lock_2022-26",
+      "label": "0_locked_baseline",
+      "n": 32,
+      "tPerWk": 0.15342465753424656,
+      "ret": 115.31442553034898,
+      "dd": 8.888822385017608,
+      "wr": 65.625,
+      "bySetup": {
+        "BUY:va_rejection": {
+          "n": 5,
+          "net": 53.657305307722396
+        },
+        "SELL:val_breakdown": {
+          "n": 15,
+          "net": 21.588231245016868
+        },
+        "BUY:vah_breakout": {
+          "n": 11,
+          "net": 19.66501262666665
+        },
+        "SELL:va_rejection": {
+          "n": 1,
+          "net": 20.403876350943055
+        }
+      }
+    },
+    {
+      "window": "lock_2022-26",
+      "label": "1_buy_rej_score5",
+      "n": 32,
+      "tPerWk": 0.15342465753424656,
+      "ret": 115.31442553034898,
+      "dd": 8.888822385017608,
+      "wr": 65.625,
+      "bySetup": {
+        "BUY:va_rejection": {
+          "n": 5,
+          "net": 53.657305307722396
+        },
+        "SELL:val_breakdown": {
+          "n": 15,
+          "net": 21.588231245016868
+        },
+        "BUY:vah_breakout": {
+          "n": 11,
+          "net": 19.66501262666665
+        },
+        "SELL:va_rejection": {
+          "n": 1,
+          "net": 20.403876350943055
+        }
+      }
+    },
+    {
+      "window": "lock_2022-26",
+      "label": "2_rej_wick_soft",
+      "n": 27,
+      "tPerWk": 0.12945205479452054,
+      "ret": 45.41890657451913,
+      "dd": 11.486962582378023,
+      "wr": 62.96296296296296,
+      "bySetup": {
+        "SELL:val_breakdown": {
+          "n": 15,
+          "net": 15.953546244163949
+        },
+        "BUY:vah_breakout": {
+          "n": 11,
+          "net": 16.30019981792168
+        },
+        "SELL:va_rejection": {
+          "n": 1,
+          "net": 13.165160512433467
+        }
+      }
+    },
+    {
+      "window": "lock_2022-26",
+      "label": "3_add_poc_bounce",
+      "n": 34,
+      "tPerWk": 0.16301369863013698,
+      "ret": 100.84481520667313,
+      "dd": 10.121153467757772,
+      "wr": 61.76470588235294,
+      "bySetup": {
+        "BUY:va_rejection": {
+          "n": 5,
+          "net": 52.40061274900286
+        },
+        "SELL:val_breakdown": {
+          "n": 15,
+          "net": 19.78152144246032
+        },
+        "BUY:vah_breakout": {
+          "n": 11,
+          "net": 19.218037023810204
+        },
+        "BUY:poc_bounce": {
+          "n": 1,
+          "net": -3.442022712609911
+        },
+        "SELL:poc_bounce": {
+          "n": 1,
+          "net": -6.146023581887405
+        },
+        "SELL:va_rejection": {
+          "n": 1,
+          "net": 19.032690285897
+        }
+      }
+    },
+    {
+      "window": "lock_2022-26",
+      "label": "4_max3_gap0",
+      "n": 32,
+      "tPerWk": 0.15342465753424656,
+      "ret": 115.31442553034898,
+      "dd": 8.888822385017608,
+      "wr": 65.625,
+      "bySetup": {
+        "BUY:va_rejection": {
+          "n": 5,
+          "net": 53.657305307722396
+        },
+        "SELL:val_breakdown": {
+          "n": 15,
+          "net": 21.588231245016868
+        },
+        "BUY:vah_breakout": {
+          "n": 11,
+          "net": 19.66501262666665
+        },
+        "SELL:va_rejection": {
+          "n": 1,
+          "net": 20.403876350943055
+        }
+      }
+    },
+    {
+      "window": "full_2020-26",
+      "label": "0_locked_baseline",
+      "n": 75,
+      "tPerWk": 0.2241673783091375,
+      "ret": 145.39165816209834,
+      "dd": 13.6769995754595,
+      "wr": 57.333333333333336,
+      "bySetup": {
+        "BUY:va_rejection": {
+          "n": 7,
+          "net": 62.5993125365859
+        },
+        "BUY:vah_breakout": {
+          "n": 33,
+          "net": 37.7761861325879
+        },
+        "SELL:va_rejection": {
+          "n": 2,
+          "net": 20.049263330595586
+        },
+        "SELL:val_breakdown": {
+          "n": 33,
+          "net": 24.96689616232902
+        }
+      }
+    },
+    {
+      "window": "full_2020-26",
+      "label": "1_buy_rej_score5",
+      "n": 75,
+      "tPerWk": 0.2241673783091375,
+      "ret": 145.39165816209834,
+      "dd": 13.6769995754595,
+      "wr": 57.333333333333336,
+      "bySetup": {
+        "BUY:va_rejection": {
+          "n": 7,
+          "net": 62.5993125365859
+        },
+        "BUY:vah_breakout": {
+          "n": 33,
+          "net": 37.7761861325879
+        },
+        "SELL:va_rejection": {
+          "n": 2,
+          "net": 20.049263330595586
+        },
+        "SELL:val_breakdown": {
+          "n": 33,
+          "net": 24.96689616232902
+        }
+      }
+    },
+    {
+      "window": "full_2020-26",
+      "label": "2_rej_wick_soft",
+      "n": 67,
+      "tPerWk": 0.20025619128949618,
+      "ret": 69.94989106452687,
+      "dd": 13.676999575459512,
+      "wr": 56.71641791044776,
+      "bySetup": {
+        "BUY:vah_breakout": {
+          "n": 33,
+          "net": 35.33055427133064
+        },
+        "SELL:val_breakdown": {
+          "n": 33,
+          "net": 19.23332098796445
+        },
+        "SELL:va_rejection": {
+          "n": 1,
+          "net": 15.3860158052318
+        }
+      }
+    },
+    {
+      "window": "full_2020-26",
+      "label": "3_add_poc_bounce",
+      "n": 80,
+      "tPerWk": 0.23911187019641333,
+      "ret": 134.98059360973832,
+      "dd": 11.3841860197891,
+      "wr": 55.00000000000001,
+      "bySetup": {
+        "BUY:va_rejection": {
+          "n": 7,
+          "net": 62.75890190892642
+        },
+        "BUY:vah_breakout": {
+          "n": 33,
+          "net": 37.80839214867902
+        },
+        "SELL:va_rejection": {
+          "n": 2,
+          "net": 19.062677906582284
+        },
+        "SELL:val_breakdown": {
+          "n": 33,
+          "net": 23.69194686588911
+        },
+        "SELL:poc_bounce": {
+          "n": 4,
+          "net": -4.314293009449643
+        },
+        "BUY:poc_bounce": {
+          "n": 1,
+          "net": -4.027032210888788
+        }
+      }
+    },
+    {
+      "window": "full_2020-26",
+      "label": "4_max3_gap0",
+      "n": 75,
+      "tPerWk": 0.2241673783091375,
+      "ret": 145.39165816209834,
+      "dd": 13.6769995754595,
+      "wr": 57.333333333333336,
+      "bySetup": {
+        "BUY:va_rejection": {
+          "n": 7,
+          "net": 62.5993125365859
+        },
+        "BUY:vah_breakout": {
+          "n": 33,
+          "net": 37.7761861325879
+        },
+        "SELL:va_rejection": {
+          "n": 2,
+          "net": 20.049263330595586
+        },
+        "SELL:val_breakdown": {
+          "n": 33,
+          "net": 24.96689616232902
+        }
+      }
+    }
+  ],
+  "verdicts": [
+    {
+      "label": "1_buy_rej_score5",
+      "promote": false,
+      "lockOk": true,
+      "oosOk": true,
+      "nUp": false,
+      "ddOk": true,
+      "lockRet": 115.31442553034898,
+      "oosRet": 7.4891785330459015,
+      "fullN": 75
+    },
+    {
+      "label": "2_rej_wick_soft",
+      "promote": false,
+      "lockOk": false,
+      "oosOk": false,
+      "nUp": false,
+      "ddOk": true,
+      "lockRet": 45.41890657451913,
+      "oosRet": 1.6263056641532643,
+      "fullN": 67
+    },
+    {
+      "label": "3_add_poc_bounce",
+      "promote": false,
+      "lockOk": false,
+      "oosOk": true,
+      "nUp": true,
+      "ddOk": true,
+      "lockRet": 100.84481520667313,
+      "oosRet": 10.344184086796133,
+      "fullN": 80
+    },
+    {
+      "label": "4_max3_gap0",
+      "promote": false,
+      "lockOk": true,
+      "oosOk": true,
+      "nUp": false,
+      "ddOk": true,
+      "lockRet": 115.31442553034898,
+      "oosRet": 7.4891785330459015,
+      "fullN": 75
+    }
+  ]
+}

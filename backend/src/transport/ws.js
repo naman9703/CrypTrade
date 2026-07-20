@@ -336,19 +336,22 @@ export function attachWs({ wss, appState }) {
       }
     })();
 
+    /** Heartbeat: running flag only — full `state` is event-driven (bar close, config, fills). */
     const id = setInterval(() => {
       try {
         const globalActive = String(appState.mode || "PAPER").toUpperCase();
         const m = effectiveClientViewMode(ws, globalActive);
         const row = appState.getEngine(m);
         if (!row?.bot) return;
+        const pub = row.bot.getPublicState?.() ?? {};
         ws.send(
           JSON.stringify({
-            type: "state",
+            type: "runtime_state",
             payload: {
               mode: m,
               runningByMode: appState.getRunningByMode?.() ?? {},
-              ...row.bot.getPublicState(),
+              running: Boolean(pub.running),
+              paused: Boolean(pub.paused),
             },
           }),
         );

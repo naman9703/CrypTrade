@@ -1,0 +1,77 @@
+
+=== 1) RESTORE CONFIRM — lock window 2022-06→2026-05 ===
+
+LOCK  N=166 ret=484.8% DD=24.8% Calmar=2.20
+  years: 2022-23=23.9%/38  2023-24=43.3%/23  2024-25=38.9%/52  2025-26=137.2%/53
+  restore_class_ok=true (target ~164t/~+483%/DD~25%)
+
+=== 2) 2021–22 under restored baseline ===
+
+OOS21-22  N=55 ret=-32.4% DD=41.8%
+
+=== 3) FULL 2020–26 under restored baseline ===
+
+FULL  N=318 ret=178.3% DD=58.9%
+  years: 2019-20=-11.1%/22  2020-21=-26.2%/74  2021-22=-27.5%/56  2022-23=23.9%/38  2023-24=43.3%/23  2024-25=38.9%/52  2025-26=137.2%/53
+
+=== 4) 2021–22 AUTOPSY (restored baseline, from full run) ===
+
+baseline 21-22 rows {
+  n: 56,
+  net: -18.039201679554843,
+  wr: 33.92857142857143,
+  avg: -0.3221286014206222
+}
+
+-- side|setup --
+  SELL|val_breakdown                   n=35 net=  -18.4 wr=29%
+  BUY|va_rejection                     n= 4 net=   -2.5 wr=25%
+  BUY|poc_bounce                       n= 1 net=   -2.4 wr=0%
+  BUY|vah_breakout                     n=16 net=    5.2 wr=50%
+
+-- vacuum path --
+  vacuum                               n=36 net=  -10.6 wr=31%
+  non_vacuum                           n=20 net=   -7.4 wr=40%
+
+-- prior60d regime --
+  bull60                               n=33 net=  -16.8 wr=27%
+  bear60                               n=18 net=   -1.9 wr=39%
+  chop60                               n= 5 net=    0.7 wr=60%
+
+-- prior20d --
+  p20_mild_dn                          n= 8 net=  -10.4 wr=13%
+  p20_hi                               n=11 net=   -3.4 wr=36%
+  p20_deep                             n=26 net=   -3.3 wr=38%
+  p20_up                               n=11 net=   -1.0 wr=36%
+
+-- ATR% regime --
+  atr_lt_1.2                           n=52 net=  -10.9 wr=37%
+  atr_1.2_2                            n= 3 net=   -5.7 wr=0%
+  atr_ge_2pct                          n= 1 net=   -1.4 wr=0%
+
+-- SELL VAL × prior60 --
+  SELL_VAL|bull60                      n=18 net=  -15.9 wr=17%
+  SELL_VAL|bear60                      n=13 net=   -1.8 wr=38%
+  SELL_VAL|weak_chop60                 n= 4 net=   -0.7 wr=50%
+  other                                n=21 net=    0.4 wr=43%
+
+-- BUY VAH × vacuum × prior5d --
+  other                                n=40 net=  -23.2 wr=28%
+  BUY_VAH|structured                   n= 9 net=    2.2 wr=56%
+  BUY_VAH|vac|pullback5d               n= 7 net=    3.0 wr=43%
+
+CF drop SELL VAL unless prior60d<=-5% (bear only): drop n=22 net=-16.6 → keep n=34 net=-1.4
+
+CF drop SELL VAL in weak/chop60 only: drop n=4 net=-0.7 → keep n=52 net=-17.3
+
+CF drop BUY va_rejection: drop n=4 net=-2.5 → keep n=52 net=-15.6
+
+CF drop BUY vacuum VAH: drop n=7 net=3.0 → keep n=49 net=-21.1
+
+CF drop all when ATR%>=2%: drop n=1 net=-1.4 → keep n=55 net=-16.7
+
+CF drop SELL when prior20d>5%: drop n=8 net=-7.2 → keep n=48 net=-10.9
+
+CF drop SELL vacuum VAL outside bear60: drop n=18 net=-8.8 → keep n=38 net=-9.2
+
+wrote .vp-freq-eth-restore-autopsy.json

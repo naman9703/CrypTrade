@@ -1,0 +1,34 @@
+
+=== ETH-native VAL bull60 A/B (preserve ~485% lock) ===
+
+--- lock_22_26 ---
+  v0_restored        N=166 ret=  484.8% DD=24.8% Calmar=2.20
+    years: 2022-23=23.9%/38  2023-24=43.3%/23  2024-25=38.9%/52  2025-26=137.2%/53
+  v1_block_bull60    N=138 ret=  321.8% DD=22.5% Calmar=1.90
+    years: 2022-23=39.4%/32  2023-24=41.7%/16  2024-25=26.0%/47  2025-26=69.5%/43
+  v2_bear_only       N=130 ret=  346.0% DD=20.3% Calmar=2.19
+    years: 2022-23=43.4%/27  2023-24=41.7%/16  2024-25=29.5%/44  2025-26=69.5%/43
+
+--- oos_21_22 ---
+  v0_restored        N= 55 ret=  -32.4% DD=41.8% Calmar=-0.74
+  v1_block_bull60    N= 40 ret=  -11.4% DD=23.8% Calmar=-0.46
+  v2_bear_only       N= 31 ret=   -3.1% DD=9.7% Calmar=-0.31
+
+--- oos_20_21 ---
+  v0_restored        N= 73 ret=  -24.0% DD=47.4% Calmar=-0.48
+  v1_block_bull60    N= 37 ret=    2.8% DD=23.9% Calmar=0.11
+  v2_bear_only       N= 32 ret=   -2.7% DD=23.2% Calmar=-0.11
+
+--- full_20_26 ---
+  v0_restored        N=318 ret=  178.3% DD=58.9% Calmar=0.29
+    years: 2019-20=-11.1%/22  2020-21=-26.2%/74  2021-22=-27.5%/56  2022-23=23.9%/38  2023-24=43.3%/23  2024-25=38.9%/52  2025-26=137.2%/53
+  v1_block_bull60    N=231 ret=  226.1% DD=31.3% Calmar=0.65
+    years: 2019-20=-10.5%/19  2020-21=-6.2%/35  2021-22=-8.0%/39  2022-23=39.4%/32  2023-24=41.7%/16  2024-25=26.0%/47  2025-26=69.5%/43
+  v2_bear_only       N=213 ret=  249.4% DD=29.1% Calmar=0.74
+    years: 2019-20=-11.9%/12  2020-21=-5.4%/33  2021-22=-5.8%/35  2022-23=43.1%/30  2023-24=41.7%/16  2024-25=29.5%/44  2025-26=69.5%/43
+
+=== VERDICT ===
+v1_block_bull60: lockOk+oosLift=false  lock 321.8% vs 484.8%  oos21-22 -11.4% vs -32.4%
+v2_bear_only:    lockOk+oosLift=false  lock 346.0% vs 484.8%  oos21-22 -3.1% vs -32.4%
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-bull60-ab.json

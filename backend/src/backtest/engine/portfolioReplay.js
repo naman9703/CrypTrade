@@ -1,12 +1,15 @@
 /**
  * Shared-account portfolio replay for multi-coin backtests.
  *
- * **Tier 1 (live parity):** `portfolioSliceReplay` — equal capital split across N
- * coins; each entry uses 100% of the current per-coin slice as margin; dollar PnL
- * is linearly scaled from per-coin unit sims onto the shared pool.
+ * Modes (see `portfolioPositionSizing.js`):
+ * - EQUAL_SLICE_FULL_MARGIN — equal capital split; margin = per-coin slice (legacy default).
+ * - EQUAL_SLICE_RISK_AT_SL — equal capital split; preserve RISK_AT_SL margin from unit sims.
+ * - TOTAL_CAPITAL_RISK_AT_SL — unit sims sized vs full capital; skip overlapping later entries.
  *
  * **Legacy research:** `portfolioReplay` — R-multiple replay (risk% of total equity).
  */
+
+import { resolvePortfolioPositionSizing } from "./portfolioPositionSizing.js";
 
 /**
  * Chronological merge events (no R-multiple conversion).
@@ -26,15 +29,60 @@ export function tradesToTimelineEvents(symbol, simTrades) {
 }
 
 /**
- * Equal-split portfolio replay: perCoinCap = equity / N; margin = perCoinCap each entry.
+ * Drop later entries that overlap an already-accepted open trade (first by entry time wins).
+ * @param {Array<{ ts: number, symbol: string, rawTrade: object }>} events
+ * @returns {{ kept: typeof events, skipped: number }}
+ */
+export function filterOverlappingEntriesFirstWins(events) {
+  const candidates = [...(events || [])].sort((a, b) => {
+    const ae = Number(a.rawTrade?.entryTs ?? a.ts);
+    const be = Number(b.rawTrade?.entryTs ?? b.ts);
+    if (ae !== be) return ae - be;
+    const ax = Number(a.rawTrade?.exitTs ?? a.ts);
+    const bx = Number(b.rawTrade?.exitTs ?? b.ts);
+    if (ax !== bx) return ax - bx;
+    return String(a.symbol).localeCompare(String(b.symbol));
+  });
+
+  /** @type {Array<{ entryTs: number, exitTs: number }>} */
+  const open = [];
+  const kept = [];
+  let skipped = 0;
+
+  for (const ev of candidates) {
+    const orig = ev.rawTrade;
+    if (!orig) continue;
+    const entryTs = Number(orig.entryTs ?? ev.ts);
+    const exitTs = Number(orig.exitTs ?? ev.ts);
+    if (!Number.isFinite(entryTs) || !Number.isFinite(exitTs)) continue;
+
+    for (let i = open.length - 1; i >= 0; i--) {
+      if (open[i].exitTs <= entryTs) open.splice(i, 1);
+    }
+
+    const overlaps = open.some((o) => o.entryTs < exitTs && o.exitTs > entryTs);
+    if (overlaps) {
+      skipped += 1;
+      continue;
+    }
+    open.push({ entryTs, exitTs });
+    kept.push(ev);
+  }
+
+  return { kept, skipped };
+}
+
+/**
+ * Equal-split / shared-capital portfolio replay.
  *
  * @param {Object} args
- * @param {Array<{ ts: number, symbol: string, rawTrade: object }>} args.events Sorted by exit ts.
+ * @param {Array<{ ts: number, symbol: string, rawTrade: object }>} args.events
  * @param {number} args.startingUsdt Shared account starting capital.
  * @param {number} args.coinCount Number of portfolio coins (equal split divisor).
- * @param {number} [args.perCoinUnitStart] Per-coin unit-sim start (default startingUsdt / coinCount).
+ * @param {number} [args.perCoinUnitStart] Per-coin unit-sim start.
  * @param {number} [args.startTs] Equity curve anchor timestamp.
- * @returns {{ trades: object[], equityCurve: object[], finalEquity: number, maxDrawdownPct: number, perCoin: Record<string, { n: number, wins: number, netPnl: number }> }}
+ * @param {string} [args.mode] Portfolio position sizing mode.
+ * @returns {{ trades: object[], equityCurve: object[], finalEquity: number, maxDrawdownPct: number, perCoin: Record<string, { n: number, wins: number, netPnl: number }>, skippedOverlap: number, mode: string }}
  */
 export function portfolioSliceReplay({
   events,
@@ -42,14 +90,29 @@ export function portfolioSliceReplay({
   coinCount,
   perCoinUnitStart = null,
   startTs = null,
+  mode = null,
 }) {
-  const sorted = [...(events || [])].sort((a, b) => a.ts - b.ts);
+  const sizingMode = resolvePortfolioPositionSizing({ portfolioPositionSizing: mode });
   const nCoins = Math.max(1, Math.floor(Number(coinCount) || 1));
   const startEq = Math.max(1, Number(startingUsdt) || 100);
   const unitStart =
     perCoinUnitStart != null && Number.isFinite(Number(perCoinUnitStart)) && Number(perCoinUnitStart) > 0
       ? Number(perCoinUnitStart)
-      : startEq / nCoins;
+      : sizingMode === "TOTAL_CAPITAL_RISK_AT_SL"
+        ? startEq
+        : startEq / nCoins;
+
+  let working = events || [];
+  let skippedOverlap = 0;
+  if (sizingMode === "TOTAL_CAPITAL_RISK_AT_SL") {
+    const filtered = filterOverlappingEntriesFirstWins(working);
+    working = filtered.kept;
+    skippedOverlap = filtered.skipped;
+  }
+
+  const sorted = [...working].sort((a, b) => a.ts - b.ts);
+  const forceFullSliceMargin = sizingMode === "EQUAL_SLICE_FULL_MARGIN";
+  const useEqualSliceScale = sizingMode !== "TOTAL_CAPITAL_RISK_AT_SL";
 
   let eq = startEq;
   let peak = eq;
@@ -73,11 +136,19 @@ export function portfolioSliceReplay({
     if (!orig) continue;
 
     const equityBefore = eq;
-    const perCoinCap = equityBefore / nCoins;
     const origEquity = Number(orig.equityAtEntry);
     const unitEq = Number.isFinite(origEquity) && origEquity > 0 ? origEquity : unitStart;
-    const scale = unitEq > 0 ? perCoinCap / unitEq : 1;
-    const eqRatio = unitEq > 0 ? equityBefore / unitEq : 1;
+    const perCoinCap = equityBefore / nCoins;
+
+    let scale;
+    let eqRatio;
+    if (useEqualSliceScale) {
+      scale = unitEq > 0 ? perCoinCap / unitEq : 1;
+      eqRatio = unitEq > 0 ? equityBefore / unitEq : 1;
+    } else {
+      scale = unitEq > 0 ? equityBefore / unitEq : 1;
+      eqRatio = scale;
+    }
 
     const origNet = Number(orig.netPnl) || 0;
     const scaledNet = origNet * scale;
@@ -95,6 +166,16 @@ export function portfolioSliceReplay({
     const origQty = Number(orig.qty);
     const scaledQty = Number.isFinite(origQty) ? origQty * scale : orig.qty;
 
+    const origMargin = Number(orig.marginUsdt);
+    let marginUsdt;
+    if (forceFullSliceMargin) {
+      marginUsdt = perCoinCap;
+    } else if (Number.isFinite(origMargin) && origMargin > 0) {
+      marginUsdt = origMargin * scale;
+    } else {
+      marginUsdt = useEqualSliceScale ? perCoinCap : Math.max(0, equityBefore * 0.01);
+    }
+
     trades.push({
       ...orig,
       tradeNumber: tradeNum,
@@ -110,16 +191,21 @@ export function portfolioSliceReplay({
           ? Number(orig.initialRiskUsd) * scale
           : orig.initialRiskUsd ?? null,
       equityAtEntry: equityBefore,
-      marginUsdt: perCoinCap,
+      marginUsdt,
       leverageCapped: orig.leverageCapped === true,
       allotmentCapped: orig.allotmentCapped === true,
-      marginCapUsdt: orig.marginCapUsdt != null ? Number(orig.marginCapUsdt) * scale : perCoinCap,
+      marginCapUsdt: forceFullSliceMargin
+        ? perCoinCap
+        : orig.marginCapUsdt != null
+          ? Number(orig.marginCapUsdt) * scale
+          : marginUsdt,
       allowedPoolUsdt: orig.allowedPoolUsdt != null ? Number(orig.allowedPoolUsdt) * eqRatio : null,
       portfolioSlice: {
         coinCount: nCoins,
-        perCoinCap,
+        perCoinCap: useEqualSliceScale ? perCoinCap : equityBefore,
         unitEquityAtEntry: unitEq,
         scale,
+        mode: sizingMode,
       },
     });
 
@@ -129,7 +215,15 @@ export function portfolioSliceReplay({
     }
   }
 
-  return { trades, equityCurve, finalEquity: eq, maxDrawdownPct: maxDD, perCoin };
+  return {
+    trades,
+    equityCurve,
+    finalEquity: eq,
+    maxDrawdownPct: maxDD,
+    perCoin,
+    skippedOverlap,
+    mode: sizingMode,
+  };
 }
 
 /**

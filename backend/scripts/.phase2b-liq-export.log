@@ -1,0 +1,107 @@
+
+> backend@0.1.0 research:liq:candidates
+> node scripts/research-liq-candidate-export.mjs
+
+Harvest BTCUSDT 2022-01-01→2026-06-01...
+  L2 sync BTCUSDT...
+Harvest BNBUSDT 2022-01-01→2026-06-01...
+  L2 sync BNBUSDT...
+Harvest ETHUSDT 2022-01-01→2026-06-01...
+  L2 sync ETHUSDT...
+Harvest SOLUSDT 2022-01-01→2026-06-01...
+  L2 sync SOLUSDT...
+Harvest XRPUSDT 2022-01-01→2026-06-01...
+  L2 sync XRPUSDT...
+
+Harvested 2137 candidates → /Users/namanpaliwal/Desktop/trading/backend/scripts/.liq-candidate-trades.csv
+Selection bias: 1612 would be day-picked
+{
+  "generatedAt": "2026-07-11T01:57:25.696Z",
+  "from": "2022-01-01",
+  "to": "2026-06-01",
+  "l2Enabled": true,
+  "runs": [
+    {
+      "symbol": "BTCUSDT",
+      "candidates": 350,
+      "selectedByDayPicker": 278,
+      "selectionRatePct": 79.42857142857143,
+      "candleCount": 68981,
+      "l2Coverage": {
+        "fundingPoints": 4836,
+        "oiPoints": 541,
+        "fundingSpanMs": 139247999998,
+        "oiSpanMs": 1944000000,
+        "oiApiRetentionDays": 30,
+        "oiNote": "Binance openInterestHist serves last 30 days only; funding has full history"
+      },
+      "l2AttachedPct": 100
+    },
+    {
+      "symbol": "BNBUSDT",
+      "candidates": 658,
+      "selectedByDayPicker": 505,
+      "selectionRatePct": 76.74772036474164,
+      "candleCount": 100024,
+      "l2Coverage": {
+        "fundingPoints": 4836,
+        "oiPoints": 717,
+        "fundingSpanMs": 139247999998,
+        "oiSpanMs": 2577600000,
+        "oiApiRetentionDays": 30,
+        "oiNote": "Binance openInterestHist serves last 30 days only; funding has full history"
+      },
+      "l2AttachedPct": 100
+    },
+    {
+      "symbol": "ETHUSDT",
+      "candidates": 569,
+      "selectedByDayPicker": 421,
+      "selectionRatePct": 73.98945518453426,
+      "candleCount": 68981,
+      "l2Coverage": {
+        "fundingPoints": 4836,
+        "oiPoints": 470,
+        "fundingSpanMs": 139247999998,
+        "oiSpanMs": 1688400000,
+        "oiApiRetentionDays": 30,
+        "oiNote": "Binance openInterestHist serves last 30 days only; funding has full history"
+      },
+      "l2AttachedPct": 100
+    },
+    {
+      "symbol": "SOLUSDT",
+      "candidates": 318,
+      "selectedByDayPicker": 227,
+      "selectionRatePct": 71.38364779874213,
+      "candleCount": 35040,
+      "l2Coverage": {
+        "fundingPoints": 4911,
+        "oiPoints": 512,
+        "fundingSpanMs": 139247999998,
+        "oiSpanMs": 1839600000,
+        "oiApiRetentionDays": 30,
+        "oiNote": "Binance openInterestHist serves last 30 days only; funding has full history"
+      },
+      "l2AttachedPct": 100
+    },
+    {
+      "symbol": "XRPUSDT",
+      "candidates": 242,
+      "selectedByDayPicker": 181,
+      "selectionRatePct": 74.79338842975206,
+      "candleCount": 34086,
+      "l2Coverage": {
+        "fundingPoints": 4836,
+        "oiPoints": 0,
+        "fundingSpanMs": 139247999998,
+        "oiSpanMs": 0,
+        "oiApiRetentionDays": 30,
+        "oiNote": "Binance openInterestHist serves last 30 days only; funding has full history"
+      },
+      "l2AttachedPct": 100
+    }
+  ]
+}
+
+Next: node scripts/research-liq-experiments.mjs

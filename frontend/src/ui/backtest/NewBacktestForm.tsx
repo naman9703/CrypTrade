@@ -24,6 +24,51 @@ const POPULAR_SYMBOLS = [
   "MATICUSDT", "LTCUSDT", "UNIUSDT", "ATOMUSDT", "NEARUSDT",
 ];
 
+type BacktestPositionSizingMode = "RISK_AT_SL" | "RISK_AT_SL_FULL_MARGIN" | "FULL_EQUITY_MARGIN";
+type PortfolioPositionSizingMode =
+  | "EQUAL_SLICE_FULL_MARGIN"
+  | "EQUAL_SLICE_RISK_AT_SL"
+  | "TOTAL_CAPITAL_RISK_AT_SL";
+type BacktestTrailMicroTf = "off" | "1m" | "3m" | "5m" | "15m" | "30m";
+
+const TRAIL_MICRO_TIMEFRAMES: BacktestTrailMicroTf[] = ["1m", "3m", "5m", "15m", "30m"];
+
+const TF_MS: Record<string, number> = {
+  "1m": 60_000,
+  "3m": 180_000,
+  "5m": 300_000,
+  "15m": 900_000,
+  "30m": 1_800_000,
+  "1h": 3_600_000,
+  "2h": 7_200_000,
+  "4h": 14_400_000,
+  "1d": 86_400_000,
+};
+
+function trailMicroTfLabel(tf: BacktestTrailMicroTf): string {
+  if (tf === "off") return "Parent bar only (no micro replay)";
+  if (tf === "1m") return "1m mark (wick — live tick parity)";
+  return `${tf} mark candle close`;
+}
+
+function allowedTrailMicroTfs(strategyTf: string): BacktestTrailMicroTf[] {
+  const stratMs = TF_MS[strategyTf] ?? Number.POSITIVE_INFINITY;
+  const micro = TRAIL_MICRO_TIMEFRAMES.filter((tf) => (TF_MS[tf] ?? 0) < stratMs);
+  return ["off", ...micro];
+}
+
+function trailingEnabledInCfg(cfgRaw: unknown): boolean {
+  if (!cfgRaw || typeof cfgRaw !== "object") return false;
+  const r = cfgRaw as Record<string, unknown>;
+  const bot = r.bot;
+  const b = bot && typeof bot === "object" ? (bot as Record<string, unknown>) : r;
+  if (b.trailingStopLossAuto !== true) return false;
+  const mode = String(b.futuresTrailingStopMode ?? b.trailingStopMode ?? "SUPERTREND").toUpperCase();
+  if (mode === "OFF") return false;
+  const market = String(b.marketMode ?? "FUTURES").toUpperCase();
+  return market !== "SPOT";
+}
+
 /** Extract the symbol universe from a strategy/instance config snapshot. */
 function symbolsFromCfg(cfgRaw: unknown): string[] {
   if (!cfgRaw || typeof cfgRaw !== "object") return [];
@@ -71,10 +116,14 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
   const [from, setFrom] = useState<string>(() => defaultFromDate());
   const [to, setTo] = useState<string>(() => defaultToDate());
   const [startingUsdt, setStartingUsdt] = useState<number>(10_000);
-  const [fullEquityMargin, setFullEquityMargin] = useState<boolean>(false);
+  const [positionSizing, setPositionSizing] = useState<BacktestPositionSizingMode>("RISK_AT_SL");
+  const [portfolioPositionSizing, setPortfolioPositionSizing] =
+    useState<PortfolioPositionSizingMode>("EQUAL_SLICE_FULL_MARGIN");
+  const [trailMicroTf, setTrailMicroTf] = useState<BacktestTrailMicroTf>("1m");
   const [walkForwardOn, setWalkForwardOn] = useState<boolean>(false);
   const [trainPct, setTrainPct] = useState<number>(0.7);
   const [slippagePct, setSlippagePct] = useState<number>(0.05);
+  const [useLivePanelOverrides, setUseLivePanelOverrides] = useState<boolean>(false);
   const [coveragePct, setCoveragePct] = useState<number | null>(null);
   const [coverageChecking, setCoverageChecking] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -149,13 +198,17 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
     [configSource, selectedInstance, selectedVersion?.cfgRaw, symbol, timeframe],
   );
   const backtestEngineBadge = useMemo(() => effectiveEngineKey(effectiveCfgRaw), [effectiveCfgRaw]);
-  const requires1hChart =
-    backtestEngineBadge === "UNIFIED_ELITE" || backtestEngineBadge === "SUPERTREND_ELITE";
+  const trailingBacktestEnabled = useMemo(() => trailingEnabledInCfg(effectiveCfgRaw), [effectiveCfgRaw]);
+  const trailMicroTfOptions = useMemo(
+    () => allowedTrailMicroTfs(timeframe),
+    [timeframe],
+  );
 
-  /** Elite / Unified paths are validated on 1H only — backtest form defaults to 15m otherwise. */
   useEffect(() => {
-    if (requires1hChart && timeframe !== "1h") setTimeframe("1h");
-  }, [requires1hChart, timeframe]);
+    if (!trailMicroTfOptions.includes(trailMicroTf)) {
+      setTrailMicroTf(trailMicroTfOptions.includes("1m") ? "1m" : "off");
+    }
+  }, [trailMicroTf, trailMicroTfOptions]);
 
   /** Merged, de-duped symbol list: strategy config first, then popular defaults. */
   const availableSymbols = useMemo(() => {
@@ -275,10 +328,6 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
 
   async function submit() {
     if (!canSubmit) return;
-    if (requires1hChart && timeframe !== "1h") {
-      setErr(`${backtestEngineBadge} backtests must use the 1h timeframe (not ${timeframe}).`);
-      return;
-    }
     setErr(null);
     setSubmitting(true);
     try {
@@ -314,7 +363,10 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
         gateMode,
         costModel: { slippagePct: slippagePct / 100 },
         walkForward: walkForwardOn ? { trainPct } : undefined,
-        positionSizing: fullEquityMargin ? "FULL_EQUITY_MARGIN" : "RISK_AT_SL",
+        positionSizing: coinMode === "multiple" ? undefined : positionSizing,
+        portfolioPositionSizing: coinMode === "multiple" ? portfolioPositionSizing : undefined,
+        trailMicroTf,
+        useLivePanelOverrides,
         instanceOperational:
           runInstance?.operational
             ? instanceOperationalFromSaved(runInstance.operational, symbol, timeframe)
@@ -374,8 +426,7 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
           </>
         ) : (
           <>
-            Uses the <b>last saved</b> strategy snapshot. Change SMC/ICT in Trading, then <b>Save</b> before
-            backtesting — unsaved panel changes are not included.
+            Uses the <b>last saved</b> strategy snapshot, merged with your <b>current Trading panel</b> (gates, liquidity exits, trailing). Click <b>Save</b> on the strategy to persist panel changes for future runs without live merge.
           </>
         )}
       </p>
@@ -424,10 +475,14 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
             <span className="font-medium">{intelligenceGateEnabledInCfgRaw(effectiveCfgRaw) ? "Approx replay — on" : "Off"}</span>
             ); server stores gate mode from the merged snapshot only.
           </p>
-          {manualStrategyInCfg(effectiveCfgRaw) === "TREND_HTF_ST" && backtestEngineBadge === "SUPERTREND" ? (
+          {manualStrategyInCfg(effectiveCfgRaw) &&
+          manualStrategyInCfg(effectiveCfgRaw) !== "SUPERTREND" &&
+          backtestEngineBadge === "SUPERTREND" ? (
             <p className="text-[10px] text-amber-800 dark:text-amber-300">
-              <b>Note:</b> <span className="font-mono">manualStrategy</span> is TREND_HTF_ST but{" "}
-              <span className="font-mono">supertrendFuturesAuto</span> is on — backtest runs <b>SUPERTREND</b> + intel gate, not HTF_ST.
+              <b>Note:</b> <span className="font-mono">manualStrategy</span> is{" "}
+              <span className="font-mono">{manualStrategyInCfg(effectiveCfgRaw)}</span> but{" "}
+              <span className="font-mono">supertrendFuturesAuto</span> /{" "}
+              <span className="font-mono">supertrendSpotAuto</span> is on — backtest runs <b>SUPERTREND</b>, not the selected manual strategy.
             </p>
           ) : null}
           {manualStrategyInCfg(effectiveCfgRaw) === "TREND_HTF_ST" &&
@@ -446,7 +501,7 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
           ) : null}
           {backtestEngineBadge === "SUPERTREND_ELITE" || backtestEngineBadge === "UNIFIED_ELITE" ? (
             (() => {
-              const issues = eliteStConfigIssues(effectiveCfgRaw, timeframe);
+              const issues = eliteStConfigIssues(effectiveCfgRaw);
               const label = backtestEngineBadge === "UNIFIED_ELITE" ? "Unified Elite" : "Supertrend Elite";
               const presetHint =
                 backtestEngineBadge === "UNIFIED_ELITE"
@@ -455,15 +510,15 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
               if (!issues.length) {
                 return (
                   <p className="text-[10px] text-emerald-800 dark:text-emerald-300">
-                    <b>{label}:</b> config looks valid for 1H. Simulator auto-corrects legacy fixed SL/TP and ST mult &lt; 3 on each run.
+                    <b>{label}:</b> config looks valid. Simulator auto-corrects legacy fixed SL/TP and ST mult &lt; 3 on each run.
                   </p>
                 );
               }
               return (
                 <p className="text-[10px] text-amber-800 dark:text-amber-300">
                   <b>{label} — config issues in saved strategy:</b> {issues.join(" · ")}.{" "}
-                  Trading tab → <b>{presetHint}</b> preset → <b>Save strategy</b>. Backtests will auto-fix mult/SL/TP, but{" "}
-                  <b>1H timeframe</b> and <b>1H EMA gate</b> must be saved in your strategy.
+                  Trading tab → <b>{presetHint}</b> preset → <b>Save strategy</b>. Backtests will auto-fix mult/SL/TP;{" "}
+                  <b>1H EMA gate</b> should be saved in your strategy when using Elite presets.
                 </p>
               );
             })()
@@ -572,11 +627,6 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
               </option>
             ))}
           </select>
-          {requires1hChart ? (
-            <p className="mt-1 text-[10px] font-medium text-amber-800 dark:text-amber-300">
-              <b>{backtestEngineBadge}</b> requires <b>1h</b> candles (15m is not profitable for this path). Timeframe was set to 1h automatically.
-            </p>
-          ) : null}
         </Field>
       </div>
       )}
@@ -590,11 +640,6 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
               </option>
             ))}
           </select>
-          {requires1hChart ? (
-            <p className="mt-1 text-[10px] font-medium text-amber-800 dark:text-amber-300">
-              <b>{backtestEngineBadge}</b> requires <b>1h</b> candles.
-            </p>
-          ) : null}
         </Field>
       ) : null}
 
@@ -632,27 +677,100 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
 
       <Field label="Position sizing">
         {coinMode === "multiple" ? (
-          <p className="text-[11px] text-slate-700 dark:text-slate-300">
-            Portfolio: capital is split equally across coins; each trade uses 100% of that coin&apos;s slice as
-            margin (live EQUAL-split parity).
-          </p>
+          <>
+            <select
+              value={portfolioPositionSizing}
+              onChange={(e) =>
+                setPortfolioPositionSizing(e.target.value as PortfolioPositionSizingMode)
+              }
+              className="select-base"
+            >
+              <option value="EQUAL_SLICE_FULL_MARGIN">
+                100% of equal slice (default)
+              </option>
+              <option value="EQUAL_SLICE_RISK_AT_SL">
+                Risk % at SL of equal slice
+              </option>
+              <option value="TOTAL_CAPITAL_RISK_AT_SL">
+                Risk % at SL of total capital (skip overlaps)
+              </option>
+            </select>
+            <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+              {portfolioPositionSizing === "EQUAL_SLICE_FULL_MARGIN" ? (
+                <>
+                  Capital split equally (e.g. $100 → $33 each for 3 coins). Each trade uses{" "}
+                  <b>100% of that coin&apos;s slice</b> as margin.
+                </>
+              ) : portfolioPositionSizing === "EQUAL_SLICE_RISK_AT_SL" ? (
+                <>
+                  Same equal split, but size like single-coin <b>risk % at stop</b> against the slice
+                  (e.g. risk on $33). Margin varies with stop distance — usually much less than the
+                  full slice.
+                </>
+              ) : (
+                <>
+                  Each coin sizes <b>risk % at stop vs total capital</b> (e.g. $100). Shared account:
+                  if two signals overlap, the <b>first entry keeps the capital</b>; later overlapping
+                  entries are ignored.
+                </>
+              )}
+            </p>
+          </>
         ) : (
           <>
-            <label className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-slate-300">
-              <input
-                type="checkbox"
-                checked={fullEquityMargin}
-                onChange={(e) => setFullEquityMargin(e.target.checked)}
-              />
-              Use 100% of equity as margin each trade (compounded)
-            </label>
+            <select
+              value={positionSizing}
+              onChange={(e) => setPositionSizing(e.target.value as BacktestPositionSizingMode)}
+              className="select-base"
+            >
+              <option value="RISK_AT_SL">Risk % at stop (fixed leverage from strategy)</option>
+              <option value="RISK_AT_SL_FULL_MARGIN">Full margin + dynamic leverage (same risk at SL)</option>
+              <option value="FULL_EQUITY_MARGIN">100% margin each trade (compound notional)</option>
+            </select>
             <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
-              Single-coin runs use the full starting capital you enter above (not divided across your live coin
-              list). Default sizes from risk % at stop; when enabled, each trade margin ≈ full balance × leverage
-              notional cap.
+              Single-coin runs use the starting capital above. <b>Fixed leverage</b> sizes from risk % and stop
+              distance (margin varies). <b>Full margin + dynamic lev</b> deploys the full balance as collateral and
+              picks leverage per trade so dollar risk at SL matches your risk % (max = strategy leverage).{" "}
+              <b>100% margin</b> ignores stop distance for sizing.
             </p>
           </>
         )}
+      </Field>
+
+      {trailingBacktestEnabled ? (
+        <Field label="Trailing resolution">
+          <select
+            value={trailMicroTf}
+            onChange={(e) => setTrailMicroTf(e.target.value as BacktestTrailMicroTf)}
+            className="select-base"
+          >
+            {trailMicroTfOptions.map((tf) => (
+              <option key={tf} value={tf}>
+                {trailMicroTfLabel(tf)}
+              </option>
+            ))}
+          </select>
+          <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+            <b>1m</b> uses mark wicks (live tick parity). <b>5m/15m</b> use Binance mark klines — trailing tiers
+            activate only when the lower-TF candle <b>closes</b> past the activation point; stop breaches still use
+            intra-bar wicks.
+          </p>
+        </Field>
+      ) : null}
+
+      <Field label="Live panel overlay">
+        <label className="flex items-center gap-1.5 text-[11px]">
+          <input
+            type="checkbox"
+            checked={useLivePanelOverrides}
+            onChange={(e) => setUseLivePanelOverrides(e.target.checked)}
+          />
+          Merge running bot intraday panel into saved strategy
+        </label>
+        <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+          Off (default): backtest uses the saved strategy snapshot only. On: overlays live Trading panel keys
+          (can override preset values like trail gates and partials).
+        </p>
       </Field>
 
       <Field label="Walk-forward">
@@ -746,14 +864,12 @@ function manualStrategyInCfg(cfgRaw: unknown): string {
 }
 
 /** Warnings for saved SUPERTREND_ELITE configs that still carry Supertrend-only settings. */
-function eliteStConfigIssues(cfgRaw: unknown, runTf: string): string[] {
+function eliteStConfigIssues(cfgRaw: unknown): string[] {
   if (!cfgRaw || typeof cfgRaw !== "object") return [];
   const r = cfgRaw as Record<string, unknown>;
   const bot = r.bot;
   const b = bot && typeof bot === "object" ? (bot as Record<string, unknown>) : r;
   const issues: string[] = [];
-  const tf = String(b.timeframe ?? runTf ?? "").toLowerCase();
-  if (tf && tf !== "1h") issues.push(`timeframe is ${tf} (use 1h)`);
   if (b.eliteStRequireHtf1hEmaAlign !== true) issues.push("1H EMA gate off");
   if (Number(b.supertrendMultiplier ?? 3) < 3) issues.push(`ST mult ${b.supertrendMultiplier} (need ≥3)`);
   if (

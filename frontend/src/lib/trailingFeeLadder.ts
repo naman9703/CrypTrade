@@ -175,6 +175,19 @@ export function defaultTieredPostT02SpacingFrac(roundTripFeeRate: number): numbe
   return Math.min(0.02, Math.max(rt > 0 ? 2 * rt : 0, 0.0004));
 }
 
+/** Post-T02 activation buffer: explicit value vs inherit T01/T02 `bufferRate`. */
+export function resolvePostT02ActivationBufferFrac(
+  postT02BufferRate: number | null | undefined,
+  bufferRate: number,
+): number {
+  const buf = Number(bufferRate);
+  const fallback = Number.isFinite(buf) && buf >= 0 ? buf : 0;
+  if (postT02BufferRate == null) return fallback;
+  const x = Number(postT02BufferRate);
+  if (!Number.isFinite(x) || x < 0) return fallback;
+  return x;
+}
+
 /** Mirrors `backend/src/lib/trailingStopLoss.js` `tieredStLockPxForCompletedTrailStep`. */
 export function tieredStLockPxForCompletedTrailStep(
   trailStep: number,
@@ -249,6 +262,7 @@ export function buildTieredStEquidistantLockRows(
 export type SupertrendTieredGateOpts = {
   roundTripFeeRate?: number;
   postT02SpacingFrac?: number | null;
+  postT02ActivationBufferRate?: number | null;
 };
 
 export function supertrendTieredActivationGate(
@@ -282,6 +296,7 @@ export function supertrendTieredActivationGate(
   if (useFeeBeTrail && stepNow >= 2) {
     const rt = opts?.roundTripFeeRate != null ? Number(opts.roundTripFeeRate) : Number.NaN;
     const spUser = opts?.postT02SpacingFrac != null ? Number(opts.postT02SpacingFrac) : Number.NaN;
+    const postBuf = resolvePostT02ActivationBufferFrac(opts?.postT02ActivationBufferRate, buf);
     const spacingAbs = E * (Number.isFinite(spUser) && spUser > 0 ? Math.min(0.05, spUser) : defaultTieredPostT02SpacingFrac(rt));
     const k = stepNow - 1;
     const t02Lock = isLong ? E * (1 + fb) : E * (1 - fb);
@@ -290,7 +305,7 @@ export function supertrendTieredActivationGate(
       return { activationPx: defaultActivationPx, activationTierLabel: `T${stepNow - 1}`, nextRow: null };
     }
     const gatePx =
-      Number.isFinite(buf) && buf > 0 ? (isLong ? lockPx * (1 + buf) : lockPx * (1 - buf)) : lockPx;
+      postBuf > 0 ? (isLong ? lockPx * (1 + postBuf) : lockPx * (1 - postBuf)) : lockPx;
     return { activationPx: gatePx, activationTierLabel: `T${stepNow - 1}`, nextRow: null };
   }
 
@@ -530,3 +545,78 @@ export function mergeStopWithTrail(isLong: boolean, currentStopPx: number, trail
   if (isLong) return Math.max(cur, tr);
   return Math.min(cur, tr);
 }
+
+/** Reference ATR% for dynamic regime band (~1.5% on 1h BTC). */
+export const DYNAMIC_REGIME_MEDIAN_ATR_PCT = 0.015;
+
+export function resolveTrailSizingMode(cfg: { trailSizingMode?: string | null } | null | undefined): "FIXED_PCT" | "DYNAMIC" {
+  return String(cfg?.trailSizingMode ?? "FIXED_PCT").toUpperCase() === "DYNAMIC" ? "DYNAMIC" : "FIXED_PCT";
+}
+
+function clampDyn(n: number, min: number, max: number): number {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return min;
+  return Math.max(min, Math.min(max, x));
+}
+
+export function computeDynamicRegimeMult(
+  entryAtrPct: number,
+  regimeAdjust: boolean,
+  lowMult = 0.85,
+  highMult = 1.15,
+): number {
+  if (!regimeAdjust) return 1;
+  const atr = Number(entryAtrPct);
+  if (!Number.isFinite(atr) || atr <= 0) return 1;
+  if (atr < DYNAMIC_REGIME_MEDIAN_ATR_PCT) return clampDyn(lowMult, 0.5, 1.5);
+  if (atr > DYNAMIC_REGIME_MEDIAN_ATR_PCT) return clampDyn(highMult, 0.5, 2);
+  return 1;
+}
+
+/** Dynamic T01/T02 activation buffer (mirrors backend `dynamicTrailing.js`). */
+export function computeDynamicTrailBuffer(opts: {
+  entryAtrPct: number | null | undefined;
+  trailDynamicBeAtrMult?: number;
+  trailDynamicBeRegimeAdjust?: boolean;
+  trailDynamicBeRegimeLowMult?: number;
+  trailDynamicBeRegimeHighMult?: number;
+  fallbackBufferRate?: number;
+}): number {
+  const atrMult = clampDyn(opts.trailDynamicBeAtrMult ?? 0.5, 0, 2);
+  const atr = Number(opts.entryAtrPct);
+  if (!Number.isFinite(atr) || atr <= 0) {
+    const fb = Number(opts.fallbackBufferRate ?? 0.0005);
+    return Number.isFinite(fb) && fb >= 0 ? Math.min(0.05, fb) : 0.0005;
+  }
+  const regimeMult = computeDynamicRegimeMult(
+    atr,
+    opts.trailDynamicBeRegimeAdjust === true,
+    opts.trailDynamicBeRegimeLowMult ?? 0.85,
+    opts.trailDynamicBeRegimeHighMult ?? 1.15,
+  );
+  return Math.min(0.05, atr * atrMult * regimeMult);
+}
+
+export function computeDynamicT01LockFrac(opts: {
+  entryAtrPct: number | null | undefined;
+  trailDynamicBeT01LockAtrMult?: number;
+  fixedT01LockSlipFrac?: number;
+}): number {
+  const atrMult = Math.max(0, Number(opts.trailDynamicBeT01LockAtrMult ?? 0));
+  const atr = Number(opts.entryAtrPct);
+  if (atrMult > 0 && Number.isFinite(atr) && atr > 0) {
+    return Math.min(0.01, atr * atrMult);
+  }
+  return Math.max(0, Math.min(0.01, Number(opts.fixedT01LockSlipFrac) || 0));
+}
+
+export function dynamicPostT02SpacingFrac(
+  entryAtrPct: number | null | undefined,
+  postT02StepAtrMult?: number,
+): number {
+  const atr = Number(entryAtrPct);
+  const mult = Math.max(0, Number(postT02StepAtrMult ?? 0.5));
+  if (!Number.isFinite(atr) || atr <= 0 || mult <= 0) return 0.0004;
+  return Math.min(0.05, atr * mult);
+}
+

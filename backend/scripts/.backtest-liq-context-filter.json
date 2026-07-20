@@ -1,0 +1,463 @@
+{
+  "generatedAt": "2026-07-11T19:15:36.132Z",
+  "strategy": "SR_INTRADAY",
+  "preset": "INTRADAY_PRO_LIQ_15M",
+  "from": "2025-01-01",
+  "to": "2026-01-01",
+  "coins": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT"
+  ],
+  "riskPct": 2,
+  "filter": {
+    "id": "edge_v1",
+    "label": "OI cascade skip + long after short-liq day + neg funding for longs"
+  },
+  "perCoin": {
+    "BTCUSDT": {
+      "baseline": {
+        "filterId": "none",
+        "symbol": "BTCUSDT",
+        "train": {
+          "full": {
+            "trades": 26,
+            "returnPct": 7.928638368628035,
+            "cagrPct": 7.4817601397976,
+            "maxDdPct": 8.555399059745456,
+            "calmar": 0.8745074411549658,
+            "winRate": 0.5,
+            "pf": 0.8420286100912812,
+            "expectancy": -13.290845295127726
+          },
+          "slice": {
+            "trades": 17,
+            "returnPct": 14.332923572333383,
+            "maxDdPct": 3.3456381482202033,
+            "winRate": 0.5882352941176471,
+            "pf": 1.2290106936715215,
+            "expectancy": 15.521716400463042
+          }
+        },
+        "holdout": {
+          "full": {
+            "trades": 26,
+            "returnPct": 7.928638368628035,
+            "cagrPct": 7.4817601397976,
+            "maxDdPct": 8.555399059745456,
+            "calmar": 0.8745074411549658,
+            "winRate": 0.5,
+            "pf": 0.8420286100912812,
+            "expectancy": -13.290845295127726
+          },
+          "slice": {
+            "trades": 5,
+            "returnPct": 7.928638368628035,
+            "maxDdPct": 6.494245158971856,
+            "winRate": 0.2,
+            "pf": 0.2621067405329031,
+            "expectancy": -146.7181488939675
+          }
+        },
+        "full": {
+          "full": {
+            "trades": 26,
+            "returnPct": 7.928638368628035,
+            "cagrPct": 7.4817601397976,
+            "maxDdPct": 8.555399059745456,
+            "calmar": 0.8745074411549658,
+            "winRate": 0.5,
+            "pf": 0.8420286100912812,
+            "expectancy": -13.290845295127726
+          },
+          "slice": {
+            "trades": 22,
+            "returnPct": 7.928638368628035,
+            "maxDdPct": 8.555399059745456,
+            "winRate": 0.5,
+            "pf": 0.7811566407502091,
+            "expectancy": -21.35098025736208
+          }
+        }
+      },
+      "filtered": {
+        "filterId": "edge_v1",
+        "symbol": "BTCUSDT",
+        "train": {
+          "full": {
+            "trades": 10,
+            "returnPct": 5.071215189334507,
+            "cagrPct": 4.788952242335953,
+            "maxDdPct": 2.2012946508592828,
+            "calmar": 2.1755162310809095,
+            "winRate": 0.6,
+            "pf": 1.07693188296697,
+            "expectancy": 4.485679098962857
+          },
+          "slice": {
+            "trades": 7,
+            "returnPct": 5.071215189334507,
+            "maxDdPct": 2.2012946508592828,
+            "winRate": 0.5714285714285714,
+            "pf": 0.7964316175009271,
+            "expectancy": -16.884180485143506
+          }
+        },
+        "holdout": {
+          "full": {
+            "trades": 10,
+            "returnPct": 5.071215189334507,
+            "cagrPct": 4.788952242335953,
+            "maxDdPct": 2.2012946508592828,
+            "calmar": 2.1755162310809095,
+            "winRate": 0.6,
+            "pf": 1.07693188296697,
+            "expectancy": 4.485679098962857
+          },
+          "slice": {
+            "trades": 0,
+            "returnPct": 5.071215189334507,
+            "maxDdPct": 0,
+            "winRate": 0,
+            "pf": 0,
+            "expectancy": 0
+          }
+        },
+        "full": {
+          "full": {
+            "trades": 10,
+            "returnPct": 5.071215189334507,
+            "cagrPct": 4.788952242335953,
+            "maxDdPct": 2.2012946508592828,
+            "calmar": 2.1755162310809095,
+            "winRate": 0.6,
+            "pf": 1.07693188296697,
+            "expectancy": 4.485679098962857
+          },
+          "slice": {
+            "trades": 7,
+            "returnPct": 5.071215189334507,
+            "maxDdPct": 2.2012946508592828,
+            "winRate": 0.5714285714285714,
+            "pf": 0.7964316175009271,
+            "expectancy": -16.884180485143506
+          }
+        }
+      }
+    },
+    "ETHUSDT": {
+      "baseline": {
+        "filterId": "none",
+        "symbol": "ETHUSDT",
+        "train": {
+          "full": {
+            "trades": 6,
+            "returnPct": -2.7111552158687666,
+            "cagrPct": -2.5656344185726265,
+            "maxDdPct": 6.5490012490918,
+            "calmar": -0.3917596471566443,
+            "winRate": 0.16666666666666666,
+            "pf": 0.20032610141955928,
+            "expectancy": -90.53154403527685
+          },
+          "slice": {
+            "trades": 4,
+            "returnPct": -3.542871265839076,
+            "maxDdPct": 6.5490012490918,
+            "winRate": 0,
+            "pf": 0,
+            "expectancy": -168.99173497535486
+          }
+        },
+        "holdout": {
+          "full": {
+            "trades": 6,
+            "returnPct": -2.7111552158687666,
+            "cagrPct": -2.5656344185726265,
+            "maxDdPct": 6.5490012490918,
+            "calmar": -0.3917596471566443,
+            "winRate": 0.16666666666666666,
+            "pf": 0.20032610141955928,
+            "expectancy": -90.53154403527685
+          },
+          "slice": {
+            "trades": 1,
+            "returnPct": -2.7111552158687666,
+            "maxDdPct": 0.03387243144462512,
+            "winRate": 0,
+            "pf": 0,
+            "expectancy": -3.29652633890172
+          }
+        },
+        "full": {
+          "full": {
+            "trades": 6,
+            "returnPct": -2.7111552158687666,
+            "cagrPct": -2.5656344185726265,
+            "maxDdPct": 6.5490012490918,
+            "calmar": -0.3917596471566443,
+            "winRate": 0.16666666666666666,
+            "pf": 0.20032610141955928,
+            "expectancy": -90.53154403527685
+          },
+          "slice": {
+            "trades": 5,
+            "returnPct": -2.7111552158687666,
+            "maxDdPct": 6.5490012490918,
+            "winRate": 0,
+            "pf": 0,
+            "expectancy": -135.8526932480642
+          }
+        }
+      },
+      "filtered": {
+        "filterId": "edge_v1",
+        "symbol": "ETHUSDT",
+        "train": {
+          "full": {
+            "trades": 4,
+            "returnPct": 1.7223011223030698,
+            "cagrPct": 1.6278866644559242,
+            "maxDdPct": 2.2904356998760282,
+            "calmar": 0.7107323137445137,
+            "winRate": 0.25,
+            "pf": 0.5673110553933983,
+            "expectancy": -25.9459966028416
+          },
+          "slice": {
+            "trades": 2,
+            "returnPct": 0.8526837404639082,
+            "maxDdPct": 2.2904356998760282,
+            "winRate": 0,
+            "pf": 0,
+            "expectancy": -118.20571963556102
+          }
+        },
+        "holdout": {
+          "full": {
+            "trades": 4,
+            "returnPct": 1.7223011223030698,
+            "cagrPct": 1.6278866644559242,
+            "maxDdPct": 2.2904356998760282,
+            "calmar": 0.7107323137445137,
+            "winRate": 0.25,
+            "pf": 0.5673110553933983,
+            "expectancy": -25.9459966028416
+          },
+          "slice": {
+            "trades": 1,
+            "returnPct": 1.7223011223030698,
+            "maxDdPct": 0.033872431444631874,
+            "winRate": 0,
+            "pf": 0,
+            "expectancy": -3.446749168904303
+          }
+        },
+        "full": {
+          "full": {
+            "trades": 4,
+            "returnPct": 1.7223011223030698,
+            "cagrPct": 1.6278866644559242,
+            "maxDdPct": 2.2904356998760282,
+            "calmar": 0.7107323137445137,
+            "winRate": 0.25,
+            "pf": 0.5673110553933983,
+            "expectancy": -25.9459966028416
+          },
+          "slice": {
+            "trades": 3,
+            "returnPct": 1.7223011223030698,
+            "maxDdPct": 2.2904356998760282,
+            "winRate": 0,
+            "pf": 0,
+            "expectancy": -79.95272948000878
+          }
+        }
+      }
+    },
+    "BNBUSDT": {
+      "baseline": {
+        "filterId": "none",
+        "symbol": "BNBUSDT",
+        "train": {
+          "full": {
+            "trades": 64,
+            "returnPct": -8.60745593643076,
+            "cagrPct": -8.159046150069038,
+            "maxDdPct": 20.627532011642398,
+            "calmar": -0.3955415580237125,
+            "winRate": 0.4375,
+            "pf": 0.4857601196034227,
+            "expectancy": -40.58915754147349
+          },
+          "slice": {
+            "trades": 41,
+            "returnPct": -12.429674103128782,
+            "maxDdPct": 17.032964545352694,
+            "winRate": 0.4146341463414634,
+            "pf": 0.4001974696428377,
+            "expectancy": -51.917014755842416
+          }
+        },
+        "holdout": {
+          "full": {
+            "trades": 64,
+            "returnPct": -8.60745593643076,
+            "cagrPct": -8.159046150069038,
+            "maxDdPct": 20.627532011642398,
+            "calmar": -0.3955415580237125,
+            "winRate": 0.4375,
+            "pf": 0.4857601196034227,
+            "expectancy": -40.58915754147349
+          },
+          "slice": {
+            "trades": 18,
+            "returnPct": -8.60745593643076,
+            "maxDdPct": 3.8293454817343795,
+            "winRate": 0.4444444444444444,
+            "pf": 0.6916787371083751,
+            "expectancy": -18.027110500402657
+          }
+        },
+        "full": {
+          "full": {
+            "trades": 64,
+            "returnPct": -8.60745593643076,
+            "cagrPct": -8.159046150069038,
+            "maxDdPct": 20.627532011642398,
+            "calmar": -0.3955415580237125,
+            "winRate": 0.4375,
+            "pf": 0.4857601196034227,
+            "expectancy": -40.58915754147349
+          },
+          "slice": {
+            "trades": 59,
+            "returnPct": -8.60745593643076,
+            "maxDdPct": 17.032964545352694,
+            "winRate": 0.423728813559322,
+            "pf": 0.4668671728302923,
+            "expectancy": -41.577721932148904
+          }
+        }
+      },
+      "filtered": {
+        "filterId": "edge_v1",
+        "symbol": "BNBUSDT",
+        "train": {
+          "full": {
+            "trades": 26,
+            "returnPct": -0.7017706121467745,
+            "cagrPct": -0.663736224706446,
+            "maxDdPct": 9.745431980454356,
+            "calmar": -0.06810741956207271,
+            "winRate": 0.4230769230769231,
+            "pf": 0.5710978910006088,
+            "expectancy": -32.86424059204727
+          },
+          "slice": {
+            "trades": 14,
+            "returnPct": -4.152189587752927,
+            "maxDdPct": 9.185280906889782,
+            "winRate": 0.2857142857142857,
+            "pf": 0.2320056121095304,
+            "expectancy": -76.31813711843077
+          }
+        },
+        "holdout": {
+          "full": {
+            "trades": 26,
+            "returnPct": -0.7017706121467745,
+            "cagrPct": -0.663736224706446,
+            "maxDdPct": 9.745431980454356,
+            "calmar": -0.06810741956207271,
+            "winRate": 0.4230769230769231,
+            "pf": 0.5710978910006088,
+            "expectancy": -32.86424059204727
+          },
+          "slice": {
+            "trades": 10,
+            "returnPct": -0.7017706121467745,
+            "maxDdPct": 2.3898736006967702,
+            "winRate": 0.5,
+            "pf": 0.8580476681276955,
+            "expectancy": -8.531342869825153
+          }
+        },
+        "full": {
+          "full": {
+            "trades": 26,
+            "returnPct": -0.7017706121467745,
+            "cagrPct": -0.663736224706446,
+            "maxDdPct": 9.745431980454356,
+            "calmar": -0.06810741956207271,
+            "winRate": 0.4230769230769231,
+            "pf": 0.5710978910006088,
+            "expectancy": -32.86424059204727
+          },
+          "slice": {
+            "trades": 24,
+            "returnPct": -0.7017706121467745,
+            "maxDdPct": 9.745431980454356,
+            "winRate": 0.375,
+            "pf": 0.42086544747316873,
+            "expectancy": -48.073639514845105
+          }
+        }
+      }
+    }
+  },
+  "portfolio": {
+    "baseline": {
+      "full": {
+        "trades": 86,
+        "returnPct": -31.74821730866247,
+        "maxDdPct": 33.144724092140166,
+        "winRate": 41.86046511627907,
+        "pf": 0.5021340207163271,
+        "finalEquity": 6825.178269133753
+      },
+      "holdout": {
+        "trades": 24,
+        "returnPct": -9.800037280406922,
+        "maxDdPct": 11.64562804507619,
+        "winRate": 37.5,
+        "pf": 0.506148408672938,
+        "finalEquity": 9019.996271959308
+      },
+      "train": {
+        "trades": 62,
+        "returnPct": -24.33280387984907,
+        "maxDdPct": 26.374129277774465,
+        "winRate": 43.54838709677419,
+        "pf": 0.5008976300183041,
+        "finalEquity": 7566.719612015093
+      }
+    },
+    "filtered": {
+      "full": {
+        "trades": 34,
+        "returnPct": -14.004650539076083,
+        "maxDdPct": 15.16153769982422,
+        "winRate": 38.23529411764706,
+        "pf": 0.45897594270743075,
+        "finalEquity": 8599.534946092392
+      },
+      "holdout": {
+        "trades": 11,
+        "returnPct": -0.8609291864727493,
+        "maxDdPct": 3.2824922360616857,
+        "winRate": 45.45454545454545,
+        "pf": 0.8606404109278287,
+        "finalEquity": 9913.907081352725
+      },
+      "train": {
+        "trades": 23,
+        "returnPct": -13.257862157418876,
+        "maxDdPct": 13.86235583521222,
+        "winRate": 34.78260869565217,
+        "pf": 0.3541172908761563,
+        "finalEquity": 8674.213784258112
+      }
+    }
+  }
+}

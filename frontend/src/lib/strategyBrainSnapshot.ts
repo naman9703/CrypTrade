@@ -1,4 +1,6 @@
 import { normalizeIntradayGatesOnBot } from "./intradayGatesUi";
+import { profileAllowsKey } from "./strategyConfigProfile.ts";
+import { cfgRawActiveBotForCompare } from "./strategyConfigSlices.ts";
 
 /**
  * Client-side mirror of backend `strategyInstanceSplit.INSTANCE_FIELD_KEYS`
@@ -175,6 +177,7 @@ const PERSIST_BOT_KEYS_FOR_STRATEGY_COMPARE: readonly string[] = [
   "srIntradayMinBarGap",
   "intradayLiqStrictMode",
   "intradayLiqMinSweepExtensionPct",
+  "intradayLiqSlBufferPct",
   "intradayLiqSessionExtreme",
   "intradayLiqMinScore",
   "intradayLiqMinQuality",
@@ -192,6 +195,110 @@ const PERSIST_BOT_KEYS_FOR_STRATEGY_COMPARE: readonly string[] = [
   "intradayLiqFirstCycleOnly",
   "intradayLiqEntryAtSignalClose",
   "intradayLiqMaxHoldBars",
+  "liqMapLookbackBars",
+  "liqMapMaxAgeBars",
+  "liqMapMinTouches",
+  "liqMapMinWickRatio",
+  "liqMapMinRvol",
+  "liqMapMinBodyRatio",
+  "liqMapSweepPct",
+  "liqMapEqualTolPct",
+  "liqMapNormalizeThresholds",
+  "liqMapSweepAtrFrac",
+  "liqMapEqualTolAtrFrac",
+  "liqMapAutoCalibrate",
+  "liqMapAutoProfileBars",
+  "liqMapAutoTrailTune",
+  "liqMapHybridExit",
+  "liqMapQualityGate",
+  "liqMapQualityGateMode",
+  "liqMapSoftGateScoreBand",
+  "liqMapQualityAuto",
+  "liqMapMinQualityScore",
+  "liqMapRequireUnresolved",
+  "liqMapRequireDirectionalClose",
+  "liqMapEntryModel",
+  "liqMapHtfPoolTfs",
+  "liqMapHtfLookbackBars",
+  "liqMapHtfSwingLeft",
+  "liqMapHtfSwingRight",
+  "liqMapHtfEqualMinTouches",
+  "liqMapUseDailyWeeklyPools",
+  "liqMapUseTrendlinePools",
+  "liqMapEntryTiming",
+  "liqMapRequireMss",
+  "liqMapRequireChoch",
+  "liqMapRequireRetrace",
+  "liqMapRequireReclaimHold",
+  "liqMapStructureLookbackBars",
+  "liqMapMssMaxBarsAfterSweep",
+  "liqMapEntryZoneMode",
+  "liqMapFvgEntryMode",
+  "liqMapMssRequireDisplacement",
+  "liqMapDisplacementBodyMult",
+  "liqMapDisplacementAtrMult",
+  "liqMapFvgMinGapPct",
+  "liqMapStrictPdZone",
+  "liqMapObMinDisplacementAtr",
+  "liqMapRr",
+  "liqMapHtfMode",
+  "liqMapKillzone",
+  "liqMapMinAtrPctile",
+  "liqMapMaxAtrPctile",
+  "liqMapAtrPctileLookback",
+  "liqMapMinAdx",
+  "liqMapMaxAdx",
+  "liqMapMinAtrPct",
+  "liqMapMaxAtrPct",
+  "liqMapMaxHoldBars",
+  "liqMapMaxSlPct",
+  "liqMapSlMode",
+  "liqMapSlBufferPct",
+  "liqMapSlBufferAtrFrac",
+  "liqMapOnePerDay",
+  "liqMapOnePerSidePerDay",
+  "liqMapRvolLookback",
+  "liqMapExitMode",
+  "liqMapTrailMode",
+  "liqMapMaxTpRr",
+  "liqMapMaxOpposingRr",
+  "liqMapMinTp2Rr",
+  "liqMapFallbackTpRr",
+  "liqMapPartialFrac",
+  "liqMapBreakevenAfterPartial",
+  "liqMapUse4hConfirm",
+  "liqMapAtrSlMult",
+  "liqMapSlRegimeAdjust",
+  "liqMapSlRegimeLowMult",
+  "liqMapSlRegimeHighMult",
+  "liqMapTrailStPeriod",
+  "liqMapTrailStMult",
+  "liqMapTrailAtrHwmMult",
+  "liqMapTrailMfeGiveback",
+  "liqMapTrailMfeMinR",
+  "liqMapTrailStepAtrMult",
+  "liqMapTrailMergeSt",
+  "liqMapDynamicRunnerMaxTpRr",
+  "liqMapDynamicRunnerMinTpRr",
+  "liqMapProjectedTpAtrMult",
+  "liqMapProjectedTpRangeMult",
+  "liqMapProjectionLookbackBars",
+  "liqMapDynamicExitPolicy",
+  "liqMapDynExitQualityHi",
+  "liqMapDynExitQualityMid",
+  "liqMapDynExitRrHi",
+  "liqMapDynExitRrMid",
+  "liqMapDynExitPartialHi",
+  "liqMapDynExitPartialMid",
+  "liqMapDynExitPartialBase",
+  "liqMapDynExitTrailAtrHi",
+  "liqMapDynExitTrailAtrMid",
+  "liqMapDynExitTrailAtrBase",
+  "liqMapDynExitWeakTp1Rr",
+  "liqMapStructuralTp1Rr",
+  "liqMapDeadTradeExitBars",
+  "liqMapDeadTradeMinMfeR",
+  "liqMapDeadTradeMaxLossR",
   "intradaySmcSlMode",
   "intradaySmcMaxTpRr",
   "intradaySmcMaxHoldBars",
@@ -213,6 +320,10 @@ const PERSIST_BOT_KEYS_FOR_STRATEGY_COMPARE: readonly string[] = [
   "intradayLiqTp2Enabled",
   "intradayLiqBreakevenAfterPartial",
   "intradayLiqPartialTp",
+  "intradayLiqPartialFrac",
+  "intradayLiqTp1Rr",
+  "intradayLiqTp2Rr",
+  "intradayLiqTp2PartialFrac",
   "intradayLiqMinRr",
   "intradayFibStrictMode",
   "intradayFibConfirmNextBar",
@@ -243,6 +354,56 @@ const PERSIST_BOT_KEYS_FOR_STRATEGY_COMPARE: readonly string[] = [
   "backtestBreakevenAtMfePct",
   "vpLookbackBars",
   "vpMinRR",
+  "vpTierAOnly",
+  "vpAllowHvnFlip",
+  "vpRequireHtfAlign",
+  "vpRegimeImmunity",
+  "vpIncludePriorSession",
+  "vpEnableNakedPoc",
+  "vpBreakoutUsePriorSession",
+  "vpHardBlockCeilingFloor",
+  "vpStructureBrackets",
+  "requireVpSetup",
+  "vpMinScore",
+  "vpMinAdx",
+  "vpMinHtfSepPct",
+  "vpMinRunPct",
+  "vpMinCloseBeyondPct",
+  "vpMinBreakoutBody",
+  "vpMinBreakoutCloseStrength",
+  "vpBreakoutMinVolRatio",
+  "vpValBreakdownMinVolRatio",
+  "vpBreakoutMinPathPct",
+  "vpLvnMinVolRatio",
+  "vpLvnSizeMult",
+  "vpMinWickRatio",
+  "vpMaxTradesPerDay",
+  "vpMinBarGap",
+  "vpSessionStartHour",
+  "vpSessionEndHour",
+  "vpMaxSlPct",
+  "vpMaxTpPct",
+  "vpValueAreaPct",
+  "vpCompositeDays",
+  "vpBins",
+  "vpMaxPriorTrendPct",
+  "vpPriorTrendLookback",
+  "vpBuyBreakoutMinHtfSep",
+  "vpBuyRelaxedMinHtfSep",
+  "vpBuyHighPathMinPct",
+  "vpSellBreakdownMinHtfSep",
+  "vpMinBarVolRatio",
+  "vpMinAtrPct",
+  "vpMaxAtrPct",
+  "vpNearTolPct",
+  "vpRejectionMinVolRatio",
+  "vpRejectionSpikePct",
+  "vpOutsideVaLookback",
+  "vpProfileMode",
+  "vpVolumeDistribute",
+  "volumeProfileGateMode",
+  "vpPlaybook",
+  "vpAllowedSetups",
   "eliteStRequireHtf4hAlign",
   "eliteStHtf4hPeriod",
   "eliteStHtf4hMultiplier",
@@ -305,6 +466,20 @@ const PERSIST_BOT_KEYS_FOR_STRATEGY_COMPARE: readonly string[] = [
   "trailMaintMarginRate",
   "trailPostT02SpacingFrac",
   "trailPostT02MaxExtraTiers",
+  "trailSizingMode",
+  "trailDynamicBeAtrMult",
+  "trailDynamicBeT01LockAtrMult",
+  "trailDynamicBeRegimeAdjust",
+  "trailDynamicBeRegimeLowMult",
+  "trailDynamicBeRegimeHighMult",
+  "trailDynamicAdvAtrHwmMult",
+  "trailDynamicAdvMfeGivebackFrac",
+  "trailDynamicAdvMfeMinR",
+  "trailDynamicAdvMergeSupertrend",
+  "trailDynamicAdvAtrSource",
+  "trailDynamicAdvPostT02StepAtrMult",
+  "trailOnlyAfterTp2Fill",
+  "trailOnlyAfterPartialFill",
   "supertrendFuturesFixedSlPct",
   "supertrendFuturesFixedTpPct",
   "supertrendFuturesUseFixedSl",
@@ -405,17 +580,36 @@ function flatSignalBrainBotForCompare(root: Record<string, unknown>): Record<str
   return normalizeIntradayGatesOnBot(flat);
 }
 
+/** Fast fingerprint of persist-relevant bot fields — skip dirty recompute when unchanged. */
+export function signalBrainBotFingerprint(bot: unknown): string {
+  const uiFlat = flatSignalBrainBotForCompare(persistLikePayloadFromUiBot(bot));
+  const manual = String(uiFlat.manualStrategy ?? "").toUpperCase();
+  let h = "";
+  for (const k of PERSIST_BOT_KEYS_FOR_STRATEGY_COMPARE) {
+    if (RUNTIME_ONLY_BOT_KEYS.has(k)) continue;
+    if (!profileAllowsKey(k, manual)) continue;
+    const v = uiFlat[k];
+    if (v === undefined) continue;
+    h += `${k}\0${stableStringify(v)}\0`;
+  }
+  return h;
+}
+
 /** True when live UI bot matches saved strategy cfg_raw (signal brain only). */
 export function signalBrainPersistBotsEqual(
   bot: unknown,
   cfgRaw: Record<string, unknown> | null | undefined,
 ): boolean {
   const uiFlat = flatSignalBrainBotForCompare(persistLikePayloadFromUiBot(bot));
-  const cfgFlat = flatSignalBrainBotForCompare(
-    cfgRaw && typeof cfgRaw === "object" ? ({ ...cfgRaw } as Record<string, unknown>) : { v: 1, bot: {} },
+  const manual = String(uiFlat.manualStrategy ?? "").toUpperCase();
+  const cfgFlat = normalizeIntradayGatesOnBot(
+    cfgRawActiveBotForCompare(
+      cfgRaw && typeof cfgRaw === "object" ? ({ ...cfgRaw } as Record<string, unknown>) : { v: 1, bot: {} },
+    ),
   );
   for (const k of PERSIST_BOT_KEYS_FOR_STRATEGY_COMPARE) {
     if (RUNTIME_ONLY_BOT_KEYS.has(k)) continue;
+    if (!profileAllowsKey(k, manual)) continue;
     const a = uiFlat[k];
     const b = cfgFlat[k];
     if (a === undefined && b === undefined) continue;
@@ -430,6 +624,11 @@ export function canonicalCfgRawFromUiBot(bot: unknown): Record<string, unknown> 
     return stripInstanceFieldsFromCfgRaw({ v: 1, bot: {} });
   }
   return canonicalSignalBrainRecord(persistLikePayloadFromUiBot(bot));
+}
+
+/** Fingerprint of instance-owned fields (symbol/risk/capital) for config view refresh. */
+export function instanceOperationalViewFingerprint(bot: unknown): string {
+  return stableStringify(instanceOperationalFromUiBot(bot));
 }
 
 /** Mirror of backend `extractInstanceConfig` — sent with Save so we skip pre-save `/api/bot/config` flush. */

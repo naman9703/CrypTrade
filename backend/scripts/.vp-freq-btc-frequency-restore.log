@@ -1,0 +1,33 @@
+
+=== oos_2020-21 ===
+oos_2020-21    0_locked_baseline      N= 24 0.30/wk ret=   19.6% DD=  9.1%
+oos_2020-21    1_buy_rej_score5       N= 24 0.30/wk ret=   19.6% DD=  9.1%
+oos_2020-21    2_rej_wick_soft        N= 21 0.26/wk ret=   22.6% DD=  8.2%
+oos_2020-21    3_add_poc_bounce       N= 24 0.30/wk ret=   19.6% DD=  9.1%
+oos_2020-21    4_max3_gap0            N= 24 0.30/wk ret=   19.6% DD=  9.1%
+
+=== oos_2021-22 ===
+oos_2021-22    0_locked_baseline      N= 18 0.37/wk ret=    7.5% DD= 13.7%
+oos_2021-22    1_buy_rej_score5       N= 18 0.37/wk ret=    7.5% DD= 13.7%
+oos_2021-22    2_rej_wick_soft        N= 17 0.35/wk ret=    1.6% DD= 13.7%
+oos_2021-22    3_add_poc_bounce       N= 21 0.43/wk ret=   10.3% DD= 11.4%
+oos_2021-22    4_max3_gap0            N= 18 0.37/wk ret=    7.5% DD= 13.7%
+
+=== lock_2022-26 ===
+lock_2022-26   0_locked_baseline      N= 32 0.15/wk ret=  115.3% DD=  8.9%
+lock_2022-26   1_buy_rej_score5       N= 32 0.15/wk ret=  115.3% DD=  8.9%
+lock_2022-26   2_rej_wick_soft        N= 27 0.13/wk ret=   45.4% DD= 11.5%
+lock_2022-26   3_add_poc_bounce       N= 34 0.16/wk ret=  100.8% DD= 10.1%
+lock_2022-26   4_max3_gap0            N= 32 0.15/wk ret=  115.3% DD=  8.9%
+
+=== full_2020-26 ===
+full_2020-26   0_locked_baseline      N= 75 0.22/wk ret=  145.4% DD= 13.7%
+full_2020-26   1_buy_rej_score5       N= 75 0.22/wk ret=  145.4% DD= 13.7%
+full_2020-26   2_rej_wick_soft        N= 67 0.20/wk ret=   69.9% DD= 13.7%
+full_2020-26   3_add_poc_bounce       N= 80 0.24/wk ret=  135.0% DD= 11.4%
+full_2020-26   4_max3_gap0            N= 75 0.22/wk ret=  145.4% DD= 13.7%
+VERDICT 1_buy_rej_score5: REJECT lockOk=true oosOk=true nUp=false ddOk=true
+VERDICT 2_rej_wick_soft: REJECT lockOk=false oosOk=false nUp=false ddOk=true
+VERDICT 3_add_poc_bounce: REJECT lockOk=false oosOk=true nUp=true ddOk=true
+VERDICT 4_max3_gap0: REJECT lockOk=true oosOk=true nUp=false ddOk=true
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-btc-frequency-restore.json

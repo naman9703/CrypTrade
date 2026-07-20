@@ -3,7 +3,15 @@
  */
 import type { LineStyle, LineWidth, LineData, UTCTimestamp } from "lightweight-charts";
 import type { BacktestRunSummary, BacktestTrade } from "../../types/backtest";
-import { chartTimeForTrade, type OhlcCandle } from "./backtestChartTime";
+import { profileChartMarkup } from "../../lib/strategyConfigProfile.ts";
+import {
+  chartTimeForEntryFill,
+  chartTimeForExitFill,
+  chartTimeForTrade,
+  activeBracketPrice,
+  type OhlcCandle,
+  type TradeChartTiming,
+} from "./backtestChartTime";
 
 export type BacktestSmcMeta = {
   sweepLevel?: number | null;
@@ -70,6 +78,8 @@ export type ChartPriceLineSpec = {
   title: string;
   lineStyle?: LineStyle;
   lineWidth?: LineWidth;
+  /** Default true — trail tiers use false and show labels on the chart left instead. */
+  axisLabelVisible?: boolean;
 };
 
 export type StrategyTaOverlay = {
@@ -78,7 +88,7 @@ export type StrategyTaOverlay = {
   legend: string[];
 };
 
-function botFromRun(run: BacktestRunSummary | null): Record<string, unknown> {
+export function botFromRun(run: BacktestRunSummary | null): Record<string, unknown> {
   if (!run) return {};
   const cfg = (run.configSnapshot ?? {}) as Record<string, unknown>;
   if (cfg.bot && typeof cfg.bot === "object" && !Array.isArray(cfg.bot)) {
@@ -94,6 +104,8 @@ export function manualStrategyFromRun(run: BacktestRunSummary | null): string {
 }
 
 export function isSmcIctRun(run: BacktestRunSummary | null): boolean {
+  const manual = manualStrategyFromRun(run);
+  if (profileChartMarkup(manual) !== "smc_ict") return false;
   const bot = botFromRun(run);
   return bot.intradayGateSmcIct === true || bot.intradaySmcIctMode === true;
 }
@@ -106,7 +118,9 @@ export function hasSmcTradeContext(run: BacktestRunSummary | null, trade: Backte
   if (Array.isArray(liq?.techniques) && liq.techniques.some((t) => String(t).startsWith("smc_"))) return true;
   const reason = String(trade.entryReason ?? "");
   if (reason.includes("smc_ict") || reason.includes("smc+")) return true;
-  return isSmcIctRun(run);
+  const manual = manualStrategyFromRun(run);
+  if (profileChartMarkup(manual) === "smc_ict") return isSmcIctRun(run);
+  return false;
 }
 
 export function isLiquidityRun(run: BacktestRunSummary | null): boolean {
@@ -202,10 +216,15 @@ export function priceSegmentForTrade(
   chartTimesSec: number[],
   indexByTs: Map<number, number>,
   price: number,
+  timing?: TradeChartTiming,
 ): LineData[] {
   if (!Number.isFinite(price)) return [];
-  const tEntry = Number(chartTimeForTrade(trade.entryTs, candles, chartTimesSec, indexByTs));
-  const tExit = Number(chartTimeForTrade(trade.exitTs, candles, chartTimesSec, indexByTs));
+  const tEntry = timing
+    ? Number(chartTimeForEntryFill(trade, candles, chartTimesSec, timing))
+    : Number(chartTimeForTrade(trade.entryTs, candles, chartTimesSec, indexByTs));
+  const tExit = timing
+    ? Number(chartTimeForExitFill(trade, candles, chartTimesSec, timing))
+    : Number(chartTimeForTrade(trade.exitTs, candles, chartTimesSec, indexByTs));
   if (!Number.isFinite(tEntry)) return [];
   const lo = Math.min(tEntry, Number.isFinite(tExit) ? tExit : tEntry);
   const hi = Math.max(tEntry, Number.isFinite(tExit) ? tExit : tEntry);
@@ -232,7 +251,7 @@ export function buildTradeChartZoneSeries(
   candles: OhlcCandle[],
   chartTimesSec: number[],
   indexByTs: Map<number, number>,
-  opts: { showTa: boolean; showPattern: boolean },
+  opts: { showTa: boolean; showPattern: boolean; chartTf?: string },
 ): TradeChartZoneSeries {
   const empty = {
     riskTop: [],
@@ -245,12 +264,19 @@ export function buildTradeChartZoneSeries(
   };
   if (!trade) return empty;
 
+  const timing: TradeChartTiming | undefined =
+    opts.chartTf && run?.timeframe
+      ? { chartTf: opts.chartTf, runTimeframe: run.timeframe, engineType: run.engineType }
+      : undefined;
+  const seg = (price: number) =>
+    priceSegmentForTrade(trade, candles, chartTimesSec, indexByTs, price, timing);
+
   const isLong = trade.direction === "BUY";
   const entry = num(trade.entryPrice);
-  const sl = num(trade.slPrice);
-  const tp = num(trade.tpPrice);
+  const sl = activeBracketPrice(trade.slPrice);
+  const tp = activeBracketPrice(trade.tpPrice);
   const liq = trade.liqContext as BacktestLiqContext | null | undefined;
-  const tp1 = num(liq?.tp1Price);
+  const tp1 = activeBracketPrice(liq?.tp1Price);
 
   let riskTop: LineData[] = [];
   let riskBottom: LineData[] = [];
@@ -261,14 +287,14 @@ export function buildTradeChartZoneSeries(
     if (entry != null && sl != null) {
       const top = isLong ? entry : sl;
       const bottom = isLong ? sl : entry;
-      riskTop = priceSegmentForTrade(trade, candles, chartTimesSec, indexByTs, top);
-      riskBottom = priceSegmentForTrade(trade, candles, chartTimesSec, indexByTs, bottom);
+      riskTop = seg(top);
+      riskBottom = seg(bottom);
     }
     if (entry != null && tp != null) {
       const top = isLong ? tp : entry;
       const bottom = isLong ? entry : tp;
-      rewardTop = priceSegmentForTrade(trade, candles, chartTimesSec, indexByTs, top);
-      rewardBottom = priceSegmentForTrade(trade, candles, chartTimesSec, indexByTs, bottom);
+      rewardTop = seg(top);
+      rewardBottom = seg(bottom);
     }
     if (tp1 != null && entry != null) {
       // tp1 shown as extra TA-style line
@@ -291,7 +317,7 @@ export function buildTradeChartZoneSeries(
     if (ta?.lines.length) {
       for (const spec of ta.lines) {
         taLines.push({
-          data: priceSegmentForTrade(trade, candles, chartTimesSec, indexByTs, spec.price),
+          data: seg(spec.price),
           color: spec.color,
           lineStyle: spec.lineStyle,
           lineWidth: spec.lineWidth ?? 2,
@@ -300,7 +326,7 @@ export function buildTradeChartZoneSeries(
     }
     if (opts.showPattern && tp1 != null) {
       taLines.push({
-        data: priceSegmentForTrade(trade, candles, chartTimesSec, indexByTs, tp1),
+        data: seg(tp1),
         color: "#fde047",
         lineWidth: 2,
         lineStyle: 0,
@@ -506,8 +532,8 @@ export function buildStrategyTaOverlay(
   // Fallback: bracket levels as TA guides when signal_context.liq is missing (older runs).
   const lines: ChartPriceLineSpec[] = [];
   const legend: string[] = ["TA from entry / SL / TP (re-run backtest for full SMC levels)"];
-  const sl = num(trade.slPrice);
-  const tp = num(trade.tpPrice);
+  const sl = activeBracketPrice(trade.slPrice);
+  const tp = activeBracketPrice(trade.tpPrice);
   if (sl != null) {
     lines.push({ price: sl, color: "#fb7185", title: "Stop", lineStyle: 2, lineWidth: 2 });
   }
@@ -526,10 +552,10 @@ export function buildPositionPatternOverlay(trade: BacktestTrade): {
   const legend: string[] = [];
   const isLong = trade.direction === "BUY";
   const entry = num(trade.entryPrice);
-  const sl = num(trade.slPrice);
-  const tp = num(trade.tpPrice);
+  const sl = activeBracketPrice(trade.slPrice);
+  const tp = activeBracketPrice(trade.tpPrice);
   const liq = trade.liqContext as BacktestLiqContext | null | undefined;
-  const tp1 = num(liq?.tp1Price);
+  const tp1 = activeBracketPrice(liq?.tp1Price);
 
   if (entry != null && sl != null) {
     const riskTop = isLong ? entry : sl;

@@ -1,0 +1,16 @@
+
+=== baseline (no BE lock) ===
+N=263 ret=135.0% DD=52.4% WR=38% whip=37
+  2022-2023: n=64 wr=33% ret=-5.4% net=$-5.4 whip=11
+  2023-2024: n=45 wr=36% ret=0.0% net=$0.0 whip=8
+  2024-2025: n=82 wr=37% ret=13.2% net=$12.5 whip=13
+  2025-2026: n=72 wr=46% ret=119.4% net=$127.9 whip=5
+
+=== BE at MFE ≥ 1% ===
+N=265 ret=-25.3% DD=60.3% WR=25% whip=0
+  2022-2023: n=64 wr=19% ret=-39.4% net=$-39.4 whip=0
+  2023-2024: n=46 wr=22% ret=-9.7% net=$-5.9 whip=0
+  2024-2025: n=82 wr=27% ret=-4.2% net=$-2.3 whip=0
+  2025-2026: n=73 wr=32% ret=42.4% net=$22.2 whip=0
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-be-mfe.json

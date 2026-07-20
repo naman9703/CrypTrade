@@ -9,6 +9,14 @@
 
 import { INSTANCE_FIELD_KEYS, stripInstanceFieldsFromCfgRaw } from "./strategyInstanceSplit.js";
 import { SIGNAL_BRAIN_BOT_KEYS } from "./strategySignalBrainKeys.js";
+import { buildAllowedKeySet, getStrategyProfile, sanitizeCfgForStrategy } from "../strategy/strategyConfigProfile.js";
+import {
+  hydrateCfgRawForEngine,
+  persistCfgRawWithStrategySlices,
+  getStrategySlice,
+} from "./strategyConfigSlices.js";
+
+export { getStrategySlice, hydrateCfgRawForEngine } from "./strategyConfigSlices.js";
 
 const SIGNAL_BRAIN_KEY_SET = new Set(SIGNAL_BRAIN_BOT_KEYS);
 
@@ -55,6 +63,10 @@ const RUNTIME_POLLUTION_SET = new Set(RUNTIME_POLLUTION_BOT_KEYS);
 /** Per-run metadata stored on backtest snapshots (not part of strategy version cfg_raw). */
 export const BACKTEST_SNAPSHOT_META_KEYS = Object.freeze([
   "backtestPositionSizing",
+  "portfolioPositionSizing",
+  "backtestTrailMicroTf",
+  "backtestTrailActivationOn",
+  "backtestTrailPriceSource",
   "_engineVersion",
   "_intradayEngineMaterialized",
   "_intradayEngineMaterializedAt",
@@ -104,8 +116,11 @@ function wrapBot(bot, cfgRaw) {
 /** Copy missing signal-brain keys from `source` onto `target` (does not override explicit values). */
 export function mergeMissingSignalBrainBot(target, source) {
   if (!target || typeof target !== "object" || !source || typeof source !== "object") return target;
+  const manual = String(target.manualStrategy ?? source.manualStrategy ?? "").toUpperCase();
+  const allowed = buildAllowedKeySet(getStrategyProfile(manual));
   for (const key of SIGNAL_BRAIN_BOT_KEYS) {
     if (INSTANCE_FIELD_SET.has(key)) continue;
+    if (!allowed.has(key)) continue;
     if (!Object.prototype.hasOwnProperty.call(target, key) && Object.prototype.hasOwnProperty.call(source, key)) {
       target[key] = source[key];
     }
@@ -134,18 +149,14 @@ export function stripRuntimePollutionFromBot(bot) {
 /**
  * Sanitize strategy version cfg_raw before DB write or engine reload.
  * @param {Record<string, unknown>|null|undefined} cfgRaw
- * @param {{ fillFrom?: Record<string, unknown>|null }} [opts] — e.g. live engine persist payload
+ * @param {{ fillFrom?: Record<string, unknown>|null, hydrate?: boolean }} [opts]
  */
-export function sanitizeSignalBrainCfgRaw(cfgRaw, { fillFrom = null } = {}) {
-  if (!cfgRaw || typeof cfgRaw !== "object") return { v: 1, bot: {} };
-  const flat = { ...pickBot(cfgRaw) };
-  if (fillFrom && typeof fillFrom === "object") {
-    mergeMissingSignalBrainBot(flat, pickBot(fillFrom));
+export function sanitizeSignalBrainCfgRaw(cfgRaw, { fillFrom = null, hydrate = false } = {}) {
+  if (!cfgRaw || typeof cfgRaw !== "object") {
+    return hydrate ? hydrateCfgRawForEngine({ v: 1, bot: {} }) : persistCfgRawWithStrategySlices({ v: 1, bot: {} }, { fillFrom });
   }
-  stripRuntimePollutionFromBot(flat);
-  const picked = pickSignalBrainBot(flat);
-  const stripped = stripInstanceFieldsFromCfgRaw(wrapBot(picked, cfgRaw));
-  return stripped;
+  if (hydrate) return hydrateCfgRawForEngine(cfgRaw);
+  return persistCfgRawWithStrategySlices(cfgRaw, { fillFrom });
 }
 
 /**
@@ -156,7 +167,9 @@ export function sanitizeBacktestConfigSnapshot(cfgRaw) {
   if (!cfgRaw || typeof cfgRaw !== "object") return { v: 1, bot: {} };
   const srcBot = pickBot(cfgRaw);
   const brain = pickSignalBrainBot(srcBot);
-  const outBot = { ...brain };
+  const manual = String(brain.manualStrategy ?? srcBot.manualStrategy ?? "").toUpperCase();
+  const scoped = sanitizeCfgForStrategy(manual, brain, { phase: "snapshot" });
+  const outBot = { ...scoped };
 
   for (const key of BACKTEST_SNAPSHOT_META_KEYS) {
     if (Object.prototype.hasOwnProperty.call(srcBot, key)) outBot[key] = srcBot[key];
@@ -164,9 +177,10 @@ export function sanitizeBacktestConfigSnapshot(cfgRaw) {
 
   stripRuntimePollutionFromBot(outBot);
 
+  const allowed = buildAllowedKeySet(getStrategyProfile(manual));
   // Drop stray keys that are neither signal brain, instance, nor backtest meta.
   for (const key of Object.keys(outBot)) {
-    if (SIGNAL_BRAIN_KEY_SET.has(key)) continue;
+    if (allowed.has(key)) continue;
     if (BACKTEST_META_SET.has(key)) continue;
     delete outBot[key];
   }

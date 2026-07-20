@@ -22,6 +22,8 @@ function tradeSizingContext(t) {
   return {
     leverageCapped: t.leverageCapped === true ? true : t.leverageCapped === false ? false : null,
     allotmentCapped: t.allotmentCapped === true ? true : t.allotmentCapped === false ? false : null,
+    effectiveLeverage:
+      t.effectiveLeverage != null && Number.isFinite(Number(t.effectiveLeverage)) ? Number(t.effectiveLeverage) : null,
     marginCapUsdt: t.marginCapUsdt != null && Number.isFinite(Number(t.marginCapUsdt)) ? Number(t.marginCapUsdt) : null,
     allowedPoolUsdt:
       t.allowedPoolUsdt != null && Number.isFinite(Number(t.allowedPoolUsdt)) ? Number(t.allowedPoolUsdt) : null,
@@ -150,6 +152,21 @@ export async function insertTrades(runId, symbol, trades) {
         gateAction: t.gateAction ?? null,
         trailStep: t.trailStep ?? 0,
         trailTierLabel: t.trailTierLabel ?? null,
+        trailEvents:
+          Array.isArray(t.trailEvents) && t.trailEvents.length
+            ? t.trailEvents.map((ev) => ({
+                ts: ev.ts != null ? Number(ev.ts) : null,
+                step: ev.step != null ? Number(ev.step) : 0,
+                tierLabel: ev.tierLabel != null ? String(ev.tierLabel) : null,
+                slPrice: ev.slPrice != null && Number.isFinite(Number(ev.slPrice)) ? Number(ev.slPrice) : null,
+                favorablePx:
+                  ev.favorablePx != null && Number.isFinite(Number(ev.favorablePx)) ? Number(ev.favorablePx) : null,
+                nextActivationPx:
+                  ev.nextActivationPx != null && Number.isFinite(Number(ev.nextActivationPx))
+                    ? Number(ev.nextActivationPx)
+                    : null,
+              }))
+            : null,
         equityAtEntry: t.equityAtEntry ?? null,
         marginUsdt: t.marginUsdt ?? null,
         initialSlPrice: t.initialSlPrice != null && Number.isFinite(Number(t.initialSlPrice)) ? Number(t.initialSlPrice) : null,
@@ -157,6 +174,11 @@ export async function insertTrades(runId, symbol, trades) {
         entryQuality: t.entryQuality ?? null,
         lossPattern: t.lossPattern ?? null,
         entryReason: t.entryReason ?? null,
+        entryBarTs: t.entryBarTs != null ? Number(t.entryBarTs) : null,
+        entryFillTs: t.entryFillTs != null ? Number(t.entryFillTs) : null,
+        entrySameBar: t.entrySameBar === true ? true : t.entrySameBar === false ? false : null,
+        entryMarkPx: t.entryMarkPx != null && Number.isFinite(Number(t.entryMarkPx)) ? Number(t.entryMarkPx) : null,
+        exitFillTs: t.exitFillTs != null ? Number(t.exitFillTs) : null,
         liq:
           t.liqContext && typeof t.liqContext === "object"
             ? t.liqContext
@@ -305,6 +327,21 @@ async function insertTradesInTx(client, runId, symbol, trades) {
         gateAction: t.gateAction ?? null,
         trailStep: t.trailStep ?? 0,
         trailTierLabel: t.trailTierLabel ?? null,
+        trailEvents:
+          Array.isArray(t.trailEvents) && t.trailEvents.length
+            ? t.trailEvents.map((ev) => ({
+                ts: ev.ts != null ? Number(ev.ts) : null,
+                step: ev.step != null ? Number(ev.step) : 0,
+                tierLabel: ev.tierLabel != null ? String(ev.tierLabel) : null,
+                slPrice: ev.slPrice != null && Number.isFinite(Number(ev.slPrice)) ? Number(ev.slPrice) : null,
+                favorablePx:
+                  ev.favorablePx != null && Number.isFinite(Number(ev.favorablePx)) ? Number(ev.favorablePx) : null,
+                nextActivationPx:
+                  ev.nextActivationPx != null && Number.isFinite(Number(ev.nextActivationPx))
+                    ? Number(ev.nextActivationPx)
+                    : null,
+              }))
+            : null,
         equityAtEntry: t.equityAtEntry ?? null,
         marginUsdt: t.marginUsdt ?? null,
         initialSlPrice: t.initialSlPrice != null && Number.isFinite(Number(t.initialSlPrice)) ? Number(t.initialSlPrice) : null,
@@ -312,6 +349,11 @@ async function insertTradesInTx(client, runId, symbol, trades) {
         entryQuality: t.entryQuality ?? null,
         lossPattern: t.lossPattern ?? null,
         entryReason: t.entryReason ?? null,
+        entryBarTs: t.entryBarTs != null ? Number(t.entryBarTs) : null,
+        entryFillTs: t.entryFillTs != null ? Number(t.entryFillTs) : null,
+        entrySameBar: t.entrySameBar === true ? true : t.entrySameBar === false ? false : null,
+        entryMarkPx: t.entryMarkPx != null && Number.isFinite(Number(t.entryMarkPx)) ? Number(t.entryMarkPx) : null,
+        exitFillTs: t.exitFillTs != null ? Number(t.exitFillTs) : null,
         liq:
           t.liqContext && typeof t.liqContext === "object"
             ? t.liqContext

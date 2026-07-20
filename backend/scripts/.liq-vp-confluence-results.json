@@ -1,0 +1,203 @@
+{
+  "window": "2025-01-01→2026-06-01",
+  "risk": 2.5,
+  "symbols": [
+    "BNBUSDT",
+    "ETHUSDT"
+  ],
+  "rows": [
+    {
+      "symbol": "BNBUSDT",
+      "variant": "liq_solo",
+      "label": "LIQ solo (liquidity gate only)",
+      "picks": 80,
+      "candidates": 0,
+      "trades": 75,
+      "tradesPerWeek": 1.02,
+      "tradesPerMonth": 4.4,
+      "wr": 61,
+      "ret": -3.06,
+      "pf": 0.96,
+      "dd": 24.55,
+      "exitReasons": {
+        "sl": 22,
+        "time_stop": 45,
+        "tp1_partial": 25,
+        "be": 5,
+        "tp2": 3
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "vp_intraday_gate",
+      "label": "VP intraday gate only",
+      "picks": 0,
+      "candidates": 0,
+      "trades": 0,
+      "tradesPerWeek": 0,
+      "tradesPerMonth": 0,
+      "wr": 0,
+      "ret": 0,
+      "pf": 0,
+      "dd": 0,
+      "exitReasons": {}
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "liq_vp_confluence",
+      "label": "LIQ+VP confluence (dual gate, vp bias ok)",
+      "picks": 2,
+      "candidates": 2,
+      "trades": 1,
+      "tradesPerWeek": 0.01,
+      "tradesPerMonth": 0.1,
+      "wr": 0,
+      "ret": -4.08,
+      "pf": 0,
+      "dd": 4.08,
+      "exitReasons": {
+        "time_stop": 1
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "liq_vp_confluence_strict",
+      "label": "LIQ+VP confluence strict (requireVpSetup)",
+      "picks": 0,
+      "candidates": 0,
+      "trades": 0,
+      "tradesPerWeek": 0,
+      "tradesPerMonth": 0,
+      "wr": 0,
+      "ret": 0,
+      "pf": 0,
+      "dd": 0,
+      "exitReasons": {}
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "vp_standalone",
+      "label": "VP standalone Tier-A",
+      "picks": null,
+      "candidates": null,
+      "trades": 3,
+      "tradesPerWeek": 0.04,
+      "tradesPerMonth": 0.2,
+      "wr": 66.7,
+      "ret": 12.21,
+      "pf": 4.93,
+      "dd": 2.91,
+      "exitReasons": {
+        "tp": 2,
+        "sl": 1
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "liq_solo",
+      "label": "LIQ solo (liquidity gate only)",
+      "picks": 16,
+      "candidates": 0,
+      "trades": 16,
+      "tradesPerWeek": 0.22,
+      "tradesPerMonth": 0.9,
+      "wr": 18.8,
+      "ret": -4,
+      "pf": 0.16,
+      "dd": 4.17,
+      "exitReasons": {
+        "trail": 15,
+        "sl": 1
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "vp_intraday_gate",
+      "label": "VP intraday gate only",
+      "picks": 0,
+      "candidates": 0,
+      "trades": 0,
+      "tradesPerWeek": 0,
+      "tradesPerMonth": 0,
+      "wr": 0,
+      "ret": 0,
+      "pf": 0,
+      "dd": 0,
+      "exitReasons": {}
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "liq_vp_confluence",
+      "label": "LIQ+VP confluence (dual gate, vp bias ok)",
+      "picks": 14,
+      "candidates": 15,
+      "trades": 14,
+      "tradesPerWeek": 0.19,
+      "tradesPerMonth": 0.8,
+      "wr": 7.1,
+      "ret": -4.99,
+      "pf": 0.02,
+      "dd": 5.11,
+      "exitReasons": {
+        "trail": 13,
+        "sl": 1
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "liq_vp_confluence_strict",
+      "label": "LIQ+VP confluence strict (requireVpSetup)",
+      "picks": 0,
+      "candidates": 0,
+      "trades": 0,
+      "tradesPerWeek": 0,
+      "tradesPerMonth": 0,
+      "wr": 0,
+      "ret": 0,
+      "pf": 0,
+      "dd": 0,
+      "exitReasons": {}
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "vp_standalone",
+      "label": "VP standalone Tier-A",
+      "picks": null,
+      "candidates": null,
+      "trades": 13,
+      "tradesPerWeek": 0.18,
+      "tradesPerMonth": 0.8,
+      "wr": 30.8,
+      "ret": 16.93,
+      "pf": 1.31,
+      "dd": 11.42,
+      "exitReasons": {
+        "sl": 9,
+        "tp": 4
+      }
+    }
+  ],
+  "bestByComposite": {
+    "symbol": "BNBUSDT",
+    "variant": "vp_standalone",
+    "label": "VP standalone Tier-A",
+    "picks": null,
+    "candidates": null,
+    "trades": 3,
+    "tradesPerWeek": 0.04,
+    "tradesPerMonth": 0.2,
+    "wr": 66.7,
+    "ret": 12.21,
+    "pf": 4.93,
+    "dd": 2.91,
+    "exitReasons": {
+      "tp": 2,
+      "sl": 1
+    }
+  },
+  "target": {
+    "minTradesPerWeek": 2,
+    "minReturnPct": 0,
+    "minPf": 1
+  }
+}

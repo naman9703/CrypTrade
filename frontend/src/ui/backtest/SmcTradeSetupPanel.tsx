@@ -3,6 +3,7 @@
  */
 import type { BacktestTrade } from "../../types/backtest";
 import type { BacktestLiqContext } from "./backtestChartOverlays";
+import { activeBracketPrice } from "./backtestChartTime";
 import type { SmcChartMarkup } from "./smcChartMarkup";
 
 const TECH_LABELS: Record<string, string> = {
@@ -93,9 +94,9 @@ export function SmcTradeSetupPanel({ trade, markup }: Props) {
         </div>
         <div>
           <span className="font-semibold text-sky-600 dark:text-sky-400">Entry</span> {fmtPrice(trade.entryPrice)}
-          {trade.slPrice != null ? ` · SL ${fmtPrice(trade.slPrice)}` : ""}
-          {trade.tpPrice != null ? ` · TP ${fmtPrice(trade.tpPrice)}` : ""}
-          {liq?.tp1Price != null ? ` · TP1 ${fmtPrice(liq.tp1Price)}` : ""}
+          {activeBracketPrice(trade.slPrice) != null ? ` · SL ${fmtPrice(activeBracketPrice(trade.slPrice)!)}` : ""}
+          {activeBracketPrice(trade.tpPrice) != null ? ` · TP ${fmtPrice(activeBracketPrice(trade.tpPrice)!)}` : ""}
+          {activeBracketPrice(liq?.tp1Price) != null ? ` · TP1 ${fmtPrice(activeBracketPrice(liq?.tp1Price)!)}` : ""}
         </div>
         {techniques.length > 0 && (
           <div className="sm:col-span-2 lg:col-span-3">

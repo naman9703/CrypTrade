@@ -4,7 +4,7 @@ import { runBacktest } from "../backtest/backtest.js";
 import { getTradingEvaluationChecklist } from "../evaluation/tradingChecklist.js";
 import { formatAiServiceError } from "../svc/aiHttpError.js";
 import { broadcastActivity } from "../lib/activityLog.js";
-import { mergePersistedTradesWithExchange } from "../lib/activityPersistence.js";
+import { mergePersistedTradesWithExchange, TRADE_HISTORY_SNAPSHOT_MAX } from "../lib/activityPersistence.js";
 import {
   isStrictBinanceAccountMode,
   persistenceSlugToTradingMode,
@@ -28,6 +28,9 @@ import { query } from "../db/query.js";
 import * as strategyService from "../db/services/strategyService.js";
 import { getLatestIntelligenceApiPayload, getIntelligenceHistory } from "../db/services/intelligenceService.js";
 import { getLiquidationPayloadForSymbol } from "../intelligence/collectors/liquidationCollector.js";
+
+/** In-process cache — AI /health can take seconds when the Python service is cold. */
+let aiHealthCache = { at: 0, data: null };
 import {
   refreshMarketIntelApisFromStore,
   getResolvedMarketIntelApis,
@@ -53,6 +56,7 @@ import * as performanceService from "../db/services/performanceService.js";
 import { getAccountAllotmentHeadroom, InsufficientCapitalError } from "../db/services/capitalAllotmentService.js";
 import { extractInstanceConfig, mergeInstanceIntoCfgRaw } from "../lib/strategyInstanceSplit.js";
 import { sanitizeSignalBrainCfgRaw } from "../lib/strategySignalBrain.js";
+import { materializeStrategyCfgRawForSave } from "../lib/strategyConfigSlices.js";
 import { createBacktestRouter } from "./backtestRoutes.js";
 const BOT_TARGET_MODES = z.enum(["PAPER", "BINANCE_DEMO_API", "BINANCE_TESTNET", "BINANCE_LIVE"]);
 
@@ -202,7 +206,11 @@ export function createRouter({ appState }) {
       positions = [];
       trades = [];
     } else {
-      trades = mergePersistedTradesWithExchange(viewM, trades);
+      const httpTradeLimit = Math.max(
+        100,
+        Math.min(1_000, Number(process.env.HTTP_STATE_TRADE_HISTORY_MAX || 500), TRADE_HISTORY_SNAPSHOT_MAX),
+      );
+      trades = mergePersistedTradesWithExchange(viewM, trades).slice(-httpTradeLimit);
     }
     void (async () => {
       try {
@@ -291,7 +299,12 @@ export function createRouter({ appState }) {
 
   r.get("/ai/health", async (_req, res) => {
     try {
+      const now = Date.now();
+      if (aiHealthCache.data && now - aiHealthCache.at < 30_000) {
+        return res.json({ ok: true, data: aiHealthCache.data });
+      }
       const data = await appState.ai.health();
+      aiHealthCache = { at: now, data };
       res.json({ ok: true, data });
     } catch (e) {
       res.status(503).json({ ok: false, error: formatAiServiceError(e) });
@@ -713,6 +726,28 @@ export function createRouter({ appState }) {
       regimeAdaptiveTrendAdx: z.number().min(10).max(60).optional(),
       regimeAdaptiveSqueezePctile: z.number().min(0.01).max(0.9).optional(),
       regimeAdaptiveVolatileAtrPct: z.number().min(0.002).max(0.1).optional(),
+      scalpMrBbPeriod: z.number().int().min(5).max(100).optional(),
+      scalpMrBbMult: z.number().min(0.5).max(5).optional(),
+      scalpMrRsiPeriod: z.number().int().min(2).max(50).optional(),
+      scalpMrRsiBuyMax: z.number().min(5).max(50).optional(),
+      scalpMrRsiSellMin: z.number().min(50).max(95).optional(),
+      scalpMrMaxAdx: z.number().min(5).max(60).optional(),
+      scalpMrMinAtrPct: z.number().min(0.01).max(2).optional(),
+      scalpMrMaxAtrPct: z.number().min(0.05).max(5).optional(),
+      scalpMrMinVolVsAvg: z.number().min(0.5).max(5).optional(),
+      scalpMrVolLookback: z.number().int().min(5).max(100).optional(),
+      scalpMrRangeRR: z.number().min(0.5).max(10).optional(),
+      scalpMrAtrSlMult: z.number().min(0.1).max(5).optional(),
+      scalpMrMinReclaimAtr: z.number().min(0).max(3).optional(),
+      scalpMrRequireConfirmCandle: z.boolean().optional(),
+      scalpMrUsePartialTp: z.boolean().optional(),
+      scalpMrSlMode: z.enum(["pierce", "entry_atr"]).optional(),
+      scalpMrMinRr: z.number().min(0.8).max(5).optional(),
+      scalpMrMinTpPct: z.number().min(0).max(2).optional(),
+      scalpMrTradeSides: z.enum(["BOTH", "LONG", "SHORT"]).optional(),
+      scalpMrMaxTradesPerDay: z.number().int().min(1).max(30).optional(),
+      scalpMrMinBarGap: z.number().int().min(0).max(50).optional(),
+      scalpMrKillzoneMode: z.enum(["LONDON_NY", "LONDON", "NY", "ALL"]).optional(),
       // Institutional risk overlay.
       riskScale: z.number().min(0.1).max(5).optional(),
       volTargetSizing: z.boolean().optional(),
@@ -774,11 +809,128 @@ export function createRouter({ appState }) {
       intradayLiqPartialTp: z.boolean().optional(),
       intradayLiqMinRr: z.number().min(0).max(5).optional(),
       intradayLiqMaxTpRr: z.number().min(0).max(20).optional(),
+      intradayLiqTp1Rr: z.number().min(0.25).max(2).optional(),
+      intradayLiqTp2Rr: z.number().min(0.5).max(20).optional(),
+      intradayLiqTp2PartialFrac: z.number().min(0).max(0.75).optional(),
+      trailOnlyAfterTp2Fill: z.boolean().optional(),
       intradayLiqMaxHoldBars: z.number().int().min(0).max(2000).optional(),
       intradayLiqOnePickPerDay: z.boolean().optional(),
       intradayLiqSessionExtreme: z.boolean().optional(),
       intradayLiqMinSweepExtensionPct: z.number().min(0).max(0.05).optional(),
+      intradayLiqSlBufferPct: z.number().min(0).max(0.01).optional(),
+      intradayLiqPartialFrac: z.number().min(0.1).max(0.75).optional(),
+      intradayLiqMinScore: z.number().int().min(0).max(20).optional(),
+      intradayLiqMinReclaimBodyRatio: z.number().min(0).max(1).optional(),
+      intradayLiqRequireHtfAlign: z.boolean().optional(),
+      intradayLiqRejectSameBarReclaim: z.boolean().optional(),
+      intradayLiqSessionExtremeMinTouches: z.number().int().min(1).max(20).optional(),
+      intradayLiqSessionExtremeMinExtensionPct: z.number().min(0).max(0.05).optional(),
+      srIntradaySweepPct: z.number().min(0).max(0.05).optional(),
       intradayLiqStrictMode: z.boolean().optional(),
+      liqMapLookbackBars: z.number().int().min(8).max(300).optional(),
+      liqMapMaxAgeBars: z.number().int().min(4).max(300).optional(),
+      liqMapMinTouches: z.number().int().min(1).max(10).optional(),
+      liqMapMinWickRatio: z.number().min(0).max(1).optional(),
+      liqMapMinRvol: z.number().min(0).max(10).optional(),
+      liqMapMinBodyRatio: z.number().min(0).max(1).optional(),
+      liqMapSweepPct: z.number().min(0).max(0.05).optional(),
+      liqMapEqualTolPct: z.number().min(0).max(0.02).optional(),
+      liqMapNormalizeThresholds: z.boolean().optional(),
+      liqMapSweepAtrFrac: z.number().min(0).max(2).optional(),
+      liqMapEqualTolAtrFrac: z.number().min(0).max(2).optional(),
+      liqMapAutoCalibrate: z.boolean().optional(),
+      liqMapAutoProfileBars: z.number().int().min(40).max(200).optional(),
+      liqMapAutoTrailTune: z.boolean().optional(),
+      liqMapHybridExit: z.boolean().optional(),
+      liqMapQualityGate: z.boolean().optional(),
+      liqMapQualityGateMode: z.enum(["HARD", "SOFT"]).optional(),
+      liqMapSoftGateScoreBand: z.number().min(0).max(3).optional(),
+      liqMapQualityAuto: z.boolean().optional(),
+      liqMapMinQualityScore: z.number().min(0).max(12).optional(),
+      liqMapRequireUnresolved: z.boolean().optional(),
+      liqMapRequireDirectionalClose: z.boolean().optional(),
+      liqMapEntryModel: z.enum(["HTF_SWEEP", "STRUCTURAL", "SWEEP_RECLAIM"]).optional(),
+      liqMapHtfPoolTfs: z.string().max(32).optional(),
+      liqMapHtfLookbackBars: z.number().min(12).max(500).optional(),
+      liqMapHtfSwingLeft: z.number().min(1).max(10).optional(),
+      liqMapHtfSwingRight: z.number().min(1).max(10).optional(),
+      liqMapHtfEqualMinTouches: z.number().min(2).max(8).optional(),
+      liqMapUseDailyWeeklyPools: z.boolean().optional(),
+      liqMapUseTrendlinePools: z.boolean().optional(),
+      liqMapEntryTiming: z.enum(["FVG_OR_OB", "NEXT_OPEN", "CONFIRMATION_CLOSE", "TWO_BAR_CONFIRM"]).optional(),
+      liqMapRequireMss: z.boolean().optional(),
+      liqMapRequireChoch: z.boolean().optional(),
+      liqMapRequireRetrace: z.boolean().optional(),
+      liqMapRequireReclaimHold: z.boolean().optional(),
+      liqMapStructureLookbackBars: z.number().int().min(3).max(200).optional(),
+      liqMapMssMaxBarsAfterSweep: z.number().int().min(1).max(100).optional(),
+      liqMapEntryZoneMode: z.enum(["FVG", "OB", "EITHER"]).optional(),
+      liqMapFvgEntryMode: z.enum(["ZONE", "MIDPOINT", "CE"]).optional(),
+      liqMapMssRequireDisplacement: z.boolean().optional(),
+      liqMapDisplacementBodyMult: z.number().min(0).max(5).optional(),
+      liqMapDisplacementAtrMult: z.number().min(0).max(5).optional(),
+      liqMapFvgMinGapPct: z.number().min(0).max(0.02).optional(),
+      liqMapStrictPdZone: z.boolean().optional(),
+      liqMapObMinDisplacementAtr: z.number().min(0).max(5).optional(),
+      liqMapRr: z.number().min(0.2).max(10).optional(),
+      liqMapHtfMode: z.enum(["none", "with", "against"]).optional(),
+      liqMapKillzone: z.enum(["LONDON", "NY", "LONDON_NY", "OVERLAP", "SILVER_BULLET", "ASIA", "ALL", "CUSTOM"]).optional(),
+      liqMapMinAtrPctile: z.number().min(0).max(100).optional(),
+      liqMapMaxAtrPctile: z.number().min(0).max(100).optional(),
+      liqMapAtrPctileLookback: z.number().int().min(200).max(10000).optional(),
+      liqMapMinAdx: z.number().min(0).max(100).optional(),
+      liqMapMaxAdx: z.number().min(0).max(100).optional(),
+      liqMapMinAtrPct: z.number().min(0).max(0.1).optional(),
+      liqMapMaxAtrPct: z.number().min(0).max(0.1).optional(),
+      liqMapMaxHoldBars: z.number().int().min(0).max(2000).optional(),
+      liqMapMaxSlPct: z.number().min(0).max(0.2).optional(),
+      liqMapSlBufferPct: z.number().min(0).max(0.05).optional(),
+      liqMapSlBufferAtrFrac: z.number().min(0).max(2).optional(),
+      liqMapOnePerDay: z.boolean().optional(),
+      liqMapOnePerSidePerDay: z.boolean().optional(),
+      liqMapRvolLookback: z.number().int().min(2).max(200).optional(),
+      liqMapExitMode: z.enum(["PARTIAL_RUNNER", "SCALED_FIXED"]).optional(),
+      liqMapTrailMode: z.enum(["FEE_LADDER", "SUPERTREND", "DYNAMIC_ATR"]).optional(),
+      liqMapMaxTpRr: z.number().min(0).max(50).optional(),
+      liqMapMaxOpposingRr: z.number().min(0).max(50).optional(),
+      liqMapMinTp2Rr: z.number().min(0).max(20).optional(),
+      liqMapFallbackTpRr: z.number().min(0).max(50).optional(),
+      liqMapDynamicRunnerMaxTpRr: z.number().min(0).max(50).optional(),
+      liqMapDynamicRunnerMinTpRr: z.number().min(1).max(20).optional(),
+      liqMapProjectedTpAtrMult: z.number().min(0).max(20).optional(),
+      liqMapProjectedTpRangeMult: z.number().min(0).max(5).optional(),
+      liqMapProjectionLookbackBars: z.number().int().min(2).max(300).optional(),
+      liqMapDynamicExitPolicy: z.boolean().optional(),
+      liqMapDynExitQualityHi: z.number().min(0).max(12).optional(),
+      liqMapDynExitQualityMid: z.number().min(0).max(12).optional(),
+      liqMapDynExitRrHi: z.number().min(0).max(20).optional(),
+      liqMapDynExitRrMid: z.number().min(0).max(20).optional(),
+      liqMapDynExitPartialHi: z.number().min(0.25).max(0.75).optional(),
+      liqMapDynExitPartialMid: z.number().min(0.25).max(0.75).optional(),
+      liqMapDynExitPartialBase: z.number().min(0.25).max(0.75).optional(),
+      liqMapDynExitTrailAtrHi: z.number().min(0).max(6).optional(),
+      liqMapDynExitTrailAtrMid: z.number().min(0).max(6).optional(),
+      liqMapDynExitTrailAtrBase: z.number().min(0).max(6).optional(),
+      liqMapDynExitWeakTp1Rr: z.number().min(0.45).max(1).optional(),
+      liqMapStructuralTp1Rr: z.number().min(0.5).max(1).optional(),
+      liqMapPartialFrac: z.number().min(0.25).max(0.75).optional(),
+      liqMapBreakevenAfterPartial: z.boolean().optional(),
+      liqMapUse4hConfirm: z.boolean().optional(),
+      liqMapSlMode: z.enum(["ATR_FLOOR", "REVERSAL_WICK"]).optional(),
+      liqMapAtrSlMult: z.number().min(0).max(5).optional(),
+      liqMapSlRegimeAdjust: z.boolean().optional(),
+      liqMapSlRegimeLowMult: z.number().min(0.2).max(2).optional(),
+      liqMapSlRegimeHighMult: z.number().min(0.2).max(3).optional(),
+      liqMapTrailStPeriod: z.number().int().min(2).max(100).optional(),
+      liqMapTrailStMult: z.number().min(0.5).max(10).optional(),
+      liqMapTrailAtrHwmMult: z.number().min(0).max(6).optional(),
+      liqMapTrailMfeGiveback: z.number().min(0).max(0.9).optional(),
+      liqMapTrailMfeMinR: z.number().min(0).max(10).optional(),
+      liqMapTrailStepAtrMult: z.number().min(0).max(2).optional(),
+      liqMapTrailMergeSt: z.boolean().optional(),
+      liqMapDeadTradeExitBars: z.number().int().min(0).max(2000).optional(),
+      liqMapDeadTradeMinMfeR: z.number().min(0).max(5).optional(),
+      liqMapDeadTradeMaxLossR: z.number().min(0).max(5).optional(),
       srIntradayMaxTradesPerDay: z.number().int().min(1).max(50).optional(),
       srIntradayMinBarGap: z.number().int().min(1).max(100).optional(),
       srIntradayMinScore: z.number().min(1).max(20).optional(),
@@ -824,6 +976,71 @@ export function createRouter({ appState }) {
       intradayTierMode: z.enum(["all", "A", "B"]).optional(),
       vpLookbackBars: z.number().int().min(48).max(2000).optional(),
       vpMinRR: z.number().min(0.8).max(5).optional(),
+      vpTierAOnly: z.boolean().optional(),
+      vpAllowHvnFlip: z.boolean().optional(),
+      vpRequireHtfAlign: z.boolean().optional(),
+      vpRegimeImmunity: z.boolean().optional(),
+      vpIncludePriorSession: z.boolean().optional(),
+      vpEnableNakedPoc: z.boolean().optional(),
+      vpBreakoutUsePriorSession: z.boolean().optional(),
+      vpHardBlockCeilingFloor: z.boolean().optional(),
+      vpStructureBrackets: z.boolean().optional(),
+      requireVpSetup: z.boolean().optional(),
+      vpMinScore: z.number().min(0).max(30).optional(),
+      vpMinAdx: z.number().min(0).max(100).optional(),
+      vpMinHtfSepPct: z.number().min(0).max(0.05).optional(),
+      vpMinRunPct: z.number().min(0).max(0.1).optional(),
+      vpMinCloseBeyondPct: z.number().min(0).max(0.05).optional(),
+      vpMinBreakoutBody: z.number().min(0).max(1).optional(),
+      vpMinBreakoutCloseStrength: z.number().min(0).max(1).optional(),
+      vpBreakoutMinVolRatio: z.number().min(0).max(10).optional(),
+      vpValBreakdownMinVolRatio: z.number().min(0).max(10).optional(),
+      vpBreakoutMinPathPct: z.number().min(0).max(0.1).optional(),
+      vpLvnMinVolRatio: z.number().min(0).max(10).optional(),
+      vpLvnSizeMult: z.number().min(0.5).max(5).optional(),
+      vpMinWickRatio: z.number().min(0).max(1).optional(),
+      vpMaxTradesPerDay: z.number().int().min(1).max(20).optional(),
+      vpMinBarGap: z.number().int().min(0).max(200).optional(),
+      vpSessionStartHour: z.number().int().min(0).max(23).optional(),
+      vpSessionEndHour: z.number().int().min(0).max(24).optional(),
+      vpMaxSlPct: z.number().min(0.001).max(0.05).optional(),
+      vpMaxTpPct: z.number().min(0.001).max(0.1).optional(),
+      vpValueAreaPct: z.number().min(0.5).max(0.95).optional(),
+      vpCompositeDays: z.number().int().min(1).max(30).optional(),
+      vpBins: z.number().int().min(10).max(200).optional(),
+      vpMaxPriorTrendPct: z.number().min(0).max(0.1).optional(),
+      vpPriorTrendLookback: z.number().int().min(2).max(100).optional(),
+      vpBuyBreakoutMinHtfSep: z.number().min(0).max(0.05).optional(),
+      vpBuyRelaxedMinHtfSep: z.number().min(0).max(0.05).optional(),
+      vpBuyHighPathMinPct: z.number().min(0).max(0.1).optional(),
+      vpSellBreakdownMinHtfSep: z.number().min(0).max(0.05).optional(),
+      vpSellMacroAdapt: z.boolean().optional(),
+      vpSellMinHtfSepPct: z.number().min(0).max(0.05).optional(),
+      vpSellMacroBullMinHtfSepPct: z.number().min(0).max(0.05).optional(),
+      vpSellMacroPrior20dBullPct: z.number().min(0).max(0.5).optional(),
+      vpBuyChaseFilter: z.boolean().optional(),
+      vpValSellBearOnly: z.boolean().optional(),
+      vpValSellRequirePrior60dBear: z.boolean().optional(),
+      vpValSellPrior60dBearPct: z.number().min(-1).max(0).optional(),
+      vpSellBreakdownMaxPathPct: z.number().min(0).max(0.1).optional(),
+      vpPreparedRegimeOnly: z.boolean().optional(),
+      vpPreparedBlockVacuumVah: z.boolean().optional(),
+      vpPreparedBlockVacuumValBear: z.boolean().optional(),
+      vpPreparedVacuumPathPct: z.number().min(0).max(0.1).optional(),
+      vpPreparedBearPrior60dPct: z.number().min(-1).max(0).optional(),
+      vpBuyChaseMaxPrior5dPct: z.number().min(0).max(0.5).optional(),
+      vpMinBarVolRatio: z.number().min(0).max(5).optional(),
+      vpMinAtrPct: z.number().min(0).max(0.1).optional(),
+      vpMaxAtrPct: z.number().min(0).max(0.2).optional(),
+      vpNearTolPct: z.number().min(0).max(0.05).optional(),
+      vpRejectionMinVolRatio: z.number().min(0).max(10).optional(),
+      vpRejectionSpikePct: z.number().min(0).max(0.05).optional(),
+      vpOutsideVaLookback: z.number().int().min(2).max(48).optional(),
+      vpProfileMode: z.enum(["rolling", "session_utc", "composite_utc", "session", "composite"]).optional(),
+      vpVolumeDistribute: z.enum(["uniform", "close_weighted"]).optional(),
+      volumeProfileGateMode: z.enum(["off", "soft", "strict"]).optional(),
+      vpPlaybook: z.enum(["FREQ", "TIER_A"]).optional(),
+      vpAllowedSetups: z.array(z.string()).optional(),
       // SUPERTREND_ELITE gate parameters
       eliteStRequireHtf4hAlign: z.boolean().optional(),
       eliteStHtf4hPeriod: z.number().int().min(2).max(50).optional(),
@@ -938,6 +1155,19 @@ export function createRouter({ appState }) {
       /** Tiered ST: spacing between post‑T02 lock rungs as fraction of entry; `null` clears to engine default. */
       trailPostT02SpacingFrac: z.union([z.number().min(0.00001).max(0.05), z.null()]).optional(),
       trailPostT02MaxExtraTiers: z.number().int().min(10).max(500).optional(),
+      /** Fixed % ladder vs per-trade dynamic ATR/MFE hybrid trailing. */
+      trailSizingMode: z.enum(["FIXED_PCT", "DYNAMIC"]).optional(),
+      trailDynamicBeAtrMult: z.number().min(0).max(2).optional(),
+      trailDynamicBeT01LockAtrMult: z.number().min(0).max(1).optional(),
+      trailDynamicBeRegimeAdjust: z.boolean().optional(),
+      trailDynamicBeRegimeLowMult: z.number().min(0.5).max(1.5).optional(),
+      trailDynamicBeRegimeHighMult: z.number().min(0.5).max(2).optional(),
+      trailDynamicAdvAtrHwmMult: z.number().min(0).max(3).optional(),
+      trailDynamicAdvMfeGivebackFrac: z.number().min(0).max(0.9).optional(),
+      trailDynamicAdvMfeMinR: z.number().min(0).max(10).optional(),
+      trailDynamicAdvMergeSupertrend: z.boolean().optional(),
+      trailDynamicAdvAtrSource: z.enum(["ENTRY", "ROLLING"]).optional(),
+      trailDynamicAdvPostT02StepAtrMult: z.number().min(0).max(2).optional(),
       /** Lock AUTO universe to one symbol (table stays open in UI); null clears. */
       universePinnedSymbol: z.union([z.string().regex(symbolRe), z.null()]).optional(),
       /** Broad Binance universe + AI top-N vs custom watchlist (max 10 symbols). */
@@ -1685,11 +1915,27 @@ export function createRouter({ appState }) {
       if (!st || st.userId !== effectiveSessionUserId(req)) {
         return res.status(404).json({ ok: false, error: "version_not_found" });
       }
-      appState.setActiveStrategyVersion(modeSlug, parsed.data.versionId);
+      // Do not tear down the running engine without reloading — tab switch must hydrate bot config.
+      appState.setActiveStrategyVersion(modeSlug, parsed.data.versionId, { rebuildEngine: false });
       await usersService.mergeUiPrefsForUser(effectiveSessionUserId(req), {
         activeStrategyVersionByMode: { [modeSlug]: parsed.data.versionId },
       });
-      res.json({ ok: true, modeSlug, versionId: parsed.data.versionId });
+      let bot = null;
+      const instanceId = appState.getActiveInstance?.(modeSlug) ?? null;
+      try {
+        const row = await getEngineForBotRequest(req);
+        bot = await reloadEngineFromSavedStrategyVersion(row, parsed.data.versionId, instanceId);
+      } catch (reloadErr) {
+        // eslint-disable-next-line no-console
+        console.warn("active_strategy_engine_reload_failed", String(reloadErr?.message || reloadErr));
+      }
+      res.json({
+        ok: true,
+        modeSlug,
+        versionId: parsed.data.versionId,
+        bot,
+        activeStrategyVersionByMode: appState.getActiveStrategyVersionByModeSnapshot(),
+      });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
@@ -1710,16 +1956,30 @@ export function createRouter({ appState }) {
   }
 
   /** Reload live engine from DB strategy version (+ active instance operational merge). */
-  async function reloadEngineFromSavedStrategyVersion(row, versionId, instanceId) {
+  async function reloadEngineFromSavedStrategyVersion(
+    row,
+    versionId,
+    instanceId,
+    fallbackInstanceOp = null,
+    persistedCfgRaw = null,
+  ) {
     if (!row?.bot?.reloadTradingConfigFromPersisted) {
       return row?.bot?.getPublicState?.() ?? null;
     }
-    let persisted = null;
-    try {
-      const ver = await strategyService.getVersion(String(versionId));
-      persisted = ver?.cfgRaw && typeof ver.cfgRaw === "object" ? sanitizeSignalBrainCfgRaw(ver.cfgRaw) : null;
-    } catch {
-      persisted = null;
+    let persisted =
+      persistedCfgRaw && typeof persistedCfgRaw === "object"
+        ? sanitizeSignalBrainCfgRaw(persistedCfgRaw, { hydrate: true })
+        : null;
+    if (!persisted) {
+      try {
+        const ver = await strategyService.getVersion(String(versionId));
+        persisted =
+          ver?.cfgRaw && typeof ver.cfgRaw === "object"
+            ? sanitizeSignalBrainCfgRaw(ver.cfgRaw, { hydrate: true })
+            : null;
+      } catch {
+        persisted = null;
+      }
     }
     if (instanceId) {
       try {
@@ -1728,6 +1988,8 @@ export function createRouter({ appState }) {
       } catch {
         /* ignore */
       }
+    } else if (fallbackInstanceOp && typeof fallbackInstanceOp === "object") {
+      persisted = mergeInstanceIntoCfgRaw(persisted ?? {}, fallbackInstanceOp);
     }
     if (persisted) {
       row.bot.reloadTradingConfigFromPersisted(persisted);
@@ -1788,9 +2050,11 @@ export function createRouter({ appState }) {
         parsed.data.cfgRaw ?? rawSaveBody.cfgRaw,
         enginePayload,
       );
-      const payload =
+      let payload =
         clientCfgRaw ??
         sanitizeSignalBrainCfgRaw(enginePayload, { fillFrom: enginePayload });
+      payload = await materializeStrategyCfgRawForSave(payload);
+      payload = sanitizeSignalBrainCfgRaw(payload, { fillFrom: enginePayload });
       const labelForSaveAsNew =
         parsed.data.label != null && String(parsed.data.label).trim() !== ""
           ? String(parsed.data.label)
@@ -1858,7 +2122,13 @@ export function createRouter({ appState }) {
           );
         }
         await Promise.all(postSave);
-        const bot = await reloadEngineFromSavedStrategyVersion(row, nv.id, activeInstanceId);
+        const bot = await reloadEngineFromSavedStrategyVersion(
+          row,
+          nv.id,
+          activeInstanceId,
+          instanceOpCols,
+          payload,
+        );
         return res.json({ ok: true, action: "save", strategy: st, version: nv, bot });
       }
       const name = String(parsed.data.name || "").trim() || `${st.name} copy`;
@@ -1889,7 +2159,13 @@ export function createRouter({ appState }) {
         );
       }
       await Promise.all(postSaveNew);
-      const bot = await reloadEngineFromSavedStrategyVersion(row, nv.id, activeInstanceId);
+      const bot = await reloadEngineFromSavedStrategyVersion(
+        row,
+        nv.id,
+        activeInstanceId,
+        instanceOpCols,
+        payload,
+      );
       return res.json({ ok: true, action: "save_as_new", strategy: newStrategy, version: nv, bot });
     } catch (e) {
       return res.status(500).json({ ok: false, error: String(e?.message || e) });
@@ -2150,6 +2426,50 @@ export function createRouter({ appState }) {
    * Capital allotment values flow through the existing capital-allotment service in
    * a follow-up endpoint; this PATCH only updates the instance-owned defaults.
    */
+  r.post("/instances/:instanceId/bind-strategy", requireDbUserSession, async (req, res) => {
+    const instanceId = String(req.params.instanceId || "");
+    if (!z.string().uuid().safeParse(instanceId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_instance_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const bodySchema = z.object({ strategyId: z.string().uuid() });
+    const parsed = bodySchema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const uid = effectiveSessionUserId(req);
+      const inst = await instanceService.assertInstanceOwned(instanceId, uid);
+      const owned = await strategyService.assertStrategyOwnedByUser(parsed.data.strategyId, uid);
+      if (!owned) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const latest = await strategyService.getLatestVersion(parsed.data.strategyId);
+      if (!latest?.id) return res.status(400).json({ ok: false, error: "strategy_has_no_saved_config" });
+      const modeSlug = normalizeModeSlugParam(inst.accountModeSlug);
+      if (!modeSlug) return res.status(400).json({ ok: false, error: "invalid_instance_mode" });
+      await instanceService.updateInstanceStrategyVersion(instanceId, uid, String(latest.id));
+      appState.setActiveInstance(modeSlug, instanceId, { rebuildEngine: false });
+      appState.setActiveStrategyVersion(modeSlug, String(latest.id), { rebuildEngine: false });
+      await usersService.mergeUiPrefsForUser(uid, {
+        activeInstanceByMode: { [modeSlug]: instanceId },
+        activeStrategyVersionByMode: { [modeSlug]: latest.id },
+      });
+      const row = await getEngineForBotRequest(req);
+      const bot = await reloadEngineFromSavedStrategyVersion(row, latest.id, instanceId);
+      const instance = await instanceService.getInstanceDetail(instanceId, uid);
+      res.json({
+        ok: true,
+        instance,
+        bot,
+        strategyVersionId: latest.id,
+        activeInstanceByMode: appState.getActiveInstanceByModeSnapshot(),
+        activeStrategyVersionByMode: appState.getActiveStrategyVersionByModeSnapshot(),
+      });
+    } catch (e) {
+      if (e instanceof instanceService.InstanceNotFoundError) {
+        return res.status(404).json({ ok: false, error: e.code });
+      }
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
   r.patch("/instances/:instanceId/operational-config", requireDbUserSession, async (req, res) => {
     const instanceId = String(req.params.instanceId || "");
     if (!z.string().uuid().safeParse(instanceId).success) {
@@ -2412,6 +2732,30 @@ export function createRouter({ appState }) {
     }
   });
 
+  r.get("/strategies/:strategyId/usage", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    if (!accountUuid.safeParse(strategyId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_strategy_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const currentInstanceId =
+      req.query?.instanceId != null && String(req.query.instanceId).trim()
+        ? String(req.query.instanceId).trim()
+        : null;
+    try {
+      const owned = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
+      if (!owned) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const usage = await instanceService.getStrategyUsageContext(
+        effectiveSessionUserId(req),
+        strategyId,
+        currentInstanceId,
+      );
+      res.json({ ok: true, strategyId, ...usage });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
   r.get("/strategies/:strategyId", requireDbUserSession, async (req, res) => {
     const strategyId = String(req.params.strategyId || "");
     if (!accountUuid.safeParse(strategyId).success) {
@@ -2425,6 +2769,30 @@ export function createRouter({ appState }) {
       res.json({ ok: true, strategy, latestVersion });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.post("/strategies/:strategyId/clone", requireDbUserSession, async (req, res) => {
+    const strategyId = String(req.params.strategyId || "");
+    if (!accountUuid.safeParse(strategyId).success) {
+      return res.status(400).json({ ok: false, error: "invalid_strategy_id" });
+    }
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const bodySchema = z.object({ name: z.string().min(1).max(200) });
+    const parsed = bodySchema.safeParse(req.body && typeof req.body === "object" ? req.body : {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    try {
+      const out = await strategyService.cloneStrategyAsNew(
+        effectiveSessionUserId(req),
+        strategyId,
+        parsed.data.name,
+      );
+      if (!out?.strategy) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      res.json({ ok: true, strategy: out.strategy, version: out.version, latestVersion: out.version });
+    } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg === "source_strategy_empty") return res.status(400).json({ ok: false, error: msg });
+      res.status(500).json({ ok: false, error: msg });
     }
   });
 
@@ -2444,6 +2812,14 @@ export function createRouter({ appState }) {
     try {
       const owned = await strategyService.assertStrategyOwnedByUser(strategyId, effectiveSessionUserId(req));
       if (!owned) return res.status(404).json({ ok: false, error: "strategy_not_found" });
+      const usage = await instanceService.getStrategyUsageContext(effectiveSessionUserId(req), strategyId);
+      if (!usage.canRename) {
+        return res.status(409).json({
+          ok: false,
+          error: "strategy_instances_busy",
+          message: usage.renameBlockReason,
+        });
+      }
       const strategy = await strategyService.updateStrategyMeta(strategyId, parsed.data);
       res.json({ ok: true, strategy });
     } catch (e) {

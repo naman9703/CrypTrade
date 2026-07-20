@@ -1,0 +1,34 @@
+
+=== ETH VP FREQ OOS year audit ===
+
+--- full_2020_26 (2020-01-01 → 2026-05-31) ---
+  eth_locked             N=318 0.95/wk ret=178.2% DD=58.9% Calmar=0.29
+  eth_plus_btc_prepared  N=122 0.36/wk ret=106.6% DD=22.6% Calmar=0.53
+  delta prepared vs locked: -71.6% ret, N -196
+
+--- oos_2021_22 (2021-06-01 → 2022-05-31) ---
+  eth_locked             N= 55 1.06/wk ret=-32.4% DD=41.8% Calmar=-0.74
+  eth_plus_btc_prepared  N= 18 0.35/wk ret=-8.3% DD=12.1% Calmar=-0.65
+  delta prepared vs locked: +24.1% ret, N -37
+
+--- oos_2022_23 (2022-06-01 → 2023-05-31) ---
+  eth_locked             N= 38 0.73/wk ret=23.9% DD=22.6% Calmar=1.00
+  eth_plus_btc_prepared  N= 20 0.38/wk ret=48.0% DD=11.8% Calmar=3.83
+  delta prepared vs locked: +24.1% ret, N -18
+
+--- oos_2023_24 (2023-06-01 → 2024-05-31) ---
+  eth_locked             N= 23 0.44/wk ret=43.3% DD=14.1% Calmar=2.88
+  eth_plus_btc_prepared  N= 10 0.19/wk ret=8.6% DD=6.0% Calmar=1.36
+  delta prepared vs locked: -34.7% ret, N -13
+
+--- oos_2024_25 (2024-06-01 → 2025-05-31) ---
+  eth_locked             N= 52 1.00/wk ret=38.9% DD=17.5% Calmar=2.09
+  eth_plus_btc_prepared  N= 25 0.48/wk ret=27.9% DD=14.9% Calmar=1.76
+  delta prepared vs locked: -11.0% ret, N -27
+
+--- oos_2025_26 (2025-06-01 → 2026-05-31) ---
+  eth_locked             N= 51 0.98/wk ret=151.1% DD=8.7% Calmar=15.93
+  eth_plus_btc_prepared  N= 26 0.50/wk ret=22.2% DD=12.5% Calmar=1.67
+  delta prepared vs locked: -128.9% ret, N -25
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-oos-audit.json

@@ -1,0 +1,43 @@
+
+Entry context score validation
+
+  baseline BTCUSDT train  baseline BTCUSDT val  baseline BTCUSDT oos  baseline ETHUSDT train  baseline ETHUSDT val  baseline ETHUSDT oos  baseline BNBUSDT train  baseline BNBUSDT val  baseline BNBUSDT oos  baseline SOLUSDT train  baseline SOLUSDT val  baseline SOLUSDT oos  baseline XRPUSDT train  baseline XRPUSDT val  baseline XRPUSDT oos  baseline LINKUSDT train  baseline LINKUSDT val  baseline LINKUSDT oos  score_42 BTCUSDT train  score_42 BTCUSDT val  score_42 BTCUSDT oos  score_42 ETHUSDT train  score_42 ETHUSDT val  score_42 ETHUSDT oos  score_42 BNBUSDT train  score_42 BNBUSDT val  score_42 BNBUSDT oos  score_42 SOLUSDT train  score_42 SOLUSDT val  score_42 SOLUSDT oos  score_42 XRPUSDT train  score_42 XRPUSDT val  score_42 XRPUSDT oos  score_42 LINKUSDT train  score_42 LINKUSDT val  score_42 LINKUSDT oos  score_45 BTCUSDT train  score_45 BTCUSDT val  score_45 BTCUSDT oos  score_45 ETHUSDT train  score_45 ETHUSDT val  score_45 ETHUSDT oos  score_45 BNBUSDT train  score_45 BNBUSDT val  score_45 BNBUSDT oos  score_45 SOLUSDT train  score_45 SOLUSDT val  score_45 SOLUSDT oos  score_45 XRPUSDT train  score_45 XRPUSDT val  score_45 XRPUSDT oos  score_45 LINKUSDT train  score_45 LINKUSDT val  score_45 LINKUSDT oos  score_48 BTCUSDT train  score_48 BTCUSDT val  score_48 BTCUSDT oos  score_48 ETHUSDT train  score_48 ETHUSDT val  score_48 ETHUSDT oos  score_48 BNBUSDT train  score_48 BNBUSDT val  score_48 BNBUSDT oos  score_48 SOLUSDT train  score_48 SOLUSDT val  score_48 SOLUSDT oos  score_48 XRPUSDT train  score_48 XRPUSDT val  score_48 XRPUSDT oos  score_48 LINKUSDT train  score_48 LINKUSDT val  score_48 LINKUSDT oos  score_50 BTCUSDT train  score_50 BTCUSDT val  score_50 BTCUSDT oos  score_50 ETHUSDT train  score_50 ETHUSDT val  score_50 ETHUSDT oos  score_50 BNBUSDT train  score_50 BNBUSDT val  score_50 BNBUSDT oos  score_50 SOLUSDT train  score_50 SOLUSDT val  score_50 SOLUSDT oos  score_50 XRPUSDT train  score_50 XRPUSDT val  score_50 XRPUSDT oos  score_50 LINKUSDT train  score_50 LINKUSDT val  score_50 LINKUSDT oos  score_52 BTCUSDT train  score_52 BTCUSDT val  score_52 BTCUSDT oos  score_52 ETHUSDT train  score_52 ETHUSDT val  score_52 ETHUSDT oos  score_52 BNBUSDT train  score_52 BNBUSDT val  score_52 BNBUSDT oos  score_52 SOLUSDT train  score_52 SOLUSDT val  score_52 SOLUSDT oos  score_52 XRPUSDT train  score_52 XRPUSDT val  score_52 XRPUSDT oos  score_52 LINKUSDT train  score_52 LINKUSDT val  score_52 LINKUSDT oos
+
+train:
+  baseline     retΣ=   -9.49% n=  46 tpm=0.89 coins+=2/3
+  score_42     retΣ=   -8.58% n=  31 tpm=0.60 coins+=2/3
+  score_45     retΣ=   -8.58% n=  31 tpm=0.60 coins+=2/3
+  score_48     retΣ=   -8.58% n=  31 tpm=0.60 coins+=2/3
+  score_50     retΣ=   -8.58% n=  31 tpm=0.60 coins+=2/3
+  score_52     retΣ=   -8.58% n=  31 tpm=0.60 coins+=2/3
+
+val:
+  baseline     retΣ=    7.95% n=  56 tpm=1.84 coins+=2/5
+  score_42     retΣ=    4.03% n=  41 tpm=1.34 coins+=2/5
+  score_45     retΣ=    4.03% n=  41 tpm=1.34 coins+=2/5
+  score_48     retΣ=    4.03% n=  41 tpm=1.34 coins+=2/5
+  score_50     retΣ=    4.03% n=  41 tpm=1.34 coins+=2/5
+  score_52     retΣ=    4.03% n=  41 tpm=1.34 coins+=2/5
+
+oos:
+  baseline     retΣ=  -15.08% n=  41 tpm=1.13 coins+=2/6
+  score_42     retΣ=   -1.42% n=  28 tpm=0.77 coins+=2/6
+  score_45     retΣ=   -1.42% n=  28 tpm=0.77 coins+=2/6
+  score_48     retΣ=   -1.42% n=  28 tpm=0.77 coins+=2/6
+  score_50     retΣ=   -1.42% n=  28 tpm=0.77 coins+=2/6
+  score_52     retΣ=    1.48% n=  27 tpm=0.74 coins+=2/6
+
+all:
+  baseline     retΣ=  -16.61% n= 143 tpm=1.33 coins+=6/14
+  score_42     retΣ=   -5.98% n= 100 tpm=0.94 coins+=6/14
+  score_45     retΣ=   -5.98% n= 100 tpm=0.94 coins+=6/14
+  score_48     retΣ=   -5.98% n= 100 tpm=0.94 coins+=6/14
+  score_50     retΣ=   -5.98% n= 100 tpm=0.94 coins+=6/14
+  score_52     retΣ=   -3.08% n=  99 tpm=0.93 coins+=6/14
+
+Ranked score variants (favor OOS + trade count):
+  min=52 oos=1.48% val=4.03% all=-3.08% n=27 tpm=0.74
+  min=42 oos=-1.42% val=4.03% all=-5.98% n=28 tpm=0.77
+  min=45 oos=-1.42% val=4.03% all=-5.98% n=28 tpm=0.77
+  min=48 oos=-1.42% val=4.03% all=-5.98% n=28 tpm=0.77
+  min=50 oos=-1.42% val=4.03% all=-5.98% n=28 tpm=0.77

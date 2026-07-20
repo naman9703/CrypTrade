@@ -147,7 +147,14 @@ export const INTRADAY_PRO_VP_15M = {
   volumeProfileSoftGates: true,
   volumeProfileGatesEnabled: false,
   intradayLvnSizeMult: 2,
-  vpLookbackBars: 672,
+  vpProfileMode: "rolling",
+  vpLookbackBars: 384,
+  vpCompositeDays: 5,
+  vpVolumeDistribute: "close_weighted",
+  vpIncludePriorSession: true,
+  vpEnableNakedPoc: true,
+  vpBreakoutUsePriorSession: true,
+  vpValueAreaPct: 0.7,
   vpMinRR: 1.35,
   vpMinRunPct: 0.003,
   requireVpSetup: false,
@@ -250,9 +257,581 @@ export const INTRADAY_PRO_LIQ_15M = {
   srIntradayMinBarGap: 4,
   supertrendFuturesFixedTpPct: 0,
   supertrendFuturesFixedSlPct: 0,
+  /** 0% = structure brackets from sweep wick + opposing pool, not panel fixed %. */
+  supertrendFuturesUseFixedSl: true,
+  supertrendFuturesUseFixedTp: true,
   backtestBreakevenAtMfePct: 0,
   intradayLiqBreakevenAfterPartial: true,
+  /** Context-aware entry score (displacement + reclaim hold + HTF/level). Validated multi-coin OOS. */
+  intradayLiqUseEntryScore: true,
+  intradayLiqMinEntryScore: 52,
+  intradayLiqReclaimHoldBars: 1,
+  /** Classical PDH/PDL reclaim — not LIQ_DAILY trend-router (that preset sets true). */
+  intradayLiqBreakdownDayBias: false,
 };
+
+/**
+ * LIQ v2 — context-driven classical sweep+reclaim (market state, sweep quality,
+ * continuation room, expanded liquidity hierarchy, entry score v2).
+ * OOS validation (research-liq-feature-expectancy.mjs) FAILED promotion gates —
+ * too many binary filters destroyed recall. Use RESEARCH preset + feature analysis instead.
+ */
+export const INTRADAY_PRO_LIQ_15M_V2 = {
+  ...INTRADAY_PRO_LIQ_15M,
+  intradayLiqLevels: "daily,weekly,asian",
+  intradayLiqMarketStateGate: true,
+  intradayLiqDaySituationBias: true,
+  intradayLiqContinuationGate: true,
+  intradayLiqMinContinuationR: 1.2,
+  intradayLiqMaxDailyRangeUsedPct: 0.78,
+  intradayLiqSweepQualityGate: true,
+  intradayLiqMaxSweepVelocityAtr: 0.85,
+  intradayLiqMinSweepVelocityAtr: 0.02,
+  intradayLiqMaxSweepAttempts: 4,
+  intradayLiqMaxAbsorptionProxy: 0.72,
+  intradayLiqUseEntryScoreV2: true,
+  intradayLiqUseEntryScore: false,
+  intradayLiqMinEntryScore: 58,
+  intradayLiqRequireDisplacementV2: false,
+  intradayLiqUseHtfPools: false,
+};
+
+/**
+ * LIQ research — full feature extraction, NO binary context gates.
+ * Score-only path for empirical feature→expectancy analysis (export CSV, not production).
+ */
+export const INTRADAY_PRO_LIQ_15M_RESEARCH = {
+  ...INTRADAY_PRO_LIQ_15M,
+  intradayLiqLevels: "daily,weekly,asian",
+  intradayLiqUseEntryScoreV2: true,
+  intradayLiqUseEntryScore: false,
+  intradayLiqMinEntryScore: 45,
+  intradayLiqMarketStateGate: false,
+  intradayLiqDaySituationBias: false,
+  intradayLiqContinuationGate: false,
+  intradayLiqSweepQualityGate: false,
+  intradayLiqRequireDisplacementV2: false,
+  intradayLiqUseHtfPools: false,
+};
+
+/**
+ * Candidate harvest — every sweep+reclaim with features + forward labels (no selection gates).
+ */
+export const INTRADAY_PRO_LIQ_CANDIDATE_HARVEST = {
+  ...INTRADAY_PRO_LIQ_15M,
+  intradayLiqHarvestMode: true,
+  intradayLiqMinimalCandidate: true,
+  intradayLiqLevels: "daily,weekly,asian",
+  intradayLiqUseEntryScoreV2: true,
+  intradayLiqUseEntryScore: false,
+  intradayLiqMinEntryScore: 0,
+  intradayLiqMinRr: 0,
+  intradayLiqRequireHtfAlign: false,
+  intradayLiqFirstCycleOnly: false,
+  intradayLiqMarketStateGate: false,
+  intradayLiqDaySituationBias: false,
+  intradayLiqContinuationGate: false,
+  intradayLiqSweepQualityGate: false,
+  intradayLiqRequireDisplacementV2: false,
+  intradayLiqUseHtfPools: false,
+  intradayLiqMaxFadeDayRangePct: 0,
+  intradayLiqPostDisplacementCooldownBars: 0,
+  intradayLiqMinReclaimBodyRatio: 0,
+  intradayLiqMinReclaimClosePct: 0,
+  intradayLiqMinWickRatio: 0,
+};
+
+/**
+ * Multi-coin LIQ portfolio — BNB + BTC only (Jan–May 2026 research).
+ * ETH/SOL/XRP LIQ solo gates were net-negative OOS; do not add without re-validation.
+ * ~+11% combined @ 3.5% risk/coin (1k each), ~0.07%/day — NOT 2%/day; best SR_INTRADAY path found.
+ * BNB solo LIQ: ~+17% IS / ~+0.5% OOS (May 2026, 1 trade) @ 2.5% risk.
+ */
+export const INTRADAY_PRO_LIQ_PORTFOLIO_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  riskPerTrade: 3.5,
+  futuresLeverage: 12,
+  universeCustomSymbols: ["BNBUSDT", "BTCUSDT"],
+  universeCoinBase: "CUSTOM",
+  universeCoinSelectMode: "MULTIPLE",
+  multiBudgetSplitMode: "EQUAL",
+  multiCoinCapitalSizingActive: true,
+  backtestApplyLiveMultiCoinSplit: true,
+};
+
+/**
+ * ETHUSDT 15m — classical SWEEP_RECLAIM fade + trail exit.
+ * Entry: PDH/PDL + session extremes; structural day veto + context score.
+ * Fake-breakout filters: sweep poke wick, vol spike, reclaim close penetration,
+ * sweep attempt cap — not post-reclaim displacement (killed frequency with no WR lift).
+ */
+export const INTRADAY_PRO_LIQ_ETH_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  symbol: "ETHUSDT",
+  timeframe: "15m",
+  riskPerTrade: 3.5,
+  srIntradaySweepPct: 0.001,
+  intradayLiqMinSweepExtensionPct: 0.004,
+  intradayLiqMinRr: 0,
+  intradayLiqMinReclaimBodyRatio: 0.35,
+  intradayLiqMinReclaimClosePct: 0.0002,
+  intradayLiqMinScore: 5,
+  intradayLiqMinQuality: 0,
+  intradayLiqRequireHtfAlign: false,
+  intradayLiqVetoCounterTrend: true,
+  intradayLiqBreakdownDayBias: true,
+  intradayLiqEntryMode: "fade",
+  intradayLiqPdhPdlOnly: false,
+  intradayLiqMinAdx: 0,
+  intradayLiqMaxAdx: 0,
+  intradayLiqMaxTpRr: 3.35,
+  intradayLiqSessionExtreme: true,
+  intradayLiqSessionExtremeMinTouches: 2,
+  intradayLiqSessionExtremeMinExtensionPct: 0.001,
+  intradayLiqOnePickPerDay: false,
+  srIntradayMaxTradesPerDay: 3,
+  intradayLiqAllowTrailOnlyExit: true,
+  trailingStopLossAuto: true,
+  trailOnlyAfterTp2Fill: false,
+  intradayLiqPartialTp: false,
+  intradayLiqTp1Enabled: false,
+  intradayLiqTp2Enabled: false,
+  intradayLiqMaxHoldBars: 200,
+  intradayLiqMaxFadeDayRangePct: 0.06,
+  intradayLiqPostDisplacementCooldownBars: 4,
+  intradayLiqDisplacementBarAtrMult: 2,
+  intradayLiqRequireSweepDisplacement: false,
+  intradayLiqTrailRequireDisplacement: false,
+  intradayLiqSweepDisplacementMinAtrMult: 0,
+  intradayLiqRequirePostReclaimDisplacement: false,
+  intradayLiqPostReclaimDispAtrMult: 0.6,
+  intradayLiqMinSweepPokeWickRatio: 0.2,
+  intradayLiqSweepMinVolRatio: 0.9,
+  intradayLiqSweepQualityGate: false,
+  intradayLiqMaxSweepAttempts: 3,
+  intradayLiqMaxAbsorptionProxy: 0.7,
+  intradayLiqUseEntryScore: false,
+  intradayLiqTrailUseContextScore: true,
+  intradayLiqMinEntryScore: 38,
+  intradayLiqReclaimHoldBars: 0,
+  backtestTrailMicroTf: "5m",
+};
+
+/**
+ * LIQ + VP confluence — liquidity sweep TRIGGER, VP LOCATION filter (textbook stack).
+ * Both gates on → evaluateIntradayBar composite path (not LIQ solo fast path).
+ * minTechniqueCount=2 requires scored tags from BOTH liquidity and VP gates.
+ */
+export const LIQ_VP_CONFLUENCE_CORE = {
+  intradayLiqPlaybook: "LIQ_VP_CONFLUENCE",
+  intradayGateLiquidity: true,
+  intradayGateSession: false,
+  intradayGateVp: true,
+  intradayGateFib: false,
+  intradayGateOrderFlow: false,
+  intradayGateHtfRegime: false,
+  intradayLearnedRulesEnabled: false,
+  volumeProfileEnabled: true,
+  volumeProfileSoftGates: true,
+  volumeProfileGatesEnabled: false,
+  intradayVpBrackets: true,
+  vpProfileMode: "rolling",
+  vpLookbackBars: 384,
+  vpVolumeDistribute: "close_weighted",
+  vpIncludePriorSession: true,
+  vpEnableNakedPoc: true,
+  vpBreakoutUsePriorSession: true,
+  vpValueAreaPct: 0.7,
+  vpMinRR: 1.35,
+  requireVpSetup: false,
+  intradayMinTechniqueCount: 2,
+  intradayRequireFibOrVp: true,
+  intradayRequireLiqOrSession: true,
+  intradayRequireSessionReclaim: false,
+  intradayDualGateMinScore: 7,
+  intradayLiqStrictMode: true,
+};
+
+/** BNB 15m — LIQ partial @1R + VP edge confluence at sweep level */
+export const INTRADAY_PRO_LIQ_VP_CONFLUENCE_BNB_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  ...LIQ_VP_CONFLUENCE_CORE,
+  symbol: "BNBUSDT",
+  timeframe: "15m",
+  intradayLiqBreakdownDayBias: false,
+  intradayLiqOnePickPerDay: false,
+  srIntradayMaxTradesPerDay: 3,
+  srIntradayMinScore: 8,
+};
+
+/** ETH 15m — LIQ trail exit + VP confluence on entry */
+export const INTRADAY_PRO_LIQ_VP_CONFLUENCE_ETH_15M = {
+  ...INTRADAY_PRO_LIQ_ETH_15M,
+  ...LIQ_VP_CONFLUENCE_CORE,
+  symbol: "ETHUSDT",
+  timeframe: "15m",
+};
+
+export const INTRADAY_PRO_LIQ_VP_CONFLUENCE_PORTFOLIO_15M = {
+  ...INTRADAY_PRO_LIQ_VP_CONFLUENCE_BNB_15M,
+  riskPerTrade: 2.5,
+  futuresLeverage: 12,
+  universeCustomSymbols: ["BNBUSDT", "ETHUSDT"],
+  universeCoinBase: "CUSTOM",
+  universeCoinSelectMode: "MULTIPLE",
+  multiBudgetSplitMode: "EQUAL",
+  multiCoinCapitalSizingActive: true,
+  backtestApplyLiveMultiCoinSplit: true,
+};
+
+export function resolveLiqVpConfluencePreset(symbol) {
+  const sym = String(symbol ?? "").toUpperCase();
+  if (sym === "ETHUSDT") return INTRADAY_PRO_LIQ_VP_CONFLUENCE_ETH_15M;
+  return INTRADAY_PRO_LIQ_VP_CONFLUENCE_BNB_15M;
+}
+
+/**
+ * LIQ + VP proximity — keep LIQ solo fast path; veto sweeps far from VP structure.
+ * One change vs baseline: `intradayLiqVpProximityMaxPct` (sweep level near POC/VAH/VAL/HVN).
+ */
+export const LIQ_VP_PROXIMITY_CORE = {
+  intradayLiqPlaybook: "LIQ_VP_PROXIMITY",
+  intradayLiqVpProximityMaxPct: 0.0015,
+  volumeProfileEnabled: true,
+  vpProfileMode: "rolling",
+  vpLookbackBars: 384,
+  vpVolumeDistribute: "close_weighted",
+  vpIncludePriorSession: true,
+  vpEnableNakedPoc: true,
+  vpBreakoutUsePriorSession: true,
+  vpValueAreaPct: 0.7,
+  intradayGateLiquidity: true,
+  intradayGateSession: false,
+  intradayGateVp: false,
+  intradayGateFib: false,
+  intradayGateOrderFlow: false,
+  intradayGateHtfRegime: false,
+};
+
+export const INTRADAY_PRO_LIQ_VP_PROXIMITY_BNB_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  ...LIQ_VP_PROXIMITY_CORE,
+  symbol: "BNBUSDT",
+  timeframe: "15m",
+};
+
+export const INTRADAY_PRO_LIQ_VP_PROXIMITY_ETH_15M = {
+  ...INTRADAY_PRO_LIQ_ETH_15M,
+  ...LIQ_VP_PROXIMITY_CORE,
+  symbol: "ETHUSDT",
+  timeframe: "15m",
+};
+
+export const INTRADAY_PRO_LIQ_VP_PROXIMITY_PORTFOLIO_15M = {
+  ...INTRADAY_PRO_LIQ_VP_PROXIMITY_BNB_15M,
+  riskPerTrade: 2.5,
+  futuresLeverage: 12,
+  universeCustomSymbols: ["BNBUSDT", "ETHUSDT"],
+  universeCoinBase: "CUSTOM",
+  universeCoinSelectMode: "MULTIPLE",
+  multiBudgetSplitMode: "EQUAL",
+  multiCoinCapitalSizingActive: true,
+  backtestApplyLiveMultiCoinSplit: true,
+};
+
+export function resolveLiqVpProximityPreset(symbol, proximityPct = 0.0015) {
+  const sym = String(symbol ?? "").toUpperCase();
+  const base = sym === "ETHUSDT" ? INTRADAY_PRO_LIQ_VP_PROXIMITY_ETH_15M : INTRADAY_PRO_LIQ_VP_PROXIMITY_BNB_15M;
+  return { ...base, intradayLiqVpProximityMaxPct: proximityPct };
+}
+
+/**
+ * BTCUSDT 15m — research-promoted PDH/PDL sweep+reclaim (BTC-only; do not multi-coin).
+ * Autopsy 2025: only positive LIQ coin (+7.9% baseline); losers fade breakdown/breakout days.
+ * Structural gates: breakdown-day veto, CHoCH after sweep, London/NY killzone, PDH/PDL only.
+ * Research-grade — not SUPERTREND_ELITE validation-gate approved.
+ */
+export const INTRADAY_PRO_LIQ_BTC_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  symbol: "BTCUSDT",
+  timeframe: "15m",
+  riskPerTrade: 2,
+  intradayLiqPdhPdlOnly: true,
+  intradayLiqSessionExtreme: false,
+  intradayLiqBreakdownDayBias: true,
+  intradayLiqDaySituationBias: true,
+  intradayLiqMarketStateGate: false,
+  intradayLiqRequireKillzone: false,
+  /** CHoCH after sweep — 0 trades on 2025 BTC autopsy; keep off until re-tuned. */
+  intradayLiqRequireChoch: false,
+  intradayLiqChochRequireTrend: false,
+  intradayLiqChochMaxBars: 12,
+  intradayLiqMinSweepExtensionPct: 0.008,
+  intradayLiqMinRr: 1.5,
+  intradayLiqUseEntryScore: true,
+  intradayLiqMinEntryScore: 52,
+  intradayLiqReclaimHoldBars: 1,
+  intradayLiqOnePickPerDay: true,
+  srIntradayMaxTradesPerDay: 2,
+};
+
+/** Shared knobs — classical fade only; trend continuation rejected (PF ~0.09–0.25 on BTC). */
+export const LIQ_FREQ_EDGE_CORE = {
+  intradayLiqPlaybook: "FREQ_EDGE",
+  intradayLiqTrendContinuation: false,
+  intradayLiqClassicEnabled: true,
+  intradayLiqBreakdownDayBias: true,
+  intradayLiqVetoCounterTrend: true,
+};
+
+/**
+ * LIQ FREQ_EDGE — BNB 15m classical sweep+reclaim.
+ * BNB autopsy: breakdown-day fades are profitable (70% WR on breakdown days);
+ * do NOT apply breakdown veto on BNB (veto collapses 75→3 trades on full window).
+ */
+export const INTRADAY_PRO_LIQ_FREQ_EDGE_BNB_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  ...LIQ_FREQ_EDGE_CORE,
+  intradayLiqBreakdownDayBias: false,
+  symbol: "BNBUSDT",
+  timeframe: "15m",
+  intradayLiqOnePickPerDay: false,
+  srIntradayMaxTradesPerDay: 3,
+  intradayLiqPartialTp: true,
+  intradayLiqTp1Enabled: true,
+  intradayLiqTp2Enabled: true,
+  intradayLiqSessionExtreme: false,
+};
+
+/**
+ * LIQ FREQ_EDGE — ETH 15m classical fade + trail (session levels for breadth).
+ * Trail path validated for frequency; gates still block trend-day counter-fades.
+ */
+export const INTRADAY_PRO_LIQ_FREQ_EDGE_ETH_15M = {
+  ...INTRADAY_PRO_LIQ_ETH_15M,
+  ...LIQ_FREQ_EDGE_CORE,
+  intradayLiqTrendContinuation: false,
+  intradayLiqClassicEnabled: true,
+};
+
+/** LIQ FREQ_EDGE — BTC 15m (low frequency by design; research-only, not portfolio leg). */
+export const INTRADAY_PRO_LIQ_FREQ_EDGE_BTC_15M = {
+  ...INTRADAY_PRO_LIQ_BTC_15M,
+  ...LIQ_FREQ_EDGE_CORE,
+  intradayLiqTrendContinuation: false,
+  intradayLiqClassicEnabled: true,
+};
+
+/** Multi-coin deploy patch — BNB + ETH; per-symbol tuning via fillLiqSoloPresetDefaults. */
+export const INTRADAY_PRO_LIQ_FREQ_EDGE_PORTFOLIO_15M = {
+  ...INTRADAY_PRO_LIQ_FREQ_EDGE_BNB_15M,
+  riskPerTrade: 2.5,
+  futuresLeverage: 12,
+  universeCustomSymbols: ["BNBUSDT", "ETHUSDT"],
+  universeCoinBase: "CUSTOM",
+  universeCoinSelectMode: "MULTIPLE",
+  multiBudgetSplitMode: "EQUAL",
+  multiCoinCapitalSizingActive: true,
+  backtestApplyLiveMultiCoinSplit: true,
+};
+
+/** Resolve FREQ_EDGE preset for a symbol (backtest + fillLiqSolo routing). */
+export function resolveLiqFreqEdgePreset(symbol) {
+  const sym = String(symbol ?? "").toUpperCase();
+  if (sym === "ETHUSDT") return INTRADAY_PRO_LIQ_FREQ_EDGE_ETH_15M;
+  if (sym === "BTCUSDT") return INTRADAY_PRO_LIQ_FREQ_EDGE_BTC_15M;
+  return INTRADAY_PRO_LIQ_FREQ_EDGE_BNB_15M;
+}
+
+/**
+ * User-tuned ETH LIQ fields — always restored from saved cfg after materialize
+ * so backtest/save never clobber panel edits with preset defaults.
+ */
+export const ETH_LIQ_USER_TUNING_KEYS = Object.freeze([
+  "intradayLiqMinRr",
+  "intradayLiqMinReclaimBodyRatio",
+  "intradayLiqMinReclaimClosePct",
+  "intradayLiqMinQuality",
+  "intradayLiqMinScore",
+  "intradayLiqMinSweepExtensionPct",
+  "intradayLiqRequireHtfAlign",
+  "intradayLiqMinHtfSep",
+  "intradayLiqVetoCounterTrend",
+  "intradayLiqEntryMode",
+  "intradayLiqPdhPdlOnly",
+  "intradayLiqMinAdx",
+  "intradayLiqMaxAdx",
+  "intradayLiqAllowTrailOnlyExit",
+  "intradayLiqRequireSweepDisplacement",
+  "intradayLiqSweepDisplacementMinAtrMult",
+  "intradayLiqRequirePostReclaimDisplacement",
+  "intradayLiqPostReclaimDispAtrMult",
+  "intradayLiqSweepMinVolRatio",
+  "intradayLiqMinSweepPokeWickRatio",
+  "intradayLiqSweepQualityGate",
+  "intradayLiqMaxSweepAttempts",
+  "intradayLiqMaxAbsorptionProxy",
+  "intradayLiqTrailRequireDisplacement",
+  "intradayLiqBreakdownDayBias",
+  "intradayLiqMinEntryScore",
+  "intradayLiqReclaimHoldBars",
+  "intradayLiqTrailUseContextScore",
+  "backtestTrailMicroTf",
+  "intradayLiqMaxTpRr",
+  "intradayLiqMaxFadeDayRangePct",
+  "intradayLiqPostDisplacementCooldownBars",
+  "intradayLiqDisplacementBarAtrMult",
+  "intradayLiqSessionExtreme",
+  "intradayLiqSessionExtremeMinTouches",
+  "intradayLiqSessionExtremeMinExtensionPct",
+  "intradayLiqOnePickPerDay",
+  "srIntradayMaxTradesPerDay",
+  "srIntradaySweepPct",
+  "intradayLiqPartialFrac",
+  "intradayLiqTp1Rr",
+  "intradayLiqTp2Rr",
+  "intradayLiqTp2PartialFrac",
+  "intradayLiqTp1Enabled",
+  "intradayLiqPartialTp",
+  "intradayLiqTp2Enabled",
+  "intradayLiqMaxHoldBars",
+  "intradayLiqBreakevenAfterPartial",
+  "trailOnlyAfterTp2Fill",
+  "riskPerTrade",
+  "riskPerTradeUnit",
+]);
+
+/**
+ * @deprecated Prefer ETH_LIQ_USER_TUNING_KEYS — legacy name kept for scripts.
+ * Only used for fill-when-undefined inside repairStaleEthLiqCfg (not force-overwrite).
+ */
+export const ETH_LIQ_MATERIALIZE_KEYS = ETH_LIQ_USER_TUNING_KEYS;
+
+/** SMC/SR keys that pollute ETH LIQ solo backtests when left over from a prior engine mode. */
+const ETH_LIQ_SOLO_POLLUTION_KEYS = [
+  "intradaySmcMinRr",
+  "intradaySmcRequireMss",
+  "intradaySmcRequireRetrace",
+  "intradaySrRequireBos",
+  "intradaySrRequireConfirm",
+  "intradaySrRequireVolume",
+  "intradaySrRequireHtfTrend",
+  "intradaySrAPlusMode",
+];
+
+function isEthLiqSoloCfg(cfg = {}) {
+  const sym = String(cfg.symbol ?? "").toUpperCase();
+  if (sym !== "ETHUSDT") return false;
+  const gates = resolveIntradayGates(cfg);
+  const liqSolo =
+    (gates.liquidity || gates.session) &&
+    !gates.fib &&
+    !gates.vp &&
+    !gates.orderFlow &&
+    !gates.htfRegime;
+  const instSolo =
+    (cfg.intradaySrAPlusMode === true || gates.institutionalSr) &&
+    (gates.liquidity || gates.session) &&
+    !gates.fib &&
+    !gates.vp &&
+    !gates.orderFlow;
+  return liqSolo && !instSolo;
+}
+
+/** Copy explicit user tuning from saved cfg (panel / strategy version). */
+export function pickEthLiqUserTuning(cfg = {}) {
+  if (!isEthLiqSoloCfg(cfg)) return {};
+  const out = {};
+  for (const key of ETH_LIQ_USER_TUNING_KEYS) {
+    if (INSTANCE_PRESET_SKIP.has(key)) continue;
+    if (!Object.prototype.hasOwnProperty.call(cfg, key) || cfg[key] === undefined) continue;
+    if (key === "intradayLiqMaxHoldBars" && cfg[key] === 0) continue;
+    if (key === "intradayLiqMinReclaimBodyRatio" && cfg[key] === 0) continue;
+    if (key === "intradayLiqMinQuality" && cfg[key] === 0) continue;
+    if (key === "trailOnlyAfterTp2Fill" && cfg[key] === true) continue;
+    out[key] = cfg[key];
+  }
+  return out;
+}
+
+/**
+ * Fill missing ETH LIQ defaults and repair legacy corrupt sentinels (hold=0, body=0).
+ * Does NOT overwrite explicit user edits saved after applying the preset.
+ *
+ * @param {object} cfg — cfg after fillLiqSoloPresetDefaults
+ * @param {object} [incoming] — original cfg before materialization (for sentinel detection)
+ */
+export function repairStaleEthLiqCfg(cfg = {}, incoming = cfg) {
+  if (!isEthLiqSoloCfg(cfg)) return cfg;
+  const out = { ...cfg };
+  const preset = INTRADAY_PRO_LIQ_ETH_15M;
+  const src = incoming && typeof incoming === "object" ? incoming : cfg;
+
+  for (const key of ETH_LIQ_MATERIALIZE_KEYS) {
+    if (INSTANCE_PRESET_SKIP.has(key)) continue;
+    if (out[key] !== undefined) continue;
+    if (Object.prototype.hasOwnProperty.call(preset, key)) out[key] = preset[key];
+    else if (Object.prototype.hasOwnProperty.call(INTRADAY_PRO_LIQ_15M, key)) {
+      out[key] = INTRADAY_PRO_LIQ_15M[key];
+    }
+  }
+
+  if (src.intradayLiqMaxHoldBars === 0) {
+    out.intradayLiqMaxHoldBars = preset.intradayLiqMaxHoldBars;
+  }
+  if (src.intradayLiqMinReclaimBodyRatio === 0) {
+    out.intradayLiqMinReclaimBodyRatio = preset.intradayLiqMinReclaimBodyRatio;
+  }
+  if (src.intradayLiqMinQuality === 0) {
+    out.intradayLiqMinQuality = preset.intradayLiqMinQuality;
+  }
+  if (src.trailOnlyAfterTp2Fill === true) {
+    out.trailOnlyAfterTp2Fill = false;
+  }
+
+  /** Trail-only LIQ disables minRr and turns edge into SL vs scratch — restore partial ladder. */
+  const trailOnlyLiq =
+    (src.trailingStopLossAuto === true || out.trailingStopLossAuto === true) &&
+    out.intradayLiqPartialTp === false &&
+    out.intradayLiqTp1Enabled === false &&
+    out.intradayLiqTp2Enabled === false;
+  if (trailOnlyLiq && out.intradayLiqAllowTrailOnlyExit === true) {
+    out.trailingStopLossAuto = true;
+    out.intradayLiqPartialTp = false;
+    out.intradayLiqTp1Enabled = false;
+    out.intradayLiqTp2Enabled = false;
+    out.trailOnlyAfterTp2Fill = false;
+  } else if (trailOnlyLiq && out.intradayLiqAllowTrailOnlyExit !== true) {
+    out.trailingStopLossAuto = false;
+    const ladderPreset = INTRADAY_PRO_LIQ_15M;
+    out.intradayLiqPartialTp = ladderPreset.intradayLiqPartialTp ?? true;
+    out.intradayLiqTp1Enabled = ladderPreset.intradayLiqTp1Enabled ?? true;
+    out.intradayLiqTp2Enabled = ladderPreset.intradayLiqTp2Enabled ?? true;
+    out.intradayLiqBreakevenAfterPartial = ladderPreset.intradayLiqBreakevenAfterPartial ?? true;
+    out.trailOnlyAfterTp2Fill = false;
+  }
+
+  if (out.intradayLiqVetoCounterTrend !== true && src.intradayLiqVetoCounterTrend !== false) {
+    out.intradayLiqVetoCounterTrend = true;
+  }
+  if (
+    (out.intradayLiqMinReclaimClosePct == null || out.intradayLiqMinReclaimClosePct === 0) &&
+    src.intradayLiqMinReclaimClosePct !== 0
+  ) {
+    out.intradayLiqMinReclaimClosePct = preset.intradayLiqMinReclaimClosePct;
+  }
+
+  if (!isSmcIctEngineActive(out)) {
+    for (const key of ETH_LIQ_SOLO_POLLUTION_KEYS) delete out[key];
+  }
+
+  return out;
+}
+
+/** @deprecated Use repairStaleEthLiqCfg — kept for scripts that imported the old name. */
+export function applyEthLiqPresetMaterialization(cfg = {}, incoming = cfg) {
+  return repairStaleEthLiqCfg(cfg, incoming);
+}
 
 /**
  * Institutional A+ S/R — HTF trend + daily/weekly zones + sweep + BOS + confirmation + volume.
@@ -520,11 +1099,48 @@ export function fillLiqSoloPresetDefaults(cfg = {}) {
     !gates.vp &&
     !gates.orderFlow;
   if (!liqSolo && !instSolo) return cfg;
+
+  const sym = String(cfg.symbol ?? "").toUpperCase();
+  const freqEdge = String(cfg.intradayLiqPlaybook ?? "").toUpperCase() === "FREQ_EDGE";
+  if (sym === "BTCUSDT" && liqSolo && !instSolo) {
+    const out = { ...cfg };
+    const basePreset = freqEdge ? INTRADAY_PRO_LIQ_FREQ_EDGE_BTC_15M : INTRADAY_PRO_LIQ_BTC_15M;
+    const skipSlTp = new Set(["supertrendFuturesFixedSlPct", "supertrendFuturesFixedTpPct"]);
+    const skipHold = new Set(["intradayLiqMaxHoldBars"]);
+    for (const [key, val] of Object.entries(basePreset)) {
+      if (skipSlTp.has(key) || skipHold.has(key) || INSTANCE_PRESET_SKIP.has(key)) continue;
+      if (out[key] === undefined) out[key] = val;
+    }
+    if (cfg.intradayLiqSessionExtreme === false) out.intradayLiqSessionExtreme = false;
+    out.supertrendFuturesFixedSlPct = 0;
+    out.supertrendFuturesFixedTpPct = 0;
+    return out;
+  }
+  if (sym === "ETHUSDT" && liqSolo && !instSolo) {
+    const out = { ...cfg };
+    const basePreset = freqEdge ? INTRADAY_PRO_LIQ_FREQ_EDGE_ETH_15M : INTRADAY_PRO_LIQ_ETH_15M;
+    const skipSlTp = new Set(["supertrendFuturesFixedSlPct", "supertrendFuturesFixedTpPct"]);
+    const skipHold = new Set(["intradayLiqMaxHoldBars"]);
+    for (const [key, val] of Object.entries(basePreset)) {
+      if (skipSlTp.has(key) || skipHold.has(key) || INSTANCE_PRESET_SKIP.has(key)) continue;
+      if (out[key] === undefined) out[key] = val;
+    }
+    if (cfg.intradayLiqSessionExtreme === false) out.intradayLiqSessionExtreme = false;
+    out.supertrendFuturesFixedSlPct = 0;
+    out.supertrendFuturesFixedTpPct = 0;
+    return out;
+  }
+
   const out = { ...cfg };
-  const basePreset = instSolo ? INTRADAY_PRO_SR_APLUS_15M : INTRADAY_PRO_LIQ_15M;
+  const basePreset = instSolo
+    ? INTRADAY_PRO_SR_APLUS_15M
+    : freqEdge
+      ? INTRADAY_PRO_LIQ_FREQ_EDGE_BNB_15M
+      : INTRADAY_PRO_LIQ_15M;
   const skipSlTp = new Set(["supertrendFuturesFixedSlPct", "supertrendFuturesFixedTpPct"]);
+  const skipHold = new Set(["intradayLiqMaxHoldBars"]);
   for (const [key, val] of Object.entries(basePreset)) {
-    if (skipSlTp.has(key) || INSTANCE_PRESET_SKIP.has(key)) continue;
+    if (skipSlTp.has(key) || skipHold.has(key) || INSTANCE_PRESET_SKIP.has(key)) continue;
     if (out[key] === undefined) out[key] = val;
   }
   if (cfg.intradayLiqSessionExtreme === false) out.intradayLiqSessionExtreme = false;
@@ -618,9 +1234,18 @@ export async function materializeIntradayEngineCfg(cfg = {}) {
 
 /** Sync variant when panel materializer is already imported. */
 export function materializeIntradayEngineCfgSync(cfg = {}, materializeIntradayPanelOnCfg) {
-  let out = fillSmcSoloPresetDefaults(fillLiqSoloPresetDefaults(fillFibSoloPresetDefaults(cfg)));
+  const incoming = cfg && typeof cfg === "object" ? cfg : {};
+  const userTuning = pickEthLiqUserTuning(incoming);
+  let out = fillSmcSoloPresetDefaults(fillLiqSoloPresetDefaults(fillFibSoloPresetDefaults(incoming)));
+  out = repairStaleEthLiqCfg(out, incoming);
   if (typeof materializeIntradayPanelOnCfg === "function") {
     out = materializeIntradayPanelOnCfg(out);
   }
-  return out;
+  out = { ...out, ...userTuning };
+  out = repairStaleEthLiqCfg(out, incoming);
+  const meta = {};
+  for (const key of ["backtestTrailMicroTf", "backtestTrailActivationOn", "backtestTrailPriceSource", "backtestPositionSizing"]) {
+    if (incoming[key] !== undefined) meta[key] = incoming[key];
+  }
+  return { ...out, ...meta };
 }

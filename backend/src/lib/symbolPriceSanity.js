@@ -59,6 +59,9 @@ export function isPlausibleCandleClose(symbol, close, low, prevClose) {
   return true;
 }
 
+const DROP_LOG_LAST_AT = new Map();
+const DROP_LOG_INTERVAL_MS = Math.max(1_000, Number(process.env.KLINE_SANITY_DROP_LOG_INTERVAL_MS || 60_000));
+
 /**
  * If the kline update fails sanity vs the buffer, drop it (return null). Never rewrite OHLC to
  * "match" the prior close — artificial flat bars desync Supertrend, skip real flips, and invite
@@ -69,14 +72,29 @@ export function sanitizeKlineCandle(symbol, candle, prev, log) {
   const cl = Number(candle.close);
   const lo = Number(candle.low);
   const prevC = prev && Number.isFinite(Number(prev.close)) ? Number(prev.close) : null;
+  const ts = Number(candle?.ts);
+  const prevTs = prev && Number.isFinite(Number(prev.ts)) ? Number(prev.ts) : null;
+  const gapMs = Number.isFinite(ts) && Number.isFinite(prevTs) ? Math.abs(ts - prevTs) : 0;
+
+  // The step-ratio guard is meant for adjacent live bars. During REST repair/backfill a stale
+  // tail can be hours or days behind; a valid move over that gap must not poison the whole series.
+  if (prevC != null && gapMs > 6 * 60 * 60 * 1000 && isPlausibleCandleClose(sym, cl, lo, null)) return candle;
 
   if (isPlausibleCandleClose(sym, cl, lo, prevC)) return candle;
 
-  log?.warn?.("kline_tick_dropped_implausible", {
-    symbol: sym,
-    close: cl,
-    prevClose: prevC,
-    ts: candle?.ts,
-  });
+  const now = Date.now();
+  const logKey = `${sym}:implausible`;
+  const lastAt = DROP_LOG_LAST_AT.get(logKey) || 0;
+  if (now - lastAt >= DROP_LOG_INTERVAL_MS) {
+    DROP_LOG_LAST_AT.set(logKey, now);
+    log?.warn?.("kline_tick_dropped_implausible", {
+      symbol: sym,
+      close: cl,
+      prevClose: prevC,
+      ts: candle?.ts,
+      prevTs,
+      gapMs,
+    });
+  }
   return null;
 }

@@ -707,3 +707,68 @@ export async function assertInstanceMatchesMode(instanceId, userId, modeSlug) {
   if (!m || d.accountModeSlug !== m) throw new Error("instance_mode_mismatch");
   return d;
 }
+
+function instanceIsBusy(row) {
+  const st = String(row?.status ?? "").toLowerCase();
+  if (st === "running" || st === "paused") return true;
+  const open = Number(row?.open_trades ?? row?.openTrades ?? 0);
+  return Number.isFinite(open) && open > 0;
+}
+
+/** All non-deleted instances bound to a strategy (any mode). */
+export async function listInstancesUsingStrategy(userId, strategyId) {
+  const r = await query(
+    `SELECT bi.id, bi.label, bi.status, tm.slug AS mode_slug,
+            s.id AS strategy_id,
+            (SELECT COUNT(*)::int FROM trades t WHERE t.instance_id = bi.id AND t.status = 'open') AS open_trades
+     FROM bot_instances bi
+     JOIN strategy_versions sv ON sv.id = bi.strategy_version_id
+     JOIN strategies s ON s.id = sv.strategy_id
+     JOIN accounts a ON a.id = bi.account_id
+     JOIN trading_modes tm ON tm.id = a.mode_id
+     WHERE s.id = $1 AND bi.is_deleted = false AND s.user_id = $2
+     ORDER BY tm.slug ASC, bi.created_at ASC`,
+    [strategyId, userId],
+  );
+  return r.rows.map((row) => ({
+    id: String(row.id),
+    label: row.label != null ? String(row.label) : null,
+    status: String(row.status || "stopped"),
+    modeSlug: String(row.mode_slug || ""),
+    strategyId: String(row.strategy_id),
+    openTrades: Number(row.open_trades ?? 0),
+  }));
+}
+
+/**
+ * @param {string} userId
+ * @param {string} strategyId
+ * @param {string|null|undefined} [currentInstanceId]
+ */
+export async function getStrategyUsageContext(userId, strategyId, currentInstanceId = null) {
+  const instances = await listInstancesUsingStrategy(userId, strategyId);
+  const curId = currentInstanceId != null ? String(currentInstanceId) : null;
+  const others = curId ? instances.filter((i) => i.id !== curId) : instances;
+  const otherInstancesBusy = others.some(instanceIsBusy);
+  const anyBusy = instances.some(instanceIsBusy);
+  let blockReason = null;
+  if (otherInstancesBusy) {
+    blockReason =
+      "Another instance using this strategy is running, paused, or has open trades. Save as new to fork a private copy for this instance.";
+  }
+  let renameBlockReason = null;
+  if (anyBusy) {
+    renameBlockReason =
+      "Stop every instance using this strategy and close open trades before changing its name.";
+  }
+  return {
+    instanceCount: instances.length,
+    shared: instances.length > 1,
+    instances,
+    otherInstancesBusy,
+    canSaveInPlace: !otherInstancesBusy,
+    canRename: !anyBusy,
+    blockReason,
+    renameBlockReason,
+  };
+}

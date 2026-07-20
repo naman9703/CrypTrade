@@ -1,0 +1,430 @@
+
+> backend@0.1.0 research:fals
+> node scripts/research-fals-platform.mjs
+
+Harvest BTCUSDT 2022-01-01→2026-06-01...
+Harvest BNBUSDT 2022-01-01→2026-06-01...
+Harvest ETHUSDT 2022-01-01→2026-06-01...
+Harvest SOLUSDT 2022-01-01→2026-06-01...
+Harvest XRPUSDT 2022-01-01→2026-06-01...
+Family C: 7021 candidates → /Users/namanpaliwal/Desktop/trading/backend/scripts/.fals-family-c-candidates.csv
+Family D: 32274 candidates → /Users/namanpaliwal/Desktop/trading/backend/scripts/.fals-family-d-candidates.csv
+{
+  "generatedAt": "2026-07-11T01:28:11.163Z",
+  "from": "2022-01-01",
+  "to": "2026-06-01",
+  "families": {
+    "BTCUSDT_C": {
+      "candidates": 1628,
+      "picked": 1190
+    },
+    "BTCUSDT_D": {
+      "candidates": 7244,
+      "picked": 1367
+    },
+    "BNBUSDT_C": {
+      "candidates": 2370,
+      "picked": 1736
+    },
+    "BNBUSDT_D": {
+      "candidates": 11366,
+      "picked": 1998
+    },
+    "ETHUSDT_C": {
+      "candidates": 1497,
+      "picked": 1141
+    },
+    "ETHUSDT_D": {
+      "candidates": 6433,
+      "picked": 1358
+    },
+    "SOLUSDT_C": {
+      "candidates": 793,
+      "picked": 588
+    },
+    "SOLUSDT_D": {
+      "candidates": 3599,
+      "picked": 692
+    },
+    "XRPUSDT_C": {
+      "candidates": 733,
+      "picked": 561
+    },
+    "XRPUSDT_D": {
+      "candidates": 3632,
+      "picked": 663
+    }
+  }
+}
+
+Next: node scripts/research-fals-experiments.mjs
+
+=== Family C (7021 candidates) ===
+
+EXP-C01 ❌ [FDR✗] mono=— spread=0.224 p=1.000 coin-weak
+   Verdict: archived — Archive family C — no_promoted_feature_after_n_hypotheses, no_stable_effect_across_assets, manually_frozen_by_verdict
+EXP-C02 ❌ [FDR✗] lift=0.190 mono=0.539 p=0.183
+   Verdict: archived — Archive family C — no_promoted_feature_after_n_hypotheses, no_stable_effect_across_assets, manually_frozen_by_verdict
+EXP-C03 ❌ [FDR✗] mono=— spread=0.073 p=1.000 coin-weak
+   Verdict: archived — Archive family C — no_promoted_feature_after_n_hypotheses, no_stable_effect_across_assets, manually_frozen_by_verdict
+EXP-C04 ❌ [FDR✗] mono=0.091 spread=0.480 p=0.957 WF-mixed
+   Verdict: archived — Archive family C — no_promoted_feature_after_n_hypotheses, no_stable_effect_across_assets, manually_frozen_by_verdict
+EXP-C05 ❌ [FDR✗] all mono=0.638 picked=0.100 rejected=0.549
+   Verdict: archived — Archive family C — no_promoted_feature_after_n_hypotheses, no_stable_effect_across_assets, manually_frozen_by_verdict
+EXP-C06 ❌ [FDR✗] lift=0.000 coin=0% regime=0%
+   Verdict: archived — Archive family C — no_promoted_feature_after_n_hypotheses, no_stable_effect_across_assets, manually_frozen_by_verdict
+
+=== Family D (32274 candidates) ===
+
+EXP-D01 ❌ [FDR✗] mono=0.673 spread=0.103 p=0.527
+   Verdict: archived — Archive family D — no_promoted_feature_after_n_hypotheses, repeated_holdout_failures, manually_frozen_by_verdict
+EXP-D02 🟡 [FDR✓] mono=-1.000 spread=0.334 p=0.000 coin-weak
+   Verdict: archived — Archive family D — no_promoted_feature_after_n_hypotheses, repeated_holdout_failures, manually_frozen_by_verdict
+EXP-D03 ❌ [FDR✗] mono=— spread=0.053 p=1.000 coin-weak
+   Verdict: archived — Archive family D — no_promoted_feature_after_n_hypotheses, repeated_holdout_failures, manually_frozen_by_verdict
+EXP-D04 ❌ [FDR✓] lift=0.059 mono=0.394 p=0.033 WF-mixed
+   Verdict: archived — Archive family D — no_promoted_feature_after_n_hypotheses, repeated_holdout_failures, manually_frozen_by_verdict
+EXP-D05 🟡 [FDR✗] all mono=0.626 picked=0.856 rejected=0.178
+   Verdict: archived — Archive family D — no_promoted_feature_after_n_hypotheses, repeated_holdout_failures, manually_frozen_by_verdict
+EXP-D06 ❌ [FDR✗] lift=0.125 coin=60% regime=80%
+   Verdict: archived — Archive family D — no_promoted_feature_after_n_hypotheses, repeated_holdout_failures, manually_frozen_by_verdict
+
+=== FALS-001 ===
+L0–L1 alone may not justify continued research on current formulations — but do not assume L3 order book is next
+
+Results → /Users/namanpaliwal/Desktop/trading/backend/scripts/.fals-experiments-results.json
+Report  → /Users/namanpaliwal/Desktop/trading/backend/scripts/.fals-experiments-results.md
+# Observable Information Hierarchy
+
+A quantitative market research platform that measures the predictive value of observable information under rigorous validation constraints. The trading system is one consumer of its outputs.
+
+**Mission:** Empirically determine which aspects of financial markets are predictable with the observable information available, how much confidence that prediction deserves, and whether acquiring additional information is justified.
+
+| Level | Status | Latency | Examples |
+|-------|--------|---------|----------|
+| L0 Raw market data | ✅ in pipeline | Candle close | OHLCV, mark_price, volume |
+| L1 Derived features | ✅ in pipeline | Candle close | ATR, trend, liquidity levels, volatility regime |
+| L2 Positioning (OI + funding) | ✅ available | Minutes | open interest, funding rate |
+| L3 Microstructure / historical order book | ❌ requires ingestion | Milliseconds | order book imbalance, queue dynamics, trade flow |
+| L4 Options surface | 🟡 partial | Minutes–hours | implied volatility, skew |
+| L5 Macro / cross-asset | 🟡 partial | Hours–days | FRED macro, cross-asset flows |
+
+## Data Availability
+
+| Data | Live | Historical | Free | Phase |
+|------|------|------------|------|-------|
+| OHLCV | true | true | true | 1 |
+| MARK_PRICE | true | true | true | 1 |
+| FUNDING | true | true | true | 1 |
+| OPEN_INTEREST | true | limited | true | 1 |
+| TRADES | true | true | true | 2 |
+| ORDER_BOOK | true | false | false | 3 |
+| LIQUIDATIONS | limited | false | false | 3 |
+| OPTIONS_IV | partial | limited | partial | 3 |
+| MACRO_FRED | true | true | true | 2 |
+
+## Integration Roadmap
+
+- **Phase 1:** OHLCV, mark_price, funding, open_interest
+- **Phase 2:** trade_flow, multi_exchange_sync, market_breadth, macro_fred
+- **Phase 3:** historical_l2, liquidations, options_surface (only if justified)
+
+> OI and funding are L2 — free and practical. Test before expensive L3 microstructure.
+
+---
+
+# Quantitative Market Research Platform — Governance Report
+
+A quantitative market research platform that measures the predictive value of observable information under rigorous validation constraints. The trading system is one consumer of its outputs.
+
+**Mission:** Empirically determine which aspects of financial markets are predictable with the observable information available, how much confidence that prediction deserves, and whether acquiring additional information is justified.
+
+## Project Phase
+
+**Active:** Phase 2 — What observable information is actually predictive?
+
+## Progress Metrics
+
+- ✅ **Did the platform correctly reject a weak hypothesis?** — 5 hypotheses correctly rejected
+- ✅ **Did a reproducible effect survive holdout testing?** — Some holdout slices positive
+- ✅ **Did research reduce uncertainty about market behavior?** — UOA: 5 hypotheses
+- ✅ **Did decision quality improve on unseen data?** — Holdout distributional beats score
+- ✅ **How much did we learn per unit of research effort?** — Avg efficiency 0.191; top EXP-005
+- ✅ **Have unrelated L0–L1 families been tested before data investment?** — FALS-001 complete (3 families)
+
+## Information Limit
+
+**Can the remaining variance be explained by observable information available to us?** → **missing_information**
+
+Exhausted explanatory power at L0–L1. Retest requires L2. Status: untestable until ingested.
+
+## Production Alpha
+
+**unknown_not_demonstrated** — Platform measures predictability of observable information — not demonstrated alpha
+
+## Family A — Observable Information Verdict
+
+| Tested | L0, L1 |
+| Result | No robust edge at L0–L1 formulation after 6 hypotheses |
+| Next test | L2 — Integrate OI + funding (free) before L3 microstructure |
+| Status | retest_with_L2_OI_funding |
+
+> With OHLCV and derived features (L0–L1), this liquidity continuation formulation cannot be distinguished from noise. OI/funding (L2) untested.
+
+> Ingesting L2/L3 does not imply Family A will work. Hierarchy guides priorities, not expectations.
+
+---
+
+# Research Investment Planner
+
+**Question:** What should we learn next?
+
+**FALS-001:** L0–L1 alone may not justify continued research on current formulations — but do not assume L3 order book is next
+
+## Recommendations
+
+- **Reformulate harvest/selection before new data**
+- **Integrate free L2: OI + funding (Phase 1)** — Test before expensive L3 microstructure; not automatic from family failures
+
+## Ranked Investments (all types)
+
+| Investment | Score | Gain |
+|------------|-------|------|
+| Integrate OI + funding (L2) | 1.50 | high |
+| New L0–L1 hypothesis family | 1.00 | medium |
+| Longer historical data | 1.00 | medium |
+| More assets / universe | 0.67 | medium |
+| Alternate timeframe (5m) | 0.67 | medium |
+| Trade flow ingestion | 0.67 | medium |
+
+> Family failures do not automatically imply L3 order book. Consider Cases B (formulation), C (timeframe/universe), D (little edge).
+
+---
+
+# FALS-001 Interpretation
+
+**Question:** Is current observable information sufficient to justify continued L0–L1 research?
+
+**Outcome:** case_b_weak_formulation
+
+L0–L1 alone may not justify continued research on current formulations — but do not assume L3 order book is next
+
+## Interpretations
+
+- Case B possible: all families failed promotion but holdout slices show signal — formulations may be weak, not information-limited
+- Case C always possible: phenomenon may exist on different timeframe than 15m or outside crypto_futures
+
+## Four cases
+
+| Case | Status |
+|------|--------|
+| caseA | possible — integrate OI/funding (free L2) first |
+| caseB | possible |
+| caseC | always possible — test timeframe/universe |
+| caseD | possible — little edge at this formulation |
+
+## Next steps (not automatic L3 purchase)
+
+1. Reformulate harvest/selection before new data
+
+---
+
+# Observable Decision Boundary
+
+**Question:** Given observable information currently available, what is the best achievable decision quality?
+
+| Metric | Value |
+|--------|-------|
+| Max available level | L2 |
+| Estimated ceiling | 0.408 |
+| Current decision quality | 0.286 |
+| Headroom | 0.122 |
+
+Moderate headroom — discrimination improvements possible within L0–L2
+
+> Different from 'does more information exist?' — measures proximity to ceiling imposed by current data.
+
+---
+
+# Research Investment Matrix
+
+Compare ALL research investments — buying data is not always highest value.
+
+| Investment | Type | Cost | Engineering | Info Gain | Score |
+|------------|------|------|-------------|-----------|-------|
+| Integrate OI + funding (L2) | data_integration | low | low | high | 1.50 |
+| New L0–L1 hypothesis family | hypothesis | low | low | medium | 1.00 |
+| Longer historical data | data | low | low | medium | 1.00 |
+| More assets / universe | universe | low | medium | medium | 0.67 |
+| Alternate timeframe (5m) | timeframe | low | medium | medium | 0.67 |
+| Trade flow ingestion | data | low | medium | medium | 0.67 |
+| Better execution modeling | execution | medium | medium | medium | 0.50 |
+| Liquidation stream | data | medium | medium | medium | 0.50 |
+| Historical L2 order book | data | high | high | high | 0.50 |
+| New L1 feature (same info) | feature | low | low | low | 0.50 |
+| Options surface | data | very_high | high | unknown | 0.00 |
+
+---
+
+# Research Return on Investment (RROI)
+
+Platform KPI — not CAGR, Sharpe, or oracle predictability.
+
+| Metric | Value |
+|--------|-------|
+| Hypotheses tested | 6 |
+| Rejected with confidence | 5 |
+| Promoted | 0 |
+| Uncertainty reduction | 5 |
+| Holdout decision quality Δ | 0.011024033149171296 |
+| Engineering days | 12 |
+| **RROI** | **0.481** |
+
+Moderate — rejections and uncertainty reduction contributing
+
+> RROI measures platform learning, not trading returns.
+
+---
+
+# Research Debt
+
+Maintenance backlog for the research process — analogous to technical debt.
+
+| ID | Item | Severity | Category |
+|----|------|----------|----------|
+| RD-002 | OI + funding not yet in feature pipeline (L2 integration) | high | data_integration |
+| RD-003 | Holdout rank correlation near zero — discrimination debt | medium | robustness |
+| RD-004 | Family A archived but L2 OI/funding retest not run | medium | replication |
+| RD-001 | FALS-001 complete — Families A/C/D tested at L0–L1 | low | replication |
+| RD-005 | Cross-market validation limited to 5 crypto futures symbols | low | cross_market |
+| RD-006 | Quarterly RROI not yet tracked | low | governance |
+
+---
+
+# Research Efficiency
+
+Information learned per unit of effort — not whether the experiment 'worked'.
+
+| ID | Dev Days | Compute | Info Gain | Efficiency | Decision | Verdict |
+|----|----------|---------|-----------|------------|----------|---------|
+| EXP-005 | 2 | low | high | 0.5303 | reject | disproven |
+| EXP-001 | 2 | medium | high | 0.2652 | reject | disproven |
+| EXP-003 | 2 | medium | medium | 0.1768 | reject | inconclusive |
+| EXP-004 | 3 | medium | low | 0.0722 | reject | disproven |
+| EXP-006 | 3 | medium | low | 0.0722 | reject | disproven |
+| EXP-002 | 4 | high | low | 0.0313 | reject | disproven |
+
+Average efficiency: **0.191**
+
+---
+
+# Bayesian Research Log — Market Propositions
+
+Beliefs about what is predictable — reusable across strategy families.
+
+| Proposition | Levels | Prior | Posterior | Status |
+|-------------|--------|-------|-----------|--------|
+| Liquidity continuation after reclaim is predictable from OHL… | L0, L1 | 70% | **25%** | Unlikely |
+| Continuation probability depends on market regime (L1)… | L0, L1 | 50% | **50%** | Unlikely |
+| Historical order-book microstructure (L3) materially improve… | L3 | 55% | **57%** | Untestable (missing info) |
+| Open interest and funding (L2) improve hypothesis discrimina… | L2 | 45% | **45%** | Unlikely |
+| Trend acceleration is predictable from OHLCV-derived feature… | L0, L1 | 35% | **35%** | Unlikely |
+
+## Latest update
+
+- liq_continuation_ohlcv: posterior 0.2563
+- liq_continuation_ohlcv: L0-L1 plateau suspected
+- orderflow_improves_discrimination: L2 may be needed
+
+---
+
+# Information Limit Assessment
+
+**Question:** Can the remaining variance be explained by observable information available to us?
+
+**Tested levels:** L0–L1 | **Max available:** L2
+
+**Conclusion:** missing_information
+
+Exhausted explanatory power at L0–L1. Retest requires L2. Status: untestable until ingested.
+
+## Three outcomes (UOA)
+
+| Outcome | Status |
+|---------|--------|
+| Missing information (L2+ required) | concluded |
+| Irreducible randomness | possible |
+| No exploitable relationship | possible |
+
+## Signals
+
+- MI plateau below 0.02 at L0–L1
+- Holdout rank correlation near zero — cannot rank opportunities
+- 51% UOA failures from indistinguishable candidates at L0–L1
+
+---
+
+# Research Capability Matrix
+
+| Domain | Status | Info Level | Blocking | Notes |
+|--------|--------|------------|----------|-------|
+| Liquidity (L0–L1) | ✅ | L0–L1 | None | Family A tested; no edge at formulation |
+| OI + Funding | ⏳ | L2 | Phase 1 ingestion | Free — integrate before L3 microstructure |
+| Trend / momentum | ✅ | L0–L1 | None | Family C tested; no edge at L0–L1 formulation |
+| Volatility regime | ✅ | L0–L1 | None | Family D tested; no edge at L0–L1 formulation |
+| Portfolio / allocation | 🟡 | L0–L1 | Multi-family | Simulator v2 |
+| Order book microstructure | ❌ | L3 | Continuous L2 collection or commercial historical data | Historical L2 generally unavailable |
+| Liquidations | ❌ | L2–L3 | Liquidation stream | Limited live, poor historical |
+| Options surface | 🟡 | L4 | options chain data | Partial availability |
+| Macro (FRED) | 🟡 | L5 | Macro feed integration | Free historical |
+
+---
+
+# Research Exit Criteria
+
+Archive a hypothesis family when evidence consistently fails — not when intuition says so.
+
+## Thresholds
+
+- Max independent hypotheses without promotion: **6**
+- Max holdout failures: **2**
+- Min asset stability ratio: **0.4**
+- Min information gain (MI): **0.01**
+- Max research effort cycles: **3**
+
+## Family Evaluations
+
+| Family | Archive? | Triggers | Recommendation |
+|--------|----------|----------|----------------|
+| Liquidity continuation | ✅ Yes | repeated_holdout_failures, no_stable_effect_across_assets, manually_frozen_by_verdict | Archive family A — repeated_holdout_failures, no_stable_effect_across_assets, manually_frozen_by_verdict |
+| Liquidity reversal | ❌ No | — | Continue research — exit criteria not met |
+| Trend continuation | ✅ Yes | manually_frozen_by_verdict | Archive family C — manually_frozen_by_verdict |
+| Volatility expansion | ✅ Yes | manually_frozen_by_verdict | Archive family D — manually_frozen_by_verdict |
+| Mean reversion | ❌ No | — | Continue research — exit criteria not met |
+
+---
+
+# Research Backlog (Expected Information Gain)
+
+**Before L2/L3 investment:** complete FALS-001.
+
+| Priority | ID | Item | Gain | Phase | Status |
+|----------|----|------|------|-------|--------|
+| 1 | FALS-001 | Is L0–L1 observable information sufficient to justify c… | very_high | validation | completed |
+| 2 | UOA-001 | Unexplained outcome analysis — can variance be explaine… | high | — | active |
+| 3 | DISC-001 | Holdout rank correlation (discrimination at L0–L1)… | high | — | active |
+| 4 | DATA-001 | Integrate L2 OI + funding into feature pipeline (Phase … | high | — | active |
+| 5 | PORT-001 | Portfolio-level decision quality… | high | — | planned |
+| 6 | DATA-002 | L3 historical order book — only if OI/funding + evidenc… | high | — | blocked |
+| 7 | FALS-002 | Family C — trend acceleration harvester (SUPERTREND_ELI… | high | validation | completed |
+| 8 | FALS-003 | Family D — volatility expansion harvester… | high | validation | completed |
+| 9 | FEAT-001 | New L1 feature engineering (liquidity)… | low | — | frozen |
+
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.research-governance.json
+
+FALS-001 platform complete.
+npm notice
+npm notice New major version of npm available! 10.9.3 -> 12.0.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.1
+npm notice To update run: npm install -g npm@12.0.1
+npm notice

@@ -3,7 +3,7 @@
  */
 import { LineStyle, type LineData, type SeriesMarker, type UTCTimestamp } from "lightweight-charts";
 import type { BacktestTrade } from "../../types/backtest";
-import { barIndexForMs, type OhlcCandle } from "./backtestChartTime";
+import { barIndexForMs, barIndexForTradeFill, activeBracketPrice, type OhlcCandle, type TradeChartTiming } from "./backtestChartTime";
 import type { BacktestLiqContext } from "./backtestChartOverlays";
 import type { ChartOverlayLayerId } from "./backtestChartOverlayLayers";
 
@@ -57,20 +57,26 @@ function resolveSwingOpts(bot: Record<string, unknown>): SwingOpts {
 
 function isPivotHighAt(candles: OhlcCandle[], p: number, { left, right }: SwingOpts): boolean {
   if (p < left || p + right >= candles.length) return false;
-  const h = candles[p].high;
+  const pivot = candles[p];
+  if (!pivot) return false;
+  const h = pivot.high;
   for (let j = p - left; j <= p + right; j++) {
     if (j === p) continue;
-    if (candles[j].high >= h) return false;
+    const c = candles[j];
+    if (!c || c.high >= h) return false;
   }
   return true;
 }
 
 function isPivotLowAt(candles: OhlcCandle[], p: number, { left, right }: SwingOpts): boolean {
   if (p < left || p + right >= candles.length) return false;
-  const l = candles[p].low;
+  const pivot = candles[p];
+  if (!pivot) return false;
+  const l = pivot.low;
   for (let j = p - left; j <= p + right; j++) {
     if (j === p) continue;
-    if (candles[j].low <= l) return false;
+    const c = candles[j];
+    if (!c || c.low <= l) return false;
   }
   return true;
 }
@@ -88,20 +94,24 @@ function getConfirmedSwings(
   const maxPivot = hi - swingOpts.confirmBars;
   for (let p = lo; p <= maxPivot; p++) {
     if (isPivotHighAt(candles, p, swingOpts)) {
+      const c = candleAt(candles, p);
+      if (!c) continue;
       highs.push({
         kind: "swing_high",
         pivotIdx: p,
-        timeSec: Math.floor(candles[p].ts / 1000),
-        price: candles[p].high,
+        timeSec: Math.floor(c.ts / 1000),
+        price: c.high,
         label: "SH",
       });
     }
     if (isPivotLowAt(candles, p, swingOpts)) {
+      const c = candleAt(candles, p);
+      if (!c) continue;
       lows.push({
         kind: "swing_low",
         pivotIdx: p,
-        timeSec: Math.floor(candles[p].ts / 1000),
-        price: candles[p].low,
+        timeSec: Math.floor(c.ts / 1000),
+        price: c.low,
         label: "SL",
       });
     }
@@ -109,25 +119,73 @@ function getConfirmedSwings(
   return { highs, lows };
 }
 
-function barIndexForIso(candles: OhlcCandle[], iso: string): number {
+function tradeBarIndex(
+  candles: OhlcCandle[],
+  trade: BacktestTrade,
+  kind: "entry" | "exit",
+  timing?: TradeChartTiming,
+): number {
+  if (timing) {
+    return barIndexForTradeFill(
+      candles,
+      trade,
+      timing.chartTf,
+      timing.runTimeframe,
+      timing.engineType,
+      kind,
+    );
+  }
+  const iso = kind === "entry" ? trade.entryTs : trade.exitTs;
   const tms = new Date(iso).getTime();
   return barIndexForMs(candles, tms);
 }
 
 function sec(candles: OhlcCandle[], idx: number): number | null {
-  if (idx < 0 || idx >= candles.length) return null;
-  return Math.floor(candles[idx].ts / 1000);
+  const c = candles[idx];
+  if (!c) return null;
+  return Math.floor(c.ts / 1000);
+}
+
+function clampIdx(candles: OhlcCandle[], raw: unknown, fallback: number): number {
+  if (!candles.length) return -1;
+  const n = Math.trunc(Number(raw));
+  const base = Number.isFinite(n) ? n : fallback;
+  return Math.max(0, Math.min(candles.length - 1, base));
+}
+
+function metaTsToMs(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  const direct = Number(raw);
+  if (Number.isFinite(direct)) return direct;
+  const parsed = new Date(String(raw)).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function barIndexForMetaTs(candles: OhlcCandle[], raw: unknown, fallback: number): number {
+  const ms = metaTsToMs(raw);
+  return ms == null ? fallback : barIndexForMs(candles, ms);
+}
+
+function candleAt(candles: OhlcCandle[], idx: number): OhlcCandle | null {
+  return idx >= 0 && idx < candles.length ? candles[idx] ?? null : null;
+}
+
+function candlePrice(candles: OhlcCandle[], idx: number, field: keyof OhlcCandle, fallback = 0): number {
+  const v = candleAt(candles, idx)?.[field];
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 export function buildSmcChartMarkup(
   candles: OhlcCandle[],
   trade: BacktestTrade,
   botOpts: Record<string, unknown> = {},
+  timing?: TradeChartTiming,
 ): SmcChartMarkup | null {
   if (!candles.length || !trade) return null;
 
-  const entryIdx = barIndexForIso(candles, trade.entryTs);
-  const exitIdx = barIndexForIso(candles, trade.exitTs);
+  const entryIdx = clampIdx(candles, tradeBarIndex(candles, trade, "entry", timing), 0);
+  const exitIdx = clampIdx(candles, tradeBarIndex(candles, trade, "exit", timing), entryIdx);
   const lo = Math.min(entryIdx, exitIdx);
   const hi = Math.max(entryIdx, exitIdx);
   const pad = 40;
@@ -151,15 +209,15 @@ export function buildSmcChartMarkup(
 
   const sweepReclaimIdx =
     meta.sweepReclaimTs != null
-      ? barIndexForMs(candles, Number(meta.sweepReclaimTs))
+      ? barIndexForMetaTs(candles, meta.sweepReclaimTs, entryIdx)
       : meta.sweepReclaimIdx != null
-        ? Number(meta.sweepReclaimIdx)
+        ? clampIdx(candles, meta.sweepReclaimIdx, entryIdx)
         : entryIdx;
   const sweepStartIdx =
     meta.sweepStartTs != null
-      ? barIndexForMs(candles, Number(meta.sweepStartTs))
+      ? barIndexForMetaTs(candles, meta.sweepStartTs, Math.max(0, sweepReclaimIdx - 8))
       : meta.sweepStartIdx != null
-        ? Number(meta.sweepStartIdx)
+        ? clampIdx(candles, meta.sweepStartIdx, Math.max(0, sweepReclaimIdx - 8))
         : Math.max(0, sweepReclaimIdx - 8);
 
   const sweepLevel = Number(meta.sweepLevel ?? liq?.level ?? 0);
@@ -168,33 +226,35 @@ export function buildSmcChartMarkup(
 
   let sweepWickIdx =
     meta.sweepWickIdx != null && Number(meta.sweepWickIdx) >= 0
-      ? Number(meta.sweepWickIdx)
+      ? clampIdx(candles, meta.sweepWickIdx, sweepStartIdx)
       : sweepStartIdx;
   if (meta.sweepWickIdx == null && sweepWick > 0) {
     if (side === "BUY") {
       for (let j = sweepStartIdx; j <= sweepReclaimIdx; j++) {
-        if (candles[j].low <= sweepWick) sweepWickIdx = j;
+        const c = candleAt(candles, j);
+        if (c && c.low <= sweepWick) sweepWickIdx = j;
       }
     } else {
       for (let j = sweepStartIdx; j <= sweepReclaimIdx; j++) {
-        if (candles[j].high >= sweepWick) sweepWickIdx = j;
+        const c = candleAt(candles, j);
+        if (c && c.high >= sweepWick) sweepWickIdx = j;
       }
     }
   }
 
   const chochIdx =
     meta.chochTs != null
-      ? barIndexForMs(candles, Number(meta.chochTs))
+      ? barIndexForMetaTs(candles, meta.chochTs, entryIdx)
       : meta.chochIdx != null
-        ? Number(meta.chochIdx)
+        ? clampIdx(candles, meta.chochIdx, entryIdx)
         : null;
   const chochLevel = Number(meta.chochLevel ?? 0);
 
   const mssIdx =
     meta.mssTs != null
-      ? barIndexForMs(candles, Number(meta.mssTs))
+      ? barIndexForMetaTs(candles, meta.mssTs, entryIdx)
       : meta.mssIdx != null
-        ? Number(meta.mssIdx)
+        ? clampIdx(candles, meta.mssIdx, entryIdx)
         : null;
   const bosLevel = Number(meta.bosLevel ?? 0);
 
@@ -204,9 +264,9 @@ export function buildSmcChartMarkup(
   if (fvgTop > 0 && fvgBottom > 0) {
     const formedIdx =
       meta.fvgFormedTs != null
-        ? barIndexForMs(candles, Number(meta.fvgFormedTs))
+        ? barIndexForMetaTs(candles, meta.fvgFormedTs, mssIdx ?? sweepReclaimIdx)
         : meta.fvgFormedIdx != null
-          ? Number(meta.fvgFormedIdx)
+          ? clampIdx(candles, meta.fvgFormedIdx, mssIdx ?? sweepReclaimIdx)
           : mssIdx ?? sweepReclaimIdx;
     fvg = {
       top: Math.max(fvgTop, fvgBottom),
@@ -222,15 +282,15 @@ export function buildSmcChartMarkup(
   if (obTop > 0 && obBottom > 0) {
     const obIdx =
       meta.obTs != null
-        ? barIndexForMs(candles, Number(meta.obTs))
+        ? barIndexForMetaTs(candles, meta.obTs, Math.max(0, (mssIdx ?? entryIdx) - 1))
         : meta.obIdx != null
-          ? Number(meta.obIdx)
+          ? clampIdx(candles, meta.obIdx, Math.max(0, (mssIdx ?? entryIdx) - 1))
           : Math.max(0, (mssIdx ?? entryIdx) - 1);
     const obEndIdx =
       meta.obDispTs != null
-        ? barIndexForMs(candles, Number(meta.obDispTs))
+        ? barIndexForMetaTs(candles, meta.obDispTs, mssIdx ?? entryIdx)
         : meta.obDisplacementIdx != null
-          ? Number(meta.obDisplacementIdx)
+          ? clampIdx(candles, meta.obDisplacementIdx, mssIdx ?? entryIdx)
           : mssIdx ?? entryIdx;
     ob = {
       top: Math.max(obTop, obBottom),
@@ -321,9 +381,10 @@ export function buildSmcChartMarkup(
       layer: "strategy_tp1",
     });
   }
-  if (trade.slPrice != null && Number.isFinite(trade.slPrice)) {
+  const sl = activeBracketPrice(trade.slPrice);
+  if (sl != null) {
     hlines.push({
-      price: trade.slPrice,
+      price: sl,
       fromIdx: entryIdx,
       toIdx: exitIdx,
       color: "#f87171",
@@ -332,9 +393,10 @@ export function buildSmcChartMarkup(
       layer: "strategy_sl",
     });
   }
-  if (trade.tpPrice != null && Number.isFinite(trade.tpPrice)) {
+  const tp = activeBracketPrice(trade.tpPrice);
+  if (tp != null) {
     hlines.push({
-      price: trade.tpPrice,
+      price: tp,
       fromIdx: entryIdx,
       toIdx: exitIdx,
       color: "#a855f7",
@@ -345,48 +407,51 @@ export function buildSmcChartMarkup(
   }
 
   const events: SmcChartMarkup["events"] = [];
-  if (sweepWickIdx >= 0) {
+  if (candleAt(candles, sweepWickIdx)) {
     events.push({
       kind: "sweep",
       idx: sweepWickIdx,
       timeSec: sec(candles, sweepWickIdx),
-      price: side === "BUY" ? candles[sweepWickIdx].low : candles[sweepWickIdx].high,
+      price:
+        side === "BUY"
+          ? candlePrice(candles, sweepWickIdx, "low", sweepWick)
+          : candlePrice(candles, sweepWickIdx, "high", sweepWick),
       label: "Sweep",
     });
   }
-  if (sweepReclaimIdx >= 0) {
+  if (candleAt(candles, sweepReclaimIdx)) {
     events.push({
       kind: "reclaim",
       idx: sweepReclaimIdx,
       timeSec: sec(candles, sweepReclaimIdx),
-      price: candles[sweepReclaimIdx].close,
+      price: candlePrice(candles, sweepReclaimIdx, "close", entryPrice),
       label: "Reclaim",
     });
   }
-  if (chochIdx != null && chochIdx >= 0) {
+  if (chochIdx != null && candleAt(candles, chochIdx)) {
     events.push({
       kind: "choch",
       idx: chochIdx,
       timeSec: sec(candles, chochIdx),
-      price: chochLevel > 0 ? chochLevel : candles[chochIdx].close,
+      price: chochLevel > 0 ? chochLevel : candlePrice(candles, chochIdx, "close", entryPrice),
       label: "CHoCH",
     });
   }
-  if (mssIdx != null && mssIdx >= 0) {
+  if (mssIdx != null && candleAt(candles, mssIdx)) {
     events.push({
       kind: "bos",
       idx: mssIdx,
       timeSec: sec(candles, mssIdx),
-      price: bosLevel > 0 ? bosLevel : candles[mssIdx].close,
+      price: bosLevel > 0 ? bosLevel : candlePrice(candles, mssIdx, "close", entryPrice),
       label: "MSS/BOS",
     });
   }
-  if (entryIdx >= 0) {
+  if (candleAt(candles, entryIdx)) {
     events.push({
       kind: "entry",
       idx: entryIdx,
       timeSec: sec(candles, entryIdx),
-      price: entryPrice > 0 ? entryPrice : candles[entryIdx].close,
+      price: entryPrice > 0 ? entryPrice : candlePrice(candles, entryIdx, "close"),
       label: "Entry",
     });
   }
@@ -407,7 +472,7 @@ export function buildSmcChartMarkup(
       reclaimIdx: sweepReclaimIdx,
     },
     bos:
-      mssIdx != null && mssIdx >= 0 && bosLevel > 0
+      mssIdx != null && candleAt(candles, mssIdx) && bosLevel > 0
         ? { idx: mssIdx, price: bosLevel, type: meta.bosType != null ? String(meta.bosType) : null, timeSec: sec(candles, mssIdx) }
         : null,
     fvg,
@@ -437,11 +502,12 @@ export function buildLiquidityChartMarkup(
   candles: OhlcCandle[],
   trade: BacktestTrade,
   botOpts: Record<string, unknown> = {},
+  timing?: TradeChartTiming,
 ): SmcChartMarkup | null {
   if (!candles.length || !trade) return null;
 
-  const entryIdx = barIndexForIso(candles, trade.entryTs);
-  const exitIdx = barIndexForIso(candles, trade.exitTs);
+  const entryIdx = clampIdx(candles, tradeBarIndex(candles, trade, "entry", timing), 0);
+  const exitIdx = clampIdx(candles, tradeBarIndex(candles, trade, "exit", timing), entryIdx);
   const lo = Math.min(entryIdx, exitIdx);
   const hi = Math.max(entryIdx, exitIdx);
   const pad = 40;
@@ -463,12 +529,14 @@ export function buildLiquidityChartMarkup(
   let sweepStartIdx = entryIdx;
   if (wick > 0) {
     for (let j = scanFrom; j <= entryIdx; j++) {
-      if (side === "BUY" ? candles[j].low <= wick : candles[j].high >= wick) sweepWickIdx = j;
+      const c = candleAt(candles, j);
+      if (c && (side === "BUY" ? c.low <= wick : c.high >= wick)) sweepWickIdx = j;
     }
   }
   if (level > 0) {
     for (let j = scanFrom; j <= entryIdx; j++) {
-      const pierced = side === "BUY" ? candles[j].low < level : candles[j].high > level;
+      const c = candleAt(candles, j);
+      const pierced = c ? (side === "BUY" ? c.low < level : c.high > level) : false;
       if (pierced) {
         sweepStartIdx = j;
         break;
@@ -562,9 +630,10 @@ export function buildLiquidityChartMarkup(
       layer: "strategy_tp1",
     });
   }
-  if (trade.slPrice != null && Number.isFinite(trade.slPrice)) {
+  const sl = activeBracketPrice(trade.slPrice);
+  if (sl != null) {
     hlines.push({
-      price: trade.slPrice,
+      price: sl,
       fromIdx: entryIdx,
       toIdx: exitIdx,
       color: "#f87171",
@@ -573,9 +642,10 @@ export function buildLiquidityChartMarkup(
       layer: "strategy_sl",
     });
   }
-  if (trade.tpPrice != null && Number.isFinite(trade.tpPrice)) {
+  const tp = activeBracketPrice(trade.tpPrice);
+  if (tp != null) {
     hlines.push({
-      price: trade.tpPrice,
+      price: tp,
       fromIdx: entryIdx,
       toIdx: exitIdx,
       color: "#a855f7",
@@ -586,17 +656,36 @@ export function buildLiquidityChartMarkup(
   }
 
   const events: SmcChartMarkup["events"] = [];
-  if (wick > 0 && sweepWickIdx >= 0) {
+  if (wick > 0 && candleAt(candles, sweepWickIdx)) {
     events.push({
       kind: "sweep",
       idx: sweepWickIdx,
       timeSec: sec(candles, sweepWickIdx),
-      price: side === "BUY" ? candles[sweepWickIdx].low : candles[sweepWickIdx].high,
+      price:
+        side === "BUY"
+          ? candlePrice(candles, sweepWickIdx, "low", wick)
+          : candlePrice(candles, sweepWickIdx, "high", wick),
       label: "Sweep",
     });
   }
-  events.push({ kind: "reclaim", idx: reclaimIdx, timeSec: sec(candles, reclaimIdx), price: candles[reclaimIdx]?.close ?? entryPrice, label: "Reclaim" });
-  events.push({ kind: "entry", idx: entryIdx, timeSec: sec(candles, entryIdx), price: entryPrice > 0 ? entryPrice : candles[entryIdx]?.close ?? 0, label: "Entry" });
+  if (candleAt(candles, reclaimIdx)) {
+    events.push({
+      kind: "reclaim",
+      idx: reclaimIdx,
+      timeSec: sec(candles, reclaimIdx),
+      price: candlePrice(candles, reclaimIdx, "close", entryPrice),
+      label: "Reclaim",
+    });
+  }
+  if (candleAt(candles, entryIdx)) {
+    events.push({
+      kind: "entry",
+      idx: entryIdx,
+      timeSec: sec(candles, entryIdx),
+      price: entryPrice > 0 ? entryPrice : candlePrice(candles, entryIdx, "close"),
+      label: "Entry",
+    });
+  }
 
   return {
     side,
@@ -767,10 +856,11 @@ export function focusLogicalRangeForTrade(
   candles: OhlcCandle[],
   indexByTs: Map<number, number>,
   padBars = 35,
+  timing?: TradeChartTiming,
 ): { from: number; to: number } | null {
   if (!candles.length) return null;
-  const entryIdx = barIndexForIso(candles, trade.entryTs);
-  const exitIdx = barIndexForIso(candles, trade.exitTs);
+  const entryIdx = clampIdx(candles, tradeBarIndex(candles, trade, "entry", timing), 0);
+  const exitIdx = clampIdx(candles, tradeBarIndex(candles, trade, "exit", timing), entryIdx);
   const lo = Math.min(entryIdx, exitIdx);
   const hi = Math.max(entryIdx, exitIdx);
   void indexByTs;

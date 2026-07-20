@@ -1,0 +1,13 @@
+
+=== ETH locked Layer1+Layer3 confirm ===
+
+full     N=194 0.58/wk ret=  313.2% DD=33.5% Calmar=0.74
+  years: 2019-20=-16.7%/14  2020-21=3.9%/38  2021-22=-7.0%/32  2022-23=24.9%/32  2023-24=25.1%/12  2024-25=35.5%/36  2025-26=142.3%/30
+y20_21   N= 37 0.71/wk ret=    6.9% DD=24.6% Calmar=0.27
+y21_22   N= 30 0.58/wk ret=  -10.8% DD=26.3% Calmar=-0.39
+y22_23   N= 29 0.56/wk ret=   25.1% DD=12.5% Calmar=1.90
+y23_24   N= 11 0.21/wk ret=   28.7% DD=8.8% Calmar=3.05
+y24_25   N= 36 0.69/wk ret=   35.5% DD=10.8% Calmar=3.10
+y25_26   N= 30 0.58/wk ret=  142.3% DD=8.7% Calmar=15.12
+
+wrote .vp-freq-eth-layer3-confirm.json

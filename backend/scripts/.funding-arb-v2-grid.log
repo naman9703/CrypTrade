@@ -1,0 +1,27 @@
+BTCUSDT max streak >= 12% = 3
+BTCUSDT max streak >= 15% = 1
+BTCUSDT max streak >= 20% = 0
+BTCUSDT max streak >= 25% = 0
+ETHUSDT max streak >= 12% = 2
+ETHUSDT max streak >= 15% = 2
+ETHUSDT max streak >= 20% = 1
+ETHUSDT max streak >= 25% = 1
+
+Top 15 by net PnL:
+{"minAnn":12,"stab":4,"hold":6,"feeMode":"maker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":12,"stab":4,"hold":6,"feeMode":"taker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":12,"stab":4,"hold":9,"feeMode":"maker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":12,"stab":4,"hold":9,"feeMode":"taker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":12,"stab":6,"hold":6,"feeMode":"maker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":12,"stab":6,"hold":6,"feeMode":"taker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":12,"stab":6,"hold":9,"feeMode":"maker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":12,"stab":6,"hold":9,"feeMode":"taker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":15,"stab":3,"hold":6,"feeMode":"maker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":15,"stab":3,"hold":6,"feeMode":"taker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":15,"stab":3,"hold":9,"feeMode":"maker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":15,"stab":3,"hold":9,"feeMode":"taker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":15,"stab":4,"hold":6,"feeMode":"maker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":15,"stab":4,"hold":6,"feeMode":"taker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+{"minAnn":15,"stab":4,"hold":9,"feeMode":"maker","trades":0,"net":0,"ann":0,"pass":false,"fees":0,"fund":0}
+
+Any PASS? 0

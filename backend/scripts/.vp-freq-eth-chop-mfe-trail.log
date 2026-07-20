@@ -1,0 +1,16 @@
+
+=== baseline (no chop trail) ===
+N=263 ret=135.0% DD=52.4% WR=38% whip=37 mfe_trail=0
+  2022-2023: n=64 wr=33% ret=-5.4% net=$-5.4 whip=11 mfe_trail=0
+  2023-2024: n=45 wr=36% ret=0.0% net=$0.0 whip=8 mfe_trail=0
+  2024-2025: n=82 wr=37% ret=13.2% net=$12.5 whip=13 mfe_trail=0
+  2025-2026: n=72 wr=46% ret=119.4% net=$127.9 whip=5 mfe_trail=0
+
+=== chop MFE giveback trail ===
+N=263 ret=160.1% DD=50.1% WR=40% whip=33 mfe_trail=6
+  2022-2023: n=64 wr=34% ret=-1.5% net=$-1.5 whip=10 mfe_trail=1
+  2023-2024: n=45 wr=36% ret=-3.4% net=$-3.3 whip=8 mfe_trail=1
+  2024-2025: n=82 wr=39% ret=19.7% net=$18.7 whip=11 mfe_trail=3
+  2025-2026: n=72 wr=47% ret=128.4% net=$146.2 whip=4 mfe_trail=1
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-chop-mfe-trail.json

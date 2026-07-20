@@ -1,0 +1,172 @@
+{
+  "window": "2025-01-01→2026-06-01",
+  "risk": 2.5,
+  "symbols": [
+    "BNBUSDT",
+    "ETHUSDT"
+  ],
+  "rows": [
+    {
+      "symbol": "BNBUSDT",
+      "variant": "liq_solo",
+      "label": "LIQ solo baseline",
+      "picks": 80,
+      "candidates": 0,
+      "trades": 75,
+      "tradesPerWeek": 1.02,
+      "tradesPerMonth": 4.4,
+      "wr": 61,
+      "ret": -3.06,
+      "pf": 0.96,
+      "dd": 24.55,
+      "exitReasons": {
+        "sl": 22,
+        "time_stop": 45,
+        "tp1_partial": 25,
+        "be": 5,
+        "tp2": 3
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "proximity_15bp",
+      "label": "LIQ + VP proximity 0.15%",
+      "picks": 15,
+      "candidates": 0,
+      "trades": 12,
+      "tradesPerWeek": 0.16,
+      "tradesPerMonth": 0.7,
+      "wr": 43.8,
+      "ret": -12.32,
+      "pf": 0.44,
+      "dd": 15.23,
+      "exitReasons": {
+        "sl": 6,
+        "tp1_partial": 4,
+        "time_stop": 4,
+        "be": 1,
+        "tp2": 1
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "proximity_25bp",
+      "label": "LIQ + VP proximity 0.25%",
+      "picks": 25,
+      "candidates": 0,
+      "trades": 22,
+      "tradesPerWeek": 0.3,
+      "tradesPerMonth": 1.3,
+      "wr": 41.4,
+      "ret": -18.61,
+      "pf": 0.41,
+      "dd": 21.78,
+      "exitReasons": {
+        "sl": 10,
+        "tp1_partial": 7,
+        "time_stop": 8,
+        "be": 3,
+        "tp2": 1
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "proximity_35bp",
+      "label": "LIQ + VP proximity 0.35%",
+      "picks": 32,
+      "candidates": 0,
+      "trades": 28,
+      "tradesPerWeek": 0.38,
+      "tradesPerMonth": 1.6,
+      "wr": 44.4,
+      "ret": -20.08,
+      "pf": 0.51,
+      "dd": 22.12,
+      "exitReasons": {
+        "sl": 11,
+        "time_stop": 13,
+        "tp1_partial": 8,
+        "be": 3,
+        "tp2": 1
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "liq_solo",
+      "label": "LIQ solo baseline",
+      "picks": 16,
+      "candidates": 0,
+      "trades": 16,
+      "tradesPerWeek": 0.22,
+      "tradesPerMonth": 0.9,
+      "wr": 18.8,
+      "ret": -4,
+      "pf": 0.16,
+      "dd": 4.17,
+      "exitReasons": {
+        "trail": 15,
+        "sl": 1
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "proximity_15bp",
+      "label": "LIQ + VP proximity 0.15%",
+      "picks": 3,
+      "candidates": 0,
+      "trades": 3,
+      "tradesPerWeek": 0.04,
+      "tradesPerMonth": 0.2,
+      "wr": 33.3,
+      "ret": -2.49,
+      "pf": 0.15,
+      "dd": 2.92,
+      "exitReasons": {
+        "sl": 1,
+        "trail": 2
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "proximity_25bp",
+      "label": "LIQ + VP proximity 0.25%",
+      "picks": 3,
+      "candidates": 0,
+      "trades": 3,
+      "tradesPerWeek": 0.04,
+      "tradesPerMonth": 0.2,
+      "wr": 33.3,
+      "ret": -2.49,
+      "pf": 0.15,
+      "dd": 2.92,
+      "exitReasons": {
+        "sl": 1,
+        "trail": 2
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "proximity_35bp",
+      "label": "LIQ + VP proximity 0.35%",
+      "picks": 6,
+      "candidates": 0,
+      "trades": 6,
+      "tradesPerWeek": 0.08,
+      "tradesPerMonth": 0.3,
+      "wr": 16.7,
+      "ret": -3.11,
+      "pf": 0.12,
+      "dd": 3.44,
+      "exitReasons": {
+        "trail": 5,
+        "sl": 1
+      }
+    }
+  ],
+  "target": {
+    "minTradesPerWeek": 2,
+    "minReturnPct": 0,
+    "minPf": 1,
+    "minFreqRetainPct": 50
+  }
+}

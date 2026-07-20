@@ -30,8 +30,10 @@ export const PANEL_MANUAL_STRATEGY_KEYS = new Set([
   "VOLUME_PROFILE",
   "REGIME_ADAPTIVE",
   "CRT_TBS",
+  "SCALP_MR",
   "TOKYO_SESSION",
   "UNIFIED_ELITE",
+  "LIQUIDITY_MAP",
 ]);
 
 /** @deprecated use PANEL_MANUAL_STRATEGY_KEYS */
@@ -163,9 +165,16 @@ export async function evaluateLiveStrategyAdapterBar({ state, candles, idx, symU
   const key = String(strategyKey || "").toUpperCase();
   const tf = String(state?.timeframe ?? "15m").trim();
   const fromMs = Number(candles[0]?.ts) || Date.now();
+  // Make the exit-model enum authoritative for the adapter (parity with backtest):
+  // normalizeLiquidityMapRunCfg derives the intradayLiq*/trailing flags from liqMapExitMode.
+  let cfg = state;
+  if (key === "LIQUIDITY_MAP") {
+    const { resolveLiquidityMapRunCfg } = await import("./liquidityMapStrategy.js");
+    cfg = resolveLiquidityMapRunCfg(state, candles);
+  }
   const adapters = await buildBacktestAdapters({
     strategyKey: key,
-    cfg: state,
+    cfg,
     symbol: symU,
     tf,
     candles,
@@ -175,7 +184,7 @@ export async function evaluateLiveStrategyAdapterBar({ state, candles, idx, symU
   if (typeof fn !== "function") return null;
 
   const persisted = adapterPersistedFor(state, symU, key);
-  const ctx = { candles, cfg: state, timeframe: tf, persisted };
+  const ctx = { candles, cfg, timeframe: tf, persisted };
   const bar = candles[idx];
   if (!bar) return null;
   return (await fn(bar, idx, ctx)) || null;

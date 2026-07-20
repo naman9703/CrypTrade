@@ -1,0 +1,563 @@
+{
+  "generatedAt": "2026-07-18T17:24:01.286Z",
+  "scored": [
+    {
+      "id": "buy_rej_weak_wick",
+      "verdict": "reject",
+      "improve21": 9.2,
+      "lockCost": 120.1,
+      "drop21": {
+        "n": 5,
+        "net": -9.17,
+        "wr": 20
+      },
+      "dropLock": {
+        "n": 6,
+        "net": 120.1,
+        "wr": 100
+      },
+      "drop25": {
+        "n": 1,
+        "net": 17.03,
+        "wr": 100
+      },
+      "kept21": {
+        "n": 41,
+        "net": -3.98,
+        "wr": 39
+      },
+      "keptLock": {
+        "n": 143,
+        "net": 572.68,
+        "wr": 45.5
+      }
+    },
+    {
+      "id": "buy_rej_weak_close",
+      "verdict": "PROMISING",
+      "improve21": 10,
+      "lockCost": 10,
+      "drop21": {
+        "n": 3,
+        "net": -10.04,
+        "wr": 0
+      },
+      "dropLock": {
+        "n": 5,
+        "net": 10.02,
+        "wr": 40
+      },
+      "drop25": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "kept21": {
+        "n": 43,
+        "net": -3.12,
+        "wr": 39.5
+      },
+      "keptLock": {
+        "n": 144,
+        "net": 682.76,
+        "wr": 47.9
+      }
+    },
+    {
+      "id": "buy_rej_weak_quality",
+      "verdict": "reject",
+      "improve21": 9.2,
+      "lockCost": 99.6,
+      "drop21": {
+        "n": 5,
+        "net": -9.17,
+        "wr": 20
+      },
+      "dropLock": {
+        "n": 9,
+        "net": 99.61,
+        "wr": 66.7
+      },
+      "drop25": {
+        "n": 1,
+        "net": 17.03,
+        "wr": 100
+      },
+      "kept21": {
+        "n": 41,
+        "net": -3.98,
+        "wr": 39
+      },
+      "keptLock": {
+        "n": 140,
+        "net": 593.17,
+        "wr": 46.4
+      }
+    },
+    {
+      "id": "buy_rej_bull_and_weak_q",
+      "verdict": "reject",
+      "improve21": 10.6,
+      "lockCost": 60.5,
+      "drop21": {
+        "n": 3,
+        "net": -10.63,
+        "wr": 0
+      },
+      "dropLock": {
+        "n": 5,
+        "net": 60.47,
+        "wr": 60
+      },
+      "drop25": {
+        "n": 1,
+        "net": 17.03,
+        "wr": 100
+      },
+      "kept21": {
+        "n": 43,
+        "net": -2.52,
+        "wr": 39.5
+      },
+      "keptLock": {
+        "n": 144,
+        "net": 632.32,
+        "wr": 47.2
+      }
+    },
+    {
+      "id": "buy_rej_bull_and_p120",
+      "verdict": "PROMISING",
+      "improve21": 7.4,
+      "lockCost": 16.2,
+      "drop21": {
+        "n": 2,
+        "net": -7.4,
+        "wr": 0
+      },
+      "dropLock": {
+        "n": 1,
+        "net": 16.19,
+        "wr": 100
+      },
+      "drop25": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "kept21": {
+        "n": 44,
+        "net": -5.76,
+        "wr": 38.6
+      },
+      "keptLock": {
+        "n": 148,
+        "net": 676.59,
+        "wr": 47.3
+      }
+    },
+    {
+      "id": "buy_rej_bull_and_p5chase",
+      "verdict": "reject",
+      "improve21": 0,
+      "lockCost": -7.9,
+      "drop21": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "dropLock": {
+        "n": 1,
+        "net": -7.92,
+        "wr": 0
+      },
+      "drop25": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "kept21": {
+        "n": 46,
+        "net": -13.16,
+        "wr": 37
+      },
+      "keptLock": {
+        "n": 148,
+        "net": 700.71,
+        "wr": 48
+      }
+    },
+    {
+      "id": "buy_rej_any_p5chase",
+      "verdict": "reject",
+      "improve21": -4.1,
+      "lockCost": 7.8,
+      "drop21": {
+        "n": 1,
+        "net": 4.1,
+        "wr": 100
+      },
+      "dropLock": {
+        "n": 2,
+        "net": 7.75,
+        "wr": 50
+      },
+      "drop25": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "kept21": {
+        "n": 45,
+        "net": -17.25,
+        "wr": 35.6
+      },
+      "keptLock": {
+        "n": 147,
+        "net": 685.03,
+        "wr": 47.6
+      }
+    },
+    {
+      "id": "s1_and_shallow_htf",
+      "verdict": "reject",
+      "improve21": 0,
+      "lockCost": 56.8,
+      "drop21": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "dropLock": {
+        "n": 3,
+        "net": 56.8,
+        "wr": 33.3
+      },
+      "drop25": {
+        "n": 1,
+        "net": 22.58,
+        "wr": 100
+      },
+      "kept21": {
+        "n": 46,
+        "net": -13.16,
+        "wr": 37
+      },
+      "keptLock": {
+        "n": 146,
+        "net": 635.98,
+        "wr": 47.9
+      }
+    },
+    {
+      "id": "s1_and_p120",
+      "verdict": "reject",
+      "improve21": 2.7,
+      "lockCost": 56.8,
+      "drop21": {
+        "n": 1,
+        "net": -2.7,
+        "wr": 0
+      },
+      "dropLock": {
+        "n": 3,
+        "net": 56.8,
+        "wr": 33.3
+      },
+      "drop25": {
+        "n": 1,
+        "net": 22.58,
+        "wr": 100
+      },
+      "kept21": {
+        "n": 45,
+        "net": -10.45,
+        "wr": 37.8
+      },
+      "keptLock": {
+        "n": 146,
+        "net": 635.98,
+        "wr": 47.9
+      }
+    },
+    {
+      "id": "s1_and_prior20_up",
+      "verdict": "reject",
+      "improve21": -6,
+      "lockCost": -9.5,
+      "drop21": {
+        "n": 1,
+        "net": 6.04,
+        "wr": 100
+      },
+      "dropLock": {
+        "n": 1,
+        "net": -9.48,
+        "wr": 0
+      },
+      "drop25": {
+        "n": 1,
+        "net": -2.9,
+        "wr": 0
+      },
+      "kept21": {
+        "n": 45,
+        "net": -19.19,
+        "wr": 35.6
+      },
+      "keptLock": {
+        "n": 148,
+        "net": 702.26,
+        "wr": 48
+      }
+    },
+    {
+      "id": "s1_and_htf_not_down",
+      "verdict": "reject",
+      "improve21": 0,
+      "lockCost": 0,
+      "drop21": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "dropLock": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "drop25": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "kept21": {
+        "n": 46,
+        "net": -13.16,
+        "wr": 37
+      },
+      "keptLock": {
+        "n": 149,
+        "net": 692.78,
+        "wr": 47.7
+      }
+    },
+    {
+      "id": "val_weak_bear_any_path_p120",
+      "verdict": "reject",
+      "improve21": 2.7,
+      "lockCost": 56.8,
+      "drop21": {
+        "n": 1,
+        "net": -2.7,
+        "wr": 0
+      },
+      "dropLock": {
+        "n": 3,
+        "net": 56.8,
+        "wr": 33.3
+      },
+      "drop25": {
+        "n": 1,
+        "net": 22.58,
+        "wr": 100
+      },
+      "kept21": {
+        "n": 45,
+        "net": -10.45,
+        "wr": 37.8
+      },
+      "keptLock": {
+        "n": 146,
+        "net": 635.98,
+        "wr": 47.9
+      }
+    },
+    {
+      "id": "buy_rej_bull_trend_only",
+      "verdict": "reject",
+      "improve21": 10.6,
+      "lockCost": 60.5,
+      "drop21": {
+        "n": 3,
+        "net": -10.63,
+        "wr": 0
+      },
+      "dropLock": {
+        "n": 5,
+        "net": 60.47,
+        "wr": 60
+      },
+      "drop25": {
+        "n": 1,
+        "net": 17.03,
+        "wr": 100
+      },
+      "kept21": {
+        "n": 43,
+        "net": -2.52,
+        "wr": 39.5
+      },
+      "keptLock": {
+        "n": 144,
+        "net": 632.32,
+        "wr": 47.2
+      }
+    },
+    {
+      "id": "s1_only",
+      "verdict": "reject",
+      "improve21": 5.7,
+      "lockCost": 47.1,
+      "drop21": {
+        "n": 5,
+        "net": -5.68,
+        "wr": 20
+      },
+      "dropLock": {
+        "n": 7,
+        "net": 47.14,
+        "wr": 28.6
+      },
+      "drop25": {
+        "n": 3,
+        "net": 16.28,
+        "wr": 33.3
+      },
+      "kept21": {
+        "n": 41,
+        "net": -7.48,
+        "wr": 39
+      },
+      "keptLock": {
+        "n": 142,
+        "net": 645.64,
+        "wr": 48.6
+      }
+    },
+    {
+      "id": "s1_plus_s4",
+      "verdict": "reject",
+      "improve21": 16.3,
+      "lockCost": 107.6,
+      "drop21": {
+        "n": 8,
+        "net": -16.31,
+        "wr": 12.5
+      },
+      "dropLock": {
+        "n": 12,
+        "net": 107.61,
+        "wr": 41.7
+      },
+      "drop25": {
+        "n": 4,
+        "net": 33.31,
+        "wr": 50
+      },
+      "kept21": {
+        "n": 38,
+        "net": 3.15,
+        "wr": 42.1
+      },
+      "keptLock": {
+        "n": 137,
+        "net": 585.18,
+        "wr": 48.2
+      }
+    },
+    {
+      "id": "buy_rej_instant_pat",
+      "verdict": "PROMISING",
+      "improve21": 10,
+      "lockCost": -77.1,
+      "drop21": {
+        "n": 3,
+        "net": -10.04,
+        "wr": 0
+      },
+      "dropLock": {
+        "n": 4,
+        "net": -77.14,
+        "wr": 0
+      },
+      "drop25": {
+        "n": 2,
+        "net": -20.57,
+        "wr": 0
+      },
+      "kept21": {
+        "n": 43,
+        "net": -3.12,
+        "wr": 39.5
+      },
+      "keptLock": {
+        "n": 145,
+        "net": 769.92,
+        "wr": 49
+      }
+    },
+    {
+      "id": "vah_tight_bull",
+      "verdict": "PROMISING",
+      "improve21": 5.4,
+      "lockCost": 0,
+      "drop21": {
+        "n": 2,
+        "net": -5.44,
+        "wr": 0
+      },
+      "dropLock": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "drop25": {
+        "n": 0,
+        "net": 0,
+        "wr": 0
+      },
+      "kept21": {
+        "n": 44,
+        "net": -7.72,
+        "wr": 38.6
+      },
+      "keptLock": {
+        "n": 149,
+        "net": 692.78,
+        "wr": 47.7
+      }
+    },
+    {
+      "id": "buy_any_bull_tight",
+      "verdict": "reject",
+      "improve21": 8.9,
+      "lockCost": 67.6,
+      "drop21": {
+        "n": 3,
+        "net": -8.95,
+        "wr": 0
+      },
+      "dropLock": {
+        "n": 4,
+        "net": 67.64,
+        "wr": 75
+      },
+      "drop25": {
+        "n": 1,
+        "net": 17.03,
+        "wr": 100
+      },
+      "kept21": {
+        "n": 43,
+        "net": -4.2,
+        "wr": 39.5
+      },
+      "keptLock": {
+        "n": 145,
+        "net": 625.14,
+        "wr": 46.9
+      }
+    }
+  ]
+}

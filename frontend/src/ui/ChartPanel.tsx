@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import {
   createChart,
   LineStyle,
@@ -7,6 +7,7 @@ import {
   type Time,
   TickMarkType,
 } from "lightweight-charts";
+import { shallow } from "zustand/shallow";
 import { api } from "../api/client";
 import { buildOhlc, isOhlcBarRenderable, ohlcBarsToMsCandles, type OhlcBar } from "../lib/chartOhlc";
 import { isPlausibleCandleClose, normalizeSym } from "../lib/symbolPriceSanity";
@@ -50,18 +51,155 @@ import {
   type ChartOverlayData,
 } from "../lib/chartOverlayFetch";
 import { useThemeStore } from "../themeStore";
+import {
+  CHART_BACKFILL_EDGE_BARS,
+  CHART_BACKFILL_HOURS_STEP,
+  CHART_BACKFILL_MAX_HOURS,
+  CHART_DISPLAY_MAX,
+  CHART_STORE_MAX,
+} from "../lib/chartDisplayLimits";
 import { CHART_CANDLE_MAX, useAppStore } from "../ws/store";
 import { OrderBookPanel } from "./OrderBookPanel";
 import { IntelligencePanel } from "./intelligence/IntelligencePanel";
 import { MultiCoinSignalTabs } from "./MultiCoinSignalTabs";
 import { computeMultiCoinTabSymbols } from "../lib/multiCoinTabSymbols";
-import { PositionMiniChartsRow } from "./PositionMiniChartsRow";
+import { PositionMiniChartsRowLive } from "./PositionMiniChartsRow";
 
 /** Display axis + crosshair in IST (UTC+5:30); bar timestamps stay UTC unix seconds from the feed. */
 const CHART_TIMEZONE = "Asia/Kolkata";
 
 /** Max markers on candlesticks (merged live + history); excess causes overlap and slows lightweight-charts. */
 const CHART_MARKER_DISPLAY_CAP = 40;
+
+/** Market fields used by the chart — narrow Zustand subscription (ignore ticks for other symbols). */
+type ChartMarketSlice = {
+  symbol?: string;
+  timeframe?: string;
+  /** Candle open ts only — OHLC churn must not re-render ChartPanel. */
+  candleTs?: number;
+  indicators?: unknown;
+  regime?: unknown;
+  supertrend?: unknown;
+  feedExecutionPause?: unknown;
+};
+
+function selectChartMarketSlice(state: {
+  market?: Record<string, unknown>;
+  chartDisplaySymbol?: string | null;
+  bot?: Record<string, unknown>;
+}): ChartMarketSlice | null {
+  const viewSym = normalizeSym(String(state.chartDisplaySymbol ?? state.bot?.symbol ?? ""));
+  const m = state.market;
+  if (!m || !viewSym) return null;
+  if (normalizeSym(String(m.symbol ?? "")) !== viewSym) return null;
+  const c = m.candle as { ts?: unknown } | undefined;
+  const candleTs = c?.ts != null ? Number(c.ts) : undefined;
+  return {
+    symbol: m.symbol as string | undefined,
+    timeframe: m.timeframe as string | undefined,
+    candleTs: Number.isFinite(candleTs) ? candleTs : undefined,
+    indicators: m.indicators,
+    regime: m.regime,
+    supertrend: m.supertrend,
+    feedExecutionPause: m.feedExecutionPause,
+  };
+}
+
+/** Ignore intra-bar OHLC patches — only length / bar-open boundaries re-render the panel. */
+function candlesStructuralEqual(a: unknown[] | undefined, b: unknown[] | undefined): boolean {
+  if (a === b) return true;
+  const al = Array.isArray(a) ? a.length : 0;
+  const bl = Array.isArray(b) ? b.length : 0;
+  if (al === 0 && bl === 0) return true;
+  if (al !== bl || al === 0) return false;
+  const a0 = a![0] as { ts?: unknown };
+  const b0 = b![0] as { ts?: unknown };
+  const aL = a![al - 1] as { ts?: unknown };
+  const bL = b![bl - 1] as { ts?: unknown };
+  return Number(a0?.ts) === Number(b0?.ts) && Number(aL?.ts) === Number(bL?.ts);
+}
+
+function chartMarketSliceEqual(a: ChartMarketSlice | null, b: ChartMarketSlice | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.symbol === b.symbol &&
+    a.timeframe === b.timeframe &&
+    a.candleTs === b.candleTs &&
+    a.regime === b.regime &&
+    a.supertrend === b.supertrend &&
+    a.feedExecutionPause === b.feedExecutionPause &&
+    a.indicators === b.indicators
+  );
+}
+
+/** Order book + intelligence — memoized so chart WS ticks don't reconcile this subtree. */
+const ChartPanelOrderBookSection = memo(function ChartPanelOrderBookSection(props: { showIntel: boolean }) {
+  return (
+    <div className="w-full">
+      <OrderBookPanel />
+      {props.showIntel ? <IntelligencePanel embedded /> : null}
+    </div>
+  );
+});
+
+/** Memoized — own store subscriptions; skip reconcile when chart canvas re-renders. */
+const ChartMultiCoinSignalTabs = memo(MultiCoinSignalTabs);
+
+const CHART_BOT_KEYS = [
+  "symbol",
+  "timeframe",
+  "universeCoinSelectMode",
+  "universeCoinBase",
+  "universeCustomSymbols",
+  "universePinnedSymbols",
+  "multiCoinSignalTabSymbols",
+  "universe",
+  "marketMode",
+  "supertrendFuturesAuto",
+  "supertrendSpotAuto",
+  "supertrendPeriod",
+  "supertrendMultiplier",
+  "supertrendWilderAtr",
+  "supertrendLastBarClose",
+  "supertrendLastFlipBarClose",
+  "supertrendSignalHistory",
+  "smartSignalStrengthThreshold",
+  "smartSignalStrengthThresholdMeta",
+  "signalStrengthGatesTrades",
+  "signalStrengthOpenMin",
+  "supertrendMoveQualityGate",
+  "supertrendMoveQualityMinScore",
+  "trailingStopLossAuto",
+  "futuresTrailingStopMode",
+  "trailingStopExtraScalpingPcts",
+  "trailBufferRate",
+  "trailActivationSlippageFrac",
+  "trailT01LockSlippageFrac",
+  "trailBufferAtrMult",
+  "trailBufferMode",
+  "lastRegime",
+  "trailOpenFeeRate",
+  "trailCloseFeeRate",
+  "trailFeeBeMultiplier",
+  "futuresTrailingStFeeBreakeven",
+  "futuresTrailingStAdvanced",
+  "trailMinSlDistFrac",
+  "trailMinGapFromMarkFrac",
+  "trailMaintMarginRate",
+  "trailPostT02SpacingFrac",
+  "trailPostT02MaxExtraTiers",
+] as const;
+
+function pickChartBot(raw: unknown): Record<string, unknown> {
+  const src =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  const out: Record<string, unknown> = {};
+  for (const k of CHART_BOT_KEYS) out[k] = src[k];
+  return out;
+}
 
 function snapOverlayToCandles(eventSec: number, candleTimes: Set<number>, tfSec: number): number | null {
   const aligned = Math.floor(eventSec / tfSec) * tfSec;
@@ -89,8 +227,8 @@ const SUPERTREND_SIGNAL_LIST_MAX = 50;
  * stuck painting **only** `altCandles` until an arbitrary bar count — that made non-primary pairs look frozen.
  */
 function mergeAltRestWithLiveWs(alt: any[], live: any[]): any[] {
-  if (!live.length) return alt.length ? alt.slice(-CHART_CANDLE_MAX) : [];
-  if (!alt.length) return live.slice(-CHART_CANDLE_MAX);
+  if (!live.length) return alt.length ? alt.slice(-CHART_STORE_MAX) : [];
+  if (!alt.length) return live.slice(-CHART_STORE_MAX);
   const byTs = new Map<number, any>();
   for (const c of alt) {
     const t = Number(c?.ts);
@@ -102,7 +240,7 @@ function mergeAltRestWithLiveWs(alt: any[], live: any[]): any[] {
     if (!Number.isFinite(t)) continue;
     byTs.set(t, c);
   }
-  return [...byTs.values()].sort((a, b) => Number(a.ts) - Number(b.ts)).slice(-CHART_CANDLE_MAX);
+  return [...byTs.values()].sort((a, b) => Number(a.ts) - Number(b.ts)).slice(-CHART_STORE_MAX);
 }
 
 /** When WS `market.candle` advances within the open bar, patch store tail so OHLC + price line stay live. */
@@ -178,43 +316,54 @@ function timeToUtcMs(time: Time): number {
   return Date.UTC(time.year, time.month - 1, time.day);
 }
 
+const IST_TZ = { timeZone: CHART_TIMEZONE } as const;
+const istFmtYear = new Intl.DateTimeFormat("en-IN", { ...IST_TZ, year: "numeric" });
+const istFmtMonth = new Intl.DateTimeFormat("en-IN", { ...IST_TZ, month: "short", year: "numeric" });
+const istFmtDay = new Intl.DateTimeFormat("en-IN", { ...IST_TZ, day: "numeric", month: "short" });
+const istFmtTime = new Intl.DateTimeFormat("en-IN", {
+  ...IST_TZ,
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const istFmtTimeSec = new Intl.DateTimeFormat("en-IN", {
+  ...IST_TZ,
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+const istFmtCrosshair = new Intl.DateTimeFormat("en-IN", {
+  ...IST_TZ,
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
 function formatIstTimeScale(time: Time, tickMarkType: TickMarkType): string {
   const d = new Date(timeToUtcMs(time));
-  const tz: Intl.DateTimeFormatOptions = { timeZone: CHART_TIMEZONE };
   switch (tickMarkType) {
     case TickMarkType.Year:
-      return d.toLocaleString("en-IN", { ...tz, year: "numeric" });
+      return istFmtYear.format(d);
     case TickMarkType.Month:
-      return d.toLocaleString("en-IN", { ...tz, month: "short", year: "numeric" });
+      return istFmtMonth.format(d);
     case TickMarkType.DayOfMonth:
-      return d.toLocaleString("en-IN", { ...tz, day: "numeric", month: "short" });
+      return istFmtDay.format(d);
     case TickMarkType.Time:
-      return d.toLocaleString("en-IN", { ...tz, hour: "2-digit", minute: "2-digit", hour12: false });
+      return istFmtTime.format(d);
     case TickMarkType.TimeWithSeconds:
-      return d.toLocaleString("en-IN", {
-        ...tz,
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      });
+      return istFmtTimeSec.format(d);
     default:
-      return d.toLocaleString("en-IN", { ...tz, hour: "2-digit", minute: "2-digit", hour12: false });
+      return istFmtTime.format(d);
   }
 }
 
 function formatIstCrosshairTime(time: Time): string {
-  const d = new Date(timeToUtcMs(time));
-  return d.toLocaleString("en-IN", {
-    timeZone: CHART_TIMEZONE,
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  return istFmtCrosshair.format(new Date(timeToUtcMs(time)));
 }
 
 type SupertrendSignalHistRow = {
@@ -1231,800 +1380,82 @@ function tryApplyAutoFit(
   skipUntilBulk.current = false;
 }
 
-export function ChartPanel() {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<any>(null);
-  /** Every SL/TP `createPriceLine` handle so we always remove orphans (axis labels stack if `remove` is skipped or races). */
-  const bracketPriceLinesRef = useRef<BracketPriceLineHandle[]>([]);
-  const supertrendLineRef = useRef<any>(null);
-  const chartOkRef = useRef(false);
-  const pendingAutoFitRef = useRef(true);
-  const fitAfterRestSnapshotRef = useRef(false);
-  const skipFitUntilBulkRef = useRef(false);
-  const prevChartSymbolRef = useRef<string | undefined>(undefined);
-  const prevChartTfRef = useRef<string | undefined>(undefined);
-  const bulkFitFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Ignore stale REST responses when the user clicks another multi-coin tab quickly. */
-  const chartLoadSeqRef = useRef(0);
-  /** Throttle background REST reconcile (effect re-runs were stacking overlapping polls). */
-  const lastRestReconcileAtRef = useRef(0);
-  const restReconcileInFlightRef = useRef(false);
-  /** Per-view OHLC cache so tab switches repaint immediately without waiting for REST/WS. */
-  const chartViewCacheRef = useRef<
-    Map<string, { candles: any[]; altCandles: any[]; market: Record<string, unknown> }>
-  >(new Map());
-  const chartOhlcAppliedSymRef = useRef<string | null>(null);
-  /** Tier line specs (label + price) for left-side overlay labels; updated when chartTrailingPreview changes. */
-  const tierLinePricesRef = useRef<{ label: string; px: number }[]>([]);
-  /** Y-coordinate positions (in pixels) for the tier label overlay; recomputed on chart pan/zoom. */
-  const [tierLabelPositions, setTierLabelPositions] = useState<{ label: string; y: number }[]>([]);
 
-  const candles = useAppStore((s) => s.candles);
-  const market = useAppStore((s) => s.market);
-  const bot = useAppStore((s) => s.bot);
-  const chartDisplaySymbol = useAppStore((s) => s.chartDisplaySymbol);
-  const setChartDisplaySymbol = useAppStore((s) => s.setChartDisplaySymbol);
-  const positions = useAppStore((s) => s.positions);
-  const showMarketIntelligencePanel = useAppStore((s) => s.showMarketIntelligencePanel);
-  const chartTheme = useThemeStore((s) => s.theme);
+type ChartPositionOverlayProps = {
+  bot: Record<string, unknown> | null | undefined;
+  effectiveSym: string;
+  isMultiCoinMode: boolean;
+  chartTheme: string;
+  chartInstanceKey: string;
+  chartSupertrend: {
+    linePoints: { time: number; up: number; dn: number }[];
+    lastUp: number;
+    lastDn: number;
+  };
+  ohlcLastCloseRef: MutableRefObject<number | null>;
+  seriesRef: MutableRefObject<any>;
+  chartOkRef: MutableRefObject<boolean>;
+  ohlcRef: MutableRefObject<OhlcBar[]>;
+  bracketPriceLinesRef: MutableRefObject<BracketPriceLineHandle[]>;
+  tierLinePricesRef: MutableRefObject<{ label: string; px: number }[]>;
+  tierLabelPositionKeyRef: MutableRefObject<string>;
+  paintTierLabelOverlay: (positions: { label: string; y: number }[]) => void;
+};
 
-  const [altCandles, setAltCandles] = useState<any[]>([]);
-  const [altCandlesSym, setAltCandlesSym] = useState<string | null>(null);
-  /** After SL tightens at least once for a symbol, keep the Trailed chip highlighted for that chart session (e.g. after flat). */
-  const [chartTrailedSessionBySymbol, setChartTrailedSessionBySymbol] = useState<Record<string, true>>({});
-  /** One expanded row at a time in the signal list under the chart. */
-  const [openSignalAccordionKey, setOpenSignalAccordionKey] = useState<string | null>(null);
-  const [chartOverlay, setChartOverlay] = useState<ChartOverlayData>(EMPTY_OVERLAY);
-  const chartOverlayRef = useRef<ChartOverlayData>(EMPTY_OVERLAY);
-
-  const effectiveSym = useMemo(() => {
-    const b = canonicalChartSymbol(bot?.symbol);
-    const d = chartDisplaySymbol ? canonicalChartSymbol(chartDisplaySymbol) : "";
-    return d || b || "";
-  }, [bot?.symbol, chartDisplaySymbol]);
-
-  const isAltChartView = useMemo(() => {
-    const b = canonicalChartSymbol(bot?.symbol);
-    return Boolean(effectiveSym && b && effectiveSym !== b);
-  }, [effectiveSym, bot?.symbol]);
-
-  const universeCoinSelectModeU = String(bot?.universeCoinSelectMode || "").toUpperCase();
-  const isMultiCoinMode = universeCoinSelectModeU === "MULTIPLE";
-
-  /** Server `supertrendLastBarClose` / flips are for `bot.symbol` only — ignore on chart when viewing another pair. */
-  const serverStSnapMatchesChart = useMemo(() => {
-    const es = canonicalChartSymbol(effectiveSym);
-    const bs = canonicalChartSymbol(bot?.symbol);
-    return Boolean(es && bs && es === bs);
-  }, [effectiveSym, bot?.symbol]);
-
-  const multiChartTabSymbols = useMemo(() => computeMultiCoinTabSymbols(bot as Record<string, unknown>), [bot]);
-
-  /**
-   * Only clear chart override on explicit SINGLE. Transient WS/hydrate gaps can omit `universeCoinSelectMode`
-   * or differ from MULTIPLE for a tick; `MultiCoinSignalTabs` still shows cached tabs, but `!isMultiCoinMode`
-   * used to null `chartDisplaySymbol` → main chart snapped back to `bot.symbol` while the tab row looked multi.
-   * Keep override when a custom/pinned multi list is active (chart tabs drive symbol selection).
-   */
-  useEffect(() => {
-    if (universeCoinSelectModeU !== "SINGLE") return;
-    if (multiChartTabSymbols.length > 1) return;
-    setChartDisplaySymbol(null);
-  }, [universeCoinSelectModeU, multiChartTabSymbols.length, setChartDisplaySymbol]);
-
-  const parseCandlesFromMarketApi = useCallback((r: any, chartSym: string) => {
-    if (!r?.ok || !Array.isArray(r.candles)) return [] as any[];
-    const out: any[] = [];
-    let prevHello: number | null = null;
-    for (const c of r.candles) {
-      const cl = Number(c?.close);
-      const lo = Number(c?.low);
-      if (!isPlausibleCandleClose(chartSym, cl, lo, prevHello)) continue;
-      out.push(c);
-      prevHello = cl;
-    }
-    return out.slice(-CHART_CANDLE_MAX);
-  }, []);
-
-  /**
-   * Only use Zustand `candles` when they belong to the chart’s symbol (see `mergeMarketIntoState`).
-   * Without this, switching multi-coin tab back to primary left `candles` on the old pair while
-   * `isAltChartView` became false → `buildOhlc` mixed wrong OHLC with the new symbol and broke the chart.
-   */
-  const chartSymNorm = useMemo(() => normalizeSym(effectiveSym), [effectiveSym]);
-  const marketSymNorm = useMemo(() => normalizeSym(market?.symbol), [market?.symbol]);
-  const wsStoreAligned = Boolean(chartSymNorm && candles.length && marketSymNorm === chartSymNorm);
-
-  const altCandlesForView = useMemo(() => {
-    if (!altCandles.length || !altCandlesSym || altCandlesSym !== chartSymNorm) return [];
-    return altCandles;
-  }, [altCandles, altCandlesSym, chartSymNorm]);
-
-  const liveTailCandles = useMemo(
-    () => patchCandlesWithMarketTail(candles, market as Record<string, unknown> | undefined, chartSymNorm),
-    [candles, market, chartSymNorm],
-  );
-
-  const baseCandles = useMemo(() => {
-    if (isAltChartView) {
-      if (liveTailCandles.length > 0 && marketSymNorm === chartSymNorm) {
-        return mergeAltRestWithLiveWs(altCandlesForView, liveTailCandles);
-      }
-      if (altCandlesForView.length) return altCandlesForView;
-      if (liveTailCandles.length > 0 && marketSymNorm === chartSymNorm) return liveTailCandles;
-      return [];
-    }
-    if (wsStoreAligned) return liveTailCandles;
-    if (chartSymNorm && marketSymNorm && marketSymNorm !== chartSymNorm) {
-      const cached = chartViewCacheRef.current.get(chartSymNorm);
-      if (cached?.candles?.length) return cached.candles;
-      return [];
-    }
-    return liveTailCandles;
-  }, [isAltChartView, wsStoreAligned, liveTailCandles, altCandlesForView, chartSymNorm, marketSymNorm]);
-
-  const ohlc = useMemo(
-    () => buildOhlc(baseCandles, { symbol: effectiveSym || undefined }),
-    [baseCandles, effectiveSym],
-  );
-  const ohlcLastClose = useMemo(() => {
-    if (!ohlc.length) return null;
-    const c = Number(ohlc[ohlc.length - 1]!.close);
-    return Number.isFinite(c) && c > 0 ? c : null;
-  }, [ohlc]);
-  /** Same bars as candlesticks (in ms) so Supertrend math cannot diverge from what you see. */
-  const ohlcAsMsCandles = useMemo(() => ohlcBarsToMsCandles(ohlc), [ohlc]);
-  const candleTimes = useMemo(() => new Set(ohlc.map((b) => Number(b.time))), [ohlc]);
-  const ohlcFirstTime = ohlc.length ? Number(ohlc[0]!.time) : 0;
-  const ohlcLastTime = ohlc.length ? Number(ohlc[ohlc.length - 1]!.time) : 0;
-  const ohlcSpanKey = useMemo(() => {
-    if (!ohlcFirstTime || !ohlcLastTime || !effectiveSym) return "";
-    if (!chartOverlaySpanReady(ohlcFirstTime, ohlcLastTime, ohlc.length)) return "";
-    return `${effectiveSym}|${ohlcFirstTime}|${ohlcLastTime}|${normalizeSymTf(bot?.timeframe)}`;
-  }, [ohlcFirstTime, ohlcLastTime, ohlc.length, effectiveSym, bot?.timeframe]);
-
-  /**
-   * Latest ohlc bounds for the overlay fetch, read via ref so the effect can depend
-   * ONLY on the stable `ohlcSpanKey`. Depending on `ohlc` (a new array each WS market
-   * tick) re-fired this effect ~20×/s, flooding /api/market/events + /whales.
-   */
-  const ohlcBoundsRef = useRef<{ first: number; last: number; barCount: number }>({ first: 0, last: 0, barCount: 0 });
-  if (ohlc.length) {
-    ohlcBoundsRef.current = {
-      first: ohlcFirstTime,
-      last: ohlcLastTime,
-      barCount: ohlc.length,
-    };
-  }
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      const { first, last, barCount } = ohlcBoundsRef.current;
-      if (!chartOverlaySpanReady(first, last, barCount) || !effectiveSym) {
-        if (!cancelled && !chartOverlayDataEqual(chartOverlayRef.current, EMPTY_OVERLAY)) {
-          chartOverlayRef.current = EMPTY_OVERLAY;
-          setChartOverlay(EMPTY_OVERLAY);
-        }
-        return;
-      }
-      const fromIso = new Date(first * 1000).toISOString();
-      const toIso = new Date(last * 1000).toISOString();
-      const symCanon = canonicalChartSymbol(effectiveSym);
-      const baseAsset = symCanon.replace(/USDT|USDC|BUSD$/u, "");
-      const fetchKey = chartOverlayFetchKey(fromIso, toIso, symCanon);
-      try {
-        const next = await fetchChartOverlayDeduped(fetchKey, async () => {
-          const [evRaw, whRaw] = await Promise.all([
-            api.getMarketEvents({ from: fromIso, to: toIso, assets: baseAsset }),
-            api.getWhaleAlerts({ from: fromIso, to: toIso, symbol: symCanon }),
-          ]);
-          const events = (Array.isArray(evRaw) ? evRaw : []) as ChartOverlayData["events"];
-          const whales = (Array.isArray(whRaw) ? whRaw : []) as ChartOverlayData["whales"];
-          return { events, whales };
-        });
-        if (cancelled) return;
-        if (chartOverlayDataEqual(chartOverlayRef.current, next)) return;
-        chartOverlayRef.current = next;
-        setChartOverlay(next);
-      } catch {
-        if (cancelled) return;
-        if (!chartOverlayDataEqual(chartOverlayRef.current, EMPTY_OVERLAY)) {
-          chartOverlayRef.current = EMPTY_OVERLAY;
-          setChartOverlay(EMPTY_OVERLAY);
-        }
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [ohlcSpanKey, effectiveSym]);
-  const chartSupertrend = useMemo(() => {
-    const period = Math.max(2, Math.floor(Number(bot?.supertrendPeriod ?? 10)));
-    const multiplier = Number(bot?.supertrendMultiplier ?? 3);
-    const wilderAtr = bot?.supertrendWilderAtr !== false;
-    return buildChartSupertrend(ohlcAsMsCandles, {
-      period,
-      multiplier,
-      wilderAtr,
-      timeframe: bot?.timeframe != null ? String(bot.timeframe) : "1m",
-      symbol: effectiveSym || undefined,
-    });
-  }, [
-    ohlcAsMsCandles,
+/** Position/tick-driven chart overlays — isolated so signal list skips WS position re-renders. */
+const ChartPositionOverlay = memo(function ChartPositionOverlay(props: ChartPositionOverlayProps) {
+  const {
+    bot,
     effectiveSym,
-    bot?.supertrendPeriod,
-    bot?.supertrendMultiplier,
-    bot?.supertrendWilderAtr,
-    bot?.timeframe,
-  ]);
-
-  /** Latest k.x may be a no-flip bar; keep showing the last chart-aligned flip that autotrade could use (matches Activity). */
-  const supertrendHud = useMemo(() => {
-    if (!serverStSnapMatchesChart) return null;
-    type Snap = {
-      buySignal?: boolean;
-      sellSignal?: boolean;
-      aiGateBuy?: number | null;
-      aiGateSell?: number | null;
-      decisionLong?: number | null;
-      decisionShort?: number | null;
-      decisionMaxLong?: number | null;
-      decisionMaxShort?: number | null;
-      signalStrengthDecision?: { strength?: number; action?: string } | null;
-    };
-    const last = bot?.supertrendLastBarClose as Snap | null | undefined;
-    const flip = bot?.supertrendLastFlipBarClose as Snap | null | undefined;
-    if (last?.buySignal || last?.sellSignal) return { snap: last, kind: "latest_kx" as const };
-    if (flip?.buySignal || flip?.sellSignal) return { snap: flip, kind: "last_flip" as const };
-    return null;
-  }, [bot?.supertrendLastBarClose, bot?.supertrendLastFlipBarClose, serverStSnapMatchesChart]);
-
-  /** Chart-derived markers + server last bar-close (matches Activity when client OHLC lags k.x). */
-  const safeMarkers = useMemo(() => {
-    const ct = candleTimes;
-    const seen = new Set<string>();
-    const out: Array<{ time: number; side: "buy" | "sell"; preview?: boolean }> = [];
-    for (const m of chartSupertrend.markers) {
-      const t = Math.floor(Number(m.time));
-      if (!Number.isFinite(t) || !ct.has(t)) continue;
-      const k = `${t}:${m.side}:${m.preview === true ? "p" : "c"}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push({ time: t, side: m.side, preview: m.preview === true });
-    }
-    const mergeServerFlip = (
-      srv: { ts?: number; buySignal?: boolean; sellSignal?: boolean } | null | undefined,
-    ) => {
-      if (!srv || !(srv.buySignal || srv.sellSignal)) return;
-      const tWant = Math.floor(Number(srv.ts) / 1000);
-      const side = srv.buySignal ? ("buy" as const) : ("sell" as const);
-      const kWant = `${tWant}:${side}:c`;
-      if (Number.isFinite(tWant) && !seen.has(kWant)) {
-        if (ct.has(tWant)) {
-          out.push({ time: tWant, side, preview: false });
-          seen.add(kWant);
-        } else if (ohlc.length) {
-          const lastT = Math.floor(Number(ohlc[ohlc.length - 1].time));
-          if (Number.isFinite(lastT) && Math.abs(tWant - lastT) <= 1) {
-            out.push({ time: lastT, side, preview: false });
-            seen.add(`${lastT}:${side}:c`);
-          }
-        }
-      }
-    };
-    if (serverStSnapMatchesChart) {
-      mergeServerFlip(
-        bot?.supertrendLastBarClose as { ts?: number; buySignal?: boolean; sellSignal?: boolean } | null | undefined,
-      );
-      /** Persisted flip — latest close may be a no-flip bar after Activity placed an order. */
-      mergeServerFlip(
-        bot?.supertrendLastFlipBarClose as { ts?: number; buySignal?: boolean; sellSignal?: boolean } | null | undefined,
-      );
-    }
-    return out.sort((a, b) => a.time - b.time);
-  }, [
-    chartSupertrend.markers,
-    candleTimes,
-    bot?.supertrendLastBarClose,
-    bot?.supertrendLastFlipBarClose,
-    ohlc,
-    serverStSnapMatchesChart,
-  ]);
-
-  /** Persisted flips for current symbol/timeframe (server); markers + list under chart. T/W/K = TRADE/WAIT/SKIP. */
-  const supertrendSignalHistoryRecent = useMemo(() => {
-    const raw = Array.isArray(bot?.supertrendSignalHistory)
-      ? (bot.supertrendSignalHistory as SupertrendSignalHistRow[])
-      : [];
-    const symChart = canonicalChartSymbol(effectiveSym);
-    if (!symChart) return [];
-    const tfBot = normalizeSymTf(bot?.timeframe ?? "").trim();
-    const byKey = new Map<string, SupertrendSignalHistRow>();
-    for (const h of raw) {
-      const sym = canonicalChartSymbol(String(h.symbol ?? ""));
-      /** Rows without `symbol` used to leak onto every chart in multi-coin mode — require exact pair match. */
-      if (!sym || sym !== symChart) continue;
-      const tf = String(h.timeframe ?? "").trim();
-      if (tfBot && tf && tf !== tfBot) continue;
-      byKey.set(`${h.ts}|${h.side}|${sym}|${tf}`, h);
-    }
-    return [...byKey.values()].sort((a, b) => Number(a.ts) - Number(b.ts));
-  }, [bot?.supertrendSignalHistory, bot?.timeframe, effectiveSym]);
-
-  const supertrendSignalHistoryNewestFirst = useMemo(
-    () => [...supertrendSignalHistoryRecent].reverse(),
-    [supertrendSignalHistoryRecent],
-  );
-
-  const supertrendSignalHistoryListRows = useMemo(
-    () => supertrendSignalHistoryNewestFirst.slice(0, SUPERTREND_SIGNAL_LIST_MAX),
-    [supertrendSignalHistoryNewestFirst],
-  );
-
-  const smartSsSuggestedTitle = useMemo(() => {
-    const m = bot?.smartSignalStrengthThresholdMeta as Record<string, unknown> | null | undefined;
-    const lines = [
-      "Suggested min SS (0–100) from your signal list: resolved flips (True/False vs next opposite) vs composite strength.",
-      "Scans thresholds high→low; keeps the highest SS floor where precision and Wilson lower bound pass (stable on small n).",
-      "Blends with the last saved value after restarts so new jsonl rows refine the estimate.",
-    ];
-    if (m && typeof m === "object") {
-      const n = m.nResolved;
-      const p = m.precisionAtThreshold;
-      const wl = m.wilsonLower;
-      const lr = m.learnedRaw;
-      if (typeof n === "number" && Number.isFinite(n)) lines.push(`Resolved rows used: ${n}`);
-      if (typeof p === "number" && Number.isFinite(p)) lines.push(`Precision at chosen floor: ${(p * 100).toFixed(1)}%`);
-      if (typeof wl === "number" && Number.isFinite(wl)) lines.push(`Wilson LB: ${(wl * 100).toFixed(1)}%`);
-      if (lr != null && Number.isFinite(Number(lr))) lines.push(`Raw scan result (before blend): ${Math.round(Number(lr))}`);
-    }
-    return lines.join("\n");
-  }, [bot?.smartSignalStrengthThresholdMeta]);
-
-  const supertrendSignalVerdictsChrono = useMemo(
-    () => computeSupertrendSignalVerdicts(supertrendSignalHistoryRecent, ohlc),
-    [supertrendSignalHistoryRecent, ohlc],
-  );
-
-  const signalListCloseBySec = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const b of ohlc) {
-      const t = Number(b.time);
-      const c = Number(b.close);
-      if (Number.isFinite(t) && Number.isFinite(c) && c > 0) m.set(t, c);
-    }
-    return m;
-  }, [ohlc]);
-
-  const candlestickSeriesMarkers = useMemo(() => {
-    const hist = supertrendSignalHistoryRecent;
-    const histByKey = new Map<string, SupertrendSignalHistRow>();
-    for (const h of hist) {
-      const sec = Math.floor(Number(h.ts) / 1000);
-      if (!Number.isFinite(sec)) continue;
-      const sk = h.side === "BUY" ? "buy" : "sell";
-      histByKey.set(`${sec}:${sk}`, h);
-    }
-
-    const seen = new Set(safeMarkers.map((m) => `${m.time}:${m.side}`));
-    const extra: typeof safeMarkers = [];
-    for (const h of hist) {
-      const sec = Math.floor(Number(h.ts) / 1000);
-      if (!Number.isFinite(sec) || !candleTimes.has(sec)) continue;
-      const side = h.side === "BUY" ? ("buy" as const) : ("sell" as const);
-      const k = `${sec}:${side}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      extra.push({ time: sec, side, preview: false });
-    }
-    const mergedSt = [...safeMarkers, ...extra].sort((a, b) => a.time - b.time);
-    const stBudget = 32;
-    const cappedSt = mergedSt.length > stBudget ? mergedSt.slice(-stBudget) : mergedSt;
-
-    const stLwc = cappedSt.map((m) => {
-      const hMatch = histByKey.get(`${m.time}:${m.side}`);
-      const text =
-        isMultiCoinMode && !m.preview
-          ? m.side === "buy"
-            ? "▲ ST"
-            : "▼ ST"
-          : formatSupertrendSignalMarkerText(m, hMatch);
-      return {
-        time: Math.floor(Number(m.time)) as UTCTimestamp,
-        position: m.side === "buy" ? ("belowBar" as const) : ("aboveBar" as const),
-        color: m.preview === true ? "#eab308" : m.side === "buy" ? "#34d399" : "#fb7185",
-        shape:
-          m.preview === true
-            ? ("circle" as const)
-            : m.side === "buy"
-              ? ("arrowUp" as const)
-              : ("arrowDown" as const),
-        text,
-      };
-    });
-
-    const tfRaw = normalizeSymTf(bot?.timeframe) || "15m";
-    const tfMs = binanceIntervalMs(tfRaw);
-    const tfSec = Math.max(60, Math.floor(tfMs / 1000));
-
-    const overlay: Array<{
-      time: UTCTimestamp;
-      position: "belowBar" | "aboveBar";
-      color: string;
-      shape: "arrowUp" | "arrowDown" | "circle" | "square";
-      text: string;
-    }> = [];
-
-    for (const ev of chartOverlay.events.slice(-14)) {
-      const ms = new Date(ev.eventTime).getTime();
-      if (!Number.isFinite(ms)) continue;
-      const sec = Math.floor(ms / 1000);
-      const t = snapOverlayToCandles(sec, candleTimes, tfSec);
-      if (t == null) continue;
-      const hi = ev.impactLevel === "high";
-      overlay.push({
-        time: t as UTCTimestamp,
-        position: "belowBar",
-        color: hi ? "#a855f7" : "#64748b",
-        shape: "square",
-        text: ev.title.length > 26 ? `${ev.title.slice(0, 26)}…` : ev.title,
-      });
-    }
-
-    const chartSymCanon = canonicalChartSymbol(effectiveSym);
-    for (const w of chartOverlay.whales.slice(0, 12)) {
-      if (canonicalChartSymbol(w.symbol) !== chartSymCanon) continue;
-      const ms = new Date(w.alertedAt).getTime();
-      if (!Number.isFinite(ms)) continue;
-      const sec = Math.floor(ms / 1000);
-      const t = snapOverlayToCandles(sec, candleTimes, tfSec);
-      if (t == null) continue;
-      const amt = w.amountUsd != null && Number.isFinite(w.amountUsd) ? w.amountUsd : null;
-      overlay.push({
-        time: t as UTCTimestamp,
-        position: "aboveBar",
-        color: "#38bdf8",
-        shape: "circle",
-        text: amt != null ? `Whale $${(amt / 1e6).toFixed(1)}M` : "Whale",
-      });
-    }
-
-    const mergedOut = [...stLwc, ...overlay].sort((a, b) => Number(a.time) - Number(b.time));
-    return mergedOut.length > CHART_MARKER_DISPLAY_CAP
-      ? mergedOut.slice(-CHART_MARKER_DISPLAY_CAP)
-      : mergedOut;
-  }, [
-    safeMarkers,
-    supertrendSignalHistoryRecent,
-    candleTimes,
     isMultiCoinMode,
-    chartOverlay,
-    bot?.timeframe,
-    effectiveSym,
-  ]);
+    chartTheme,
+    chartInstanceKey,
+    chartSupertrend,
+    ohlcLastCloseRef,
+    seriesRef,
+    chartOkRef,
+    ohlcRef,
+    bracketPriceLinesRef,
+    tierLinePricesRef,
+    tierLabelPositionKeyRef,
+    paintTierLabelOverlay,
+  } = props;
+  const ohlcLastClose = ohlcLastCloseRef.current;
 
-  const supertrendSoundCtx = useMemo(
-    () =>
-      `${normalizeSymTf(effectiveSym)}|${normalizeSymTf(bot?.timeframe)}|${Number(bot?.supertrendPeriod ?? 10)}|${Number(bot?.supertrendMultiplier ?? 3)}|${bot?.supertrendWilderAtr !== false}`,
-    [effectiveSym, bot?.timeframe, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr],
+  const positions = useAppStore(
+    (s) => s.positions,
+    (a, b) => {
+      if (a === b) return true;
+      if (!Array.isArray(a) || !Array.isArray(b)) return a === b;
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        const x = a[i] as Record<string, unknown>;
+        const y = b[i] as Record<string, unknown>;
+        if (
+          x?.symbol !== y?.symbol ||
+          Number(x?.qty ?? x?.positionAmt) !== Number(y?.qty ?? y?.positionAmt) ||
+          Number(x?.entryPrice) !== Number(y?.entryPrice) ||
+          Number(x?.stopLoss) !== Number(y?.stopLoss) ||
+          Number(x?.takeProfit) !== Number(y?.takeProfit) ||
+          Number(x?.leverage) !== Number(y?.leverage)
+        ) {
+          return false;
+        }
+        const xm = x?.meta as Record<string, unknown> | undefined;
+        const ym = y?.meta as Record<string, unknown> | undefined;
+        if (String(xm?.trailStep ?? "") !== String(ym?.trailStep ?? "")) return false;
+        const xc = xm?.trailSlConfirm as { status?: string } | undefined;
+        const yc = ym?.trailSlConfirm as { status?: string } | undefined;
+        if ((xc?.status ?? "") !== (yc?.status ?? "")) return false;
+        /** Mark price: round to suppress micro-tick overlay churn during pan. */
+        const mx = Math.round(Number(x?.markPrice ?? 0) * 100) / 100;
+        const my = Math.round(Number(y?.markPrice ?? 0) * 100) / 100;
+        if (mx !== my) return false;
+      }
+      return true;
+    },
   );
-  const stSigSoundBootRef = useRef(true);
-  const stSigSoundPrevKeyRef = useRef<string | null>(null);
-  const stSigSoundCtxSeenRef = useRef(supertrendSoundCtx);
-  useEffect(() => {
-    if (stSigSoundCtxSeenRef.current !== supertrendSoundCtx) {
-      stSigSoundCtxSeenRef.current = supertrendSoundCtx;
-      stSigSoundBootRef.current = true;
-      stSigSoundPrevKeyRef.current = null;
-    }
-    const last = safeMarkers.at(-1);
-    if (!last) return;
-    if (last.preview === true) return;
-    const key = `${last.time}:${last.side}`;
-    if (stSigSoundBootRef.current) {
-      stSigSoundBootRef.current = false;
-      stSigSoundPrevKeyRef.current = key;
-      return;
-    }
-    if (stSigSoundPrevKeyRef.current === key) return;
-    stSigSoundPrevKeyRef.current = key;
-    if (last.side === "buy") playSupertrendBuySound();
-    else playSupertrendSellSound();
-    const symCh = normalizeSymTf(effectiveSym) || "";
-    const tfCh = normalizeSymTf(bot?.timeframe) || "";
-    const detail: ClientSupertrendChimeDetail = {
-      side: last.side,
-      barTimeSec: Number(last.time),
-      symbol: symCh,
-      timeframe: tfCh,
-    };
-    window.dispatchEvent(new CustomEvent(CLIENT_SUPERTREND_CHIME_EVENT, { detail }));
-  }, [safeMarkers, supertrendSoundCtx, effectiveSym, bot?.timeframe]);
-
-  const alignedStLine = useMemo((): { time: UTCTimestamp; value: number }[] => {
-    return chartSupertrend.linePoints.map((p) => ({
-      time: p.time as UTCTimestamp,
-      value: p.value,
-    }));
-  }, [chartSupertrend.linePoints]);
-
-  /** `bot` is the selected pair; `market` can lag one tick after symbol/timeframe changes — avoid mixing them in the header. */
-  const chartHud = useMemo(() => {
-    const bSym = normalizeSymTf(effectiveSym);
-    const mSym = normalizeSymTf(market?.symbol);
-    const coherent = Boolean(bSym && mSym && bSym === mSym);
-    const symbol = bSym || mSym || "—";
-    const tf = normalizeSymTf(bot?.timeframe) || normalizeSymTf(market?.timeframe) || "—";
-    const lastBar = ohlc.length ? ohlc[ohlc.length - 1] : null;
-    /** Match what the candlestick series draws; `market.candle` can briefly disagree after WS/REST races. */
-    let price: number | null = null;
-    if (lastBar && Number.isFinite(lastBar.close)) {
-      price = lastBar.close;
-    } else if (
-      coherent &&
-      market?.candle?.close != null &&
-      Number.isFinite(Number(market.candle.close)) &&
-      isPlausibleCandleClose(
-        symbol,
-        Number(market.candle.close),
-        Number(market.candle.low),
-        ohlc.length >= 2 ? Number(ohlc[ohlc.length - 2].close) : null,
-      )
-    ) {
-      price = Number(market.candle.close);
-    }
-    const regimeType = coherent ? (market?.regime?.type ?? "—") : "—";
-    const stTrendLocal = chartSupertrend.lastTrend;
-    const stTrend =
-      stTrendLocal != null
-        ? stTrendLocal
-        : coherent && market?.supertrend != null && Number.isFinite(Number(market.supertrend.trend))
-          ? Number(market.supertrend.trend)
-          : null;
-    const pr = market?.feedExecutionPause?.reason;
-    const feedPauseLabel =
-      pr === "feed_ws"
-        ? "Feed: WS reconnecting (autotrade paused)"
-        : pr === "feed_stale"
-          ? "Feed: stale (autotrade paused)"
-          : null;
-    return { symbol, tf, price, regimeType, stTrend, feedPauseLabel };
-  }, [effectiveSym, bot?.timeframe, market, ohlc, chartSupertrend.lastTrend]);
-
-  const ohlcRef = useRef(ohlc);
-  ohlcRef.current = ohlc;
-  /** Last OHLC set applied to lightweight-charts (for incremental update vs full setData). */
-  const chartOhlcAppliedRef = useRef<OhlcBar[] | null>(null);
-  /** After `applyMarketCandlesResult(..., { preserveView: true })`, restore time-scale range after next series update. */
-  const syncPreserveViewRef = useRef(false);
-  const stLineFlushRafRef = useRef(0);
-  /** Skip redundant lightweight-charts setMarkers when marker payload unchanged. */
-  const markersAppliedKeyRef = useRef<string>("");
-  /** Bump to destroy + recreate the chart canvas (same effect as a full page load / server restart for rendering). */
-  const [chartInstanceKey, setChartInstanceKey] = useState(0);
-
-  useEffect(() => {
-    markersAppliedKeyRef.current = "";
-    if (!containerRef.current) return;
-
-    const chart = createChart(containerRef.current, {
-      autoSize: true,
-      layout: {
-        background: { color: "transparent" },
-        textColor: "#cbd5e1",
-      },
-      grid: {
-        vertLines: { color: "rgba(148,163,184,0.12)" },
-        horzLines: { color: "rgba(148,163,184,0.12)" },
-      },
-      localization: {
-        locale: "en-IN",
-        dateFormat: "dd MMM ''yy",
-        timeFormatter: (t: Time) => formatIstCrosshairTime(t),
-      },
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: false,
-        tickMarkFormatter: (t: Time, tickMarkType: TickMarkType) => formatIstTimeScale(t, tickMarkType),
-      },
-      /** Single scale for candles + Supertrend — same magnitude as OHLC; avoids dual-axis glitches when line v.s. scale desync. */
-      rightPriceScale: {
-        visible: true,
-        borderVisible: true,
-        borderColor: "rgba(148,163,184,0.15)",
-        scaleMargins: { top: 0.1, bottom: 0.1 },
-      },
-      leftPriceScale: { visible: false },
-      crosshair: { mode: 0 },
-      handleScroll: true,
-      handleScale: true,
-    });
-
-    const cur = ohlcRef.current;
-    const last0 =
-      cur.length > 0
-        ? (() => {
-            const c = Number(cur[cur.length - 1]!.close);
-            return Number.isFinite(c) && c > 0 ? c : null;
-          })()
-        : null;
-    const pf0 = inferChartPriceFormat(last0);
-
-    const series = chart.addCandlestickSeries({
-      priceScaleId: "right",
-      upColor: "#34d399",
-      downColor: "#fb7185",
-      borderDownColor: "#fb7185",
-      borderUpColor: "#34d399",
-      wickDownColor: "#fb7185",
-      wickUpColor: "#34d399",
-      /**
-       * Realtime last close: dashed line + highlighted last-value label on the price scale (SL/TP/trail use
-       * separate `createPriceLine` without axis tags to avoid stacked badges).
-       */
-      lastValueVisible: true,
-      priceLineVisible: true,
-      priceLineWidth: 1,
-      priceLineStyle: LineStyle.Dashed,
-      priceLineColor: chartTheme === "dark" ? "#ffffff" : "#0f172a",
-      priceFormat: pf0,
-    });
-
-    const stLine = chart.addLineSeries({
-      priceScaleId: "right",
-      color: "#4ade80",
-      lineWidth: 2,
-      /** Empty title avoids an extra scale label column fighting with tick marks. */
-      title: "",
-      lastValueVisible: false,
-      priceLineVisible: false,
-      priceFormat: pf0,
-    });
-
-    chartRef.current = chart;
-    seriesRef.current = series;
-    supertrendLineRef.current = stLine;
-    chartOkRef.current = true;
-
-    // Recompute tier label y-positions when the user pans or zooms the chart
-    function refreshTierLabelPositions() {
-      const specs = tierLinePricesRef.current;
-      if (!specs.length) return;
-      const positions = specs
-        .map((s) => {
-          try {
-            const y = series.priceToCoordinate(s.px);
-            return y != null ? { label: s.label, y } : null;
-          } catch {
-            return null;
-          }
-        })
-        .filter((x): x is { label: string; y: number } => x != null);
-      setTierLabelPositions(positions);
-    }
-
-    chart.timeScale().subscribeVisibleLogicalRangeChange(refreshTierLabelPositions);
-
-    if (cur.length) {
-      try {
-        const st = useAppStore.getState();
-        const sym0 = canonicalChartSymbol(st.chartDisplaySymbol ?? st.bot?.symbol);
-        const filtered = cur.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? cur[i - 1]! : null, sym0));
-        if (filtered.length) {
-          series.setData(filtered);
-          chartOhlcAppliedRef.current = filtered.slice();
-          const lastSec =
-            filtered.length > 0 ? Number(filtered[filtered.length - 1]!.time) : undefined;
-          const tfInit = normalizeSymTf(useAppStore.getState().bot?.timeframe);
-          tryApplyAutoFit(
-            chart,
-            filtered.length,
-            pendingAutoFitRef,
-            fitAfterRestSnapshotRef,
-            skipFitUntilBulkRef,
-            lastSec,
-            tfInit || null,
-          );
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-
-    return () => {
-      chartOhlcAppliedRef.current = null;
-      chartOkRef.current = false;
-      if (bulkFitFallbackTimerRef.current) {
-        clearTimeout(bulkFitFallbackTimerRef.current);
-        bulkFitFallbackTimerRef.current = null;
-      }
-      for (const pl of bracketPriceLinesRef.current) {
-        try {
-          pl.remove();
-        } catch {
-          /* ignore */
-        }
-      }
-      bracketPriceLinesRef.current = [];
-      tierLinePricesRef.current = [];
-      setTierLabelPositions([]);
-      try {
-        chart.timeScale().unsubscribeVisibleLogicalRangeChange(refreshTierLabelPositions);
-      } catch {
-        /* ignore */
-      }
-      try {
-        chart.remove();
-      } catch {
-        /* ignore */
-      }
-      chartRef.current = null;
-      seriesRef.current = null;
-      supertrendLineRef.current = null;
-    };
-  }, [chartInstanceKey]);
-
-  useEffect(() => {
-    const chart = chartRef.current;
-    const st = supertrendLineRef.current;
-    if (!chart) return;
-    const isDark = chartTheme === "dark";
-    try {
-      chart.applyOptions({
-        layout: {
-          background: { color: "transparent" },
-          textColor: isDark ? "#cbd5e1" : "#475569",
-        },
-        grid: {
-          vertLines: { color: isDark ? "rgba(148,163,184,0.12)" : "rgba(71,85,105,0.16)" },
-          horzLines: { color: isDark ? "rgba(148,163,184,0.12)" : "rgba(71,85,105,0.16)" },
-        },
-        rightPriceScale: {
-          visible: true,
-          borderVisible: true,
-          borderColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(71,85,105,0.22)",
-          scaleMargins: { top: 0.1, bottom: 0.1 },
-        },
-      });
-      st?.applyOptions?.({ color: isDark ? "#4ade80" : "#15803d", title: "" });
-      seriesRef.current?.applyOptions?.({
-        lastValueVisible: true,
-        priceLineVisible: true,
-        priceLineWidth: 1,
-        priceLineStyle: LineStyle.Dashed,
-        priceLineColor: isDark ? "#ffffff" : "#0f172a",
-      });
-    } catch {
-      /* ignore */
-    }
-  }, [chartTheme, chartInstanceKey]);
-
-  /** Keep tick marks valid when switching pairs (esp. sub‑$1 coins like DOGE). */
-  useEffect(() => {
-    if (!chartOkRef.current) return;
-    const pf = inferChartPriceFormat(ohlcLastClose);
-    try {
-      const isDark = chartTheme === "dark";
-      seriesRef.current?.applyOptions?.({
-        lastValueVisible: true,
-        priceLineVisible: true,
-        priceLineWidth: 1,
-        priceLineStyle: LineStyle.Dashed,
-        priceLineColor: isDark ? "#ffffff" : "#0f172a",
-        priceFormat: pf,
-      });
-      supertrendLineRef.current?.applyOptions?.({
-        lastValueVisible: false,
-        priceLineVisible: false,
-        title: "",
-        priceFormat: pf,
-      });
-    } catch {
-      /* ignore */
-    }
-  }, [ohlcLastClose, chartInstanceKey]);
+  const [chartTrailedSessionBySymbol, setChartTrailedSessionBySymbol] = useState<Record<string, true>>({});
 
   const symKey = useMemo(() => canonicalChartSymbol(effectiveSym), [effectiveSym]);
 
@@ -2086,6 +1517,7 @@ export function ChartPanel() {
    * Fee ladder: one line.
    */
   const chartTrailingPreview = useMemo((): ChartTrailingPreview => {
+    const ohlcLastClose = ohlcLastCloseRef.current;
     const none = (k: string, badge: ChartTrailingBadge | null = null): ChartTrailingPreview => ({
       key: k,
       lines: [] as ChartStTrailPreviewLine[],
@@ -2798,7 +2230,6 @@ export function ChartPanel() {
     effectiveSym,
     symKey,
     isMultiCoinMode,
-    ohlcLastClose,
     chartSupertrend.linePoints,
     chartSupertrend.lastUp,
     chartSupertrend.lastDn,
@@ -2829,7 +2260,8 @@ export function ChartPanel() {
     tierLinePricesRef.current = specs;
     // Immediately recompute positions with the current series scale
     if (!specs.length) {
-      setTierLabelPositions([]);
+      tierLabelPositionKeyRef.current = "";
+      paintTierLabelOverlay([]);
       return;
     }
     const ser = seriesRef.current;
@@ -2844,8 +2276,8 @@ export function ChartPanel() {
         }
       })
       .filter((x): x is { label: string; y: number } => x != null);
-    setTierLabelPositions(positions);
-  }, [chartTrailingPreview.lines]);
+    paintTierLabelOverlay(positions);
+  }, [chartTrailingPreview.lines, paintTierLabelOverlay]);
 
   const trailingStatusChipsVisible = useMemo(() => {
     if (bot?.trailingStopLossAuto !== true) return false;
@@ -3008,8 +2440,1149 @@ export function ChartPanel() {
     };
   }, [chartBracketPriceLayerKey]);
 
+  return (
+    <>
+      {trailingStatusChipsVisible ? (
+        <div
+          className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col items-start gap-0.5"
+          aria-label="Futures trailing status"
+        >
+          <div className="flex flex-row items-center gap-1.5">
+            <span
+              className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm ${
+                chartTrailingPreview.badge?.trailing
+                  ? "bg-amber-500 text-slate-950 dark:bg-amber-400 dark:text-slate-950"
+                  : "border border-slate-400/60 bg-slate-900/55 text-slate-400 dark:border-slate-600 dark:bg-slate-950/70 dark:text-slate-500"
+              }`}
+            >
+              Trailing
+            </span>
+            <span
+              className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm ${
+                trailingChipTrailedHighlight
+                  ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950"
+                  : "border border-slate-400/60 bg-slate-900/55 text-slate-400 dark:border-slate-600 dark:bg-slate-950/70 dark:text-slate-500"
+              }`}
+            >
+              {chartTrailingPreview.badge?.trailExchangePending
+                ? "Confirming…"
+                : trailingChipTrailedHighlight && chartTrailingPreview.badge?.tierLabel
+                  ? `Trailed · ${chartTrailingPreview.badge.tierLabel}`
+                  : "Trailed"}
+            </span>
+          </div>
+          {chartTrailingPreview.badge?.trailExchangePending ? (
+            <div className="max-w-[14rem] rounded border border-amber-600/40 bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-medium text-amber-100/95 shadow-sm">
+              Waiting for exchange to confirm the new stop…
+            </div>
+          ) : null}
+        </div>
+          ) : null}
+      {shouldShowFuturesBracketLegend || (chartTrailingPreview.trailHud && inferFuturesBracketLinesActive(bot)) ? (
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {chartTrailingPreview.trailHud && inferFuturesBracketLinesActive(bot) ? (
+            <div
+              className="max-w-full space-y-0.5 rounded-md border border-amber-700/40 bg-slate-950/88 px-2 py-1.5 text-[10px] leading-tight text-amber-100/95 shadow-lg backdrop-blur-sm dark:border-amber-600/35 dark:bg-slate-950/90"
+              aria-label="Trail summary"
+            >
+              <div className="text-[9px] font-semibold uppercase tracking-wide text-amber-200/90">Trail</div>
+              {chartTrailingPreview.trailHud.currentSl != null ? (
+                <div className="font-mono text-slate-100">
+                  SL now: {chartTrailingPreview.trailHud.currentSl.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : (
+                <div className="text-slate-400">SL now: —</div>
+              )}
+              {chartTrailingPreview.trailHud.takeProfit != null ? (
+                <div className="font-mono text-slate-100">
+                  TP: {chartTrailingPreview.trailHud.takeProfit.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : (
+                <div className="text-slate-400">TP: —</div>
+              )}
+              {chartTrailingPreview.trailHud.currentTrailedTierLabel ? (
+                <div className="font-mono text-emerald-200/90">
+                  Trailed at: {chartTrailingPreview.trailHud.currentTrailedTierLabel}
+                </div>
+              ) : null}
+              {chartTrailingPreview.trailHud.nextActivationPx != null &&
+              chartTrailingPreview.trailHud.nextTierLabel &&
+              !(Array.isArray(chartTrailingPreview.trailHud.nextTwoTierLocks) && chartTrailingPreview.trailHud.nextTwoTierLocks.length) ? (
+                <div className="font-mono text-amber-100/90">
+                  Next {chartTrailingPreview.trailHud.nextTierLabel} activation:{" "}
+                  {chartTrailingPreview.trailHud.nextActivationPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : null}
+              {Array.isArray(chartTrailingPreview.trailHud.nextTwoTierLocks) && chartTrailingPreview.trailHud.nextTwoTierLocks.length ? (
+                <div className="space-y-0.5">
+                  {chartTrailingPreview.trailHud.nextTwoTierLocks.slice(0, 2).map((r, i) => {
+                    const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 6 });
+                    return (
+                      <div key={`${r.tierLabel}-${i}`} className="font-mono text-slate-100/95">
+                        {i === 0 ? "Next" : "Then"} {r.tierLabel}: lock {fmt(r.lockPx)} · activation {fmt(r.activationPx)}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {chartTrailingPreview.trailHud.liveTrailSlPx != null ? (
+                <div className="font-mono text-emerald-200/90">
+                  Live trail SL:{" "}
+                  {chartTrailingPreview.trailHud.liveTrailSlPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                </div>
+              ) : (
+                <div className="text-slate-500">Live trail SL: (not in trail zone)</div>
+              )}
+            </div>
+          ) : (
+            <div />
+          )}
+          {shouldShowFuturesBracketLegend ? (
+            <div
+              className="flex max-w-full flex-col rounded-md border border-slate-600/50 bg-slate-950/85 px-2 py-1.5 text-[10px] leading-tight shadow-lg backdrop-blur-sm dark:border-slate-500/40 dark:bg-slate-950/90"
+              aria-label="Next SL tier lock levels"
+            >
+              <div className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Next SL · Tn lock</div>
+              <div className="mt-1 flex min-h-0 flex-1 flex-col justify-between gap-0.5">
+                {chartNextSlLockLegendRows.map((row, idx) => (
+                  <div key={idx} className="flex min-h-0 flex-nowrap items-baseline justify-between gap-2">
+                    <span className="min-w-0 flex-1 truncate font-medium" style={{ color: row.color }}>
+                      {row.title}
+                    </span>
+                    <span className="shrink-0 font-mono tabular-nums text-slate-100">
+                      {Number.isFinite(row.px) && row.px > 0
+                        ? row.px.toLocaleString("en-US", { maximumFractionDigits: 6 })
+                        : "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div />
+          )}
+        </div>
+      ) : null}
+    </>
+  );
+});
+
+export function ChartPanel() {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<any>(null);
+  /** Every SL/TP `createPriceLine` handle so we always remove orphans (axis labels stack if `remove` is skipped or races). */
+  const bracketPriceLinesRef = useRef<BracketPriceLineHandle[]>([]);
+  const supertrendLineRef = useRef<any>(null);
+  const chartOkRef = useRef(false);
+  const pendingAutoFitRef = useRef(true);
+  const fitAfterRestSnapshotRef = useRef(false);
+  const skipFitUntilBulkRef = useRef(false);
+  const prevChartSymbolRef = useRef<string | undefined>(undefined);
+  const prevChartTfRef = useRef<string | undefined>(undefined);
+  const bulkFitFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Ignore stale REST responses when the user clicks another multi-coin tab quickly. */
+  const chartLoadSeqRef = useRef(0);
+  /** Throttle background REST reconcile (effect re-runs were stacking overlapping polls). */
+  const lastRestReconcileAtRef = useRef(0);
+  const restReconcileInFlightRef = useRef(false);
+  /** Per-view OHLC cache so tab switches repaint immediately without waiting for REST/WS. */
+  const chartViewCacheRef = useRef<
+    Map<string, { candles: any[]; altCandles: any[]; market: Record<string, unknown> }>
+  >(new Map());
+  const chartOhlcAppliedSymRef = useRef<string | null>(null);
+  /** Tier line specs (label + price) for left-side overlay labels; updated when chartTrailingPreview changes. */
+  const tierLinePricesRef = useRef<{ label: string; px: number }[]>([]);
+  /** Imperative tier label overlay — pan/zoom updates DOM directly (no React re-render). */
+  const tierLabelOverlayRef = useRef<HTMLDivElement>(null);
+  const tierLabelNodeByLabelRef = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const candles = useAppStore((s) => s.candles, candlesStructuralEqual);
+  const market = useAppStore(selectChartMarketSlice, chartMarketSliceEqual);
+  const bot = useAppStore((s) => pickChartBot(s.bot), shallow);
+  const chartDisplaySymbol = useAppStore((s) => s.chartDisplaySymbol);
+  const setChartDisplaySymbol = useAppStore((s) => s.setChartDisplaySymbol);
+  const showMarketIntelligencePanel = useAppStore((s) => s.showMarketIntelligencePanel);
+  const chartTheme = useThemeStore((s) => s.theme);
+
+  const [altCandles, setAltCandles] = useState<any[]>([]);
+  const [altCandlesSym, setAltCandlesSym] = useState<string | null>(null);
+  /** Older bars loaded on pan-left (merged into chart history beyond store tail). */
+  const [backfillCandles, setBackfillCandles] = useState<any[]>([]);
+  const backfillHoursRef = useRef(24);
+  const backfillInFlightRef = useRef(false);
+  const backfillRequestedRef = useRef(false);
+  /** After SL tightens at least once for a symbol, keep the Trailed chip highlighted for that chart session (e.g. after flat). */
+  /** One expanded row at a time in the signal list under the chart. */
+  const [openSignalAccordionKey, setOpenSignalAccordionKey] = useState<string | null>(null);
+  const [chartOverlay, setChartOverlay] = useState<ChartOverlayData>(EMPTY_OVERLAY);
+  const chartOverlayRef = useRef<ChartOverlayData>(EMPTY_OVERLAY);
+
+  const effectiveSym = useMemo(() => {
+    const b = canonicalChartSymbol(bot?.symbol);
+    const d = chartDisplaySymbol ? canonicalChartSymbol(chartDisplaySymbol) : "";
+    return d || b || "";
+  }, [bot?.symbol, chartDisplaySymbol]);
+
   useEffect(() => {
-    if (!ohlc.length) {
+    setBackfillCandles([]);
+    backfillHoursRef.current = 24;
+    backfillInFlightRef.current = false;
+    backfillRequestedRef.current = false;
+  }, [effectiveSym, bot?.timeframe]);
+
+  const isAltChartView = useMemo(() => {
+    const b = canonicalChartSymbol(bot?.symbol);
+    return Boolean(effectiveSym && b && effectiveSym !== b);
+  }, [effectiveSym, bot?.symbol]);
+
+  const universeCoinSelectModeU = String(bot?.universeCoinSelectMode || "").toUpperCase();
+  const isMultiCoinMode = universeCoinSelectModeU === "MULTIPLE";
+
+  /** Server `supertrendLastBarClose` / flips are for `bot.symbol` only — ignore on chart when viewing another pair. */
+  const serverStSnapMatchesChart = useMemo(() => {
+    const es = canonicalChartSymbol(effectiveSym);
+    const bs = canonicalChartSymbol(bot?.symbol);
+    return Boolean(es && bs && es === bs);
+  }, [effectiveSym, bot?.symbol]);
+
+  const multiChartTabSymbols = useMemo(() => computeMultiCoinTabSymbols(bot as Record<string, unknown>), [bot]);
+
+  /**
+   * Only clear chart override on explicit SINGLE. Transient WS/hydrate gaps can omit `universeCoinSelectMode`
+   * or differ from MULTIPLE for a tick; `MultiCoinSignalTabs` still shows cached tabs, but `!isMultiCoinMode`
+   * used to null `chartDisplaySymbol` → main chart snapped back to `bot.symbol` while the tab row looked multi.
+   * Keep override when a custom/pinned multi list is active (chart tabs drive symbol selection).
+   */
+  useEffect(() => {
+    if (universeCoinSelectModeU !== "SINGLE") return;
+    if (multiChartTabSymbols.length > 1) return;
+    setChartDisplaySymbol(null);
+  }, [universeCoinSelectModeU, multiChartTabSymbols.length, setChartDisplaySymbol]);
+
+  const parseCandlesFromMarketApi = useCallback((r: any, chartSym: string) => {
+    if (!r?.ok || !Array.isArray(r.candles)) return [] as any[];
+    const out: any[] = [];
+    let prevHello: number | null = null;
+    for (const c of r.candles) {
+      const cl = Number(c?.close);
+      const lo = Number(c?.low);
+      if (!isPlausibleCandleClose(chartSym, cl, lo, prevHello)) continue;
+      out.push(c);
+      prevHello = cl;
+    }
+    return out.slice(-CHART_STORE_MAX);
+  }, []);
+
+  /**
+   * Only use Zustand `candles` when they belong to the chart’s symbol (see `mergeMarketIntoState`).
+   * Without this, switching multi-coin tab back to primary left `candles` on the old pair while
+   * `isAltChartView` became false → `buildOhlc` mixed wrong OHLC with the new symbol and broke the chart.
+   */
+  const chartSymNorm = useMemo(() => normalizeSym(effectiveSym), [effectiveSym]);
+  const marketSymNorm = useMemo(() => normalizeSym(market?.symbol ?? ""), [market?.symbol]);
+  const wsStoreAligned = Boolean(chartSymNorm && candles.length && marketSymNorm === chartSymNorm);
+
+  const altCandlesForView = useMemo(() => {
+    if (!altCandles.length || !altCandlesSym || altCandlesSym !== chartSymNorm) return [];
+    return altCandles;
+  }, [altCandles, altCandlesSym, chartSymNorm]);
+
+  const liveTailCandles = useMemo(
+    () => patchCandlesWithMarketTail(candles, market ?? undefined, chartSymNorm),
+    [candles, market, chartSymNorm],
+  );
+
+  const mergeBackfillCandles = useCallback((primary: any[]) => {
+    if (!backfillCandles.length) return primary;
+    const byTs = new Map<number, any>();
+    for (const c of backfillCandles) {
+      const t = Number(c?.ts);
+      if (Number.isFinite(t)) byTs.set(t, c);
+    }
+    for (const c of primary) {
+      const t = Number(c?.ts);
+      if (Number.isFinite(t)) byTs.set(t, c);
+    }
+    return [...byTs.values()].sort((a, b) => Number(a.ts) - Number(b.ts)).slice(-CHART_STORE_MAX);
+  }, [backfillCandles]);
+
+  const baseCandles = useMemo(() => {
+    let core: any[];
+    if (isAltChartView) {
+      if (liveTailCandles.length > 0 && marketSymNorm === chartSymNorm) {
+        core = mergeAltRestWithLiveWs(altCandlesForView, liveTailCandles);
+      } else if (altCandlesForView.length) {
+        core = altCandlesForView;
+      } else if (liveTailCandles.length > 0 && marketSymNorm === chartSymNorm) {
+        core = liveTailCandles;
+      } else {
+        core = [];
+      }
+    } else if (wsStoreAligned) {
+      core = liveTailCandles;
+    } else if (chartSymNorm && marketSymNorm && marketSymNorm !== chartSymNorm) {
+      const cached = chartViewCacheRef.current.get(chartSymNorm);
+      core = cached?.candles?.length ? cached.candles : [];
+    } else {
+      core = liveTailCandles;
+    }
+    return mergeBackfillCandles(core);
+  }, [isAltChartView, wsStoreAligned, liveTailCandles, altCandlesForView, chartSymNorm, marketSymNorm, mergeBackfillCandles]);
+
+  const baseCandlesSig = useMemo(() => {
+    if (!baseCandles.length) return `${effectiveSym}|0`;
+    const first = baseCandles[0];
+    const last = baseCandles[baseCandles.length - 1];
+    /** Structure only — intra-bar OHLC must not rebuild React OHLC (live path updates LWC imperatively). */
+    return `${effectiveSym}|${baseCandles.length}|${first?.ts}|${last?.ts}`;
+  }, [baseCandles, effectiveSym]);
+
+  const ohlcStableRef = useRef<{ sig: string; bars: OhlcBar[] }>({ sig: "", bars: [] });
+  const ohlc = useMemo(() => {
+    if (ohlcStableRef.current.sig === baseCandlesSig && ohlcStableRef.current.bars.length) {
+      return ohlcStableRef.current.bars;
+    }
+    const built = buildOhlc(baseCandles, { symbol: effectiveSym || undefined });
+    ohlcStableRef.current = { sig: baseCandlesSig, bars: built };
+    return built;
+  }, [baseCandlesSig, baseCandles, effectiveSym]);
+
+  /** Render window — last N bars only (full history kept for backfill merge). */
+  const displayOhlc = useMemo(
+    () => (ohlc.length > CHART_DISPLAY_MAX ? ohlc.slice(-CHART_DISPLAY_MAX) : ohlc),
+    [ohlc],
+  );
+  const displayOhlcRef = useRef(displayOhlc);
+  displayOhlcRef.current = displayOhlc;
+  const effectiveSymRef = useRef(effectiveSym);
+  effectiveSymRef.current = effectiveSym;
+  const parseCandlesFromMarketApiRef = useRef(parseCandlesFromMarketApi);
+  parseCandlesFromMarketApiRef.current = parseCandlesFromMarketApi;
+  const backfillMergeRef = useRef<(parsed: any[]) => void>(() => {});
+  backfillMergeRef.current = (parsed) => {
+    if (!parsed.length) return;
+    setBackfillCandles((prev) => {
+      const byTs = new Map<number, any>();
+      for (const c of [...prev, ...parsed]) {
+        const t = Number(c?.ts);
+        if (Number.isFinite(t)) byTs.set(t, c);
+      }
+      return [...byTs.values()].sort((a, b) => Number(a.ts) - Number(b.ts)).slice(-CHART_STORE_MAX);
+    });
+  };
+
+  const ohlcLastClose = useMemo(() => {
+    if (!ohlc.length) return null;
+    const c = Number(ohlc[ohlc.length - 1]!.close);
+    return Number.isFinite(c) && c > 0 ? c : null;
+  }, [ohlc]);
+  const ohlcLastCloseRef = useRef(ohlcLastClose);
+  ohlcLastCloseRef.current = ohlcLastClose;
+  const ohlcFirstTime = ohlc.length ? Number(ohlc[0]!.time) : 0;
+  const ohlcLastTime = ohlc.length ? Number(ohlc[ohlc.length - 1]!.time) : 0;
+  const candleTimes = useMemo(
+    () => new Set(ohlc.map((b) => Number(b.time))),
+    [ohlcFirstTime, ohlcLastTime, ohlc.length],
+  );
+  const ohlcSpanKey = useMemo(() => {
+    if (!ohlcFirstTime || !ohlcLastTime || !effectiveSym) return "";
+    if (!chartOverlaySpanReady(ohlcFirstTime, ohlcLastTime, ohlc.length)) return "";
+    return `${effectiveSym}|${ohlcFirstTime}|${ohlcLastTime}|${normalizeSymTf(bot?.timeframe)}`;
+  }, [ohlcFirstTime, ohlcLastTime, ohlc.length, effectiveSym, bot?.timeframe]);
+
+  /**
+   * Latest ohlc bounds for the overlay fetch, read via ref so the effect can depend
+   * ONLY on the stable `ohlcSpanKey`. Depending on `ohlc` (a new array each WS market
+   * tick) re-fired this effect ~20×/s, flooding /api/market/events + /whales.
+   */
+  const ohlcBoundsRef = useRef<{ first: number; last: number; barCount: number }>({ first: 0, last: 0, barCount: 0 });
+  if (ohlc.length) {
+    ohlcBoundsRef.current = {
+      first: ohlcFirstTime,
+      last: ohlcLastTime,
+      barCount: ohlc.length,
+    };
+  }
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const { first, last, barCount } = ohlcBoundsRef.current;
+      if (!chartOverlaySpanReady(first, last, barCount) || !effectiveSym) {
+        if (!cancelled && !chartOverlayDataEqual(chartOverlayRef.current, EMPTY_OVERLAY)) {
+          chartOverlayRef.current = EMPTY_OVERLAY;
+          setChartOverlay(EMPTY_OVERLAY);
+        }
+        return;
+      }
+      const fromIso = new Date(first * 1000).toISOString();
+      const toIso = new Date(last * 1000).toISOString();
+      const symCanon = canonicalChartSymbol(effectiveSym);
+      const baseAsset = symCanon.replace(/USDT|USDC|BUSD$/u, "");
+      const fetchKey = chartOverlayFetchKey(fromIso, toIso, symCanon);
+      try {
+        const next = await fetchChartOverlayDeduped(fetchKey, async () => {
+          const [evRaw, whRaw] = await Promise.all([
+            api.getMarketEvents({ from: fromIso, to: toIso, assets: baseAsset }),
+            api.getWhaleAlerts({ from: fromIso, to: toIso, symbol: symCanon }),
+          ]);
+          const events = (Array.isArray(evRaw) ? evRaw : []) as ChartOverlayData["events"];
+          const whales = (Array.isArray(whRaw) ? whRaw : []) as ChartOverlayData["whales"];
+          return { events, whales };
+        });
+        if (cancelled) return;
+        if (chartOverlayDataEqual(chartOverlayRef.current, next)) return;
+        chartOverlayRef.current = next;
+        setChartOverlay(next);
+      } catch {
+        if (cancelled) return;
+        if (!chartOverlayDataEqual(chartOverlayRef.current, EMPTY_OVERLAY)) {
+          chartOverlayRef.current = EMPTY_OVERLAY;
+          setChartOverlay(EMPTY_OVERLAY);
+        }
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [ohlcSpanKey, effectiveSym]);
+  /**
+   * Full Supertrend/marker computation is O(n). Keep live price rendering on `series.update`,
+   * but only rebuild ST inputs when the chart window or current bar timestamp changes.
+   */
+  const supertrendSourceRef = useRef<{
+    key: string;
+    msCandles: ReturnType<typeof ohlcBarsToMsCandles>;
+  }>({ key: "", msCandles: [] });
+  const supertrendSourceKey = useMemo(
+    () => `${effectiveSym}|${normalizeSymTf(bot?.timeframe)}|${ohlc.length}|${ohlcFirstTime}|${ohlcLastTime}`,
+    [effectiveSym, bot?.timeframe, ohlc.length, ohlcFirstTime, ohlcLastTime],
+  );
+  const supertrendMsCandles = useMemo(() => {
+    if (supertrendSourceRef.current.key === supertrendSourceKey) {
+      return supertrendSourceRef.current.msCandles;
+    }
+    const msCandles = ohlcBarsToMsCandles(ohlc);
+    supertrendSourceRef.current = { key: supertrendSourceKey, msCandles };
+    return msCandles;
+  }, [supertrendSourceKey, ohlc]);
+
+  const chartSupertrend = useMemo(() => {
+    const period = Math.max(2, Math.floor(Number(bot?.supertrendPeriod ?? 10)));
+    const multiplier = Number(bot?.supertrendMultiplier ?? 3);
+    const wilderAtr = bot?.supertrendWilderAtr !== false;
+    return buildChartSupertrend(supertrendMsCandles, {
+      period,
+      multiplier,
+      wilderAtr,
+      timeframe: bot?.timeframe != null ? String(bot.timeframe) : "1m",
+      symbol: effectiveSym || undefined,
+    });
+  }, [
+    supertrendMsCandles,
+    effectiveSym,
+    bot?.supertrendPeriod,
+    bot?.supertrendMultiplier,
+    bot?.supertrendWilderAtr,
+    bot?.timeframe,
+  ]);
+
+  /** Latest k.x may be a no-flip bar; keep showing the last chart-aligned flip that autotrade could use (matches Activity). */
+  const supertrendHud = useMemo(() => {
+    if (!serverStSnapMatchesChart) return null;
+    type Snap = {
+      buySignal?: boolean;
+      sellSignal?: boolean;
+      aiGateBuy?: number | null;
+      aiGateSell?: number | null;
+      decisionLong?: number | null;
+      decisionShort?: number | null;
+      decisionMaxLong?: number | null;
+      decisionMaxShort?: number | null;
+      signalStrengthDecision?: { strength?: number; action?: string } | null;
+    };
+    const last = bot?.supertrendLastBarClose as Snap | null | undefined;
+    const flip = bot?.supertrendLastFlipBarClose as Snap | null | undefined;
+    if (last?.buySignal || last?.sellSignal) return { snap: last, kind: "latest_kx" as const };
+    if (flip?.buySignal || flip?.sellSignal) return { snap: flip, kind: "last_flip" as const };
+    return null;
+  }, [bot?.supertrendLastBarClose, bot?.supertrendLastFlipBarClose, serverStSnapMatchesChart]);
+
+  /** Chart-derived markers + server last bar-close (matches Activity when client OHLC lags k.x). */
+  const safeMarkers = useMemo(() => {
+    const ct = candleTimes;
+    const seen = new Set<string>();
+    const out: Array<{ time: number; side: "buy" | "sell"; preview?: boolean }> = [];
+    for (const m of chartSupertrend.markers) {
+      const t = Math.floor(Number(m.time));
+      if (!Number.isFinite(t) || !ct.has(t)) continue;
+      const k = `${t}:${m.side}:${m.preview === true ? "p" : "c"}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ time: t, side: m.side, preview: m.preview === true });
+    }
+    const mergeServerFlip = (
+      srv: { ts?: number; buySignal?: boolean; sellSignal?: boolean } | null | undefined,
+    ) => {
+      if (!srv || !(srv.buySignal || srv.sellSignal)) return;
+      const tWant = Math.floor(Number(srv.ts) / 1000);
+      const side = srv.buySignal ? ("buy" as const) : ("sell" as const);
+      const kWant = `${tWant}:${side}:c`;
+      if (Number.isFinite(tWant) && !seen.has(kWant)) {
+        if (ct.has(tWant)) {
+          out.push({ time: tWant, side, preview: false });
+          seen.add(kWant);
+        } else if (ohlc.length) {
+          const lastT = Math.floor(Number(ohlc[ohlc.length - 1].time));
+          if (Number.isFinite(lastT) && Math.abs(tWant - lastT) <= 1) {
+            out.push({ time: lastT, side, preview: false });
+            seen.add(`${lastT}:${side}:c`);
+          }
+        }
+      }
+    };
+    if (serverStSnapMatchesChart) {
+      mergeServerFlip(
+        bot?.supertrendLastBarClose as { ts?: number; buySignal?: boolean; sellSignal?: boolean } | null | undefined,
+      );
+      /** Persisted flip — latest close may be a no-flip bar after Activity placed an order. */
+      mergeServerFlip(
+        bot?.supertrendLastFlipBarClose as { ts?: number; buySignal?: boolean; sellSignal?: boolean } | null | undefined,
+      );
+    }
+    return out.sort((a, b) => a.time - b.time);
+  }, [
+    chartSupertrend.markers,
+    candleTimes,
+    bot?.supertrendLastBarClose,
+    bot?.supertrendLastFlipBarClose,
+    ohlc,
+    serverStSnapMatchesChart,
+  ]);
+
+  /** Persisted flips for current symbol/timeframe (server); markers + list under chart. T/W/K = TRADE/WAIT/SKIP. */
+  const supertrendSignalHistoryRecent = useMemo(() => {
+    const raw = Array.isArray(bot?.supertrendSignalHistory)
+      ? (bot.supertrendSignalHistory as SupertrendSignalHistRow[])
+      : [];
+    const symChart = canonicalChartSymbol(effectiveSym);
+    if (!symChart) return [];
+    const tfBot = normalizeSymTf(bot?.timeframe ?? "").trim();
+    const byKey = new Map<string, SupertrendSignalHistRow>();
+    for (const h of raw) {
+      const sym = canonicalChartSymbol(String(h.symbol ?? ""));
+      /** Rows without `symbol` used to leak onto every chart in multi-coin mode — require exact pair match. */
+      if (!sym || sym !== symChart) continue;
+      const tf = String(h.timeframe ?? "").trim();
+      if (tfBot && tf && tf !== tfBot) continue;
+      byKey.set(`${h.ts}|${h.side}|${sym}|${tf}`, h);
+    }
+    return [...byKey.values()].sort((a, b) => Number(a.ts) - Number(b.ts));
+  }, [bot?.supertrendSignalHistory, bot?.timeframe, effectiveSym]);
+
+  const supertrendSignalHistoryNewestFirst = useMemo(
+    () => [...supertrendSignalHistoryRecent].reverse(),
+    [supertrendSignalHistoryRecent],
+  );
+
+  const supertrendSignalHistoryListRows = useMemo(
+    () => supertrendSignalHistoryNewestFirst.slice(0, SUPERTREND_SIGNAL_LIST_MAX),
+    [supertrendSignalHistoryNewestFirst],
+  );
+
+  const smartSsSuggestedTitle = useMemo(() => {
+    const m = bot?.smartSignalStrengthThresholdMeta as Record<string, unknown> | null | undefined;
+    const lines = [
+      "Suggested min SS (0–100) from your signal list: resolved flips (True/False vs next opposite) vs composite strength.",
+      "Scans thresholds high→low; keeps the highest SS floor where precision and Wilson lower bound pass (stable on small n).",
+      "Blends with the last saved value after restarts so new jsonl rows refine the estimate.",
+    ];
+    if (m && typeof m === "object") {
+      const n = m.nResolved;
+      const p = m.precisionAtThreshold;
+      const wl = m.wilsonLower;
+      const lr = m.learnedRaw;
+      if (typeof n === "number" && Number.isFinite(n)) lines.push(`Resolved rows used: ${n}`);
+      if (typeof p === "number" && Number.isFinite(p)) lines.push(`Precision at chosen floor: ${(p * 100).toFixed(1)}%`);
+      if (typeof wl === "number" && Number.isFinite(wl)) lines.push(`Wilson LB: ${(wl * 100).toFixed(1)}%`);
+      if (lr != null && Number.isFinite(Number(lr))) lines.push(`Raw scan result (before blend): ${Math.round(Number(lr))}`);
+    }
+    return lines.join("\n");
+  }, [bot?.smartSignalStrengthThresholdMeta]);
+
+  const supertrendSignalVerdictsChrono = useMemo(
+    () => computeSupertrendSignalVerdicts(supertrendSignalHistoryRecent, ohlc),
+    [supertrendSignalHistoryRecent, ohlc],
+  );
+
+  const signalListCloseBySec = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const b of ohlc) {
+      const t = Number(b.time);
+      const c = Number(b.close);
+      if (Number.isFinite(t) && Number.isFinite(c) && c > 0) m.set(t, c);
+    }
+    return m;
+  }, [ohlc]);
+
+  const candlestickSeriesMarkers = useMemo(() => {
+    const hist = supertrendSignalHistoryRecent;
+    const histByKey = new Map<string, SupertrendSignalHistRow>();
+    for (const h of hist) {
+      const sec = Math.floor(Number(h.ts) / 1000);
+      if (!Number.isFinite(sec)) continue;
+      const sk = h.side === "BUY" ? "buy" : "sell";
+      histByKey.set(`${sec}:${sk}`, h);
+    }
+
+    const seen = new Set(safeMarkers.map((m) => `${m.time}:${m.side}`));
+    const extra: typeof safeMarkers = [];
+    for (const h of hist) {
+      const sec = Math.floor(Number(h.ts) / 1000);
+      if (!Number.isFinite(sec) || !candleTimes.has(sec)) continue;
+      const side = h.side === "BUY" ? ("buy" as const) : ("sell" as const);
+      const k = `${sec}:${side}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      extra.push({ time: sec, side, preview: false });
+    }
+    const mergedSt = [...safeMarkers, ...extra].sort((a, b) => a.time - b.time);
+    const stBudget = 32;
+    const cappedSt = mergedSt.length > stBudget ? mergedSt.slice(-stBudget) : mergedSt;
+
+    const stLwc = cappedSt.map((m) => {
+      const hMatch = histByKey.get(`${m.time}:${m.side}`);
+      const text =
+        isMultiCoinMode && !m.preview
+          ? m.side === "buy"
+            ? "▲ ST"
+            : "▼ ST"
+          : formatSupertrendSignalMarkerText(m, hMatch);
+      return {
+        time: Math.floor(Number(m.time)) as UTCTimestamp,
+        position: m.side === "buy" ? ("belowBar" as const) : ("aboveBar" as const),
+        color: m.preview === true ? "#eab308" : m.side === "buy" ? "#34d399" : "#fb7185",
+        shape:
+          m.preview === true
+            ? ("circle" as const)
+            : m.side === "buy"
+              ? ("arrowUp" as const)
+              : ("arrowDown" as const),
+        text,
+      };
+    });
+
+    const tfRaw = normalizeSymTf(bot?.timeframe) || "15m";
+    const tfMs = binanceIntervalMs(tfRaw);
+    const tfSec = Math.max(60, Math.floor(tfMs / 1000));
+
+    const overlay: Array<{
+      time: UTCTimestamp;
+      position: "belowBar" | "aboveBar";
+      color: string;
+      shape: "arrowUp" | "arrowDown" | "circle" | "square";
+      text: string;
+    }> = [];
+
+    for (const ev of chartOverlay.events.slice(-14)) {
+      const ms = new Date(ev.eventTime).getTime();
+      if (!Number.isFinite(ms)) continue;
+      const sec = Math.floor(ms / 1000);
+      const t = snapOverlayToCandles(sec, candleTimes, tfSec);
+      if (t == null) continue;
+      const hi = ev.impactLevel === "high";
+      overlay.push({
+        time: t as UTCTimestamp,
+        position: "belowBar",
+        color: hi ? "#a855f7" : "#64748b",
+        shape: "square",
+        text: ev.title.length > 26 ? `${ev.title.slice(0, 26)}…` : ev.title,
+      });
+    }
+
+    const chartSymCanon = canonicalChartSymbol(effectiveSym);
+    for (const w of chartOverlay.whales.slice(0, 12)) {
+      if (canonicalChartSymbol(w.symbol) !== chartSymCanon) continue;
+      const ms = new Date(w.alertedAt).getTime();
+      if (!Number.isFinite(ms)) continue;
+      const sec = Math.floor(ms / 1000);
+      const t = snapOverlayToCandles(sec, candleTimes, tfSec);
+      if (t == null) continue;
+      const amt = w.amountUsd != null && Number.isFinite(w.amountUsd) ? w.amountUsd : null;
+      overlay.push({
+        time: t as UTCTimestamp,
+        position: "aboveBar",
+        color: "#38bdf8",
+        shape: "circle",
+        text: amt != null ? `Whale $${(amt / 1e6).toFixed(1)}M` : "Whale",
+      });
+    }
+
+    const mergedOut = [...stLwc, ...overlay].sort((a, b) => Number(a.time) - Number(b.time));
+    return mergedOut.length > CHART_MARKER_DISPLAY_CAP
+      ? mergedOut.slice(-CHART_MARKER_DISPLAY_CAP)
+      : mergedOut;
+  }, [
+    safeMarkers,
+    supertrendSignalHistoryRecent,
+    candleTimes,
+    isMultiCoinMode,
+    chartOverlay,
+    bot?.timeframe,
+    effectiveSym,
+  ]);
+
+  const supertrendSoundCtx = useMemo(
+    () =>
+      `${normalizeSymTf(effectiveSym)}|${normalizeSymTf(bot?.timeframe)}|${Number(bot?.supertrendPeriod ?? 10)}|${Number(bot?.supertrendMultiplier ?? 3)}|${bot?.supertrendWilderAtr !== false}`,
+    [effectiveSym, bot?.timeframe, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr],
+  );
+  const stSigSoundBootRef = useRef(true);
+  const stSigSoundPrevKeyRef = useRef<string | null>(null);
+  const stSigSoundCtxSeenRef = useRef(supertrendSoundCtx);
+  useEffect(() => {
+    if (stSigSoundCtxSeenRef.current !== supertrendSoundCtx) {
+      stSigSoundCtxSeenRef.current = supertrendSoundCtx;
+      stSigSoundBootRef.current = true;
+      stSigSoundPrevKeyRef.current = null;
+    }
+    const last = safeMarkers.at(-1);
+    if (!last) return;
+    if (last.preview === true) return;
+    const key = `${last.time}:${last.side}`;
+    if (stSigSoundBootRef.current) {
+      stSigSoundBootRef.current = false;
+      stSigSoundPrevKeyRef.current = key;
+      return;
+    }
+    if (stSigSoundPrevKeyRef.current === key) return;
+    stSigSoundPrevKeyRef.current = key;
+    if (last.side === "buy") playSupertrendBuySound();
+    else playSupertrendSellSound();
+    const symCh = normalizeSymTf(effectiveSym) || "";
+    const tfCh = normalizeSymTf(bot?.timeframe) || "";
+    const detail: ClientSupertrendChimeDetail = {
+      side: last.side,
+      barTimeSec: Number(last.time),
+      symbol: symCh,
+      timeframe: tfCh,
+    };
+    window.dispatchEvent(new CustomEvent(CLIENT_SUPERTREND_CHIME_EVENT, { detail }));
+  }, [safeMarkers, supertrendSoundCtx, effectiveSym, bot?.timeframe]);
+
+  const alignedStLine = useMemo((): { time: UTCTimestamp; value: number }[] => {
+    return chartSupertrend.linePoints.map((p) => ({
+      time: p.time as UTCTimestamp,
+      value: p.value,
+    }));
+  }, [chartSupertrend.linePoints]);
+
+  const displayAlignedStLine = useMemo((): { time: UTCTimestamp; value: number }[] => {
+    if (displayOhlc.length === 0) return alignedStLine;
+    const minT = Number(displayOhlc[0]!.time);
+    return alignedStLine.filter((p) => Number(p.time) >= minT);
+  }, [alignedStLine, displayOhlc.length > 0 ? Number(displayOhlc[0]!.time) : 0]);
+
+  /** `bot` is the selected pair; `market` can lag one tick after symbol/timeframe changes — avoid mixing them in the header. */
+  const chartHud = useMemo(() => {
+    const bSym = normalizeSymTf(effectiveSym);
+    const mSym = normalizeSymTf(market?.symbol);
+    const coherent = Boolean(bSym && mSym && bSym === mSym);
+    const symbol = bSym || mSym || "—";
+    const tf = normalizeSymTf(bot?.timeframe) || normalizeSymTf(market?.timeframe) || "—";
+    const lastBar = ohlc.length ? ohlc[ohlc.length - 1] : null;
+    const price = lastBar && Number.isFinite(lastBar.close) ? lastBar.close : null;
+    const regimeType = coherent ? ((market?.regime as { type?: string } | undefined)?.type ?? "—") : "—";
+    const stTrendLocal = chartSupertrend.lastTrend;
+    const stTrend =
+      stTrendLocal != null
+        ? stTrendLocal
+        : coherent && market?.supertrend != null && Number.isFinite(Number((market.supertrend as { trend?: unknown }).trend))
+          ? Number((market.supertrend as { trend: number }).trend)
+          : null;
+    const pr = (market?.feedExecutionPause as { reason?: string } | undefined)?.reason;
+    const feedPauseLabel =
+      pr === "feed_ws"
+        ? "Feed: WS reconnecting (autotrade paused)"
+        : pr === "feed_stale"
+          ? "Feed: stale (autotrade paused)"
+          : null;
+    return { symbol, tf, price, regimeType, stTrend, feedPauseLabel };
+  }, [effectiveSym, bot?.timeframe, market, ohlc, chartSupertrend.lastTrend]);
+
+  const ohlcRef = useRef(displayOhlc);
+  ohlcRef.current = displayOhlc;
+  /** Last OHLC set applied to lightweight-charts (for incremental update vs full setData). */
+  const chartOhlcAppliedRef = useRef<OhlcBar[] | null>(null);
+  /** After `applyMarketCandlesResult(..., { preserveView: true })`, restore time-scale range after next series update. */
+  const syncPreserveViewRef = useRef(false);
+  const stLineFlushRafRef = useRef(0);
+  const stLineAppliedRef = useRef<{ time: UTCTimestamp; value: number }[] | null>(null);
+  const tierLabelUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tierLabelPositionKeyRef = useRef("");
+  /** True while user is panning/zooming — skip live series.update so LWC stays smooth. */
+  const chartInteractingRef = useRef(false);
+  const chartInteractIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveBarFlushRafRef = useRef(0);
+  const priceFormatKeyRef = useRef("");
+  const chartLivePriceElRef = useRef<HTMLSpanElement | null>(null);
+  /** Imperative last-bar flush — defined early so chart create / interact handlers can call it. */
+  const flushLiveLastBarRef = useRef(() => {});
+  /** Skip redundant lightweight-charts setMarkers when marker payload unchanged. */
+  const markersAppliedKeyRef = useRef<string>("");
+  /** Bump to destroy + recreate the chart canvas (same effect as a full page load / server restart for rendering). */
+  const [chartInstanceKey, setChartInstanceKey] = useState(0);
+
+  const paintTierLabelOverlay = useCallback((positions: { label: string; y: number }[]) => {
+    const container = tierLabelOverlayRef.current;
+    const rounded = positions
+      .map((p) => ({ label: p.label, y: Math.round(p.y) }))
+      .filter((p) => Number.isFinite(p.y));
+    const key = rounded.map((p) => `${p.label}:${p.y}`).join("|");
+    if (tierLabelPositionKeyRef.current === key) return;
+    tierLabelPositionKeyRef.current = key;
+
+    if (!rounded.length) {
+      container?.replaceChildren();
+      tierLabelNodeByLabelRef.current.clear();
+      return;
+    }
+    if (!container) return;
+
+    const active = new Set<string>();
+    for (const { label, y } of rounded) {
+      if (y < 8 || y > 375) continue;
+      active.add(label);
+      let row = tierLabelNodeByLabelRef.current.get(label);
+      if (!row) {
+        row = document.createElement("div");
+        row.className = "absolute left-1 flex items-center";
+        const span = document.createElement("span");
+        span.className =
+          "rounded px-1 py-0.5 text-[9px] font-bold leading-none bg-emerald-600/85 text-white dark:bg-emerald-500/85 dark:text-slate-950 shadow-sm";
+        span.textContent = label;
+        row.appendChild(span);
+        tierLabelNodeByLabelRef.current.set(label, row);
+        container.appendChild(row);
+      }
+      row.style.top = `${y - 8}px`;
+      const span = row.querySelector("span");
+      if (span && span.textContent !== label) span.textContent = label;
+    }
+    for (const [label, row] of [...tierLabelNodeByLabelRef.current.entries()]) {
+      if (!active.has(label)) {
+        row.remove();
+        tierLabelNodeByLabelRef.current.delete(label);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    markersAppliedKeyRef.current = "";
+    if (!containerRef.current) return;
+
+    const chart = createChart(containerRef.current, {
+      autoSize: true,
+      layout: {
+        background: { color: "transparent" },
+        textColor: "#cbd5e1",
+      },
+      grid: {
+        vertLines: { color: "rgba(148,163,184,0.12)" },
+        horzLines: { color: "rgba(148,163,184,0.12)" },
+      },
+      localization: {
+        locale: "en-IN",
+        dateFormat: "dd MMM ''yy",
+        timeFormatter: (t: Time) => formatIstCrosshairTime(t),
+      },
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+        tickMarkFormatter: (t: Time, tickMarkType: TickMarkType) => formatIstTimeScale(t, tickMarkType),
+      },
+      /** Single scale for candles + Supertrend — same magnitude as OHLC; avoids dual-axis glitches when line v.s. scale desync. */
+      rightPriceScale: {
+        visible: true,
+        borderVisible: true,
+        borderColor: "rgba(148,163,184,0.15)",
+        scaleMargins: { top: 0.1, bottom: 0.1 },
+      },
+      leftPriceScale: { visible: false },
+      crosshair: { mode: 0 },
+      handleScroll: true,
+      handleScale: true,
+    });
+
+    const cur = ohlcRef.current;
+    const last0 =
+      cur.length > 0
+        ? (() => {
+            const c = Number(cur[cur.length - 1]!.close);
+            return Number.isFinite(c) && c > 0 ? c : null;
+          })()
+        : null;
+    const pf0 = inferChartPriceFormat(last0);
+
+    const series = chart.addCandlestickSeries({
+      priceScaleId: "right",
+      upColor: "#34d399",
+      downColor: "#fb7185",
+      borderDownColor: "#fb7185",
+      borderUpColor: "#34d399",
+      wickDownColor: "#fb7185",
+      wickUpColor: "#34d399",
+      /**
+       * Realtime last close: dashed line + highlighted last-value label on the price scale (SL/TP/trail use
+       * separate `createPriceLine` without axis tags to avoid stacked badges).
+       */
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 1,
+      priceLineStyle: LineStyle.Dashed,
+      priceLineColor: chartTheme === "dark" ? "#ffffff" : "#0f172a",
+      priceFormat: pf0,
+    });
+
+    const stLine = chart.addLineSeries({
+      priceScaleId: "right",
+      color: "#4ade80",
+      lineWidth: 2,
+      /** Empty title avoids an extra scale label column fighting with tick marks. */
+      title: "",
+      lastValueVisible: false,
+      priceLineVisible: false,
+      priceFormat: pf0,
+    });
+
+    chartRef.current = chart;
+    seriesRef.current = series;
+    supertrendLineRef.current = stLine;
+    chartOkRef.current = true;
+
+    // Recompute tier label y-positions when the user pans or zooms the chart
+    function refreshTierLabelPositions() {
+      if (tierLabelUpdateTimerRef.current) return;
+      tierLabelUpdateTimerRef.current = setTimeout(() => {
+        tierLabelUpdateTimerRef.current = null;
+        const specs = tierLinePricesRef.current;
+        if (!specs.length) return;
+        const positions = specs
+          .map((s) => {
+            try {
+              const y = series.priceToCoordinate(s.px);
+              return y != null ? { label: s.label, y } : null;
+            } catch {
+              return null;
+            }
+          })
+          .filter((x): x is { label: string; y: number } => x != null);
+        paintTierLabelOverlay(positions);
+      }, 120);
+    }
+
+    /** Lazy pan-left: fetch older OHLC when the visible window nears the oldest loaded bar. */
+    let backfillTimer: ReturnType<typeof setTimeout> | null = null;
+    function maybeBackfillOlderBars() {
+      if (backfillTimer != null) return;
+      backfillTimer = setTimeout(() => {
+        backfillTimer = null;
+        if (backfillInFlightRef.current) return;
+        const chartInst = chartRef.current;
+        const applied = chartOhlcAppliedRef.current ?? displayOhlcRef.current;
+        if (!chartInst || !applied?.length) return;
+        let lr: { from: number; to: number } | null = null;
+        try {
+          lr = chartInst.timeScale().getVisibleLogicalRange() as { from: number; to: number } | null;
+        } catch {
+          return;
+        }
+        if (!lr || !Number.isFinite(lr.from)) return;
+        if (lr.from > CHART_BACKFILL_EDGE_BARS) return;
+        const nextHours = backfillHoursRef.current + CHART_BACKFILL_HOURS_STEP;
+        if (nextHours > CHART_BACKFILL_MAX_HOURS) return;
+        if (backfillRequestedRef.current && nextHours <= backfillHoursRef.current) return;
+        backfillInFlightRef.current = true;
+        const sym = canonicalChartSymbol(effectiveSymRef.current);
+        if (!sym) {
+          backfillInFlightRef.current = false;
+          return;
+        }
+        void api
+          .marketCandles({ hours: nextHours, symbol: sym })
+          .then((r) => {
+            backfillInFlightRef.current = false;
+            if (!r?.ok) return;
+            backfillHoursRef.current = nextHours;
+            backfillRequestedRef.current = true;
+            const parsed = parseCandlesFromMarketApiRef.current(r, sym);
+            if (parsed.length) backfillMergeRef.current(parsed);
+          })
+          .catch(() => {
+            backfillInFlightRef.current = false;
+          });
+      }, 150);
+    }
+
+    function onVisibleLogicalRangeChange() {
+      chartInteractingRef.current = true;
+      if (chartInteractIdleTimerRef.current) clearTimeout(chartInteractIdleTimerRef.current);
+      chartInteractIdleTimerRef.current = setTimeout(() => {
+        chartInteractIdleTimerRef.current = null;
+        chartInteractingRef.current = false;
+        /** One deferred flush after pan/zoom settles. */
+        if (liveBarFlushRafRef.current) cancelAnimationFrame(liveBarFlushRafRef.current);
+        liveBarFlushRafRef.current = requestAnimationFrame(() => {
+          liveBarFlushRafRef.current = 0;
+          flushLiveLastBarRef.current();
+        });
+      }, 180);
+      refreshTierLabelPositions();
+      maybeBackfillOlderBars();
+    }
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChange);
+
+    if (cur.length) {
+      try {
+        const st = useAppStore.getState();
+        const sym0 = canonicalChartSymbol(st.chartDisplaySymbol ?? st.bot?.symbol);
+        const filtered = cur.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? cur[i - 1]! : null, sym0));
+        if (filtered.length) {
+          series.setData(filtered);
+          chartOhlcAppliedRef.current = filtered.slice();
+          const lastSec =
+            filtered.length > 0 ? Number(filtered[filtered.length - 1]!.time) : undefined;
+          const tfInit = normalizeSymTf(useAppStore.getState().bot?.timeframe);
+          tryApplyAutoFit(
+            chart,
+            filtered.length,
+            pendingAutoFitRef,
+            fitAfterRestSnapshotRef,
+            skipFitUntilBulkRef,
+            lastSec,
+            tfInit || null,
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    return () => {
+      chartOhlcAppliedRef.current = null;
+      chartOkRef.current = false;
+      if (bulkFitFallbackTimerRef.current) {
+        clearTimeout(bulkFitFallbackTimerRef.current);
+        bulkFitFallbackTimerRef.current = null;
+      }
+      for (const pl of bracketPriceLinesRef.current) {
+        try {
+          pl.remove();
+        } catch {
+          /* ignore */
+        }
+      }
+      bracketPriceLinesRef.current = [];
+      tierLinePricesRef.current = [];
+      tierLabelPositionKeyRef.current = "";
+      if (tierLabelUpdateTimerRef.current) {
+        clearTimeout(tierLabelUpdateTimerRef.current);
+        tierLabelUpdateTimerRef.current = null;
+      }
+      paintTierLabelOverlay([]);
+      if (backfillTimer != null) {
+        clearTimeout(backfillTimer);
+        backfillTimer = null;
+      }
+      if (chartInteractIdleTimerRef.current) {
+        clearTimeout(chartInteractIdleTimerRef.current);
+        chartInteractIdleTimerRef.current = null;
+      }
+      chartInteractingRef.current = false;
+      try {
+        chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChange);
+      } catch {
+        /* ignore */
+      }
+      try {
+        chart.remove();
+      } catch {
+        /* ignore */
+      }
+      chartRef.current = null;
+      seriesRef.current = null;
+      supertrendLineRef.current = null;
+    };
+  }, [chartInstanceKey]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    const st = supertrendLineRef.current;
+    if (!chart) return;
+    const isDark = chartTheme === "dark";
+    try {
+      chart.applyOptions({
+        layout: {
+          background: { color: "transparent" },
+          textColor: isDark ? "#cbd5e1" : "#475569",
+        },
+        grid: {
+          vertLines: { color: isDark ? "rgba(148,163,184,0.12)" : "rgba(71,85,105,0.16)" },
+          horzLines: { color: isDark ? "rgba(148,163,184,0.12)" : "rgba(71,85,105,0.16)" },
+        },
+        rightPriceScale: {
+          visible: true,
+          borderVisible: true,
+          borderColor: isDark ? "rgba(148,163,184,0.15)" : "rgba(71,85,105,0.22)",
+          scaleMargins: { top: 0.1, bottom: 0.1 },
+        },
+      });
+      st?.applyOptions?.({ color: isDark ? "#4ade80" : "#15803d", title: "" });
+      seriesRef.current?.applyOptions?.({
+        lastValueVisible: true,
+        priceLineVisible: true,
+        priceLineWidth: 1,
+        priceLineStyle: LineStyle.Dashed,
+        priceLineColor: isDark ? "#ffffff" : "#0f172a",
+      });
+    } catch {
+      /* ignore */
+    }
+  }, [chartTheme, chartInstanceKey]);
+
+  /** Keep tick marks valid when switching pairs (esp. sub‑$1 coins like DOGE). */
+  useEffect(() => {
+    if (!chartOkRef.current) return;
+    const pf = inferChartPriceFormat(ohlcLastClose);
+    const key = `${pf.precision}|${pf.minMove}`;
+    if (priceFormatKeyRef.current === key) return;
+    priceFormatKeyRef.current = key;
+    try {
+      const isDark = chartTheme === "dark";
+      seriesRef.current?.applyOptions?.({
+        lastValueVisible: true,
+        priceLineVisible: true,
+        priceLineWidth: 1,
+        priceLineStyle: LineStyle.Dashed,
+        priceLineColor: isDark ? "#ffffff" : "#0f172a",
+        priceFormat: pf,
+      });
+      supertrendLineRef.current?.applyOptions?.({
+        lastValueVisible: false,
+        priceLineVisible: false,
+        title: "",
+        priceFormat: pf,
+      });
+    } catch {
+      /* ignore */
+    }
+  }, [ohlcLastClose, chartInstanceKey, chartTheme]);
+
+
+  useEffect(() => {
+    if (!displayOhlc.length) {
       chartOhlcAppliedRef.current = null;
       chartOhlcAppliedSymRef.current = null;
       syncPreserveViewRef.current = false;
@@ -3027,6 +3600,7 @@ export function ChartPanel() {
       syncPreserveViewRef.current = false;
       return;
     }
+    if (chartInteractingRef.current) return;
     const series = seriesRef.current;
     const chart = chartRef.current;
 
@@ -3044,8 +3618,8 @@ export function ChartPanel() {
     }
 
     const prev = chartOhlcAppliedRef.current;
-    const last = ohlc[ohlc.length - 1]!;
-    const first = ohlc[0]!;
+    const last = displayOhlc[displayOhlc.length - 1]!;
+    const first = displayOhlc[0]!;
     /** Match `buildOhlc` / exchange keys — slashes in UI symbol must not skip `EXACT_CLOSE_RANGE` in sanity checks. */
     const sym = canonicalChartSymbol(effectiveSym);
 
@@ -3053,12 +3627,12 @@ export function ChartPanel() {
       chartOhlcAppliedSymRef.current !== sym ||
       !prev ||
       prev.length === 0 ||
-      ohlc.length < prev.length ||
+      displayOhlc.length < prev.length ||
       first.time !== prev[0].time ||
-      ohlc.length > prev.length + 1;
+      displayOhlc.length > prev.length + 1;
 
     const pLast = prev?.length ? prev[prev.length - 1]! : null;
-    if (!full && pLast != null && ohlc.length === prev!.length + 1 && Number(last.time) <= Number(pLast.time)) {
+    if (!full && pLast != null && displayOhlc.length === prev!.length + 1 && Number(last.time) <= Number(pLast.time)) {
       full = true;
     }
     if (!full && pLast != null && !isOhlcBarRenderable(last, pLast, sym)) {
@@ -3067,7 +3641,7 @@ export function ChartPanel() {
 
     try {
       if (full) {
-        const sanitized = ohlc.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? ohlc[i - 1]! : null, sym));
+        const sanitized = displayOhlc.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? displayOhlc[i - 1]! : null, sym));
         if (!sanitized.length) {
           try {
             series.setData([]);
@@ -3081,32 +3655,25 @@ export function ChartPanel() {
         chartOhlcAppliedRef.current = sanitized.slice();
         chartOhlcAppliedSymRef.current = sym;
       } else {
-        const sanitizedNow = ohlc.filter((bar, i) =>
-          isOhlcBarRenderable(bar, i > 0 ? ohlc[i - 1]! : null, sym),
-        );
         const pLastInner = prev![prev!.length - 1]!;
         if (last.time === pLastInner.time || Number(last.time) > Number(pLastInner.time)) {
           if (!isOhlcBarRenderable(last, pLastInner, sym)) {
+            const sanitizedNow = displayOhlc.filter((bar, i) =>
+              isOhlcBarRenderable(bar, i > 0 ? displayOhlc[i - 1]! : null, sym),
+            );
             if (sanitizedNow.length) {
               series.setData(sanitizedNow);
               chartOhlcAppliedRef.current = sanitizedNow.slice();
             }
           } else {
-            const pLen = prev!.length;
-            const sLen = sanitizedNow.length;
-            /** Chart + ref must both track filtered bars only; raw `ohlc.length` can exceed series length. */
-            if (sLen !== pLen && sLen !== pLen + 1) {
-              if (sanitizedNow.length) {
-                series.setData(sanitizedNow);
-                chartOhlcAppliedRef.current = sanitizedNow.slice();
-              }
-            } else {
-              series.update(last);
-              chartOhlcAppliedRef.current = sanitizedNow.slice();
-            }
+            series.update(last);
+            chartOhlcAppliedRef.current =
+              Number(last.time) === Number(pLastInner.time)
+                ? [...prev!.slice(0, -1), last]
+                : [...prev!, last];
           }
         } else {
-          const sanitized = ohlc.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? ohlc[i - 1]! : null, sym));
+          const sanitized = displayOhlc.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? displayOhlc[i - 1]! : null, sym));
           if (sanitized.length) {
             series.setData(sanitized);
             chartOhlcAppliedRef.current = sanitized.slice();
@@ -3142,7 +3709,7 @@ export function ChartPanel() {
       }
     } catch {
       try {
-        const sanitized = ohlc.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? ohlc[i - 1]! : null, sym));
+        const sanitized = displayOhlc.filter((bar, i) => isOhlcBarRenderable(bar, i > 0 ? displayOhlc[i - 1]! : null, sym));
         if (sanitized.length) {
           series.setData(sanitized);
           chartOhlcAppliedRef.current = sanitized.slice();
@@ -3151,37 +3718,65 @@ export function ChartPanel() {
         /* ignore */
       }
     }
-  }, [ohlc, effectiveSym, bot?.timeframe, chartInstanceKey]);
+  }, [displayOhlc, effectiveSym, bot?.timeframe, chartInstanceKey]);
 
-  /** Live last-bar mark: patch directly from WS `market.candle` when OHLC memo lags one tick. */
-  useEffect(() => {
-    if (!chartOkRef.current || !seriesRef.current || !ohlc.length) return;
-    const sym = canonicalChartSymbol(effectiveSym);
-    if (normalizeSym(market?.symbol) !== normalizeSym(sym)) return;
-    const mc = market?.candle;
+  /**
+   * Live last-bar: store.subscribe + series.update only (no React re-render).
+   * Skipped while the user is panning/zooming.
+   */
+  flushLiveLastBarRef.current = () => {
+    if (chartInteractingRef.current) return;
+    if (!chartOkRef.current || !seriesRef.current) return;
+    const live = useAppStore.getState();
+    const sym = canonicalChartSymbol(effectiveSymRef.current);
+    if (!sym) return;
+    const m = live.market as Record<string, unknown> | undefined;
+    if (!m || normalizeSym(String(m.symbol ?? "")) !== normalizeSym(sym)) return;
+    const mc = m.candle as Record<string, unknown> | undefined;
     if (!mc) return;
     const ts = Math.floor(Number(mc.ts) / 1000) as UTCTimestamp;
     if (!Number.isFinite(ts)) return;
-    const last = ohlc[ohlc.length - 1]!;
-    if (Number(last.time) !== Number(ts)) return;
+    const applied = chartOhlcAppliedRef.current;
+    const pLast = applied?.length ? applied[applied.length - 1]! : null;
+    if (!pLast || Number(pLast.time) !== Number(ts)) return;
     const close = Number(mc.close);
-    const high = Math.max(Number(last.high), Number(mc.high), close, Number(last.open));
-    const low = Math.min(Number(last.low), Number(mc.low), close, Number(last.open));
+    const high = Math.max(Number(pLast.high), Number(mc.high), close, Number(pLast.open));
+    const low = Math.min(Number(pLast.low), Number(mc.low), close, Number(pLast.open));
     if (!Number.isFinite(close) || close <= 0) return;
-    const updated: OhlcBar = { time: ts, open: last.open, high, low, close };
-    const prev = chartOhlcAppliedRef.current;
-    const pLast = prev?.length ? prev[prev.length - 1]! : null;
-    if (pLast && pLast.close === close && pLast.high === high && pLast.low === low) return;
+    if (pLast.close === close && pLast.high === high && pLast.low === low) return;
+    const updated: OhlcBar = { time: ts, open: pLast.open, high, low, close };
     if (!isOhlcBarRenderable(updated, pLast, sym)) return;
     try {
       seriesRef.current.update(updated);
-      if (prev?.length) {
-        chartOhlcAppliedRef.current = [...prev.slice(0, -1), updated];
-      }
+      chartOhlcAppliedRef.current = [...applied!.slice(0, -1), updated];
+      ohlcLastCloseRef.current = close;
+      const priceEl = chartLivePriceElRef.current;
+      if (priceEl) priceEl.textContent = close.toFixed(2);
     } catch {
       /* ignore */
     }
-  }, [market?.candle, market?.symbol, ohlc, effectiveSym, chartInstanceKey]);
+  };
+
+  useEffect(() => {
+    const schedule = () => {
+      if (liveBarFlushRafRef.current) return;
+      liveBarFlushRafRef.current = requestAnimationFrame(() => {
+        liveBarFlushRafRef.current = 0;
+        flushLiveLastBarRef.current();
+      });
+    };
+    const unsub = useAppStore.subscribe((s, prev) => {
+      if (s.market === prev.market && s.candles === prev.candles) return;
+      schedule();
+    });
+    return () => {
+      unsub();
+      if (liveBarFlushRafRef.current) {
+        cancelAnimationFrame(liveBarFlushRafRef.current);
+        liveBarFlushRafRef.current = 0;
+      }
+    };
+  }, [chartInstanceKey]);
 
   useEffect(() => {
     const sym = effectiveSym;
@@ -3250,9 +3845,9 @@ export function ChartPanel() {
       chartOhlcAppliedRef.current = null;
       chartOhlcAppliedSymRef.current = null;
     }
-    const cc0Raw = r.candles.slice(-CHART_CANDLE_MAX);
+    const cc0Raw = r.candles.slice(-CHART_STORE_MAX);
     const parsedPrimary = parseCandlesFromMarketApi(r, symCanon);
-    const cc0 = (parsedPrimary.length ? parsedPrimary : cc0Raw).slice(-CHART_CANDLE_MAX);
+    const cc0 = (parsedPrimary.length ? parsedPrimary : cc0Raw).slice(-CHART_STORE_MAX);
     const last = cc0[cc0.length - 1];
     const viewSym = normalizeSym(symCanon);
     const storeMarketSym = normalizeSym(live.market?.symbol ?? "");
@@ -3424,14 +4019,17 @@ export function ChartPanel() {
     if (stLineFlushRafRef.current) cancelAnimationFrame(stLineFlushRafRef.current);
     stLineFlushRafRef.current = requestAnimationFrame(() => {
       stLineFlushRafRef.current = 0;
+      if (chartInteractingRef.current) return;
       if (!chartOkRef.current || !supertrendLineRef.current) return;
       try {
-        if (!alignedStLine.length) {
+        const src = displayAlignedStLine;
+        if (!src.length) {
           supertrendLineRef.current.setData([]);
+          stLineAppliedRef.current = null;
           return;
         }
-        const mono: typeof alignedStLine = [];
-        for (const p of alignedStLine) {
+        const mono: typeof src = [];
+        for (const p of src) {
           if (!Number.isFinite(p.value) || p.value <= 0) continue;
           if (!mono.length || p.time > mono[mono.length - 1].time) mono.push(p);
         }
@@ -3441,10 +4039,43 @@ export function ChartPanel() {
           if (a > 0 && b > 0 && (b / a > 80 || a / b > 80)) mono.pop();
           else break;
         }
-        supertrendLineRef.current.setData(mono);
+        if (!mono.length) {
+          supertrendLineRef.current.setData([]);
+          stLineAppliedRef.current = null;
+          return;
+        }
+        const prev = stLineAppliedRef.current;
+        const last = mono[mono.length - 1]!;
+        const first = mono[0]!;
+        let full =
+          !prev ||
+          prev.length === 0 ||
+          mono.length < prev.length ||
+          first.time !== prev[0]!.time ||
+          mono.length > prev.length + 1;
+        const pLast = prev?.length ? prev[prev.length - 1]! : null;
+        if (!full && pLast != null && mono.length === prev!.length + 1 && Number(last.time) <= Number(pLast.time)) {
+          full = true;
+        }
+        if (full) {
+          supertrendLineRef.current.setData(mono);
+          stLineAppliedRef.current = mono.slice();
+        } else if (pLast != null && (last.time === pLast.time || Number(last.time) > Number(pLast.time))) {
+          if (Number(last.time) === Number(pLast.time) && last.value === pLast.value) {
+            /* no-op */
+          } else {
+            supertrendLineRef.current.update(last);
+            stLineAppliedRef.current =
+              Number(last.time) === Number(pLast.time) ? [...prev!.slice(0, -1), last] : [...prev!, last];
+          }
+        } else {
+          supertrendLineRef.current.setData(mono);
+          stLineAppliedRef.current = mono.slice();
+        }
       } catch {
         try {
           supertrendLineRef.current.setData([]);
+          stLineAppliedRef.current = null;
         } catch {
           /* ignore */
         }
@@ -3453,7 +4084,7 @@ export function ChartPanel() {
     return () => {
       if (stLineFlushRafRef.current) cancelAnimationFrame(stLineFlushRafRef.current);
     };
-  }, [alignedStLine]);
+  }, [displayAlignedStLine]);
 
   useEffect(() => {
     if (!chartOkRef.current || !seriesRef.current) return;
@@ -3560,7 +4191,7 @@ export function ChartPanel() {
         </div>
         <div className="shrink-0 text-xs text-slate-600 dark:text-slate-400">
           Price:{" "}
-          <span className="text-slate-900 dark:text-slate-100">
+          <span ref={chartLivePriceElRef} className="text-slate-900 dark:text-slate-100">
             {chartHud.price != null && Number.isFinite(chartHud.price) ? chartHud.price.toFixed(2) : "—"}
           </span>
         </div>
@@ -3583,155 +4214,30 @@ export function ChartPanel() {
             className="w-full min-h-[240px]"
             style={{ height: "min(390px, 45vh)" }}
           />
-          {/* Tier label overlay: left-side T0/T1/T2 labels positioned at the trailing tier price lines */}
-          {tierLabelPositions.length > 0 ? (
-            <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-              {tierLabelPositions.map(({ label, y }) =>
-                y >= 8 && y <= 375 ? (
-                  <div
-                    key={label}
-                    className="absolute left-1 flex items-center"
-                    style={{ top: y - 8 }}
-                  >
-                    <span className="rounded px-1 py-0.5 text-[9px] font-bold leading-none bg-emerald-600/85 text-white dark:bg-emerald-500/85 dark:text-slate-950 shadow-sm">
-                      {label}
-                    </span>
-                  </div>
-                ) : null,
-              )}
-            </div>
-          ) : null}
-          {/* Trail summary + next locks moved below the chart (prevents overlap on small screens). */}
-          {trailingStatusChipsVisible ? (
-            <div
-              className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col items-start gap-0.5"
-              aria-label="Futures trailing status"
-            >
-              <div className="flex flex-row items-center gap-1.5">
-                <span
-                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm ${
-                    chartTrailingPreview.badge?.trailing
-                      ? "bg-amber-500 text-slate-950 dark:bg-amber-400 dark:text-slate-950"
-                      : "border border-slate-400/60 bg-slate-900/55 text-slate-400 dark:border-slate-600 dark:bg-slate-950/70 dark:text-slate-500"
-                  }`}
-                >
-                  Trailing
-                    </span>
-                <span
-                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm ${
-                    trailingChipTrailedHighlight
-                      ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950"
-                      : "border border-slate-400/60 bg-slate-900/55 text-slate-400 dark:border-slate-600 dark:bg-slate-950/70 dark:text-slate-500"
-                  }`}
-                >
-                  {chartTrailingPreview.badge?.trailExchangePending
-                    ? "Confirming…"
-                    : trailingChipTrailedHighlight && chartTrailingPreview.badge?.tierLabel
-                      ? `Trailed · ${chartTrailingPreview.badge.tierLabel}`
-                      : "Trailed"}
-                    </span>
-                  </div>
-              {chartTrailingPreview.badge?.trailExchangePending ? (
-                <div className="max-w-[14rem] rounded border border-amber-600/40 bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-medium text-amber-100/95 shadow-sm">
-                  Waiting for exchange to confirm the new stop…
-              </div>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-        {shouldShowFuturesBracketLegend || (chartTrailingPreview.trailHud && inferFuturesBracketLinesActive(bot)) ? (
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-          {chartTrailingPreview.trailHud && inferFuturesBracketLinesActive(bot) ? (
-            <div
-                className="max-w-full space-y-0.5 rounded-md border border-amber-700/40 bg-slate-950/88 px-2 py-1.5 text-[10px] leading-tight text-amber-100/95 shadow-lg backdrop-blur-sm dark:border-amber-600/35 dark:bg-slate-950/90"
-              aria-label="Trail summary"
-            >
-              <div className="text-[9px] font-semibold uppercase tracking-wide text-amber-200/90">Trail</div>
-              {chartTrailingPreview.trailHud.currentSl != null ? (
-                <div className="font-mono text-slate-100">
-                  SL now: {chartTrailingPreview.trailHud.currentSl.toLocaleString("en-US", { maximumFractionDigits: 6 })}
-                </div>
-              ) : (
-                <div className="text-slate-400">SL now: —</div>
-              )}
-              {chartTrailingPreview.trailHud.takeProfit != null ? (
-                <div className="font-mono text-slate-100">
-                  TP: {chartTrailingPreview.trailHud.takeProfit.toLocaleString("en-US", { maximumFractionDigits: 6 })}
-                </div>
-              ) : (
-                <div className="text-slate-400">TP: —</div>
-              )}
-                {chartTrailingPreview.trailHud.currentTrailedTierLabel ? (
-                  <div className="font-mono text-emerald-200/90">
-                    Trailed at: {chartTrailingPreview.trailHud.currentTrailedTierLabel}
-                  </div>
-                ) : null}
-                {chartTrailingPreview.trailHud.nextActivationPx != null &&
-                chartTrailingPreview.trailHud.nextTierLabel &&
-                !(Array.isArray(chartTrailingPreview.trailHud.nextTwoTierLocks) && chartTrailingPreview.trailHud.nextTwoTierLocks.length) ? (
-                <div className="font-mono text-amber-100/90">
-                    Next {chartTrailingPreview.trailHud.nextTierLabel} activation:{" "}
-                  {chartTrailingPreview.trailHud.nextActivationPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
-                </div>
-              ) : null}
-                {Array.isArray(chartTrailingPreview.trailHud.nextTwoTierLocks) && chartTrailingPreview.trailHud.nextTwoTierLocks.length ? (
-                  <div className="space-y-0.5">
-                    {chartTrailingPreview.trailHud.nextTwoTierLocks.slice(0, 2).map((r, i) => {
-                      const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 6 });
-                      return (
-                        <div key={`${r.tierLabel}-${i}`} className="font-mono text-slate-100/95">
-                          {i === 0 ? "Next" : "Then"} {r.tierLabel}: lock {fmt(r.lockPx)} · activation {fmt(r.activationPx)}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              {chartTrailingPreview.trailHud.liveTrailSlPx != null ? (
-                <div className="font-mono text-emerald-200/90">
-                    Live trail SL:{" "}
-                  {chartTrailingPreview.trailHud.liveTrailSlPx.toLocaleString("en-US", { maximumFractionDigits: 6 })}
-                </div>
-              ) : (
-                  <div className="text-slate-500">Live trail SL: (not in trail zone)</div>
-              )}
-            </div>
-            ) : (
-              <div />
-            )}
-            {shouldShowFuturesBracketLegend ? (
-              <div
-                className="flex max-w-full flex-col rounded-md border border-slate-600/50 bg-slate-950/85 px-2 py-1.5 text-[10px] leading-tight shadow-lg backdrop-blur-sm dark:border-slate-500/40 dark:bg-slate-950/90"
-                aria-label="Next SL tier lock levels"
-              >
-                <div className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Next SL · Tn lock</div>
-                <div className="mt-1 flex min-h-0 flex-1 flex-col justify-between gap-0.5">
-                  {chartNextSlLockLegendRows.map((row, idx) => (
-                    <div key={idx} className="flex min-h-0 flex-nowrap items-baseline justify-between gap-2">
-                      <span className="min-w-0 flex-1 truncate font-medium" style={{ color: row.color }}>
-                        {row.title}
-                </span>
-                      <span className="shrink-0 font-mono tabular-nums text-slate-100">
-                        {Number.isFinite(row.px) && row.px > 0
-                          ? row.px.toLocaleString("en-US", { maximumFractionDigits: 6 })
-                          : "—"}
-                </span>
-              </div>
-                  ))}
-                </div>
-            </div>
-            ) : (
-              <div />
-            )}
-        </div>
-        ) : null}
-        {isMultiCoinMode && Array.isArray(positions) && positions.length > 0 ? (
-          <PositionMiniChartsRow
-            positions={positions}
-            mainSymbol={effectiveSym}
-            onPickSymbol={(sym) => setChartDisplaySymbol(sym)}
+          <div ref={tierLabelOverlayRef} className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden />
+          <ChartPositionOverlay
+            bot={bot}
+            effectiveSym={effectiveSym}
+            isMultiCoinMode={isMultiCoinMode}
+            chartTheme={chartTheme}
+            chartInstanceKey={chartInstanceKey}
+            chartSupertrend={chartSupertrend}
+            ohlcLastCloseRef={ohlcLastCloseRef}
+            seriesRef={seriesRef}
+            chartOkRef={chartOkRef}
+            ohlcRef={ohlcRef}
+            bracketPriceLinesRef={bracketPriceLinesRef}
+            tierLinePricesRef={tierLinePricesRef}
+            tierLabelPositionKeyRef={tierLabelPositionKeyRef}
+            paintTierLabelOverlay={paintTierLabelOverlay}
           />
-        ) : null}
-        <MultiCoinSignalTabs />
+        </div>
+        <PositionMiniChartsRowLive
+          enabled={isMultiCoinMode}
+          mainSymbol={effectiveSym}
+          onPickSymbol={(sym) => setChartDisplaySymbol(sym)}
+        />
+        <ChartMultiCoinSignalTabs />
         {supertrendSignalHistoryListRows.length > 0 ? (
           <div className="w-full rounded-md border border-slate-200/90 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-950/50 px-2 py-2">
             <div className="mb-1.5 flex flex-row items-start justify-between gap-2">
@@ -3909,10 +4415,7 @@ export function ChartPanel() {
             </ul>
           </div>
         ) : null}
-        <div className="w-full">
-          <OrderBookPanel />
-          {showMarketIntelligencePanel ? <IntelligencePanel embedded /> : null}
-        </div>
+        <ChartPanelOrderBookSection showIntel={showMarketIntelligencePanel} />
       </div>
     </div>
   );

@@ -1,0 +1,43 @@
+
+> backend@0.1.0 db:migrate
+> node scripts/db-migrate.mjs
+
+ok 001_extensions.sql
+ok 002_users.sql
+ok 003_modes.sql
+ok 004_accounts.sql
+ok 005_wallets.sql
+ok 006_strategies.sql
+ok 007_instances.sql
+ok 008_trades.sql
+ok 009_performance.sql
+ok 010_ohlcv.sql
+ok 011_backtesting.sql
+ok 012_audit.sql
+ok 013_roles.sql
+ok 014_paper_account.sql
+ok 015_express_sessions.sql
+ok 016_user_ui_prefs.sql
+ok 017_accounts_phase2a.sql
+ok 018_strategy_mode.sql
+ok 019_bot_instances_soft_delete.sql
+ok 020_strategy_performance_rr.sql
+ok 021_strategies_backfill_mode_id.sql
+ok 022_strategy_instance_split.sql
+ok 023_market_intelligence.sql
+ok 024_cq_exchange_netflow.sql
+ok 025_liquidation_fields.sql
+ok 026_backtesting_v2.sql
+ok 027_backtest_instance_snapshot.sql
+ok 028_strategies_mode_agnostic.sql
+ok 029_ohlcv_taker_buy_volume.sql
+ok 030_backtest_portfolio.sql
+ok 031_strategy_tests.sql
+ok 032_futures_agg_trades.sql
+apply 033_disable_ohlcv_candle_audit.sql
+migrations complete
+npm notice
+npm notice New major version of npm available! 10.9.3 -> 11.17.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.17.0
+npm notice To update run: npm install -g npm@11.17.0
+npm notice

@@ -1,18 +1,41 @@
+---
+description: 
+alwaysApply: true
+---
+
 # AGENTS.md
 
 Crypto trading bot (backend Node/Express + Timescale, frontend React/Vite).
 
 ## Active work: trading-strategy research
 
-**Read `@STRATEGY_RESEARCH_HANDOFF.md` before doing any strategy work.** It has the
-full context, validated results, scripts, configs, and data/infra state. Summary:
+**Read `@STRATEGY_RESEARCH_HANDOFF.md` and `docs/STRATEGY_OPTIMIZATION_RULEBOOK.md`
+before doing any strategy work.**
 
-- Rigorously tested all 18 strategies. **`SUPERTREND_ELITE` is the only one that
-  passes out-of-sample validation.** Realistic return: **~10–21% CAGR (~1–1.5%/mo)**
-  at moderate risk, 15–30% drawdowns. Deploy it as a **multi-coin portfolio**.
+**Aim:** maximize **validated** returns (OOS CAGR / Calmar / portfolio return) **and
+deployable frequency** (~≥2 trades/week/coin target) — not random experiments,
+in-sample curve fitting, or “profit” on a handful of trades/year. If targets are
+missed, iterate (autopsy → hypothesis → re-test); do not satisfy goals by crushing
+trade count. Hypothesis → one change → full sim → holdout → WF + MC + gates. See
+the rulebook for banned patterns and decision log.
+
+Summary:
+
+- **No strategy is currently certified deployable.** Prior `SUPERTREND_ELITE`
+  “only validated / ~10–21% CAGR” claims are **revoked** (wrong trailing). Honesty
+  re-val under locked trail (2026-07-14): **REJECT** — see
+  `2026-07-14-elite-st-honesty-reval-reject.md`. Next: Phase 2 disaster-SL
+  hypothesis (`2026-07-14-phase2-hypothesis-after-st-reject.md`). Do not cite
+  ST Elite as the default answer.
 - **50%/month is not real** — do not chase it or present overfit/short-window
   numbers as if repeatable. Be honest about costs (fees+slippage) and out-of-sample
   results. Always validate with walk-forward + Monte Carlo + acceptance gates.
+- Context filters / informational data are **research-only** until full sim shows
+  positive OOS **and** passes gates — not “promising” from harvest abstention alone.
+- **Funding-rate arb CLOSED NO-GO** on BTC/ETH (Phase 2a/2b: fees > funding even
+  after anti-churn). Do **not** tweak thresholds again. Reopen only for extreme
+  ≥50%+ episodes, more symbols, or real spot+basis (not perp-as-spot). See
+  `2026-07-14-funding-arb-phase2b-nogo.md`. LIQ SWEEP_RECLAIM remains on hold.
 
 ## Infra gotchas
 
@@ -30,6 +53,7 @@ full context, validated results, scripts, configs, and data/infra state. Summary
 ## Conventions
 
 - **Trading vocabulary:** `docs/TRADING_GLOSSARY.md` — terms, definitions, and use cases for strategy design.
-- **Safe intraday deploy:** `docs/SAFE_INTRADAY_SETUP.md` — `SAFE_INTRADAY` strategy (~1%/month target, not 1%/day).
+- **Safe intraday:** `docs/SAFE_INTRADAY_SETUP.md` — research target (~1%/month), not a certified live deploy.
 - Use specialized file tools, not shell `cat`/`sed`. Verify backtests with realistic
-  costs. Never deploy a strategy live until it passes the validation gates.
+  costs. Never deploy a strategy live until it passes the validation gates **with
+  correct trailing/exits**.

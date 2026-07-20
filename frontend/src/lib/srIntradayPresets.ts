@@ -141,7 +141,309 @@ export const INTRADAY_PRO_LIQ_15M = {
   intradayMinTechniqueCount: 1,
   supertrendFuturesFixedTpPct: 0,
   supertrendFuturesFixedSlPct: 0,
+  supertrendFuturesUseFixedSl: true,
+  supertrendFuturesUseFixedTp: true,
+  intradayLiqUseEntryScore: true,
+  intradayLiqMinEntryScore: 52,
+  intradayLiqReclaimHoldBars: 1,
+  /** Classical PDH/PDL reclaim — not LIQ_DAILY trend-router (that preset sets true). */
+  intradayLiqBreakdownDayBias: false,
 };
+
+/**
+ * BTC 15m — research-promoted PDH/PDL sweep+reclaim (BTC-only).
+ * Loser autopsy: skip breakdown/breakout-day fades + require CHoCH after sweep + killzone.
+ * Research-grade — not validation-gate approved; beats multi-coin LIQ portfolio.
+ */
+export const INTRADAY_PRO_LIQ_BTC_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  symbol: "BTCUSDT",
+  timeframe: "15m",
+  riskPerTrade: 2,
+  intradayLiqPdhPdlOnly: true,
+  intradayLiqSessionExtreme: false,
+  intradayLiqBreakdownDayBias: true,
+  intradayLiqDaySituationBias: true,
+  intradayLiqMarketStateGate: false,
+  intradayLiqRequireKillzone: false,
+  /** CHoCH gate gave 0 trades on 2025 BTC window — off until re-tuned. */
+  intradayLiqRequireChoch: false,
+  intradayLiqChochRequireTrend: false,
+  intradayLiqChochMaxBars: 12,
+  intradayLiqOnePickPerDay: true,
+  srIntradayMaxTradesPerDay: 2,
+};
+
+/** Keys that identify the BTC liq preset in the UI (subset — not full patch equality). */
+export const INTRADAY_PRO_LIQ_BTC_15M_SIGNATURE_KEYS = [
+  "symbol",
+  "timeframe",
+  "intradayLiqBreakdownDayBias",
+  "intradayLiqPdhPdlOnly",
+  "intradayLiqDaySituationBias",
+] as const;
+
+/**
+ * BNB + BTC liquidity sweep portfolio (validated subset — see backend preset notes).
+ * ~2%/month realistic at 3.5% risk/coin; not 30–50%/month.
+ */
+export const INTRADAY_PRO_LIQ_PORTFOLIO_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  riskPerTrade: 3.5,
+  futuresLeverage: 12,
+  universeCustomSymbols: ["BNBUSDT", "BTCUSDT"],
+  universeCoinBase: "CUSTOM",
+  universeCoinSelectMode: "MULTIPLE",
+  multiBudgetSplitMode: "EQUAL",
+  multiCoinCapitalSizingActive: true,
+  backtestApplyLiveMultiCoinSplit: true,
+};
+
+/** FREQ_EDGE — classical fade only; trend continuation off; breakdown veto on. */
+export const LIQ_FREQ_EDGE_CORE = {
+  intradayLiqPlaybook: "FREQ_EDGE",
+  intradayLiqTrendContinuation: false,
+  intradayLiqClassicEnabled: true,
+  intradayLiqBreakdownDayBias: true,
+  intradayLiqVetoCounterTrend: true,
+} as const;
+
+export const INTRADAY_PRO_LIQ_FREQ_EDGE_BNB_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  ...LIQ_FREQ_EDGE_CORE,
+  intradayLiqBreakdownDayBias: false,
+  intradayLiqOnePickPerDay: false,
+  srIntradayMaxTradesPerDay: 3,
+  intradayLiqPartialTp: true,
+  intradayLiqSessionExtreme: false,
+};
+
+export const INTRADAY_PRO_LIQ_FREQ_EDGE_SIGNATURE_KEYS = [
+  "intradayLiqPlaybook",
+  "intradayLiqTrendContinuation",
+  "intradayLiqBreakdownDayBias",
+  "universeCustomSymbols",
+] as const;
+
+/** Keys that identify the ETH liq preset in the UI (subset — not full patch equality). */
+export const INTRADAY_PRO_LIQ_ETH_15M_SIGNATURE_KEYS = [
+  "symbol",
+  "timeframe",
+  "intradayLiqMinRr",
+  "intradayLiqMinReclaimBodyRatio",
+  "intradayLiqRequireHtfAlign",
+  "intradayLiqVetoCounterTrend",
+  "intradayLiqMaxTpRr",
+  "intradayLiqMinQuality",
+  "intradayLiqAllowTrailOnlyExit",
+  "trailingStopLossAuto",
+  "trailOnlyAfterTp2Fill",
+] as const;
+
+/** True when bot/view cfg matches a preset on signature fields (for active preset styling). */
+export function presetMatchesBot(
+  preset: Record<string, unknown>,
+  bot: Record<string, unknown> | null | undefined,
+  keys: readonly string[] = Object.keys(preset),
+): boolean {
+  if (!bot || typeof bot !== "object") return false;
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(preset, key)) continue;
+    const a = preset[key];
+    const b = bot[key];
+    if (typeof a === "number" && typeof b === "number") {
+      if (Math.abs(a - b) > 1e-9) return false;
+      continue;
+    }
+    if (a !== b) return false;
+  }
+  return true;
+}
+
+/** ETH 15m — classical SWEEP_RECLAIM fade + context-score trail exit */
+export const INTRADAY_PRO_LIQ_ETH_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  symbol: "ETHUSDT",
+  timeframe: "15m",
+  riskPerTrade: 3.5,
+  srIntradaySweepPct: 0.001,
+  intradayLiqMinSweepExtensionPct: 0.004,
+  intradayLiqMinRr: 0,
+  intradayLiqMinReclaimBodyRatio: 0.35,
+  intradayLiqMinReclaimClosePct: 0.0002,
+  intradayLiqMinScore: 5,
+  intradayLiqMinQuality: 0,
+  intradayLiqRequireHtfAlign: false,
+  intradayLiqVetoCounterTrend: true,
+  intradayLiqBreakdownDayBias: true,
+  intradayLiqEntryMode: "fade",
+  intradayLiqPdhPdlOnly: false,
+  intradayLiqMinAdx: 0,
+  intradayLiqMaxAdx: 0,
+  intradayLiqMaxTpRr: 3.35,
+  intradayLiqSessionExtreme: true,
+  intradayLiqSessionExtremeMinTouches: 2,
+  intradayLiqSessionExtremeMinExtensionPct: 0.001,
+  intradayLiqOnePickPerDay: false,
+  srIntradayMaxTradesPerDay: 3,
+  intradayLiqAllowTrailOnlyExit: true,
+  trailingStopLossAuto: true,
+  trailOnlyAfterTp2Fill: false,
+  intradayLiqPartialTp: false,
+  intradayLiqTp1Enabled: false,
+  intradayLiqTp2Enabled: false,
+  intradayLiqMaxHoldBars: 200,
+  intradayLiqMaxFadeDayRangePct: 0.06,
+  intradayLiqPostDisplacementCooldownBars: 4,
+  intradayLiqDisplacementBarAtrMult: 2,
+  intradayLiqRequireSweepDisplacement: false,
+  intradayLiqTrailRequireDisplacement: false,
+  intradayLiqSweepDisplacementMinAtrMult: 0,
+  intradayLiqRequirePostReclaimDisplacement: false,
+  intradayLiqPostReclaimDispAtrMult: 0.6,
+  intradayLiqMinSweepPokeWickRatio: 0.2,
+  intradayLiqSweepMinVolRatio: 0.9,
+  intradayLiqSweepQualityGate: false,
+  intradayLiqMaxSweepAttempts: 3,
+  intradayLiqMaxAbsorptionProxy: 0.7,
+  intradayLiqUseEntryScore: false,
+  intradayLiqTrailUseContextScore: true,
+  intradayLiqMinEntryScore: 38,
+  intradayLiqReclaimHoldBars: 0,
+  backtestTrailMicroTf: "5m",
+};
+
+export const INTRADAY_PRO_LIQ_FREQ_EDGE_ETH_15M = {
+  ...INTRADAY_PRO_LIQ_ETH_15M,
+  ...LIQ_FREQ_EDGE_CORE,
+};
+
+export const INTRADAY_PRO_LIQ_FREQ_EDGE_PORTFOLIO_15M = {
+  ...INTRADAY_PRO_LIQ_FREQ_EDGE_BNB_15M,
+  riskPerTrade: 2.5,
+  futuresLeverage: 12,
+  universeCustomSymbols: ["BNBUSDT", "ETHUSDT"],
+  universeCoinBase: "CUSTOM",
+  universeCoinSelectMode: "MULTIPLE",
+  multiBudgetSplitMode: "EQUAL",
+  multiCoinCapitalSizingActive: true,
+  backtestApplyLiveMultiCoinSplit: true,
+};
+
+/** LIQ + VP proximity — fast path; sweep level must be near VP structure. */
+export const LIQ_VP_PROXIMITY_CORE = {
+  intradayLiqPlaybook: "LIQ_VP_PROXIMITY",
+  intradayLiqVpProximityMaxPct: 0.0015,
+  volumeProfileEnabled: true,
+  vpProfileMode: "rolling",
+  vpLookbackBars: 384,
+  vpVolumeDistribute: "close_weighted",
+  vpIncludePriorSession: true,
+  vpEnableNakedPoc: true,
+  vpValueAreaPct: 0.7,
+} as const;
+
+export const INTRADAY_PRO_LIQ_VP_PROXIMITY_PORTFOLIO_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  ...LIQ_VP_PROXIMITY_CORE,
+  riskPerTrade: 2.5,
+  futuresLeverage: 12,
+  universeCustomSymbols: ["BNBUSDT", "ETHUSDT"],
+  universeCoinBase: "CUSTOM",
+  universeCoinSelectMode: "MULTIPLE",
+  multiBudgetSplitMode: "EQUAL",
+  multiCoinCapitalSizingActive: true,
+  backtestApplyLiveMultiCoinSplit: true,
+};
+
+export const INTRADAY_PRO_LIQ_VP_PROXIMITY_SIGNATURE_KEYS = [
+  "intradayLiqPlaybook",
+  "intradayLiqVpProximityMaxPct",
+  "universeCustomSymbols",
+] as const;
+
+/**
+ * Full patch for Apply + Save — ensures routing/gates match the ETH LIQ solo engine.
+ * Spreads preset defaults; backend materialization enforces them again at backtest time.
+ */
+/** Clear SMC / institutional S/R keys so a LIQ solo preset does not inherit stale engine fields. */
+const LIQ_SOLO_STALE_ENGINE_CLEAR: Record<string, unknown> = {
+  intradayGateSmcIct: false,
+  intradaySmcIctMode: false,
+  intradayGateInstitutionalSr: false,
+  intradaySrAPlusMode: false,
+  intradaySrRequireBos: false,
+  intradaySrRequireConfirm: false,
+  intradaySrRequireVolume: false,
+  intradaySrRequireHtfTrend: false,
+};
+
+/** Full patch for Apply + Save — BNB+ETH FREQ_EDGE portfolio. */
+export function buildLiqFreqEdgePortfolioPatch(): Record<string, unknown> {
+  return {
+    ...INTRADAY_PRO_LIQ_FREQ_EDGE_PORTFOLIO_15M,
+    ...LIQ_SOLO_STALE_ENGINE_CLEAR,
+    strategyMode: "MANUAL",
+    manualStrategy: "SR_INTRADAY",
+    marketMode: "FUTURES",
+    intradayGateLiquidity: true,
+    intradayGateSession: false,
+    intradayGateFib: false,
+    intradayGateVp: false,
+    intradayGateOrderFlow: false,
+    intradayGateHtfRegime: false,
+  };
+}
+
+/** Full patch for Apply + Save — BNB+ETH LIQ+VP proximity portfolio. */
+export function buildLiqVpProximityPortfolioPatch(): Record<string, unknown> {
+  return {
+    ...INTRADAY_PRO_LIQ_VP_PROXIMITY_PORTFOLIO_15M,
+    ...LIQ_SOLO_STALE_ENGINE_CLEAR,
+    strategyMode: "MANUAL",
+    manualStrategy: "SR_INTRADAY",
+    marketMode: "FUTURES",
+    intradayGateLiquidity: true,
+    intradayGateSession: false,
+    intradayGateFib: false,
+    intradayGateVp: false,
+    intradayGateOrderFlow: false,
+    intradayGateHtfRegime: false,
+  };
+}
+
+export function buildEthLiqPresetApplyPatch(): Record<string, unknown> {
+  return {
+    ...INTRADAY_PRO_LIQ_ETH_15M,
+    ...LIQ_SOLO_STALE_ENGINE_CLEAR,
+    strategyMode: "MANUAL",
+    manualStrategy: "SR_INTRADAY",
+    marketMode: "FUTURES",
+    intradayGateLiquidity: true,
+    intradayGateSession: false,
+    intradayGateFib: false,
+    intradayGateVp: false,
+    intradayGateOrderFlow: false,
+    intradayGateHtfRegime: false,
+  };
+}
+
+/** Full patch for Apply + Save — BTC research LIQ solo preset. */
+export function buildBtcLiqPresetApplyPatch(): Record<string, unknown> {
+  return {
+    ...INTRADAY_PRO_LIQ_BTC_15M,
+    ...LIQ_SOLO_STALE_ENGINE_CLEAR,
+    strategyMode: "MANUAL",
+    manualStrategy: "SR_INTRADAY",
+    marketMode: "FUTURES",
+    intradayGateLiquidity: true,
+    intradayGateSession: false,
+    intradayGateFib: false,
+    intradayGateVp: false,
+    intradayGateOrderFlow: false,
+    intradayGateHtfRegime: false,
+  };
+}
 
 /** Situation router — data-driven multi-playbook (year study route table) */
 export const BNB_SITUATION_ROUTER_15M = {

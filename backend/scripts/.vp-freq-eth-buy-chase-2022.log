@@ -1,0 +1,10 @@
+
+=== baseline (chase OFF) ===
+N=64 ret=-5.4% DD=46.8%
+  2022-2023: n=64 wr=33% ret=-5.4% net=$-5.4 buys=31 vah=28
+
+=== buy-chase ON (prior5d>8%) ===
+N=54 ret=0.8% DD=42.0%
+  2022-2023: n=54 wr=33% ret=0.8% net=$0.8 buys=21 vah=18
+
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-buy-chase.json

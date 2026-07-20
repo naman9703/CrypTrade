@@ -1,0 +1,235 @@
+=== SHORTS-ONLY locked baseline (per year) ===
+  2022-23…
+    N=9 WR=44% net=$2.2
+  2023-24…
+    N=3 WR=67% net=$8.3
+  2024-25…
+    N=10 WR=40% net=$22.2
+  2025-26…
+    N=11 WR=55% net=$23.8
+
+=== OPEN FUNNEL (VAH+poc longs re-enabled) on locked short stack ===
+  2022-23…
+    N=17 net=$11.5 | BUY n=9 net=$15.4 | SELL n=8 net=$-3.9
+  2023-24…
+    N=13 net=$7.2 | BUY n=12 net=$1.9 | SELL n=1 net=$5.3
+  2024-25…
+    N=20 net=$19.1 | BUY n=12 net=$32.9 | SELL n=8 net=$-13.8
+  2025-26…
+    N=22 net=$9.2 | BUY n=10 net=$-8.1 | SELL n=12 net=$17.3
+
+=== POOLED BUY ===
+{
+  "all": {
+    "n": 43,
+    "wr": 44.18604651162791,
+    "net": 42.078691292769854
+  },
+  "bySetup": {
+    "vah_breakout": {
+      "n": 37,
+      "wr": 40.54054054054054,
+      "net": -1.7337444432102602
+    },
+    "poc_bounce": {
+      "n": 1,
+      "wr": 0,
+      "net": -2.985841366157187
+    },
+    "va_rejection": {
+      "n": 5,
+      "wr": 80,
+      "net": 46.798277102137305
+    },
+    "lvn_vacuum": {
+      "n": 0,
+      "wr": 0,
+      "net": 0
+    }
+  },
+  "vah": {
+    "vacuum": {
+      "n": 23,
+      "wr": 30.434782608695656,
+      "net": -7.477349265574366
+    },
+    "structured": {
+      "n": 8,
+      "wr": 62.5,
+      "net": 6.066736173934932
+    },
+    "macroBull": {
+      "n": 31,
+      "wr": 45.16129032258064,
+      "net": 6.850982286052418
+    },
+    "macroBear": {
+      "n": 6,
+      "wr": 16.666666666666664,
+      "net": -8.584726729262675
+    },
+    "chop": {
+      "n": 2,
+      "wr": 50,
+      "net": 0.5687251165601608
+    },
+    "byPrior5d": [
+      {
+        "bucket": "[-1,-0.05)",
+        "n": 3,
+        "wr": 33.33333333333333,
+        "net": 0.643798746802088
+      },
+      {
+        "bucket": "[-0.05,0)",
+        "n": 10,
+        "wr": 30,
+        "net": -9.666785891864098
+      },
+      {
+        "bucket": "[0,0.04)",
+        "n": 9,
+        "wr": 55.55555555555556,
+        "net": 5.402310535291901
+      },
+      {
+        "bucket": "[0.04,0.08)",
+        "n": 8,
+        "wr": 37.5,
+        "net": -0.0024889999716988243
+      },
+      {
+        "bucket": "[0.08,0.15)",
+        "n": 3,
+        "wr": 33.33333333333333,
+        "net": -3.024317934950795
+      },
+      {
+        "bucket": "[0.15,1)",
+        "n": 4,
+        "wr": 50,
+        "net": 4.913739101482342
+      }
+    ],
+    "byPrior60d": [
+      {
+        "bucket": "[-1,-0.15)",
+        "n": 9,
+        "wr": 33.33333333333333,
+        "net": -1.7853557316609434
+      },
+      {
+        "bucket": "[-0.15,-0.05)",
+        "n": 5,
+        "wr": 40,
+        "net": -5.141585553288941
+      },
+      {
+        "bucket": "[-0.05,0)",
+        "n": 2,
+        "wr": 50,
+        "net": 0.5687251165601608
+      },
+      {
+        "bucket": "[0,0.05)",
+        "n": 0,
+        "wr": 0,
+        "net": 0
+      },
+      {
+        "bucket": "[0.05,0.15)",
+        "n": 3,
+        "wr": 66.66666666666666,
+        "net": 5.868964139418107
+      },
+      {
+        "bucket": "[0.15,1)",
+        "n": 12,
+        "wr": 41.66666666666667,
+        "net": 1.2733205377143966
+      }
+    ],
+    "byPath": [
+      {
+        "bucket": "[0,0.01)",
+        "n": 6,
+        "wr": 50,
+        "net": -0.3231313515708272
+      },
+      {
+        "bucket": "[0.01,0.02)",
+        "n": 8,
+        "wr": 62.5,
+        "net": 6.066736173934932
+      },
+      {
+        "bucket": "[0.02,0.03)",
+        "n": 11,
+        "wr": 36.36363636363637,
+        "net": 1.753784143079451
+      },
+      {
+        "bucket": "[0.03,1)",
+        "n": 12,
+        "wr": 25,
+        "net": -9.231133408653815
+      }
+    ],
+    "byHtfSep": [
+      {
+        "bucket": "[0,0.003)",
+        "n": 0,
+        "wr": 0,
+        "net": 0
+      },
+      {
+        "bucket": "[0.003,0.005)",
+        "n": 0,
+        "wr": 0,
+        "net": 0
+      },
+      {
+        "bucket": "[0.005,0.008)",
+        "n": 19,
+        "wr": 52.63157894736842,
+        "net": 12.128267653431493
+      },
+      {
+        "bucket": "[0.008,0.012)",
+        "n": 14,
+        "wr": 21.428571428571427,
+        "net": -17.57622762866143
+      },
+      {
+        "bucket": "[0.012,1)",
+        "n": 4,
+        "wr": 50,
+        "net": 3.714215532019676
+      }
+    ]
+  }
+}
+
+=== BUY CFs (pooled) ===
+  block VAH vacuum path≥2%: drop 23 ($-7.5) → kept $49.6 (Δ +7.5)
+  block VAH vacuum non-bull: drop 6 ($-8.6) → kept $50.7 (Δ +8.6)
+  block VAH prior5d>8%: drop 7 ($1.9) → kept $40.2 (Δ -1.9)
+  block VAH prior5d>4%: drop 15 ($1.9) → kept $40.2 (Δ -1.9)
+  block VAH in macroBear: drop 6 ($-8.6) → kept $50.7 (Δ +8.6)
+  block VAH vacuum in bear: drop 6 ($-8.6) → kept $50.7 (Δ +8.6)
+  ETH vacuum pullback gate: drop 13 ($4.3) → kept $37.8 (Δ -4.3)
+  block all poc_bounce BUY: drop 1 ($-3.0) → kept $45.1 (Δ +3.0)
+  block BUY va_rejection: drop 5 ($46.8) → kept $-4.7 (Δ -46.8)
+  VAH require HTF≥0.8%: drop 19 ($12.1) → kept $30.0 (Δ -12.1)
+  BUY losers with MFE≥1% (exit leak): drop 7 ($-21.5) → kept $63.6 (Δ +21.5)
+
+=== OPEN vs SHORT-ONLY by year ===
+2022-23: short-only N=9 net=$2.2 | open N=17 net=$11.5 (BUY $15.4 / SELL $-3.9)
+  setups {"BUY:va_rejection":{"n":1,"wr":100,"net":5.76905047426184},"BUY:vah_breakout":{"n":8,"wr":50,"net":9.619943676363146},"SELL:val_breakdown":{"n":8,"wr":37.5,"net":-3.8590882258619135}}
+2023-24: short-only N=3 net=$8.3 | open N=13 net=$7.2 (BUY $1.9 / SELL $5.3)
+  setups {"BUY:vah_breakout":{"n":10,"wr":40,"net":-1.084836048670005},"BUY:va_rejection":{"n":2,"wr":50,"net":3.0089313568346534},"SELL:val_breakdown":{"n":1,"wr":100,"net":5.270102870780644}}
+2024-25: short-only N=10 net=$22.2 | open N=20 net=$19.1 (BUY $32.9 / SELL $-13.8)
+  setups {"BUY:vah_breakout":{"n":9,"wr":44.44444444444444,"net":-2.1519572386939165},"BUY:poc_bounce":{"n":1,"wr":0,"net":-2.985841366157187},"SELL:val_breakdown":{"n":8,"wr":25,"net":-13.787461680471461},"BUY:va_rejection":{"n":2,"wr":100,"net":38.02029527104081}}
+2025-26: short-only N=11 net=$23.8 | open N=22 net=$9.2 (BUY $-8.1 / SELL $17.3)
+  setups {"BUY:vah_breakout":{"n":10,"wr":30,"net":-8.11689483220948},"SELL:val_breakdown":{"n":10,"wr":50,"net":10.29492770192245},"SELL:poc_bounce":{"n":1,"wr":0,"net":-3.336592837749447},"SELL:va_rejection":{"n":1,"wr":100,"net":10.347046525968251}}
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-btc-long-autopsy.json

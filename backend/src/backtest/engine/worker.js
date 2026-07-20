@@ -24,6 +24,7 @@ const { initPool, closePool } = await import("../../db/pool.js");
 const { query } = await import("../../db/query.js");
 const { readCandles, ensureKlines } = await import("../data/klineIngest.js");
 const { ensureFunding, readFundingRates } = await import("../data/fundingIngest.js");
+const { ensureOpenInterest } = await import("../data/openInterestIngest.js");
 const { getCoverage } = await import("../data/dataCoverage.js");
 const { runSimulation } = await import("./runner.js");
 const { computeAllMetrics, attachWalkForwardMetrics } = await import("./metrics.js");
@@ -171,15 +172,21 @@ async function execute({ runId }) {
   const fromMs = new Date(run.start_date).getTime();
   const toMs = new Date(run.end_date).getTime();
   const startingUsdt = Number(run.initial_capital);
-  let cfg = pickBotCfg(run.config_snapshot, run.strategy_cfg_raw);
+  const snapshotBot = pickBotCfg(run.config_snapshot, run.strategy_cfg_raw);
+  const { pickBacktestRunMeta, applyBacktestRunMeta } = await import("./backtestRunMeta.js");
+  const backtestRunMeta = pickBacktestRunMeta(snapshotBot);
+  let cfg = { ...snapshotBot };
   try {
     const { stripRuntimePollutionFromBot, mergeMissingSignalBrainBot, sanitizeSignalBrainCfgRaw } =
       await import("../../lib/strategySignalBrain.js");
+    const { sanitizeCfgForStrategy } = await import("../../strategy/strategyConfigProfile.js");
     stripRuntimePollutionFromBot(cfg);
     if (run.strategy_cfg_raw && typeof run.strategy_cfg_raw === "object") {
-      const versionBrain = sanitizeSignalBrainCfgRaw(run.strategy_cfg_raw).bot ?? {};
+      const versionBrain = sanitizeSignalBrainCfgRaw(run.strategy_cfg_raw, { hydrate: true }).bot ?? {};
       mergeMissingSignalBrainBot(cfg, versionBrain);
     }
+    const stratKey = String(cfg.manualStrategy ?? "").toUpperCase();
+    Object.assign(cfg, sanitizeCfgForStrategy(stratKey, cfg, { phase: "runtime" }));
   } catch {
     /* optional */
   }
@@ -188,6 +195,7 @@ async function execute({ runId }) {
     const { materializeIntradayPanelOnCfg } = await import("../../strategy/intradayPanelKeys.js");
     const { ensureBacktestMarketMode, applyInstanceOperationalToBot } = await import("../../lib/strategyInstanceSplit.js");
     const { normalizeEliteStRunCfg } = await import("../../strategy/supertrendElite.js");
+    const { normalizeLiquidityMapRunCfg } = await import("../../strategy/liquidityMapStrategy.js");
     const stratEarly = String(cfg.manualStrategy ?? "").toUpperCase();
     if (stratEarly === "SITUATION_INTRADAY") {
       const { resolveSituationRouterCfg } = await import("../../strategy/situationIntraday.js");
@@ -197,15 +205,28 @@ async function execute({ runId }) {
       const { resolveCrtTbsCfg } = await import("../../strategy/crtTbsIntraday.js");
       cfg = resolveCrtTbsCfg(cfg);
       cfg._intradayEngineMaterialized = true;
+    } else if (stratEarly === "SCALP_MR") {
+      const { resolveScalpMrCfg } = await import("../../strategy/scalpMr.js");
+      cfg = resolveScalpMrCfg(cfg);
+      cfg._intradayEngineMaterialized = true;
     } else if (stratEarly === "TOKYO_SESSION") {
       const { resolveTokyoSessionCfg } = await import("../../strategy/tokyoSessionIntraday.js");
       cfg = resolveTokyoSessionCfg(cfg);
       cfg._intradayEngineMaterialized = true;
-    } else if (stratEarly === "SUPERTREND_ELITE" || stratEarly === "UNIFIED_ELITE") {
-      // Skip intraday materialization — injects max-hold bars and liq defaults that break 1H Elite.
+    } else if (stratEarly === "SUPERTREND_ELITE" || stratEarly === "UNIFIED_ELITE" || stratEarly === "LIQUIDITY_MAP") {
+      // Skip intraday materialization — injects defaults that break strategies with their own adapters.
       cfg._intradayEngineMaterialized = true;
-    } else if (!cfg._intradayEngineMaterialized) {
+    } else if (stratEarly === "VOLUME_PROFILE") {
+      // VP has its own adapter + fillVolumeProfileFreqDefaults — do NOT run LIQ/SMC materialize.
+      cfg._intradayEngineMaterialized = true;
+    } else if (
+      stratEarly === "SR_INTRADAY" ||
+      stratEarly === "INTRADAY_PRO" ||
+      !cfg._intradayEngineMaterialized
+    ) {
+      // Always replace cfg — polluted snapshots merge stale SMC/SR keys if we spread onto prior bot.
       cfg = materializeIntradayEngineCfgSync(cfg, materializeIntradayPanelOnCfg);
+      cfg._intradayEngineMaterialized = true;
     }
     if (run.instance_operational_snapshot && typeof run.instance_operational_snapshot === "object") {
       applyInstanceOperationalToBot(cfg, run.instance_operational_snapshot);
@@ -214,10 +235,13 @@ async function execute({ runId }) {
     const strat = String(cfg.manualStrategy ?? "").toUpperCase();
     if (strat === "SUPERTREND_ELITE" || strat === "UNIFIED_ELITE") {
       Object.assign(cfg, normalizeEliteStRunCfg(cfg));
+    } else if (strat === "LIQUIDITY_MAP") {
+      Object.assign(cfg, normalizeLiquidityMapRunCfg(cfg));
     }
-  } catch {
-    /* optional */
+  } catch (err) {
+    console.warn("[backtest:worker] cfg materialize failed:", err?.message || err);
   }
+  applyBacktestRunMeta(cfg, backtestRunMeta);
   const costModelOverride = run.cost_model && typeof run.cost_model === "object" ? run.cost_model : {};
   // `gate_mode` is stored at run creation time. Fall back to checking the strategy cfg
   // directly so that old runs or API calls without the UI still activate the replay gate.
@@ -266,11 +290,26 @@ async function execute({ runId }) {
   }
 
   reportPrep(0.5);
-  const covPre = await getCoverage(symbol, tf, { from: fromMs, to: toMs }).catch(() => ({
+  let candleFromMs = fromMs;
+  if (strategyKey === "CRT_TBS") {
+    const { crtTbsPadFromMs } = await import("../../strategy/crtTbsIntraday.js");
+    candleFromMs = crtTbsPadFromMs(fromMs, tf);
+  } else if (strategyKey === "SCALP_MR") {
+    const { scalpMrPadFromMs } = await import("../../strategy/scalpMr.js");
+    candleFromMs = scalpMrPadFromMs(fromMs, tf);
+  } else if (strategyKey === "TOKYO_SESSION") {
+    const { tokyoSessionPadFromMs } = await import("../../strategy/tokyoSessionIntraday.js");
+    candleFromMs = tokyoSessionPadFromMs(fromMs, tf);
+  } else if (strategyKey === "VOLUME_PROFILE") {
+    const { volumeProfilePadFromMs } = await import("../../strategy/presets/volumeProfileOptimized.js");
+    candleFromMs = volumeProfilePadFromMs(fromMs, tf, cfg);
+  }
+
+  const covPre = await getCoverage(symbol, tf, { from: candleFromMs, to: toMs }).catch(() => ({
     coveragePct: null,
   }));
   if (covPre.coveragePct == null || covPre.coveragePct < 98) {
-    await ensureKlines(symbol, tf, { from: fromMs, to: toMs, market }).catch((err) => {
+    await ensureKlines(symbol, tf, { from: candleFromMs, to: toMs, market }).catch((err) => {
       console.warn("[backtest:worker] ensureKlines failed:", err?.message || err);
     });
   }
@@ -279,17 +318,12 @@ async function execute({ runId }) {
     await ensureFunding(symbol, { from: fromMs, to: toMs }).catch((err) => {
       console.warn("[backtest:worker] ensureFunding failed:", err?.message || err);
     });
+    await ensureOpenInterest(symbol, { from: fromMs, to: toMs, period: "1h" }).catch((err) => {
+      console.warn("[backtest:worker] ensureOpenInterest failed:", err?.message || err);
+    });
   }
   reportPrep(3);
 
-  let candleFromMs = fromMs;
-  if (strategyKey === "CRT_TBS") {
-    const { crtTbsPadFromMs } = await import("../../strategy/crtTbsIntraday.js");
-    candleFromMs = crtTbsPadFromMs(fromMs, tf);
-  } else if (strategyKey === "TOKYO_SESSION") {
-    const { tokyoSessionPadFromMs } = await import("../../strategy/tokyoSessionIntraday.js");
-    candleFromMs = tokyoSessionPadFromMs(fromMs, tf);
-  }
   const candles = await readCandles(symbol, tf, candleFromMs, toMs, { market });
   if (!candles.length) throw new Error("worker:no_candles");
   reportPrep(5);
@@ -298,7 +332,12 @@ async function execute({ runId }) {
   if (stratKey === "SUPERTREND_ELITE" || stratKey === "UNIFIED_ELITE") {
     const { prepareEliteRunCfg } = await import("../../strategy/supertrendElite.js");
     cfg = prepareEliteRunCfg(cfg, symbol, candles);
+  } else if (stratKey === "VOLUME_PROFILE") {
+    const { fillVolumeProfileFreqDefaults } = await import("../../strategy/presets/volumeProfileOptimized.js");
+    cfg = fillVolumeProfileFreqDefaults({ ...cfg, symbol });
   }
+  // Warmup candles may precede the run window — never open trades before start_date.
+  cfg = { ...cfg, backtestSignalStartMs: fromMs };
   if (isFutures) cfg = await applyBacktestBracketCap(cfg, symbol);
 
   const fundingRates = isFutures ? await readFundingRates(symbol, fromMs, toMs).catch(() => []) : [];
@@ -337,6 +376,25 @@ async function execute({ runId }) {
     }
   }
 
+  let trailMicro = null;
+  const futuresTrailMode = String(cfg?.futuresTrailingStopMode ?? "SUPERTREND").toUpperCase();
+  const trailEnabled =
+    cfg?.trailingStopLossAuto === true && isFutures && futuresTrailMode !== "OFF";
+  if (trailEnabled) {
+    try {
+      const { buildTrailMicroContext } = await import("./trailMicroSim.js");
+      trailMicro = await buildTrailMicroContext({
+        symbol,
+        fromMs,
+        toMs,
+        cfg,
+        trailEnabled,
+      });
+    } catch (err) {
+      console.warn("[backtest:worker] trailMicro setup failed:", err?.message || err);
+    }
+  }
+
   /** Map simulation 0–100% into ~2–99.9 for prep phase headroom; keep decimals for smooth UI. */
   const onProgress = ({ percent }) => {
     const sim = Math.min(100, Math.max(0, Number(percent)));
@@ -369,6 +427,7 @@ async function execute({ runId }) {
     timeframe: tf,
     symbol,
     adapters,
+    trailMicro,
   });
 
   if (cancelFlag) {
@@ -433,36 +492,54 @@ async function executePortfolio({
   reportPrep,
 }) {
   const { portfolioSliceReplay, tradesToTimelineEvents } = await import("./portfolioReplay.js");
+  const {
+    resolvePortfolioPositionSizing,
+    resolvePortfolioUnitStart,
+    resolvePortfolioUnitSizingMode,
+  } = await import("./portfolioPositionSizing.js");
   const { prepareEliteRunCfg } = await import("../../strategy/supertrendElite.js");
   const nCoins = Math.max(1, symbols.length);
-  const perCoinStart = Math.max(1, Number(startingUsdt) || 100) / nCoins;
+  const portfolioSizingMode = resolvePortfolioPositionSizing(cfg);
+  const perCoinStart = resolvePortfolioUnitStart({
+    startingUsdt,
+    coinCount: nCoins,
+    mode: portfolioSizingMode,
+  });
+  const unitSizingMode = resolvePortfolioUnitSizingMode(portfolioSizingMode);
 
   reportPrep(1);
+  let candleFromMs = fromMs;
+  if (strategyKey === "CRT_TBS") {
+    const { crtTbsPadFromMs } = await import("../../strategy/crtTbsIntraday.js");
+    candleFromMs = crtTbsPadFromMs(fromMs, tf);
+  } else if (strategyKey === "SCALP_MR") {
+    const { scalpMrPadFromMs } = await import("../../strategy/scalpMr.js");
+    candleFromMs = scalpMrPadFromMs(fromMs, tf);
+  } else if (strategyKey === "TOKYO_SESSION") {
+    const { tokyoSessionPadFromMs } = await import("../../strategy/tokyoSessionIntraday.js");
+    candleFromMs = tokyoSessionPadFromMs(fromMs, tf);
+  } else if (strategyKey === "VOLUME_PROFILE") {
+    const { volumeProfilePadFromMs } = await import("../../strategy/presets/volumeProfileOptimized.js");
+    candleFromMs = volumeProfilePadFromMs(fromMs, tf, cfg);
+  }
+
   const coveragePcts = [];
   for (const sym of symbols) {
-    const covPre = await getCoverage(sym, tf, { from: fromMs, to: toMs }).catch(() => ({
+    const covPre = await getCoverage(sym, tf, { from: candleFromMs, to: toMs }).catch(() => ({
       coveragePct: null,
     }));
     if (covPre.coveragePct != null) coveragePcts.push(covPre.coveragePct);
     if (covPre.coveragePct == null || covPre.coveragePct < 98) {
-      await ensureKlines(sym, tf, { from: fromMs, to: toMs, market }).catch((err) => {
+      await ensureKlines(sym, tf, { from: candleFromMs, to: toMs, market }).catch((err) => {
         console.warn(`[backtest:worker] ensureKlines ${sym} failed:`, err?.message || err);
       });
     }
     if (isFutures) {
       await ensureFunding(sym, { from: fromMs, to: toMs }).catch(() => {});
+      await ensureOpenInterest(sym, { from: fromMs, to: toMs, period: "1h" }).catch(() => {});
     }
   }
   reportPrep(3);
-
-  let candleFromMs = fromMs;
-  if (strategyKey === "CRT_TBS") {
-    const { crtTbsPadFromMs } = await import("../../strategy/crtTbsIntraday.js");
-    candleFromMs = crtTbsPadFromMs(fromMs, tf);
-  } else if (strategyKey === "TOKYO_SESSION") {
-    const { tokyoSessionPadFromMs } = await import("../../strategy/tokyoSessionIntraday.js");
-    candleFromMs = tokyoSessionPadFromMs(fromMs, tf);
-  }
 
   const allEvents = [];
   const gateReplayAgg = {
@@ -498,6 +575,16 @@ async function executePortfolio({
       stratKey === "SUPERTREND_ELITE" || stratKey === "UNIFIED_ELITE"
         ? prepareEliteRunCfg(cfg, sym, candles)
         : { ...cfg, symbol: sym };
+    if (stratKey === "VOLUME_PROFILE") {
+      const { fillVolumeProfileFreqDefaults } = await import("../../strategy/presets/volumeProfileOptimized.js");
+      symCfg = fillVolumeProfileFreqDefaults(symCfg);
+    }
+    symCfg = {
+      ...symCfg,
+      backtestSignalStartMs: fromMs,
+      backtestPositionSizing: unitSizingMode,
+      portfolioPositionSizing: portfolioSizingMode,
+    };
     if (isFutures) symCfg = await applyBacktestBracketCap(symCfg, sym);
 
     const fundingRates = isFutures ? await readFundingRates(sym, fromMs, toMs).catch(() => []) : [];
@@ -528,6 +615,25 @@ async function executePortfolio({
       }
     }
 
+    let trailMicro = null;
+    const futuresTrailMode = String(symCfg?.futuresTrailingStopMode ?? "SUPERTREND").toUpperCase();
+    const trailEnabled =
+      symCfg?.trailingStopLossAuto === true && isFutures && futuresTrailMode !== "OFF";
+    if (trailEnabled) {
+      try {
+        const { buildTrailMicroContext } = await import("./trailMicroSim.js");
+        trailMicro = await buildTrailMicroContext({
+          symbol: sym,
+          fromMs,
+          toMs,
+          cfg: symCfg,
+          trailEnabled,
+        });
+      } catch (err) {
+        console.warn(`[backtest:worker] trailMicro ${sym} failed:`, err?.message || err);
+      }
+    }
+
     const sim = await runSimulation({
       strategyKey,
       candles,
@@ -541,6 +647,7 @@ async function executePortfolio({
       symbol: sym,
       adapters,
       shouldCancel: () => cancelFlag,
+      trailMicro,
     });
 
     const gr = sim.gateReplay;
@@ -568,6 +675,7 @@ async function executePortfolio({
     coinCount: nCoins,
     perCoinUnitStart: perCoinStart,
     startTs: fromMs,
+    mode: portfolioSizingMode,
   });
 
   let metrics = computeAllMetrics({
@@ -590,9 +698,10 @@ async function executePortfolio({
       gateReplayAgg.evaluated > 0 ? gateReplayAgg.intelScoreSum / gateReplayAgg.evaluated : null,
   };
   metrics.portfolio = {
-    mode: "equal_slice_full_margin",
+    mode: portfolioSizingMode,
     coinCount: nCoins,
     perCoinStart,
+    skippedOverlap: Number(replay.skippedOverlap ?? 0),
     symbols,
     perCoin: Object.fromEntries(
       Object.entries(replay.perCoin).map(([sym, v]) => [

@@ -1,0 +1,75 @@
+running 2021-22…
+running 2022-23…
+running 2023-24…
+running 2024-25…
+running 2025-26…
+
+========== HEADLINES (current lock) ==========
+2021-22: 46t / $-13.2 / WR37%
+2022-23: 33t / $45.5 / WR45%
+2023-24: 19t / $56.8 / WR58%
+2024-25: 49t / $43.2 / WR41%
+2025-26: 48t / $155.5 / WR54%
+
+========== 2021-22 ATTRIBUTION ==========
+  SELL val                     25t / $-12.0 / WR32%
+  BUY vah                      15t / $11.9 / WR53%
+  BUY va_rej                   5t / $-9.2 / WR20%
+  BUY other                    1t / $-3.9 / WR0%
+  macro bull_trend             18t / $-4.5 / WR39%
+  macro bull_chop              12t / $1.0 / WR42%
+  macro weak_bear              7t / $-12.1 / WR14%
+  macro bear_trend             9t / $2.4 / WR44%
+  weakBearVac VAL              5t / $-5.7 / WR20%
+  buyRejBullTrend              3t / $-10.6 / WR0%
+  valCycleBull p120>25%        4t / $-11.8 / WR0%
+  instant/whip losses          25t / $-75.4 / WR0%
+
+2021-22 cells (worst first):
+  SELL|val_breakdown|weak_bear|vacuum              5t / $-5.7 / WR20%
+  BUY|vah_breakout|bull_trend|tight                2t / $-5.4 / WR0%
+  BUY|va_rejection|bull_trend|vacuum               1t / $-3.9 / WR0%
+  BUY|poc_bounce|bull_trend|vacuum                 1t / $-3.9 / WR0%
+  BUY|va_rejection|bull_trend|tight                1t / $-3.5 / WR0%
+  SELL|val_breakdown|weak_bear|tight               1t / $-3.4 / WR0%
+  SELL|val_breakdown|bull_chop|tight               1t / $-3.3 / WR0%
+  BUY|va_rejection|bull_trend|structured           1t / $-3.2 / WR0%
+  SELL|val_breakdown|bull_trend|tight              1t / $-3.2 / WR0%
+  BUY|vah_breakout|weak_bear|vacuum                1t / $-3.0 / WR0%
+  BUY|vah_breakout|bull_chop|structured            3t / $-2.7 / WR33%
+  BUY|va_rejection|bear_trend|vacuum               1t / $-2.6 / WR0%
+  SELL|val_breakdown|bull_trend|vacuum             3t / $-2.0 / WR33%
+  SELL|val_breakdown|bear_trend|structured         2t / $-0.2 / WR50%
+  SELL|val_breakdown|bull_chop|structured          2t / $0.2 / WR50%
+  BUY|vah_breakout|bear_trend|tight                1t / $2.5 / WR100%
+  SELL|val_breakdown|bear_trend|vacuum             5t / $2.7 / WR40%
+  SELL|val_breakdown|bull_chop|vacuum              5t / $2.8 / WR40%
+  BUY|va_rejection|bull_chop|tight                 1t / $4.1 / WR100%
+  BUY|vah_breakout|bull_trend|structured           3t / $9.5 / WR100%
+  BUY|vah_breakout|bull_trend|vacuum               5t / $11.0 / WR60%
+
+========== REMAINING VAL losers 21-22 vs VAL winners 25-26 ==========
+n L=17 W=16
+  prior5d      L=-0.0560 W=-0.0497 Δ=-0.0063
+  prior20d     L=-0.0775 W=-0.1146 Δ=0.0371
+  prior60d     L=-0.0101 W=-0.0694 Δ=0.0593
+  prior120d    L=0.1823 W=-0.1346 Δ=0.3169
+  ext          L=0.6293 W=0.4901 Δ=0.1392
+  pathPct      L=0.0360 W=0.0248 Δ=0.0113
+  htfSep       L=0.0118 W=0.0123 Δ=-0.0005
+  mfe          L=0.0095 W=0.0329 Δ=-0.0234
+  mae          L=-0.0155 W=-0.0035 Δ=-0.0120
+  prior4h      L=-0.0136 W=-0.0189 Δ=0.0053
+
+========== CANDIDATES (harvest; confirm full sim) ==========
+PROMISING    S1_weak_bear_vac                 Δ21=$5.7 Δlock≈$-8.8 ΔNlock=-8 drop25=$16.3 dropN21=5
+WEAK_2122    S2_weak_bear_shallow_htf         Δ21=$0.0 Δlock≈$-15.3 ΔNlock=-3 drop25=$22.6 dropN21=0
+HURTS_LOCK   S3_val_cycle_bull_p120           Δ21=$11.8 Δlock≈$-81.4 ΔNlock=-15 drop25=$58.6 dropN21=4
+mixed        S4_buy_rej_bull_trend            Δ21=$10.6 Δlock≈$-23.6 ΔNlock=-5 drop25=$17.0 dropN21=3
+HURTS_LOCK   S5_buy_rej_weak_quality          Δ21=$9.2 Δlock≈$-46.5 ΔNlock=-9 drop25=$17.0 dropN21=5
+mixed        S6_S1_plus_S4                    Δ21=$16.3 Δlock≈$-32.4 ΔNlock=-13 drop25=$33.3 dropN21=8
+mixed        S7_S2_plus_S4                    Δ21=$10.6 Δlock≈$-38.9 ΔNlock=-8 drop25=$39.6 dropN21=3
+mixed        S8_val_p120_gt_40                Δ21=$3.4 Δlock≈$-94.3 ΔNlock=-9 drop25=$58.6 dropN21=1
+WEAK_2122    S9_bull_trend_vac_val_remaining  Δ21=$2.0 Δlock≈$-43.7 ΔNlock=-6 drop25=$12.2 dropN21=3
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-2122-residual-h3.json

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useThemeStore } from "../themeStore";
+import { useAppStore } from "../ws/store";
 import { RestCandleTile } from "./MultiChartGrid";
 
 function uniqPositionSymbols(positions: any[] | undefined): string[] {
@@ -103,3 +104,20 @@ export function PositionMiniChartsRow({
     </div>
   );
 }
+
+/** Self-subscribes to WS positions so parent chart panel skips position-driven re-renders. */
+export const PositionMiniChartsRowLive = memo(function PositionMiniChartsRowLive({
+  enabled,
+  mainSymbol,
+  onPickSymbol,
+}: {
+  enabled: boolean;
+  mainSymbol: string;
+  onPickSymbol: (sym: string) => void;
+}) {
+  const positions = useAppStore((s) => s.positions);
+  if (!enabled || !Array.isArray(positions) || positions.length === 0) return null;
+  return (
+    <PositionMiniChartsRow positions={positions} mainSymbol={mainSymbol} onPickSymbol={onPickSymbol} />
+  );
+});

@@ -1,3 +1,5 @@
+import { signalBrainBotFingerprint } from "./strategyBrainSnapshot";
+
 /**
  * Guards so high-frequency WS `state` frames cannot revert fields the user just
  * changed via `/api/bot/config` (before HTTP ack, or from stale frames after ack).
@@ -10,6 +12,11 @@ export const STRATEGY_SAVE_WS_GUARD_MS = 24 * 60 * 60 * 1000;
 
 const inFlight = new Map<string, { value: unknown; until: number }>();
 const wsAckGuard = new Map<string, { value: unknown; until: number }>();
+
+/** Bulk guard after strategy Save — avoids O(n) JSON compares on every WS tick. */
+let strategySaveGuardPatch: Record<string, unknown> | null = null;
+let strategySaveGuardFp: string | null = null;
+let strategySaveGuardUntil = 0;
 
 /** Expand paired gate flags + SMC profile side-effects so WS cannot revert preset patches. */
 export function expandBotConfigPatch(patch: Record<string, unknown>): Record<string, unknown> {
@@ -35,6 +42,12 @@ export function expandBotConfigPatch(patch: Record<string, unknown>): Record<str
     if (!Object.prototype.hasOwnProperty.call(patch, "intradaySmcOneTradePerDay")) {
       out.intradaySmcOneTradePerDay = pm !== "per_signal";
     }
+  }
+  if (patch.supertrendFuturesUseFixedTp === false) {
+    out.supertrendFuturesFixedTpPct = 0;
+  }
+  if (patch.supertrendFuturesUseFixedSl === false) {
+    out.supertrendFuturesFixedSlPct = 0;
   }
   return out;
 }
@@ -107,25 +120,27 @@ export function clearBotConfigPatchInFlightWhenAcked(
  * a fresh DB reload (backtests and long runs exceed the 12s `/api/bot/config` guard).
  */
 export function noteStrategySaveWsAckGuard(savedBot: Record<string, unknown>) {
-  const now = Date.now();
-  const until = now + STRATEGY_SAVE_WS_GUARD_MS;
+  const patch: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(savedBot)) {
     if (key === "uiChartFocusSymbol") continue;
-    wsAckGuard.set(key, { value, until });
+    patch[key] = value;
   }
+  strategySaveGuardPatch = patch;
+  strategySaveGuardFp = signalBrainBotFingerprint(patch);
+  strategySaveGuardUntil = Date.now() + STRATEGY_SAVE_WS_GUARD_MS;
 }
 
-/** Overlay guards onto merged bot snapshot (WS / hello / HTTP hydrate). */
-export function applyBotConfigPatchInFlight(bot: Record<string, unknown>): Record<string, unknown> {
+function applyPerKeyGuards(bot: Record<string, unknown>): Record<string, unknown> {
   const now = Date.now();
-  const out = { ...bot };
+  let out: Record<string, unknown> | null = null;
 
   for (const [key, entry] of wsAckGuard) {
     if (now > entry.until) {
       wsAckGuard.delete(key);
       continue;
     }
-    if (!patchValueAcked(out[key], entry.value)) {
+    if (!patchValueAcked(bot[key], entry.value)) {
+      if (!out) out = { ...bot };
       out[key] = entry.value;
     }
   }
@@ -135,9 +150,29 @@ export function applyBotConfigPatchInFlight(bot: Record<string, unknown>): Recor
       inFlight.delete(key);
       continue;
     }
+    if (!out) out = { ...bot };
     out[key] = entry.value;
   }
-  return out;
+
+  return out ?? bot;
+}
+
+/** Overlay guards onto merged bot snapshot (WS / hello / HTTP hydrate). */
+export function applyBotConfigPatchInFlight(bot: Record<string, unknown>): Record<string, unknown> {
+  const now = Date.now();
+  let base = bot;
+
+  if (strategySaveGuardPatch && strategySaveGuardFp && now < strategySaveGuardUntil) {
+    const liveFp = signalBrainBotFingerprint(base);
+    if (liveFp !== strategySaveGuardFp) {
+      base = { ...base, ...strategySaveGuardPatch };
+    }
+  } else if (now >= strategySaveGuardUntil) {
+    strategySaveGuardPatch = null;
+    strategySaveGuardFp = null;
+  }
+
+  return applyPerKeyGuards(base);
 }
 
 /** Guard live bot from stale WS, then apply unsaved draft (draft wins on key overlap). */

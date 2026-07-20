@@ -18,7 +18,9 @@
 import { resolveCostModel, applySlippage, fundingPaidBetween, tradeBreakdown, liquidationPrice } from "./costModel.js";
 import { buildSupertrendSeries, signalFromSupertrendBar } from "./signals/supertrend.js";
 import { tfToMs } from "../data/timeframe.js";
-import { adverseExtreme, advanceTrailForBar, resolveTrailingOpts } from "./trailingSim.js";
+import { resolveTrailOnlyAfterTp2Fill } from "../../lib/trailingOptsFromCfg.js";
+import { adverseExtreme, resolveTrailingOpts } from "./trailingSim.js";
+import { simulateTrailingForParentBar, simulateTrailingSingleBar } from "./trailMicroSim.js";
 import { evaluateSupertrendMoveQuality } from "../../strategy/supertrendMoveQuality.js";
 import { computeIndicators } from "../../strategy/indicators.js";
 import { computeMarketDecisionSnapshot, mergeMarketDecisionConfig } from "../../lib/marketDecisionEngine.js";
@@ -28,9 +30,9 @@ import {
   isTrendHtfStRegimeGateEnabled,
   isTrendHtfStSurgicalLossFilterEnabled,
 } from "../../strategy/trendHtfStRegime.js";
-import { fixedBracketSlEnabled, fixedBracketTpEnabled } from "../../strategy/bracketToggles.js";
+import { fixedBracketSlEnabled, fixedBracketTpEnabled, bracketSlLegsEnabled, bracketTpLegsEnabled } from "../../strategy/bracketToggles.js";
 import { resolveSizingStopPrice } from "../../strategy/sizingStop.js";
-import { computeEntryQtyDetailed } from "./backtestSizing.js";
+import { computeEntryQtyDetailed, resolvePositionLeverage } from "./backtestSizing.js";
 import {
   buildSupertrendConfirmationContext,
   evaluateSupertrendConfirmationGate,
@@ -46,11 +48,24 @@ import {
   readHtf4hFilterCfg,
 } from "../../strategy/supertrendHtf4hFilter.js";
 import { normalizeEliteStRunCfg } from "../../strategy/supertrendElite.js";
+import {
+  priorReturnByMs,
+  isChopPriorReturn,
+  computeMfeGivebackSl,
+  readChopMfeTrailCfg,
+} from "./regimeMfeTrail.js";
+import { resolveLiquidityMapRunCfg } from "../../strategy/liquidityMapStrategy.js";
+import { profileUsesIntradayMaxHold } from "../../strategy/strategyConfigProfile.js";
+import {
+  computeDynamicInitialSlPct,
+  resolveTrailSizingMode,
+} from "../../lib/dynamicTrailing.js";
 import { resolveFibEntryBrackets } from "../../strategy/techniques/fibonacci.js";
 import {
   liqBreakevenStopPx,
   mapLiquidityEntryLegs,
   resolveLiquidityEntryBrackets,
+  resolveLiqRunnerTpHits,
 } from "../../strategy/techniques/liquidity.js";
 import {
   mapOrderFlowEntryLegs,
@@ -65,30 +80,77 @@ const ELITE_HTF_KEY = "ELITE_HTF";
 
 /** Max closed bars before `time_stop` exit (0 = disabled). LIQ+S/R uses liq hold when SMC gate is off. */
 export function resolveMaxHoldBars(cfg = {}) {
+  const manual = String(cfg.manualStrategy ?? "").toUpperCase();
+  if (!profileUsesIntradayMaxHold(manual)) return 0;
   const liqOn =
     cfg.intradayGateLiquidity !== false ||
     cfg.intradayGateInstitutionalSr === true ||
     cfg.intradaySrAPlusMode === true;
   const smcOn = cfg.intradayGateSmcIct === true || cfg.intradaySmcIctMode === true;
+  const readHold = (key) => {
+    if (!Object.prototype.hasOwnProperty.call(cfg, key)) return null;
+    const v = Number(cfg[key]);
+    if (!Number.isFinite(v) || v < 0) return null;
+    return Math.floor(v);
+  };
   const pick = (...keys) => {
     for (const k of keys) {
-      const v = Number(cfg[k]);
-      if (Number.isFinite(v) && v >= 0) return Math.floor(v);
+      const v = readHold(k);
+      if (v != null) return v;
     }
     return 0;
   };
+  // Liquidity-only: never fall back to SMC/order-flow hold keys (materializer defaults smc to 48).
   if (liqOn && !smcOn) {
-    return Math.max(0, pick("intradayLiqMaxHoldBars", "intradaySmcMaxHoldBars", "intradayOfMaxHoldBars"));
+    const liqHold = readHold("intradayLiqMaxHoldBars");
+    return liqHold != null ? liqHold : 0;
   }
   return Math.max(0, pick("intradaySmcMaxHoldBars", "intradayLiqMaxHoldBars", "intradayOfMaxHoldBars"));
+}
+
+/** Wall-clock ms when the entry order fills (bar close for same-bar, next open otherwise). */
+export function resolveEntryFillTs(fillBarTs, tfMs, sameBarEntry, nextBarTs = null) {
+  const bar = Number(fillBarTs);
+  const step = Number(tfMs);
+  if (!Number.isFinite(bar) || !Number.isFinite(step) || step <= 0) return bar;
+  if (sameBarEntry) return bar + step - 1;
+  const next = nextBarTs != null ? Number(nextBarTs) : NaN;
+  return Number.isFinite(next) ? next : bar + step;
+}
+
+/** Exit fill instant: bracket exits during the exit bar (bar open); flips at next bar open. */
+export function resolveExitFillTs(barTs, tfMs, exitReason, nextBarTs = null) {
+  const bar = Number(barTs);
+  const step = Number(tfMs);
+  if (!Number.isFinite(bar) || !Number.isFinite(step) || step <= 0) return bar;
+  const r = String(exitReason ?? "").toLowerCase();
+  if (r === "flip" || r === "signal_exit" || r === "of_exit") {
+    const next = nextBarTs != null ? Number(nextBarTs) : NaN;
+    return Number.isFinite(next) ? next : bar + step;
+  }
+  return bar;
+}
+
+function persistBracketPrice(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function finalizeTradeRecord(pos, row) {
   return {
     ...row,
+    effectiveLeverage:
+      pos?.effectiveLeverage != null && Number.isFinite(Number(pos.effectiveLeverage))
+        ? Number(pos.effectiveLeverage)
+        : row.effectiveLeverage ?? null,
+    entryBarTs: pos?.entryBarTs ?? row.entryBarTs ?? row.entryTs ?? null,
+    entryFillTs: pos?.entryFillTs ?? row.entryFillTs ?? null,
+    entrySameBar: pos?.entrySameBar ?? row.entrySameBar ?? null,
+    entryMarkPx: pos?.entryMarkPx ?? row.entryMarkPx ?? null,
     entryQuality: pos?.entryQuality ?? null,
     vpSetup: pos?.vpSetup ?? null,
     entryReason: pos?.entryReason ?? null,
+    vpConditionCellKey: pos?.vpConditionCellKey ?? null,
     liqContext: pos?.liqContext ?? null,
     regime: pos?.regime ?? null,
     situation: pos?.situation ?? null,
@@ -98,6 +160,7 @@ function finalizeTradeRecord(pos, row) {
     initialSlPrice: pos?.initialSl ?? null,
     initialRiskUsd: pos?.initialRiskUsd ?? null,
     lossPattern: classifyTrendHtfStTradeOutcome(row),
+    trailEvents: Array.isArray(pos?.trailEvents) ? pos.trailEvents : row.trailEvents ?? [],
   };
 }
 
@@ -119,6 +182,9 @@ export function clampBracketFillToBar(exitPrice, bar) {
  *
  * `RISK_AT_SL` (default): risk `riskPerTrade` % of policy cap at the stop distance,
  * capped by `allowedBudgetUsdt` allotment and `equity × leverage` (live parity).
+ *
+ * `RISK_AT_SL_FULL_MARGIN`: same dollar risk at SL, but margin = full per-trade cap;
+ * `futuresLeverage` is the max leverage — effective leverage varies per trade.
  *
  * `FULL_EQUITY_MARGIN`: use full per-trade margin cap as isolated margin
  * (`qty = marginCap × leverage / entry` on futures).
@@ -175,6 +241,7 @@ function trailNeedsSupertrend(cfg) {
  * @param {number} args.startingUsdt
  * @param {string} args.timeframe
  * @param {Record<string, (bar:any, idx:number, ctx:any)=>Promise<{action:'BUY'|'SELL'|'HOLD',reason:string}|null>|{action:'BUY'|'SELL'|'HOLD',reason:string}|null>} [args.adapters]
+ * @param {{ loader: import("./trailMicroSim.js").TrailMicroBarLoader, tickSize?: number|null }} [args.trailMicro]
  */
 export async function runSimulation(args) {
   const {
@@ -190,6 +257,7 @@ export async function runSimulation(args) {
     timeframe,
     symbol = "",
     adapters = {},
+    trailMicro = null,
   } = args;
 
   let cfg = args.cfg;
@@ -199,6 +267,9 @@ export async function runSimulation(args) {
   } else if (strategyKey === "CRT_TBS" && cfg && typeof cfg === "object") {
     const { resolveCrtTbsCfg } = await import("../../strategy/crtTbsIntraday.js");
     cfg = resolveCrtTbsCfg(cfg);
+  } else if (strategyKey === "SCALP_MR" && cfg && typeof cfg === "object") {
+    const { resolveScalpMrCfg } = await import("../../strategy/scalpMr.js");
+    cfg = resolveScalpMrCfg(cfg);
   } else if (strategyKey === "TOKYO_SESSION" && cfg && typeof cfg === "object") {
     const { resolveTokyoSessionCfg } = await import("../../strategy/tokyoSessionIntraday.js");
     cfg = resolveTokyoSessionCfg(cfg);
@@ -208,6 +279,8 @@ export async function runSimulation(args) {
     typeof cfg === "object"
   ) {
     cfg = normalizeEliteStRunCfg(cfg);
+  } else if (strategyKey === "LIQUIDITY_MAP" && cfg && typeof cfg === "object") {
+    cfg = resolveLiquidityMapRunCfg(cfg, candles);
   }
 
   const cm = resolveCostModel(cfg, costModelOverride);
@@ -427,6 +500,10 @@ export async function runSimulation(args) {
       // Normalize: HOLD / null → no signal
       if (barSignal?.action === "HOLD") barSignal = null;
     }
+    const signalStartMs = Number(cfg?.backtestSignalStartMs ?? 0);
+    if (barSignal && signalStartMs > 0 && Number(bar.ts) < signalStartMs) {
+      barSignal = null;
+    }
 
     // ── Position management ────────────────────────────────────────────────────
     if (pos) {
@@ -434,16 +511,7 @@ export async function runSimulation(args) {
       const adv = adverseExtreme(bar, isLong);
       const fav = isLong ? bar.high : bar.low;
       const liqStages = pos.liqExitStages ?? null;
-      const hitTp1 =
-        (liqStages?.tp1On !== false) &&
-        pos.partialTp &&
-        !pos.partialTaken &&
-        pos.tp1 > 0 &&
-        (isLong ? bar.high >= pos.tp1 : bar.low <= pos.tp1);
-      const hitTP =
-        pos.tp > 0 &&
-        (pos.partialTaken || !pos.partialTp) &&
-        (isLong ? bar.high >= pos.tp : bar.low <= pos.tp);
+      const { hitTp1, hitTp2, hitTP } = resolveLiqRunnerTpHits(pos, bar, isLong, liqStages);
       const hitLiq = isFutures && (isLong ? bar.low <= pos.liqPx : bar.high >= pos.liqPx);
       /** Protective SL sits between entry and liquidation — must win when both are touched. */
       const protectiveSlBeforeLiq =
@@ -469,6 +537,38 @@ export async function runSimulation(args) {
         }
       }
 
+      /**
+       * Chop-only MFE giveback trail: ratchet SL to lock most of peak MFE when the
+       * entry was in a flat prior-window (chop/squeeze). Strong trends skip this so
+       * runners can still reach fixed TP (flat BE@MFE failed that test).
+       */
+      const chopTrail = readChopMfeTrailCfg(cfg);
+      const sideOk =
+        chopTrail.sides === "BOTH" ||
+        chopTrail.sides === pos.side ||
+        (chopTrail.sides === "SELL" && pos.side === "SELL") ||
+        (chopTrail.sides === "BUY" && pos.side === "BUY");
+      if (chopTrail.enabled && pos.regimeChop === true && sideOk && pos.sl > 0) {
+        const feeBuf =
+          Number(cfg?.backtestBreakevenFeeBufferPct) ||
+          (Number(cm.openFeeRate) + Number(cm.closeFeeRate)) * 1.2 ||
+          0.001;
+        const feeBe = liqBreakevenStopPx(pos.entryFill, isLong, feeBuf);
+        const nextSl = computeMfeGivebackSl({
+          isLong,
+          entryPx: pos.entryFill,
+          peakMfePct: pos.mfe,
+          givebackFrac: chopTrail.givebackFrac,
+          activatePct: chopTrail.activatePct,
+          feeBePx: feeBe,
+          prevSl: pos.sl,
+        });
+        if (nextSl != null && (isLong ? nextSl > pos.sl : nextSl < pos.sl)) {
+          pos.sl = nextSl;
+          pos.mfeTrailLocked = true;
+        }
+      }
+
       /** TP1 off + BE on: lock SL to breakeven once price reaches 1R (full size, then aim for TP2). */
       if (pos.liqBeAt1R && !pos.beLocked && liqStages?.beOn !== false && pos.sl > 0) {
         const trigger = Number(pos.liqBeTriggerPx);
@@ -489,6 +589,8 @@ export async function runSimulation(args) {
 
       let exitReason = null;
       let exitPrice = null;
+      let exitFillTsMicro = null;
+      let microTrailHandledSl = false;
       const hitSLAfterBe =
         pos.sl > 0 && (isLong ? bar.low <= pos.sl : bar.high >= pos.sl);
       const flipBeforeSl = cfg?.trendHtfStFlipExitBeforeSl === true;
@@ -532,7 +634,7 @@ export async function runSimulation(args) {
           entryFill: pos.entryFill,
           exitFill: exitFillPartial,
           qty: closeQty,
-          leverage: cm.leverage,
+          leverage: resolvePositionLeverage(pos, cm),
           model: cm,
         });
         const fundingP = isFutures
@@ -544,8 +646,8 @@ export async function runSimulation(args) {
         const marginP =
           pos.marginUsdt != null && Number.isFinite(Number(pos.marginUsdt))
             ? Number(pos.marginUsdt) * frac
-            : isFutures && cm.leverage > 0
-              ? entryNotionalP / cm.leverage
+            : isFutures && resolvePositionLeverage(pos, cm) > 0
+              ? entryNotionalP / resolvePositionLeverage(pos, cm)
               : entryNotionalP;
         trades.push(
           finalizeTradeRecord(pos, {
@@ -554,10 +656,11 @@ export async function runSimulation(args) {
             entryTs: pos.entryTs,
             entryPrice: pos.entryFill,
             exitTs: bar.ts,
+            exitFillTs: resolveExitFillTs(bar.ts, tfMs, "tp1_partial"),
             exitPrice: exitFillPartial,
             qty: closeQty,
-            slPrice: pos.sl,
-            tpPrice: pos.tp1,
+            slPrice: persistBracketPrice(pos.sl),
+            tpPrice: persistBracketPrice(pos.tp1),
             exitReason: "tp1_partial",
             trailStep: pos.trailStep || 0,
             trailTierLabel: pos.trailTierLabel || null,
@@ -595,41 +698,147 @@ export async function runSimulation(args) {
             pos.beLocked = true;
           }
         }
+      } else if (!exitReason && hitTp2) {
+        const initQty = Number(pos.initialQty) > 0 ? Number(pos.initialQty) : pos.qty;
+        const frac = Math.min(0.75, Math.max(0.05, Number(pos.tp2PartialFrac) || 0.25));
+        const closeQty = Math.min(pos.qty, initQty * frac);
+        const rawTp2 = clampBracketFillToBar(pos.tp, bar);
+        const exitFillPartial = applySlippage(isLong ? "SELL" : "BUY", rawTp2, cm.slippagePct);
+        const breakdownP = tradeBreakdown({
+          side: pos.side,
+          entryFill: pos.entryFill,
+          exitFill: exitFillPartial,
+          qty: closeQty,
+          leverage: resolvePositionLeverage(pos, cm),
+          model: cm,
+        });
+        const fundingP = isFutures
+          ? fundingPaidBetween(pos, fundingRates, pos.entryTs, bar.ts) * (closeQty / initQty)
+          : 0;
+        const netPnlP = breakdownP.gross - breakdownP.fees - fundingP;
+        equity += netPnlP;
+        const entryNotionalP = closeQty * pos.entryFill;
+        const marginP =
+          pos.marginUsdt != null && Number.isFinite(Number(pos.marginUsdt))
+            ? Number(pos.marginUsdt) * (closeQty / initQty)
+            : isFutures && resolvePositionLeverage(pos, cm) > 0
+              ? entryNotionalP / resolvePositionLeverage(pos, cm)
+              : entryNotionalP;
+        trades.push(
+          finalizeTradeRecord(pos, {
+            tradeNumber: trades.length + 1,
+            direction: pos.side,
+            entryTs: pos.entryTs,
+            entryPrice: pos.entryFill,
+            exitTs: bar.ts,
+            exitFillTs: resolveExitFillTs(bar.ts, tfMs, "tp2_partial"),
+            exitPrice: exitFillPartial,
+            qty: closeQty,
+            slPrice: persistBracketPrice(pos.sl),
+            tpPrice: persistBracketPrice(pos.tp),
+            exitReason: "tp2_partial",
+            trailStep: pos.trailStep || 0,
+            trailTierLabel: pos.trailTierLabel || null,
+            grossPnl: breakdownP.gross,
+            fees: breakdownP.fees,
+            fundingPaid: fundingP,
+            slippageCost:
+              closeQty *
+              (Math.abs(pos.entryFill * cm.slippagePct) + Math.abs(exitFillPartial * cm.slippagePct)),
+            netPnl: netPnlP,
+            maePct: pos.mae,
+            mfePct: pos.mfe,
+            barsHeld: i - pos.entryIdx,
+            intelScoreAtEntry: pos.intelAtEntry,
+            gateAction: pos.gateAction,
+            equityAtEntry: pos.entryEquity ?? equity - netPnlP,
+            marginUsdt: marginP,
+            leverageCapped: pos.leverageCapped === true,
+            allotmentCapped: pos.allotmentCapped === true,
+            marginCapUsdt: pos.marginCapUsdt,
+            allowedPoolUsdt: pos.allowedPoolUsdt,
+          }),
+        );
+        pos.qty -= closeQty;
+        pos.tp2PartialTaken = true;
       } else if (!exitReason && hitTP) {
         exitReason = pos.partialTaken ? "tp2" : "tp";
         exitPrice = pos.tp;
       }
 
-      if (!exitReason && trailEnabled) {
+      /**
+       * Partial-runner gate: trail after TP1 partial, or after TP2 partial when ladder mode is on.
+       */
+      const trailAfterTp2 = resolveTrailOnlyAfterTp2Fill(cfg);
+      const trailGateOk = !(
+        (trailAfterTp2 && !pos.tp2PartialTaken) ||
+        (cfg?.trailOnlyAfterPartialFill === true &&
+          pos.partialTp === true &&
+          pos.partialTaken !== true &&
+          !trailAfterTp2)
+      );
+      if (!exitReason && trailEnabled && trailGateOk) {
         const stBar = stSeries ? stSeries[i] : null;
         const atrInfo = atrSeries[i];
         const atrPct =
           atrInfo && Number.isFinite(atrInfo.atr) && bar.close > 0 ? atrInfo.atr / bar.close : null;
-        const trailOpts = pos.trailOpts || resolveTrailingOpts(cfg, cm, atrPct);
-        const advRes = advanceTrailForBar({
-          pos,
-          bar,
-          stBar,
-          opts: trailOpts,
-          mode: futuresTrailMode,
-          leverage: cm.leverage,
-        });
-        if (advRes.advanced && advRes.proposedSl != null) {
-          pos.sl = advRes.proposedSl;
-          pos.trailStep = advRes.trailStep;
-          pos.trailTierLabel = advRes.tierLabel;
-          const breached = isLong ? bar.low <= pos.sl : bar.high >= pos.sl;
-          if (breached) {
-            exitReason = "trail";
-            exitPrice = pos.sl;
+        let trailOpts = pos.trailOpts || resolveTrailingOpts(cfg, cm, atrPct);
+        const microTick = trailMicro?.tickSize ?? trailOpts.tickSize ?? null;
+        if (microTick != null && trailOpts.tickSize == null) {
+          trailOpts = { ...trailOpts, tickSize: microTick };
+        }
+        pos.trailOpts = trailOpts;
+        const tickSize = microTick ?? trailOpts.tickSize ?? null;
+        const microTfMs = trailMicro?.loader?.microTfMs ?? 60_000;
+
+        if (trailMicro?.loader) {
+          const microBars = await trailMicro.loader.barsForParentBar(
+            bar.ts,
+            tfMs,
+            pos.entryFillTs ?? pos.entryTs,
+          );
+          if (microBars.length > 0) {
+            microTrailHandledSl = true;
+            const sim = simulateTrailingForParentBar({
+              pos,
+              parentBar: bar,
+              microBars,
+              stBar,
+              opts: trailOpts,
+              mode: futuresTrailMode,
+              leverage: resolvePositionLeverage(pos, cm),
+              tickSize,
+              microTfMs,
+            });
+            if (sim.exit) {
+              exitReason = sim.exit.reason;
+              exitPrice = sim.exit.price;
+              if (sim.exit.ts != null && Number.isFinite(Number(sim.exit.ts))) {
+                exitFillTsMicro = Number(sim.exit.ts);
+              }
+            }
           }
-        } else if (advRes.trailStep != null) {
-          pos.trailStep = advRes.trailStep;
+        }
+
+        if (!exitReason && !microTrailHandledSl) {
+          const sim = simulateTrailingSingleBar({
+            pos,
+            bar,
+            stBar,
+            opts: trailOpts,
+            mode: futuresTrailMode,
+            leverage: resolvePositionLeverage(pos, cm),
+            tickSize,
+          });
+          if (sim.exit) {
+            exitReason = sim.exit.reason;
+            exitPrice = sim.exit.price;
+          }
         }
       }
 
-      if (!exitReason && hitSLAfterBe) {
-        exitReason = pos.beLocked ? "be" : "sl";
+      if (!exitReason && hitSLAfterBe && !microTrailHandledSl) {
+        exitReason = pos.beLocked ? "be" : pos.mfeTrailLocked ? "mfe_trail" : "sl";
         exitPrice = pos.sl;
       }
 
@@ -674,6 +883,46 @@ export async function runSimulation(args) {
       }
 
       /**
+       * LIQUIDITY_MAP dead-trade risk compression.
+       *
+       * The trade-level audit showed most drag comes from setups that never even
+       * reach a small fraction of 1R, then sit until `time_stop` or full SL. A
+       * market exit was too blunt: slow trades often recover. Instead, compress
+       * remaining risk by moving the structural stop closer once the trade has
+       * failed to prove itself. It is gated to pre-TP1 positions so runners that
+       * already proved themselves are still allowed to trail.
+       */
+      const deadTradeBars = Math.max(0, Math.floor(Number(cfg?.liqMapDeadTradeExitBars ?? 0)));
+      const deadTradeMinMfeR = Math.max(0, Number(cfg?.liqMapDeadTradeMinMfeR ?? 0));
+      const deadTradeMaxLossR = Math.max(0, Number(cfg?.liqMapDeadTradeMaxLossR ?? 0.55));
+      if (
+        !exitReason &&
+        strategyKey === "LIQUIDITY_MAP" &&
+        deadTradeBars > 0 &&
+        deadTradeMinMfeR > 0 &&
+        deadTradeMaxLossR > 0 &&
+        pos.deadTradeTightened !== true &&
+        pos.partialTaken !== true &&
+        i - pos.entryIdx >= deadTradeBars
+      ) {
+        const initialRiskFrac =
+          Number(pos.initialSl) > 0 && Number(pos.entryFill) > 0
+            ? Math.abs(Number(pos.entryFill) - Number(pos.initialSl)) / Number(pos.entryFill)
+            : 0;
+        const mfeR = initialRiskFrac > 0 ? Number(pos.mfe) / initialRiskFrac : 0;
+        if (mfeR < deadTradeMinMfeR) {
+          const riskPx = Math.abs(Number(pos.entryFill) - Number(pos.initialSl));
+          const compressedSl = isLong
+            ? Number(pos.entryFill) - deadTradeMaxLossR * riskPx
+            : Number(pos.entryFill) + deadTradeMaxLossR * riskPx;
+          if (compressedSl > 0 && (isLong ? compressedSl > pos.sl : compressedSl < pos.sl)) {
+            pos.sl = compressedSl;
+            pos.deadTradeTightened = true;
+          }
+        }
+      }
+
+      /**
        * Intraday time stop (lowest priority — only if no SL/TP/trail/flip fired this
        * bar). Forces intraday trades to close within a bounded horizon so a single
        * runner can't ride for weeks and starve every subsequent setup.
@@ -696,7 +945,7 @@ export async function runSimulation(args) {
           entryFill: pos.entryFill,
           exitFill,
           qty: pos.qty,
-          leverage: cm.leverage,
+          leverage: resolvePositionLeverage(pos, cm),
           model: cm,
         });
         const fundingPaid = isFutures
@@ -711,8 +960,8 @@ export async function runSimulation(args) {
         const marginUsdt =
           pos.marginUsdt != null && Number.isFinite(Number(pos.marginUsdt))
             ? Number(pos.marginUsdt)
-            : isFutures && cm.leverage > 0
-              ? entryNotional / cm.leverage
+            : isFutures && resolvePositionLeverage(pos, cm) > 0
+              ? entryNotional / resolvePositionLeverage(pos, cm)
               : entryNotional;
         trades.push(
           finalizeTradeRecord(pos, {
@@ -721,10 +970,12 @@ export async function runSimulation(args) {
             entryTs: pos.entryTs,
             entryPrice: pos.entryFill,
             exitTs: bar.ts,
+            exitFillTs:
+              exitFillTsMicro ?? resolveExitFillTs(bar.ts, tfMs, exitReason, candles[i + 1]?.ts),
             exitPrice: exitFill,
             qty: pos.qty,
-            slPrice: pos.sl,
-            tpPrice: pos.tp,
+            slPrice: persistBracketPrice(pos.sl),
+            tpPrice: persistBracketPrice(pos.tp),
             exitReason,
             trailStep: pos.trailStep || 0,
             trailTierLabel: pos.trailTierLabel || null,
@@ -817,7 +1068,7 @@ export async function runSimulation(args) {
           let tcl = 0;
           let lastExitTs = 0;
           for (let k = trades.length - 1; k >= 0; k--) {
-            if (trades[k].exitReason === "tp1_partial") continue; // partial leg is not a distinct outcome
+            if (trades[k].exitReason === "tp1_partial" || trades[k].exitReason === "tp2_partial") continue;
             if (Number(trades[k].netPnl ?? 0) < 0) {
               if (!lastExitTs) lastExitTs = Number(trades[k].exitTs ?? 0);
               tcl++;
@@ -1017,6 +1268,9 @@ export async function runSimulation(args) {
         continue;
       }
 
+      const slLegsOn = bracketSlLegsEnabled(cfg, barSignal);
+      const tpLegsOn = bracketTpLegsEnabled(cfg, barSignal);
+
       const next = candles[i + 1];
       /** Fib signals fire at bar close in live — optional same-bar fill (default on when fib brackets set). */
       const fibSameBarEntry =
@@ -1030,10 +1284,22 @@ export async function runSimulation(args) {
         strategyKey === SUPERTREND_ELITE_KEY || strategyKey === "UNIFIED_ELITE";
       const fillBar =
         fibSameBarEntry || liqSameBarEntry || ofSameBarEntry || eliteSameBarEntry ? bar : next;
-      const fillPx =
-        !ofSameBarEntry && barSignal?.ofBrackets?.slPct > 0 && next
+      let fillPx =
+        !(fibSameBarEntry || liqSameBarEntry || ofSameBarEntry || eliteSameBarEntry) && next
           ? next.open
           : fillBar.close;
+      const liqLimitEntryPx = Number(barSignal?.liqBrackets?.limitEntryPrice ?? barSignal?.liqBrackets?.entryPrice);
+      if (
+        liqSameBarEntry &&
+        Number.isFinite(liqLimitEntryPx) &&
+        liqLimitEntryPx > 0 &&
+        fillBar &&
+        Number(fillBar.low) <= liqLimitEntryPx &&
+        liqLimitEntryPx <= Number(fillBar.high)
+      ) {
+        fillPx = liqLimitEntryPx;
+      }
+      const entryMarkPx = Number(fillPx);
       const entryFill = applySlippage(barSignal.action, fillPx, cm.slippagePct);
       const atrInfoEntry = atrSeries[i];
       const atrPctEntry =
@@ -1042,32 +1308,35 @@ export async function runSimulation(args) {
           : null;
       let stopPct = computeStopPct({
         cfg,
-        fixedSlPct: bracketSlOn ? fixedSlPct : 0,
+        fixedSlPct: slLegsOn ? fixedSlPct : 0,
         isFutures,
         atrPct: atrPctEntry,
-        allowFallback: bracketSlOn,
+        allowFallback: slLegsOn,
       });
-      let tpPct = bracketTpOn ? fixedTpPct : 0;
+      let tpPct = tpLegsOn ? fixedTpPct : 0;
       if (entryQuality?.brackets && isTrendHtfStRegimeGateEnabled(cfg)) {
-        if (bracketSlOn) stopPct = entryQuality.brackets.slPct;
-        if (bracketTpOn) tpPct = entryQuality.brackets.tpPct;
+        if (slLegsOn) stopPct = entryQuality.brackets.slPct;
+        if (tpLegsOn) tpPct = entryQuality.brackets.tpPct;
       }
       if (barSignal?.vpBrackets?.slPct > 0 && cfg.intradayVpBrackets === true) {
-        if (bracketSlOn) stopPct = barSignal.vpBrackets.slPct;
-        if (bracketTpOn) tpPct = barSignal.vpBrackets.tpPct ?? tpPct;
+        if (slLegsOn) stopPct = barSignal.vpBrackets.slPct;
+        // Live parity: VP structure TP only when panel fixed-TP is On.
+        if (tpLegsOn && fixedBracketTpEnabled(cfg)) {
+          tpPct = barSignal.vpBrackets.tpPct ?? tpPct;
+        }
       }
       let fibStructureSl = null;
       let fibStructureTp = null;
       if (barSignal?.fibBrackets?.slPct > 0) {
         const fibBr = resolveFibEntryBrackets(cfg, barSignal, entryFill, barSignal.action);
         if (fibBr) {
-          if (bracketSlOn) stopPct = fibBr.slPct;
-          if (bracketTpOn) tpPct = fibBr.tpPct ?? tpPct;
-          if (bracketSlOn && fibBr.slPrice > 0) fibStructureSl = fibBr.slPrice;
-          if (bracketTpOn && fibBr.tpPrice > 0) fibStructureTp = fibBr.tpPrice;
+          if (slLegsOn) stopPct = fibBr.slPct;
+          if (tpLegsOn) tpPct = fibBr.tpPct ?? tpPct;
+          if (slLegsOn && fibBr.slPrice > 0) fibStructureSl = fibBr.slPrice;
+          if (tpLegsOn && fibBr.tpPrice > 0) fibStructureTp = fibBr.tpPrice;
         } else {
-          if (bracketSlOn) stopPct = barSignal.fibBrackets.slPct;
-          if (bracketTpOn) tpPct = barSignal.fibBrackets.tpPct ?? tpPct;
+          if (slLegsOn) stopPct = barSignal.fibBrackets.slPct;
+          if (tpLegsOn) tpPct = barSignal.fibBrackets.tpPct ?? tpPct;
         }
       }
       let liqStructureSl = null;
@@ -1075,61 +1344,64 @@ export async function runSimulation(args) {
       let liqStructureTp1 = null;
       let liqPartial = false;
       let liqPartialFrac = 0.5;
+      let liqTp2PartialFrac = 0;
       let liqExitStages = null;
       let liqBeAt1R = false;
       let liqBeTriggerPx = 0;
       if (barSignal?.ofBrackets?.slPct > 0) {
         const ofBr = resolveOrderFlowEntryBrackets(cfg, barSignal, entryFill, barSignal.action);
         if (ofBr) {
-          if (bracketSlOn) stopPct = ofBr.slPct;
-          if (bracketTpOn) tpPct = ofBr.tp2Pct ?? tpPct;
+          if (slLegsOn) stopPct = ofBr.slPct;
+          if (tpLegsOn) tpPct = ofBr.tp2Pct ?? tpPct;
           const legs = mapOrderFlowEntryLegs(ofBr, cfg);
           if (legs) {
-            if (bracketSlOn) liqStructureSl = legs.slPrice;
-            if (bracketTpOn) {
+            if (slLegsOn) liqStructureSl = legs.slPrice;
+            if (tpLegsOn) {
               liqStructureTp = legs.tp;
               liqStructureTp1 = legs.tp1;
               liqPartial = legs.partialTp;
               liqPartialFrac = legs.partialFrac;
+              liqTp2PartialFrac = legs.tp2PartialFrac ?? 0;
               liqExitStages = legs.stages;
               liqBeAt1R = legs.beAt1R;
               liqBeTriggerPx = legs.beTriggerPx;
             }
           }
-        } else if (bracketSlOn) {
+        } else if (slLegsOn) {
           stopPct = barSignal.ofBrackets.slPct;
-          if (bracketTpOn) tpPct = barSignal.ofBrackets.tp2Pct ?? barSignal.ofBrackets.tpPct ?? tpPct;
+          if (tpLegsOn) tpPct = barSignal.ofBrackets.tp2Pct ?? barSignal.ofBrackets.tpPct ?? tpPct;
         }
       } else if (barSignal?.liqBrackets?.slPct > 0) {
         const liqBr = resolveLiquidityEntryBrackets(cfg, barSignal, entryFill, barSignal.action);
         if (liqBr) {
-          if (bracketSlOn) stopPct = liqBr.slPct;
-          if (bracketTpOn) tpPct = liqBr.tpPct ?? tpPct;
+          if (slLegsOn) stopPct = liqBr.slPct;
+          if (tpLegsOn) tpPct = liqBr.tpPct ?? tpPct;
           const legs = mapLiquidityEntryLegs(liqBr, cfg);
           if (legs) {
-            if (bracketSlOn) liqStructureSl = legs.slPrice;
-            if (bracketTpOn) {
+            if (slLegsOn) liqStructureSl = legs.slPrice;
+            if (tpLegsOn) {
               liqStructureTp = legs.tp;
               liqStructureTp1 = legs.tp1;
               liqPartial = legs.partialTp;
               liqPartialFrac = legs.partialFrac;
+              liqTp2PartialFrac = legs.tp2PartialFrac ?? 0;
               liqExitStages = legs.stages;
               liqBeAt1R = legs.beAt1R;
               liqBeTriggerPx = legs.beTriggerPx;
             }
           }
         } else {
-          if (bracketSlOn) stopPct = barSignal.liqBrackets.slPct;
-          if (bracketTpOn) tpPct = barSignal.liqBrackets.tpPct ?? tpPct;
+          if (slLegsOn) stopPct = barSignal.liqBrackets.slPct;
+          if (tpLegsOn) tpPct = barSignal.liqBrackets.tpPct ?? tpPct;
         }
       }
-      if (!bracketSlOn) {
+      if (!slLegsOn) {
         stopPct = 0;
         fibStructureSl = null;
         liqStructureSl = null;
         liqBeAt1R = false;
       }
-      if (!bracketTpOn) {
+      if (!tpLegsOn) {
         tpPct = 0;
         fibStructureTp = null;
         liqStructureTp = null;
@@ -1173,7 +1445,9 @@ export async function runSimulation(args) {
       const sizeMultFinal = sizeMult * riskMult;
       const openMarginUsdt =
         pos && String(pos.symbol || symbol).toUpperCase() === String(symbol || cfg?.symbol || "").toUpperCase()
-          ? (Math.abs(pos.qty) * pos.entryFill) / Math.max(1, cm.leverage)
+          ? Number(pos.marginUsdt) > 0
+            ? Number(pos.marginUsdt)
+            : (Math.abs(pos.qty) * pos.entryFill) / Math.max(1, resolvePositionLeverage(pos, cm))
           : 0;
       const sizing = computeEntryQtyDetailed({
         equity,
@@ -1187,8 +1461,9 @@ export async function runSimulation(args) {
         openMarginUsdt,
       });
       const qty = sizing.qty;
+      const entryLev = sizing.effectiveLeverage ?? cm.leverage;
       const liqPx = isFutures
-        ? liquidationPrice({ side: barSignal.action, entryFill, leverage: cm.leverage })
+        ? liquidationPrice({ side: barSignal.action, entryFill, leverage: entryLev })
         : barSignal.action === "BUY"
           ? 0
           : Infinity;
@@ -1199,21 +1474,36 @@ export async function runSimulation(args) {
           : null);
       const sameBarEntry =
         fibSameBarEntry || liqSameBarEntry || ofSameBarEntry || eliteSameBarEntry;
+      const entryBarTs = fillBar.ts;
+      const entryFillTs = resolveEntryFillTs(entryBarTs, tfMs, sameBarEntry, next?.ts);
       pos = {
         side: barSignal.action,
         symbol: String(symbol || cfg?.symbol || ""),
         entryFill,
-        entryTs: fillBar.ts,
+        entryTs: entryBarTs,
+        entryBarTs,
+        entryFillTs,
+        entrySameBar: sameBarEntry,
+        entryMarkPx: Number.isFinite(entryMarkPx) ? entryMarkPx : null,
         entryIdx: sameBarEntry ? i : i + 1,
         qty,
         sl,
         tp,
         trailStep: 0,
+        trailEvents: [],
         extremePx: entryFill,
         trailTierLabel: null,
-        trailOpts: trailEnabled ? resolveTrailingOpts(cfg, cm, atrPctEntry) : null,
+        trailOpts: trailEnabled
+          ? {
+              ...resolveTrailingOpts(cfg, cm, atrPctEntry),
+              ...(barSignal?.liqBrackets?.trailOverrides && typeof barSignal.liqBrackets.trailOverrides === "object"
+                ? barSignal.liqBrackets.trailOverrides
+                : {}),
+            }
+          : null,
         entryEquity: equity,
         marginUsdt: sizing.marginUsdt,
+        effectiveLeverage: sizing.effectiveLeverage ?? cm.leverage,
         leverageCapped: sizing.leverageCapped,
         allotmentCapped: sizing.allotmentCapped,
         marginCapUsdt: sizing.marginCapUsdt,
@@ -1234,9 +1524,18 @@ export async function runSimulation(args) {
         mfe: 0,
         liqPx,
         beLocked: false,
+        mfeTrailLocked: false,
+        regimeChop: (() => {
+          const chopTrail = readChopMfeTrailCfg(cfg);
+          if (!chopTrail.enabled) return false;
+          // Use signal bar index for prior window (fill may be next open).
+          const prior = priorReturnByMs(candles, i, chopTrail.priorMs);
+          return isChopPriorReturn(prior, chopTrail.priorAbsMax);
+        })(),
         entryQuality,
         vpSetup,
         entryReason: barSignal.reason ?? null,
+        vpConditionCellKey: barSignal.vpConditionCellKey ?? null,
         liqContext: barSignal?.liqBrackets
           ? {
               levelType: barSignal.liqBrackets.levelType,
@@ -1244,18 +1543,28 @@ export async function runSimulation(args) {
               sweepWick: barSignal.liqBrackets.sweepWick,
               opposingLevel: barSignal.liqBrackets.opposingLevel,
               liqQuality: barSignal.liqBrackets.liqQuality,
+              weightedQuality: barSignal.liqBrackets.weightedQuality ?? barSignal.liqBrackets.liqQuality,
               rr: barSignal.liqBrackets.rr,
               partialTp: liqPartial,
               tp1Price: liqStructureTp1 > 0 ? liqStructureTp1 : null,
+              entryContextScore: barSignal.liqBrackets.entryContextScore ?? null,
+              entryContextBreakdown: barSignal.liqBrackets.entryContextBreakdown ?? null,
+              features: barSignal.liqBrackets.liqFeatures ?? null,
+              levelImportance: barSignal.liqBrackets.levelImportance ?? null,
+              levelSource: barSignal.liqBrackets.levelSource ?? null,
               smcMeta: barSignal.smcMeta ?? null,
               techniques: barSignal.techniques ?? null,
               tokyoMeta: barSignal.liqBrackets.tokyoMeta ?? null,
+              dynamicExitPolicy: barSignal.liqBrackets.mapMeta?.dynamicExitPolicy ?? null,
             }
           : null,
         partialTp: liqPartial,
         tp1: liqStructureTp1 ?? 0,
         partialFrac: liqPartialFrac,
+        tp2PartialFrac: liqTp2PartialFrac,
+        initialQty: qty,
         partialTaken: false,
+        tp2PartialTaken: false,
         liqExitStages,
         liqBeAt1R,
         liqBeTriggerPx,
@@ -1281,7 +1590,7 @@ export async function runSimulation(args) {
       entryFill: pos.entryFill,
       exitFill,
       qty: pos.qty,
-      leverage: cm.leverage,
+      leverage: resolvePositionLeverage(pos, cm),
       model: cm,
     });
     const fundingPaid = cm.isFutures
@@ -1293,8 +1602,8 @@ export async function runSimulation(args) {
     const marginUsdtEnd =
       pos.marginUsdt != null && Number.isFinite(Number(pos.marginUsdt))
         ? Number(pos.marginUsdt)
-        : cm.isFutures && cm.leverage > 0
-          ? entryNotionalEnd / cm.leverage
+        : cm.isFutures && resolvePositionLeverage(pos, cm) > 0
+          ? entryNotionalEnd / resolvePositionLeverage(pos, cm)
           : entryNotionalEnd;
     trades.push(
       finalizeTradeRecord(pos, {
@@ -1303,10 +1612,11 @@ export async function runSimulation(args) {
         entryTs: pos.entryTs,
         entryPrice: pos.entryFill,
         exitTs: last.ts,
+        exitFillTs: resolveEntryFillTs(last.ts, tfMs, true),
         exitPrice: exitFill,
         qty: pos.qty,
-        slPrice: pos.sl,
-        tpPrice: pos.tp,
+        slPrice: persistBracketPrice(pos.sl),
+        tpPrice: persistBracketPrice(pos.tp),
         exitReason: "session_end",
         trailStep: pos.trailStep || 0,
         trailTierLabel: pos.trailTierLabel || null,
@@ -1418,6 +1728,10 @@ function finalizeGateReplay(stats) {
 }
 
 function computeStopPct({ cfg, fixedSlPct, isFutures, atrPct, allowFallback = true }) {
+  if (resolveTrailSizingMode(cfg) === "DYNAMIC") {
+    const dynSl = computeDynamicInitialSlPct({ entryAtrPct: atrPct, cfg });
+    if (dynSl != null && dynSl > 0) return dynSl;
+  }
   // ATR-based dynamic SL: slAtrMultiplier × ATR% of price (e.g. 3 × 0.1% ATR = 0.3% SL).
   // Only used when slAtrMultiplier > 0 AND we have a valid ATR reading.
   const atrMult = Number(cfg?.slAtrMultiplier ?? 0);

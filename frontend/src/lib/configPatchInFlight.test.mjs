@@ -26,6 +26,16 @@ test("pruneDraftBotPatchAcked removes acked keys only", () => {
   assert.equal(next.manualStrategy, "SUPERTREND_ELITE");
 });
 
+test("composeViewBotFromLiveAndDraft: strategy-save guard reverts stale WS config", () => {
+  noteStrategySaveWsAckGuard({ manualStrategy: "SUPERTREND_ELITE", strategyMode: "MANUAL" });
+  const view = composeViewBotFromLiveAndDraft(
+    { manualStrategy: "EMA_CROSS", strategyMode: "AUTO" },
+    {},
+  );
+  assert.equal(view.manualStrategy, "SUPERTREND_ELITE");
+  assert.equal(view.strategyMode, "MANUAL");
+});
+
 test("composeViewBotFromLiveAndDraft: draft wins over strategy-save WS ack guard", () => {
   noteStrategySaveWsAckGuard({ manualStrategy: "SUPERTREND_ELITE", strategyMode: "MANUAL" });
   const view = composeViewBotFromLiveAndDraft(

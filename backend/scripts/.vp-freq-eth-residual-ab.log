@@ -1,0 +1,37 @@
+
+=== ETH residual bleed one-change A/B ===
+
+--- full ---
+  v2_locked                  N=194 ret=  307.2% DD=33.5% Calmar=0.73
+    years: 2019-20=-16.7%/14  2020-21=3.9%/38  2021-22=-10.6%/31  2022-23=32.0%/31  2023-24=29.7%/13  2024-25=26.7%/35  2025-26=142.5%/32
+  v3_drop_bullchop_vac       N=175 ret=  250.1% DD=26.6% Calmar=0.81
+    years: 2019-20=-6.0%/7  2020-21=1.8%/37  2021-22=-5.3%/26  2022-23=-6.2%/26  2023-24=29.7%/13  2024-25=26.7%/35  2025-26=150.9%/31
+  v4_drop_buy_bull_struct    N=170 ret=  273.3% DD=34.9% Calmar=0.65
+    years: 2019-20=-19.3%/13  2020-21=6.5%/33  2021-22=-18.8%/28  2022-23=39.3%/27  2023-24=32.7%/10  2024-25=26.7%/31  2025-26=128.2%/28
+
+--- y19_20 ---
+  v2_locked                  N= 14 ret=  -16.7% DD=19.3% Calmar=-1.85
+  v3_drop_bullchop_vac       N=  7 ret=   -6.0% DD=9.0% Calmar=-1.54
+  v4_drop_buy_bull_struct    N= 13 ret=  -19.3% DD=19.3% Calmar=-2.10
+
+--- y20_21 ---
+  v2_locked                  N= 37 ret=    6.9% DD=24.6% Calmar=0.27
+  v3_drop_bullchop_vac       N= 35 ret=   -1.3% DD=28.2% Calmar=-0.04
+  v4_drop_buy_bull_struct    N= 35 ret=    6.2% DD=25.1% Calmar=0.23
+
+--- y21_22 ---
+  v2_locked                  N= 29 ret=  -14.2% DD=28.3% Calmar=-0.48
+  v3_drop_bullchop_vac       N= 23 ret=  -13.5% DD=18.6% Calmar=-0.69
+  v4_drop_buy_bull_struct    N= 26 ret=  -22.1% DD=34.9% Calmar=-0.60
+
+--- y22_23 ---
+  v2_locked                  N= 28 ret=   32.2% DD=12.5% Calmar=2.43
+  v3_drop_bullchop_vac       N= 23 ret=   -6.0% DD=12.5% Calmar=-0.46
+  v4_drop_buy_bull_struct    N= 24 ret=   39.5% DD=8.3% Calmar=4.48
+
+--- y25_26 ---
+  v2_locked                  N= 32 ret=  142.5% DD=8.7% Calmar=15.14
+  v3_drop_bullchop_vac       N= 31 ret=  150.9% DD=6.1% Calmar=22.89
+  v4_drop_buy_bull_struct    N= 30 ret=  142.2% DD=8.7% Calmar=15.11
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-residual-ab.json

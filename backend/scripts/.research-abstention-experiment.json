@@ -1,0 +1,532 @@
+{
+  "generatedAt": "2026-07-11T17:34:39.132Z",
+  "from": "2025-01-01",
+  "to": "2026-06-01",
+  "holdoutFrom": "2026-01-23",
+  "riskPct": 5,
+  "experiments": [
+    {
+      "strategy": "SUPERTREND_ELITE",
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "BNBUSDT",
+        "LINKUSDT",
+        "XRPUSDT"
+      ],
+      "trades": 69,
+      "coverage": {
+        "n": 69,
+        "fundingPct": 100,
+        "bybitOiPct": 100
+      },
+      "full": {
+        "baseline": {
+          "tradesTotal": 69,
+          "kept": 69,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.07090244171134835,
+          "expRSkipped": 0,
+          "returnPct": 24.24473904191884,
+          "maxDdPct": 16.473136022974764,
+          "skippedWorse": true,
+          "beatsBaseline": null
+        },
+        "fund_z1": {
+          "tradesTotal": 69,
+          "kept": 62,
+          "skipped": 7,
+          "skipPct": 10.144927536231885,
+          "expRKept": 0.04890391537230685,
+          "expRSkipped": 0.26574653214285876,
+          "returnPct": 13.586458716164834,
+          "maxDdPct": 17.09969191138242,
+          "skippedWorse": false,
+          "beatsBaseline": false
+        },
+        "fund_z15": {
+          "tradesTotal": 69,
+          "kept": 67,
+          "skipped": 2,
+          "skipPct": 2.898550724637681,
+          "expRKept": 0.0774972907176571,
+          "expRSkipped": -0.15002499999999502,
+          "returnPct": 26.129905781066228,
+          "maxDdPct": 16.473136022974742,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        },
+        "fund_z2": {
+          "tradesTotal": 69,
+          "kept": 68,
+          "skipped": 1,
+          "skipPct": 1.4492753623188406,
+          "expRKept": 0.07415137467769167,
+          "expRSkipped": -0.15002499999999822,
+          "returnPct": 25.183773825326046,
+          "maxDdPct": 16.473136022974757,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        },
+        "fund_rate_long": {
+          "tradesTotal": 69,
+          "kept": 69,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.07090244171134835,
+          "expRSkipped": 0,
+          "returnPct": 24.24473904191884,
+          "maxDdPct": 16.473136022974764,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "bybit_oi_drop3": {
+          "tradesTotal": 69,
+          "kept": 66,
+          "skipped": 3,
+          "skipPct": 4.3478260869565215,
+          "expRKept": 0.08974299436489429,
+          "expRSkipped": -0.3435897166666626,
+          "returnPct": 31.04573121963189,
+          "maxDdPct": 11.38215021756287,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        },
+        "weak_long_oi": {
+          "tradesTotal": 69,
+          "kept": 69,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.07090244171134835,
+          "expRSkipped": 0,
+          "returnPct": 24.24473904191884,
+          "maxDdPct": 16.473136022974764,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "weak_short_oi": {
+          "tradesTotal": 69,
+          "kept": 64,
+          "skipped": 5,
+          "skipPct": 7.246376811594203,
+          "expRKept": 0.11284356059504716,
+          "expRSkipped": -0.46594387999999637,
+          "returnPct": 40.08345613875958,
+          "maxDdPct": 10.97426053893273,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        },
+        "lsr_long_crowd": {
+          "tradesTotal": 69,
+          "kept": 69,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.07090244171134835,
+          "expRSkipped": 0,
+          "returnPct": 24.24473904191884,
+          "maxDdPct": 16.473136022974764,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "combo_fund_oi": {
+          "tradesTotal": 69,
+          "kept": 64,
+          "skipped": 5,
+          "skipPct": 7.246376811594203,
+          "expRKept": 0.0972357441887971,
+          "expRSkipped": -0.26616382999999555,
+          "returnPct": 33.03408948499995,
+          "maxDdPct": 11.382150217562879,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        }
+      },
+      "holdout": {
+        "baseline": {
+          "tradesTotal": 23,
+          "kept": 23,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.054731645786215186,
+          "expRSkipped": 0,
+          "returnPct": 6.314063185154155,
+          "maxDdPct": 2.460659994133217,
+          "skippedWorse": true,
+          "beatsBaseline": null
+        },
+        "fund_z1": {
+          "tradesTotal": 23,
+          "kept": 22,
+          "skipped": 1,
+          "skipPct": 4.3478260869565215,
+          "expRKept": 0.06403649332195217,
+          "expRSkipped": -0.14997499999999847,
+          "returnPct": 7.117309106818957,
+          "maxDdPct": 2.2028980067330317,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        },
+        "fund_z15": {
+          "tradesTotal": 23,
+          "kept": 23,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.054731645786215186,
+          "expRSkipped": 0,
+          "returnPct": 6.314063185154155,
+          "maxDdPct": 2.460659994133217,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "fund_z2": {
+          "tradesTotal": 23,
+          "kept": 23,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.054731645786215186,
+          "expRSkipped": 0,
+          "returnPct": 6.314063185154155,
+          "maxDdPct": 2.460659994133217,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "fund_rate_long": {
+          "tradesTotal": 23,
+          "kept": 23,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.054731645786215186,
+          "expRSkipped": 0,
+          "returnPct": 6.314063185154155,
+          "maxDdPct": 2.460659994133217,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "bybit_oi_drop3": {
+          "tradesTotal": 23,
+          "kept": 23,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.054731645786215186,
+          "expRSkipped": 0,
+          "returnPct": 6.314063185154155,
+          "maxDdPct": 2.460659994133217,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "weak_long_oi": {
+          "tradesTotal": 23,
+          "kept": 23,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.054731645786215186,
+          "expRSkipped": 0,
+          "returnPct": 6.314063185154155,
+          "maxDdPct": 2.460659994133217,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "weak_short_oi": {
+          "tradesTotal": 23,
+          "kept": 23,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.054731645786215186,
+          "expRSkipped": 0,
+          "returnPct": 6.314063185154155,
+          "maxDdPct": 2.460659994133217,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "lsr_long_crowd": {
+          "tradesTotal": 23,
+          "kept": 23,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.054731645786215186,
+          "expRSkipped": 0,
+          "returnPct": 6.314063185154155,
+          "maxDdPct": 2.460659994133217,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "combo_fund_oi": {
+          "tradesTotal": 23,
+          "kept": 23,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.054731645786215186,
+          "expRSkipped": 0,
+          "returnPct": 6.314063185154155,
+          "maxDdPct": 2.460659994133217,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        }
+      },
+      "winners": [
+        "fund_z1"
+      ]
+    },
+    {
+      "strategy": "LIQ_SWEEP (candidate harvest)",
+      "symbols": [
+        "CSV"
+      ],
+      "trades": 1108,
+      "coverage": {
+        "n": 1108,
+        "fundingPct": 100,
+        "bybitOiPct": 100
+      },
+      "full": {
+        "baseline": {
+          "tradesTotal": 1108,
+          "kept": 1108,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.04535036101083024,
+          "expRSkipped": 0,
+          "returnPct": -97.87992117829258,
+          "maxDdPct": 99.98445493616428,
+          "skippedWorse": true,
+          "beatsBaseline": null
+        },
+        "fund_z1": {
+          "tradesTotal": 1108,
+          "kept": 1002,
+          "skipped": 106,
+          "skipPct": 9.566787003610107,
+          "expRKept": 0.06050329341317355,
+          "expRSkipped": -0.0978877358490566,
+          "returnPct": -93.61705400903637,
+          "maxDdPct": 99.96153976350682,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        },
+        "fund_z15": {
+          "tradesTotal": 1108,
+          "kept": 1073,
+          "skipped": 35,
+          "skipPct": 3.15884476534296,
+          "expRKept": 0.04515983224603906,
+          "expRSkipped": 0.0511914285714286,
+          "returnPct": -97.40452488631972,
+          "maxDdPct": 99.98194919692345,
+          "skippedWorse": false,
+          "beatsBaseline": true
+        },
+        "fund_z2": {
+          "tradesTotal": 1108,
+          "kept": 1094,
+          "skipped": 14,
+          "skipPct": 1.263537906137184,
+          "expRKept": 0.036881078610603295,
+          "expRSkipped": 0.7071642857142857,
+          "returnPct": -98.46772439308778,
+          "maxDdPct": 99.98925401658073,
+          "skippedWorse": false,
+          "beatsBaseline": false
+        },
+        "fund_rate_long": {
+          "tradesTotal": 1108,
+          "kept": 1107,
+          "skipped": 1,
+          "skipPct": 0.09025270758122744,
+          "expRKept": 0.045370731707316994,
+          "expRSkipped": 0.0228,
+          "returnPct": -97.8823353160323,
+          "maxDdPct": 99.9844726373577,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "bybit_oi_drop3": {
+          "tradesTotal": 1108,
+          "kept": 1005,
+          "skipped": 103,
+          "skipPct": 9.296028880866427,
+          "expRKept": 0.07399442786069646,
+          "expRSkipped": -0.2341378640776699,
+          "returnPct": -86.49544059812936,
+          "maxDdPct": 99.89748815716924,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        },
+        "weak_long_oi": {
+          "tradesTotal": 1108,
+          "kept": 988,
+          "skipped": 120,
+          "skipPct": 10.830324909747292,
+          "expRKept": 0.05627722672064772,
+          "expRSkipped": -0.0446141666666666,
+          "returnPct": -94.24558113443254,
+          "maxDdPct": 99.94862946991175,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        },
+        "weak_short_oi": {
+          "tradesTotal": 1108,
+          "kept": 1022,
+          "skipped": 86,
+          "skipPct": 7.761732851985561,
+          "expRKept": 0.0068761252446184465,
+          "expRSkipped": 0.5025674418604653,
+          "returnPct": -99.64367302675775,
+          "maxDdPct": 99.99537150582456,
+          "skippedWorse": false,
+          "beatsBaseline": false
+        },
+        "lsr_long_crowd": {
+          "tradesTotal": 1108,
+          "kept": 542,
+          "skipped": 566,
+          "skipPct": 51.08303249097473,
+          "expRKept": 0.09450000000000001,
+          "expRSkipped": -0.0017151943462897787,
+          "returnPct": -16.685854615866994,
+          "maxDdPct": 99.3827126827834,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        },
+        "combo_fund_oi": {
+          "tradesTotal": 1108,
+          "kept": 976,
+          "skipped": 132,
+          "skipPct": 11.913357400722022,
+          "expRKept": 0.06692243852459001,
+          "expRSkipped": -0.11415227272727264,
+          "returnPct": -89.16351031697704,
+          "maxDdPct": 99.90957975507138,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        }
+      },
+      "holdout": {
+        "baseline": {
+          "tradesTotal": 321,
+          "kept": 321,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.28385482866043604,
+          "expRSkipped": 0,
+          "returnPct": 2264.6966755128906,
+          "maxDdPct": 80.9282317026758,
+          "skippedWorse": true,
+          "beatsBaseline": null
+        },
+        "fund_z1": {
+          "tradesTotal": 321,
+          "kept": 295,
+          "skipped": 26,
+          "skipPct": 8.09968847352025,
+          "expRKept": 0.2820481355932202,
+          "expRSkipped": 0.3043538461538462,
+          "returnPct": 1730.267896021784,
+          "maxDdPct": 88.08706137899847,
+          "skippedWorse": false,
+          "beatsBaseline": false
+        },
+        "fund_z15": {
+          "tradesTotal": 321,
+          "kept": 311,
+          "skipped": 10,
+          "skipPct": 3.115264797507788,
+          "expRKept": 0.2905199356913182,
+          "expRSkipped": 0.07657,
+          "returnPct": 2229.868819225638,
+          "maxDdPct": 82.17678083549366,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "fund_z2": {
+          "tradesTotal": 321,
+          "kept": 316,
+          "skipped": 5,
+          "skipPct": 1.557632398753894,
+          "expRKept": 0.2784702531645568,
+          "expRSkipped": 0.62416,
+          "returnPct": 1951.8200477137839,
+          "maxDdPct": 84.17209022096014,
+          "skippedWorse": false,
+          "beatsBaseline": false
+        },
+        "fund_rate_long": {
+          "tradesTotal": 321,
+          "kept": 321,
+          "skipped": 0,
+          "skipPct": 0,
+          "expRKept": 0.28385482866043604,
+          "expRSkipped": 0,
+          "returnPct": 2264.6966755128906,
+          "maxDdPct": 80.9282317026758,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "bybit_oi_drop3": {
+          "tradesTotal": 321,
+          "kept": 291,
+          "skipped": 30,
+          "skipPct": 9.345794392523365,
+          "expRKept": 0.3229116838487972,
+          "expRSkipped": -0.09499666666666669,
+          "returnPct": 2819.2781917922694,
+          "maxDdPct": 76.74446264540948,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        },
+        "weak_long_oi": {
+          "tradesTotal": 321,
+          "kept": 287,
+          "skipped": 34,
+          "skipPct": 10.59190031152648,
+          "expRKept": 0.30604459930313566,
+          "expRSkipped": 0.09654705882352943,
+          "returnPct": 2130.138942209886,
+          "maxDdPct": 76.73870371304614,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "weak_short_oi": {
+          "tradesTotal": 321,
+          "kept": 294,
+          "skipped": 27,
+          "skipPct": 8.411214953271028,
+          "expRKept": 0.226588095238095,
+          "expRSkipped": 0.9074259259259259,
+          "returnPct": 710.1980257672667,
+          "maxDdPct": 90.05313887569416,
+          "skippedWorse": false,
+          "beatsBaseline": false
+        },
+        "lsr_long_crowd": {
+          "tradesTotal": 321,
+          "kept": 167,
+          "skipped": 154,
+          "skipPct": 47.97507788161994,
+          "expRKept": 0.32204431137724554,
+          "expRSkipped": 0.2424415584415585,
+          "returnPct": 702.963904423073,
+          "maxDdPct": 67.5559582045939,
+          "skippedWorse": true,
+          "beatsBaseline": false
+        },
+        "combo_fund_oi": {
+          "tradesTotal": 321,
+          "kept": 283,
+          "skipped": 38,
+          "skipPct": 11.838006230529595,
+          "expRKept": 0.3270551236749115,
+          "expRSkipped": -0.03787368421052634,
+          "returnPct": 2681.6580865787646,
+          "maxDdPct": 75.64219895921111,
+          "skippedWorse": true,
+          "beatsBaseline": true
+        }
+      },
+      "winners": [
+        "bybit_oi_drop3",
+        "combo_fund_oi"
+      ]
+    }
+  ]
+}

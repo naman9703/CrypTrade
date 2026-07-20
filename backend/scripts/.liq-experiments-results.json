@@ -1,0 +1,1177 @@
+{
+  "generatedAt": "2026-07-10T00:14:37.465Z",
+  "n": 2137,
+  "results": [
+    {
+      "id": "EXP-001",
+      "layer": "research",
+      "hypothesis": "Continuation room (cont_score) improves forward expectancy — more room before opposing liquidity → higher avg R.",
+      "outcome": "fwd_closeR_20",
+      "n": 1675,
+      "bucket": {
+        "monotonicity": -0.40606060606060607,
+        "spread": 0.23232010978043913,
+        "buckets": [
+          {
+            "bucket": 1,
+            "n": 167,
+            "featureMin": 3,
+            "featureMax": 9,
+            "featureMid": 6,
+            "avgR": -0.012886826347305393,
+            "winPct": 0
+          },
+          {
+            "bucket": 2,
+            "n": 168,
+            "featureMin": 9,
+            "featureMax": 10,
+            "featureMid": 9.5,
+            "avgR": 0.08346785714285716,
+            "winPct": 0
+          },
+          {
+            "bucket": 3,
+            "n": 167,
+            "featureMin": 10,
+            "featureMax": 12,
+            "featureMid": 11,
+            "avgR": 0.027007185628742533,
+            "winPct": 0
+          },
+          {
+            "bucket": 4,
+            "n": 168,
+            "featureMin": 12,
+            "featureMax": 13,
+            "featureMid": 12.5,
+            "avgR": -0.07758333333333331,
+            "winPct": 0
+          },
+          {
+            "bucket": 5,
+            "n": 167,
+            "featureMin": 13,
+            "featureMax": 14,
+            "featureMid": 13.5,
+            "avgR": -0.0921604790419162,
+            "winPct": 0
+          },
+          {
+            "bucket": 6,
+            "n": 168,
+            "featureMin": 14,
+            "featureMax": 15,
+            "featureMid": 14.5,
+            "avgR": 0.10704166666666667,
+            "winPct": 0
+          },
+          {
+            "bucket": 7,
+            "n": 167,
+            "featureMin": 15,
+            "featureMax": 16,
+            "featureMid": 15.5,
+            "avgR": -0.06467664670658685,
+            "winPct": 0
+          },
+          {
+            "bucket": 8,
+            "n": 168,
+            "featureMin": 16,
+            "featureMax": 17,
+            "featureMid": 16.5,
+            "avgR": 0.0285916666666666,
+            "winPct": 0
+          },
+          {
+            "bucket": 9,
+            "n": 167,
+            "featureMin": 17,
+            "featureMax": 19,
+            "featureMid": 18,
+            "avgR": -0.12527844311377245,
+            "winPct": 0
+          },
+          {
+            "bucket": 10,
+            "n": 168,
+            "featureMin": 19,
+            "featureMax": 20,
+            "featureMid": 19.5,
+            "avgR": -0.09071607142857148,
+            "winPct": 0
+          }
+        ]
+      },
+      "uncertainty": {
+        "permutation": {
+          "pValue": 0.6266666666666667,
+          "observed": 0.013091773459213543
+        },
+        "outcomeMeanCI": {
+          "mean": -0.021624179104477614,
+          "ciLow": -0.07645414925373124,
+          "ciHigh": 0.027132656716417892,
+          "n": 1675
+        }
+      },
+      "permutationP": 0.6266666666666667,
+      "slices": {
+        "coin": {
+          "tested": 5,
+          "positive": 2,
+          "ratio": 0.4,
+          "slices": {
+            "BTCUSDT": {
+              "n": 266,
+              "monotonicity": -0.2571428571428571,
+              "spread": 0.43007671717171725,
+              "avgOutcome": -0.056346616541353416
+            },
+            "BNBUSDT": {
+              "n": 593,
+              "monotonicity": -0.14285714285714285,
+              "spread": 0.41321616161616154,
+              "avgOutcome": -0.01810168634064085
+            },
+            "ETHUSDT": {
+              "n": 455,
+              "monotonicity": -0.42857142857142855,
+              "spread": 0.13975315789473688,
+              "avgOutcome": -0.04294219780219782
+            },
+            "SOLUSDT": {
+              "n": 207,
+              "monotonicity": 0.08571428571428572,
+              "spread": 0.5132682352941177,
+              "avgOutcome": -0.029202898550724676
+            },
+            "XRPUSDT": {
+              "n": 154,
+              "monotonicity": 0.2,
+              "spread": 0.5891343076923077,
+              "avgOutcome": 0.0979590909090909
+            }
+          }
+        },
+        "regime": {
+          "tested": 5,
+          "positive": 1,
+          "ratio": 0.2,
+          "slices": {
+            "TREND_DOWN": {
+              "n": 725,
+              "monotonicity": -0.2571428571428571,
+              "spread": 0.1486603305785125,
+              "avgOutcome": -0.058588413793103436
+            },
+            "TREND_UP": {
+              "n": 654,
+              "monotonicity": -0.5428571428571428,
+              "spread": 0.2525376146788989,
+              "avgOutcome": 0.03510351681957188
+            },
+            "RANGE": {
+              "n": 158,
+              "monotonicity": -0.3142857142857143,
+              "spread": 0.5895319088319089,
+              "avgOutcome": -0.06934113924050633
+            },
+            "VOLATILE_AVOID": {
+              "n": 96,
+              "monotonicity": 0.2,
+              "spread": 0.6904937499999999,
+              "avgOutcome": -0.06989583333333332
+            },
+            "SQUEEZE": {
+              "n": 42,
+              "monotonicity": -0.2571428571428571,
+              "spread": 0.9934285714285714,
+              "avgOutcome": 0.022959523809523825
+            }
+          }
+        }
+      },
+      "holdout": {
+        "n": 462,
+        "sufficient": true,
+        "monotonicity": -0.14285714285714285,
+        "spread": 0.28629740259740255,
+        "avgOutcome": 0.03644761904761907
+      },
+      "walkForward": [
+        {
+          "label": "WF1",
+          "trainN": 244,
+          "validateN": 434,
+          "trainMono": -0.2857142857142857,
+          "validateMono": -0.19047619047619047,
+          "trainSpread": 0.6602193548387097,
+          "validateSpread": 0.3024537037037037
+        },
+        {
+          "label": "WF2",
+          "trainN": 678,
+          "validateN": 997,
+          "trainMono": -0.047619047619047616,
+          "validateMono": -0.6190476190476191,
+          "trainSpread": 0.29912352941176473,
+          "validateSpread": 0.2563944
+        }
+      ],
+      "result": "mono=-0.406 spread=0.232 p=0.627",
+      "accepted": false,
+      "fdrAdjustedP": 0.6266666666666667,
+      "fdrSignificant": false,
+      "promotion": {
+        "layer": "research",
+        "nextLayer": null,
+        "passed": false,
+        "checks": {
+          "sampleSize": true,
+          "monotonicity": true,
+          "bucketSpread": true,
+          "permutation": false,
+          "coinStability": false,
+          "regimeStability": true,
+          "walkForward": true,
+          "fdr": false,
+          "holdout": true,
+          "incremental": true,
+          "explainable": true
+        },
+        "failed": [
+          "permutation",
+          "coinStability",
+          "fdr"
+        ],
+        "recommendation": "Remain in research — failed: permutation, coinStability, fdr"
+      }
+    },
+    {
+      "id": "EXP-002",
+      "layer": "research",
+      "hypothesis": "Sweep velocity alone is weak; sweep_velocityAtr × level_importance interaction lifts expectancy.",
+      "outcome": "fwd_closeR_20",
+      "n": 1675,
+      "bucket": {
+        "monotonicity": -0.21212121212121213,
+        "spread": 0.19366287425149703,
+        "buckets": [
+          {
+            "bucket": 1,
+            "n": 167,
+            "featureMin": 0.0558,
+            "featureMax": 0.1446,
+            "featureMid": 0.10020000000000001,
+            "avgR": 0.08764311377245514,
+            "winPct": 0
+          },
+          {
+            "bucket": 2,
+            "n": 168,
+            "featureMin": 0.1447,
+            "featureMax": 0.1744,
+            "featureMid": 0.15955,
+            "avgR": -0.07205595238095241,
+            "winPct": 0
+          },
+          {
+            "bucket": 3,
+            "n": 167,
+            "featureMin": 0.1745,
+            "featureMax": 0.2022,
+            "featureMid": 0.18835,
+            "avgR": 0.0752676646706587,
+            "winPct": 0
+          },
+          {
+            "bucket": 4,
+            "n": 168,
+            "featureMin": 0.2025,
+            "featureMax": 0.2368,
+            "featureMid": 0.21965,
+            "avgR": -0.022677976190476186,
+            "winPct": 0
+          },
+          {
+            "bucket": 5,
+            "n": 167,
+            "featureMin": 0.2369,
+            "featureMax": 0.2752,
+            "featureMid": 0.25605,
+            "avgR": -0.09089760479041911,
+            "winPct": 0
+          },
+          {
+            "bucket": 6,
+            "n": 168,
+            "featureMin": 0.2755,
+            "featureMax": 0.3418,
+            "featureMid": 0.30865,
+            "avgR": -0.08530833333333333,
+            "winPct": 0
+          },
+          {
+            "bucket": 7,
+            "n": 167,
+            "featureMin": 0.3419,
+            "featureMax": 0.4431,
+            "featureMid": 0.39249999999999996,
+            "avgR": -0.10601976047904191,
+            "winPct": 0
+          },
+          {
+            "bucket": 8,
+            "n": 168,
+            "featureMin": 0.4436,
+            "featureMax": 0.6016,
+            "featureMid": 0.5226,
+            "avgR": 0.014442857142857115,
+            "winPct": 0
+          },
+          {
+            "bucket": 9,
+            "n": 167,
+            "featureMin": 0.6017,
+            "featureMax": 1.0052,
+            "featureMid": 0.80345,
+            "avgR": -0.044372455089820316,
+            "winPct": 0
+          },
+          {
+            "bucket": 10,
+            "n": 168,
+            "featureMin": 1.0065,
+            "featureMax": 3.2111,
+            "featureMid": 2.1088,
+            "avgR": 0.027913690476190484,
+            "winPct": 0
+          }
+        ]
+      },
+      "uncertainty": {
+        "permutation": {
+          "pValue": 0.44666666666666666,
+          "observed": 0.01842158805495788
+        },
+        "outcomeMeanCI": {
+          "mean": -0.021624179104477614,
+          "ciLow": -0.06828137313432826,
+          "ciHigh": 0.01871008955223881,
+          "n": 1675
+        }
+      },
+      "permutationP": 0.44666666666666666,
+      "interaction": {
+        "partner": "level_importance",
+        "lift": 0.1395555516534972,
+        "bestCell": {
+          "aBin": 2,
+          "bBin": 4,
+          "n": 51,
+          "avgR": 0.11793137254901957
+        }
+      },
+      "slices": {
+        "coin": {
+          "tested": 5,
+          "positive": 3,
+          "ratio": 0.6,
+          "slices": {
+            "BTCUSDT": {
+              "n": 266,
+              "monotonicity": 0.2571428571428571,
+              "spread": 0.17329111111111112,
+              "avgOutcome": -0.056346616541353416
+            },
+            "BNBUSDT": {
+              "n": 593,
+              "monotonicity": 0.42857142857142855,
+              "spread": 0.3520656565656565,
+              "avgOutcome": -0.01810168634064085
+            },
+            "ETHUSDT": {
+              "n": 455,
+              "monotonicity": -0.6571428571428571,
+              "spread": 0.27322233333333334,
+              "avgOutcome": -0.04294219780219782
+            },
+            "SOLUSDT": {
+              "n": 207,
+              "monotonicity": -0.42857142857142855,
+              "spread": 0.3937396638655462,
+              "avgOutcome": -0.029202898550724676
+            },
+            "XRPUSDT": {
+              "n": 154,
+              "monotonicity": 0.2,
+              "spread": 0.5512461538461539,
+              "avgOutcome": 0.0979590909090909
+            }
+          }
+        },
+        "regime": {
+          "tested": 5,
+          "positive": 2,
+          "ratio": 0.4,
+          "slices": {
+            "TREND_DOWN": {
+              "n": 725,
+              "monotonicity": 0.3142857142857143,
+              "spread": 0.29938512396694217,
+              "avgOutcome": -0.058588413793103436
+            },
+            "TREND_UP": {
+              "n": 654,
+              "monotonicity": -0.37142857142857144,
+              "spread": 0.21856788990825685,
+              "avgOutcome": 0.03510351681957188
+            },
+            "RANGE": {
+              "n": 158,
+              "monotonicity": -0.42857142857142855,
+              "spread": 0.7459846153846154,
+              "avgOutcome": -0.06934113924050633
+            },
+            "VOLATILE_AVOID": {
+              "n": 96,
+              "monotonicity": -0.14285714285714285,
+              "spread": 0.7718937499999999,
+              "avgOutcome": -0.06989583333333332
+            },
+            "SQUEEZE": {
+              "n": 42,
+              "monotonicity": 0.02857142857142857,
+              "spread": 0.9668714285714286,
+              "avgOutcome": 0.022959523809523825
+            }
+          }
+        }
+      },
+      "holdout": {
+        "n": 462,
+        "sufficient": true,
+        "monotonicity": 0.6571428571428571,
+        "spread": 0.08220129870129869,
+        "avgOutcome": 0.03644761904761907
+      },
+      "walkForward": [
+        {
+          "label": "WF1",
+          "trainN": 244,
+          "validateN": 434,
+          "trainMono": 0.11904761904761904,
+          "validateMono": 0.30952380952380953,
+          "trainSpread": 0.9203806451612901,
+          "validateSpread": 0.3167685185185185
+        },
+        {
+          "label": "WF2",
+          "trainN": 678,
+          "validateN": 997,
+          "trainMono": 0.38095238095238093,
+          "validateMono": -0.42857142857142855,
+          "trainSpread": 0.29620894957983196,
+          "validateSpread": 0.28449149032258053
+        }
+      ],
+      "result": "lift=0.140 mono=-0.212 p=0.447 WF-mixed",
+      "accepted": false,
+      "fdrAdjustedP": 0.5359999999999999,
+      "fdrSignificant": false,
+      "promotion": {
+        "layer": "research",
+        "nextLayer": null,
+        "passed": false,
+        "checks": {
+          "sampleSize": true,
+          "monotonicity": false,
+          "bucketSpread": true,
+          "permutation": false,
+          "coinStability": true,
+          "regimeStability": true,
+          "walkForward": false,
+          "fdr": false,
+          "holdout": true,
+          "incremental": true,
+          "explainable": true
+        },
+        "failed": [
+          "monotonicity",
+          "permutation",
+          "walkForward",
+          "fdr"
+        ],
+        "recommendation": "Remain in research — failed: monotonicity, permutation, walkForward, fdr"
+      }
+    },
+    {
+      "id": "EXP-003",
+      "layer": "research",
+      "hypothesis": "Weekly/daily external liquidity (level_importance) predicts hit2R rate.",
+      "outcome": "hit2R_flag",
+      "n": 1675,
+      "bucket": {
+        "monotonicity": -0.2660840514881559,
+        "spread": 0.12368120901055032,
+        "buckets": [
+          {
+            "bucket": 1,
+            "n": 167,
+            "featureMin": 1.15,
+            "featureMax": 1.15,
+            "featureMid": 1.15,
+            "avgR": 0.2275449101796407,
+            "winPct": 0
+          },
+          {
+            "bucket": 2,
+            "n": 168,
+            "featureMin": 1.15,
+            "featureMax": 1.15,
+            "featureMid": 1.15,
+            "avgR": 0.2976190476190476,
+            "winPct": 0
+          },
+          {
+            "bucket": 3,
+            "n": 167,
+            "featureMin": 1.15,
+            "featureMax": 1.15,
+            "featureMid": 1.15,
+            "avgR": 0.25149700598802394,
+            "winPct": 0
+          },
+          {
+            "bucket": 4,
+            "n": 168,
+            "featureMin": 1.15,
+            "featureMax": 1.15,
+            "featureMid": 1.15,
+            "avgR": 0.34523809523809523,
+            "winPct": 0
+          },
+          {
+            "bucket": 5,
+            "n": 167,
+            "featureMin": 1.15,
+            "featureMax": 1.25,
+            "featureMid": 1.2,
+            "avgR": 0.2215568862275449,
+            "winPct": 0
+          },
+          {
+            "bucket": 6,
+            "n": 168,
+            "featureMin": 1.25,
+            "featureMax": 1.25,
+            "featureMid": 1.25,
+            "avgR": 0.26785714285714285,
+            "winPct": 0
+          },
+          {
+            "bucket": 7,
+            "n": 167,
+            "featureMin": 1.25,
+            "featureMax": 1.25,
+            "featureMid": 1.25,
+            "avgR": 0.24550898203592814,
+            "winPct": 0
+          },
+          {
+            "bucket": 8,
+            "n": 168,
+            "featureMin": 1.25,
+            "featureMax": 1.25,
+            "featureMid": 1.25,
+            "avgR": 0.27976190476190477,
+            "winPct": 0
+          },
+          {
+            "bucket": 9,
+            "n": 167,
+            "featureMin": 1.25,
+            "featureMax": 1.35,
+            "featureMid": 1.3,
+            "avgR": 0.2754491017964072,
+            "winPct": 0
+          },
+          {
+            "bucket": 10,
+            "n": 168,
+            "featureMin": 1.35,
+            "featureMax": 1.35,
+            "featureMid": 1.35,
+            "avgR": 0.2261904761904762,
+            "winPct": 0
+          }
+        ]
+      },
+      "uncertainty": {
+        "permutation": {
+          "pValue": 0.043333333333333335,
+          "observed": 0.051564992083233334
+        },
+        "outcomeMeanCI": {
+          "mean": 0.2638805970149254,
+          "ciLow": 0.24417910447761193,
+          "ciHigh": 0.28417910447761197,
+          "n": 1675
+        }
+      },
+      "permutationP": 0.043333333333333335,
+      "slices": {
+        "coin": {
+          "tested": 5,
+          "positive": 1,
+          "ratio": 0.2,
+          "slices": {
+            "BTCUSDT": {
+              "n": 266,
+              "monotonicity": -0.44136741475237473,
+              "spread": 0.22727272727272724,
+              "avgOutcome": 0.16917293233082706
+            },
+            "BNBUSDT": {
+              "n": 593,
+              "monotonicity": -0.8827348295047495,
+              "spread": 0.1143063285920429,
+              "avgOutcome": 0.26475548060708265
+            },
+            "ETHUSDT": {
+              "n": 455,
+              "monotonicity": -0.08827348295047495,
+              "spread": 0.2105263157894737,
+              "avgOutcome": 0.26593406593406593
+            },
+            "SOLUSDT": {
+              "n": 207,
+              "monotonicity": 0.26482044885142486,
+              "spread": 0.14705882352941174,
+              "avgOutcome": 0.32367149758454106
+            },
+            "XRPUSDT": {
+              "n": 154,
+              "monotonicity": -0.7164977208318386,
+              "spread": 0.24,
+              "avgOutcome": 0.33766233766233766
+            }
+          }
+        },
+        "regime": {
+          "tested": 5,
+          "positive": 1,
+          "ratio": 0.2,
+          "slices": {
+            "TREND_DOWN": {
+              "n": 725,
+              "monotonicity": -0.44136741475237473,
+              "spread": 0.11570247933884298,
+              "avgOutcome": 0.26068965517241377
+            },
+            "TREND_UP": {
+              "n": 654,
+              "monotonicity": 0.26482044885142486,
+              "spread": 0.11009174311926606,
+              "avgOutcome": 0.26146788990825687
+            },
+            "RANGE": {
+              "n": 158,
+              "monotonicity": -0.5296408977028497,
+              "spread": 0.17948717948717946,
+              "avgOutcome": 0.23417721518987342
+            },
+            "VOLATILE_AVOID": {
+              "n": 96,
+              "monotonicity": -0.1846372364689991,
+              "spread": 0.125,
+              "avgOutcome": 0.3125
+            },
+            "SQUEEZE": {
+              "n": 42,
+              "monotonicity": -0.30151134457776363,
+              "spread": 0.14285714285714285,
+              "avgOutcome": 0.35714285714285715
+            }
+          }
+        }
+      },
+      "holdout": {
+        "n": 462,
+        "sufficient": true,
+        "monotonicity": -0.08827348295047495,
+        "spread": 0.2207792207792208,
+        "avgOutcome": 0.2792207792207792
+      },
+      "walkForward": [
+        {
+          "label": "WF1",
+          "trainN": 244,
+          "validateN": 434,
+          "trainMono": -0.4616902584383194,
+          "validateMono": -0.14909420864112788,
+          "trainSpread": 0.16666666666666669,
+          "validateSpread": 0.18518518518518517
+        },
+        {
+          "label": "WF2",
+          "trainN": 678,
+          "validateN": 997,
+          "trainMono": -0.19759110538959848,
+          "validateMono": -0.10012523486435178,
+          "trainSpread": 0.21176470588235294,
+          "validateSpread": 0.0967741935483871
+        }
+      ],
+      "result": "mono=-0.266 spread=0.124 p=0.043 coin-weak",
+      "accepted": "partial",
+      "fdrAdjustedP": 0.15000000000000002,
+      "fdrSignificant": false,
+      "promotion": {
+        "layer": "research",
+        "nextLayer": null,
+        "passed": false,
+        "checks": {
+          "sampleSize": true,
+          "monotonicity": true,
+          "bucketSpread": true,
+          "permutation": true,
+          "coinStability": false,
+          "regimeStability": true,
+          "walkForward": true,
+          "fdr": false,
+          "holdout": true,
+          "incremental": true,
+          "explainable": true
+        },
+        "failed": [
+          "coinStability",
+          "fdr"
+        ],
+        "recommendation": "Remain in research — failed: coinStability, fdr"
+      }
+    },
+    {
+      "id": "EXP-004",
+      "layer": "research",
+      "hypothesis": "Market ADX × continuation score interaction improves forward R (nonlinear combo).",
+      "outcome": "fwd_closeR_20",
+      "n": 1675,
+      "bucket": {
+        "monotonicity": -0.2606060606060606,
+        "spread": 0.2932634552323923,
+        "buckets": [
+          {
+            "bucket": 1,
+            "n": 167,
+            "featureMin": 10.747369427939063,
+            "featureMax": 20.85299537102001,
+            "featureMid": 15.800182399479537,
+            "avgR": -0.03456347305389219,
+            "winPct": 0
+          },
+          {
+            "bucket": 2,
+            "n": 168,
+            "featureMin": 20.865976579211626,
+            "featureMax": 24.871587038752953,
+            "featureMid": 22.86878180898229,
+            "avgR": 0.05906011904761906,
+            "winPct": 0
+          },
+          {
+            "bucket": 3,
+            "n": 167,
+            "featureMin": 24.920129715274932,
+            "featureMax": 28.801491603997228,
+            "featureMid": 26.86081065963608,
+            "avgR": -0.13766047904191617,
+            "winPct": 0
+          },
+          {
+            "bucket": 4,
+            "n": 168,
+            "featureMin": 28.802137247908053,
+            "featureMax": 32.49239370307806,
+            "featureMid": 30.647265475493057,
+            "avgR": 0.15560297619047608,
+            "winPct": 0
+          },
+          {
+            "bucket": 5,
+            "n": 167,
+            "featureMin": 32.49885082711107,
+            "featureMax": 35.68849422337159,
+            "featureMid": 34.09367252524133,
+            "avgR": -0.044656287425149696,
+            "winPct": 0
+          },
+          {
+            "bucket": 6,
+            "n": 168,
+            "featureMin": 35.703531508649476,
+            "featureMax": 39.44998490031172,
+            "featureMid": 37.5767582044806,
+            "avgR": -0.09558452380952383,
+            "winPct": 0
+          },
+          {
+            "bucket": 7,
+            "n": 167,
+            "featureMin": 39.47422018182969,
+            "featureMax": 43.63950468239783,
+            "featureMid": 41.55686243211376,
+            "avgR": 0.02690778443113772,
+            "winPct": 0
+          },
+          {
+            "bucket": 8,
+            "n": 168,
+            "featureMin": 43.64823681110706,
+            "featureMax": 48.66142187619176,
+            "featureMid": 46.15482934364941,
+            "avgR": -0.05624940476190482,
+            "winPct": 0
+          },
+          {
+            "bucket": 9,
+            "n": 167,
+            "featureMin": 48.727716050151905,
+            "featureMax": 55.6116596839706,
+            "featureMid": 52.169687867061256,
+            "avgR": -0.0472664670658683,
+            "winPct": 0
+          },
+          {
+            "bucket": 10,
+            "n": 168,
+            "featureMin": 55.685884104612825,
+            "featureMax": 81.54675325988379,
+            "featureMid": 68.6163186822483,
+            "avgR": -0.042600595238095264,
+            "winPct": 0
+          }
+        ]
+      },
+      "uncertainty": {
+        "permutation": {
+          "pValue": 0.33666666666666667,
+          "observed": 0.023445780952235408
+        },
+        "outcomeMeanCI": {
+          "mean": -0.021624179104477614,
+          "ciLow": -0.07106937313432833,
+          "ciHigh": 0.027805014925373076,
+          "n": 1675
+        }
+      },
+      "permutationP": 0.33666666666666667,
+      "interaction": {
+        "partner": "cont_score",
+        "lift": 0.19788642400243678,
+        "bestCell": {
+          "aBin": 2,
+          "bBin": 3,
+          "n": 98,
+          "avgR": 0.17626224489795916
+        }
+      },
+      "slices": {
+        "coin": {
+          "tested": 5,
+          "positive": 3,
+          "ratio": 0.6,
+          "slices": {
+            "BTCUSDT": {
+              "n": 266,
+              "monotonicity": -0.7714285714285715,
+              "spread": 0.3405142929292929,
+              "avgOutcome": -0.056346616541353416
+            },
+            "BNBUSDT": {
+              "n": 593,
+              "monotonicity": -0.37142857142857144,
+              "spread": 0.2033303030303031,
+              "avgOutcome": -0.01810168634064085
+            },
+            "ETHUSDT": {
+              "n": 455,
+              "monotonicity": 0.2,
+              "spread": 0.29828289473684216,
+              "avgOutcome": -0.04294219780219782
+            },
+            "SOLUSDT": {
+              "n": 207,
+              "monotonicity": 0.7714285714285715,
+              "spread": 0.5251514285714286,
+              "avgOutcome": -0.029202898550724676
+            },
+            "XRPUSDT": {
+              "n": 154,
+              "monotonicity": 0.08571428571428572,
+              "spread": 0.6074547692307692,
+              "avgOutcome": 0.0979590909090909
+            }
+          }
+        },
+        "regime": {
+          "tested": 5,
+          "positive": 2,
+          "ratio": 0.4,
+          "slices": {
+            "TREND_DOWN": {
+              "n": 725,
+              "monotonicity": -0.37142857142857144,
+              "spread": 0.2783438016528925,
+              "avgOutcome": -0.058588413793103436
+            },
+            "TREND_UP": {
+              "n": 654,
+              "monotonicity": -0.4857142857142857,
+              "spread": 0.25764403669724767,
+              "avgOutcome": 0.03510351681957188
+            },
+            "RANGE": {
+              "n": 158,
+              "monotonicity": -0.42857142857142855,
+              "spread": 0.5910307692307692,
+              "avgOutcome": -0.06934113924050633
+            },
+            "VOLATILE_AVOID": {
+              "n": 96,
+              "monotonicity": 0.42857142857142855,
+              "spread": 1.2639875,
+              "avgOutcome": -0.06989583333333332
+            },
+            "SQUEEZE": {
+              "n": 42,
+              "monotonicity": 0.02857142857142857,
+              "spread": 0.7670142857142856,
+              "avgOutcome": 0.022959523809523825
+            }
+          }
+        }
+      },
+      "holdout": {
+        "n": 462,
+        "sufficient": true,
+        "monotonicity": -0.6571428571428571,
+        "spread": 0.4366493506493507,
+        "avgOutcome": 0.03644761904761907
+      },
+      "walkForward": [
+        {
+          "label": "WF1",
+          "trainN": 244,
+          "validateN": 434,
+          "trainMono": 0.14285714285714285,
+          "validateMono": -0.09523809523809523,
+          "trainSpread": 0.6023966666666667,
+          "validateSpread": 0.4408925925925925
+        },
+        {
+          "label": "WF2",
+          "trainN": 678,
+          "validateN": 997,
+          "trainMono": -0.19047619047619047,
+          "validateMono": -0.21428571428571427,
+          "trainSpread": 0.29612000000000005,
+          "validateSpread": 0.20839373548387102
+        }
+      ],
+      "result": "lift=0.198 mono=-0.261 p=0.337 WF-mixed",
+      "accepted": false,
+      "fdrAdjustedP": 0.5359999999999999,
+      "fdrSignificant": false,
+      "promotion": {
+        "layer": "research",
+        "nextLayer": null,
+        "passed": false,
+        "checks": {
+          "sampleSize": true,
+          "monotonicity": true,
+          "bucketSpread": true,
+          "permutation": false,
+          "coinStability": true,
+          "regimeStability": true,
+          "walkForward": false,
+          "fdr": false,
+          "holdout": true,
+          "incremental": true,
+          "explainable": true
+        },
+        "failed": [
+          "permutation",
+          "walkForward",
+          "fdr"
+        ],
+        "recommendation": "Remain in research — failed: permutation, walkForward, fdr"
+      }
+    },
+    {
+      "id": "EXP-005",
+      "layer": "research",
+      "hypothesis": "scoreV2_total negative correlation is selection bias — decompose components vs forward R on all candidates.",
+      "outcome": "fwd_closeR_20",
+      "n": 1675,
+      "bias": {
+        "all": {
+          "n": 1675,
+          "spread": 0.19203528138528136,
+          "mono": -0.23809523809523808
+        },
+        "picked": {
+          "n": 1250,
+          "spread": 0.32530161277151715,
+          "mono": -0.4523809523809524
+        },
+        "rejected": {
+          "n": 425,
+          "spread": 0.26502264150943394,
+          "mono": 0.8095238095238095
+        }
+      },
+      "accepted": false,
+      "result": "all mono=-0.238 picked=-0.452 rejected=0.810",
+      "permutationP": 0.39,
+      "fdrAdjustedP": 0.5359999999999999,
+      "fdrSignificant": false,
+      "promotion": {
+        "layer": "research",
+        "nextLayer": null,
+        "passed": false,
+        "checks": {
+          "sampleSize": true,
+          "monotonicity": false,
+          "bucketSpread": false,
+          "permutation": false,
+          "coinStability": false,
+          "regimeStability": true,
+          "walkForward": true,
+          "fdr": false,
+          "holdout": true,
+          "incremental": true,
+          "explainable": true
+        },
+        "failed": [
+          "monotonicity",
+          "bucketSpread",
+          "permutation",
+          "coinStability",
+          "fdr"
+        ],
+        "recommendation": "Remain in research — failed: monotonicity, bucketSpread, permutation, coinStability, fdr"
+      }
+    },
+    {
+      "id": "EXP-006",
+      "layer": "research",
+      "hypothesis": "Session narrative × level type interaction improves forward R across coins and regimes.",
+      "outcome": "fwd_closeR_20",
+      "n": 1675,
+      "interaction": {
+        "lift": 0.40536201694231544,
+        "best": {
+          "a": "london_sweep",
+          "b": "asian_high",
+          "n": 37,
+          "avgR": 0.3837378378378378
+        },
+        "cells": 20
+      },
+      "slices": {
+        "coin": {
+          "tested": 5,
+          "positive": 0,
+          "ratio": 0,
+          "slices": {
+            "BTCUSDT": {
+              "n": 266,
+              "avgOutcome": -0.056346616541353416
+            },
+            "BNBUSDT": {
+              "n": 593,
+              "avgOutcome": -0.01810168634064085
+            },
+            "ETHUSDT": {
+              "n": 455,
+              "avgOutcome": -0.04294219780219782
+            },
+            "SOLUSDT": {
+              "n": 207,
+              "avgOutcome": -0.029202898550724676
+            },
+            "XRPUSDT": {
+              "n": 154,
+              "avgOutcome": 0.0979590909090909
+            }
+          }
+        },
+        "regime": {
+          "tested": 5,
+          "positive": 0,
+          "ratio": 0,
+          "slices": {
+            "TREND_DOWN": {
+              "n": 725,
+              "avgOutcome": -0.058588413793103436
+            },
+            "TREND_UP": {
+              "n": 654,
+              "avgOutcome": 0.03510351681957188
+            },
+            "RANGE": {
+              "n": 158,
+              "avgOutcome": -0.06934113924050633
+            },
+            "VOLATILE_AVOID": {
+              "n": 96,
+              "avgOutcome": -0.06989583333333332
+            },
+            "SQUEEZE": {
+              "n": 42,
+              "avgOutcome": 0.022959523809523825
+            }
+          }
+        }
+      },
+      "holdout": {
+        "n": 462,
+        "sufficient": true,
+        "avgOutcome": 0.03644761904761907
+      },
+      "accepted": false,
+      "result": "lift=0.405 coin=0% regime=0%",
+      "permutationP": 0.05,
+      "fdrAdjustedP": 0.15000000000000002,
+      "fdrSignificant": false,
+      "promotion": {
+        "layer": "research",
+        "nextLayer": null,
+        "passed": false,
+        "checks": {
+          "sampleSize": true,
+          "monotonicity": false,
+          "bucketSpread": false,
+          "permutation": true,
+          "coinStability": false,
+          "regimeStability": true,
+          "walkForward": true,
+          "fdr": false,
+          "holdout": true,
+          "incremental": true,
+          "explainable": true
+        },
+        "failed": [
+          "monotonicity",
+          "bucketSpread",
+          "coinStability",
+          "fdr"
+        ],
+        "recommendation": "Remain in research — failed: monotonicity, bucketSpread, coinStability, fdr"
+      }
+    }
+  ]
+}

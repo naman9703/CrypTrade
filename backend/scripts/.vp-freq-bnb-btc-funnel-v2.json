@@ -1,0 +1,390 @@
+{
+  "FROM": "2025-06-01",
+  "TO": "2026-05-31",
+  "rows": [
+    {
+      "sym": "ETHUSDT",
+      "id": "eth_current",
+      "tr": 79,
+      "tw": 1.52,
+      "wr": 45.6,
+      "ret": 118,
+      "pf": 1.64,
+      "dd": 21.96,
+      "setups": {
+        "vah_breakout": {
+          "n": 31,
+          "pnl": 11.968849893886066
+        },
+        "val_breakdown": {
+          "n": 39,
+          "pnl": 112.32839107893224
+        },
+        "poc_bounce": {
+          "n": 2,
+          "pnl": -5.093461866825091
+        },
+        "va_rejection": {
+          "n": 7,
+          "pnl": -1.2068945801296085
+        }
+      }
+    },
+    {
+      "sym": "BNBUSDT",
+      "id": "bnb_current",
+      "tr": 41,
+      "tw": 0.79,
+      "wr": 48.8,
+      "ret": 21.26,
+      "pf": 1.32,
+      "dd": 20.39,
+      "setups": {
+        "vah_breakout": {
+          "n": 41,
+          "pnl": 21.263968694114066
+        }
+      }
+    },
+    {
+      "sym": "BNBUSDT",
+      "id": "bnb_soft_score6",
+      "tr": 43,
+      "tw": 0.83,
+      "wr": 46.5,
+      "ret": 14.48,
+      "pf": 1.21,
+      "dd": 20.39,
+      "setups": {
+        "vah_breakout": {
+          "n": 43,
+          "pnl": 14.479477779219035
+        }
+      }
+    },
+    {
+      "sym": "BNBUSDT",
+      "id": "bnb_soft_score5_gap1",
+      "tr": 57,
+      "tw": 1.1,
+      "wr": 45.6,
+      "ret": 5.88,
+      "pf": 1.07,
+      "dd": 26.23,
+      "setups": {
+        "vah_breakout": {
+          "n": 57,
+          "pnl": 5.883966758867821
+        }
+      }
+    },
+    {
+      "sym": "BNBUSDT",
+      "id": "bnb_plus_poc_soft",
+      "tr": 50,
+      "tw": 0.96,
+      "wr": 44,
+      "ret": 0.63,
+      "pf": 1.01,
+      "dd": 23.58,
+      "setups": {
+        "vah_breakout": {
+          "n": 41,
+          "pnl": 19.35285952768845
+        },
+        "poc_bounce": {
+          "n": 9,
+          "pnl": -18.722061610192227
+        }
+      }
+    },
+    {
+      "sym": "BNBUSDT",
+      "id": "bnb_plus_va_rej_soft",
+      "tr": 241,
+      "tw": 4.63,
+      "wr": 23.2,
+      "ret": -94.03,
+      "pf": 0.52,
+      "dd": 94.03,
+      "setups": {
+        "va_rejection": {
+          "n": 199,
+          "pnl": -93.76875406160256
+        },
+        "vah_breakout": {
+          "n": 42,
+          "pnl": -0.26430873499475716
+        }
+      }
+    },
+    {
+      "sym": "BNBUSDT",
+      "id": "bnb_plus_val_soft_htf",
+      "tr": 73,
+      "tw": 1.4,
+      "wr": 41.1,
+      "ret": 49.36,
+      "pf": 1.31,
+      "dd": 32.51,
+      "setups": {
+        "val_breakdown": {
+          "n": 48,
+          "pnl": 30.65331655896974
+        },
+        "vah_breakout": {
+          "n": 25,
+          "pnl": 18.704122694459407
+        }
+      }
+    },
+    {
+      "sym": "BNBUSDT",
+      "id": "bnb_open_eth_shaped",
+      "tr": 76,
+      "tw": 1.46,
+      "wr": 35.5,
+      "ret": -18.73,
+      "pf": 0.86,
+      "dd": 34.98,
+      "setups": {
+        "val_breakdown": {
+          "n": 45,
+          "pnl": -10.701178832905327
+        },
+        "vah_breakout": {
+          "n": 26,
+          "pnl": 5.3409779897937755
+        },
+        "poc_bounce": {
+          "n": 4,
+          "pnl": -9.541497819026985
+        },
+        "va_rejection": {
+          "n": 1,
+          "pnl": -3.8252300868762603
+        }
+      }
+    },
+    {
+      "sym": "BNBUSDT",
+      "id": "bnb_vah_only_soft",
+      "tr": 59,
+      "tw": 1.13,
+      "wr": 45.8,
+      "ret": 7.44,
+      "pf": 1.08,
+      "dd": 26.48,
+      "setups": {
+        "vah_breakout": {
+          "n": 59,
+          "pnl": 7.435209223538839
+        }
+      }
+    },
+    {
+      "sym": "BNBUSDT",
+      "id": "bnb_vah_lvn_ultra",
+      "tr": 58,
+      "tw": 1.12,
+      "wr": 44.8,
+      "ret": 2.2,
+      "pf": 1.02,
+      "dd": 26.76,
+      "setups": {
+        "vah_breakout": {
+          "n": 58,
+          "pnl": 2.199984091539439
+        }
+      }
+    },
+    {
+      "sym": "BTCUSDT",
+      "id": "btc_current",
+      "tr": 44,
+      "tw": 0.85,
+      "wr": 45.5,
+      "ret": 12.03,
+      "pf": 1.15,
+      "dd": 29.47,
+      "setups": {
+        "val_breakdown": {
+          "n": 37,
+          "pnl": 6.1651925847538305
+        },
+        "va_rejection": {
+          "n": 7,
+          "pnl": 5.86774542945518
+        }
+      }
+    },
+    {
+      "sym": "BTCUSDT",
+      "id": "btc_soft_score6",
+      "tr": 57,
+      "tw": 1.1,
+      "wr": 40.4,
+      "ret": -13.09,
+      "pf": 0.87,
+      "dd": 39.49,
+      "setups": {
+        "val_breakdown": {
+          "n": 47,
+          "pnl": -6.043814883106299
+        },
+        "va_rejection": {
+          "n": 10,
+          "pnl": -7.047576779938298
+        }
+      }
+    },
+    {
+      "sym": "BTCUSDT",
+      "id": "btc_soft_no_htf",
+      "tr": 179,
+      "tw": 3.44,
+      "wr": 24.6,
+      "ret": -87.28,
+      "pf": 0.62,
+      "dd": 87.77,
+      "setups": {
+        "va_rejection": {
+          "n": 125,
+          "pnl": -74.53593043531048
+        },
+        "val_breakdown": {
+          "n": 54,
+          "pnl": -12.743905125287899
+        }
+      }
+    },
+    {
+      "sym": "BTCUSDT",
+      "id": "btc_soft_score5",
+      "tr": 67,
+      "tw": 1.29,
+      "wr": 43.3,
+      "ret": -12.79,
+      "pf": 0.88,
+      "dd": 42.74,
+      "setups": {
+        "val_breakdown": {
+          "n": 56,
+          "pnl": -7.083194836136389
+        },
+        "va_rejection": {
+          "n": 11,
+          "pnl": -5.7086310220529155
+        }
+      }
+    },
+    {
+      "sym": "BTCUSDT",
+      "id": "btc_plus_poc_soft",
+      "tr": 52,
+      "tw": 1,
+      "wr": 40.4,
+      "ret": -8.5,
+      "pf": 0.91,
+      "dd": 36.98,
+      "setups": {
+        "val_breakdown": {
+          "n": 42,
+          "pnl": -2.6460173763106294
+        },
+        "va_rejection": {
+          "n": 9,
+          "pnl": -2.745100759551156
+        },
+        "poc_bounce": {
+          "n": 1,
+          "pnl": -3.107113907276337
+        }
+      }
+    },
+    {
+      "sym": "BTCUSDT",
+      "id": "btc_plus_vah_soft_htf",
+      "tr": 69,
+      "tw": 1.33,
+      "wr": 33.3,
+      "ret": -33.11,
+      "pf": 0.7,
+      "dd": 46.23,
+      "setups": {
+        "vah_breakout": {
+          "n": 28,
+          "pnl": -23.220353788665804
+        },
+        "val_breakdown": {
+          "n": 39,
+          "pnl": -15.353515791806805
+        },
+        "va_rejection": {
+          "n": 2,
+          "pnl": 5.46768916216937
+        }
+      }
+    },
+    {
+      "sym": "BTCUSDT",
+      "id": "btc_open_eth_shaped",
+      "tr": 67,
+      "tw": 1.29,
+      "wr": 38.8,
+      "ret": -12.64,
+      "pf": 0.89,
+      "dd": 32.91,
+      "setups": {
+        "vah_breakout": {
+          "n": 29,
+          "pnl": -24.914355035252576
+        },
+        "val_breakdown": {
+          "n": 35,
+          "pnl": 2.9180284672572006
+        },
+        "va_rejection": {
+          "n": 3,
+          "pnl": 9.35136587110067
+        }
+      }
+    },
+    {
+      "sym": "BTCUSDT",
+      "id": "btc_shorts_ultra",
+      "tr": 70,
+      "tw": 1.35,
+      "wr": 41.4,
+      "ret": -22.19,
+      "pf": 0.8,
+      "dd": 44.56,
+      "setups": {
+        "val_breakdown": {
+          "n": 59,
+          "pnl": -15.745863374539068
+        },
+        "va_rejection": {
+          "n": 11,
+          "pnl": -6.441466819324147
+        }
+      }
+    },
+    {
+      "sym": "BTCUSDT",
+      "id": "btc_val_only_soft_htf",
+      "tr": 58,
+      "tw": 1.12,
+      "wr": 43.1,
+      "ret": -13.66,
+      "pf": 0.86,
+      "dd": 33.35,
+      "setups": {
+        "val_breakdown": {
+          "n": 58,
+          "pnl": -13.662505347980133
+        }
+      }
+    }
+  ]
+}

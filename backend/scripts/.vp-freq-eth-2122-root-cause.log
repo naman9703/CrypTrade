@@ -1,0 +1,155 @@
+running 2021-22…
+running 2022-23…
+running 2023-24…
+running 2024-25…
+running 2025-26…
+
+========== ROOT CAUSE — 2021-22 under H1+H2 ==========
+Headline: 49t / $-20.3 / WR35%
+
+PnL attribution:
+  SELL val_breakdown           28t / $-19.6 / WR29%
+  BUY vah_breakout             15t / $10.9 / WR53%
+  BUY va_rejection             5t / $-8.1 / WR20%
+  BUY other                    1t / $-3.6 / WR0%
+  SELL other                   —
+  VAL + bull60                 9t / $-9.5 / WR22%
+  VAL + bear60                 10t / $-1.8 / WR40%
+  VAL + flat60                 9t / $-8.4 / WR22%
+  VAL + vacuum                 21t / $-10.2 / WR29%
+  VAL + structured/tight       7t / $-9.4 / WR29%
+  VAL vacuum + bull60          8t / $-6.5 / WR25%
+  macro bull_trend             21t / $-12.0 / WR33%
+  macro bull_chop              12t / $1.2 / WR42%
+  macro weak_bear              7t / $-11.7 / WR14%
+  macro bear_trend             9t / $2.2 / WR44%
+
+2021-22 cells (worst first):
+  SELL|val_breakdown|bull_trend|vacuum             6t / $-9.7 / WR17%
+  SELL|val_breakdown|weak_bear|vacuum              5t / $-5.8 / WR20%
+  BUY|vah_breakout|bull_trend|tight                2t / $-5.1 / WR0%
+  BUY|va_rejection|bull_trend|vacuum               1t / $-3.6 / WR0%
+  BUY|poc_bounce|bull_trend|vacuum                 1t / $-3.6 / WR0%
+  SELL|val_breakdown|bull_chop|tight               1t / $-3.3 / WR0%
+  BUY|va_rejection|bull_trend|tight                1t / $-3.2 / WR0%
+  SELL|val_breakdown|weak_bear|tight               1t / $-3.1 / WR0%
+  SELL|val_breakdown|bull_trend|tight              1t / $-3.0 / WR0%
+  BUY|va_rejection|bull_trend|structured           1t / $-3.0 / WR0%
+  BUY|vah_breakout|weak_bear|vacuum                1t / $-2.8 / WR0%
+  BUY|vah_breakout|bull_chop|structured            3t / $-2.5 / WR33%
+  BUY|va_rejection|bear_trend|vacuum               1t / $-2.4 / WR0%
+  SELL|val_breakdown|bear_trend|structured         2t / $-0.1 / WR50%
+  SELL|val_breakdown|bull_chop|structured          2t / $0.1 / WR50%
+  BUY|vah_breakout|bear_trend|tight                1t / $2.3 / WR100%
+  SELL|val_breakdown|bear_trend|vacuum             5t / $2.5 / WR40%
+  SELL|val_breakdown|bull_chop|vacuum              5t / $2.8 / WR40%
+  BUY|va_rejection|bull_chop|tight                 1t / $4.1 / WR100%
+  BUY|vah_breakout|bull_trend|structured           3t / $8.7 / WR100%
+  BUY|vah_breakout|bull_trend|vacuum               5t / $10.3 / WR60%
+
+========== CELL MATRIX → PREPARED / UNPREPARED / AMBIGUOUS ==========
+
+--- prepared (6) ---
+  SELL|val_breakdown|bull_trend|vacuum             trained $39/10t | 21 $-9.7 | 2021-22:6/-10 2022-23:2/-8 2023-24:2/19 2024-25:3/9 2025-26:3/19
+  BUY|vah_breakout|weak_bear|vacuum                trained $21/7t | 21 $-2.8 | 2021-22:1/-3 2022-23:3/0 2023-24:1/9 2024-25:2/4 2025-26:1/8
+  BUY|vah_breakout|bull_chop|structured            trained $39/16t | 21 $-2.5 | 2021-22:3/-2 2022-23:3/5 2023-24:1/3 2024-25:7/4 2025-26:5/27
+  SELL|val_breakdown|bear_trend|structured         trained $49/12t | 21 $-0.1 | 2021-22:2/-0 2022-23:1/10 2023-24:2/-2 2024-25:5/14 2025-26:4/27
+  SELL|val_breakdown|bear_trend|tight              trained $20/8t | 21 $0.0 | 2021-22:0/0 2022-23:1/-4 2023-24:0/0 2024-25:1/4 2025-26:6/20
+  SELL|val_breakdown|bear_trend|vacuum             trained $44/32t | 21 $2.5 | 2021-22:5/3 2022-23:5/-9 2023-24:2/13 2024-25:14/-15 2025-26:11/54
+
+--- unprepared (6) ---
+  SELL|val_breakdown|bull_chop|tight               trained $0/2t | 21 $-3.3 | 2021-22:1/-3 2022-23:1/7 2023-24:0/0 2024-25:0/0 2025-26:1/-7
+  SELL|val_breakdown|weak_bear|structured          trained $-3/3t | 21 $0.0 | 2021-22:0/0 2022-23:0/0 2023-24:1/-3 2024-25:1/-3 2025-26:1/3
+  SELL|val_breakdown|bull_chop|structured          trained $-8/3t | 21 $0.1 | 2021-22:2/0 2022-23:1/-4 2023-24:0/0 2024-25:1/3 2025-26:1/-7
+  BUY|va_rejection|bull_chop|tight                 trained $-4/2t | 21 $4.1 | 2021-22:1/4 2022-23:0/0 2023-24:0/0 2024-25:1/7 2025-26:1/-11
+  BUY|vah_breakout|bull_trend|structured           trained $-0/8t | 21 $8.7 | 2021-22:3/9 2022-23:2/0 2023-24:3/-4 2024-25:1/3 2025-26:2/0
+  BUY|vah_breakout|bull_trend|vacuum               trained $-2/12t | 21 $10.3 | 2021-22:5/10 2022-23:3/0 2023-24:3/11 2024-25:3/1 2025-26:3/-14
+
+--- ambiguous (5) ---
+  SELL|val_breakdown|weak_bear|vacuum              trained $10/8t | 21 $-5.8 | 2021-22:5/-6 2022-23:3/-0 2023-24:1/-4 2024-25:1/-3 2025-26:3/18
+  BUY|va_rejection|bull_trend|tight                trained $28/4t | 21 $-3.2 | 2021-22:1/-3 2022-23:2/-1 2023-24:1/11 2024-25:0/0 2025-26:1/18
+  SELL|val_breakdown|weak_bear|tight               trained $16/1t | 21 $-3.1 | 2021-22:1/-3 2022-23:0/0 2023-24:0/0 2024-25:0/0 2025-26:1/16
+  SELL|val_breakdown|bull_trend|tight              trained $6/1t | 21 $-3.0 | 2021-22:1/-3 2022-23:1/6 2023-24:0/0 2024-25:0/0 2025-26:0/0
+  SELL|val_breakdown|bull_chop|vacuum              trained $29/4t | 21 $2.8 | 2021-22:5/3 2022-23:4/29 2023-24:0/0 2024-25:0/0 2025-26:0/0
+
+--- thin_unproven (20) ---
+  BUY|vah_breakout|bull_trend|tight                trained $0/0t | 21 $-5.1 | 2021-22:2/-5 2022-23:0/0 2023-24:0/0 2024-25:0/0 2025-26:0/0
+  BUY|va_rejection|bull_trend|vacuum               trained $-3/1t | 21 $-3.6 | 2021-22:1/-4 2022-23:0/0 2023-24:0/0 2024-25:1/-3 2025-26:0/0
+  BUY|poc_bounce|bull_trend|vacuum                 trained $0/0t | 21 $-3.6 | 2021-22:1/-4 2022-23:0/0 2023-24:0/0 2024-25:0/0 2025-26:0/0
+  BUY|va_rejection|bull_trend|structured           trained $0/0t | 21 $-3.0 | 2021-22:1/-3 2022-23:0/0 2023-24:0/0 2024-25:0/0 2025-26:0/0
+  BUY|va_rejection|bear_trend|vacuum               trained $0/0t | 21 $-2.4 | 2021-22:1/-2 2022-23:0/0 2023-24:0/0 2024-25:0/0 2025-26:0/0
+  BUY|va_rejection|bull_chop|structured            trained $-16/2t | 21 $0.0 | 2021-22:0/0 2022-23:1/-5 2023-24:0/0 2024-25:0/0 2025-26:1/-11
+  BUY|va_rejection|bull_chop|vacuum                trained $22/2t | 21 $0.0 | 2021-22:0/0 2022-23:1/16 2023-24:0/0 2024-25:1/6 2025-26:0/0
+  BUY|vah_breakout|bull_chop|vacuum                trained $-7/2t | 21 $0.0 | 2021-22:0/0 2022-23:1/-4 2023-24:0/0 2024-25:1/-3 2025-26:0/0
+  SELL|val_breakdown|bull_trend|structured         trained $-5/1t | 21 $0.0 | 2021-22:0/0 2022-23:1/-5 2023-24:0/0 2024-25:0/0 2025-26:0/0
+  BUY|poc_bounce|bull_trend|structured             trained $6/1t | 21 $0.0 | 2021-22:0/0 2022-23:0/0 2023-24:1/6 2024-25:0/0 2025-26:0/0
+  BUY|vah_breakout|bull_chop|tight                 trained $-3/1t | 21 $0.0 | 2021-22:0/0 2022-23:0/0 2023-24:1/-3 2024-25:0/0 2025-26:0/0
+  BUY|vah_breakout|weak_bear|structured            trained $-8/2t | 21 $0.0 | 2021-22:0/0 2022-23:0/0 2023-24:0/0 2024-25:1/-3 2025-26:1/-5
+  BUY|vah_breakout|bear_trend|vacuum               trained $-3/1t | 21 $0.0 | 2021-22:0/0 2022-23:0/0 2023-24:0/0 2024-25:1/-3 2025-26:0/0
+  SELL|va_rejection|bull_trend|vacuum              trained $-5/1t | 21 $0.0 | 2021-22:0/0 2022-23:0/0 2023-24:0/0 2024-25:1/-5 2025-26:0/0
+  SELL|poc_bounce|bear_trend|structured            trained $-4/1t | 21 $0.0 | 2021-22:0/0 2022-23:0/0 2023-24:0/0 2024-25:1/-4 2025-26:0/0
+  BUY|vah_breakout|bear_trend|structured           trained $0/2t | 21 $0.0 | 2021-22:0/0 2022-23:0/0 2023-24:0/0 2024-25:2/0 2025-26:0/0
+  SELL|poc_bounce|bull_trend|vacuum                trained $15/2t | 21 $0.0 | 2021-22:0/0 2022-23:0/0 2023-24:0/0 2024-25:1/25 2025-26:1/-10
+  SELL|poc_bounce|weak_bear|vacuum                 trained $3/1t | 21 $0.0 | 2021-22:0/0 2022-23:0/0 2023-24:0/0 2024-25:0/0 2025-26:1/3
+  SELL|va_rejection|bull_chop|structured           trained $23/1t | 21 $0.0 | 2021-22:0/0 2022-23:0/0 2023-24:0/0 2024-25:0/0 2025-26:1/23
+  BUY|vah_breakout|bear_trend|tight                trained $0/0t | 21 $2.3 | 2021-22:1/2 2022-23:0/0 2023-24:0/0 2024-25:0/0 2025-26:0/0
+
+CF PREPARED-ONLY (abstain unprepared+ambiguous+thin)
+  2021-22: drop 32/$-7.7 → kept 17t / $-12.6 / WR29%
+  2022-23: drop 21/$38.4 → kept 15t / $-5.8 / WR33%
+  2023-24: drop 11/$14.1 → kept 8t / $42.7 / WR75%
+  2024-25: drop 18/$18.3 → kept 32t / $20.8 / WR41%
+  2025-26: drop 19/$15.0 → kept 30t / $154.5 / WR67%
+
+CF abstain unprepared+thin, KEEP ambiguous
+  2021-22: drop 19/$4.7 → kept 30t / $-25.0 / WR27%
+  2022-23: drop 11/$4.5 → kept 25t / $28.1 / WR44%
+  2023-24: drop 9/$7.0 → kept 10t / $49.8 / WR70%
+  2024-25: drop 17/$21.6 → kept 33t / $17.5 / WR39%
+  2025-26: drop 14/$-36.2 → kept 35t / $205.8 / WR66%
+
+CF abstain all non-prepared (= prepared-only)
+  2021-22: drop 32/$-7.7 → kept 17t / $-12.6 / WR29%
+  2022-23: drop 21/$38.4 → kept 15t / $-5.8 / WR33%
+  2023-24: drop 11/$14.1 → kept 8t / $42.7 / WR75%
+  2024-25: drop 18/$18.3 → kept 32t / $20.8 / WR41%
+  2025-26: drop 19/$15.0 → kept 30t / $154.5 / WR67%
+
+CF abstain remaining VAL bull60 (vacuum)
+  2021-22: drop 9/$-9.5 → kept 40t / $-10.9 / WR38%
+  2022-23: drop 4/$-7.4 → kept 32t / $39.9 / WR44%
+  2023-24: drop 3/$15.4 → kept 16t / $41.4 / WR56%
+  2024-25: drop 3/$9.0 → kept 47t / $30.1 / WR40%
+  2025-26: drop 4/$42.5 → kept 45t / $127.1 / WR51%
+
+CF abstain macro=bull_trend
+  2021-22: drop 21/$-12.0 → kept 28t / $-8.3 / WR36%
+  2022-23: drop 11/$-8.1 → kept 25t / $40.7 / WR44%
+  2023-24: drop 10/$43.3 → kept 9t / $13.5 / WR44%
+  2024-25: drop 10/$30.5 → kept 40t / $8.6 / WR40%
+  2025-26: drop 10/$12.8 → kept 39t / $156.8 / WR56%
+
+CF abstain BUY va_rejection
+  2021-22: drop 5/$-8.1 → kept 44t / $-12.2 / WR36%
+  2022-23: drop 4/$8.9 → kept 32t / $23.7 / WR41%
+  2023-24: drop 1/$11.1 → kept 18t / $45.7 / WR56%
+  2024-25: drop 3/$9.5 → kept 47t / $29.6 / WR38%
+  2025-26: drop 3/$-3.7 → kept 46t / $173.3 / WR57%
+
+CF abstain VAL bull60 + BUY va_rejection
+  2021-22: drop 14/$-17.5 → kept 35t / $-2.8 / WR40%
+  2022-23: drop 8/$1.5 → kept 28t / $31.0 / WR43%
+  2023-24: drop 4/$26.5 → kept 15t / $30.3 / WR53%
+  2024-25: drop 6/$18.5 → kept 44t / $20.6 / WR39%
+  2025-26: drop 7/$38.7 → kept 42t / $130.8 / WR52%
+
+========== ROOT CAUSE SUMMARY ==========
+Total 2021-22: 49t / $-20.3 / WR35%
+  of which PREPARED cells: 17t / $-12.6 / WR29%
+  of which NON-PREPARED:   32t / $-7.7 / WR38%
+  VAL net $-19.6 | BUY rej $-8.1 | VAH $10.9
+Prepared cell count: 6
+Unprepared+thin: 26
+Ambiguous: 5
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-2122-root-cause.json

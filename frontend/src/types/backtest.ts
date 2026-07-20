@@ -95,11 +95,78 @@ export type BacktestMetrics = {
   };
   portfolio?: {
     symbols: string[];
+    mode?: string;
+    perCoinStart?: number;
+    skippedOverlap?: number;
     perCoin: Record<
       string,
       { trades: number; wins: number; winRate: number; netPnl: number }
     >;
   };
+  trailTickAudit?: TrailTickAuditResult;
+};
+
+export type TrailTickAuditVerdict = {
+  parityPct: number;
+  exitReasonMatchPct: number;
+  trailTierMatchPct: number;
+  medianExitTimeDeltaMs: number | null;
+  netPnlDeltaPct: number;
+  replayableCount: number;
+  comparedCount: number;
+  skippedCount: number;
+};
+
+export type TrailTickAuditTradeCompare = {
+  tradeNumber: number;
+  replaySkipped: boolean;
+  skipReason?: string;
+  match?: boolean | null;
+  reasonMatch?: boolean;
+  tierMatch?: boolean;
+  exitTimeDeltaMs?: number | null;
+  exitPriceDeltaPct?: number | null;
+  netPnlDelta?: number | null;
+  backtest?: {
+    exitReason?: string;
+    exitTs?: number;
+    exitPrice?: number;
+    trailStep?: number;
+    trailTierLabel?: string | null;
+    netPnl?: number;
+  };
+  replay?: {
+    exitReason?: string | null;
+    exitTs?: number | null;
+    exitPrice?: number | null;
+    trailStep?: number;
+    trailTierLabel?: string | null;
+    netPnl?: number | null;
+    noExitInWindow?: boolean;
+  };
+};
+
+export type TrailTickAuditResult = {
+  status: "idle" | "running" | "done" | "failed";
+  mode?: string;
+  completedAt?: string;
+  error?: string;
+  tradeCount?: number;
+  verdict?: TrailTickAuditVerdict;
+  perTrade?: TrailTickAuditTradeCompare[];
+};
+
+export type BacktestTrailEvent = {
+  /** Event timestamp (ms since epoch). */
+  ts: number | null;
+  step: number;
+  tierLabel: string | null;
+  /** Locked stop after this tier armed. */
+  slPrice: number | null;
+  /** Favorable extreme (HWM) when tier activated. */
+  favorablePx: number | null;
+  /** Price gate for the next tier (shown as next activation threshold). */
+  nextActivationPx: number | null;
 };
 
 export type BacktestTrade = {
@@ -107,8 +174,18 @@ export type BacktestTrade = {
   /** Set on portfolio runs; omitted on legacy single-coin runs. */
   symbol?: string | null;
   direction: "BUY" | "SELL" | string;
+  /** Strategy-bar open time (DB `entry_time`). */
   entryTs: string;
+  /** Signal bar open — same as `entryTs` on legacy runs. */
+  entryBarTs?: string | null;
+  /** Wall-clock fill time (bar close for Elite same-bar entry). */
+  entryFillTs?: string | null;
+  entrySameBar?: boolean | null;
+  /** Signal-bar close before slippage (matches 1h/1m OHLC at fill). */
+  entryMarkPx?: number | null;
   exitTs: string;
+  /** Wall-clock exit fill (1m mark minute when micro trail recorded). */
+  exitFillTs?: string | null;
   entryPrice: number;
   exitPrice: number | null;
   qty: number;
@@ -130,6 +207,8 @@ export type BacktestTrade = {
   gateAction: string | null;
   trailTierLabel: string | null;
   trailStep: number;
+  /** Per-tier trail activations recorded during simulation (re-run backtest to populate). */
+  trailEvents?: BacktestTrailEvent[] | null;
   /** Wallet equity used to size this trade (compounding: grows/shrinks with PnL). */
   equityAtEntry: number | null;
   /** Initial margin at entry (notional ÷ leverage on futures). */
@@ -175,6 +254,14 @@ export type BacktestCoverage = {
   coveragePct: number | null;
   minTs: number | null;
   maxTs: number | null;
+  /** Estimated Postgres heap bytes for rows in the selected window. */
+  diskBytes?: number | null;
+  /** Estimated in-memory bytes when bars are loaded for a backtest run. */
+  memBytesEst?: number | null;
+  /** Projected disk bytes if the window were 100% filled. */
+  diskBytesFull?: number | null;
+  /** Projected in-memory bytes if the window were 100% filled. */
+  memBytesFull?: number | null;
 };
 
 export type BacktestMonthlyCoverage = {

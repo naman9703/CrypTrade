@@ -1,0 +1,584 @@
+{
+  "generatedAt": "2026-07-18T13:01:40.524Z",
+  "baseline": "H1+H2+H3",
+  "years": {
+    "2021-22": {
+      "n": 46,
+      "wr": 36.95652173913043,
+      "net": -13.156864310235658
+    },
+    "2022-23": {
+      "n": 33,
+      "wr": 45.45454545454545,
+      "net": 45.52307278845032
+    },
+    "2023-24": {
+      "n": 19,
+      "wr": 57.89473684210527,
+      "net": 56.79627694815184
+    },
+    "2024-25": {
+      "n": 49,
+      "wr": 40.816326530612244,
+      "net": 43.15014909582437
+    },
+    "2025-26": {
+      "n": 48,
+      "wr": 54.166666666666664,
+      "net": 155.4529885501243
+    }
+  },
+  "cells21": [
+    {
+      "key": "SELL|val_breakdown|weak_bear|vacuum",
+      "n": 5,
+      "wr": 20,
+      "net": -5.675978040664782
+    },
+    {
+      "key": "BUY|vah_breakout|bull_trend|tight",
+      "n": 2,
+      "wr": 0,
+      "net": -5.436953855237427
+    },
+    {
+      "key": "BUY|va_rejection|bull_trend|vacuum",
+      "n": 1,
+      "wr": 0,
+      "net": -3.884092219997946
+    },
+    {
+      "key": "BUY|poc_bounce|bull_trend|vacuum",
+      "n": 1,
+      "wr": 0,
+      "net": -3.8752164444310355
+    },
+    {
+      "key": "BUY|va_rejection|bull_trend|tight",
+      "n": 1,
+      "wr": 0,
+      "net": -3.5163130394135456
+    },
+    {
+      "key": "SELL|val_breakdown|weak_bear|tight",
+      "n": 1,
+      "wr": 0,
+      "net": -3.383816676040606
+    },
+    {
+      "key": "SELL|val_breakdown|bull_chop|tight",
+      "n": 1,
+      "wr": 0,
+      "net": -3.324699083932165
+    },
+    {
+      "key": "BUY|va_rejection|bull_trend|structured",
+      "n": 1,
+      "wr": 0,
+      "net": -3.233651469620102
+    },
+    {
+      "key": "SELL|val_breakdown|bull_trend|tight",
+      "n": 1,
+      "wr": 0,
+      "net": -3.172618792915854
+    },
+    {
+      "key": "BUY|vah_breakout|weak_bear|vacuum",
+      "n": 1,
+      "wr": 0,
+      "net": -3.0144983076155705
+    },
+    {
+      "key": "BUY|vah_breakout|bull_chop|structured",
+      "n": 3,
+      "wr": 33.33333333333333,
+      "net": -2.6904436028720076
+    },
+    {
+      "key": "BUY|va_rejection|bear_trend|vacuum",
+      "n": 1,
+      "wr": 0,
+      "net": -2.635836419584202
+    },
+    {
+      "key": "SELL|val_breakdown|bull_trend|vacuum",
+      "n": 3,
+      "wr": 33.33333333333333,
+      "net": -1.9904221993500557
+    },
+    {
+      "key": "SELL|val_breakdown|bear_trend|structured",
+      "n": 2,
+      "wr": 50,
+      "net": -0.16113566597160833
+    },
+    {
+      "key": "SELL|val_breakdown|bull_chop|structured",
+      "n": 2,
+      "wr": 50,
+      "net": 0.1553316995474785
+    },
+    {
+      "key": "BUY|vah_breakout|bear_trend|tight",
+      "n": 1,
+      "wr": 100,
+      "net": 2.497570573470018
+    },
+    {
+      "key": "SELL|val_breakdown|bear_trend|vacuum",
+      "n": 5,
+      "wr": 40,
+      "net": 2.7323124020945087
+    },
+    {
+      "key": "SELL|val_breakdown|bull_chop|vacuum",
+      "n": 5,
+      "wr": 40,
+      "net": 2.787176875206631
+    },
+    {
+      "key": "BUY|va_rejection|bull_chop|tight",
+      "n": 1,
+      "wr": 100,
+      "net": 4.096555298513607
+    },
+    {
+      "key": "BUY|vah_breakout|bull_trend|structured",
+      "n": 3,
+      "wr": 100,
+      "net": 9.527912733086586
+    },
+    {
+      "key": "BUY|vah_breakout|bull_trend|vacuum",
+      "n": 5,
+      "wr": 60,
+      "net": 11.04195192549242
+    }
+  ],
+  "candidates": [
+    {
+      "id": "S1_weak_bear_vac",
+      "label": "abstain VAL weak_bear vacuum",
+      "verdict": "PROMISING",
+      "d21": 5.675978040664782,
+      "dLock": -8.825954210036969,
+      "dN": -8,
+      "drop25": 16.277621804419155,
+      "dropN21": 5,
+      "byYear": {
+        "2021-22": {
+          "dropN": 5,
+          "dropNet": -5.675978040664782,
+          "keptN": 41,
+          "keptNet": -7.480886269570876,
+          "keptWr": 39.02439024390244
+        },
+        "2022-23": {
+          "dropN": 3,
+          "dropNet": -0.184628424758722,
+          "keptN": 30,
+          "keptNet": 45.70770121320905,
+          "keptWr": 46.666666666666664
+        },
+        "2023-24": {
+          "dropN": 1,
+          "dropNet": -4.00140229992777,
+          "keptN": 18,
+          "keptNet": 60.79767924807959,
+          "keptWr": 61.111111111111114
+        },
+        "2024-25": {
+          "dropN": 1,
+          "dropNet": -3.265636869695666,
+          "keptN": 48,
+          "keptNet": 46.41578596552004,
+          "keptWr": 41.66666666666667
+        },
+        "2025-26": {
+          "dropN": 3,
+          "dropNet": 16.277621804419155,
+          "keptN": 45,
+          "keptNet": 139.17536674570516,
+          "keptWr": 55.55555555555556
+        }
+      }
+    },
+    {
+      "id": "S2_weak_bear_shallow_htf",
+      "label": "abstain VAL weak_bear when htfSep < 0.8%",
+      "verdict": "WEAK_2122",
+      "d21": 0,
+      "dLock": -15.312726139374092,
+      "dN": -3,
+      "drop25": 22.579765308997548,
+      "dropN21": 0,
+      "byYear": {
+        "2021-22": {
+          "dropN": 0,
+          "dropNet": 0,
+          "keptN": 46,
+          "keptNet": -13.156864310235658,
+          "keptWr": 36.95652173913043
+        },
+        "2022-23": {
+          "dropN": 0,
+          "dropNet": 0,
+          "keptN": 33,
+          "keptNet": 45.52307278845032,
+          "keptWr": 45.45454545454545
+        },
+        "2023-24": {
+          "dropN": 1,
+          "dropNet": -4.00140229992777,
+          "keptN": 18,
+          "keptNet": 60.79767924807959,
+          "keptWr": 61.111111111111114
+        },
+        "2024-25": {
+          "dropN": 1,
+          "dropNet": -3.265636869695666,
+          "keptN": 48,
+          "keptNet": 46.41578596552004,
+          "keptWr": 41.66666666666667
+        },
+        "2025-26": {
+          "dropN": 1,
+          "dropNet": 22.579765308997548,
+          "keptN": 47,
+          "keptNet": 132.87322324112677,
+          "keptWr": 53.191489361702125
+        }
+      }
+    },
+    {
+      "id": "S3_val_cycle_bull_p120",
+      "label": "abstain VAL when prior120d > +25% (sustained cycle bull)",
+      "verdict": "HURTS_LOCK",
+      "d21": 11.787732885408124,
+      "dLock": -81.44829260516477,
+      "dN": -15,
+      "drop25": 58.565618078412776,
+      "dropN21": 4,
+      "byYear": {
+        "2021-22": {
+          "dropN": 4,
+          "dropNet": -11.787732885408126,
+          "keptN": 42,
+          "keptNet": -1.369131424827534,
+          "keptWr": 40.476190476190474
+        },
+        "2022-23": {
+          "dropN": 3,
+          "dropNet": 1.9773169325041193,
+          "keptN": 30,
+          "keptNet": 43.54575585594621,
+          "keptWr": 43.333333333333336
+        },
+        "2023-24": {
+          "dropN": 5,
+          "dropNet": 4.554095565694535,
+          "keptN": 14,
+          "keptNet": 52.24218138245729,
+          "keptWr": 64.28571428571429
+        },
+        "2024-25": {
+          "dropN": 1,
+          "dropNet": 16.3512620285534,
+          "keptN": 48,
+          "keptNet": 26.79888706727097,
+          "keptWr": 39.58333333333333
+        },
+        "2025-26": {
+          "dropN": 6,
+          "dropNet": 58.565618078412776,
+          "keptN": 42,
+          "keptNet": 96.88737047171156,
+          "keptWr": 52.38095238095239
+        }
+      }
+    },
+    {
+      "id": "S4_buy_rej_bull_trend",
+      "label": "abstain BUY va_rejection in bull_trend",
+      "verdict": "mixed",
+      "d21": 10.634056729031593,
+      "dLock": -23.61186647760269,
+      "dN": -5,
+      "drop25": 17.029017491147584,
+      "dropN21": 3,
+      "byYear": {
+        "2021-22": {
+          "dropN": 3,
+          "dropNet": -10.634056729031593,
+          "keptN": 43,
+          "keptNet": -2.5228075812040642,
+          "keptWr": 39.53488372093023
+        },
+        "2022-23": {
+          "dropN": 2,
+          "dropNet": -1.4003864696268922,
+          "keptN": 31,
+          "keptNet": 46.923459258077216,
+          "keptWr": 45.16129032258064
+        },
+        "2023-24": {
+          "dropN": 1,
+          "dropNet": 11.128484868874938,
+          "keptN": 18,
+          "keptNet": 45.66779207927688,
+          "keptWr": 55.55555555555556
+        },
+        "2024-25": {
+          "dropN": 1,
+          "dropNet": -3.1452494127929436,
+          "keptN": 48,
+          "keptNet": 46.2953985086173,
+          "keptWr": 41.66666666666667
+        },
+        "2025-26": {
+          "dropN": 1,
+          "dropNet": 17.029017491147584,
+          "keptN": 47,
+          "keptNet": 138.4239710589767,
+          "keptWr": 53.191489361702125
+        }
+      }
+    },
+    {
+      "id": "S5_buy_rej_weak_quality",
+      "label": "abstain BUY va_rejection weak wick/close",
+      "verdict": "HURTS_LOCK",
+      "d21": 9.173337850102186,
+      "dLock": -46.54909514884122,
+      "dN": -9,
+      "drop25": 17.029017491147584,
+      "dropN21": 5,
+      "byYear": {
+        "2021-22": {
+          "dropN": 5,
+          "dropNet": -9.173337850102188,
+          "keptN": 41,
+          "keptNet": -3.9835264601334712,
+          "keptWr": 39.02439024390244
+        },
+        "2022-23": {
+          "dropN": 4,
+          "dropNet": 8.889926907058605,
+          "keptN": 29,
+          "keptNet": 36.63314588139173,
+          "keptWr": 44.827586206896555
+        },
+        "2023-24": {
+          "dropN": 1,
+          "dropNet": 11.128484868874938,
+          "keptN": 18,
+          "keptNet": 45.66779207927688,
+          "keptWr": 55.55555555555556
+        },
+        "2024-25": {
+          "dropN": 3,
+          "dropNet": 9.501665881760086,
+          "keptN": 46,
+          "keptNet": 33.64848321406428,
+          "keptWr": 39.130434782608695
+        },
+        "2025-26": {
+          "dropN": 1,
+          "dropNet": 17.029017491147584,
+          "keptN": 47,
+          "keptNet": 138.4239710589767,
+          "keptWr": 53.191489361702125
+        }
+      }
+    },
+    {
+      "id": "S6_S1_plus_S4",
+      "label": "weak_bear vac + BUY rej bull_trend",
+      "verdict": "mixed",
+      "d21": 16.310034769696376,
+      "dLock": -32.4378206876396,
+      "dN": -13,
+      "drop25": 33.30663929556674,
+      "dropN21": 8,
+      "byYear": {
+        "2021-22": {
+          "dropN": 8,
+          "dropNet": -16.310034769696376,
+          "keptN": 38,
+          "keptNet": 3.1531704594607173,
+          "keptWr": 42.10526315789473
+        },
+        "2022-23": {
+          "dropN": 5,
+          "dropNet": -1.5850148943856146,
+          "keptN": 28,
+          "keptNet": 47.108087682835944,
+          "keptWr": 46.42857142857143
+        },
+        "2023-24": {
+          "dropN": 2,
+          "dropNet": 7.127082568947168,
+          "keptN": 17,
+          "keptNet": 49.66919437920467,
+          "keptWr": 58.82352941176471
+        },
+        "2024-25": {
+          "dropN": 2,
+          "dropNet": -6.41088628248861,
+          "keptN": 47,
+          "keptNet": 49.56103537831297,
+          "keptWr": 42.5531914893617
+        },
+        "2025-26": {
+          "dropN": 4,
+          "dropNet": 33.30663929556674,
+          "keptN": 44,
+          "keptNet": 122.14634925455759,
+          "keptWr": 54.54545454545454
+        }
+      }
+    },
+    {
+      "id": "S7_S2_plus_S4",
+      "label": "weak_bear shallow HTF + BUY rej bull_trend",
+      "verdict": "mixed",
+      "d21": 10.634056729031593,
+      "dLock": -38.924592616976724,
+      "dN": -8,
+      "drop25": 39.608782800145136,
+      "dropN21": 3,
+      "byYear": {
+        "2021-22": {
+          "dropN": 3,
+          "dropNet": -10.634056729031593,
+          "keptN": 43,
+          "keptNet": -2.5228075812040642,
+          "keptWr": 39.53488372093023
+        },
+        "2022-23": {
+          "dropN": 2,
+          "dropNet": -1.4003864696268922,
+          "keptN": 31,
+          "keptNet": 46.923459258077216,
+          "keptWr": 45.16129032258064
+        },
+        "2023-24": {
+          "dropN": 2,
+          "dropNet": 7.127082568947168,
+          "keptN": 17,
+          "keptNet": 49.66919437920467,
+          "keptWr": 58.82352941176471
+        },
+        "2024-25": {
+          "dropN": 2,
+          "dropNet": -6.41088628248861,
+          "keptN": 47,
+          "keptNet": 49.56103537831297,
+          "keptWr": 42.5531914893617
+        },
+        "2025-26": {
+          "dropN": 2,
+          "dropNet": 39.608782800145136,
+          "keptN": 46,
+          "keptNet": 115.84420574997918,
+          "keptWr": 52.17391304347826
+        }
+      }
+    },
+    {
+      "id": "S8_val_p120_gt_40",
+      "label": "abstain VAL when prior120d > +40%",
+      "verdict": "mixed",
+      "d21": 3.449843710120403,
+      "dLock": -94.29176201076058,
+      "dN": -9,
+      "drop25": 58.565618078412776,
+      "dropN21": 1,
+      "byYear": {
+        "2021-22": {
+          "dropN": 1,
+          "dropNet": -3.449843710120404,
+          "keptN": 45,
+          "keptNet": -9.707020600115255,
+          "keptWr": 37.77777777777778
+        },
+        "2022-23": {
+          "dropN": 0,
+          "dropNet": 0,
+          "keptN": 33,
+          "keptNet": 45.52307278845032,
+          "keptWr": 45.45454545454545
+        },
+        "2023-24": {
+          "dropN": 2,
+          "dropNet": 19.374881903794467,
+          "keptN": 17,
+          "keptNet": 37.42139504435737,
+          "keptWr": 52.94117647058824
+        },
+        "2024-25": {
+          "dropN": 1,
+          "dropNet": 16.3512620285534,
+          "keptN": 48,
+          "keptNet": 26.79888706727097,
+          "keptWr": 39.58333333333333
+        },
+        "2025-26": {
+          "dropN": 6,
+          "dropNet": 58.565618078412776,
+          "keptN": 42,
+          "keptNet": 96.88737047171156,
+          "keptWr": 52.38095238095239
+        }
+      }
+    },
+    {
+      "id": "S9_bull_trend_vac_val_remaining",
+      "label": "abstain remaining SELL|val|bull_trend|vacuum",
+      "verdict": "WEAK_2122",
+      "d21": 1.9904221993500535,
+      "dLock": -43.73065248212083,
+      "dN": -6,
+      "drop25": 12.150986231148204,
+      "dropN21": 3,
+      "byYear": {
+        "2021-22": {
+          "dropN": 3,
+          "dropNet": -1.9904221993500557,
+          "keptN": 43,
+          "keptNet": -11.166442110885605,
+          "keptWr": 37.2093023255814
+        },
+        "2022-23": {
+          "dropN": 0,
+          "dropNet": 0,
+          "keptN": 33,
+          "keptNet": 45.52307278845032,
+          "keptWr": 45.45454545454545
+        },
+        "2023-24": {
+          "dropN": 2,
+          "dropNet": 19.374881903794467,
+          "keptN": 17,
+          "keptNet": 37.42139504435737,
+          "keptWr": 52.94117647058824
+        },
+        "2024-25": {
+          "dropN": 2,
+          "dropNet": 12.204784347178194,
+          "keptN": 47,
+          "keptNet": 30.945364748646178,
+          "keptWr": 40.42553191489361
+        },
+        "2025-26": {
+          "dropN": 2,
+          "dropNet": 12.150986231148204,
+          "keptN": 46,
+          "keptNet": 143.30200231897606,
+          "keptWr": 52.17391304347826
+        }
+      }
+    }
+  ]
+}

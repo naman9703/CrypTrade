@@ -13,8 +13,10 @@ import { VOLUME_PROFILE } from "./volumeProfileStrategy.js";
 import { REGIME_ADAPTIVE } from "./regimeAdaptive.js";
 import { SITUATION_INTRADAY } from "./situationIntraday.js";
 import { CRT_TBS } from "./crtTbsIntraday.js";
+import { SCALP_MR } from "./scalpMr.js";
 import { TOKYO_SESSION } from "./tokyoSessionIntraday.js";
 import { UNIFIED_ELITE } from "./unifiedElite.js";
+import { LIQUIDITY_MAP } from "./liquidityMapStrategy.js";
 
 const MIN_SIGNAL_SCORE = Number(process.env.MIN_SIGNAL_SCORE || 65);
 
@@ -266,6 +268,8 @@ export const strategies = {
   REGIME_ADAPTIVE,
   SITUATION_INTRADAY,
   CRT_TBS,
+  SCALP_MR,
   TOKYO_SESSION,
   UNIFIED_ELITE,
+  LIQUIDITY_MAP,
 };

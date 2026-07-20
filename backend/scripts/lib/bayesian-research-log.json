@@ -1,0 +1,398 @@
+{
+  "propositions": {
+    "liq_continuation_ohlcv": {
+      "prior": 0.7,
+      "alpha": 11.89999999999999,
+      "beta": 51.69999999999999,
+      "proposition": "Liquidity continuation after reclaim is predictable from OHLCV (L0–L1)",
+      "informationLevels": [
+        "L0",
+        "L1"
+      ],
+      "reusableAcross": [
+        "Family A",
+        "LIQ_MAP"
+      ],
+      "posterior": 0.1871,
+      "lastEvent": {
+        "type": "uoa_unexplained_variance",
+        "detail": "Identical L1 features, divergent outcomes — L0–L1 may be exhausted for this formulation",
+        "weight": 2
+      }
+    },
+    "regime_conditional_continuation": {
+      "prior": 0.5,
+      "alpha": 5,
+      "beta": 5,
+      "proposition": "Continuation probability depends on market regime (L1)",
+      "informationLevels": [
+        "L0",
+        "L1"
+      ],
+      "reusableAcross": [
+        "Family A",
+        "Family C"
+      ]
+    },
+    "orderflow_improves_discrimination": {
+      "prior": 0.55,
+      "alpha": 12.099999999999996,
+      "beta": 8.900000000000004,
+      "proposition": "Historical order-book microstructure (L3) materially improves discrimination",
+      "informationLevels": [
+        "L3"
+      ],
+      "requiredLevels": [
+        "L3"
+      ],
+      "untestable": true,
+      "reusableAcross": [
+        "execution",
+        "microstructure hypotheses"
+      ],
+      "posterior": 0.5762,
+      "lastEvent": {
+        "type": "uoa_missing_information",
+        "detail": "Unexplained variance suggests L2+ information may be required — proposition untestable until ingested",
+        "weight": 1
+      }
+    },
+    "oi_liquidations_improve_liq": {
+      "prior": 0.45,
+      "alpha": 4.5,
+      "beta": 5.5,
+      "proposition": "Open interest and funding (L2) improve hypothesis discrimination vs L0–L1 alone",
+      "informationLevels": [
+        "L2"
+      ],
+      "requiredLevels": [
+        "L2"
+      ],
+      "untestable": false,
+      "reusableAcross": [
+        "Family A retest",
+        "positioning hypotheses"
+      ]
+    },
+    "trend_ohlcv_predictable": {
+      "prior": 0.35,
+      "alpha": 3.5,
+      "beta": 6.5,
+      "proposition": "Trend acceleration is predictable from OHLCV-derived features (L0–L1)",
+      "informationLevels": [
+        "L0",
+        "L1"
+      ],
+      "reusableAcross": [
+        "Family C",
+        "SUPERTREND_ELITE"
+      ]
+    }
+  },
+  "history": [
+    {
+      "at": "2026-07-10T02:21:53.212Z",
+      "events": [
+        {
+          "belief": "liquidity_continuation",
+          "strength": 0.19999999999999996,
+          "posterior": 0.6348
+        }
+      ]
+    },
+    {
+      "at": "2026-07-10T02:21:53.318Z",
+      "events": [
+        {
+          "belief": "liquidity_continuation",
+          "strength": 0.3599999999999999,
+          "posterior": 0.5857
+        },
+        {
+          "belief": "liquidity_continuation",
+          "strength": 0.15,
+          "note": "latent_state_incomplete"
+        }
+      ]
+    },
+    {
+      "at": "2026-07-10T03:02:45.337Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.075,
+          "posterior": 0.633
+        }
+      ]
+    },
+    {
+      "at": "2026-07-10T03:25:00.596Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.075,
+          "posterior": 0.579
+        }
+      ]
+    },
+    {
+      "at": "2026-07-10T03:25:00.840Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.09,
+          "posterior": 0.5111
+        },
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "note": "L0-L1 plateau suspected"
+        },
+        {
+          "proposition": "orderflow_improves_discrimination",
+          "note": "L2 may be needed"
+        }
+      ]
+    },
+    {
+      "at": "2026-07-10T03:29:31.176Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.09,
+          "posterior": 0.4207
+        },
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "note": "L0-L1 plateau suspected"
+        },
+        {
+          "proposition": "orderflow_improves_discrimination",
+          "note": "L2 may be needed"
+        }
+      ]
+    },
+    {
+      "at": "2026-07-10T04:08:10.341Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.075,
+          "posterior": 0.3718
+        }
+      ]
+    },
+    {
+      "at": "2026-07-10T04:14:19.322Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.075,
+          "posterior": 0.3561
+        }
+      ]
+    },
+    {
+      "at": "2026-07-10T04:17:23.301Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.075,
+          "posterior": 0.3421
+        }
+      ]
+    },
+    {
+      "at": "2026-07-10T04:19:29.539Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.09,
+          "posterior": 0.3227
+        },
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "note": "L0-L1 plateau suspected"
+        },
+        {
+          "proposition": "orderflow_improves_discrimination",
+          "note": "L2 may be needed"
+        }
+      ]
+    },
+    {
+      "at": "2026-07-10T15:02:31.169Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.075,
+          "posterior": 0.2973
+        }
+      ]
+    },
+    {
+      "at": "2026-07-10T19:18:36.843Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.09,
+          "posterior": 0.284
+        },
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "note": "L0-L1 plateau suspected"
+        },
+        {
+          "proposition": "orderflow_improves_discrimination",
+          "note": "L2 may be needed"
+        }
+      ]
+    },
+    {
+      "at": "2026-07-10T19:18:37.176Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.075,
+          "posterior": 0.266
+        }
+      ]
+    },
+    {
+      "at": "2026-07-11T01:29:11.726Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.09,
+          "posterior": 0.2563
+        },
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "note": "L0-L1 plateau suspected"
+        },
+        {
+          "proposition": "orderflow_improves_discrimination",
+          "note": "L2 may be needed"
+        }
+      ]
+    },
+    {
+      "at": "2026-07-11T01:37:37.666Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.075,
+          "posterior": 0.2429
+        }
+      ]
+    },
+    {
+      "at": "2026-07-11T01:38:03.803Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.09,
+          "posterior": 0.2356
+        },
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "note": "L0-L1 plateau suspected"
+        },
+        {
+          "proposition": "orderflow_improves_discrimination",
+          "note": "L2 may be needed"
+        }
+      ]
+    },
+    {
+      "at": "2026-07-11T01:38:55.417Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.09,
+          "posterior": 0.2232
+        },
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "note": "L0-L1 plateau suspected"
+        },
+        {
+          "proposition": "orderflow_improves_discrimination",
+          "note": "L2 may be needed"
+        }
+      ]
+    },
+    {
+      "at": "2026-07-11T01:39:41.608Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.09,
+          "posterior": 0.2129
+        },
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "note": "L0-L1 plateau suspected"
+        },
+        {
+          "proposition": "orderflow_improves_discrimination",
+          "note": "L2 may be needed"
+        }
+      ]
+    },
+    {
+      "at": "2026-07-11T01:50:11.196Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.09,
+          "posterior": 0.2041
+        },
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "note": "L0-L1 plateau suspected"
+        },
+        {
+          "proposition": "orderflow_improves_discrimination",
+          "note": "L2 may be needed"
+        }
+      ]
+    },
+    {
+      "at": "2026-07-11T02:06:49.205Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.09,
+          "posterior": 0.1965
+        },
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "note": "L0-L1 plateau suspected"
+        },
+        {
+          "proposition": "orderflow_improves_discrimination",
+          "note": "L2 may be needed"
+        }
+      ]
+    },
+    {
+      "at": "2026-07-11T02:08:51.186Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.09,
+          "posterior": 0.1899
+        },
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "note": "L0-L1 plateau suspected"
+        },
+        {
+          "proposition": "orderflow_improves_discrimination",
+          "note": "L2 may be needed"
+        }
+      ]
+    }
+  ],
+  "updatedAt": "2026-07-11T02:08:51.188Z"
+}

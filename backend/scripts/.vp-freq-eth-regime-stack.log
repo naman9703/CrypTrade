@@ -1,0 +1,26 @@
+
+=== 0 baseline (macro+chop trail) ===
+N=263 ret=144.8% DD=50.4% WR=38%
+  2022-2023: n=64 wr=34% ret=-1.5% net=$-1.5
+  2023-2024: n=45 wr=36% ret=0.0% net=$0.0
+  2024-2025: n=82 wr=37% ret=13.2% net=$13.0
+  2025-2026: n=72 wr=46% ret=119.4% net=$133.2
+  setups: vp_va_rejection:22/$7 vp_val_breakdown:112/$138 vp_vah_breakout:123/$-12 vp_poc_bounce:6/$11
+
+=== +A rejection quality ===
+N=245 ret=178.9% DD=45.9% WR=39%
+  2022-2023: n=57 wr=35% ret=3.0% net=$3.0
+  2023-2024: n=43 wr=35% ret=-4.1% net=$-4.2
+  2024-2025: n=77 wr=38% ret=22.3% net=$22.0
+  2025-2026: n=68 wr=47% ret=130.8% net=$158.1
+  setups: vp_val_breakdown:112/$150 vp_vah_breakout:123/$-10 vp_poc_bounce:7/$7 vp_va_rejection:3/$32
+
+=== +A+B rejection + structured VAH ===
+N=163 ret=231.3% DD=41.0% WR=42%
+  2022-2023: n=39 wr=38% ret=10.5% net=$10.5
+  2023-2024: n=26 wr=31% ret=-9.9% net=$-10.9
+  2024-2025: n=53 wr=40% ret=30.3% net=$30.1
+  2025-2026: n=45 wr=56% ret=155.4% net=$201.6
+  setups: vp_val_breakdown:112/$173 vp_vah_breakout:41/$14 vp_poc_bounce:7/$8 vp_va_rejection:3/$37
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-regime-stack.json

@@ -1,0 +1,129 @@
+
+========================================================================
+LIQ per-coin OOS tune | ETHUSDT 15m
+Months: 2025-03, 2025-07, 2025-10, 2026-01, 2026-04 | tune=2025-03,2025-07,2025-10 | oos=2026-01,2026-04
+Grid size: 11 | risk=2% lev=12x
+
+--- TOP 8 on tune months ---
+#1 score=3531.5 tuneRet=3.13% tr/mo=1.7 ext=0.40% rr=2 body=undefined htf=off score=undefined pick=undefined maxTd=undefined
+#2 score=32.2 tuneRet=10.27% tr/mo=16.0 ext=0.40% rr=1.5 body=0.25 htf=off score=6 pick=true maxTd=undefined
+#3 score=31.7 tuneRet=10.26% tr/mo=17.7 ext=0.30% rr=1.25 body=undefined htf=off score=6 pick=true maxTd=2
+#4 score=25.8 tuneRet=7.84% tr/mo=14.3 ext=0.50% rr=1.75 body=0.35 htf=off score=7 pick=true maxTd=undefined
+#5 score=7.4 tuneRet=0.83% tr/mo=11.0 ext=0.30% rr=1 body=0 htf=off score=4 pick=false maxTd=5
+#6 score=4.9 tuneRet=0.07% tr/mo=6.7 ext=0.50% rr=1.25 body=0.25 htf=0.0005 score=5 pick=undefined maxTd=undefined
+#7 score=2.5 tuneRet=-0.99% tr/mo=16.7 ext=0.30% rr=1 body=undefined htf=off score=5 pick=undefined maxTd=undefined
+#8 score=2.5 tuneRet=-0.99% tr/mo=10.0 ext=0.30% rr=0 body=0 htf=off score=5 pick=undefined maxTd=undefined
+
+--- OOS hold-out (2026-01, 2026-04) ---
+#1 oosRet=-0.16% tr/mo=1.5 posMo=0/2 months=2026-01:-0.3%/3tr 2026-04:0.0%/0tr
+#2 oosRet=-5.06% tr/mo=12.0 posMo=1/2 months=2026-01:-14.5%/11tr 2026-04:4.4%/13tr
+#3 oosRet=-4.17% tr/mo=14.5 posMo=1/2 months=2026-01:-11.0%/14tr 2026-04:2.6%/15tr
+#4 oosRet=-4.75% tr/mo=11.0 posMo=1/2 months=2026-01:-13.9%/9tr 2026-04:4.4%/13tr
+#5 oosRet=-4.60% tr/mo=7.5 posMo=0/2 months=2026-01:-1.8%/9tr 2026-04:-7.4%/6tr
+#6 oosRet=-3.60% tr/mo=3.0 posMo=0/2 months=2026-01:-3.6%/3tr 2026-04:-3.6%/3tr
+#7 oosRet=3.36% tr/mo=15.0 posMo=1/2 months=2026-01:8.6%/15tr 2026-04:-1.9%/15tr
+#8 oosRet=-5.56% tr/mo=7.0 posMo=0/2 months=2026-01:-3.7%/8tr 2026-04:-7.4%/6tr
+
+--- ACCEPTANCE GATES (top OOS candidates) ---
+#7 gates=FAIL fullRet=-7.1% calmar=-0.23 mcP5=-39.2% wfDeg=153.5% oosWF=3.6%
+    PASS oosPositive: 3.61 (need > 0)
+    FAIL mcP5Positive: -39.21 (need > 0)
+    FAIL calmarOver1: -0.23 (need > 1)
+    FAIL wfDegradationOk: 153.46 (need < 35%)
+#3 gates=FAIL fullRet=-29.8% calmar=-0.54 mcP5=-54.1% wfDeg=310.6% oosWF=-38.5%
+    FAIL oosPositive: -38.53 (need > 0)
+    FAIL mcP5Positive: -54.13 (need > 0)
+    FAIL calmarOver1: -0.54 (need > 1)
+    FAIL wfDegradationOk: 310.61 (need < 35%)
+#2 gates=FAIL fullRet=-39.0% calmar=-0.63 mcP5=-59.9% wfDeg=6795.3% oosWF=-49.4%
+    FAIL oosPositive: -49.43 (need > 0)
+    FAIL mcP5Positive: -59.90 (need > 0)
+    FAIL calmarOver1: -0.63 (need > 1)
+    FAIL wfDegradationOk: 6795.27 (need < 35%)
+#4 gates=FAIL fullRet=-35.5% calmar=-0.59 mcP5=-57.0% wfDeg=568.5% oosWF=-43.0%
+    FAIL oosPositive: -43.03 (need > 0)
+    FAIL mcP5Positive: -56.99 (need > 0)
+    FAIL calmarOver1: -0.59 (need > 1)
+    FAIL wfDegradationOk: 568.50 (need < 35%)
+#1 gates=FAIL fullRet=1.4% calmar=0.14 mcP5=-11.8% wfDeg=376.6% oosWF=-2.4%
+    FAIL oosPositive: -2.44 (need > 0)
+    FAIL mcP5Positive: -11.76 (need > 0)
+    FAIL calmarOver1: 0.14 (need > 1)
+    FAIL wfDegradationOk: 376.62 (need < 35%)
+
+========================================================================
+BEST CANDIDATE SUMMARY
+{
+  "symbol": "ETHUSDT",
+  "months": [
+    "2025-03",
+    "2025-07",
+    "2025-10",
+    "2026-01",
+    "2026-04"
+  ],
+  "tuneMonths": [
+    "2025-03",
+    "2025-07",
+    "2025-10"
+  ],
+  "oosMonths": [
+    "2026-01",
+    "2026-04"
+  ],
+  "bestPatch": {
+    "srIntradaySweepPct": 0.001,
+    "intradayLiqMinSweepExtensionPct": 0.003,
+    "intradayLiqMinRr": 1,
+    "intradayLiqMinScore": 5,
+    "intradayLiqRequireHtfAlign": false,
+    "intradayLiqSessionExtreme": true,
+    "intradayLiqSessionExtremeMinTouches": 2,
+    "intradayLiqSessionExtremeMinExtensionPct": 0.001,
+    "__label": "loose_session_ext"
+  },
+  "tuneScore": 2.529364535186544,
+  "oosAvgRetMo": 3.3576746945374634,
+  "oosAvgTradesMo": 15,
+  "all5AvgRetMo": 0.7503438143212444,
+  "all5AvgTradesMo": 16,
+  "monthly": [
+    {
+      "month": "2025-03",
+      "ret": 1.428837866460599,
+      "trades": 18,
+      "pf": 1.0763340362930987,
+      "dd": 8.558837337164393
+    },
+    {
+      "month": "2025-07",
+      "ret": 4.619768455839767,
+      "trades": 17,
+      "pf": 1.3275685396120895,
+      "dd": 5.894929305080015
+    },
+    {
+      "month": "2025-10",
+      "ret": -9.012236639769071,
+      "trades": 15,
+      "pf": 0.5002434192511314,
+      "dd": 9.302953026861287
+    },
+    {
+      "month": "2026-01",
+      "ret": 8.641899071154675,
+      "trades": 15,
+      "pf": 2.0550314975628803,
+      "dd": 4.60584041112244
+    },
+    {
+      "month": "2026-04",
+      "ret": -1.926549682079749,
+      "trades": 15,
+      "pf": 0.8611033033393037,
+      "dd": 5.552635394012795
+    }
+  ],
+  "passesGates": false,
+  "gateDetail": null
+}

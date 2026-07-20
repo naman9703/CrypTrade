@@ -1,0 +1,8 @@
+UNIFORM m3/adx20/4hON + ELITE_ST_EXIT_CONTRACT risk=5%
+BTCUSDT    net=-8.1% CAGR=-5.8% Calmar=-0.31 DD=18.9% n=23 MC_p5=-8.8 WF_deg=-113.6% OOSsum=12.1% folds+=3/4 -> REJECTED ✅oosPositive ❌mcP5Positive ❌calmarOver1 ✅wfDegradationOk
+ETHUSDT    net=31.9% CAGR=21.6% Calmar=86.47 DD=0.3% n=15 MC_p5=3.3 WF_deg=-18.8% OOSsum=24.7% folds+=4/4 -> ACCEPTED ✅oosPositive ✅mcP5Positive ✅calmarOver1 ✅wfDegradationOk
+BNBUSDT    net=13.3% CAGR=9.2% Calmar=5.31 DD=1.7% n=19 MC_p5=0.4 WF_deg=75.5% OOSsum=4.5% folds+=2/4 -> REJECTED ✅oosPositive ✅mcP5Positive ✅calmarOver1 ❌wfDegradationOk
+LINKUSDT   net=8.0% CAGR=20.4% Calmar=— DD=0.0% n=5 MC_p5=1.0 WF_deg=35.5% OOSsum=4.3% folds+=3/4 -> REJECTED ✅oosPositive ✅mcP5Positive ❌calmarOver1 ❌wfDegradationOk
+XRPUSDT    net=15.0% CAGR=15.4% Calmar=20.58 DD=0.8% n=7 MC_p5=0.1 WF_deg=9.3% OOSsum=14.8% folds+=3/4 -> ACCEPTED ✅oosPositive ✅mcP5Positive ✅calmarOver1 ✅wfDegradationOk
+
+SUMMARY anyPass=true allPass=false

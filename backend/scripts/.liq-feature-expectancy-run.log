@@ -1,0 +1,150 @@
+Running IS BNBUSDT V1...
+Running IS BNBUSDT V2...
+Running IS BTCUSDT V1...
+Running IS BTCUSDT V2...
+Running OOS BNBUSDT V1...
+Running OOS BNBUSDT V2...
+Running OOS BTCUSDT V1...
+Running OOS BTCUSDT V2...
+{
+  "generatedAt": "2026-07-09T21:42:43.150Z",
+  "windows": {
+    "IS": {
+      "BNBUSDT": {
+        "V1": {
+          "summary": {
+            "n": 76,
+            "winPct": 48.68421052631579,
+            "netPct": -22.194747572516572,
+            "pf": 0.6,
+            "avgR": 0,
+            "avgScoreV2": 69.2,
+            "featureCoveragePct": 100
+          },
+          "maxDdPct": 30.51523496664299,
+          "cagrPct": -20.922045429965806
+        },
+        "V2": {
+          "summary": {
+            "n": 12,
+            "winPct": 41.66666666666667,
+            "netPct": -6.000191392791824,
+            "pf": 0.49,
+            "avgR": 0,
+            "avgScoreV2": 76,
+            "featureCoveragePct": 100
+          },
+          "maxDdPct": 10.451999682045969,
+          "cagrPct": -5.6233908891132
+        }
+      },
+      "BTCUSDT": {
+        "V1": {
+          "summary": {
+            "n": 62,
+            "winPct": 56.451612903225815,
+            "netPct": 6.0484473821202425,
+            "pf": 1.16,
+            "avgR": 0,
+            "avgScoreV2": 72,
+            "featureCoveragePct": 100
+          },
+          "maxDdPct": 13.118459889984535,
+          "cagrPct": 5.763252885046399
+        },
+        "V2": {
+          "summary": {
+            "n": 5,
+            "winPct": 60,
+            "netPct": 1.2674974687495322,
+            "pf": 1.45,
+            "avgR": 0,
+            "avgScoreV2": 78.6,
+            "featureCoveragePct": 100
+          },
+          "maxDdPct": 2.7736250853308113,
+          "cagrPct": 1.209025735638325
+        }
+      }
+    },
+    "OOS": {
+      "BNBUSDT": {
+        "V1": {
+          "summary": {
+            "n": 64,
+            "winPct": 64.0625,
+            "netPct": 7.382186518871841,
+            "pf": 1.19,
+            "avgR": 0,
+            "avgScoreV2": 71.1,
+            "featureCoveragePct": 100
+          },
+          "maxDdPct": 9.493390084571427,
+          "cagrPct": 8.069549836610769
+        },
+        "V2": {
+          "summary": {
+            "n": 7,
+            "winPct": 28.57142857142857,
+            "netPct": -9.814483459303537,
+            "pf": 0.24,
+            "avgR": 0,
+            "avgScoreV2": 74,
+            "featureCoveragePct": 100
+          },
+          "maxDdPct": 10.4603016821771,
+          "cagrPct": -10.64524326130769
+        }
+      },
+      "BTCUSDT": {
+        "V1": {
+          "summary": {
+            "n": 26,
+            "winPct": 42.30769230769231,
+            "netPct": -13.248427323267748,
+            "pf": 0.45,
+            "avgR": 0,
+            "avgScoreV2": 72,
+            "featureCoveragePct": 100
+          },
+          "maxDdPct": 15.606457906164737,
+          "cagrPct": -14.345957505791596
+        },
+        "V2": {
+          "summary": {
+            "n": 0,
+            "winPct": 0,
+            "netPct": 0,
+            "pf": 0,
+            "avgR": 0,
+            "avgScoreV2": 0,
+            "featureCoveragePct": 0
+          },
+          "maxDdPct": 0,
+          "cagrPct": 0
+        }
+      }
+    }
+  },
+  "promotion": {
+    "BNBUSDT": {
+      "v2OosPfGt1": false,
+      "v2OosReturnGt0": false,
+      "tradeCountNotHalved": false,
+      "v2ImprovesAvgROrDd": true,
+      "pass": false
+    },
+    "BTCUSDT": {
+      "v2OosPfGt1": false,
+      "v2OosReturnGt0": false,
+      "tradeCountNotHalved": false,
+      "v2ImprovesAvgROrDd": true,
+      "pass": false
+    },
+    "overallPass": false
+  }
+}
+
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.liq-feature-expectancy.log
+
+OOS gates: FAIL — keep V1 as default; review gates before promoting V2

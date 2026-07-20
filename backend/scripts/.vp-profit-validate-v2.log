@@ -1,0 +1,27 @@
+=== Session Tier-A (prior-VA breakouts) ===
+17mo    BNBUSDT   n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0% Calmar=0
+2026H1  BNBUSDT   n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0% Calmar=0
+17mo    BTCUSDT   n=  1 cand=  1 WR=    0% ret=  -2.97% PF=    0 DD= 2.97% Calmar=-0.71
+2026H1  BTCUSDT   n=  0 cand=  0 WR=    0% ret=      0% PF=    0 DD=    0% Calmar=0
+17mo    ETHUSDT   n=  3 cand=  3 WR= 33.3% ret=  -0.17% PF= 0.97 DD= 2.97% Calmar=-0.04
+2026H1  ETHUSDT   n=  2 cand=  2 WR=   50% ret=   2.88% PF= 1.92 DD= 2.97% Calmar=2.39
+
+=== Portfolio R-replay 17mo session Tier-A ===
+events 4 risk5% {
+  n: 4,
+  ret: -6.75,
+  cagr: -4.81,
+  maxDD: 11.53,
+  calmar: -0.42,
+  final: 933
+} risk2.5% {
+  n: 4,
+  ret: -3.14,
+  cagr: -2.23,
+  maxDD: 5.85,
+  calmar: -0.38,
+  final: 969
+}
+
+=== Gate check on best n>=5 ===
+No config with n>=5

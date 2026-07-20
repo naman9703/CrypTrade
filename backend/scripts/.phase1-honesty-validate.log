@@ -1,0 +1,52 @@
+
+=== SUPERTREND_ELITE deep validation — BTCUSDT, ETHUSDT, BNBUSDT 15m 2025-01-01->2026-06-01 ===
+normalized: risk%=5 lev=25x · 18 configs/symbol
+
+────────── BTCUSDT (49536 bars) ──────────
+  top configs:
+    m2.5/adx25/4h0     net=   30.3% trades= 22 WR=45% PF=4.48 maxDD=2.4% Calmar=8.41
+    m3/adx25/4h0       net=   30.3% trades= 22 WR=45% PF=4.48 maxDD=2.4% Calmar=8.41
+    m3.5/adx25/4h0     net=   26.8% trades= 25 WR=44% PF=4.33 maxDD=2.2% Calmar=8.15
+    m2.5/adx30/4h0     net=   16.9% trades= 14 WR=50% PF=5.76 maxDD=1.5% Calmar=7.80
+    m3/adx30/4h0       net=   16.9% trades= 14 WR=50% PF=5.76 maxDD=1.5% Calmar=7.80
+  >> BEST: m2.5/adx25/4h0  net=30.3% CAGR=20.6% Calmar=8.41 maxDD=2.4% Sharpe=1.51 PF=4.48 trades=22
+     MC(1% risk): ret p5=1.2% p50=5.3% p95=11.1%  ruin(>=50%)=0.0%
+     WF fold 0: train[n=1 exp=$117.38] test[n=5 ret=1.2% PF=1.52]
+     WF fold 1: train[n=6 exp=$21.81] test[n=5 ret=6.9% PF=26.78]
+     WF fold 2: train[n=11 exp=$19.00] test[n=5 ret=10.4% PF=8.98]
+     WF fold 3: train[n=16 exp=$20.96] test[n=6 ret=-2.4% PF=0.23]
+     WF: degradation=81.5% OOSsumRet=16.1%
+     GATES: ✅oosPositive ✅mcP5Positive ✅calmarOver1 ❌wfDegradationOk -> REJECTED ❌
+
+────────── ETHUSDT (49536 bars) ──────────
+  top configs:
+    m2.5/adx20/4h0     net=   43.1% trades= 20 WR=80% PF=27.43 maxDD=0.8% Calmar=38.47
+    m3/adx20/4h0       net=   43.1% trades= 20 WR=80% PF=27.43 maxDD=0.8% Calmar=38.47
+    m3.5/adx20/4h0     net=   41.3% trades= 18 WR=72% PF=16.44 maxDD=1.0% Calmar=26.68
+    m3.5/adx20/4h1     net=   39.2% trades= 14 WR=79% PF=25.72 maxDD=1.0% Calmar=25.41
+    m3.5/adx25/4h0     net=   38.2% trades= 15 WR=73% PF=17.02 maxDD=1.0% Calmar=24.75
+  >> BEST: m2.5/adx20/4h0  net=43.1% CAGR=28.9% Calmar=38.47 maxDD=0.8% Sharpe=2.67 PF=27.43 trades=20
+     MC(1% risk): ret p5=4.6% p50=7.4% p95=10.7%  ruin(>=50%)=0.0%
+     WF fold 0: train[n=6 exp=$14.62] test[n=3 ret=6.7% PF=10.00]
+     WF fold 1: train[n=9 exp=$17.91] test[n=4 ret=13.6% PF=999.00]
+     WF fold 2: train[n=13 exp=$24.52] test[n=5 ret=6.9% PF=27.92]
+     WF fold 3: train[n=17 exp=$21.89] test[n=2 ret=1.5% PF=999.00]
+     WF: degradation=1.5% OOSsumRet=28.7%
+     GATES: ✅oosPositive ✅mcP5Positive ✅calmarOver1 ✅wfDegradationOk -> ACCEPTED ✅
+
+────────── BNBUSDT (49536 bars) ──────────
+  top configs:
+    m3.5/adx20/4h1     net=   14.5% trades= 23 WR=43% PF=2.71 maxDD=2.0% Calmar=5.05
+    m2.5/adx20/4h1     net=   13.3% trades= 19 WR=42% PF=3.32 maxDD=1.7% Calmar=5.31
+    m3/adx20/4h1       net=   13.3% trades= 19 WR=42% PF=3.32 maxDD=1.7% Calmar=5.31
+    m3.5/adx30/4h0     net=   10.2% trades= 14 WR=43% PF=3.09 maxDD=1.2% Calmar=5.72
+    m2.5/adx25/4h1     net=    8.4% trades= 15 WR=40% PF=2.89 maxDD=1.5% Calmar=3.95
+  >> BEST: m3.5/adx20/4h1  net=14.5% CAGR=10.0% Calmar=5.05 maxDD=2.0% Sharpe=1.41 PF=2.71 trades=23
+     MC(1% risk): ret p5=0.3% p50=2.7% p95=5.5%  ruin(>=50%)=0.0%
+     WF fold 0: train[n=7 exp=$8.41] test[n=1 ret=-0.8% PF=0.00]
+     WF fold 1: train[n=8 exp=$6.37] test[n=3 ret=3.3% PF=13.94]
+     WF fold 2: train[n=11 exp=$7.75] test[n=6 ret=1.4% PF=1.48]
+     WF fold 3: train[n=16 exp=$6.82] test[n=7 ret=3.2% PF=2.36]
+     WF: degradation=64.8% OOSsumRet=7.1%
+     GATES: ✅oosPositive ✅mcP5Positive ✅calmarOver1 ❌wfDegradationOk -> REJECTED ❌
+

@@ -130,6 +130,7 @@ async function materializeCfg(run) {
     const { materializeIntradayPanelOnCfg } = await import("../../strategy/intradayPanelKeys.js");
     const { ensureBacktestMarketMode, applyInstanceOperationalToBot } = await import("../../lib/strategyInstanceSplit.js");
     const { normalizeEliteStRunCfg } = await import("../../strategy/supertrendElite.js");
+    const { normalizeLiquidityMapRunCfg } = await import("../../strategy/liquidityMapStrategy.js");
     const stratEarly = String(cfg.manualStrategy ?? "").toUpperCase();
     if (stratEarly === "SITUATION_INTRADAY") {
       const { resolveSituationRouterCfg } = await import("../../strategy/situationIntraday.js");
@@ -139,14 +140,27 @@ async function materializeCfg(run) {
       const { resolveCrtTbsCfg } = await import("../../strategy/crtTbsIntraday.js");
       cfg = resolveCrtTbsCfg(cfg);
       cfg._intradayEngineMaterialized = true;
+    } else if (stratEarly === "SCALP_MR") {
+      const { resolveScalpMrCfg } = await import("../../strategy/scalpMr.js");
+      cfg = resolveScalpMrCfg(cfg);
+      cfg._intradayEngineMaterialized = true;
     } else if (stratEarly === "TOKYO_SESSION") {
       const { resolveTokyoSessionCfg } = await import("../../strategy/tokyoSessionIntraday.js");
       cfg = resolveTokyoSessionCfg(cfg);
       cfg._intradayEngineMaterialized = true;
-    } else if (stratEarly === "SUPERTREND_ELITE" || stratEarly === "UNIFIED_ELITE") {
+    } else if (
+      stratEarly === "SUPERTREND_ELITE" ||
+      stratEarly === "UNIFIED_ELITE" ||
+      stratEarly === "LIQUIDITY_MAP"
+    ) {
       cfg._intradayEngineMaterialized = true;
-    } else if (!cfg._intradayEngineMaterialized) {
+    } else if (
+      stratEarly === "SR_INTRADAY" ||
+      stratEarly === "INTRADAY_PRO" ||
+      !cfg._intradayEngineMaterialized
+    ) {
       cfg = materializeIntradayEngineCfgSync(cfg, materializeIntradayPanelOnCfg);
+      cfg._intradayEngineMaterialized = true;
     }
     if (run.instance_operational_snapshot && typeof run.instance_operational_snapshot === "object") {
       applyInstanceOperationalToBot(cfg, run.instance_operational_snapshot);
@@ -155,6 +169,8 @@ async function materializeCfg(run) {
     const strat = String(cfg.manualStrategy ?? "").toUpperCase();
     if (strat === "SUPERTREND_ELITE" || strat === "UNIFIED_ELITE") {
       Object.assign(cfg, normalizeEliteStRunCfg(cfg));
+    } else if (strat === "LIQUIDITY_MAP") {
+      Object.assign(cfg, normalizeLiquidityMapRunCfg(cfg));
     }
   } catch {
     /* optional */
@@ -172,7 +188,7 @@ async function readFullHistory(symbol, tf, market) {
   for (let from = HISTORY_FLOOR_MS; from < now; from += READ_CANDLES_SLICE_MS) {
     const to = Math.min(now, from + READ_CANDLES_SLICE_MS);
     const part = await readCandles(symbol, tf, from, to, { market });
-    if (part.length) out.push(...part);
+    for (const bar of part) out.push(bar);
   }
   return out;
 }
@@ -255,9 +271,20 @@ async function simulateVariant(ctx, { cfgPatch = null, costPatch = null, candleT
     return { metrics, trades: sim.trades, equityCurve: sim.equityCurve };
   }
 
-  // Portfolio: equal slice per coin → shared-account dollar replay (live parity).
+  // Portfolio: unit sims per mode → shared-account dollar replay.
+  const {
+    resolvePortfolioPositionSizing,
+    resolvePortfolioUnitStart,
+    resolvePortfolioUnitSizingMode,
+  } = await import("./portfolioPositionSizing.js");
   const nCoins = Math.max(1, symbols.length);
-  const perCoinStart = Math.max(1, Number(startingUsdt) || 100) / nCoins;
+  const portfolioSizingMode = resolvePortfolioPositionSizing(cfg);
+  const perCoinStart = resolvePortfolioUnitStart({
+    startingUsdt,
+    coinCount: nCoins,
+    mode: portfolioSizingMode,
+  });
+  const unitSizingMode = resolvePortfolioUnitSizingMode(portfolioSizingMode);
   const allEvents = [];
   let firstTs = null;
   for (const sym of symbols) {
@@ -268,7 +295,8 @@ async function simulateVariant(ctx, { cfgPatch = null, costPatch = null, candleT
     if (firstTs == null) firstTs = candles[0].ts;
     const runCfg = {
       ...(await prepareEliteSimCfg(cfg, sym, candles, strategyKey)),
-      backtestPositionSizing: "FULL_EQUITY_MARGIN",
+      backtestPositionSizing: unitSizingMode,
+      portfolioPositionSizing: portfolioSizingMode,
     };
     const adapters = await buildAdapters({
       strategyKey,
@@ -299,6 +327,7 @@ async function simulateVariant(ctx, { cfgPatch = null, costPatch = null, candleT
     coinCount: nCoins,
     perCoinUnitStart: perCoinStart,
     startTs: firstTs,
+    mode: portfolioSizingMode,
   });
   const metrics = computeAllMetrics({
     trades: replay.trades,

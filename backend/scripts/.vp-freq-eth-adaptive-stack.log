@@ -1,0 +1,37 @@
+
+=== 0 prior lock (wick only) ===
+N=259 ret=184.0% DD=48.4% WR=39%
+  2022-2023: n=64 wr=34% ret=-1.5% net=$-1.5
+  2023-2024: n=44 wr=36% ret=4.2% net=$4.1
+  2024-2025: n=80 wr=38% ret=21.9% net=$22.5
+  2025-2026: n=71 wr=46% ret=127.1% net=$158.9
+
+=== +A vacuum cap non-bull ===
+N=220 ret=204.0% DD=44.6% WR=40%
+  2022-2023: n=55 wr=35% ret=-2.8% net=$-2.8
+  2023-2024: n=43 wr=35% ret=-0.9% net=$-0.9
+  2024-2025: n=66 wr=41% ret=45.1% net=$43.4
+  2025-2026: n=56 wr=48% ret=117.7% net=$164.4
+
+=== +B SELL rej extended-down block ===
+N=253 ret=198.4% DD=41.6% WR=40%
+  2022-2023: n=60 wr=37% ret=13.0% net=$13.0
+  2023-2024: n=44 wr=36% ret=4.2% net=$4.7
+  2024-2025: n=78 wr=37% ret=11.6% net=$13.7
+  2025-2026: n=71 wr=46% ret=127.1% net=$167.0
+
+=== +C non-bear VAL HTF 0.5% ===
+N=250 ret=202.4% DD=47.6% WR=39%
+  2022-2023: n=60 wr=33% ret=-4.2% net=$-4.2
+  2023-2024: n=42 wr=38% ret=10.7% net=$10.3
+  2024-2025: n=77 wr=38% ret=25.5% net=$27.1
+  2025-2026: n=71 wr=46% ret=127.1% net=$169.2
+
+=== +ABC combined adaptive (new lock) ===
+N=204 ret=249.9% DD=34.9% WR=41%
+  2022-2023: n=47 wr=36% ret=8.5% net=$8.5
+  2023-2024: n=41 wr=37% ret=5.3% net=$5.7
+  2024-2025: n=61 wr=41% ret=36.7% net=$42.0
+  2025-2026: n=55 wr=49% ret=124.0% net=$193.7
+
+wrote .vp-freq-eth-adaptive-stack.json

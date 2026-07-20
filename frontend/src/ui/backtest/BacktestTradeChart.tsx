@@ -2,6 +2,7 @@
  * OHLCV candlestick chart with trade entry / exit at fill prices on the correct bar.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ColorType,
   createChart,
@@ -18,12 +19,19 @@ import { api } from "../../api/client";
 import type { BacktestRunSummary, BacktestTrade } from "../../types/backtest";
 import {
   barAtTradeTime,
+  barIndexForTradeFill,
   buildCandleChartSeries,
-  chartTimeForTrade,
+  chartTimeForEntryFill,
+  chartTimeForExitFill,
   exitInsideBar,
   formatChartTimeIST,
+  formatTsIST,
+  resolveTradeEntryFillMs,
+  resolveTradeExitFillMs,
+  activeBracketPrice,
   nextChartTime,
   type OhlcCandle,
+  type TradeChartTiming,
 } from "./backtestChartTime";
 import {
   buildPositionPatternOverlay,
@@ -54,6 +62,17 @@ import {
   isOverlayLayerOn,
   type ChartOverlayLayerId,
 } from "./backtestChartOverlayLayers";
+import { approxBarCount } from "./backtestEta";
+import {
+  buildAllTradePointSeries,
+  buildSingleTradeMarkers,
+} from "./backtestTradeChartPoints";
+import {
+  buildBacktestTrailTierLines,
+  isBacktestTrailingChartEnabled,
+} from "./backtestTrailTierLines";
+import { buildBacktestTrailEventSeries } from "./backtestTrailEventOverlays";
+import { TrailTierLeftLabels } from "./TrailTierLeftLabels";
 
 const SUPPORTED_TFS = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d"];
 
@@ -66,26 +85,51 @@ type Props = {
 
 const FALLBACK_CHART_TF = "1h";
 
-import {
-  buildAllTradePointSeries,
-  buildSingleTradeMarkers,
-} from "./backtestTradeChartPoints";
+/** ~10 days of 1m bars — cap chart fetch unless a trade is selected (trade gets a padded window). */
+const MAX_CHART_BARS_WITHOUT_TRADE = 14_400;
+const TRADE_CHART_PAD_MS = 24 * 60 * 60_000;
+
+function normalizeBacktestCandles(raw: unknown): OhlcCandle[] {
+  if (!Array.isArray(raw)) return [];
+  const byTs = new Map<number, OhlcCandle>();
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const ts = Number(r.ts);
+    const open = Number(r.open);
+    const high = Number(r.high);
+    const low = Number(r.low);
+    const close = Number(r.close);
+    if (![ts, open, high, low, close].every(Number.isFinite)) continue;
+    if (ts <= 0 || open <= 0 || high <= 0 || low <= 0 || close <= 0) continue;
+    byTs.set(ts, {
+      ts,
+      open,
+      high: Math.max(high, open, low, close),
+      low: Math.min(low, open, high, close),
+      close,
+    });
+  }
+  return [...byTs.values()].sort((a, b) => a.ts - b.ts);
+}
 
 function buildSelectedTradeLine(
   t: BacktestTrade,
   candles: OhlcCandle[],
   chartTimesSec: number[],
-  indexByTs: Map<number, number>,
+  timing: TradeChartTiming,
 ): LineData[] | null {
   if (!t.exitTs || t.exitPrice == null) return null;
-  const entryTime = chartTimeForTrade(t.entryTs, candles, chartTimesSec, indexByTs);
-  const exitBase = chartTimeForTrade(t.exitTs, candles, chartTimesSec, indexByTs) as number;
+  const entryTime = chartTimeForEntryFill(t, candles, chartTimesSec, timing);
+  const exitBase = chartTimeForExitFill(t, candles, chartTimesSec, timing) as number;
   const exitTime =
     (exitBase as number) <= (entryTime as number)
       ? nextChartTime(exitBase, entryTime as number)
       : (exitBase as UTCTimestamp);
+  const entryPx =
+    t.entryMarkPx != null && Number.isFinite(t.entryMarkPx) ? t.entryMarkPx : t.entryPrice;
   return [
-    { time: entryTime, value: t.entryPrice },
+    { time: entryTime, value: entryPx },
     { time: exitTime, value: t.exitPrice },
   ];
 }
@@ -191,6 +235,29 @@ function readVisibleLogicalRange(chart: IChartApi | null): { from: number; to: n
   return null;
 }
 
+/** Bar padding when zooming to a selected trade — tighter on lower TFs. */
+function focusPadBarsForChartTf(chartTf: string): number {
+  switch (chartTf) {
+    case "1m":
+      return 18;
+    case "5m":
+      return 16;
+    case "15m":
+      return 14;
+    case "30m":
+      return 12;
+    case "1h":
+      return 10;
+    case "2h":
+    case "4h":
+      return 8;
+    case "1d":
+      return 6;
+    default:
+      return 12;
+  }
+}
+
 function restoreVisibleLogicalRange(
   chart: IChartApi | null,
   range: { from: number; to: number } | null,
@@ -243,7 +310,7 @@ function applyPriceLineSpecs(
       color: spec.color,
       lineWidth: spec.lineWidth ?? 1,
       lineStyle: spec.lineStyle ?? LineStyle.Dashed,
-      axisLabelVisible: true,
+      axisLabelVisible: spec.axisLabelVisible ?? true,
       title: spec.title,
     }),
   );
@@ -262,6 +329,20 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
   const [overlayLayers, setOverlayLayers] = useState(defaultOverlayLayerState);
   const [fullscreen, setFullscreen] = useState(false);
 
+  useEffect(() => {
+    if (!fullscreen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [fullscreen]);
+
   const toggleOverlayLayer = useCallback((id: ChartOverlayLayerId) => {
     setOverlayLayers((prev) => ({ ...prev, [id]: !isOverlayLayerOn(prev, id) }));
   }, []);
@@ -276,11 +357,15 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
   const linkSeries = useRef<ISeriesApi<"Line"> | null>(null);
   const overviewEntrySeries = useRef<ISeriesApi<"Line"> | null>(null);
   const overviewExitSeries = useRef<ISeriesApi<"Line"> | null>(null);
+  const trailActivationSeries = useRef<ISeriesApi<"Line"> | null>(null);
+  const trailNextGateSeries = useRef<ISeriesApi<"Line"> | null>(null);
+  const trailSlPathSeries = useRef<ISeriesApi<"Line"> | null>(null);
   const srDayHighSeries = useRef<ISeriesApi<"Line"> | null>(null);
   const srDayLowSeries = useRef<ISeriesApi<"Line"> | null>(null);
   const srWeekHighSeries = useRef<ISeriesApi<"Line"> | null>(null);
   const srWeekLowSeries = useRef<ISeriesApi<"Line"> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+  const trailTierLinesRef = useRef<IPriceLine[]>([]);
   const taPriceLinesRef = useRef<IPriceLine[]>([]);
   const patternPriceLinesRef = useRef<IPriceLine[]>([]);
   const zoneRiskTopSeries = useRef<ISeriesApi<"Line"> | null>(null);
@@ -299,6 +384,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
   const focusedTradeRef = useRef<number | null>(null);
   const overviewFitRef = useRef(false);
   const lastChartModeRef = useRef<"overview" | "detail">("overview");
+  const [chartRev, setChartRev] = useState(0);
 
   const tradeForOverlays = useMemo(() => {
     if (selectedTradeNumber == null) return null;
@@ -353,22 +439,69 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
     }));
   }, [candlesSeriesKey, candles, chartSeries]);
 
-  const overviewPoints = useMemo(() => {
-    if (detailMode || !chartSeries || !trades.length) return null;
-    return buildAllTradePointSeries(
-      trades,
+  const chartTiming = useMemo((): TradeChartTiming | null => {
+    if (!run?.timeframe) return null;
+    return { chartTf, runTimeframe: run.timeframe, engineType: run.engineType };
+  }, [chartTf, run?.timeframe, run?.engineType]);
+
+  const trailTierLineSpecs = useMemo(() => {
+    if (!run || !tradeForOverlays) return [];
+    return buildBacktestTrailTierLines(run, tradeForOverlays);
+  }, [run, tradeForOverlays]);
+
+  const trailEventSeries = useMemo(() => {
+    if (!tradeForOverlays || !chartSeries || !candles.length) {
+      return { activations: [], nextGates: [], slPath: [] };
+    }
+    return buildBacktestTrailEventSeries(
+      tradeForOverlays,
       candles,
       chartSeries.chartTimesSec,
       chartSeries.indexByTs,
     );
-  }, [detailMode, trades, candlesSeriesKey, candles, chartSeries]);
+  }, [tradeForOverlays, candlesSeriesKey, candles, chartSeries]);
+
+  const showTrailTierChart = isBacktestTrailingChartEnabled(run);
+
+  const overviewPoints = useMemo(() => {
+    if (detailMode || !chartSeries || !trades.length || !chartTiming) return null;
+    return buildAllTradePointSeries(
+      trades,
+      candles,
+      chartSeries.chartTimesSec,
+      chartTiming,
+    );
+  }, [detailMode, trades, candlesSeriesKey, candles, chartSeries, chartTiming]);
 
   const runBotCfg = useMemo(() => botFromRunConfig(run), [run?.id, run?.configSnapshot]);
 
   const smcLegendMarkup = useMemo((): SmcChartMarkup | null => {
     if (!detailMode || !tradeForOverlays || !showTaDrawing || !candles.length) return null;
-    return buildStrategyTradeMarkup(candles, tradeForOverlays, run, runBotCfg);
-  }, [detailMode, tradeForOverlays?.tradeNumber, showTaDrawing, candlesSeriesKey, run?.id, runBotCfg, candles, tradeForOverlays, run]);
+    return buildStrategyTradeMarkup(candles, tradeForOverlays, run, runBotCfg, chartTf);
+  }, [detailMode, tradeForOverlays?.tradeNumber, showTaDrawing, candlesSeriesKey, run?.id, runBotCfg, candles, tradeForOverlays, run, chartTf]);
+
+  const focusChartOnTrade = useCallback(
+    (trade: BacktestTrade) => {
+      if (!chartApi.current || !candles.length || !chartSeries) return;
+      const range = smcLegendMarkup
+        ? { from: smcLegendMarkup.focusFromIdx, to: smcLegendMarkup.focusToIdx }
+        : focusLogicalRangeForTrade(
+            trade,
+            candles,
+            chartSeries.indexByTs,
+            focusPadBarsForChartTf(chartTf),
+            chartTiming ?? undefined,
+          );
+      if (!range) return;
+      try {
+        chartApi.current.timeScale().setVisibleLogicalRange(range);
+        focusedTradeRef.current = trade.tradeNumber;
+      } catch {
+        /* ignore */
+      }
+    },
+    [candles, chartSeries, smcLegendMarkup, chartTf, chartTiming],
+  );
 
   const smcLayers = useMemo(() => {
     if (!smcLegendMarkup || !chartSeries) return null;
@@ -376,16 +509,16 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
   }, [smcLegendMarkup, chartSeries]);
 
   const detailTradeMarkers = useMemo(() => {
-    if (!detailMode || !tradeForOverlays || !chartSeries) return [];
+    if (!detailMode || !tradeForOverlays || !chartSeries || !chartTiming) return [];
     const base = buildSingleTradeMarkers(
       tradeForOverlays,
       candles,
       chartSeries.chartTimesSec,
-      chartSeries.indexByTs,
+      chartTiming,
     );
     if (!smcLayers?.markers.length) return base;
     return mergeTradeAndSmcMarkers(base, smcLayers.markers);
-  }, [detailMode, tradeForOverlays, candlesSeriesKey, candles, chartSeries, smcLayers]);
+  }, [detailMode, tradeForOverlays, candlesSeriesKey, candles, chartSeries, smcLayers, chartTiming]);
 
   useEffect(() => {
     if (!run || run.status !== "done") {
@@ -395,12 +528,33 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
       return;
     }
 
-    const fromMs = new Date(run.startDate).getTime();
-    const toMs = new Date(run.endDate).getTime();
-    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
+    const runFromMs = new Date(run.startDate).getTime();
+    const runToMs = new Date(run.endDate).getTime();
+    if (!Number.isFinite(runFromMs) || !Number.isFinite(runToMs)) {
       setCandles([]);
       setLoading(false);
       setError("Invalid run date range");
+      return;
+    }
+
+    const estBars = approxBarCount(run.startDate, run.endDate, chartTf);
+    const trade = tradeForOverlays;
+    let fromMs = runFromMs;
+    let toMs = runToMs;
+
+    if (trade?.entryTs != null && run?.timeframe) {
+      const entryMs = resolveTradeEntryFillMs(trade, run.timeframe, run.engineType);
+      const exitMs = trade.exitTs != null ? resolveTradeExitFillMs(trade, run.timeframe) : entryMs;
+      if (Number.isFinite(entryMs)) {
+        fromMs = Math.max(runFromMs, entryMs - TRADE_CHART_PAD_MS);
+        toMs = Math.min(runToMs, (Number.isFinite(exitMs) ? exitMs : entryMs) + TRADE_CHART_PAD_MS);
+      }
+    } else if (estBars > MAX_CHART_BARS_WITHOUT_TRADE) {
+      setCandles([]);
+      setLoading(false);
+      setError(
+        `Too many ${chartTf} bars (~${estBars.toLocaleString()}) for the full run — pick a Trade # first, then switch to ${chartTf}.`,
+      );
       return;
     }
 
@@ -419,7 +573,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
           market: marketMode === "SPOT" ? "spot" : "futures",
         });
         if (fetchSeqRef.current !== seq) return;
-        setCandles(Array.isArray(data.candles) ? data.candles : []);
+        setCandles(normalizeBacktestCandles(data.candles));
       } catch (e) {
         if (fetchSeqRef.current !== seq) return;
         setError(String((e as Error).message ?? e));
@@ -427,7 +581,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
         if (fetchSeqRef.current === seq) setLoading(false);
       }
     })();
-  }, [run?.id, run?.status, chartSymbol, run?.startDate, run?.endDate, chartTf]);
+  }, [run?.id, run?.status, run?.timeframe, run?.engineType, chartSymbol, run?.startDate, run?.endDate, chartTf, tradeForOverlays?.tradeNumber, tradeForOverlays?.entryTs, tradeForOverlays?.exitTs, tradeForOverlays?.entryFillTs]);
 
   const strategyMarkupKind = useMemo(
     () => (detailMode ? resolveStrategyMarkupKind(run, tradeForOverlays) : "none"),
@@ -452,6 +606,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
       taOverlay,
       patternLegend: patternOverlay?.legend,
       strategyKind: strategyMarkupKind,
+      showTrailTiers: showTrailTierChart,
     });
     const maeLine = tradeForOverlays ? formatMaeMfeLine(tradeForOverlays) : null;
     if (!maeLine) return items;
@@ -463,6 +618,8 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
     taOverlay,
     patternOverlay?.legend,
     strategyMarkupKind,
+    showTrailTierChart,
+    trailTierLineSpecs.length,
   ]);
 
   const clearDetailOverlays = useCallback(() => {
@@ -473,6 +630,11 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
     }
     linkSeries.current?.setData([]);
     priceLinesRef.current = applyPriceLineSpecs(candleSeries.current, priceLinesRef.current, []);
+    trailTierLinesRef.current = applyPriceLineSpecs(
+      candleSeries.current,
+      trailTierLinesRef.current,
+      [],
+    );
     zoneRiskTopSeries.current?.setData([]);
     zoneRiskBottomSeries.current?.setData([]);
     zoneRewardTopSeries.current?.setData([]);
@@ -484,6 +646,9 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
     srDayLowSeries.current?.setData([]);
     srWeekHighSeries.current?.setData([]);
     srWeekLowSeries.current?.setData([]);
+    trailActivationSeries.current?.setData([]);
+    trailNextGateSeries.current?.setData([]);
+    trailSlPathSeries.current?.setData([]);
   }, []);
 
   const applyTradeOverlays = useCallback(() => {
@@ -518,7 +683,6 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
     overviewExitSeries.current?.setData([]);
 
     const trade = tradeForOverlays;
-    const shouldFocusTrade = trade != null && focusedTradeRef.current !== trade.tradeNumber;
     const layerOn = (id: ChartOverlayLayerId) => isOverlayLayerOn(overlayLayers, id);
 
     try {
@@ -527,7 +691,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
       /* ignore */
     }
 
-    const link = trade ? buildSelectedTradeLine(trade, candles, chartTimesSec, indexByTs) : null;
+    const link = trade && chartTiming ? buildSelectedTradeLine(trade, candles, chartTimesSec, chartTiming) : null;
     linkSeries.current?.setData(layerOn("trade_link") && link ? link : []);
 
     type TaggedBracket = ChartPriceLineSpec & { layer: ChartOverlayLayerId };
@@ -540,18 +704,20 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
         lineStyle: LineStyle.Dashed,
         layer: "bracket_entry",
       });
-      if (trade.slPrice != null && Number.isFinite(trade.slPrice)) {
+      const sl = activeBracketPrice(trade.slPrice);
+      if (sl != null) {
         bracketSpecs.push({
-          price: trade.slPrice,
+          price: sl,
           color: "#ef4444",
           title: `SL #${trade.tradeNumber}`,
           lineStyle: LineStyle.Dashed,
           layer: "bracket_sl",
         });
       }
-      if (trade.tpPrice != null && Number.isFinite(trade.tpPrice)) {
+      const tp = activeBracketPrice(trade.tpPrice);
+      if (tp != null) {
         bracketSpecs.push({
-          price: trade.tpPrice,
+          price: tp,
           color: "#a855f7",
           title: `TP #${trade.tradeNumber}`,
           lineStyle: LineStyle.Dashed,
@@ -622,6 +788,16 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
       priceLinesRef.current,
       bracketSpecs.filter((s) => layerOn(s.layer)).map(({ layer: _layer, ...spec }) => spec),
     );
+    trailTierLinesRef.current = applyPriceLineSpecs(
+      candleSeries.current,
+      trailTierLinesRef.current,
+      showTrailTierChart && layerOn("trail_tiers") ? trailTierLineSpecs : [],
+    );
+
+    const showTrailEvents = showTrailTierChart && layerOn("trail_tiers");
+    trailActivationSeries.current?.setData(showTrailEvents ? trailEventSeries.activations : []);
+    trailNextGateSeries.current?.setData(showTrailEvents ? trailEventSeries.nextGates : []);
+    trailSlPathSeries.current?.setData(showTrailEvents ? trailEventSeries.slPath : []);
 
     if (srLineData) {
       srDayHighSeries.current?.setData(layerOn("session_pdh") ? srLineData.prevDayHigh : []);
@@ -640,6 +816,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
         ? buildTradeChartZoneSeries(run, trade, candles, chartTimesSec, indexByTs, {
             showTa: showTaDrawing,
             showPattern: showPositionPattern,
+            chartTf,
           })
         : null;
 
@@ -685,19 +862,6 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
       }
     }
 
-    if (shouldFocusTrade && trade) {
-      const range = smcLegendMarkup
-        ? { from: smcLegendMarkup.focusFromIdx, to: smcLegendMarkup.focusToIdx }
-        : focusLogicalRangeForTrade(trade, candles, indexByTs);
-      if (range) {
-        try {
-          chartApi.current?.timeScale().setVisibleLogicalRange(range);
-          focusedTradeRef.current = trade.tradeNumber;
-        } catch {
-          /* ignore */
-        }
-      }
-    }
   }, [
     candles,
     chartSeries,
@@ -713,7 +877,12 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
     overviewPoints,
     srLineData,
     overlayLayers,
+    chartTiming,
+    chartTf,
     clearDetailOverlays,
+    showTrailTierChart,
+    trailTierLineSpecs,
+    trailEventSeries,
   ]);
 
   /** Candle + S/R series — only when candle payload changes; never reset pan/zoom on trade pick. */
@@ -731,6 +900,9 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
       linkSeries.current = null;
       overviewEntrySeries.current = null;
       overviewExitSeries.current = null;
+      trailActivationSeries.current = null;
+      trailNextGateSeries.current = null;
+      trailSlPathSeries.current = null;
       srDayHighSeries.current = null;
       srDayLowSeries.current = null;
       srWeekHighSeries.current = null;
@@ -743,6 +915,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
       zoneTokyoBottomSeries.current = null;
       taZoneSeriesPool.current = [];
       priceLinesRef.current = [];
+      trailTierLinesRef.current = [];
       taPriceLinesRef.current = [];
       patternPriceLinesRef.current = [];
       chartSeriesKeyRef.current = "";
@@ -801,6 +974,33 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
       overviewExitSeries.current = chartApi.current.addLineSeries({
         ...overviewPointOpts,
         color: "#94a3b8",
+      });
+      const trailPointOpts = {
+        lineVisible: false,
+        pointMarkersVisible: true,
+        lastValueVisible: false,
+        priceLineVisible: false,
+        crosshairMarkerVisible: true,
+        lineWidth: 2 as const,
+      };
+      trailActivationSeries.current = chartApi.current.addLineSeries({
+        ...trailPointOpts,
+        color: "#fbbf24",
+      });
+      trailNextGateSeries.current = chartApi.current.addLineSeries({
+        ...trailPointOpts,
+        color: "#fb923c",
+      });
+      trailSlPathSeries.current = chartApi.current.addLineSeries({
+        lineVisible: true,
+        pointMarkersVisible: true,
+        lastValueVisible: false,
+        priceLineVisible: false,
+        crosshairMarkerVisible: false,
+        color: "#22d3ee",
+        lineWidth: 2,
+        lineStyle: LineStyle.Dotted,
+        lineType: LineType.WithSteps,
       });
       const srLineOpts = {
         lineWidth: 2 as const,
@@ -877,6 +1077,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
           }),
         );
       }
+      setChartRev((v) => v + 1);
     }
 
     const isNewSeries = chartSeriesKeyRef.current !== candlesSeriesKey;
@@ -897,7 +1098,63 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
     if (!isNewSeries) {
       restoreVisibleLogicalRange(chartApi.current, visibleRange);
     }
-  }, [candles, candlesSeriesKey, chartSeries, candlestickData]);
+  }, [candles, candlesSeriesKey, chartSeries, candlestickData, fullscreen]);
+
+  /** Re-zoom whenever the user picks a different trade (table, dropdown, or chart). */
+  useEffect(() => {
+    focusedTradeRef.current = null;
+    if (selectedTradeNumber != null) {
+      window.requestAnimationFrame(() => {
+        chartRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
+  }, [selectedTradeNumber]);
+
+  useEffect(() => {
+    if (!detailMode || !tradeForOverlays || !candles.length || !chartSeries || loading) return;
+    if (focusedTradeRef.current === tradeForOverlays.tradeNumber) return;
+    focusChartOnTrade(tradeForOverlays);
+  }, [
+    detailMode,
+    tradeForOverlays,
+    candlesSeriesKey,
+    candles.length,
+    chartSeries,
+    loading,
+    focusChartOnTrade,
+    chartRev,
+  ]);
+
+  /** Portal fullscreen moves the chart DOM node — tear down so the candle effect recreates on the new host. */
+  useEffect(() => {
+    focusedTradeRef.current = null;
+    return () => {
+      chartApi.current?.remove();
+      chartApi.current = null;
+      candleSeries.current = null;
+      linkSeries.current = null;
+      overviewEntrySeries.current = null;
+      overviewExitSeries.current = null;
+      trailActivationSeries.current = null;
+      trailNextGateSeries.current = null;
+      trailSlPathSeries.current = null;
+      srDayHighSeries.current = null;
+      srDayLowSeries.current = null;
+      srWeekHighSeries.current = null;
+      srWeekLowSeries.current = null;
+      zoneRiskTopSeries.current = null;
+      zoneRiskBottomSeries.current = null;
+      zoneRewardTopSeries.current = null;
+      zoneRewardBottomSeries.current = null;
+      zoneTokyoTopSeries.current = null;
+      zoneTokyoBottomSeries.current = null;
+      taZoneSeriesPool.current = [];
+      priceLinesRef.current = [];
+      trailTierLinesRef.current = [];
+      taPriceLinesRef.current = [];
+      patternPriceLinesRef.current = [];
+    };
+  }, [fullscreen]);
 
   /** Markers + selected-trade overlays — single pass per update. */
   useLayoutEffect(() => {
@@ -921,10 +1178,11 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
 
   const tfMismatch = run && chartTf !== run.timeframe;
 
-  const selectedExitBar =
-    selectedTrade && candles.length
-      ? barAtTradeTime(selectedTrade.exitTs, candles, indexByTsRef.current)
-      : null;
+  const selectedExitBar = (() => {
+    if (!selectedTrade || !candles.length || !run?.timeframe) return null;
+    const idx = barIndexForTradeFill(candles, selectedTrade, chartTf, run.timeframe, run.engineType, "exit");
+    return idx >= 0 && idx < candles.length ? candles[idx] ?? null : null;
+  })();
   const exitOffBar =
     selectedTrade &&
     selectedExitBar &&
@@ -941,8 +1199,8 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
 
       {tfMismatch && (
         <p className="border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
-          Chart is on <strong>{chartTf}</strong> but this run used <strong>{run.timeframe}</strong> — switch TF to
-          match for bar alignment.
+          Chart is on <strong>{chartTf}</strong> but this run used <strong>{run.timeframe}</strong>. Entry/exit
+          markers use <strong>fill time</strong> mapped to {chartTf} bars (not the parent bar open).
         </p>
       )}
 
@@ -965,18 +1223,38 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
         </p>
       )}
 
-      {detailMode && selectedTrade && selectedExitBar && (
+      {detailMode && selectedTrade && selectedExitBar && run && (
         <div className="border-b border-slate-100 px-3 py-2 text-[11px] dark:border-slate-800">
           <span className="font-semibold text-slate-700 dark:text-slate-200">
             Trade #{selectedTrade.tradeNumber}
           </span>
           <span className="ml-2 text-slate-500">
+            entry {formatTsIST(resolveTradeEntryFillMs(selectedTrade, run.timeframe, run.engineType))}
+            {" · "}
+            exit {formatTsIST(resolveTradeExitFillMs(selectedTrade, run.timeframe))}
+            {" · "}
+            held {selectedTrade.barsHeld}×{run.timeframe}
+          </span>
+          {(selectedTrade.entryBarTs ?? selectedTrade.entryTs) &&
+          selectedTrade.entryFillTs &&
+          new Date(selectedTrade.entryFillTs).getTime() !==
+            new Date(selectedTrade.entryBarTs ?? selectedTrade.entryTs).getTime() ? (
+            <span className="ml-2 text-slate-400">
+              bar open {formatTsIST(selectedTrade.entryBarTs ?? selectedTrade.entryTs)}
+            </span>
+          ) : null}
+          <span className="ml-2 text-slate-500">
             exit bar O/H/L/C: {selectedExitBar.open.toFixed(2)} / {selectedExitBar.high.toFixed(2)} /{" "}
             {selectedExitBar.low.toFixed(2)} / {selectedExitBar.close.toFixed(2)}
           </span>
+          {selectedTrade.entryMarkPx != null && Number.isFinite(selectedTrade.entryMarkPx) && (
+            <span className="ml-2 font-mono text-slate-600 dark:text-slate-300">
+              entry close {selectedTrade.entryMarkPx.toFixed(2)}
+            </span>
+          )}
           {selectedTrade.exitPrice != null && (
             <span className="ml-2 font-mono text-slate-600 dark:text-slate-300">
-              fill {selectedTrade.exitPrice.toFixed(2)}
+              fill incl. slip {selectedTrade.exitPrice.toFixed(2)}
             </span>
           )}
           {exitOffBar && (
@@ -1007,10 +1285,27 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
         )}
 
       <div
-        ref={chartRef}
-        className={fullscreen ? "h-[calc(100vh-11rem)] w-full" : "h-[min(420px,50vh)] w-full"}
-        style={{ display: candles.length && !loading ? "block" : "none" }}
-      />
+        className={
+          fullscreen
+            ? "relative flex min-h-0 w-full flex-1 flex-col"
+            : "relative w-full"
+        }
+        style={{ display: candles.length && !loading ? undefined : "none" }}
+      >
+        <div
+          ref={chartRef}
+          className={fullscreen ? "min-h-0 w-full flex-1" : "h-[min(420px,50vh)] w-full"}
+        />
+        {detailMode && showTrailTierChart && (
+          <TrailTierLeftLabels
+            chart={chartApi.current}
+            series={candleSeries.current}
+            tiers={trailTierLineSpecs}
+            visible={isOverlayLayerOn(overlayLayers, "trail_tiers")}
+            chartRev={chartRev}
+          />
+        )}
+      </div>
 
       {detailMode && overlayToggleList.length > 0 && candles.length > 0 && !loading && (
         <ChartOverlayLegend
@@ -1039,7 +1334,7 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
 
       {detailMode && (
         <p className="border-t border-slate-100 px-3 py-1.5 text-[10px] text-slate-400 dark:border-slate-800">
-          ↑↓ = entry · ○ = exit · SH/SL = swings · Sweep/Reclaim/BOS = SMC · Orange = entry→exit link
+          ↑↓ = entry · ○ = exit · ● = trail armed · ◆ = next tier gate · dotted = SL path · SH/SL = swings · Sweep/Reclaim/BOS = SMC · Orange = entry→exit link
         </p>
       )}
     </>
@@ -1125,13 +1420,16 @@ export function BacktestTradeChart({ run, trades, selectedTrade: selectedProp, o
   );
 
   const shellClass = fullscreen
-    ? "fixed inset-0 z-50 flex flex-col bg-white dark:bg-slate-950"
+    ? "fixed inset-0 z-[200] flex flex-col bg-white shadow-2xl dark:bg-slate-950"
     : "rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/60";
 
-  return (
+  const shell = (
     <div className={shellClass}>
       {header}
-      <div className={fullscreen ? "min-h-0 flex-1 overflow-y-auto" : undefined}>{chartBody}</div>
+      <div className={fullscreen ? "flex min-h-0 flex-1 flex-col overflow-y-auto" : undefined}>{chartBody}</div>
     </div>
   );
+
+  if (fullscreen) return createPortal(shell, document.body);
+  return shell;
 }

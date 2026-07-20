@@ -1,0 +1,92 @@
+loading candles once…
+candles=142176
+
+=== 0_baseline ===
+N=173 ret=-71.7% DD=85.3% WR=31%
+  2022-23: n=49 wr=31% ret=-40.3% net=$-40.3
+  2023-24: n=41 wr=20% ret=-52.8% net=$-31.5
+  2024-25: n=42 wr=29% ret=-13.8% net=$-3.9
+  2025-26: n=41 wr=46% ret=16.5% net=$4.0
+  setups {"vp_val_breakdown":{"n":149,"net":-72.75459116425746},"vp_va_rejection":{"n":24,"net":1.068971663286787}}
+
+=== A_macroAdapt ===
+N=124 ret=-40.7% DD=73.9% WR=35%
+  2022-23: n=35 wr=34% ret=-26.6% net=$-26.6
+  2023-24: n=25 wr=24% ret=-29.5% net=$-21.6
+  2024-25: n=31 wr=26% ret=-13.9% net=$-7.2
+  2025-26: n=33 wr=52% ret=33.1% net=$14.7
+  setups {"vp_val_breakdown":{"n":104,"net":-49.67522274024529},"vp_va_rejection":{"n":20,"net":8.983140451235997}}
+
+=== AB_macro_nonBear ===
+N=105 ret=-55.3% DD=73.5% WR=30%
+  2022-23: n=30 wr=33% ret=-34.4% net=$-34.4
+  2023-24: n=22 wr=23% ret=-27.0% net=$-17.7
+  2024-25: n=27 wr=19% ret=-25.5% net=$-12.2
+  2025-26: n=26 wr=46% ret=25.4% net=$9.0
+  setups {"vp_val_breakdown":{"n":86,"net":-43.65301117797064},"vp_va_rejection":{"n":19,"net":-11.660289285343271}}
+
+=== AF_macro_weakBear ===
+N=91 ret=-23.4% DD=64.4% WR=34%
+  2022-23: n=27 wr=41% ret=-10.3% net=$-10.3
+  2023-24: n=20 wr=25% ret=-21.4% net=$-19.2
+  2024-25: n=24 wr=21% ret=-17.6% net=$-12.4
+  2025-26: n=20 wr=50% ret=31.9% net=$18.5
+  setups {"vp_val_breakdown":{"n":75,"net":-40.53417906816831},"vp_va_rejection":{"n":16,"net":17.10901262620883}}
+
+=== ABF_macro_nonBear_weak ===
+N=87 ret=-34.5% DD=62.0% WR=33%
+  2022-23: n=24 wr=38% ret=-25.6% net=$-25.6
+  2023-24: n=19 wr=26% ret=-19.0% net=$-14.1
+  2024-25: n=24 wr=21% ret=-17.6% net=$-10.6
+  2025-26: n=20 wr=50% ret=31.9% net=$15.8
+  setups {"vp_val_breakdown":{"n":71,"net":-26.181242255721713},"vp_va_rejection":{"n":16,"net":-8.326530240752295}}
+
+=== G_global_sell_htf05 ===
+N=64 ret=8.0% DD=35.2% WR=38%
+  2022-23: n=16 wr=50% ret=9.0% net=$9.0
+  2023-24: n=16 wr=25% ret=-15.8% net=$-17.3
+  2024-25: n=18 wr=22% ret=-9.6% net=$-8.8
+  2025-26: n=14 wr=57% ret=30.4% net=$25.2
+  setups {"vp_val_breakdown":{"n":59,"net":-28.593087592954014},"vp_va_rejection":{"n":5,"net":36.63668966630136}}
+
+=== A_plus_htf03_soft ===
+N=101 ret=-52.2% DD=71.2% WR=33%
+  2022-23: n=28 wr=39% ret=-26.5% net=$-26.5
+  2023-24: n=19 wr=26% ret=-18.8% net=$-13.8
+  2024-25: n=28 wr=18% ret=-28.8% net=$-17.2
+  2025-26: n=26 wr=46% ret=12.3% net=$5.2
+  setups {"vp_val_breakdown":{"n":86,"net":-46.16192111375666},"vp_va_rejection":{"n":15,"net":-6.083618927878928}}
+
+=== A_plus_rej_ext_block ===
+N=120 ret=-45.5% DD=71.9% WR=35%
+  2022-23: n=33 wr=33% ret=-37.0% net=$-37.0
+  2023-24: n=25 wr=24% ret=-29.5% net=$-18.6
+  2024-25: n=30 wr=27% ret=-10.9% net=$-4.8
+  2025-26: n=32 wr=53% ret=37.8% net=$14.9
+  setups {"vp_val_breakdown":{"n":104,"net":-41.792795779124575},"vp_va_rejection":{"n":16,"net":-3.707436797903564}}
+
+=== A_plus_sell_only_va_rej ===
+N=115 ret=-45.1% DD=70.2% WR=35%
+  2022-23: n=30 wr=37% ret=-16.9% net=$-16.9
+  2023-24: n=24 wr=25% ret=-27.5% net=$-22.8
+  2024-25: n=30 wr=23% ret=-30.5% net=$-18.4
+  2025-26: n=31 wr=52% ret=31.1% net=$13.0
+  setups {"vp_val_breakdown":{"n":104,"net":-50.983403220890395},"vp_va_rejection":{"n":11,"net":5.8944950345774645}}
+
+=== ABF_plus_rej_quality ===
+N=83 ret=-30.9% DD=61.1% WR=34%
+  2022-23: n=22 wr=41% ret=-5.0% net=$-5.0
+  2023-24: n=18 wr=28% ret=-16.7% net=$-15.8
+  2024-25: n=24 wr=17% ret=-35.8% net=$-28.3
+  2025-26: n=19 wr=53% ret=35.9% net=$18.3
+  setups {"vp_val_breakdown":{"n":71,"net":-32.88755696036573},"vp_va_rejection":{"n":12,"net":1.999463304297279}}
+
+=== H_val_only_shorts ===
+N=86 ret=-52.2% DD=66.5% WR=29%
+  2022-23: n=24 wr=33% ret=-16.6% net=$-16.6
+  2023-24: n=18 wr=17% ret=-28.8% net=$-24.0
+  2024-25: n=22 wr=18% ret=-30.5% net=$-18.1
+  2025-26: n=22 wr=45% ret=15.8% net=$6.5
+  setups {"vp_val_breakdown":{"n":86,"net":-52.15754492928502}}
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-btc-adaptive-stack.json

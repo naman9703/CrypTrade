@@ -1,0 +1,2279 @@
+{
+  "generatedAt": "2026-07-18T06:03:16.819Z",
+  "baseline": "H1+H2",
+  "years": {
+    "2021-22": {
+      "summary": {
+        "n": 49,
+        "wr": 34.69387755102041,
+        "net": -20.307088134876945
+      }
+    }
+  },
+  "rootCause2122": {
+    "SELL val_breakdown": {
+      "n": 28,
+      "wr": 28.57142857142857,
+      "net": -19.605244143232575
+    },
+    "BUY vah_breakout": {
+      "n": 15,
+      "wr": 53.333333333333336,
+      "net": 10.935068840214926
+    },
+    "BUY va_rejection": {
+      "n": 5,
+      "wr": 20,
+      "net": -8.080762076691236
+    },
+    "BUY other": {
+      "n": 1,
+      "wr": 0,
+      "net": -3.5561507551680642
+    },
+    "SELL other": {
+      "n": 0,
+      "wr": 0,
+      "net": 0
+    },
+    "VAL + bull60": {
+      "n": 9,
+      "wr": 22.22222222222222,
+      "net": -9.454206282427702
+    },
+    "VAL + bear60": {
+      "n": 10,
+      "wr": 40,
+      "net": -1.7790267526324
+    },
+    "VAL + flat60": {
+      "n": 9,
+      "wr": 22.22222222222222,
+      "net": -8.372011108172472
+    },
+    "VAL + vacuum": {
+      "n": 21,
+      "wr": 28.57142857142857,
+      "net": -10.173497448840148
+    },
+    "VAL + structured/tight": {
+      "n": 7,
+      "wr": 28.57142857142857,
+      "net": -9.431746694392421
+    },
+    "VAL vacuum + bull60": {
+      "n": 8,
+      "wr": 25,
+      "net": -6.457695123358874
+    },
+    "macro bull_trend": {
+      "n": 21,
+      "wr": 33.33333333333333,
+      "net": -12.031417972193328
+    },
+    "macro bull_chop": {
+      "n": 12,
+      "wr": 41.66666666666667,
+      "net": 1.2326494571012812
+    },
+    "macro weak_bear": {
+      "n": 7,
+      "wr": 14.285714285714285,
+      "net": -11.740916952817578
+    },
+    "macro bear_trend": {
+      "n": 9,
+      "wr": 44.44444444444444,
+      "net": 2.2325973330326763
+    },
+    "cells": [
+      {
+        "key": "SELL|val_breakdown|bull_trend|vacuum",
+        "n": 6,
+        "wr": 16.666666666666664,
+        "net": -9.679483087694233
+      },
+      {
+        "key": "SELL|val_breakdown|weak_bear|vacuum",
+        "n": 5,
+        "wr": 20,
+        "net": -5.788538877805397
+      },
+      {
+        "key": "BUY|vah_breakout|bull_trend|tight",
+        "n": 2,
+        "wr": 0,
+        "net": -5.064801335700642
+      },
+      {
+        "key": "BUY|va_rejection|bull_trend|vacuum",
+        "n": 1,
+        "wr": 0,
+        "net": -3.5642957443415932
+      },
+      {
+        "key": "BUY|poc_bounce|bull_trend|vacuum",
+        "n": 1,
+        "wr": 0,
+        "net": -3.5561507551680642
+      },
+      {
+        "key": "SELL|val_breakdown|bull_chop|tight",
+        "n": 1,
+        "wr": 0,
+        "net": -3.324699083932165
+      },
+      {
+        "key": "BUY|va_rejection|bull_trend|tight",
+        "n": 1,
+        "wr": 0,
+        "net": -3.2267976382293986
+      },
+      {
+        "key": "SELL|val_breakdown|weak_bear|tight",
+        "n": 1,
+        "wr": 0,
+        "net": -3.1052103541583844
+      },
+      {
+        "key": "SELL|val_breakdown|bull_trend|tight",
+        "n": 1,
+        "wr": 0,
+        "net": -2.9965111590688274
+      },
+      {
+        "key": "BUY|va_rejection|bull_trend|structured",
+        "n": 1,
+        "wr": 0,
+        "net": -2.9674089900617666
+      },
+      {
+        "key": "BUY|vah_breakout|weak_bear|vacuum",
+        "n": 1,
+        "wr": 0,
+        "net": -2.8471677208537964
+      },
+      {
+        "key": "BUY|vah_breakout|bull_chop|structured",
+        "n": 3,
+        "wr": 33.33333333333333,
+        "net": -2.4689261070409985
+      },
+      {
+        "key": "BUY|va_rejection|bear_trend|vacuum",
+        "n": 1,
+        "wr": 0,
+        "net": -2.418815002572086
+      },
+      {
+        "key": "SELL|val_breakdown|bear_trend|structured",
+        "n": 2,
+        "wr": 50,
+        "net": -0.14786857158725164
+      },
+      {
+        "key": "SELL|val_breakdown|bull_chop|structured",
+        "n": 2,
+        "wr": 50,
+        "net": 0.14254247435420586
+      },
+      {
+        "key": "BUY|vah_breakout|bear_trend|tight",
+        "n": 1,
+        "wr": 100,
+        "net": 2.2919332657391656
+      },
+      {
+        "key": "SELL|val_breakdown|bear_trend|vacuum",
+        "n": 5,
+        "wr": 40,
+        "net": 2.507347641452849
+      },
+      {
+        "key": "SELL|val_breakdown|bull_chop|vacuum",
+        "n": 5,
+        "wr": 40,
+        "net": 2.787176875206631
+      },
+      {
+        "key": "BUY|va_rejection|bull_chop|tight",
+        "n": 1,
+        "wr": 100,
+        "net": 4.096555298513607
+      },
+      {
+        "key": "BUY|vah_breakout|bull_trend|structured",
+        "n": 3,
+        "wr": 100,
+        "net": 8.743432669324353
+      },
+      {
+        "key": "BUY|vah_breakout|bull_trend|vacuum",
+        "n": 5,
+        "wr": 60,
+        "net": 10.280598068746844
+      }
+    ]
+  },
+  "cells": [
+    {
+      "key": "SELL|val_breakdown|bull_chop|vacuum",
+      "klass": "ambiguous",
+      "full": {
+        "n": 9,
+        "wr": 55.55555555555556,
+        "net": 32.145925635906245
+      },
+      "trainedNet": 29.358748760699612,
+      "trainedN": 4,
+      "posYears": 1,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 5,
+          "wr": 40,
+          "net": 2.787176875206631
+        },
+        "2022-23": {
+          "n": 4,
+          "wr": 75,
+          "net": 29.358748760699612
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "SELL|val_breakdown|weak_bear|vacuum",
+      "klass": "ambiguous",
+      "full": {
+        "n": 13,
+        "wr": 23.076923076923077,
+        "net": 4.285381501452349
+      },
+      "trainedNet": 10.07392037925775,
+      "trainedN": 8,
+      "posYears": 1,
+      "negYears": 2,
+      "years": {
+        "2021-22": {
+          "n": 5,
+          "wr": 20,
+          "net": -5.788538877805397
+        },
+        "2022-23": {
+          "n": 3,
+          "wr": 33.33333333333333,
+          "net": -0.184628424758722
+        },
+        "2023-24": {
+          "n": 1,
+          "wr": 0,
+          "net": -4.00140229992777
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 0,
+          "net": -3.265636869695666
+        },
+        "2025-26": {
+          "n": 3,
+          "wr": 33.33333333333333,
+          "net": 17.525587973639908
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "BUY|va_rejection|bull_chop|tight",
+      "klass": "unprepared",
+      "full": {
+        "n": 3,
+        "wr": 66.66666666666666,
+        "net": -0.3813143474398881
+      },
+      "trainedNet": -4.477869645953496,
+      "trainedN": 2,
+      "posYears": 1,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 1,
+          "wr": 100,
+          "net": 4.096555298513607
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 100,
+          "net": 6.5012246805205605
+        },
+        "2025-26": {
+          "n": 1,
+          "wr": 0,
+          "net": -10.979094326474057
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "SELL|val_breakdown|bull_chop|tight",
+      "klass": "unprepared",
+      "full": {
+        "n": 3,
+        "wr": 33.33333333333333,
+        "net": -2.924255435061003
+      },
+      "trainedNet": 0.40044364887116224,
+      "trainedN": 2,
+      "posYears": 1,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 1,
+          "wr": 0,
+          "net": -3.324699083932165
+        },
+        "2022-23": {
+          "n": 1,
+          "wr": 100,
+          "net": 7.132761784219089
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 1,
+          "wr": 0,
+          "net": -6.732318135347927
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "SELL|val_breakdown|bull_trend|vacuum",
+      "klass": "prepared",
+      "full": {
+        "n": 16,
+        "wr": 43.75,
+        "net": 29.12605475639729
+      },
+      "trainedNet": 38.80553784409153,
+      "trainedN": 10,
+      "posYears": 3,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 6,
+          "wr": 16.666666666666664,
+          "net": -9.679483087694233
+        },
+        "2022-23": {
+          "n": 2,
+          "wr": 0,
+          "net": -8.223641748710026
+        },
+        "2023-24": {
+          "n": 2,
+          "wr": 100,
+          "net": 19.374881903794467
+        },
+        "2024-25": {
+          "n": 3,
+          "wr": 33.33333333333333,
+          "net": 9.023477292376771
+        },
+        "2025-26": {
+          "n": 3,
+          "wr": 100,
+          "net": 18.630820396630316
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "BUY|vah_breakout|bull_trend|vacuum",
+      "klass": "unprepared",
+      "full": {
+        "n": 17,
+        "wr": 41.17647058823529,
+        "net": 7.80194244256732
+      },
+      "trainedNet": -2.4786556261795276,
+      "trainedN": 12,
+      "posYears": 1,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 5,
+          "wr": 60,
+          "net": 10.280598068746844
+        },
+        "2022-23": {
+          "n": 3,
+          "wr": 33.33333333333333,
+          "net": 0.32724530637030425
+        },
+        "2023-24": {
+          "n": 3,
+          "wr": 66.66666666666666,
+          "net": 10.508798391481575
+        },
+        "2024-25": {
+          "n": 3,
+          "wr": 33.33333333333333,
+          "net": 0.9064338762708726
+        },
+        "2025-26": {
+          "n": 3,
+          "wr": 0,
+          "net": -14.22113320030228
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "BUY|vah_breakout|bull_trend|tight",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 2,
+        "wr": 0,
+        "net": -5.064801335700642
+      },
+      "trainedNet": 0,
+      "trainedN": 0,
+      "posYears": 0,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 2,
+          "wr": 0,
+          "net": -5.064801335700642
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "SELL|val_breakdown|bull_trend|tight",
+      "klass": "ambiguous",
+      "full": {
+        "n": 2,
+        "wr": 50,
+        "net": 3.110911354917099
+      },
+      "trainedNet": 6.107422513985926,
+      "trainedN": 1,
+      "posYears": 1,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 1,
+          "wr": 0,
+          "net": -2.9965111590688274
+        },
+        "2022-23": {
+          "n": 1,
+          "wr": 100,
+          "net": 6.107422513985926
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "BUY|vah_breakout|weak_bear|vacuum",
+      "klass": "prepared",
+      "full": {
+        "n": 8,
+        "wr": 50,
+        "net": 18.43178294617866
+      },
+      "trainedNet": 21.278950667032458,
+      "trainedN": 7,
+      "posYears": 3,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 1,
+          "wr": 0,
+          "net": -2.8471677208537964
+        },
+        "2022-23": {
+          "n": 3,
+          "wr": 33.33333333333333,
+          "net": 0.49279832476241836
+        },
+        "2023-24": {
+          "n": 1,
+          "wr": 100,
+          "net": 8.54329944073254
+        },
+        "2024-25": {
+          "n": 2,
+          "wr": 50,
+          "net": 4.023215738218004
+        },
+        "2025-26": {
+          "n": 1,
+          "wr": 100,
+          "net": 8.219637163319497
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "SELL|val_breakdown|bull_chop|structured",
+      "klass": "unprepared",
+      "full": {
+        "n": 5,
+        "wr": 40,
+        "net": -8.236429428517965
+      },
+      "trainedNet": -8.378971902872172,
+      "trainedN": 3,
+      "posYears": 1,
+      "negYears": 2,
+      "years": {
+        "2021-22": {
+          "n": 2,
+          "wr": 50,
+          "net": 0.14254247435420586
+        },
+        "2022-23": {
+          "n": 1,
+          "wr": 0,
+          "net": -4.499815654874594
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 100,
+          "net": 2.965340497473652
+        },
+        "2025-26": {
+          "n": 1,
+          "wr": 0,
+          "net": -6.84449674547123
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "BUY|vah_breakout|bull_trend|structured",
+      "klass": "unprepared",
+      "full": {
+        "n": 11,
+        "wr": 63.63636363636363,
+        "net": 8.709795535039047
+      },
+      "trainedNet": -0.03363713428530524,
+      "trainedN": 8,
+      "posYears": 1,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 3,
+          "wr": 100,
+          "net": 8.743432669324353
+        },
+        "2022-23": {
+          "n": 2,
+          "wr": 50,
+          "net": 0.33028784747793605
+        },
+        "2023-24": {
+          "n": 3,
+          "wr": 33.33333333333333,
+          "net": -3.6967418952462694
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 100,
+          "net": 3.1298157105019047
+        },
+        "2025-26": {
+          "n": 2,
+          "wr": 50,
+          "net": 0.20300120298112345
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "BUY|poc_bounce|bull_trend|vacuum",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 1,
+        "wr": 0,
+        "net": -3.5561507551680642
+      },
+      "trainedNet": 0,
+      "trainedN": 0,
+      "posYears": 0,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 1,
+          "wr": 0,
+          "net": -3.5561507551680642
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "BUY|va_rejection|bull_trend|tight",
+      "klass": "ambiguous",
+      "full": {
+        "n": 5,
+        "wr": 60,
+        "net": 24.471498881512822
+      },
+      "trainedNet": 27.69829651974222,
+      "trainedN": 4,
+      "posYears": 2,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 1,
+          "wr": 0,
+          "net": -3.2267976382293986
+        },
+        "2022-23": {
+          "n": 2,
+          "wr": 50,
+          "net": -1.4003864696268922
+        },
+        "2023-24": {
+          "n": 1,
+          "wr": 100,
+          "net": 11.128484868874938
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 1,
+          "wr": 100,
+          "net": 17.970198120494175
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "BUY|va_rejection|bull_trend|vacuum",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 2,
+        "wr": 0,
+        "net": -6.709545157134537
+      },
+      "trainedNet": -3.1452494127929436,
+      "trainedN": 1,
+      "posYears": 0,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 1,
+          "wr": 0,
+          "net": -3.5642957443415932
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 0,
+          "net": -3.1452494127929436
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "SELL|val_breakdown|bear_trend|vacuum",
+      "klass": "prepared",
+      "full": {
+        "n": 37,
+        "wr": 32.432432432432435,
+        "net": 46.51643655110583
+      },
+      "trainedNet": 44.00908890965299,
+      "trainedN": 32,
+      "posYears": 2,
+      "negYears": 2,
+      "years": {
+        "2021-22": {
+          "n": 5,
+          "wr": 40,
+          "net": 2.507347641452849
+        },
+        "2022-23": {
+          "n": 5,
+          "wr": 20,
+          "net": -8.780464590935672
+        },
+        "2023-24": {
+          "n": 2,
+          "wr": 50,
+          "net": 13.1316049367062
+        },
+        "2024-25": {
+          "n": 14,
+          "wr": 21.428571428571427,
+          "net": -14.524204144868323
+        },
+        "2025-26": {
+          "n": 11,
+          "wr": 45.45454545454545,
+          "net": 54.182152708750785
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "BUY|vah_breakout|bull_chop|structured",
+      "klass": "prepared",
+      "full": {
+        "n": 19,
+        "wr": 68.42105263157895,
+        "net": 36.53703715977009
+      },
+      "trainedNet": 39.00596326681108,
+      "trainedN": 16,
+      "posYears": 4,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 3,
+          "wr": 33.33333333333333,
+          "net": -2.4689261070409985
+        },
+        "2022-23": {
+          "n": 3,
+          "wr": 66.66666666666666,
+          "net": 5.1927180376322895
+        },
+        "2023-24": {
+          "n": 1,
+          "wr": 100,
+          "net": 3.335090015685758
+        },
+        "2024-25": {
+          "n": 7,
+          "wr": 57.14285714285714,
+          "net": 3.7606273820437566
+        },
+        "2025-26": {
+          "n": 5,
+          "wr": 100,
+          "net": 26.717527831449278
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "SELL|val_breakdown|bear_trend|structured",
+      "klass": "prepared",
+      "full": {
+        "n": 14,
+        "wr": 64.28571428571429,
+        "net": 48.89038217993301
+      },
+      "trainedNet": 49.038250751520266,
+      "trainedN": 12,
+      "posYears": 3,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 2,
+          "wr": 50,
+          "net": -0.14786857158725164
+        },
+        "2022-23": {
+          "n": 1,
+          "wr": 100,
+          "net": 9.934653841494468
+        },
+        "2023-24": {
+          "n": 2,
+          "wr": 50,
+          "net": -1.7210499416022484
+        },
+        "2024-25": {
+          "n": 5,
+          "wr": 60,
+          "net": 14.249080372845462
+        },
+        "2025-26": {
+          "n": 4,
+          "wr": 75,
+          "net": 26.57556647878258
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "BUY|vah_breakout|bear_trend|tight",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 1,
+        "wr": 100,
+        "net": 2.2919332657391656
+      },
+      "trainedNet": 0,
+      "trainedN": 0,
+      "posYears": 0,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 1,
+          "wr": 100,
+          "net": 2.2919332657391656
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "SELL|val_breakdown|weak_bear|tight",
+      "klass": "ambiguous",
+      "full": {
+        "n": 2,
+        "wr": 50,
+        "net": 12.68543368275318
+      },
+      "trainedNet": 15.790644036911564,
+      "trainedN": 1,
+      "posYears": 1,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 1,
+          "wr": 0,
+          "net": -3.1052103541583844
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 1,
+          "wr": 100,
+          "net": 15.790644036911564
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "BUY|va_rejection|bull_trend|structured",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 1,
+        "wr": 0,
+        "net": -2.9674089900617666
+      },
+      "trainedNet": 0,
+      "trainedN": 0,
+      "posYears": 0,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 1,
+          "wr": 0,
+          "net": -2.9674089900617666
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "BUY|va_rejection|bear_trend|vacuum",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 1,
+        "wr": 0,
+        "net": -2.418815002572086
+      },
+      "trainedNet": 0,
+      "trainedN": 0,
+      "posYears": 0,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 1,
+          "wr": 0,
+          "net": -2.418815002572086
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": true
+    },
+    {
+      "key": "BUY|va_rejection|bull_chop|structured",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 2,
+        "wr": 0,
+        "net": -16.1132065656127
+      },
+      "trainedNet": -16.1132065656127,
+      "trainedN": 2,
+      "posYears": 0,
+      "negYears": 2,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 1,
+          "wr": 0,
+          "net": -5.388142929379712
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 1,
+          "wr": 0,
+          "net": -10.725063636232989
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "BUY|va_rejection|bull_chop|vacuum",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 2,
+        "wr": 100,
+        "net": 21.82414692009768
+      },
+      "trainedNet": 21.82414692009768,
+      "trainedN": 2,
+      "posYears": 2,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 1,
+          "wr": 100,
+          "net": 15.67845630606521
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 100,
+          "net": 6.1456906140324685
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "BUY|vah_breakout|bull_chop|vacuum",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 2,
+        "wr": 0,
+        "net": -6.679350222502367
+      },
+      "trainedNet": -6.679350222502367,
+      "trainedN": 2,
+      "posYears": 0,
+      "negYears": 2,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 1,
+          "wr": 0,
+          "net": -3.85090927343657
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 0,
+          "net": -2.828440949065797
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "SELL|val_breakdown|bear_trend|tight",
+      "klass": "prepared",
+      "full": {
+        "n": 8,
+        "wr": 50,
+        "net": 20.06198831333561
+      },
+      "trainedNet": 20.061988313335608,
+      "trainedN": 8,
+      "posYears": 2,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 1,
+          "wr": 0,
+          "net": -4.4137583312255515
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 100,
+          "net": 4.266833788538851
+        },
+        "2025-26": {
+          "n": 6,
+          "wr": 50,
+          "net": 20.20891285602231
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "SELL|val_breakdown|bull_trend|structured",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 1,
+        "wr": 0,
+        "net": -5.256308645085735
+      },
+      "trainedNet": -5.256308645085735,
+      "trainedN": 1,
+      "posYears": 0,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 1,
+          "wr": 0,
+          "net": -5.256308645085735
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "SELL|val_breakdown|weak_bear|structured",
+      "klass": "unprepared",
+      "full": {
+        "n": 3,
+        "wr": 33.33333333333333,
+        "net": -2.668760489389494
+      },
+      "trainedNet": -2.668760489389494,
+      "trainedN": 3,
+      "posYears": 1,
+      "negYears": 2,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 1,
+          "wr": 0,
+          "net": -2.8150527083333174
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 0,
+          "net": -2.5889317174946105
+        },
+        "2025-26": {
+          "n": 1,
+          "wr": 100,
+          "net": 2.735223936438434
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "BUY|poc_bounce|bull_trend|structured",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 1,
+        "wr": 100,
+        "net": 6.014826177076543
+      },
+      "trainedNet": 6.014826177076543,
+      "trainedN": 1,
+      "posYears": 1,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 1,
+          "wr": 100,
+          "net": 6.014826177076543
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "BUY|vah_breakout|bull_chop|tight",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 1,
+        "wr": 0,
+        "net": -3.00646194109059
+      },
+      "trainedNet": -3.00646194109059,
+      "trainedN": 1,
+      "posYears": 0,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 1,
+          "wr": 0,
+          "net": -3.00646194109059
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "BUY|vah_breakout|weak_bear|structured",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 2,
+        "wr": 0,
+        "net": -8.03713950309123
+      },
+      "trainedNet": -8.03713950309123,
+      "trainedN": 2,
+      "posYears": 0,
+      "negYears": 2,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 0,
+          "net": -2.7358281126161064
+        },
+        "2025-26": {
+          "n": 1,
+          "wr": 0,
+          "net": -5.301311390475124
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "BUY|vah_breakout|bear_trend|vacuum",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 1,
+        "wr": 0,
+        "net": -2.9859465665504064
+      },
+      "trainedNet": -2.9859465665504064,
+      "trainedN": 1,
+      "posYears": 0,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 0,
+          "net": -2.9859465665504064
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "SELL|va_rejection|bull_trend|vacuum",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 1,
+        "wr": 0,
+        "net": -4.621853436488255
+      },
+      "trainedNet": -4.621853436488255,
+      "trainedN": 1,
+      "posYears": 0,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 0,
+          "net": -4.621853436488255
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "SELL|poc_bounce|bear_trend|structured",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 1,
+        "wr": 0,
+        "net": -4.385689698555891
+      },
+      "trainedNet": -4.385689698555891,
+      "trainedN": 1,
+      "posYears": 0,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 0,
+          "net": -4.385689698555891
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "BUY|vah_breakout|bear_trend|structured",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 2,
+        "wr": 50,
+        "net": 0.04755677823868387
+      },
+      "trainedNet": 0.04755677823868387,
+      "trainedN": 2,
+      "posYears": 0,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 2,
+          "wr": 50,
+          "net": 0.04755677823868387
+        },
+        "2025-26": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "SELL|poc_bounce|bull_trend|vacuum",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 2,
+        "wr": 50,
+        "net": 15.412340694248437
+      },
+      "trainedNet": 15.412340694248437,
+      "trainedN": 2,
+      "posYears": 1,
+      "negYears": 1,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 1,
+          "wr": 100,
+          "net": 25.18288112378618
+        },
+        "2025-26": {
+          "n": 1,
+          "wr": 0,
+          "net": -9.770540429537744
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "SELL|poc_bounce|weak_bear|vacuum",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 1,
+        "wr": 100,
+        "net": 2.5448848712573846
+      },
+      "trainedNet": 2.5448848712573846,
+      "trainedN": 1,
+      "posYears": 1,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 1,
+          "wr": 100,
+          "net": 2.5448848712573846
+        }
+      },
+      "bleeds21": false
+    },
+    {
+      "key": "SELL|va_rejection|bull_chop|structured",
+      "klass": "thin_unproven",
+      "full": {
+        "n": 1,
+        "wr": 100,
+        "net": 22.84147798991016
+      },
+      "trainedNet": 22.84147798991016,
+      "trainedN": 1,
+      "posYears": 1,
+      "negYears": 0,
+      "years": {
+        "2021-22": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2022-23": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2023-24": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2024-25": {
+          "n": 0,
+          "wr": 0,
+          "net": 0
+        },
+        "2025-26": {
+          "n": 1,
+          "wr": 100,
+          "net": 22.84147798991016
+        }
+      },
+      "bleeds21": false
+    }
+  ],
+  "prepared": [
+    "SELL|val_breakdown|bull_trend|vacuum",
+    "BUY|vah_breakout|weak_bear|vacuum",
+    "SELL|val_breakdown|bear_trend|vacuum",
+    "BUY|vah_breakout|bull_chop|structured",
+    "SELL|val_breakdown|bear_trend|structured",
+    "SELL|val_breakdown|bear_trend|tight"
+  ],
+  "unprepared": [
+    "BUY|va_rejection|bull_chop|tight",
+    "SELL|val_breakdown|bull_chop|tight",
+    "BUY|vah_breakout|bull_trend|vacuum",
+    "BUY|vah_breakout|bull_trend|tight",
+    "SELL|val_breakdown|bull_chop|structured",
+    "BUY|vah_breakout|bull_trend|structured",
+    "BUY|poc_bounce|bull_trend|vacuum",
+    "BUY|va_rejection|bull_trend|vacuum",
+    "BUY|vah_breakout|bear_trend|tight",
+    "BUY|va_rejection|bull_trend|structured",
+    "BUY|va_rejection|bear_trend|vacuum",
+    "BUY|va_rejection|bull_chop|structured",
+    "BUY|va_rejection|bull_chop|vacuum",
+    "BUY|vah_breakout|bull_chop|vacuum",
+    "SELL|val_breakdown|bull_trend|structured",
+    "SELL|val_breakdown|weak_bear|structured",
+    "BUY|poc_bounce|bull_trend|structured",
+    "BUY|vah_breakout|bull_chop|tight",
+    "BUY|vah_breakout|weak_bear|structured",
+    "BUY|vah_breakout|bear_trend|vacuum",
+    "SELL|va_rejection|bull_trend|vacuum",
+    "SELL|poc_bounce|bear_trend|structured",
+    "BUY|vah_breakout|bear_trend|structured",
+    "SELL|poc_bounce|bull_trend|vacuum",
+    "SELL|poc_bounce|weak_bear|vacuum",
+    "SELL|va_rejection|bull_chop|structured"
+  ],
+  "ambiguous": [
+    "SELL|val_breakdown|bull_chop|vacuum",
+    "SELL|val_breakdown|weak_bear|vacuum",
+    "SELL|val_breakdown|bull_trend|tight",
+    "BUY|va_rejection|bull_trend|tight",
+    "SELL|val_breakdown|weak_bear|tight"
+  ],
+  "cf": {
+    "preparedOnly": {
+      "2021-22": {
+        "kept": {
+          "n": 17,
+          "wr": 29.411764705882355,
+          "net": -12.636097845723434
+        },
+        "dropped": {
+          "n": 32,
+          "wr": 37.5,
+          "net": -7.6709902891535195
+        }
+      },
+      "2022-23": {
+        "kept": {
+          "n": 15,
+          "wr": 33.33333333333333,
+          "net": -5.797694466982074
+        },
+        "dropped": {
+          "n": 21,
+          "wr": 47.61904761904761,
+          "net": 38.354731121655846
+        }
+      },
+      "2023-24": {
+        "kept": {
+          "n": 8,
+          "wr": 75,
+          "net": 42.663826355316715
+        },
+        "dropped": {
+          "n": 11,
+          "wr": 45.45454545454545,
+          "net": 14.13245059283511
+        }
+      },
+      "2024-25": {
+        "kept": {
+          "n": 32,
+          "wr": 40.625,
+          "net": 20.799030429154516
+        },
+        "dropped": {
+          "n": 18,
+          "wr": 38.88888888888889,
+          "net": 18.32136651756465
+        }
+      },
+      "2025-26": {
+        "kept": {
+          "n": 30,
+          "wr": 66.66666666666666,
+          "net": 154.53461743495478
+        },
+        "dropped": {
+          "n": 19,
+          "wr": 36.84210526315789,
+          "net": 15.037060267791398
+        }
+      }
+    },
+    "abstainUnpreparedKeepAmbiguous": {
+      "2021-22": {
+        "kept": {
+          "n": 30,
+          "wr": 26.666666666666668,
+          "net": -24.9659789997788
+        },
+        "dropped": {
+          "n": 19,
+          "wr": 47.368421052631575,
+          "net": 4.658890864901859
+        }
+      },
+      "2022-23": {
+        "kept": {
+          "n": 25,
+          "wr": 44,
+          "net": 28.083461913317855
+        },
+        "dropped": {
+          "n": 11,
+          "wr": 36.36363636363637,
+          "net": 4.4735747413559235
+        }
+      },
+      "2023-24": {
+        "kept": {
+          "n": 10,
+          "wr": 70,
+          "net": 49.79090892426389
+        },
+        "dropped": {
+          "n": 9,
+          "wr": 44.44444444444444,
+          "net": 7.0053680238879386
+        }
+      },
+      "2024-25": {
+        "kept": {
+          "n": 33,
+          "wr": 39.39393939393939,
+          "net": 17.533393559458847
+        },
+        "dropped": {
+          "n": 17,
+          "wr": 41.17647058823529,
+          "net": 21.587003387260317
+        }
+      },
+      "2025-26": {
+        "kept": {
+          "n": 35,
+          "wr": 65.71428571428571,
+          "net": 205.82104756600046
+        },
+        "dropped": {
+          "n": 14,
+          "wr": 28.57142857142857,
+          "net": -36.24936986325425
+        }
+      }
+    },
+    "abstainUnpreparedAndAmbiguous": {
+      "2021-22": {
+        "kept": {
+          "n": 17,
+          "wr": 29.411764705882355,
+          "net": -12.636097845723434
+        },
+        "dropped": {
+          "n": 32,
+          "wr": 37.5,
+          "net": -7.6709902891535195
+        }
+      },
+      "2022-23": {
+        "kept": {
+          "n": 15,
+          "wr": 33.33333333333333,
+          "net": -5.797694466982074
+        },
+        "dropped": {
+          "n": 21,
+          "wr": 47.61904761904761,
+          "net": 38.354731121655846
+        }
+      },
+      "2023-24": {
+        "kept": {
+          "n": 8,
+          "wr": 75,
+          "net": 42.663826355316715
+        },
+        "dropped": {
+          "n": 11,
+          "wr": 45.45454545454545,
+          "net": 14.13245059283511
+        }
+      },
+      "2024-25": {
+        "kept": {
+          "n": 32,
+          "wr": 40.625,
+          "net": 20.799030429154516
+        },
+        "dropped": {
+          "n": 18,
+          "wr": 38.88888888888889,
+          "net": 18.32136651756465
+        }
+      },
+      "2025-26": {
+        "kept": {
+          "n": 30,
+          "wr": 66.66666666666666,
+          "net": 154.53461743495478
+        },
+        "dropped": {
+          "n": 19,
+          "wr": 36.84210526315789,
+          "net": 15.037060267791398
+        }
+      }
+    },
+    "abstainValBull60": {
+      "2021-22": {
+        "kept": {
+          "n": 40,
+          "wr": 37.5,
+          "net": -10.852881852449244
+        },
+        "dropped": {
+          "n": 9,
+          "wr": 22.22222222222222,
+          "net": -9.454206282427702
+        }
+      },
+      "2022-23": {
+        "kept": {
+          "n": 32,
+          "wr": 43.75,
+          "net": 39.9295645344836
+        },
+        "dropped": {
+          "n": 4,
+          "wr": 25,
+          "net": -7.372527879809835
+        }
+      },
+      "2023-24": {
+        "kept": {
+          "n": 16,
+          "wr": 56.25,
+          "net": 41.42279734428513
+        },
+        "dropped": {
+          "n": 3,
+          "wr": 66.66666666666666,
+          "net": 15.373479603866695
+        }
+      },
+      "2024-25": {
+        "kept": {
+          "n": 47,
+          "wr": 40.42553191489361,
+          "net": 30.0969196543424
+        },
+        "dropped": {
+          "n": 3,
+          "wr": 33.33333333333333,
+          "net": 9.023477292376771
+        }
+      },
+      "2025-26": {
+        "kept": {
+          "n": 45,
+          "wr": 51.11111111111111,
+          "net": 127.11312582789752
+        },
+        "dropped": {
+          "n": 4,
+          "wr": 100,
+          "net": 42.45855187484862
+        }
+      }
+    },
+    "abstainBullTrend": {
+      "2021-22": {
+        "kept": {
+          "n": 28,
+          "wr": 35.714285714285715,
+          "net": -8.275670162683621
+        },
+        "dropped": {
+          "n": 21,
+          "wr": 33.33333333333333,
+          "net": -12.031417972193328
+        }
+      },
+      "2022-23": {
+        "kept": {
+          "n": 25,
+          "wr": 44,
+          "net": 40.67241785026226
+        },
+        "dropped": {
+          "n": 11,
+          "wr": 36.36363636363637,
+          "net": -8.115381195588485
+        }
+      },
+      "2023-24": {
+        "kept": {
+          "n": 9,
+          "wr": 44.44444444444444,
+          "net": 13.466027502170569
+        },
+        "dropped": {
+          "n": 10,
+          "wr": 70,
+          "net": 43.33024944598125
+        }
+      },
+      "2024-25": {
+        "kept": {
+          "n": 40,
+          "wr": 40,
+          "net": 8.644891793064636
+        },
+        "dropped": {
+          "n": 10,
+          "wr": 40,
+          "net": 30.475505153654527
+        }
+      },
+      "2025-26": {
+        "kept": {
+          "n": 39,
+          "wr": 56.41025641025641,
+          "net": 156.75933161248054
+        },
+        "dropped": {
+          "n": 10,
+          "wr": 50,
+          "net": 12.812346090265587
+        }
+      }
+    },
+    "abstainBuyRej": {
+      "2021-22": {
+        "kept": {
+          "n": 44,
+          "wr": 36.36363636363637,
+          "net": -12.226326058185705
+        },
+        "dropped": {
+          "n": 5,
+          "wr": 20,
+          "net": -8.080762076691236
+        }
+      },
+      "2022-23": {
+        "kept": {
+          "n": 32,
+          "wr": 40.625,
+          "net": 23.667109747615175
+        },
+        "dropped": {
+          "n": 4,
+          "wr": 50,
+          "net": 8.889926907058605
+        }
+      },
+      "2023-24": {
+        "kept": {
+          "n": 18,
+          "wr": 55.55555555555556,
+          "net": 45.66779207927688
+        },
+        "dropped": {
+          "n": 1,
+          "wr": 100,
+          "net": 11.128484868874938
+        }
+      },
+      "2024-25": {
+        "kept": {
+          "n": 47,
+          "wr": 38.297872340425535,
+          "net": 29.618731064959082
+        },
+        "dropped": {
+          "n": 3,
+          "wr": 66.66666666666666,
+          "net": 9.501665881760086
+        }
+      },
+      "2025-26": {
+        "kept": {
+          "n": 46,
+          "wr": 56.52173913043478,
+          "net": 173.30563754495907
+        },
+        "dropped": {
+          "n": 3,
+          "wr": 33.33333333333333,
+          "net": -3.733959842212869
+        }
+      }
+    },
+    "abstainValBull60AndBuyRej": {
+      "2021-22": {
+        "kept": {
+          "n": 35,
+          "wr": 40,
+          "net": -2.772119775758009
+        },
+        "dropped": {
+          "n": 14,
+          "wr": 21.428571428571427,
+          "net": -17.53496835911894
+        }
+      },
+      "2022-23": {
+        "kept": {
+          "n": 28,
+          "wr": 42.857142857142854,
+          "net": 31.039637627425
+        },
+        "dropped": {
+          "n": 8,
+          "wr": 37.5,
+          "net": 1.5173990272487714
+        }
+      },
+      "2023-24": {
+        "kept": {
+          "n": 15,
+          "wr": 53.333333333333336,
+          "net": 30.294312475410194
+        },
+        "dropped": {
+          "n": 4,
+          "wr": 75,
+          "net": 26.501964472741633
+        }
+      },
+      "2024-25": {
+        "kept": {
+          "n": 44,
+          "wr": 38.63636363636363,
+          "net": 20.595253772582318
+        },
+        "dropped": {
+          "n": 6,
+          "wr": 50,
+          "net": 18.525143174136854
+        }
+      },
+      "2025-26": {
+        "kept": {
+          "n": 42,
+          "wr": 52.38095238095239,
+          "net": 130.84708567011043
+        },
+        "dropped": {
+          "n": 7,
+          "wr": 71.42857142857143,
+          "net": 38.72459203263575
+        }
+      }
+    }
+  },
+  "rootCauseNarrative": {
+    "total": {
+      "n": 49,
+      "wr": 34.69387755102041,
+      "net": -20.307088134876945
+    },
+    "preparedOnly": {
+      "n": 17,
+      "wr": 29.411764705882355,
+      "net": -12.636097845723434
+    },
+    "nonPrepared": {
+      "n": 32,
+      "wr": 37.5,
+      "net": -7.6709902891535195
+    },
+    "valNet": -19.605244143232575,
+    "buyRejNet": -8.080762076691236,
+    "vahNet": 10.935068840214926,
+    "preparedKeys": [
+      "SELL|val_breakdown|bull_trend|vacuum",
+      "BUY|vah_breakout|weak_bear|vacuum",
+      "SELL|val_breakdown|bear_trend|vacuum",
+      "BUY|vah_breakout|bull_chop|structured",
+      "SELL|val_breakdown|bear_trend|structured",
+      "SELL|val_breakdown|bear_trend|tight"
+    ],
+    "ambiguousKeys": [
+      "SELL|val_breakdown|bull_chop|vacuum",
+      "SELL|val_breakdown|weak_bear|vacuum",
+      "SELL|val_breakdown|bull_trend|tight",
+      "BUY|va_rejection|bull_trend|tight",
+      "SELL|val_breakdown|weak_bear|tight"
+    ],
+    "unpreparedKeys": [
+      "BUY|va_rejection|bull_chop|tight",
+      "SELL|val_breakdown|bull_chop|tight",
+      "BUY|vah_breakout|bull_trend|vacuum",
+      "BUY|vah_breakout|bull_trend|tight",
+      "SELL|val_breakdown|bull_chop|structured",
+      "BUY|vah_breakout|bull_trend|structured",
+      "BUY|poc_bounce|bull_trend|vacuum",
+      "BUY|va_rejection|bull_trend|vacuum",
+      "BUY|vah_breakout|bear_trend|tight",
+      "BUY|va_rejection|bull_trend|structured",
+      "BUY|va_rejection|bear_trend|vacuum",
+      "BUY|va_rejection|bull_chop|structured",
+      "BUY|va_rejection|bull_chop|vacuum",
+      "BUY|vah_breakout|bull_chop|vacuum",
+      "SELL|val_breakdown|bull_trend|structured",
+      "SELL|val_breakdown|weak_bear|structured",
+      "BUY|poc_bounce|bull_trend|structured",
+      "BUY|vah_breakout|bull_chop|tight",
+      "BUY|vah_breakout|weak_bear|structured",
+      "BUY|vah_breakout|bear_trend|vacuum",
+      "SELL|va_rejection|bull_trend|vacuum",
+      "SELL|poc_bounce|bear_trend|structured",
+      "BUY|vah_breakout|bear_trend|structured",
+      "SELL|poc_bounce|bull_trend|vacuum",
+      "SELL|poc_bounce|weak_bear|vacuum",
+      "SELL|va_rejection|bull_chop|structured"
+    ]
+  }
+}

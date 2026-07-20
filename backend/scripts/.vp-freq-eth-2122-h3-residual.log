@@ -1,0 +1,65 @@
+running 2021-22…
+running 2022-23…
+running 2023-24…
+running 2024-25…
+running 2025-26…
+
+========== YEAR HEADLINES (under H1) ==========
+2021-22: 50t / $-22.7 / WR34%
+  SELL:val_breakdown           29t / $-22.2 / WR28%
+  BUY:va_rejection             5t / $-7.7 / WR20%
+  BUY:poc_bounce               1t / $-3.5 / WR0%
+  BUY:vah_breakout             15t / $10.7 / WR53%
+2022-23: 37t / $28.6 / WR41%
+  BUY:vah_breakout             12t / $2.5 / WR42%
+  BUY:va_rejection             4t / $8.9 / WR50%
+  SELL:val_breakdown           21t / $17.2 / WR38%
+2023-24: 20t / $56.9 / WR60%
+  BUY:poc_bounce               1t / $6.0 / WR100%
+  BUY:va_rejection             1t / $11.1 / WR100%
+  BUY:vah_breakout             9t / $15.7 / WR56%
+  SELL:val_breakdown           9t / $24.1 / WR56%
+2024-25: 51t / $43.0 / WR41%
+  SELL:va_rejection            1t / $-4.8 / WR0%
+  BUY:vah_breakout             18t / $3.6 / WR44%
+  BUY:va_rejection             3t / $9.6 / WR67%
+  SELL:val_breakdown           27t / $13.2 / WR37%
+  SELL:poc_bounce              2t / $21.4 / WR50%
+2025-26: 51t / $151.1 / WR53%
+  SELL:poc_bounce              2t / $-6.6 / WR50%
+  BUY:va_rejection             3t / $-3.5 / WR33%
+  BUY:vah_breakout             12t / $14.6 / WR58%
+  SELL:va_rejection            1t / $21.3 / WR100%
+  SELL:val_breakdown           33t / $125.3 / WR52%
+
+========== VAL bull60 vacuum (the residual conflict) ==========
+2021-22: 8t / $-6.1 / WR25% | avg p60=32.0% p120=37.2% bullFrac60=53% distHi=-12.2%
+2022-23: 2t / $-8.1 / WR0% | avg p60=15.9% p120=33.9% bullFrac60=56% distHi=-7.2%
+2023-24: 3t / $10.9 / WR67% | avg p60=33.3% p120=67.8% bullFrac60=57% distHi=-11.4%
+2024-25: 4t / $12.1 / WR50% | avg p60=40.7% p120=-1.7% bullFrac60=55% distHi=-8.0%
+2025-26: 5t / $36.8 / WR80% | avg p60=57.9% p120=55.7% bullFrac60=54% distHi=-10.2%
+
+========== 21-22 LOSERS vs 25-26 WINNERS (vac bull60 non-dump) ==========
+n losers=6 winners=4
+  prior5d            loss21=-0.0134  win25=-0.0173  Δ=0.0039
+  prior20d           loss21=0.1682  win25=0.1869  Δ=-0.0188
+  prior60d           loss21=0.2201  win25=0.5500  Δ=-0.3299
+  prior120d          loss21=0.6116  win25=0.5569  Δ=0.0547
+  pathPct            loss21=0.0393  win25=0.0427  Δ=-0.0035
+  htfSep             loss21=0.0075  win25=0.0063  Δ=0.0012
+  distFrom60High     loss21=-0.1082  win25=-0.1018  Δ=-0.0064
+  bullDaysFrac60     loss21=0.5222  win25=0.5208  Δ=0.0014
+  bullDaysFrac20     loss21=0.6000  win25=0.4875  Δ=0.1125
+  mfe                loss21=0.0041  win25=0.0339  Δ=-0.0298
+  mae                loss21=-0.0129  win25=-0.0039  Δ=-0.0090
+
+========== CANDIDATE RULES (harvest CF — confirm with full sim) ==========
+HURTS_GOOD_YEAR  H3a_bull60_vac_prior120_gt_30        Δ21=8.1 drop25Net=$22.2 | 21 kept 47/$-14.6 25 kept 50/$128.9
+mixed            H3b_bull60_vac_prior60_gt_15         Δ21=3.5 drop25Net=$14.6 | 21 kept 43/$-19.2 25 kept 47/$136.5
+WEAK_ON_2122     H3c_bull60_vac_near_60high           Δ21=0.0 drop25Net=$0.0 | 21 kept 50/$-22.7 25 kept 51/$151.1
+WEAK_ON_2122     H3d_bull60_vac_sustained_bullfrac    Δ21=-1.4 drop25Net=$8.8 | 21 kept 48/$-24.1 25 kept 48/$142.3
+PROMISING        H3e_bull60_nonVac                    Δ21=5.9 drop25Net=$-4.1 | 21 kept 48/$-16.7 25 kept 50/$155.2
+HURTS_GOOD_YEAR  H3f_all_bull60_vac                   Δ21=6.1 drop25Net=$36.8 | 21 kept 42/$-16.5 25 kept 46/$114.3
+PROMISING        H3g_thin_buy_rej                     Δ21=7.7 drop25Net=$-3.5 | 21 kept 45/$-15.0 25 kept 48/$154.6
+
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-eth-2122-h3-residual.json

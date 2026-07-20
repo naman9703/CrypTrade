@@ -1,0 +1,54 @@
+
+=== Trail health check (BTC trail run from quant research) ===
+
+--- Config ---
+trailing enabled: true
+trailOnlyAfterTp2Fill: false (expect false for trail-only LIQ)
+intradayLiqAllowTrailOnlyExit: true
+backtestTrailMicroTf: 5m (micro enabled: true)
+trailBufferMode: PERCENT (default)
+trailBufferRate: 0.0005 (0.050%)
+trailBufferAtrMult: 0
+sample ATR%: 0.228% → effective buffer: 0.050%
+⚠ Buffer is FIXED PERCENT (0.050%), NOT ATR-scaled — on BTC ~$37 at current price
+
+--- Run comparison (micro 5m vs parent-bar only) ---
+with 5m micro: n=32 exits={"trail":23,"sl":8,"time_stop":1}
+no micro:      n=32 exits={"trail":21,"sl":10,"time_stop":1}
+
+--- Exit distribution ---
+  trail            23
+  sl               8
+  time_stop        1
+
+--- Trail exits (23) ---
+avg trailStep: 1.61
+avg MFE: 0.34%
+avg bars held: 3.0
+tier labels: { T02: 2, T01: 17, T2: 1, T4: 1, T1: 2 }
+
+--- Anomalies (16) ---
+  #1 BUY trail step=2 mfe=0.35% bars=1 → trail_ultra_fast
+  #2 BUY trail step=1 mfe=0.21% bars=1 → trail_ultra_fast
+  #4 BUY trail step=4 mfe=1.03% bars=1 → trail_ultra_fast
+  #5 SELL trail step=1 mfe=0.19% bars=1 → trail_ultra_fast
+  #6 SELL trail step=1 mfe=0.26% bars=1 → trail_ultra_fast
+  #7 SELL trail step=1 mfe=0.36% bars=1 → trail_ultra_fast
+  #15 SELL trail step=1 mfe=0.31% bars=1 → trail_ultra_fast
+  #16 SELL trail step=1 mfe=0.22% bars=1 → trail_ultra_fast
+  #18 SELL trail step=1 mfe=0.26% bars=1 → trail_ultra_fast
+  #21 BUY trail step=6 mfe=1.25% bars=1 → trail_ultra_fast
+  #23 SELL trail step=3 mfe=0.51% bars=2 → trail_ultra_fast
+  #24 SELL trail step=1 mfe=0.35% bars=1 → trail_ultra_fast
+  #26 SELL trail step=1 mfe=0.43% bars=1 → trail_ultra_fast
+  #27 BUY trail step=1 mfe=0.08% bars=3 → trail_scratch_tiny_mfe
+  #28 BUY trail step=1 mfe=0.18% bars=1 → trail_ultra_fast
+
+--- Micro replay parity (trail/be/sl exits) ---
+  replay match: 31 | mismatch: 0 | skipped (tp/time/etc): 1 | failed: 0
+
+--- Verdict ---
+✓ Trail engine is functioning (tiers advance, gate allows trail-only, 5m micro active).
+Trail captures some movement; poor returns are mostly entry/follow-through, not broken trail logic.
+
+Note: entry-perfection run had trail OFF. This audit covers the BTC trail block from research-liq-bnb-btc-quant.mjs.

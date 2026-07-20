@@ -41,14 +41,16 @@ export function buildCustomUniverseSnapshot(symbols: string[], timeframe = "1h")
 }
 
 async function mergeUniverseScanSnapshot(scan: Record<string, unknown>) {
-  const { useAppStore, deriveViewBot } = await import("../ws/store");
+  const { useAppStore, deriveViewBot, draftByModeWithInstanceContext } = await import("../ws/store");
+  const { tradingModeToApiModeSlug } = await import("../lib/tradingModeSlug");
   useAppStore.setState((s) => {
     const prevLive =
       s.liveBot && typeof s.liveBot === "object" && !Array.isArray(s.liveBot)
         ? (s.liveBot as Record<string, unknown>)
         : {};
     const liveBot = { ...prevLive, universe: scan };
-    const bot = deriveViewBot(s.mode, liveBot, s.draftBotPatchByMode);
+    const modeSlug = tradingModeToApiModeSlug(s.mode);
+    const bot = deriveViewBot(s.mode, liveBot, draftByModeWithInstanceContext(s, modeSlug));
     return { liveBot, bot };
   });
 }
@@ -407,7 +409,9 @@ export const api = {
     );
   },
   async botConfig(patch: any, opts?: { signal?: AbortSignal }) {
-    const { useAppStore, deriveViewBot } = await import("../ws/store");
+    const { useAppStore, deriveViewBot, refreshStrategyConfigViewSlice, draftByModeWithInstanceContext } =
+      await import("../ws/store");
+    const { activeInstanceIdForMode } = await import("../lib/instanceConfigView");
     const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
     const { tradingModeToApiModeSlug } = await import("../lib/tradingModeSlug");
 
@@ -420,15 +424,18 @@ export const api = {
     if (!ignoredOnly && patchKeys.length > 0) {
       const { noteBotConfigPatchInFlight } = await import("../lib/configPatchInFlight");
       noteBotConfigPatchInFlight(patchObj);
-      useAppStore.setState((s) => ({
-        bot: deriveViewBot(
-          s.mode,
-          s.liveBot && typeof s.liveBot === "object" && !Array.isArray(s.liveBot)
-            ? (s.liveBot as Record<string, unknown>)
-            : {},
-          s.draftBotPatchByMode,
-        ),
-      }));
+      useAppStore.setState((s) => {
+        const modeSlug = tradingModeToApiModeSlug(s.mode);
+        return {
+          bot: deriveViewBot(
+            s.mode,
+            s.liveBot && typeof s.liveBot === "object" && !Array.isArray(s.liveBot)
+              ? (s.liveBot as Record<string, unknown>)
+              : {},
+            draftByModeWithInstanceContext(s, modeSlug),
+          ),
+        };
+      });
     }
 
     let data: any;
@@ -471,20 +478,28 @@ export const api = {
       clearBotConfigPatchInFlightWhenAcked(patchObj, botNext);
       useAppStore.setState((s) => {
         const modeSlug = tradingModeToApiModeSlug(s.mode);
-        const prevDraft = s.draftBotPatchByMode[modeSlug] ?? {};
+        const instanceId = activeInstanceIdForMode(s, modeSlug);
+        const draftBotPatchByInstanceId = { ...(s.draftBotPatchByInstanceId ?? {}) };
+        const prevDraft = instanceId ? (draftBotPatchByInstanceId[instanceId] ?? {}) : {};
         const prunedDraft = pruneDraftBotPatchAcked(prevDraft, patchObj, botNext);
-        const draftBotPatchByMode = { ...s.draftBotPatchByMode, [modeSlug]: prunedDraft };
-        const viewBot = deriveViewBot(s.mode, botNext, draftBotPatchByMode);
+        if (instanceId) draftBotPatchByInstanceId[instanceId] = prunedDraft;
+        const draftCtx = draftByModeWithInstanceContext({ ...s, draftBotPatchByInstanceId }, modeSlug);
+        const viewBot = deriveViewBot(s.mode, botNext, draftCtx);
         tradingUiPersistBotSnapshot(s.mode, viewBot, s.authUiUserTag ?? null);
-        return { liveBot: botNext, bot: viewBot, draftBotPatchByMode };
+        return {
+          liveBot: botNext,
+          draftBotPatchByInstanceId,
+          ...refreshStrategyConfigViewSlice(s, modeSlug, viewBot),
+        };
       });
     } else {
       useAppStore.setState((s) => {
+        const modeSlug = tradingModeToApiModeSlug(s.mode);
         const live =
           s.liveBot && typeof s.liveBot === "object" && !Array.isArray(s.liveBot)
             ? { ...(s.liveBot as Record<string, unknown>), ...botNext }
             : botNext;
-        const viewBot = deriveViewBot(s.mode, live, s.draftBotPatchByMode);
+        const viewBot = deriveViewBot(s.mode, live, draftByModeWithInstanceContext(s, modeSlug));
         tradingUiPersistBotSnapshot(s.mode, viewBot, s.authUiUserTag ?? null);
         return { liveBot: live, bot: viewBot };
       });
@@ -538,20 +553,18 @@ export const api = {
     );
     if (data?.ok && data.bot && typeof data.bot === "object") {
       const { tradingUiPersistBotSnapshot } = await import("../lib/tradingUiPersistence");
-      const { useAppStore, deriveViewBot } = await import("../ws/store");
+      const { useAppStore, mergeEngineBotSnapshot } = await import("../ws/store");
       const st = useAppStore.getState();
       if (data.version) {
         st.applyStrategySaveResponse(modeSlug, data.version, data.bot as Record<string, unknown>);
       } else {
         const botNext = data.bot as Record<string, unknown>;
-        useAppStore.setState((s) => {
-          const draftBotPatchByMode = { ...s.draftBotPatchByMode, [modeSlug]: {} };
-          const viewBot = deriveViewBot(st.mode, botNext, draftBotPatchByMode);
-          return { liveBot: botNext, bot: viewBot, draftBotPatchByMode };
-        });
+        useAppStore.setState((s) => mergeEngineBotSnapshot(s, modeSlug, botNext));
       }
-      const viewBot = useAppStore.getState().bot as Record<string, unknown>;
-      tradingUiPersistBotSnapshot(st.mode, viewBot, st.authUiUserTag ?? null);
+      queueMicrotask(() => {
+        const viewBot = useAppStore.getState().bot as Record<string, unknown>;
+        tradingUiPersistBotSnapshot(st.mode, viewBot, st.authUiUserTag ?? null);
+      });
     }
     return data;
   },
@@ -724,6 +737,36 @@ export const api = {
     return { strategy: { ...st, latestVersion: latest }, latestVersion: latest };
   },
 
+  async getStrategyUsage(strategyId: string, currentInstanceId?: string | null) {
+    const q =
+      currentInstanceId != null && String(currentInstanceId).trim()
+        ? `?instanceId=${encodeURIComponent(String(currentInstanceId))}`
+        : "";
+    const data = await json<import("../types/strategyUsage").StrategyUsageContext & { ok?: boolean }>(
+      await apiFetch(`${HTTP}/api/strategies/${encodeURIComponent(strategyId)}/usage${q}`),
+    );
+    if (data.ok === false) throw new Error("strategy_usage_failed");
+    return data;
+  },
+
+  async bindInstanceStrategy(instanceId: string, strategyId: string) {
+    const data = await json<{
+      ok?: boolean;
+      instance?: import("../types/instance").BotInstance;
+      bot?: Record<string, unknown>;
+      activeInstanceByMode?: Record<string, string | null>;
+      activeStrategyVersionByMode?: Record<string, string | null>;
+    }>(
+      await apiFetch(`${HTTP}/api/instances/${encodeURIComponent(instanceId)}/bind-strategy`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ strategyId }),
+      }),
+    );
+    if (data.ok === false || !data.instance) throw new Error("bind_strategy_failed");
+    return data;
+  },
+
   async updateStrategyMeta(strategyId: string, patch: StrategyMetaPatch) {
     const data = await json<{ ok?: boolean; strategy?: unknown }>(
       await apiFetch(`${HTTP}/api/strategies/${encodeURIComponent(strategyId)}`, {
@@ -743,6 +786,20 @@ export const api = {
     );
   },
 
+  async cloneStrategyAsNew(strategyId: string, name: string) {
+    const data = await json<{ ok?: boolean; strategy?: unknown; version?: unknown; latestVersion?: unknown }>(
+      await apiFetch(`${HTTP}/api/strategies/${encodeURIComponent(strategyId)}/clone`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      }),
+    );
+    const ver = mapApiStrategyVersion(data.version ?? data.latestVersion);
+    const st = mapApiStrategy(data.strategy, ver);
+    if (!st) throw new Error("clone_strategy_failed");
+    return { strategy: { ...st, latestVersion: ver }, version: ver };
+  },
+
   async getActiveStrategyForMode(modeSlug: ApiTradingModeSlug) {
     const data = await json<{ ok?: boolean; versionId?: string | null }>(
       await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/active-strategy`),
@@ -750,14 +807,25 @@ export const api = {
     return { versionId: data.versionId != null && String(data.versionId).length ? String(data.versionId) : null };
   },
 
-  async setActiveStrategyForMode(modeSlug: ApiTradingModeSlug, versionId: string) {
-    await json<{ ok?: boolean }>(
+  async setActiveStrategyForMode(
+    modeSlug: ApiTradingModeSlug,
+    versionId: string,
+  ): Promise<{
+    activeStrategyVersionByMode?: Record<string, string | null>;
+    bot?: Record<string, unknown>;
+  } | null> {
+    const data = await json<{
+      ok?: boolean;
+      activeStrategyVersionByMode?: Record<string, string | null>;
+      bot?: Record<string, unknown>;
+    }>(
       await apiFetch(`${HTTP}/api/trading-modes/${encodeURIComponent(modeSlug)}/active-strategy`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ versionId }),
       }),
     );
+    return data.ok === false ? null : data;
   },
 
   async listInstancesForMode(modeSlug: ApiTradingModeSlug) {
@@ -1074,7 +1142,14 @@ export const api = {
     costModel?: Record<string, unknown>;
     gateMode?: "off" | "approx";
     walkForward?: { trainPct?: number };
-    positionSizing?: "RISK_AT_SL" | "FULL_EQUITY_MARGIN";
+    positionSizing?: "RISK_AT_SL" | "RISK_AT_SL_FULL_MARGIN" | "FULL_EQUITY_MARGIN";
+    /** Portfolio capital model (multi-coin runs only). */
+    portfolioPositionSizing?:
+      | "EQUAL_SLICE_FULL_MARGIN"
+      | "EQUAL_SLICE_RISK_AT_SL"
+      | "TOTAL_CAPITAL_RISK_AT_SL";
+    /** Trailing micro TF for backtest replay (`off`, `1m`, `5m`, …). */
+    trailMicroTf?: "off" | "1m" | "3m" | "5m" | "15m" | "30m";
     useLivePanelOverrides?: boolean;
     instanceOperational?: {
       symbol?: string | null;
@@ -1120,6 +1195,31 @@ export const api = {
   async getBacktestEquity(runId: string) {
     return json<{ ok?: boolean; points?: unknown[] }>(
       await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}/equity-curve`),
+    );
+  },
+
+  async getTrailTickAuditEstimate(runId: string) {
+    return json<{ ok?: boolean; estimate?: unknown }>(
+      await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}/trail-tick-audit/estimate`),
+    );
+  },
+
+  async getTrailTickAudit(runId: string) {
+    return json<{ ok?: boolean; audit?: unknown; running?: boolean }>(
+      await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}/trail-tick-audit`),
+    );
+  },
+
+  async runTrailTickAudit(
+    runId: string,
+    body?: { mode?: string; force?: boolean; forceInline?: boolean },
+  ) {
+    return json<{ ok?: boolean; started?: boolean; inline?: boolean; result?: unknown; reason?: string }>(
+      await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}/trail-tick-audit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body ?? {}),
+      }),
     );
   },
 
@@ -1190,11 +1290,29 @@ export const api = {
     return json<{
       ok?: boolean;
       klines?: { inserted?: number; gaps?: number };
+      markKlines?: { inserted?: number; gaps?: number };
       funding?: { inserted?: number };
       fearGreed?: { inserted?: number };
       openInterest?: { inserted?: number };
     }>(
       await apiFetch(`${HTTP}/api/backtest/data/sync`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+  },
+
+  async syncMarkHistoricalData(body: {
+    symbol: string;
+    from: string | number | Date;
+    to?: string | number | Date;
+  }) {
+    return json<{
+      ok?: boolean;
+      markKlines?: { inserted?: number; gaps?: number };
+    }>(
+      await apiFetch(`${HTTP}/api/backtest/data/sync-mark`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -1230,6 +1348,8 @@ export const api = {
       ok?: boolean;
       coverage?: { have: number; expected: number | null; coveragePct: number | null; minTs: number | null; maxTs: number | null };
       monthly?: Array<{ month: string; have: number; expected: number; coveragePct: number }>;
+      markCoverage?: { have: number; expected: number | null; coveragePct: number | null; minTs: number | null; maxTs: number | null };
+      markMonthly?: Array<{ month: string; have: number; expected: number; coveragePct: number }>;
     }>(await apiFetch(`${HTTP}/api/backtest/data/coverage?${q.toString()}`));
   },
 

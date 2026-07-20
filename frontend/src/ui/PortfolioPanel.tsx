@@ -1,5 +1,6 @@
 import {
   Fragment,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -2214,7 +2215,8 @@ function sortTradeHistoryRows(
 export function PortfolioPanel() {
   const trades = useAppStore((s) => s.trades);
   const account = useAppStore((s) => s.account);
-  const bot = useAppStore((s) => s.bot);
+  const botRaw = useAppStore((s) => s.bot);
+  const bot = useDeferredValue(botRaw);
   const trailingStopLossAuto = bot?.trailingStopLossAuto === true;
   const positions = useAppStore((s) => s.positions) || [];
   const pushLog = useAppStore((s) => s.pushLog);

@@ -1,0 +1,238 @@
+
+> backend@0.1.0 research:bybit:sync
+> node scripts/research-bybit-sync.mjs --from 2022-01-01 --to 2026-06-01 --oi-interval 15min
+
+Bybit sync BTCUSDT 15min...
+  BTCUSDT page 25 (5000 pts)
+  BTCUSDT page 50 (10000 pts)
+  BTCUSDT page 75 (15000 pts)
+  BTCUSDT page 100 (20000 pts)
+  BTCUSDT page 125 (25000 pts)
+  BTCUSDT page 150 (30000 pts)
+  BTCUSDT page 175 (35000 pts)
+  BTCUSDT page 200 (40000 pts)
+  BTCUSDT page 225 (45000 pts)
+  BTCUSDT page 250 (50000 pts)
+  BTCUSDT page 275 (55000 pts)
+  BTCUSDT page 300 (60000 pts)
+  BTCUSDT page 325 (65000 pts)
+
+> backend@0.1.0 research:bybit:sync
+> node scripts/research-bybit-sync.mjs --from 2022-01-01 --to 2026-06-01 --oi-interval 15min --coins BNBUSDT,ETHUSDT,SOLUSDT,XRPUSDT
+
+Bybit sync BNBUSDT 15min...
+  BNBUSDT page 25 (5000 pts)
+  BNBUSDT page 50 (10000 pts)
+  BNBUSDT page 75 (15000 pts)
+  BNBUSDT page 100 (20000 pts)
+  BNBUSDT page 125 (25000 pts)
+  BNBUSDT page 150 (30000 pts)
+  BNBUSDT page 175 (35000 pts)
+  BNBUSDT page 200 (40000 pts)
+  BNBUSDT page 225 (45000 pts)
+  BNBUSDT page 250 (50000 pts)
+  BNBUSDT page 275 (55000 pts)
+  BNBUSDT page 300 (60000 pts)
+  BNBUSDT page 325 (65000 pts)
+  BNBUSDT page 350 (70000 pts)
+  BNBUSDT page 375 (75000 pts)
+  BNBUSDT page 400 (80000 pts)
+  BNBUSDT page 425 (85000 pts)
+  BNBUSDT page 450 (90000 pts)
+  BNBUSDT page 475 (95000 pts)
+  BNBUSDT page 500 (100000 pts)
+  BNBUSDT page 525 (105000 pts)
+  BNBUSDT page 550 (110000 pts)
+  BNBUSDT page 575 (115000 pts)
+  BNBUSDT page 600 (120000 pts)
+  BNBUSDT page 625 (125000 pts)
+  BNBUSDT page 650 (130000 pts)
+  BNBUSDT page 675 (135000 pts)
+  BNBUSDT page 700 (140000 pts)
+  BNBUSDT page 725 (145000 pts)
+  BNBUSDT page 750 (150000 pts)
+  oi=154753 lsr=38689
+Bybit sync ETHUSDT 15min...
+  ETHUSDT page 25 (5000 pts)
+  ETHUSDT page 50 (10000 pts)
+  ETHUSDT page 75 (15000 pts)
+  ETHUSDT page 100 (20000 pts)
+  ETHUSDT page 125 (25000 pts)
+  ETHUSDT page 150 (30000 pts)
+  ETHUSDT page 175 (35000 pts)
+  ETHUSDT page 200 (40000 pts)
+  ETHUSDT page 225 (45000 pts)
+  ETHUSDT page 250 (50000 pts)
+  ETHUSDT page 275 (55000 pts)
+  ETHUSDT page 300 (60000 pts)
+  ETHUSDT page 325 (65000 pts)
+  ETHUSDT page 350 (70000 pts)
+  ETHUSDT page 375 (75000 pts)
+  ETHUSDT page 400 (80000 pts)
+  ETHUSDT page 425 (85000 pts)
+  ETHUSDT page 450 (90000 pts)
+  ETHUSDT page 475 (95000 pts)
+  ETHUSDT page 500 (100000 pts)
+  ETHUSDT page 525 (105000 pts)
+  ETHUSDT page 550 (110000 pts)
+  ETHUSDT page 575 (115000 pts)
+  ETHUSDT page 600 (120000 pts)
+  ETHUSDT page 625 (125000 pts)
+  ETHUSDT page 650 (130000 pts)
+  ETHUSDT page 675 (135000 pts)
+  ETHUSDT page 700 (140000 pts)
+  ETHUSDT page 725 (145000 pts)
+  ETHUSDT page 750 (150000 pts)
+  oi=154751 lsr=38689
+Bybit sync SOLUSDT 15min...
+  SOLUSDT page 25 (5000 pts)
+  SOLUSDT page 50 (10000 pts)
+  SOLUSDT page 75 (15000 pts)
+  SOLUSDT page 100 (20000 pts)
+  SOLUSDT page 125 (25000 pts)
+  SOLUSDT page 150 (30000 pts)
+  SOLUSDT page 175 (35000 pts)
+  SOLUSDT page 200 (40000 pts)
+  SOLUSDT page 225 (45000 pts)
+  SOLUSDT page 250 (50000 pts)
+  SOLUSDT page 275 (55000 pts)
+  SOLUSDT page 300 (60000 pts)
+  SOLUSDT page 325 (65000 pts)
+  SOLUSDT page 350 (70000 pts)
+  SOLUSDT page 375 (75000 pts)
+  SOLUSDT page 400 (80000 pts)
+  SOLUSDT page 425 (85000 pts)
+  SOLUSDT page 450 (90000 pts)
+  SOLUSDT page 475 (95000 pts)
+  SOLUSDT page 500 (100000 pts)
+  SOLUSDT page 525 (105000 pts)
+  SOLUSDT page 550 (110000 pts)
+  SOLUSDT page 575 (115000 pts)
+  SOLUSDT page 600 (120000 pts)
+  SOLUSDT page 625 (125000 pts)
+  SOLUSDT page 650 (130000 pts)
+  SOLUSDT page 675 (135000 pts)
+  SOLUSDT page 700 (140000 pts)
+  SOLUSDT page 725 (145000 pts)
+  SOLUSDT page 750 (150000 pts)
+  oi=154753 lsr=38689
+Bybit sync XRPUSDT 15min...
+  XRPUSDT page 25 (5000 pts)
+  XRPUSDT page 50 (10000 pts)
+  XRPUSDT page 75 (15000 pts)
+  XRPUSDT page 100 (20000 pts)
+  XRPUSDT page 125 (25000 pts)
+  XRPUSDT page 150 (30000 pts)
+  XRPUSDT page 175 (35000 pts)
+  XRPUSDT page 200 (40000 pts)
+  XRPUSDT page 225 (45000 pts)
+  XRPUSDT page 250 (50000 pts)
+  XRPUSDT page 275 (55000 pts)
+  XRPUSDT page 300 (60000 pts)
+  XRPUSDT page 325 (65000 pts)
+  XRPUSDT page 350 (70000 pts)
+  XRPUSDT page 375 (75000 pts)
+  XRPUSDT page 400 (80000 pts)
+  XRPUSDT page 425 (85000 pts)
+  XRPUSDT page 450 (90000 pts)
+  XRPUSDT page 475 (95000 pts)
+  XRPUSDT page 500 (100000 pts)
+  XRPUSDT page 525 (105000 pts)
+  XRPUSDT page 550 (110000 pts)
+  XRPUSDT page 575 (115000 pts)
+  XRPUSDT page 600 (120000 pts)
+  XRPUSDT page 625 (125000 pts)
+  XRPUSDT page 650 (130000 pts)
+  XRPUSDT page 675 (135000 pts)
+  XRPUSDT page 700 (140000 pts)
+  XRPUSDT page 725 (145000 pts)
+  XRPUSDT page 750 (150000 pts)
+  oi=154753 lsr=38689
+{
+  "generatedAt": "2026-07-11T03:34:18.536Z",
+  "from": "2022-01-01",
+  "to": "2026-06-01",
+  "source": "bybit",
+  "coins": {
+    "BNBUSDT": {
+      "ensured": {
+        "oi": {
+          "inserted": 154753,
+          "points": 154753,
+          "source": "bybit",
+          "intervalTime": "15min"
+        },
+        "lsr": {
+          "inserted": 38689,
+          "points": 38689,
+          "source": "bybit",
+          "period": "1h"
+        },
+        "source": "bybit"
+      },
+      "oiPoints": 154753,
+      "lsrPoints": 38689,
+      "fidelity": "cross_venue_proxy"
+    },
+    "ETHUSDT": {
+      "ensured": {
+        "oi": {
+          "inserted": 154751,
+          "points": 154751,
+          "source": "bybit",
+          "intervalTime": "15min"
+        },
+        "lsr": {
+          "inserted": 38689,
+          "points": 38689,
+          "source": "bybit",
+          "period": "1h"
+        },
+        "source": "bybit"
+      },
+      "oiPoints": 154751,
+      "lsrPoints": 38689,
+      "fidelity": "cross_venue_proxy"
+    },
+    "SOLUSDT": {
+      "ensured": {
+        "oi": {
+          "inserted": 154753,
+          "points": 154753,
+          "source": "bybit",
+          "intervalTime": "15min"
+        },
+        "lsr": {
+          "inserted": 38689,
+          "points": 38689,
+          "source": "bybit",
+          "period": "1h"
+        },
+        "source": "bybit"
+      },
+      "oiPoints": 154753,
+      "lsrPoints": 38689,
+      "fidelity": "cross_venue_proxy"
+    },
+    "XRPUSDT": {
+      "ensured": {
+        "oi": {
+          "inserted": 154753,
+          "points": 154753,
+          "source": "bybit",
+          "intervalTime": "15min"
+        },
+        "lsr": {
+          "inserted": 38689,
+          "points": 38689,
+          "source": "bybit",
+          "period": "1h"
+        },
+        "source": "bybit"
+      },
+      "oiPoints": 154753,
+      "lsrPoints": 38689,
+      "fidelity": "cross_venue_proxy"
+    }
+  }
+}

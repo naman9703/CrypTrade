@@ -12,14 +12,17 @@ Backtests below use realistic costs (taker fees + 0.05% slippage + funding),
 `RISK_AT_SL` sizing. Validation = walk-forward (purged, embargo) + Monte Carlo +
 acceptance gates (OOS>0, MC p5>0, Calmar>1, WF degradation<35%).
 
-**Only `SUPERTREND_ELITE` passes out-of-sample validation. Everything else is
-net-negative OOS after costs.** See `STRATEGY_RESEARCH_HANDOFF.md`.
+**No strategy is currently certified deployable.** Prior “only SUPERTREND_ELITE
+passes OOS” claims are **revoked** (wrong trailing in those runs). See
+`STRATEGY_RESEARCH_HANDOFF.md` and
+`backend/scripts/.research-decisions/2026-07-14-supertrend-elite-deployability-revoked.md`.
+Many high-frequency baselines are still net-negative OOS after costs.
 
 ## Headline comparison (ETH+BNB 15m, Jan–Jun 2026, 2% risk, 25× — normalized)
 
 | strategy | mean net% | trades | verdict |
 |---|---|---|---|
-| SUPERTREND_ELITE | +3.3 | 10 | **only validated edge** (low-freq) |
+| SUPERTREND_ELITE | +3.3 | 10 | **stale** — re-validate with correct trail before any deploy claim |
 | TREND_PULLBACK | −5.2 | 19 | negative |
 | HTF_RSI | −15.1 | 57 | negative (UI's 125% claim is overfit) |
 | SMART_REVERSAL | −21.2 | 233 | negative |
@@ -29,7 +32,7 @@ net-negative OOS after costs.** See `STRATEGY_RESEARCH_HANDOFF.md`.
 | EMA_CROSS | −97.3 | 992 | catastrophic (fee bleed) |
 
 Key lesson: **trade frequency is inversely correlated with survival** — high-frequency
-TA strategies are destroyed by fees; the only survivor is rare + highly selective.
+TA strategies are destroyed by fees; selectivity alone is not proof of a deployable edge.
 
 ---
 
@@ -84,21 +87,20 @@ TA strategies are destroyed by fees; the only survivor is rare + highly selectiv
 
 ## Advanced / dedicated strategies (own modules)
 
-### SUPERTREND_ELITE  ⭐ (the recommended one)
+### SUPERTREND_ELITE (research candidate — not certified)
 - **File:** `supertrendElite.js`. **Name:** Supertrend Elite (5-gate: ADX+Vol+1H+4H+ATR).
 - **Logic:** Supertrend flip entry that must pass 5 gates: (1) ADX strength + rising,
   (2) volume ≥ 1.5× avg, (3) 1H EMA21/50 structural alignment, (4) 4H Supertrend
-  direction, (5) ATR expansion. Optional liquidity-sweep bonus. **Exit = trailing
-  Supertrend / exit-on-flip** (lets winners run — the key to its edge).
+  direction, (5) ATR expansion. Optional liquidity-sweep bonus. Exit intended as
+  trailing Supertrend / exit-on-flip — **must match live trailing for any re-validation**.
 - **Config:** `supertrendPeriod` (10), `supertrendMultiplier` (2.5–3.5),
   `eliteStMinAdx` (20–25), `eliteStRequireAdxRising`, `eliteStMinVolumeVsAvg` (1.5),
   `eliteStRequireHtf1hEmaAlign`, `eliteStRequireHtf4hAlign`, `eliteStRequireAtrExpansion`,
   `trailingStopLossAuto: true`, `futuresTrailingStopMode: SUPERTREND`,
   `supertrendFuturesExitOnFlip: true`.
-- **Status:** **VALIDATED.** BTC full 17mo passes all 4 gates (+3.3% @2% risk, PF 2.42,
-  maxDD 0.8%, Calmar 2.88, all WF folds positive). Honest multi-coin portfolio expectation:
-  **~10–21% CAGR (~1–1.5%/mo), 15–30% DD.** Low frequency (~1.3 trades/coin/month) →
-  run as a multi-coin portfolio. See `backtest-portfolio-supertrend.mjs`.
+- **Status:** **NOT CERTIFIED.** Older “VALIDATED / ~10–21% CAGR” tables used **wrong
+  trailing** and are revoked (2026-07-14). Re-run portfolio + WF + MC + gates with
+  correct exits before any deploy language. Script: `backtest-portfolio-supertrend.mjs`.
 
 ### HTF_RSI
 - **File:** `htfRsi.js`. **Name:** HTF-Filtered RSI Mean Reversion (1h trend + 15m RSI exhaustion).

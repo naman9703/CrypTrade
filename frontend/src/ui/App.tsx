@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { HeaderBar } from "./HeaderBar";
 import { HeaderSignalsStrip } from "./HeaderSignalsStrip";
@@ -19,7 +19,10 @@ import { AppSidebar } from "./AppSidebar";
 import { useAuthActions } from "../authContext";
 import { hydrateStateViaHttp, useAppStore } from "../ws/store";
 import { OverviewPage } from "./analytics/OverviewPage";
-import { BacktestPage } from "./backtest/BacktestPage";
+
+const BacktestPage = lazy(() =>
+  import("./backtest/BacktestPage").then((m) => ({ default: m.BacktestPage })),
+);
 
 function notificationsEnabledFromEnv(): boolean {
   const raw = String(import.meta.env.VITE_ACTIVITY_NOTIFICATIONS ?? "1").trim().toLowerCase();
@@ -42,9 +45,12 @@ export function App() {
   /** When WS is down (proxy/buffering), keep UI fresh via polled `/api/state`. */
   useEffect(() => {
     if (connected) return;
-    void hydrateStateViaHttp();
+    const first = window.setTimeout(() => void hydrateStateViaHttp(), 1500);
     const t = window.setInterval(() => void hydrateStateViaHttp(), 4000);
-    return () => window.clearInterval(t);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(t);
+    };
   }, [connected]);
 
   const shellTop = (
@@ -63,7 +69,9 @@ export function App() {
     return (
       <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         {shellTop}
-        <BacktestPage />
+        <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Loading backtest…</div>}>
+          <BacktestPage />
+        </Suspense>
         <TradingModeBadge />
       </div>
     );

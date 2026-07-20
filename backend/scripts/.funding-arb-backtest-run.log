@@ -1,0 +1,24 @@
+
+> backend@0.1.0 backtest:funding-arb
+> node scripts/backtest-funding-arb.mjs
+
+
+── BTCUSDT ──
+  funding settlements: 1548
+  ensure perp 1h: inserted=12558
+  bars: 12552 (spot=perp proxy; basis≈0 by schema)
+  trades=45 net=-1958.29 grossFund=287.52 fees=1347.49 slip=898.32 basis=0.00 ann=-11.56% DD=16.32% honesty=FAIL [spot_proxy]
+  notes: gross_funding_positive_but_net_nonpositive_after_fees_basis, spot_proxied_by_perp_closes_ohlcv_pk_limitation
+
+── ETHUSDT ──
+  funding settlements: 1548
+  ensure perp 1h: inserted=12558
+  bars: 12552 (spot=perp proxy; basis≈0 by schema)
+  trades=50 net=-2207.16 grossFund=291.10 fees=1498.95 slip=999.30 basis=0.00 ann=-13.03% DD=18.56% honesty=FAIL [spot_proxy]
+  notes: gross_funding_positive_but_net_nonpositive_after_fees_basis, spot_proxied_by_perp_closes_ohlcv_pk_limitation
+
+═══ Aggregate ═══
+net=-4165.45 ann=-24.59% honesty=FAIL
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.funding-arb-backtest.json
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.funding-arb-backtest.md
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.research-decisions/2026-07-14-funding-arb-phase2-nogo.md
