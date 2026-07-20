@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
+import { useAuthActions } from "../authContext";
 import { tradingModeToApiModeSlug, apiModeSlugToModeLabel } from "../lib/tradingModeSlug";
 import { EMPTY_BOT_INSTANCES, EMPTY_STRATEGIES } from "../lib/stableEmptyArrays";
 import { useAppStore } from "../ws/store";
@@ -23,6 +24,7 @@ type Props = {
 
 /** Slide-in sidebar from the left. Opened by the hamburger (≡) icon in HeaderBar. */
 export function AppSidebar({ open, onClose }: Props) {
+  const auth = useAuthActions();
   const mode = useAppStore((s) => s.mode);
   const modeSlug = useMemo(() => tradingModeToApiModeSlug(mode), [mode]);
   const mainView = useAppStore((s) => s.mainView);
@@ -289,8 +291,23 @@ export function AppSidebar({ open, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-slate-200 p-3 text-[10px] text-slate-400 dark:border-slate-800">
-          Mode: <span className="font-semibold text-slate-600 dark:text-slate-300">{modeLabel}</span>
+        <div className="space-y-2 border-t border-slate-200 p-3 dark:border-slate-800">
+          <div className="text-[10px] text-slate-400">
+            Mode: <span className="font-semibold text-slate-600 dark:text-slate-300">{modeLabel}</span>
+          </div>
+          {auth?.gated ? (
+            <button
+              type="button"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              title="Sign out — session cleared, return to login"
+              onClick={() => {
+                onClose();
+                void auth.logout();
+              }}
+            >
+              Log out
+            </button>
+          ) : null}
         </div>
       </div>
       <AddAccountModal
