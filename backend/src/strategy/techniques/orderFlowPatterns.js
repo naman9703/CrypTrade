@@ -145,11 +145,11 @@ export function buildKeyLevelContext(candles, idx, pre, side, ofOpts) {
 
   const vpLookback = 192;
   const vp = buildVolumeProfile(candles, idx, {
-    mode: opts.vpProfileMode ?? "composite_utc",
+    mode: ofOpts.vpProfileMode ?? "composite_utc",
     lookback: vpLookback,
-    bins: opts.vpBins ?? 50,
-    distribute: opts.vpVolumeDistribute ?? "close_weighted",
-    vpCompositeDays: opts.vpCompositeDays ?? 5,
+    bins: ofOpts.vpBins ?? 50,
+    distribute: ofOpts.vpVolumeDistribute ?? "close_weighted",
+    vpCompositeDays: ofOpts.vpCompositeDays ?? 5,
   });
   const vwapSeries = pre?.sessionVwap ?? buildSessionVwapSeries(candles);
   const vwap = vwapSeries?.[idx] ?? null;
