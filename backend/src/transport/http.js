@@ -1022,6 +1022,8 @@ export function createRouter({ appState }) {
       vpValSellBearOnly: z.boolean().optional(),
       vpValSellRequirePrior60dBear: z.boolean().optional(),
       vpValSellPrior60dBearPct: z.number().min(-1).max(0).optional(),
+      vpValSellBlockReliefBounce: z.boolean().optional(),
+      vpValSellReliefBounceMaxPct: z.number().min(0).max(0.5).optional(),
       vpSellBreakdownMaxPathPct: z.number().min(0).max(0.1).optional(),
       vpPreparedRegimeOnly: z.boolean().optional(),
       vpPreparedBlockVacuumVah: z.boolean().optional(),

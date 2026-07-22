@@ -1,0 +1,906 @@
+{
+  "from": "2021-01-01",
+  "to": "2026-05-31",
+  "rows": [
+    {
+      "variant": "core",
+      "window": "full",
+      "trades": 919,
+      "tradesPerWeek": 3.26,
+      "wr": 31.6,
+      "ret": -94.02,
+      "pf": 0.89,
+      "dd": 96.8,
+      "setups": {
+        "vah_breakout": {
+          "n": 396,
+          "pnl": -79.01
+        },
+        "val_breakdown": {
+          "n": 421,
+          "pnl": -15.98
+        },
+        "va_rejection": {
+          "n": 90,
+          "pnl": 8.11
+        },
+        "poc_bounce": {
+          "n": 12,
+          "pnl": -7.14
+        }
+      }
+    },
+    {
+      "variant": "core",
+      "window": "y2021_22",
+      "trades": 190,
+      "tradesPerWeek": 3.65,
+      "wr": 30.5,
+      "ret": -46.13,
+      "pf": 0.85,
+      "dd": 53.02,
+      "setups": {
+        "vah_breakout": {
+          "n": 87,
+          "pnl": -58.89
+        },
+        "va_rejection": {
+          "n": 20,
+          "pnl": 10.02
+        },
+        "val_breakdown": {
+          "n": 78,
+          "pnl": 11.12
+        },
+        "poc_bounce": {
+          "n": 5,
+          "pnl": -8.37
+        }
+      }
+    },
+    {
+      "variant": "core",
+      "window": "y2022_23",
+      "trades": 171,
+      "tradesPerWeek": 3.29,
+      "wr": 39.2,
+      "ret": 109.62,
+      "pf": 1.27,
+      "dd": 41.84,
+      "setups": {
+        "val_breakdown": {
+          "n": 76,
+          "pnl": 45.65
+        },
+        "vah_breakout": {
+          "n": 77,
+          "pnl": 6.26
+        },
+        "va_rejection": {
+          "n": 16,
+          "pnl": 52.68
+        },
+        "poc_bounce": {
+          "n": 2,
+          "pnl": 5.03
+        }
+      }
+    },
+    {
+      "variant": "core",
+      "window": "y2023_24",
+      "trades": 178,
+      "tradesPerWeek": 3.41,
+      "wr": 26.4,
+      "ret": -72.32,
+      "pf": 0.71,
+      "dd": 80.92,
+      "setups": {
+        "vah_breakout": {
+          "n": 69,
+          "pnl": -51.76
+        },
+        "va_rejection": {
+          "n": 21,
+          "pnl": 4.87
+        },
+        "val_breakdown": {
+          "n": 86,
+          "pnl": -22.74
+        },
+        "poc_bounce": {
+          "n": 2,
+          "pnl": -2.68
+        }
+      }
+    },
+    {
+      "variant": "core",
+      "window": "y2024_25",
+      "trades": 152,
+      "tradesPerWeek": 2.92,
+      "wr": 30.3,
+      "ret": -49.11,
+      "pf": 0.82,
+      "dd": 58.64,
+      "setups": {
+        "val_breakdown": {
+          "n": 76,
+          "pnl": -24.85
+        },
+        "vah_breakout": {
+          "n": 61,
+          "pnl": -26.94
+        },
+        "va_rejection": {
+          "n": 14,
+          "pnl": 4.08
+        },
+        "poc_bounce": {
+          "n": 1,
+          "pnl": -1.41
+        }
+      }
+    },
+    {
+      "variant": "core",
+      "window": "y2025_26",
+      "trades": 117,
+      "tradesPerWeek": 2.25,
+      "wr": 30.8,
+      "ret": -46.28,
+      "pf": 0.71,
+      "dd": 67.25,
+      "setups": {
+        "vah_breakout": {
+          "n": 43,
+          "pnl": -3.88
+        },
+        "poc_bounce": {
+          "n": 2,
+          "pnl": -5.17
+        },
+        "val_breakdown": {
+          "n": 61,
+          "pnl": -17.59
+        },
+        "va_rejection": {
+          "n": 11,
+          "pnl": -19.63
+        }
+      }
+    },
+    {
+      "variant": "H1_block_vac_vah",
+      "window": "full",
+      "trades": 609,
+      "tradesPerWeek": 2.16,
+      "wr": 33.5,
+      "ret": -63.75,
+      "pf": 0.95,
+      "dd": 88.37,
+      "setups": {
+        "val_breakdown": {
+          "n": 423,
+          "pnl": -46.4
+        },
+        "vah_breakout": {
+          "n": 71,
+          "pnl": -36.62
+        },
+        "va_rejection": {
+          "n": 99,
+          "pnl": 28.21
+        },
+        "poc_bounce": {
+          "n": 16,
+          "pnl": -8.94
+        }
+      }
+    },
+    {
+      "variant": "H1_block_vac_vah",
+      "window": "y2021_22",
+      "trades": 120,
+      "tradesPerWeek": 2.31,
+      "wr": 35,
+      "ret": 13.74,
+      "pf": 1.04,
+      "dd": 50.87,
+      "setups": {
+        "va_rejection": {
+          "n": 24,
+          "pnl": 37.48
+        },
+        "val_breakdown": {
+          "n": 78,
+          "pnl": 30.97
+        },
+        "vah_breakout": {
+          "n": 13,
+          "pnl": -37.32
+        },
+        "poc_bounce": {
+          "n": 5,
+          "pnl": -17.4
+        }
+      }
+    },
+    {
+      "variant": "H1_block_vac_vah",
+      "window": "y2022_23",
+      "trades": 113,
+      "tradesPerWeek": 2.17,
+      "wr": 44.2,
+      "ret": 131.48,
+      "pf": 1.54,
+      "dd": 29.71,
+      "setups": {
+        "val_breakdown": {
+          "n": 76,
+          "pnl": 47.93
+        },
+        "va_rejection": {
+          "n": 19,
+          "pnl": 44.09
+        },
+        "vah_breakout": {
+          "n": 14,
+          "pnl": 24.1
+        },
+        "poc_bounce": {
+          "n": 4,
+          "pnl": 15.35
+        }
+      }
+    },
+    {
+      "variant": "H1_block_vac_vah",
+      "window": "y2023_24",
+      "trades": 122,
+      "tradesPerWeek": 2.34,
+      "wr": 29.5,
+      "ret": -39.73,
+      "pf": 0.82,
+      "dd": 61.83,
+      "setups": {
+        "va_rejection": {
+          "n": 22,
+          "pnl": 0.4
+        },
+        "val_breakdown": {
+          "n": 87,
+          "pnl": -28.88
+        },
+        "vah_breakout": {
+          "n": 10,
+          "pnl": -6.91
+        },
+        "poc_bounce": {
+          "n": 3,
+          "pnl": -4.34
+        }
+      }
+    },
+    {
+      "variant": "H1_block_vac_vah",
+      "window": "y2024_25",
+      "trades": 112,
+      "tradesPerWeek": 2.15,
+      "wr": 30.4,
+      "ret": -37.86,
+      "pf": 0.83,
+      "dd": 52.46,
+      "setups": {
+        "val_breakdown": {
+          "n": 76,
+          "pnl": -23.52
+        },
+        "vah_breakout": {
+          "n": 20,
+          "pnl": -20.86
+        },
+        "va_rejection": {
+          "n": 14,
+          "pnl": 4.64
+        },
+        "poc_bounce": {
+          "n": 2,
+          "pnl": 1.88
+        }
+      }
+    },
+    {
+      "variant": "H1_block_vac_vah",
+      "window": "y2025_26",
+      "trades": 85,
+      "tradesPerWeek": 1.63,
+      "wr": 30.6,
+      "ret": -42.06,
+      "pf": 0.68,
+      "dd": 55.46,
+      "setups": {
+        "poc_bounce": {
+          "n": 2,
+          "pnl": -5.44
+        },
+        "vah_breakout": {
+          "n": 10,
+          "pnl": 2.45
+        },
+        "val_breakdown": {
+          "n": 61,
+          "pnl": -14.8
+        },
+        "va_rejection": {
+          "n": 12,
+          "pnl": -24.28
+        }
+      }
+    },
+    {
+      "variant": "H2_bull60_surg",
+      "window": "full",
+      "trades": 506,
+      "tradesPerWeek": 1.79,
+      "wr": 32.6,
+      "ret": -60.01,
+      "pf": 0.92,
+      "dd": 77.2,
+      "setups": {
+        "val_breakdown": {
+          "n": 318,
+          "pnl": -29.4
+        },
+        "vah_breakout": {
+          "n": 71,
+          "pnl": -29.45
+        },
+        "va_rejection": {
+          "n": 101,
+          "pnl": 7.27
+        },
+        "poc_bounce": {
+          "n": 16,
+          "pnl": -8.43
+        }
+      }
+    },
+    {
+      "variant": "H2_bull60_surg",
+      "window": "y2021_22",
+      "trades": 96,
+      "tradesPerWeek": 1.85,
+      "wr": 32.3,
+      "ret": -8.87,
+      "pf": 0.97,
+      "dd": 54.26,
+      "setups": {
+        "va_rejection": {
+          "n": 24,
+          "pnl": 35.77
+        },
+        "val_breakdown": {
+          "n": 54,
+          "pnl": -0.3
+        },
+        "vah_breakout": {
+          "n": 13,
+          "pnl": -30.12
+        },
+        "poc_bounce": {
+          "n": 5,
+          "pnl": -14.22
+        }
+      }
+    },
+    {
+      "variant": "H2_bull60_surg",
+      "window": "y2022_23",
+      "trades": 106,
+      "tradesPerWeek": 2.04,
+      "wr": 41.5,
+      "ret": 68.79,
+      "pf": 1.32,
+      "dd": 33.39,
+      "setups": {
+        "val_breakdown": {
+          "n": 68,
+          "pnl": 7.83
+        },
+        "va_rejection": {
+          "n": 20,
+          "pnl": 28.8
+        },
+        "vah_breakout": {
+          "n": 14,
+          "pnl": 20.73
+        },
+        "poc_bounce": {
+          "n": 4,
+          "pnl": 11.43
+        }
+      }
+    },
+    {
+      "variant": "H2_bull60_surg",
+      "window": "y2023_24",
+      "trades": 84,
+      "tradesPerWeek": 1.61,
+      "wr": 29.8,
+      "ret": -10.98,
+      "pf": 0.94,
+      "dd": 43.86,
+      "setups": {
+        "va_rejection": {
+          "n": 22,
+          "pnl": -6.77
+        },
+        "val_breakdown": {
+          "n": 49,
+          "pnl": 6.93
+        },
+        "vah_breakout": {
+          "n": 10,
+          "pnl": -6.9
+        },
+        "poc_bounce": {
+          "n": 3,
+          "pnl": -4.24
+        }
+      }
+    },
+    {
+      "variant": "H2_bull60_surg",
+      "window": "y2024_25",
+      "trades": 93,
+      "tradesPerWeek": 1.79,
+      "wr": 32.3,
+      "ret": -19.34,
+      "pf": 0.91,
+      "dd": 41.26,
+      "setups": {
+        "val_breakdown": {
+          "n": 57,
+          "pnl": -3.57
+        },
+        "vah_breakout": {
+          "n": 20,
+          "pnl": -22.74
+        },
+        "va_rejection": {
+          "n": 14,
+          "pnl": 4.86
+        },
+        "poc_bounce": {
+          "n": 2,
+          "pnl": 2.12
+        }
+      }
+    },
+    {
+      "variant": "H2_bull60_surg",
+      "window": "y2025_26",
+      "trades": 79,
+      "tradesPerWeek": 1.52,
+      "wr": 31.6,
+      "ret": -35.26,
+      "pf": 0.73,
+      "dd": 50.23,
+      "setups": {
+        "poc_bounce": {
+          "n": 2,
+          "pnl": -5.75
+        },
+        "vah_breakout": {
+          "n": 10,
+          "pnl": 1.83
+        },
+        "val_breakdown": {
+          "n": 55,
+          "pnl": -4.52
+        },
+        "va_rejection": {
+          "n": 12,
+          "pnl": -26.82
+        }
+      }
+    },
+    {
+      "variant": "H2b_val_bear60",
+      "window": "full",
+      "trades": 348,
+      "tradesPerWeek": 1.23,
+      "wr": 35.6,
+      "ret": 52.39,
+      "pf": 1.05,
+      "dd": 56.18,
+      "setups": {
+        "va_rejection": {
+          "n": 107,
+          "pnl": -1.95
+        },
+        "vah_breakout": {
+          "n": 71,
+          "pnl": -53.56
+        },
+        "val_breakdown": {
+          "n": 154,
+          "pnl": 124.64
+        },
+        "poc_bounce": {
+          "n": 16,
+          "pnl": -16.74
+        }
+      }
+    },
+    {
+      "variant": "H3_weak_bear_vac",
+      "window": "full",
+      "trades": 479,
+      "tradesPerWeek": 1.7,
+      "wr": 33.2,
+      "ret": -43.74,
+      "pf": 0.95,
+      "dd": 74.81,
+      "setups": {
+        "val_breakdown": {
+          "n": 291,
+          "pnl": -4.73
+        },
+        "vah_breakout": {
+          "n": 71,
+          "pnl": -36.75
+        },
+        "va_rejection": {
+          "n": 101,
+          "pnl": 7.35
+        },
+        "poc_bounce": {
+          "n": 16,
+          "pnl": -9.61
+        }
+      }
+    },
+    {
+      "variant": "H4_val_chase5",
+      "window": "full",
+      "trades": 442,
+      "tradesPerWeek": 1.57,
+      "wr": 34.4,
+      "ret": 2.07,
+      "pf": 1,
+      "dd": 71.32,
+      "setups": {
+        "va_rejection": {
+          "n": 105,
+          "pnl": 6.85
+        },
+        "vah_breakout": {
+          "n": 71,
+          "pnl": -53.62
+        },
+        "val_breakdown": {
+          "n": 249,
+          "pnl": 70.36
+        },
+        "poc_bounce": {
+          "n": 17,
+          "pnl": -21.52
+        }
+      }
+    },
+    {
+      "variant": "H5_flat60",
+      "window": "full",
+      "trades": 406,
+      "tradesPerWeek": 1.44,
+      "wr": 35.5,
+      "ret": 65.82,
+      "pf": 1.05,
+      "dd": 59.63,
+      "setups": {
+        "va_rejection": {
+          "n": 105,
+          "pnl": -14.31
+        },
+        "vah_breakout": {
+          "n": 71,
+          "pnl": -53.75
+        },
+        "val_breakdown": {
+          "n": 213,
+          "pnl": 159.43
+        },
+        "poc_bounce": {
+          "n": 17,
+          "pnl": -25.55
+        }
+      }
+    },
+    {
+      "variant": "H5_flat60",
+      "window": "y2021_22",
+      "trades": 81,
+      "tradesPerWeek": 1.56,
+      "wr": 33.3,
+      "ret": 0.77,
+      "pf": 1,
+      "dd": 55.46,
+      "setups": {
+        "va_rejection": {
+          "n": 24,
+          "pnl": 38.43
+        },
+        "val_breakdown": {
+          "n": 39,
+          "pnl": 12.31
+        },
+        "vah_breakout": {
+          "n": 13,
+          "pnl": -33.77
+        },
+        "poc_bounce": {
+          "n": 5,
+          "pnl": -16.2
+        }
+      }
+    },
+    {
+      "variant": "H5_flat60",
+      "window": "y2022_23",
+      "trades": 83,
+      "tradesPerWeek": 1.6,
+      "wr": 44.6,
+      "ret": 85.46,
+      "pf": 1.54,
+      "dd": 26.95,
+      "setups": {
+        "poc_bounce": {
+          "n": 5,
+          "pnl": 9.63
+        },
+        "va_rejection": {
+          "n": 20,
+          "pnl": 30.41
+        },
+        "val_breakdown": {
+          "n": 44,
+          "pnl": 24.86
+        },
+        "vah_breakout": {
+          "n": 14,
+          "pnl": 20.56
+        }
+      }
+    },
+    {
+      "variant": "H5_flat60",
+      "window": "y2023_24",
+      "trades": 67,
+      "tradesPerWeek": 1.28,
+      "wr": 26.9,
+      "ret": -23.1,
+      "pf": 0.83,
+      "dd": 43.94,
+      "setups": {
+        "va_rejection": {
+          "n": 23,
+          "pnl": -9.09
+        },
+        "vah_breakout": {
+          "n": 10,
+          "pnl": -6.22
+        },
+        "val_breakdown": {
+          "n": 31,
+          "pnl": -3.26
+        },
+        "poc_bounce": {
+          "n": 3,
+          "pnl": -4.54
+        }
+      }
+    },
+    {
+      "variant": "H5_flat60",
+      "window": "y2024_25",
+      "trades": 62,
+      "tradesPerWeek": 1.19,
+      "wr": 37.1,
+      "ret": 27.93,
+      "pf": 1.17,
+      "dd": 25.61,
+      "setups": {
+        "vah_breakout": {
+          "n": 20,
+          "pnl": -26.65
+        },
+        "va_rejection": {
+          "n": 14,
+          "pnl": 3.91
+        },
+        "val_breakdown": {
+          "n": 25,
+          "pnl": 53.29
+        },
+        "poc_bounce": {
+          "n": 3,
+          "pnl": -2.62
+        }
+      }
+    },
+    {
+      "variant": "H5_flat60",
+      "window": "y2025_26",
+      "trades": 57,
+      "tradesPerWeek": 1.1,
+      "wr": 36.8,
+      "ret": -4.3,
+      "pf": 0.96,
+      "dd": 36.38,
+      "setups": {
+        "poc_bounce": {
+          "n": 2,
+          "pnl": -6.38
+        },
+        "vah_breakout": {
+          "n": 10,
+          "pnl": 1.7
+        },
+        "va_rejection": {
+          "n": 12,
+          "pnl": -34.86
+        },
+        "val_breakdown": {
+          "n": 33,
+          "pnl": 35.24
+        }
+      }
+    },
+    {
+      "variant": "H6_no_poc",
+      "window": "full",
+      "trades": 390,
+      "tradesPerWeek": 1.38,
+      "wr": 35.6,
+      "ret": 89.33,
+      "pf": 1.07,
+      "dd": 52.8,
+      "setups": {
+        "va_rejection": {
+          "n": 106,
+          "pnl": -29.87
+        },
+        "vah_breakout": {
+          "n": 71,
+          "pnl": -57.18
+        },
+        "val_breakdown": {
+          "n": 213,
+          "pnl": 176.38
+        }
+      }
+    },
+    {
+      "variant": "H6_no_poc",
+      "window": "y2021_22",
+      "trades": 76,
+      "tradesPerWeek": 1.46,
+      "wr": 34.2,
+      "ret": 13.94,
+      "pf": 1.06,
+      "dd": 49.64,
+      "setups": {
+        "va_rejection": {
+          "n": 24,
+          "pnl": 37.67
+        },
+        "val_breakdown": {
+          "n": 39,
+          "pnl": 11.42
+        },
+        "vah_breakout": {
+          "n": 13,
+          "pnl": -35.16
+        }
+      }
+    },
+    {
+      "variant": "H6_no_poc",
+      "window": "y2022_23",
+      "trades": 78,
+      "tradesPerWeek": 1.5,
+      "wr": 44.9,
+      "ret": 78.91,
+      "pf": 1.5,
+      "dd": 24.32,
+      "setups": {
+        "va_rejection": {
+          "n": 20,
+          "pnl": 31.58
+        },
+        "val_breakdown": {
+          "n": 44,
+          "pnl": 26.5
+        },
+        "vah_breakout": {
+          "n": 14,
+          "pnl": 20.83
+        }
+      }
+    },
+    {
+      "variant": "H6_no_poc",
+      "window": "y2023_24",
+      "trades": 64,
+      "tradesPerWeek": 1.23,
+      "wr": 26.6,
+      "ret": -20.45,
+      "pf": 0.85,
+      "dd": 40.09,
+      "setups": {
+        "va_rejection": {
+          "n": 23,
+          "pnl": -10.59
+        },
+        "vah_breakout": {
+          "n": 10,
+          "pnl": -6.18
+        },
+        "val_breakdown": {
+          "n": 31,
+          "pnl": -3.68
+        }
+      }
+    },
+    {
+      "variant": "H6_no_poc",
+      "window": "y2024_25",
+      "trades": 60,
+      "tradesPerWeek": 1.15,
+      "wr": 36.7,
+      "ret": 24.76,
+      "pf": 1.15,
+      "dd": 27.07,
+      "setups": {
+        "vah_breakout": {
+          "n": 20,
+          "pnl": -26.74
+        },
+        "va_rejection": {
+          "n": 15,
+          "pnl": -0.68
+        },
+        "val_breakdown": {
+          "n": 25,
+          "pnl": 52.18
+        }
+      }
+    },
+    {
+      "variant": "H6_no_poc",
+      "window": "y2025_26",
+      "trades": 55,
+      "tradesPerWeek": 1.06,
+      "wr": 38.2,
+      "ret": 2.38,
+      "pf": 1.02,
+      "dd": 33.81,
+      "setups": {
+        "vah_breakout": {
+          "n": 10,
+          "pnl": 1.46
+        },
+        "va_rejection": {
+          "n": 12,
+          "pnl": -37.17
+        },
+        "val_breakdown": {
+          "n": 33,
+          "pnl": 38.08
+        }
+      }
+    }
+  ]
+}

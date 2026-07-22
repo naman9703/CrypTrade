@@ -27,7 +27,9 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
   const klinesPath = isFutures ? "/fapi/v1/klines" : "/api/v3/klines";
   const sourceTag = isFutures ? "BINANCE_FUTURES" : "BINANCE";
 
-  const buf = createCandleBuffer({ max: 3000 });
+  const buf = createCandleBuffer({
+    max: Math.min(8000, Number(process.env.BINANCE_BUFFER_MAX || 6500)),
+  });
   let ws = null;
   let delta = null;
   let status = { ok: false, source: sourceTag, lastMsgAt: null, stream: null, error: null };
@@ -54,7 +56,7 @@ export function createBinanceMarketFeed({ log, symbol, timeframe, restBase, wsBa
     const sym = normalizeSymbol(symbol);
     const interval = normalizeInterval(timeframe);
     const minFor24h = maxBarsForHistory(interval, 24);
-    const target = Math.max(Number(process.env.BINANCE_BACKFILL_LIMIT || 2000), minFor24h);
+    const target = Math.max(Number(process.env.BINANCE_BACKFILL_LIMIT || 6000), minFor24h);
     const pageLimit = 1000;
     let endTime = undefined;
     let fetched = 0;

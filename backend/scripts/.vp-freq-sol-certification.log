@@ -1,0 +1,28 @@
+
+=== SOL VP FREQ certification — SOLUSDT 15m 2021-01-01→2026-05-31 ===
+locked preset · risk%=2.5 lev=12x · expanding WF folds=5
+
+candles=191712 funding=6067 first=2020-12-11T00:00:00.000Z last=2026-05-30T23:45:00.000Z
+FULL: trades=186 (0.66/wk) net=303.1% CAGR=29.0% Calmar=1.06 maxDD=27.4% Sharpe=0.85 PF=1.39 WR=39%
+  years: 2020-21=8.4%/5  2021-22=49.7%/36  2022-23=20.2%/56  2023-24=18.8%/21  2024-25=26.3%/31  2025-26=37.8%/37
+  negYears=none
+MC(1% risk): ret p5=9.5% p50=84.6% p95=248.5%  maxDD p95=28.6% ruin=0.0%
+
+WF expanding folds=5 embargo=96bars (~1d)
+  fold 0: 2021-11-26→2022-10-21  trainN=17 testN=47 testRet=-11.4% DD=18.7% WR=34%
+  fold 1: 2022-10-21→2023-09-15  trainN=64 testN=40 testRet=31.4% DD=19.9% WR=38%
+  fold 2: 2023-09-16→2024-08-10  trainN=104 testN=24 testRet=21.8% DD=15.6% WR=38%
+  fold 3: 2024-08-10→2025-07-05  trainN=128 testN=22 testRet=18.0% DD=18.5% WR=36%
+  fold 4: 2025-07-05→2026-05-30  trainN=150 testN=36 testRet=41.8% DD=20.3% WR=44%
+
+WF: degradation=58.1% OOSsumRet=101.6% OOStrades=169
+GATES: PASS:oosPositive PASS:mcP5Positive PASS:calmarOver1 FAIL:wfDegradationOk
+EXTRA: PASS:oosTradesGe30 FAIL:frequencyDeployable PASS:noCatastrophicYear
+
+COST STRESS (full window):
+  slip_x2      N=186 ret=106.4% DD=34.5%
+  slip_x4      N=188 ret=-51.7% DD=78.5%
+  liq_crunch   N=193 ret=-98.6% DD=98.7%
+
+VERDICT: REJECT_CERTIFICATION (gates=fail freq=low)
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-sol-certification.json

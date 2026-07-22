@@ -1,0 +1,1044 @@
+{
+  "symbol": "SOLUSDT",
+  "tf": "15m",
+  "from": "2021-01-01",
+  "to": "2026-05-31",
+  "risk": 2.5,
+  "leverage": 12,
+  "core": {
+    "strategyMode": "MANUAL",
+    "manualStrategy": "VOLUME_PROFILE",
+    "marketMode": "FUTURES",
+    "supertrendFuturesAuto": false,
+    "trailingStopLossAuto": false,
+    "futuresLeverage": 12,
+    "backtestPositionSizing": "RISK_AT_SL",
+    "riskPerTrade": 2.5,
+    "riskPerTradeUnit": "PCT",
+    "slippagePct": 0.0005,
+    "volumeProfileEnabled": true,
+    "volumeProfileSoftGates": true,
+    "volumeProfileGatesEnabled": false,
+    "requireVpSetup": true,
+    "vpRequireHtfAlign": true,
+    "vpAllowHvnFlip": false,
+    "vpAllowedSetups": [
+      "lvn_vacuum",
+      "vah_breakout",
+      "val_breakdown",
+      "poc_bounce",
+      "va_rejection",
+      "naked_poc"
+    ],
+    "vpTierAOnly": false,
+    "intradayVpBrackets": true,
+    "vpStructureBrackets": true,
+    "vpProfileMode": "rolling",
+    "vpLookbackBars": 384,
+    "vpCompositeDays": 5,
+    "vpValueAreaPct": 0.7,
+    "vpVolumeDistribute": "close_weighted",
+    "vpIncludePriorSession": true,
+    "vpEnableNakedPoc": true,
+    "vpBreakoutUsePriorSession": true,
+    "vpMinRR": 1.2,
+    "vpMinRunPct": 0.003,
+    "minLvnRunPct": 0.01,
+    "vpMinScore": 7,
+    "vpMinBarGap": 2,
+    "vpSessionStartHour": 0,
+    "vpSessionEndHour": 24,
+    "vpMinAdx": 0,
+    "vpMinHtfSepPct": 0.0015,
+    "vpMinCloseBeyondPct": 0.0008,
+    "vpMinBreakoutBody": 0.32,
+    "vpMinBreakoutCloseStrength": 0.48,
+    "vpRegimeImmunity": false,
+    "vpMaxPriorTrendPct": 0.012,
+    "vpPriorTrendLookback": 16,
+    "vpBuyBreakoutMinHtfSep": 0,
+    "vpBuyRelaxedMinHtfSep": 0,
+    "vpBuyHighPathMinPct": 0,
+    "vpSellBreakdownMinHtfSep": 0,
+    "vpHardBlockCeilingFloor": false,
+    "vpLvnSizeMult": 2,
+    "vpBreakoutMinVolRatio": 1.05,
+    "vpValBreakdownMinVolRatio": 1.05,
+    "vpBreakoutMinPathPct": 0.003,
+    "vpMaxTradesPerDay": 2,
+    "vpLvnMinVolRatio": 0.95,
+    "vpMinWickRatio": 0.18,
+    "vpMaxSlPct": 0.012,
+    "vpMaxTpPct": 0.03,
+    "supertrendFuturesFixedSlPct": 0.004,
+    "supertrendFuturesFixedTpPct": 0.014,
+    "vpPlaybook": "FREQ",
+    "vpMinBarVolRatio": 0.45,
+    "vpMinAtrPct": 0.0006,
+    "vpMaxAtrPct": 0.06,
+    "vpNearTolPct": 0.0025,
+    "vpRejectionMinVolRatio": 1,
+    "vpRejectionSpikePct": 0.002,
+    "vpOutsideVaLookback": 8,
+    "symbol": "SOLUSDT",
+    "timeframe": "15m"
+  },
+  "variants": [
+    {
+      "id": "core_all",
+      "label": "FREQ core all setups + HTF 0.15%",
+      "patch": {}
+    },
+    {
+      "id": "htf_025",
+      "label": "HTF sep 0.25%",
+      "patch": {
+        "vpMinHtfSepPct": 0.0025
+      }
+    },
+    {
+      "id": "no_vah",
+      "label": "Drop vah_breakout",
+      "patch": {
+        "vpAllowedSetups": [
+          "lvn_vacuum",
+          "val_breakdown",
+          "poc_bounce",
+          "va_rejection",
+          "naked_poc"
+        ]
+      }
+    },
+    {
+      "id": "no_val",
+      "label": "Drop val_breakdown",
+      "patch": {
+        "vpAllowedSetups": [
+          "lvn_vacuum",
+          "vah_breakout",
+          "poc_bounce",
+          "va_rejection",
+          "naked_poc"
+        ]
+      }
+    },
+    {
+      "id": "breaks_only",
+      "label": "VAH+VAL+vacuum+naked",
+      "patch": {
+        "vpAllowedSetups": [
+          "lvn_vacuum",
+          "vah_breakout",
+          "val_breakdown",
+          "naked_poc"
+        ]
+      }
+    },
+    {
+      "id": "val_only",
+      "label": "VAL shorts only",
+      "patch": {
+        "vpAllowedSetups": [
+          "val_breakdown"
+        ]
+      }
+    },
+    {
+      "id": "long_bias",
+      "label": "Long bias (vah+lvn+naked+rej)",
+      "patch": {
+        "vpAllowedSetups": [
+          "lvn_vacuum",
+          "vah_breakout",
+          "naked_poc",
+          "va_rejection"
+        ]
+      }
+    },
+    {
+      "id": "no_vacuum",
+      "label": "Drop lvn_vacuum",
+      "patch": {
+        "vpAllowedSetups": [
+          "vah_breakout",
+          "val_breakdown",
+          "poc_bounce",
+          "va_rejection",
+          "naked_poc"
+        ]
+      }
+    }
+  ],
+  "rows": [
+    {
+      "variant": "core_all",
+      "window": "full",
+      "from": "2021-01-01",
+      "to": "2026-05-31",
+      "candles": 191712,
+      "trades": 919,
+      "tradesPerWeek": 3.26,
+      "wr": 31.6,
+      "ret": -94.02,
+      "pf": 0.89,
+      "dd": 96.8,
+      "calmar": -0.97,
+      "setups": {
+        "vah_breakout": {
+          "n": 396,
+          "pnl": -79.01,
+          "wins": 121,
+          "wr": 30.6
+        },
+        "val_breakdown": {
+          "n": 421,
+          "pnl": -15.98,
+          "wins": 145,
+          "wr": 34.4
+        },
+        "va_rejection": {
+          "n": 90,
+          "pnl": 8.11,
+          "wins": 21,
+          "wr": 23.3
+        },
+        "poc_bounce": {
+          "n": 12,
+          "pnl": -7.14,
+          "wins": 3,
+          "wr": 25
+        }
+      },
+      "years": {
+        "2020-21": {
+          "n": 110,
+          "net": -28.03,
+          "start": 100,
+          "end": 71.96582016680355,
+          "retPct": -28.03
+        },
+        "2021-22": {
+          "n": 190,
+          "net": -33.2,
+          "start": 71.96582016680355,
+          "end": 38.76545255422369,
+          "retPct": -46.13
+        },
+        "2022-23": {
+          "n": 171,
+          "net": 42.5,
+          "start": 38.76545255422369,
+          "end": 81.26151148184701,
+          "retPct": 109.62
+        },
+        "2023-24": {
+          "n": 179,
+          "net": -59.39,
+          "start": 81.26151148184701,
+          "end": 21.872752437979987,
+          "retPct": -73.08
+        },
+        "2024-25": {
+          "n": 152,
+          "net": -10.74,
+          "start": 21.872752437979987,
+          "end": 11.131048901549564,
+          "retPct": -49.11
+        },
+        "2025-26": {
+          "n": 117,
+          "net": -5.15,
+          "start": 11.131048901549564,
+          "end": 5.980115814784201,
+          "retPct": -46.28
+        }
+      }
+    },
+    {
+      "variant": "core_all",
+      "window": "y2021_22",
+      "from": "2021-06-01",
+      "to": "2022-05-31",
+      "candles": 36960,
+      "trades": 190,
+      "tradesPerWeek": 3.65,
+      "wr": 30.5,
+      "ret": -46.13,
+      "pf": 0.85,
+      "dd": 53.02,
+      "calmar": -0.87,
+      "setups": {
+        "vah_breakout": {
+          "n": 87,
+          "pnl": -58.89,
+          "wins": 21,
+          "wr": 24.1
+        },
+        "va_rejection": {
+          "n": 20,
+          "pnl": 10.02,
+          "wins": 5,
+          "wr": 25
+        },
+        "val_breakdown": {
+          "n": 78,
+          "pnl": 11.12,
+          "wins": 31,
+          "wr": 39.7
+        },
+        "poc_bounce": {
+          "n": 5,
+          "pnl": -8.37,
+          "wins": 1,
+          "wr": 20
+        }
+      },
+      "years": {
+        "2021-22": {
+          "n": 190,
+          "net": -46.13,
+          "start": 100,
+          "end": 53.866477814568846,
+          "retPct": -46.13
+        }
+      }
+    },
+    {
+      "variant": "core_all",
+      "window": "y2022_23",
+      "from": "2022-06-01",
+      "to": "2023-05-31",
+      "candles": 36960,
+      "trades": 171,
+      "tradesPerWeek": 3.29,
+      "wr": 39.2,
+      "ret": 109.62,
+      "pf": 1.27,
+      "dd": 41.84,
+      "calmar": 2.62,
+      "setups": {
+        "val_breakdown": {
+          "n": 76,
+          "pnl": 45.65,
+          "wins": 32,
+          "wr": 42.1
+        },
+        "vah_breakout": {
+          "n": 77,
+          "pnl": 6.26,
+          "wins": 28,
+          "wr": 36.4
+        },
+        "va_rejection": {
+          "n": 16,
+          "pnl": 52.68,
+          "wins": 6,
+          "wr": 37.5
+        },
+        "poc_bounce": {
+          "n": 2,
+          "pnl": 5.03,
+          "wins": 1,
+          "wr": 50
+        }
+      },
+      "years": {
+        "2022-23": {
+          "n": 171,
+          "net": 109.62,
+          "start": 100,
+          "end": 209.6235336558536,
+          "retPct": 109.62
+        }
+      }
+    },
+    {
+      "variant": "core_all",
+      "window": "y2023_24",
+      "from": "2023-06-01",
+      "to": "2024-05-31",
+      "candles": 37056,
+      "trades": 178,
+      "tradesPerWeek": 3.41,
+      "wr": 26.4,
+      "ret": -72.32,
+      "pf": 0.71,
+      "dd": 80.92,
+      "calmar": -0.89,
+      "setups": {
+        "vah_breakout": {
+          "n": 69,
+          "pnl": -51.76,
+          "wins": 16,
+          "wr": 23.2
+        },
+        "va_rejection": {
+          "n": 21,
+          "pnl": 4.87,
+          "wins": 3,
+          "wr": 14.3
+        },
+        "val_breakdown": {
+          "n": 86,
+          "pnl": -22.74,
+          "wins": 27,
+          "wr": 31.4
+        },
+        "poc_bounce": {
+          "n": 2,
+          "pnl": -2.68,
+          "wins": 1,
+          "wr": 50
+        }
+      },
+      "years": {
+        "2023-24": {
+          "n": 178,
+          "net": -72.32,
+          "start": 100,
+          "end": 27.684953920062497,
+          "retPct": -72.32
+        }
+      }
+    },
+    {
+      "variant": "core_all",
+      "window": "y2024_25",
+      "from": "2024-06-01",
+      "to": "2025-05-31",
+      "candles": 36960,
+      "trades": 152,
+      "tradesPerWeek": 2.92,
+      "wr": 30.3,
+      "ret": -49.11,
+      "pf": 0.82,
+      "dd": 58.64,
+      "calmar": -0.84,
+      "setups": {
+        "val_breakdown": {
+          "n": 76,
+          "pnl": -24.85,
+          "wins": 22,
+          "wr": 28.9
+        },
+        "vah_breakout": {
+          "n": 61,
+          "pnl": -26.94,
+          "wins": 19,
+          "wr": 31.1
+        },
+        "va_rejection": {
+          "n": 14,
+          "pnl": 4.08,
+          "wins": 5,
+          "wr": 35.7
+        },
+        "poc_bounce": {
+          "n": 1,
+          "pnl": -1.41,
+          "wins": 0,
+          "wr": 0
+        }
+      },
+      "years": {
+        "2024-25": {
+          "n": 152,
+          "net": -49.11,
+          "start": 100,
+          "end": 50.89002370923159,
+          "retPct": -49.11
+        }
+      }
+    },
+    {
+      "variant": "core_all",
+      "window": "y2025_26",
+      "from": "2025-06-01",
+      "to": "2026-05-31",
+      "candles": 36960,
+      "trades": 117,
+      "tradesPerWeek": 2.25,
+      "wr": 30.8,
+      "ret": -46.28,
+      "pf": 0.71,
+      "dd": 67.25,
+      "calmar": -0.69,
+      "setups": {
+        "vah_breakout": {
+          "n": 43,
+          "pnl": -3.88,
+          "wins": 15,
+          "wr": 34.9
+        },
+        "poc_bounce": {
+          "n": 2,
+          "pnl": -5.17,
+          "wins": 0,
+          "wr": 0
+        },
+        "val_breakdown": {
+          "n": 61,
+          "pnl": -17.59,
+          "wins": 20,
+          "wr": 32.8
+        },
+        "va_rejection": {
+          "n": 11,
+          "pnl": -19.63,
+          "wins": 1,
+          "wr": 9.1
+        }
+      },
+      "years": {
+        "2025-26": {
+          "n": 117,
+          "net": -46.28,
+          "start": 100,
+          "end": 53.72463878001385,
+          "retPct": -46.28
+        }
+      }
+    },
+    {
+      "variant": "htf_025",
+      "window": "full",
+      "label": "HTF sep 0.25%",
+      "from": "2021-01-01",
+      "to": "2026-05-31",
+      "candles": 191712,
+      "trades": 856,
+      "tradesPerWeek": 3.03,
+      "wr": 30.8,
+      "ret": -96.3,
+      "pf": 0.85,
+      "dd": 97.73,
+      "calmar": -0.99,
+      "setups": {
+        "vah_breakout": {
+          "n": 371,
+          "pnl": -62.76,
+          "wins": 110,
+          "wr": 29.6
+        },
+        "val_breakdown": {
+          "n": 405,
+          "pnl": -28.17,
+          "wins": 136,
+          "wr": 33.6
+        },
+        "va_rejection": {
+          "n": 69,
+          "pnl": -2.65,
+          "wins": 15,
+          "wr": 21.7
+        },
+        "poc_bounce": {
+          "n": 11,
+          "pnl": -2.73,
+          "wins": 3,
+          "wr": 27.3
+        }
+      },
+      "years": {
+        "2020-21": {
+          "n": 105,
+          "net": -41.85,
+          "start": 100,
+          "end": 58.1517106087931,
+          "retPct": -41.85
+        },
+        "2021-22": {
+          "n": 181,
+          "net": -33.89,
+          "start": 58.1517106087931,
+          "end": 24.261582978444178,
+          "retPct": -58.28
+        },
+        "2022-23": {
+          "n": 159,
+          "net": 33.9,
+          "start": 24.261582978444178,
+          "end": 58.16332849924806,
+          "retPct": 139.73
+        },
+        "2023-24": {
+          "n": 164,
+          "net": -39.88,
+          "start": 58.16332849924806,
+          "end": 18.280140748988245,
+          "retPct": -68.57
+        },
+        "2024-25": {
+          "n": 137,
+          "net": -9.8,
+          "start": 18.280140748988245,
+          "end": 8.476590598810331,
+          "retPct": -53.63
+        },
+        "2025-26": {
+          "n": 110,
+          "net": -4.77,
+          "start": 8.476590598810331,
+          "end": 3.7024147748315546,
+          "retPct": -56.32
+        }
+      }
+    },
+    {
+      "variant": "no_vah",
+      "window": "full",
+      "label": "Drop vah_breakout",
+      "from": "2021-01-01",
+      "to": "2026-05-31",
+      "candles": 191712,
+      "trades": 539,
+      "tradesPerWeek": 1.91,
+      "wr": 32.7,
+      "ret": -50.9,
+      "pf": 0.96,
+      "dd": 85.27,
+      "calmar": -0.6,
+      "setups": {
+        "val_breakdown": {
+          "n": 423,
+          "pnl": -56.17,
+          "wins": 146,
+          "wr": 34.5
+        },
+        "va_rejection": {
+          "n": 100,
+          "pnl": 15.46,
+          "wins": 25,
+          "wr": 25
+        },
+        "poc_bounce": {
+          "n": 16,
+          "pnl": -10.19,
+          "wins": 5,
+          "wr": 31.3
+        }
+      },
+      "years": {
+        "2020-21": {
+          "n": 53,
+          "net": -38.1,
+          "start": 100,
+          "end": 61.900262958387984,
+          "retPct": -38.1
+        },
+        "2021-22": {
+          "n": 107,
+          "net": 27.8,
+          "start": 61.900262958387984,
+          "end": 89.7008277477589,
+          "retPct": 44.91
+        },
+        "2022-23": {
+          "n": 99,
+          "net": 89.98,
+          "start": 89.7008277477589,
+          "end": 179.683081243372,
+          "retPct": 100.31
+        },
+        "2023-24": {
+          "n": 113,
+          "net": -69.27,
+          "start": 179.683081243372,
+          "end": 110.4143900936897,
+          "retPct": -38.55
+        },
+        "2024-25": {
+          "n": 92,
+          "net": -25.01,
+          "start": 110.4143900936897,
+          "end": 85.40786834251801,
+          "retPct": -22.65
+        },
+        "2025-26": {
+          "n": 75,
+          "net": -36.31,
+          "start": 85.40786834251801,
+          "end": 49.0973365913774,
+          "retPct": -42.51
+        }
+      }
+    },
+    {
+      "variant": "no_val",
+      "window": "full",
+      "label": "Drop val_breakdown",
+      "from": "2021-01-01",
+      "to": "2026-05-31",
+      "candles": 191712,
+      "trades": 512,
+      "tradesPerWeek": 1.81,
+      "wr": 29.1,
+      "ret": -91.18,
+      "pf": 0.83,
+      "dd": 92.73,
+      "calmar": -0.98,
+      "setups": {
+        "vah_breakout": {
+          "n": 398,
+          "pnl": -88.61,
+          "wins": 122,
+          "wr": 30.7
+        },
+        "va_rejection": {
+          "n": 100,
+          "pnl": 7.22,
+          "wins": 24,
+          "wr": 24
+        },
+        "poc_bounce": {
+          "n": 14,
+          "pnl": -9.8,
+          "wins": 3,
+          "wr": 21.4
+        }
+      },
+      "years": {
+        "2020-21": {
+          "n": 72,
+          "net": 0.84,
+          "start": 100,
+          "end": 100.84053843638264,
+          "retPct": 0.84
+        },
+        "2021-22": {
+          "n": 113,
+          "net": -57.99,
+          "start": 100.84053843638264,
+          "end": 42.84754314301294,
+          "retPct": -57.51
+        },
+        "2022-23": {
+          "n": 97,
+          "net": 13.54,
+          "start": 42.84754314301294,
+          "end": 56.38936730573383,
+          "retPct": 31.6
+        },
+        "2023-24": {
+          "n": 94,
+          "net": -34.84,
+          "start": 56.38936730573383,
+          "end": 21.54495706218118,
+          "retPct": -61.79
+        },
+        "2024-25": {
+          "n": 80,
+          "net": -7.17,
+          "start": 21.54495706218118,
+          "end": 14.376186492273906,
+          "retPct": -33.27
+        },
+        "2025-26": {
+          "n": 56,
+          "net": -5.56,
+          "start": 14.376186492273906,
+          "end": 8.818860831997867,
+          "retPct": -38.66
+        }
+      }
+    },
+    {
+      "variant": "breaks_only",
+      "window": "full",
+      "label": "VAH+VAL+vacuum+naked",
+      "from": "2021-01-01",
+      "to": "2026-05-31",
+      "candles": 191712,
+      "trades": 817,
+      "tradesPerWeek": 2.89,
+      "wr": 32.6,
+      "ret": -91.45,
+      "pf": 0.89,
+      "dd": 96.72,
+      "calmar": -0.95,
+      "setups": {
+        "vah_breakout": {
+          "n": 396,
+          "pnl": -81.19,
+          "wins": 121,
+          "wr": 30.6
+        },
+        "val_breakdown": {
+          "n": 421,
+          "pnl": -10.27,
+          "wins": 145,
+          "wr": 34.4
+        }
+      },
+      "years": {
+        "2020-21": {
+          "n": 102,
+          "net": -10.74,
+          "start": 100,
+          "end": 89.26093536074687,
+          "retPct": -10.74
+        },
+        "2021-22": {
+          "n": 165,
+          "net": -37.94,
+          "start": 89.26093536074687,
+          "end": 51.323226149935344,
+          "retPct": -42.5
+        },
+        "2022-23": {
+          "n": 153,
+          "net": 24.16,
+          "start": 51.323226149935344,
+          "end": 75.48435579787346,
+          "retPct": 47.08
+        },
+        "2023-24": {
+          "n": 156,
+          "net": -53.56,
+          "start": 75.48435579787346,
+          "end": 21.928319951544335,
+          "retPct": -70.95
+        },
+        "2024-25": {
+          "n": 137,
+          "net": -11.1,
+          "start": 21.928319951544335,
+          "end": 10.829038147196075,
+          "retPct": -50.62
+        },
+        "2025-26": {
+          "n": 104,
+          "net": -2.28,
+          "start": 10.829038147196075,
+          "end": 8.545815834551126,
+          "retPct": -21.08
+        }
+      }
+    },
+    {
+      "variant": "val_only",
+      "window": "full",
+      "label": "VAL shorts only",
+      "from": "2021-01-01",
+      "to": "2026-05-31",
+      "candles": 191712,
+      "trades": 423,
+      "tradesPerWeek": 1.5,
+      "wr": 34.5,
+      "ret": -35.59,
+      "pf": 0.96,
+      "dd": 76.59,
+      "calmar": -0.46,
+      "setups": {
+        "val_breakdown": {
+          "n": 423,
+          "pnl": -35.59,
+          "wins": 146,
+          "wr": 34.5
+        }
+      },
+      "years": {
+        "2020-21": {
+          "n": 44,
+          "net": -19.78,
+          "start": 100,
+          "end": 80.2156537763,
+          "retPct": -19.78
+        },
+        "2021-22": {
+          "n": 78,
+          "net": 17.96,
+          "start": 80.2156537763,
+          "end": 98.1749160132419,
+          "retPct": 22.39
+        },
+        "2022-23": {
+          "n": 76,
+          "net": 47.87,
+          "start": 98.1749160132419,
+          "end": 146.04544834286992,
+          "retPct": 48.76
+        },
+        "2023-24": {
+          "n": 88,
+          "net": -42.96,
+          "start": 146.04544834286992,
+          "end": 103.08966687097966,
+          "retPct": -29.41
+        },
+        "2024-25": {
+          "n": 76,
+          "net": -29.54,
+          "start": 103.08966687097966,
+          "end": 73.54547260725012,
+          "retPct": -28.66
+        },
+        "2025-26": {
+          "n": 61,
+          "net": -9.13,
+          "start": 73.54547260725012,
+          "end": 64.41109110626257,
+          "retPct": -12.42
+        }
+      }
+    },
+    {
+      "variant": "long_bias",
+      "window": "full",
+      "label": "Long bias (vah+lvn+naked+rej)",
+      "from": "2021-01-01",
+      "to": "2026-05-31",
+      "candles": 191712,
+      "trades": 498,
+      "tradesPerWeek": 1.76,
+      "wr": 29.3,
+      "ret": -88.62,
+      "pf": 0.84,
+      "dd": 90.62,
+      "calmar": -0.98,
+      "setups": {
+        "vah_breakout": {
+          "n": 398,
+          "pnl": -95.7,
+          "wins": 122,
+          "wr": 30.7
+        },
+        "va_rejection": {
+          "n": 100,
+          "pnl": 7.08,
+          "wins": 24,
+          "wr": 24
+        }
+      },
+      "years": {
+        "2020-21": {
+          "n": 72,
+          "net": 0.84,
+          "start": 100,
+          "end": 100.84053843638264,
+          "retPct": 0.84
+        },
+        "2021-22": {
+          "n": 108,
+          "net": -52.39,
+          "start": 100.84053843638264,
+          "end": 48.44736389698324,
+          "retPct": -51.96
+        },
+        "2022-23": {
+          "n": 94,
+          "net": 14.89,
+          "start": 48.44736389698324,
+          "end": 63.33545496516259,
+          "retPct": 30.73
+        },
+        "2023-24": {
+          "n": 92,
+          "net": -38.99,
+          "start": 63.33545496516259,
+          "end": 24.348390245825776,
+          "retPct": -61.56
+        },
+        "2024-25": {
+          "n": 78,
+          "net": -7.01,
+          "start": 24.348390245825776,
+          "end": 17.337190168873846,
+          "retPct": -28.8
+        },
+        "2025-26": {
+          "n": 54,
+          "net": -5.96,
+          "start": 17.337190168873846,
+          "end": 11.37815390496108,
+          "retPct": -34.37
+        }
+      }
+    },
+    {
+      "variant": "no_vacuum",
+      "window": "full",
+      "label": "Drop lvn_vacuum",
+      "from": "2021-01-01",
+      "to": "2026-05-31",
+      "candles": 191712,
+      "trades": 919,
+      "tradesPerWeek": 3.26,
+      "wr": 31.6,
+      "ret": -94.02,
+      "pf": 0.89,
+      "dd": 96.8,
+      "calmar": -0.97,
+      "setups": {
+        "vah_breakout": {
+          "n": 396,
+          "pnl": -79.01,
+          "wins": 121,
+          "wr": 30.6
+        },
+        "val_breakdown": {
+          "n": 421,
+          "pnl": -15.98,
+          "wins": 145,
+          "wr": 34.4
+        },
+        "va_rejection": {
+          "n": 90,
+          "pnl": 8.11,
+          "wins": 21,
+          "wr": 23.3
+        },
+        "poc_bounce": {
+          "n": 12,
+          "pnl": -7.14,
+          "wins": 3,
+          "wr": 25
+        }
+      },
+      "years": {
+        "2020-21": {
+          "n": 110,
+          "net": -28.03,
+          "start": 100,
+          "end": 71.96582016680355,
+          "retPct": -28.03
+        },
+        "2021-22": {
+          "n": 190,
+          "net": -33.2,
+          "start": 71.96582016680355,
+          "end": 38.76545255422369,
+          "retPct": -46.13
+        },
+        "2022-23": {
+          "n": 171,
+          "net": 42.5,
+          "start": 38.76545255422369,
+          "end": 81.26151148184701,
+          "retPct": 109.62
+        },
+        "2023-24": {
+          "n": 179,
+          "net": -59.39,
+          "start": 81.26151148184701,
+          "end": 21.872752437979987,
+          "retPct": -73.08
+        },
+        "2024-25": {
+          "n": 152,
+          "net": -10.74,
+          "start": 21.872752437979987,
+          "end": 11.131048901549564,
+          "retPct": -49.11
+        },
+        "2025-26": {
+          "n": 117,
+          "net": -5.15,
+          "start": 11.131048901549564,
+          "end": 5.980115814784201,
+          "retPct": -46.28
+        }
+      }
+    }
+  ]
+}

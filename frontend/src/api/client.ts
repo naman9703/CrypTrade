@@ -659,21 +659,42 @@ export const api = {
     return json<any>(await apiFetch(`${HTTP}/api/trading/evaluation`));
   },
   async setMode(mode: "PAPER" | "BINANCE_DEMO_API" | "BINANCE_TESTNET" | "BINANCE_LIVE") {
-    const data = await json<any>(
-      await apiFetch(`${HTTP}/api/mode/set`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode, confirm: true }),
-      }),
+    const { useAppStore, resetChartSessionForModeSwitch, maybeClearModeSwitchPending } = await import(
+      "../ws/store",
     );
-    if (data?.ok) {
-      const [{ tradingUiPersistMode }, { useAppStore }] = await Promise.all([
-        import("../lib/tradingUiPersistence"),
-        import("../ws/store"),
-      ]);
-      tradingUiPersistMode(mode, useAppStore.getState().authUiUserTag ?? null);
+    useAppStore.setState({ modeSwitchPending: mode });
+    try {
+      const data = await json<any>(
+        await apiFetch(`${HTTP}/api/mode/set`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode, confirm: true }),
+        }),
+      );
+      if (data?.ok) {
+        const { tradingUiPersistMode } = await import("../lib/tradingUiPersistence");
+        resetChartSessionForModeSwitch();
+        useAppStore.setState({
+          mode,
+          candles: [],
+          market: undefined,
+          depth: undefined,
+          trades: [],
+        });
+        tradingUiPersistMode(mode, useAppStore.getState().authUiUserTag ?? null);
+        if (!useAppStore.getState().ws.connected) {
+          maybeClearModeSwitchPending(mode);
+        } else {
+          window.setTimeout(() => maybeClearModeSwitchPending(mode), 2500);
+        }
+      } else {
+        useAppStore.setState({ modeSwitchPending: null });
+      }
+      return data;
+    } catch (e) {
+      useAppStore.setState({ modeSwitchPending: null });
+      throw e;
     }
-    return data;
   },
   async aiTrainReal(opts?: {
     symbols?: string[];
@@ -1289,6 +1310,12 @@ export const api = {
   }) {
     return json<{
       ok?: boolean;
+      async?: boolean;
+      jobId?: string;
+      status?: string;
+      progressPct?: number;
+      phase?: string | null;
+      error?: string | null;
       klines?: { inserted?: number; gaps?: number };
       markKlines?: { inserted?: number; gaps?: number };
       funding?: { inserted?: number };
@@ -1310,6 +1337,12 @@ export const api = {
   }) {
     return json<{
       ok?: boolean;
+      async?: boolean;
+      jobId?: string;
+      status?: string;
+      progressPct?: number;
+      phase?: string | null;
+      error?: string | null;
       markKlines?: { inserted?: number; gaps?: number };
     }>(
       await apiFetch(`${HTTP}/api/backtest/data/sync-mark`, {
@@ -1318,6 +1351,19 @@ export const api = {
         body: JSON.stringify(body),
       }),
     );
+  },
+
+  async getDataSyncJob(jobId: string) {
+    return json<{
+      ok?: boolean;
+      jobId?: string;
+      kind?: string;
+      status?: string;
+      progressPct?: number;
+      phase?: string | null;
+      error?: string | null;
+      result?: unknown;
+    }>(await apiFetch(`${HTTP}/api/backtest/data/sync/${encodeURIComponent(jobId)}`));
   },
 
   async getBacktestCandles(opts: {

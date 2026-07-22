@@ -19,6 +19,7 @@ import {
   classifyVpMacro,
   classifyVpPath,
   vpMacroBullAt,
+  macroPctAt,
 } from "./vpConditionCell.js";
 import { decideVpNovelty } from "./vpNoveltyMonitor.js";
 
@@ -94,9 +95,10 @@ export function precomputeVolumeProfile(candles) {
   const ema5d = ema(closes, barsPerDay * 5);
   const macroAboveEma20d = new Array(n).fill(false);
   const macroEma5dSlope = new Array(n).fill(0);
-  const macroPrior20d = new Array(n).fill(0);
-  const macroPrior5d = new Array(n).fill(0);
-  const macroPrior60d = new Array(n).fill(0);
+  // Missing lookback stays null (never fake 0% — that breaks bear/flat VAL gates).
+  const macroPrior20d = new Array(n).fill(null);
+  const macroPrior5d = new Array(n).fill(null);
+  const macroPrior60d = new Array(n).fill(null);
   const slopeLag = barsPerDay; // ~1d change of 5d EMA
   const prior20Lb = barsPerDay * 20;
   const prior5Lb = barsPerDay * 5;
@@ -207,23 +209,24 @@ export function resolveVpSellMinHtfSep(pre, idx, opts = {}) {
   const priorThresh = Number(opts.vpSellMacroPrior20dBullPct ?? 0.02);
   const above = pre?.macroAboveEma20d?.[idx] === true;
   const slope = Number(pre?.macroEma5dSlope?.[idx] ?? 0);
-  const prior20 = Number(pre?.macroPrior20d?.[idx] ?? 0);
-  const macroBull = above || slope > 0 || prior20 > priorThresh;
+  const prior20 = macroPctAt(pre?.macroPrior20d, idx);
+  const macroBull = above || slope > 0 || (prior20 != null && prior20 > priorThresh);
   let minSep = macroBull ? hard : soft;
   // Bull-grind / non-bear: shallow 1h flips inside uptrends or chop lose (2023–24).
   // Sustained bear (deep prior60d) keeps soft sep so 2022 breakdown shorts still fire.
+  // Unknown prior60 → treat as non-bear (harder sep / fail-closed).
   const nonBearMin = Number(opts.vpSellNonBearMinHtfSepPct ?? 0);
   if (nonBearMin > 0) {
     const bearFloor = Number(opts.vpSellBearPrior60dPct ?? -0.05);
-    const prior60 = Number(pre?.macroPrior60d?.[idx] ?? 0);
-    if (prior60 > bearFloor) minSep = Math.max(minSep, nonBearMin);
+    const prior60 = macroPctAt(pre?.macroPrior60d, idx);
+    if (prior60 == null || prior60 > bearFloor) minSep = Math.max(minSep, nonBearMin);
   }
   // Some remaining bad shorts are only mildly bearish on the 20d drift after pullbacks.
   // Treat these as weak-bear / transition states and demand stronger HTF separation.
   const weakBearMin = Number(opts.vpSellWeakBearMinHtfSepPct ?? 0);
   if (weakBearMin > 0 && !macroBull) {
     const weakBearFloor = Number(opts.vpSellWeakBearPrior20dFloorPct ?? -0.1);
-    if (prior20 > weakBearFloor) minSep = Math.max(minSep, weakBearMin);
+    if (prior20 == null || prior20 > weakBearFloor) minSep = Math.max(minSep, weakBearMin);
   }
   return minSep;
 }
@@ -246,11 +249,13 @@ export function passesVpBuyChaseFilter(pre, idx, side, setup, opts = {}) {
   if (!(maxPrior5d > 0)) return true;
   if (opts.vpBuyChaseNonBullOnly === true) {
     const bullFloor = Number(opts.vpBuyChaseBullPrior60dPct ?? 0.05);
-    const prior60 = Number(pre?.macroPrior60d?.[idx] ?? 0);
-    if (prior60 > bullFloor) return true;
+    const prior60 = macroPctAt(pre?.macroPrior60d, idx);
+    // Only exempt when prior60 is known bull; missing lookback → apply chase filter.
+    if (prior60 != null && prior60 > bullFloor) return true;
   }
-  const prior5d = Number(pre?.macroPrior5d?.[idx] ?? 0);
-  return !(Number.isFinite(prior5d) && prior5d > maxPrior5d);
+  const prior5d = macroPctAt(pre?.macroPrior5d, idx);
+  if (prior5d == null) return false; // fail-closed: cannot score chase without prior5d
+  return !(prior5d > maxPrior5d);
 }
 
 /**
@@ -274,26 +279,27 @@ export function passesVpBuyChaseFilter(pre, idx, side, setup, opts = {}) {
 export function passesVpValSellMacroFilter(pre, idx, side, setup, opts = {}) {
   if (side !== "SELL" || setup !== "val_breakdown") return true;
 
+  const prior60 = macroPctAt(pre?.macroPrior60d, idx);
+  const prior20 = macroPctAt(pre?.macroPrior20d, idx);
+
   if (opts.vpValSellRequirePrior60dBear === true) {
     const floor = Number(opts.vpValSellPrior60dBearPct ?? -0.05);
-    const prior60 = Number(pre?.macroPrior60d?.[idx] ?? 0);
-    if (!(Number.isFinite(prior60) && prior60 <= floor)) return false;
+    // Missing lookback → fail closed (never treat null as flat 0%).
+    if (!(prior60 != null && prior60 <= floor)) return false;
   }
 
   if (opts.vpValSellBlockBull60 === true) {
     const ceil = Number(opts.vpValSellBull60Pct ?? 0.05);
-    const prior60 = Number(pre?.macroPrior60d?.[idx] ?? 0);
-    if (Number.isFinite(prior60) && prior60 > ceil) return false;
+    // Unknown prior60 cannot prove "not bull60" → fail closed.
+    if (prior60 == null || prior60 > ceil) return false;
   }
 
-  const prior60 = Number(pre?.macroPrior60d?.[idx] ?? NaN);
-  const prior20 = Number(pre?.macroPrior20d?.[idx] ?? NaN);
   const bull60Ceil = Number(opts.vpValSellBull60Pct ?? 0.05);
   const dumpFloor = Number(opts.vpValSellBull60DumpPrior20dPct ?? -0.05);
-  const inBull60 = Number.isFinite(prior60) && prior60 > bull60Ceil;
+  const inBull60 = prior60 != null && prior60 > bull60Ceil;
 
   if (opts.vpValSellBlockBull60Dump === true && inBull60) {
-    if (Number.isFinite(prior20) && prior20 <= dumpFloor) return false;
+    if (prior20 != null && prior20 <= dumpFloor) return false;
   }
 
   if (opts.vpValSellBlockBull60NonVac === true && inBull60) {
@@ -308,8 +314,8 @@ export function passesVpValSellMacroFilter(pre, idx, side, setup, opts = {}) {
   if (opts.vpValSellBlockBull60Extending === true && inBull60) {
     const ratioMin = Number(opts.vpValSellBull60ExtendRatio ?? 0.5);
     if (
-      Number.isFinite(prior20) &&
-      Number.isFinite(prior60) &&
+      prior20 != null &&
+      prior60 != null &&
       Math.abs(prior60) > 0.01 &&
       prior20 / prior60 > ratioMin
     ) {
@@ -318,19 +324,13 @@ export function passesVpValSellMacroFilter(pre, idx, side, setup, opts = {}) {
   }
 
   if (opts.vpValSellBearOnly === true) {
-    const priorThresh = Number(opts.vpSellMacroPrior20dBullPct ?? 0.02);
-    const above = pre?.macroAboveEma20d?.[idx] === true;
-    const slope = Number(pre?.macroEma5dSlope?.[idx] ?? 0);
-    const prior20b = Number(pre?.macroPrior20d?.[idx] ?? 0);
-    const macroBull = above || slope > 0 || prior20b > priorThresh;
-    if (macroBull) return false;
+    if (vpMacroBullAt(pre, idx, opts)) return false;
   }
 
   if (opts.vpValSellRequireBearTrend === true) {
     const bearFloor = Number(opts.vpValSellPrior60dBearPct ?? opts.vpSellBearPrior60dPct ?? -0.05);
     const macroBull = vpMacroBullAt(pre, idx, opts);
-    const prior60n = Number.isFinite(prior60) ? prior60 : null;
-    const macro = classifyVpMacro(prior60n, macroBull, bearFloor);
+    const macro = classifyVpMacro(prior60, macroBull, bearFloor);
     if (macro !== "bear_trend") return false;
   }
 
@@ -339,8 +339,7 @@ export function passesVpValSellMacroFilter(pre, idx, side, setup, opts = {}) {
   if (opts.vpValSellBlockWeakBearVacuum === true) {
     const bearFloor = Number(opts.vpValSellPrior60dBearPct ?? opts.vpSellBearPrior60dPct ?? -0.05);
     const macroBull = vpMacroBullAt(pre, idx, opts);
-    const prior60n = Number.isFinite(prior60) ? prior60 : null;
-    const macro = classifyVpMacro(prior60n, macroBull, bearFloor);
+    const macro = classifyVpMacro(prior60, macroBull, bearFloor);
     const pathPct = Number(opts.path?.distPct ?? opts.pathPct ?? 0);
     const vacuumPct = Number(opts.vpVacuumPathPct ?? 0.02);
     if (macro === "weak_bear" && pathPct >= vacuumPct) return false;
@@ -353,28 +352,45 @@ export function passesVpValSellMacroFilter(pre, idx, side, setup, opts = {}) {
     const bearFloor = Number(opts.vpValSellPrior60dBearPct ?? opts.vpSellBearPrior60dPct ?? -0.05);
     const ceil = Number(opts.vpValSellWeakBearVacPrior60Pct ?? 0.4);
     const macroBull = vpMacroBullAt(pre, idx, opts);
-    const prior60n = Number.isFinite(prior60) ? prior60 : null;
-    const macro = classifyVpMacro(prior60n, macroBull, bearFloor);
+    const macro = classifyVpMacro(prior60, macroBull, bearFloor);
     const pathPct = Number(opts.path?.distPct ?? opts.pathPct ?? 0);
     const vacuumPct = Number(opts.vpVacuumPathPct ?? 0.02);
-    if (macro === "weak_bear" && pathPct >= vacuumPct && prior60n != null && prior60n > ceil) {
+    if (macro === "weak_bear" && pathPct >= vacuumPct && prior60 != null && prior60 > ceil) {
       return false;
     }
   }
 
   // BNB-native (2026-07-20 autopsy): flat prior60 VAL shorts grind in chop/transition.
+  // Missing prior60 → fail closed (cannot prove not-flat).
   if (opts.vpValSellBlockFlatPrior60 === true) {
     const lo = Number(opts.vpValSellFlatPrior60LoPct ?? -0.05);
     const hi = Number(opts.vpValSellFlatPrior60HiPct ?? 0.05);
-    if (Number.isFinite(prior60) && prior60 >= lo && prior60 <= hi) return false;
+    if (prior60 == null || (prior60 >= lo && prior60 <= hi)) return false;
   }
 
   // BNB-native: shorting VAL after a sharp ~5d rally (squeeze / relief bounce).
   if (opts.vpValSellChaseFilter === true) {
     const maxPrior5d = Number(opts.vpValSellChaseMaxPrior5dPct ?? 0.05);
     if (maxPrior5d > 0) {
-      const prior5d = Number(pre?.macroPrior5d?.[idx] ?? NaN);
-      if (Number.isFinite(prior5d) && prior5d > maxPrior5d) return false;
+      const prior5d = macroPctAt(pre?.macroPrior5d, idx);
+      if (prior5d == null || prior5d > maxPrior5d) return false;
+    }
+  }
+
+  // SOL-native (2026-07-21 WF fold0 autopsy): VAL shorts when 5d has relieved
+  // hard vs 20d (prior5−prior20 > max) are dead-cat bounce shorts.
+  // Optional: only apply inside deep prior60 bear (`vpValSellReliefBounceMinPrior60dPct`).
+  if (opts.vpValSellBlockReliefBounce === true) {
+    const maxBounce = Number(opts.vpValSellReliefBounceMaxPct ?? 0.15);
+    const prior5d = macroPctAt(pre?.macroPrior5d, idx);
+    const minPrior60 = opts.vpValSellReliefBounceMinPrior60dPct;
+    if (prior5d == null || prior20 == null) return false; // fail-closed
+    const deepBearOnly =
+      minPrior60 != null && Number.isFinite(Number(minPrior60))
+        ? prior60 != null && prior60 <= Number(minPrior60)
+        : true;
+    if (deepBearOnly && Number.isFinite(maxBounce) && prior5d - prior20 > maxBounce) {
+      return false;
     }
   }
 
@@ -389,8 +405,7 @@ export function passesVpValSellMacroFilter(pre, idx, side, setup, opts = {}) {
 export function passesVpBuyRejectionMacroFilter(pre, idx, side, setup, opts = {}) {
   if (side !== "BUY" || setup !== "va_rejection") return true;
   const bearFloor = Number(opts.vpValSellPrior60dBearPct ?? opts.vpSellBearPrior60dPct ?? -0.05);
-  const prior60 = Number(pre?.macroPrior60d?.[idx]);
-  const prior60n = Number.isFinite(prior60) ? prior60 : null;
+  const prior60n = macroPctAt(pre?.macroPrior60d, idx);
   const macroBull = vpMacroBullAt(pre, idx, opts);
   const macro = classifyVpMacro(prior60n, macroBull, bearFloor);
 
@@ -423,8 +438,7 @@ export function passesVpBuyBreakoutTightBullFilter(pre, idx, side, setup, path, 
   const pathL = classifyVpPath(path?.distPct ?? null, vacuumPct);
   if (pathL !== "tight") return true;
   const bearFloor = Number(opts.vpValSellPrior60dBearPct ?? opts.vpSellBearPrior60dPct ?? -0.05);
-  const prior60 = Number(pre?.macroPrior60d?.[idx]);
-  const prior60n = Number.isFinite(prior60) ? prior60 : null;
+  const prior60n = macroPctAt(pre?.macroPrior60d, idx);
   const macro = classifyVpMacro(prior60n, vpMacroBullAt(pre, idx, opts), bearFloor);
   return macro !== "bull_trend";
 }
@@ -442,8 +456,7 @@ export function passesVpBuyBreakoutBullVacuumFilter(pre, idx, side, setup, path,
   const pathL = classifyVpPath(path?.distPct ?? null, vacuumPct);
   if (pathL !== "vacuum") return true;
   const bearFloor = Number(opts.vpValSellPrior60dBearPct ?? opts.vpSellBearPrior60dPct ?? -0.05);
-  const prior60 = Number(pre?.macroPrior60d?.[idx]);
-  const prior60n = Number.isFinite(prior60) ? prior60 : null;
+  const prior60n = macroPctAt(pre?.macroPrior60d, idx);
   const macro = classifyVpMacro(prior60n, vpMacroBullAt(pre, idx, opts), bearFloor);
   return macro !== "bull_trend";
 }
@@ -507,14 +520,10 @@ export function passesVpPreparedRegimeFilter(pre, idx, side, setup, path, opts =
   // BTC default; ETH must leave OFF — bear vacuum VAL is ETH's largest edge.
   if (opts.vpPreparedBlockVacuumValBear === true) {
     if (side === "SELL" && setup === "val_breakdown" && isVacuum) {
-      const priorThresh = Number(opts.vpSellMacroPrior20dBullPct ?? 0.02);
       const bearFloor = Number(opts.vpPreparedBearPrior60dPct ?? opts.vpValSellPrior60dBearPct ?? -0.05);
-      const above = pre?.macroAboveEma20d?.[idx] === true;
-      const slope = Number(pre?.macroEma5dSlope?.[idx] ?? 0);
-      const prior20 = Number(pre?.macroPrior20d?.[idx] ?? 0);
-      const prior60 = Number(pre?.macroPrior60d?.[idx] ?? 0);
-      const macroBull = above || slope > 0 || prior20 > priorThresh;
-      const bearTrend = !macroBull && Number.isFinite(prior60) && prior60 <= bearFloor;
+      const prior60 = macroPctAt(pre?.macroPrior60d, idx);
+      const macroBull = vpMacroBullAt(pre, idx, opts);
+      const bearTrend = !macroBull && prior60 != null && prior60 <= bearFloor;
       if (bearTrend) return false;
     }
   }
@@ -896,6 +905,9 @@ export function buildVolumeProfileOptsFromCfg(cfg = {}) {
     vpValSellFlatPrior60HiPct: cfg.vpValSellFlatPrior60HiPct,
     vpValSellChaseFilter: cfg.vpValSellChaseFilter,
     vpValSellChaseMaxPrior5dPct: cfg.vpValSellChaseMaxPrior5dPct,
+    vpValSellBlockReliefBounce: cfg.vpValSellBlockReliefBounce,
+    vpValSellReliefBounceMaxPct: cfg.vpValSellReliefBounceMaxPct,
+    vpValSellReliefBounceMinPrior60dPct: cfg.vpValSellReliefBounceMinPrior60dPct,
     vpBuyRejectionBlockBullTrend: cfg.vpBuyRejectionBlockBullTrend,
     vpBuyRejectionBlockBullStructured: cfg.vpBuyRejectionBlockBullStructured,
     vpBuyRejectionBlockUnpreparedMacro: cfg.vpBuyRejectionBlockUnpreparedMacro,

@@ -162,6 +162,8 @@ type WsState = {
 type AppState = {
   ws: WsState;
   mode?: string;
+  /** Target mode while POST /api/mode/set is in flight or WS has not confirmed the switch yet. */
+  modeSwitchPending: string | null;
   /** When APP_UI_AUTH_ENABLED: server `/api/auth/me` + hello `uiUserTag` for scoped localStorage prefs. */
   authUiUserTag?: string | null;
   /** Server hello: session-scoped mode (each login has its own selected mode). */
@@ -492,6 +494,24 @@ let lastChartFocusSentNorm = "";
 /** Optimistic + server-confirmed focus norm. Empty = cleared/primary. */
 let lastChartFocusAckNorm = "";
 let chartFocusAbort: AbortController | null = null;
+
+/** Drop buffered WS market ticks so a mode switch cannot repaint the previous venue’s candles. */
+export function resetChartSessionForModeSwitch() {
+  pendingMarketFlushScheduled = false;
+  pendingMarketBySymbol = null;
+  lastMarketTickBySymbol = new Map();
+}
+
+/** Clear mode-switch loader once server-reported mode matches the pending target. */
+export function maybeClearModeSwitchPending(confirmedMode: string | undefined | null) {
+  const pending = useAppStore.getState().modeSwitchPending;
+  if (!pending) return;
+  const want = String(pending).toUpperCase();
+  const got = String(confirmedMode || "").toUpperCase();
+  if (want && got === want) {
+    useAppStore.setState({ modeSwitchPending: null });
+  }
+}
 
 function isChartFocusAbortError(err: unknown): boolean {
   if (err instanceof DOMException && err.name === "AbortError") return true;
@@ -1098,6 +1118,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   draftBotPatchByInstanceId: {},
   configViewByInstanceId: {},
   instanceConfigLoadingId: null,
+  modeSwitchPending: null,
   strategyConfigDirtyByMode: { paper: false, demo_api: false, testnet: false, live: false },
   recentStrategySaveByMode: {},
   strategySliceDraftByMode: {},
@@ -1179,6 +1200,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (type === "hello") {
           const p = payload as HelloPayload & { activityLog?: unknown[] };
           const chart = p.chart;
+          const prevModeHello = String(get().mode ?? "").toUpperCase();
+          const nextModeHello = String(p.mode ?? "").toUpperCase();
+          if (nextModeHello && prevModeHello !== nextModeHello) {
+            resetChartSessionForModeSwitch();
+          }
           set((s) => {
             const act = Array.isArray(p.activityLog) ? p.activityLog : [];
             const logsFromServer = act.slice(0, 500).map((row: unknown) => {
@@ -1219,6 +1245,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             );
             const prevBulk =
               typeof s.activityLogBulkGeneration === "number" ? s.activityLogBulkGeneration : 0;
+            const modeChangedHello =
+              nextModeHello.length > 0 && String(s.mode ?? "").toUpperCase() !== nextModeHello;
             const base: Partial<AppState> = {
               mode: p.mode,
               authUiUserTag: tagNext,
@@ -1267,6 +1295,11 @@ export const useAppStore = create<AppState>((set, get) => ({
               logs: logsFromServer,
               activityLogBulkGeneration: prevBulk + 1,
             };
+            if (modeChangedHello) {
+              base.candles = [];
+              base.market = undefined;
+              base.depth = undefined;
+            }
             if (chart?.candles?.length) {
               const chartSym = String(chart.symbol ?? p.state?.symbol ?? "");
               const cc: Candle[] = [];
@@ -1296,6 +1329,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             }
             return base as AppState;
           });
+          maybeClearModeSwitchPending(String(p.mode || ""));
           queueMicrotask(() => scheduleTradingUiSessionRestore(String(p.mode || "")));
           queueMicrotask(() => {
             void (async () => {
@@ -2582,6 +2616,9 @@ export function applyWsRuntimeStateSnapshot(payload: unknown) {
 export function applyWsStateSnapshot(payload: unknown) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
   const p = payload as Record<string, unknown>;
+  const modeChangedEarly =
+    p.mode != null && String(useAppStore.getState().mode ?? "") !== String(p.mode);
+  if (modeChangedEarly) resetChartSessionForModeSwitch();
   let configUnchangedFastPath = false;
   useAppStore.setState((prev) => {
     const prevSym = prev.bot?.symbol != null ? String(prev.bot.symbol) : "";
@@ -2776,7 +2813,7 @@ export function applyWsStateSnapshot(payload: unknown) {
             strategySavePayloadByMode: configSlice.strategySavePayloadByMode,
           }
         : {}),
-      ...(chartRekey ? { candles: [], market: undefined } : {}),
+      ...(chartRekey || modeChanged ? { candles: [], market: undefined, depth: undefined } : {}),
       ...(modeChanged ? { trades: [], selectedInstanceId: null } : {}),
       ...(nextSav ? { activeStrategyVersionByMode: nextSav } : {}),
       ...(nextAi ? { activeInstanceByMode: nextAi } : {}),
@@ -2791,6 +2828,7 @@ export function applyWsStateSnapshot(payload: unknown) {
     }
     return out;
   });
+  if (p.mode != null) maybeClearModeSwitchPending(String(p.mode));
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
     const ack = (payload as Record<string, unknown>).uiChartFocusSymbol;
     if (ack !== undefined) {

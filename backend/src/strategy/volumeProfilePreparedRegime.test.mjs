@@ -22,7 +22,7 @@ test("blocks vacuum VAH when prepared regime on", () => {
 });
 
 test("blocks vacuum VAL only in bear_trend", () => {
-  const opts = { vpPreparedRegimeOnly: true };
+  const opts = { vpPreparedRegimeOnly: true, vpPreparedBlockVacuumValBear: true };
   const bearPre = {
     macroAboveEma20d: [false],
     macroEma5dSlope: [0],

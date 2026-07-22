@@ -290,6 +290,11 @@ function canonicalChartSymbol(s: string | undefined | null): string {
     .replace(/[/\s_-]/g, "");
 }
 
+/** Per-mode chart OHLC cache key — module scope avoids hook-order / HMR ReferenceError. */
+function chartViewCacheKey(modeSlug: string | undefined, sym: string): string {
+  return `${String(modeSlug || "").toUpperCase()}|${canonicalChartSymbol(sym)}`;
+}
+
 /**
  * LWC builds price-scale ticks from series `priceFormat`; defaults break for sub‑$1 pairs (e.g. DOGE ~0.09)
  * — the right axis can look “empty” or show only one tick (see lightweight-charts #1186 / #1452).
@@ -2586,6 +2591,9 @@ export function ChartPanel() {
   /** Throttle background REST reconcile (effect re-runs were stacking overlapping polls). */
   const lastRestReconcileAtRef = useRef(0);
   const restReconcileInFlightRef = useRef(false);
+  /** After trading-mode switch, force REST reload even if stale WS tail looks fresh. */
+  const forceChartReloadAfterModeRef = useRef(false);
+  const prevTradingModeRef = useRef<string | undefined>(undefined);
   /** Per-view OHLC cache so tab switches repaint immediately without waiting for REST/WS. */
   const chartViewCacheRef = useRef<
     Map<string, { candles: any[]; altCandles: any[]; market: Record<string, unknown> }>
@@ -2600,6 +2608,7 @@ export function ChartPanel() {
   const candles = useAppStore((s) => s.candles, candlesStructuralEqual);
   const market = useAppStore(selectChartMarketSlice, chartMarketSliceEqual);
   const bot = useAppStore((s) => pickChartBot(s.bot), shallow);
+  const mode = useAppStore((s) => s.mode);
   const chartDisplaySymbol = useAppStore((s) => s.chartDisplaySymbol);
   const setChartDisplaySymbol = useAppStore((s) => s.setChartDisplaySymbol);
   const showMarketIntelligencePanel = useAppStore((s) => s.showMarketIntelligencePanel);
@@ -2630,6 +2639,24 @@ export function ChartPanel() {
     backfillInFlightRef.current = false;
     backfillRequestedRef.current = false;
   }, [effectiveSym, bot?.timeframe]);
+
+  /** Mode switch: drop per-symbol cache + remount chart canvas so prior venue OHLC cannot linger. */
+  useEffect(() => {
+    const prev = prevTradingModeRef.current;
+    prevTradingModeRef.current = mode;
+    if (prev === undefined || prev === mode) return;
+    chartViewCacheRef.current.clear();
+    setBackfillCandles([]);
+    setAltCandles([]);
+    setAltCandlesSym(null);
+    chartOhlcAppliedRef.current = null;
+    chartOhlcAppliedSymRef.current = null;
+    lastRestReconcileAtRef.current = 0;
+    forceChartReloadAfterModeRef.current = true;
+    chartLoadSeqRef.current += 1;
+    pendingAutoFitRef.current = true;
+    setChartInstanceKey((k) => k + 1);
+  }, [mode]);
 
   const isAltChartView = useMemo(() => {
     const b = canonicalChartSymbol(bot?.symbol);
@@ -2722,13 +2749,13 @@ export function ChartPanel() {
     } else if (wsStoreAligned) {
       core = liveTailCandles;
     } else if (chartSymNorm && marketSymNorm && marketSymNorm !== chartSymNorm) {
-      const cached = chartViewCacheRef.current.get(chartSymNorm);
+      const cached = chartViewCacheRef.current.get(chartViewCacheKey(mode, chartSymNorm));
       core = cached?.candles?.length ? cached.candles : [];
     } else {
       core = liveTailCandles;
     }
     return mergeBackfillCandles(core);
-  }, [isAltChartView, wsStoreAligned, liveTailCandles, altCandlesForView, chartSymNorm, marketSymNorm, mergeBackfillCandles]);
+  }, [isAltChartView, wsStoreAligned, liveTailCandles, altCandlesForView, chartSymNorm, marketSymNorm, mergeBackfillCandles, mode]);
 
   const baseCandlesSig = useMemo(() => {
     if (!baseCandles.length) return `${effectiveSym}|0`;
@@ -3875,14 +3902,14 @@ export function ChartPanel() {
         if (altNext.length) {
           setAltCandles(altNext);
           setAltCandlesSym(symCanon);
-          chartViewCacheRef.current.set(symCanon, {
+          chartViewCacheRef.current.set(chartViewCacheKey(mode, symCanon), {
             candles: live.candles,
             altCandles: altNext,
             market: (live.market as Record<string, unknown>) ?? {},
           });
         }
       } else if (live.candles.length) {
-        chartViewCacheRef.current.set(symCanon, {
+        chartViewCacheRef.current.set(chartViewCacheKey(mode, symCanon), {
           candles: live.candles,
           altCandles: [],
           market: (live.market as Record<string, unknown>) ?? {},
@@ -3912,13 +3939,13 @@ export function ChartPanel() {
       supertrend: stMeta,
     };
     useAppStore.setState({ candles: cc0, market: marketNext });
-    chartViewCacheRef.current.set(symCanon, {
+    chartViewCacheRef.current.set(chartViewCacheKey(mode, symCanon), {
       candles: cc0,
       altCandles: isAlt ? (parsedAlt.length ? parsedAlt : cc0) : [],
       market: marketNext,
     });
     return true;
-  }, [parseCandlesFromMarketApi]);
+  }, [parseCandlesFromMarketApi, mode]);
 
   const [chartRefreshBusy, setChartRefreshBusy] = useState(false);
   const handleRefreshChart = useCallback(async () => {
@@ -3948,11 +3975,11 @@ export function ChartPanel() {
     }
   }, [effectiveSym, bot?.timeframe, applyChartViewCandles]);
 
-  /** Hydrate store from per-symbol cache immediately on tab switch (REST follows in parallel). */
+  /** Hydrate store from per-mode+symbol cache immediately on tab switch (REST follows in parallel). */
   useEffect(() => {
     const sym = canonicalChartSymbol(effectiveSym);
     if (!sym) return;
-    const cached = chartViewCacheRef.current.get(sym);
+    const cached = chartViewCacheRef.current.get(chartViewCacheKey(mode, sym));
     chartOhlcAppliedRef.current = null;
     chartOhlcAppliedSymRef.current = null;
     if (cached?.candles?.length) {
@@ -3970,7 +3997,7 @@ export function ChartPanel() {
     if (curMarket && curView && curMarket !== curView) {
       useAppStore.setState({ candles: [], market: undefined });
     }
-  }, [effectiveSym]);
+  }, [effectiveSym, mode]);
 
   /** Load ~24h OHLC for the active chart view (primary or multi-coin tab) and keep REST+WS in sync. */
   useEffect(() => {
@@ -3981,8 +4008,22 @@ export function ChartPanel() {
     let cancelled = false;
     const load = async (preserveView?: boolean) => {
       if (preserveView) {
+        const forceReload = forceChartReloadAfterModeRef.current;
+        const liveMarket = useAppStore.getState().market as Record<string, unknown> | undefined;
+        const liveSym = normalizeSym(String(liveMarket?.symbol ?? ""));
+        const liveCandle = liveMarket?.candle as Record<string, unknown> | undefined;
+        const liveTs = Number(liveCandle?.ts);
+        const tfMs = binanceIntervalMs(tf);
+        const liveTailFresh =
+          !forceReload &&
+          liveSym === normalizeSym(sym) &&
+          Number.isFinite(liveTs) &&
+          Number.isFinite(tfMs) &&
+          tfMs > 0 &&
+          Date.now() - liveTs <= tfMs * 2 + 15_000;
         const now = Date.now();
         if (
+          (document.visibilityState === "visible" && liveTailFresh) ||
           restReconcileInFlightRef.current ||
           now - lastRestReconcileAtRef.current < CHART_BACKGROUND_SYNC_MS - 250
         ) {
@@ -3995,6 +4036,7 @@ export function ChartPanel() {
         if (cancelled || seq !== chartLoadSeqRef.current) return;
         applyChartViewCandles(r, sym, tf, { preserveView });
         if (preserveView) lastRestReconcileAtRef.current = Date.now();
+        forceChartReloadAfterModeRef.current = false;
       } catch {
         /* ignore */
       } finally {
@@ -4013,7 +4055,7 @@ export function ChartPanel() {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [effectiveSym, bot?.timeframe, applyChartViewCandles]);
+  }, [effectiveSym, bot?.timeframe, mode, applyChartViewCandles]);
 
   useEffect(() => {
     if (stLineFlushRafRef.current) cancelAnimationFrame(stLineFlushRafRef.current);

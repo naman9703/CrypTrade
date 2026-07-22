@@ -50,8 +50,9 @@ test("FREQ preset yields more candidates than Tier-A on same candles", async () 
   assert.ok(freq.candidateCount >= tierA.candidateCount);
   assert.equal(VOLUME_PROFILE_FREQ_15M.vpMaxTradesPerDay, 2);
   assert.equal(VOLUME_PROFILE_FREQ_15M.vpTierAOnly, false);
-  assert.equal(VOLUME_PROFILE_FREQ_15M.vpRequireHtfAlign, false);
-  assert.deepEqual(resolveVolumeProfileFreqPreset("ETHUSDT").vpAllowedSetups.includes("val_breakdown"), true);
-  assert.equal(resolveVolumeProfileFreqPreset("BTCUSDT").vpAllowedSetups.includes("vah_breakout"), false);
-  assert.equal(resolveVolumeProfileFreqPreset("BNBUSDT").vpAllowedSetups.includes("val_breakdown"), false);
+  assert.equal(VOLUME_PROFILE_FREQ_15M.vpRequireHtfAlign, true);
+  assert.equal(resolveVolumeProfileFreqPreset("ETHUSDT").vpAllowedSetups.includes("val_breakdown"), true);
+  assert.equal(resolveVolumeProfileFreqPreset("BTCUSDT").vpAllowedSetups.includes("vah_breakout"), true);
+  assert.equal(resolveVolumeProfileFreqPreset("BNBUSDT").vpAllowedSetups.includes("val_breakdown"), true);
+  assert.equal(resolveVolumeProfileFreqPreset("SOLUSDT").vpAllowedSetups.includes("va_rejection"), true);
 });

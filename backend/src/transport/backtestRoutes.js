@@ -14,7 +14,9 @@
  *   POST   /api/backtest/runs/:id/cancel          cooperative cancel
  *   DELETE /api/backtest/runs/:id                 cancel-or-delete
  *   GET    /api/backtest/data/coverage            (symbol, tf[, from, to])
- *   POST   /api/backtest/data/sync                manual ingestion
+ *   POST   /api/backtest/data/sync                start async OHLC backfill (returns jobId)
+ *   POST   /api/backtest/data/sync-mark           start async mark backfill (returns jobId)
+ *   GET    /api/backtest/data/sync/:jobId         poll sync job progress
  *   POST   /api/backtest/optimize                 spawn parameter sweep
  *   GET    /api/backtest/optimize/:id             sweep summary + heatmap
  *   POST   /api/backtest/promote/:runId           run → strategy version → instance
@@ -51,6 +53,12 @@ import { ensureFunding } from "../backtest/data/fundingIngest.js";
 import { ensureFearGreed } from "../backtest/data/fearGreedIngest.js";
 import { ensureOpenInterest } from "../backtest/data/openInterestIngest.js";
 import { getCoverage, getMonthlyCoverage } from "../backtest/data/dataCoverage.js";
+import {
+  createDataSyncJob,
+  getDataSyncJob,
+  updateDataSyncJob,
+  publicDataSyncJob,
+} from "../backtest/data/dataSyncJobs.js";
 import { SUPPORTED_TIMEFRAMES, tfToMs } from "../backtest/data/timeframe.js";
 import { resolveTrailActivationOn } from "../backtest/engine/trailingSim.js";
 import { BACKTEST_ENGINE_VERSION } from "../backtest/engine/version.js";
@@ -777,12 +785,32 @@ export function createBacktestRouter({ appState }) {
     const to = body.to != null ? toMs(body.to) : Date.now();
     if (!SYMBOL_RE.test(symbol)) return res.status(400).json({ ok: false, error: "invalid_symbol" });
     if (from == null) return res.status(400).json({ ok: false, error: "from_required" });
-    try {
-      const markKlines = await ensureMarkKlines(symbol, { from, to });
-      res.json({ ok: true, markKlines });
-    } catch (e) {
-      res.status(500).json({ ok: false, error: String(e?.message || e) });
-    }
+
+    const job = createDataSyncJob("mark");
+    const broadcast = (patch) => {
+      const j = updateDataSyncJob(job.id, patch);
+      if (!j) return;
+      appState.wsHub?.broadcast?.("data_sync_progress", publicDataSyncJob(j));
+    };
+    broadcast({ status: "running", progressPct: 0, phase: "mark" });
+    res.json({ ok: true, async: true, ...publicDataSyncJob(job) });
+
+    void (async () => {
+      try {
+        const markKlines = await ensureMarkKlines(symbol, {
+          from,
+          to,
+          onProgress: ({ pct, phase }) => broadcast({ progressPct: pct, phase: phase ?? "mark" }),
+        });
+        broadcast({ status: "done", progressPct: 100, phase: "done", result: { markKlines } });
+      } catch (e) {
+        broadcast({
+          status: "failed",
+          phase: "failed",
+          error: String(e?.message || e),
+        });
+      }
+    })();
   });
 
   r.post("/data/sync", requireDbUserSession, async (req, res) => {
@@ -796,28 +824,94 @@ export function createBacktestRouter({ appState }) {
     if (!SUPPORTED_TIMEFRAMES.includes(tf)) return res.status(400).json({ ok: false, error: "invalid_timeframe" });
     if (from == null) return res.status(400).json({ ok: false, error: "from_required" });
     const market = String(body.market || "futures").toLowerCase() === "spot" ? "spot" : "futures";
-    try {
-      const klines = await ensureKlines(symbol, tf, { from, to, market });
-      let markKlines = { inserted: 0, gaps: 0 };
-      if (market === "futures") {
-        markKlines = await ensureMarkKlines(symbol, { from, to }).catch(() => ({ inserted: 0, gaps: 0 }));
-        if (tf !== "1m") {
-          await ensureKlines(symbol, "1m", { from, to, market: "futures" }).catch(() => ({ inserted: 0, gaps: 0 }));
+
+    const job = createDataSyncJob("ohlc");
+    const broadcast = (patch) => {
+      const j = updateDataSyncJob(job.id, patch);
+      if (!j) return;
+      appState.wsHub?.broadcast?.("data_sync_progress", publicDataSyncJob(j));
+    };
+    broadcast({ status: "running", progressPct: 0, phase: "klines" });
+    // Return immediately — multi-year backfills exceed HTTP/proxy idle timeouts.
+    res.json({ ok: true, async: true, ...publicDataSyncJob(job) });
+
+    void (async () => {
+      try {
+        const mapPct = (local0to100, lo, hi) => {
+          const local = Math.max(0, Math.min(100, Number(local0to100) || 0));
+          return lo + (local / 100) * (hi - lo);
+        };
+
+        const klines = await ensureKlines(symbol, tf, {
+          from,
+          to,
+          market,
+          onProgress: ({ pct }) => {
+            const mapped = mapPct(pct, 0, market === "futures" ? 70 : 90);
+            // Show at least 1% once OHLC work has started past the first tick.
+            const shown = pct > 0 ? Math.max(1, Math.round(mapped)) : Math.round(mapped);
+            broadcast({ progressPct: shown, phase: "klines" });
+          },
+        });
+
+        let markKlines = { inserted: 0, gaps: 0 };
+        if (market === "futures") {
+          markKlines = await ensureMarkKlines(symbol, {
+            from,
+            to,
+            onProgress: ({ pct }) => {
+              const mapped = mapPct(pct, 70, 85);
+              broadcast({ progressPct: Math.max(70, Math.round(mapped)), phase: "mark" });
+            },
+          }).catch(() => ({ inserted: 0, gaps: 0 }));
+          if (tf !== "1m") {
+            await ensureKlines(symbol, "1m", {
+              from,
+              to,
+              market: "futures",
+              onProgress: ({ pct }) => {
+                const mapped = mapPct(pct, 85, 92);
+                broadcast({ progressPct: Math.max(85, Math.round(mapped)), phase: "klines_1m" });
+              },
+            }).catch(() => ({ inserted: 0, gaps: 0 }));
+          } else {
+            broadcast({ progressPct: 92, phase: "klines_1m" });
+          }
         }
+
+        broadcast({ progressPct: 94, phase: "funding" });
+        let funding = { inserted: 0 };
+        if (market === "futures") {
+          funding = await ensureFunding(symbol, { from, to }).catch(() => ({ inserted: 0 }));
+        }
+        broadcast({ progressPct: 96, phase: "fear_greed" });
+        const fng = await ensureFearGreed({ limit: 0 }).catch(() => ({ inserted: 0 }));
+        broadcast({ progressPct: 98, phase: "open_interest" });
+        const oi =
+          market === "futures"
+            ? await ensureOpenInterest(symbol, { from, to, period: "1h" }).catch(() => ({ inserted: 0 }))
+            : { inserted: 0 };
+
+        broadcast({
+          status: "done",
+          progressPct: 100,
+          phase: "done",
+          result: { klines, markKlines, funding, fearGreed: fng, openInterest: oi },
+        });
+      } catch (e) {
+        broadcast({
+          status: "failed",
+          phase: "failed",
+          error: String(e?.message || e),
+        });
       }
-      let funding = { inserted: 0 };
-      if (market === "futures") {
-        funding = await ensureFunding(symbol, { from, to }).catch(() => ({ inserted: 0 }));
-      }
-      const fng = await ensureFearGreed({ limit: 0 }).catch(() => ({ inserted: 0 }));
-      const oi =
-        market === "futures"
-          ? await ensureOpenInterest(symbol, { from, to, period: "1h" }).catch(() => ({ inserted: 0 }))
-          : { inserted: 0 };
-      res.json({ ok: true, klines, markKlines, funding, fearGreed: fng, openInterest: oi });
-    } catch (e) {
-      res.status(500).json({ ok: false, error: String(e?.message || e) });
-    }
+    })();
+  });
+
+  r.get("/data/sync/:jobId", requireDbUserSession, async (req, res) => {
+    const job = getDataSyncJob(req.params.jobId);
+    if (!job) return res.status(404).json({ ok: false, error: "job_not_found" });
+    res.json({ ok: true, ...publicDataSyncJob(job) });
   });
 
   r.post("/optimize", requireDbUserSession, async (req, res) => {

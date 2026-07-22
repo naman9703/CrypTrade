@@ -44,6 +44,7 @@ function rowCapForRange(start, end, stepMs, maxRows) {
 
 /**
  * Paginated mark-price klines between startTime and endTime (ms).
+ * @param {(p: { pct: number }) => void} [onProgress] 0–100 within this range
  * @returns {Array<{ ts:number, open:number, high:number, low:number, close:number, volume:number }>}
  */
 export async function fetchBinanceMarkPriceKlinesRange({
@@ -52,12 +53,14 @@ export async function fetchBinanceMarkPriceKlinesRange({
   startTime,
   endTime,
   maxRows,
+  onProgress,
 } = {}) {
   const sym = String(symbol || "").toUpperCase();
   const intv = String(interval || "1m");
   const stepMs = tfToMs(intv);
   const start = Math.max(0, Number(startTime) || 0);
   const end = Math.max(start, Number(endTime) || 0);
+  const span = Math.max(1, end - start);
   const page = 1000;
   const rowCap = rowCapForRange(start, end, stepMs, maxRows);
   const pageGuard = Math.max(200, Math.ceil(rowCap / page) + 10);
@@ -66,6 +69,19 @@ export async function fetchBinanceMarkPriceKlinesRange({
   let guard = 0;
   const bases = futuresRestBases();
   let lastErr = null;
+  const report = typeof onProgress === "function"
+    ? (cursorMs) => {
+        try {
+          const raw = ((cursorMs - start) / span) * 100;
+          const pct =
+            cursorMs >= end ? 100 : Math.max(0, Math.min(99, Math.ceil(raw - 1e-9)));
+          onProgress({ pct });
+        } catch {
+          /* ignore */
+        }
+      }
+    : null;
+  report?.(start);
 
   while (cur <= end && byTs.size < rowCap && guard < pageGuard) {
     guard += 1;
@@ -101,9 +117,14 @@ export async function fetchBinanceMarkPriceKlinesRange({
     }
     const lastOpen = Number(pageRows[pageRows.length - 1][0]);
     if (!Number.isFinite(lastOpen)) break;
-    if (pageRows.length < page) break;
+    if (pageRows.length < page) {
+      report?.(end);
+      break;
+    }
     cur = lastOpen + 1;
+    report?.(Math.min(end, cur));
     if (lastOpen >= end) break;
   }
+  report?.(end);
   return [...byTs.values()].sort((a, b) => a.ts - b.ts);
 }

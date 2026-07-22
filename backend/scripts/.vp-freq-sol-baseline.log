@@ -1,0 +1,51 @@
+
+══ SOL VP FREQ Phase 0 baseline ══
+SOLUSDT 15m  2021-01-01 → 2026-05-31  risk 2.5% lev 12x
+
+ensureKlines SOLUSDT 15m from 2020-09-14T00:00:00.000Z…
+ensureKlines: inserted=200156 gaps≈4
+Window full (2021-01-01→2026-05-31) core_all…
+Window y2021_22 (2021-06-01→2022-05-31) core_all…
+Window y2022_23 (2022-06-01→2023-05-31) core_all…
+Window y2023_24 (2023-06-01→2024-05-31) core_all…
+Window y2024_25 (2024-06-01→2025-05-31) core_all…
+Window y2025_26 (2025-06-01→2026-05-31) core_all…
+Variant htf_025 full…
+Variant no_vah full…
+Variant no_val full…
+Variant breaks_only full…
+Variant val_only full…
+Variant long_bias full…
+Variant no_vacuum full…
+
+Year windows (core_all):
+window       tr    t/wk   WR%    ret%      PF     DD%    Calmar
+──────────────────────────────────────────────────────────────────────
+full         919   3.26   31.6   -94.02    0.89   96.8   -0.97
+y2021_22     190   3.65   30.5   -46.13    0.85   53.02  -0.87
+y2022_23     171   3.29   39.2   109.62    1.27   41.84  2.62
+y2023_24     178   3.41   26.4   -72.32    0.71   80.92  -0.89
+y2024_25     152   2.92   30.3   -49.11    0.82   58.64  -0.84
+y2025_26     117   2.25   30.8   -46.28    0.71   67.25  -0.69
+
+Setup PnL by year window (core_all):
+  full: {"vah_breakout":{"n":396,"pnl":-79.01,"wins":121,"wr":30.6},"val_breakdown":{"n":421,"pnl":-15.98,"wins":145,"wr":34.4},"va_rejection":{"n":90,"pnl":8.11,"wins":21,"wr":23.3},"poc_bounce":{"n":12,"pnl":-7.14,"wins":3,"wr":25}}
+  y2021_22: {"vah_breakout":{"n":87,"pnl":-58.89,"wins":21,"wr":24.1},"va_rejection":{"n":20,"pnl":10.02,"wins":5,"wr":25},"val_breakdown":{"n":78,"pnl":11.12,"wins":31,"wr":39.7},"poc_bounce":{"n":5,"pnl":-8.37,"wins":1,"wr":20}}
+  y2022_23: {"val_breakdown":{"n":76,"pnl":45.65,"wins":32,"wr":42.1},"vah_breakout":{"n":77,"pnl":6.26,"wins":28,"wr":36.4},"va_rejection":{"n":16,"pnl":52.68,"wins":6,"wr":37.5},"poc_bounce":{"n":2,"pnl":5.03,"wins":1,"wr":50}}
+  y2023_24: {"vah_breakout":{"n":69,"pnl":-51.76,"wins":16,"wr":23.2},"va_rejection":{"n":21,"pnl":4.87,"wins":3,"wr":14.3},"val_breakdown":{"n":86,"pnl":-22.74,"wins":27,"wr":31.4},"poc_bounce":{"n":2,"pnl":-2.68,"wins":1,"wr":50}}
+  y2024_25: {"val_breakdown":{"n":76,"pnl":-24.85,"wins":22,"wr":28.9},"vah_breakout":{"n":61,"pnl":-26.94,"wins":19,"wr":31.1},"va_rejection":{"n":14,"pnl":4.08,"wins":5,"wr":35.7},"poc_bounce":{"n":1,"pnl":-1.41,"wins":0,"wr":0}}
+  y2025_26: {"vah_breakout":{"n":43,"pnl":-3.88,"wins":15,"wr":34.9},"poc_bounce":{"n":2,"pnl":-5.17,"wins":0,"wr":0},"val_breakdown":{"n":61,"pnl":-17.59,"wins":20,"wr":32.8},"va_rejection":{"n":11,"pnl":-19.63,"wins":1,"wr":9.1}}
+
+Full-window ablations:
+variant        tr    t/wk   WR%    ret%      PF     DD%
+──────────────────────────────────────────────────────────────────────
+core_all       919   3.26   31.6   -94.02    0.89   96.8
+htf_025        856   3.03   30.8   -96.3     0.85   97.73
+no_vah         539   1.91   32.7   -50.9     0.96   85.27
+no_val         512   1.81   29.1   -91.18    0.83   92.73
+breaks_only    817   2.89   32.6   -91.45    0.89   96.72
+val_only       423   1.5    34.5   -35.59    0.96   76.59
+long_bias      498   1.76   29.3   -88.62    0.84   90.62
+no_vacuum      919   3.26   31.6   -94.02    0.89   96.8
+
+Wrote /app/backend/scripts/.vp-freq-sol-baseline.json

@@ -344,6 +344,31 @@ export function createUiAuthRouter({ log }) {
         await bcrypt.hash(String(password + "hmac"), 4).catch(() => {});
         return res.status(401).json({ ok: false, error: "invalid_credentials" });
       }
+
+      /**
+       * Env-only login has no `users.id` until a row exists — accounts/strategies then return
+       * `db_user_required`. Auto-provision so the session owns DB rows (same email/password).
+       */
+      if (pool) {
+        try {
+          let u = await usersService.findUserByUsername(emailNorm);
+          if (!u) {
+            try {
+              u = await usersService.createUser(emailNorm, password, "admin");
+              log.info("ui_login_auto_provisioned_db_user", { email: emailNorm });
+            } catch (createErr) {
+              if (createErr?.code === "23505") {
+                u = await usersService.findUserByUsername(emailNorm);
+              } else {
+                throw createErr;
+              }
+            }
+          }
+          if (u) dbUserForSession = u;
+        } catch (e) {
+          log.warn("ui_login_auto_provision_failed", { error: String(e?.message || e) });
+        }
+      }
     }
 
     recordSuccess(ip);

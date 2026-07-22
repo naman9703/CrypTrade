@@ -13,6 +13,20 @@ export function priorPctFromCandles(candles, idx, bars) {
   return (b - a) / a;
 }
 
+/**
+ * Read a precomputed macro prior. Missing lookback must be `null` — never coerce
+ * via `Number(null)` / `?? 0` (those fake a flat 0% drift and break bear/flat gates).
+ * @param {unknown[]|undefined|null} arr
+ * @param {number} idx
+ * @returns {number|null}
+ */
+export function macroPctAt(arr, idx) {
+  const v = arr?.[idx];
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function classifyVpPath(pathPct, vacuumPct = 0.02) {
   const p = Number(pathPct);
   if (!(p > 0)) return "nopath";
@@ -46,8 +60,8 @@ export function vpMacroBullAt(pre, idx, opts = {}) {
   const priorThresh = Number(opts.vpSellMacroPrior20dBullPct ?? 0.02);
   const above = pre?.macroAboveEma20d?.[idx] === true;
   const slope = Number(pre?.macroEma5dSlope?.[idx] ?? 0);
-  const prior20 = Number(pre?.macroPrior20d?.[idx] ?? 0);
-  return above || slope > 0 || prior20 > priorThresh;
+  const prior20 = macroPctAt(pre?.macroPrior20d, idx);
+  return above || slope > 0 || (prior20 != null && prior20 > priorThresh);
 }
 
 /**
@@ -56,8 +70,7 @@ export function vpMacroBullAt(pre, idx, opts = {}) {
 export function describeVpConditionCell(pre, idx, side, setup, path, opts = {}) {
   const vacuumPct = Number(opts.vpPreparedVacuumPathPct ?? opts.vpVacuumPathPct ?? 0.02);
   const bearFloor = Number(opts.vpPreparedBearPrior60dPct ?? opts.vpValSellPrior60dBearPct ?? -0.05);
-  const prior60 = Number(pre?.macroPrior60d?.[idx]);
-  const prior60n = Number.isFinite(prior60) ? prior60 : null;
+  const prior60n = macroPctAt(pre?.macroPrior60d, idx);
   const macroBull = vpMacroBullAt(pre, idx, opts);
   const macro = classifyVpMacro(prior60n, macroBull, bearFloor);
   const pathL = classifyVpPath(path?.distPct ?? null, vacuumPct);

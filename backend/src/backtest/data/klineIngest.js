@@ -79,9 +79,14 @@ async function upsertCandles(symbol, tf, rows, source = "binance") {
 
 /**
  * Backfill missing klines from Binance REST into `ohlcv_candles`.
+ * @param {object} [opts]
+ * @param {number} [opts.from]
+ * @param {number} [opts.to]
+ * @param {"futures"|"spot"} [opts.market]
+ * @param {(p: { pct: number, phase?: string }) => void} [opts.onProgress]
  * @returns {Promise<{ inserted: number, gaps: number }>}
  */
-export async function ensureKlines(symbol, tf, { from, to, market = "futures" } = {}) {
+export async function ensureKlines(symbol, tf, { from, to, market = "futures", onProgress } = {}) {
   const pool = getPool();
   if (!pool) throw new Error("db_not_configured");
   const sym = normalizeSymbol(symbol);
@@ -96,6 +101,17 @@ export async function ensureKlines(symbol, tf, { from, to, market = "futures" } 
   const expected = Math.max(0, Math.floor((toMs - fromMs) / step));
   const feedKind = market === "spot" ? "BINANCE" : "BINANCE_FUTURES";
   const interval = binanceInterval(timeframe);
+  const span = Math.max(1, toMs - fromMs);
+  const report =
+    typeof onProgress === "function"
+      ? (pct, phase) => {
+          try {
+            onProgress({ pct: Math.max(0, Math.min(100, pct)), phase });
+          } catch {
+            /* ignore */
+          }
+        }
+      : null;
 
   let inserted = 0;
   let fetchedTotal = 0;
@@ -103,19 +119,27 @@ export async function ensureKlines(symbol, tf, { from, to, market = "futures" } 
 
   for (let cursor = fromMs; cursor < toMs; cursor += READ_CANDLES_SLICE_MS) {
     const sliceTo = Math.min(toMs, cursor + READ_CANDLES_SLICE_MS);
+    const sliceSpan = Math.max(1, sliceTo - cursor);
     const fetched = await fetchBinanceKlinesRange({
       symbol: sym,
       interval,
       startTime: cursor,
       endTime: sliceTo,
       feedKind,
+      onProgress: ({ pct }) => {
+        const local = Math.max(0, Math.min(100, Number(pct) || 0));
+        const globalPct = (((cursor - fromMs) + (local / 100) * sliceSpan) / span) * 100;
+        report?.(globalPct, "klines");
+      },
     });
     fetchedTotal += fetched.length;
     if (fetched.length) {
       inserted += await upsertCandles(sym, timeframe, fetched, source);
     }
+    report?.(((sliceTo - fromMs) / span) * 100, "klines");
   }
 
+  report?.(100, "klines");
   const gaps = Math.max(0, expected - fetchedTotal);
   return { inserted, gaps };
 }

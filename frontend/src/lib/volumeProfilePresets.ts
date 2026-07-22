@@ -162,6 +162,26 @@ export const VOLUME_PROFILE_FREQ_BNB_15M = {
   vpNoveltyEnabled: false,
 };
 
+/** SOL — VAL + prepared rej bear60 (2026-07-21). Wick 0.40 + HTF 0.20%; see backend doctrine. */
+export const VOLUME_PROFILE_FREQ_SOL_15M = {
+  ...VOLUME_PROFILE_BASE,
+  ...VOLUME_PROFILE_FREQ_CORE,
+  symbol: "SOLUSDT",
+  timeframe: "15m",
+  vpAllowedSetups: ["val_breakdown", "va_rejection"],
+  vpRequireHtfAlign: true,
+  vpMinHtfSepPct: 0.002,
+  vpMinScore: 7,
+  vpMinBarGap: 2,
+  vpMaxTradesPerDay: 2,
+  vpValSellRequirePrior60dBear: true,
+  vpValSellPrior60dBearPct: -0.05,
+  vpRejectionSellBlockExtendedDown: true,
+  vpRejectionExtendedPriorPct: 0.05,
+  vpRejectionMinWickRatio: 0.4,
+  vpNoveltyEnabled: false,
+};
+
 /** ETH — macro-adapt SELL + chop trail + regime-adaptive playbooks (2026-07-16). */
 export const VOLUME_PROFILE_FREQ_ETH_15M = {
   ...VOLUME_PROFILE_BASE,
@@ -259,6 +279,7 @@ export function resolveVolumeProfileFreqPreset(symbol: string) {
   if (sym === "ETHUSDT") return VOLUME_PROFILE_FREQ_ETH_15M;
   if (sym === "BTCUSDT") return VOLUME_PROFILE_FREQ_BTC_15M;
   if (sym === "BNBUSDT") return VOLUME_PROFILE_FREQ_BNB_15M;
+  if (sym === "SOLUSDT") return VOLUME_PROFILE_FREQ_SOL_15M;
   return VOLUME_PROFILE_FREQ_15M;
 }
 

@@ -19,6 +19,7 @@ import { AppSidebar } from "./AppSidebar";
 import { useAuthActions } from "../authContext";
 import { hydrateStateViaHttp, useAppStore } from "../ws/store";
 import { OverviewPage } from "./analytics/OverviewPage";
+import { ModeSwitchOverlay } from "./ModeSwitchOverlay";
 
 const BacktestPage = lazy(() =>
   import("./backtest/BacktestPage").then((m) => ({ default: m.BacktestPage })),
@@ -62,6 +63,7 @@ export function App() {
       {notificationsOn ? <ActivityToasts /> : null}
       <AppSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <AccountWidget />
+      <ModeSwitchOverlay />
     </>
   );
 

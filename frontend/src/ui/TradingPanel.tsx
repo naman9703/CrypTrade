@@ -87,6 +87,7 @@ import {
   VOLUME_PROFILE_FREQ_ETH_15M,
   VOLUME_PROFILE_FREQ_BNB_15M,
   VOLUME_PROFILE_FREQ_BTC_15M,
+  VOLUME_PROFILE_FREQ_SOL_15M,
   VOLUME_PROFILE_FREQ_PORTFOLIO_15M,
   VOLUME_PROFILE_BTC_15M,
   VOLUME_PROFILE_5M,
@@ -2605,6 +2606,7 @@ export function TradingPanel() {
             <div className="flex flex-wrap gap-2">
               <TrendHtfStPresetButton label="★ ETH FREQ" highlight patch={VOLUME_PROFILE_FREQ_ETH_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="★ BNB FREQ (VAL lock)" highlight patch={VOLUME_PROFILE_FREQ_BNB_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+              <TrendHtfStPresetButton label="★ SOL FREQ (VAL+rej wick40)" highlight patch={VOLUME_PROFILE_FREQ_SOL_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="BTC FREQ (shorts)" patch={VOLUME_PROFILE_FREQ_BTC_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="FREQ portfolio (ETH+BNB+BTC)" patch={VOLUME_PROFILE_FREQ_PORTFOLIO_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             </div>

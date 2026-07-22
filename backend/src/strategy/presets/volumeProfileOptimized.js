@@ -233,6 +233,50 @@ export const VOLUME_PROFILE_FREQ_BNB_15M = {
   vpNoveltyEnabled: false,
 };
 
+/**
+ * SOL — VAL + prepared rejection bear60 stack (2026-07-21 cert path).
+ *
+ * Coin-native Phase 0–3 (FREQ core → autopsy → one-change A/B → cert gates):
+ * - Raw FREQ core −94% full / only 2022–23 paid; VAH vacuum multi-year destroyer (−$89).
+ * - Residual structured VAH still bled after vacuum path block → drop VAH entirely.
+ * - VAL edge concentrates in prior60d ≤ −5% (bear60 +$19 vs bull60 −$16 / flat60 −$11).
+ * - H8: reopen prepared SELL va_rejection (block extended-down bounce shorts) — raises N + return.
+ * - Root cause of MC p5 fail: weak rejection wicks (ratio &lt; 0.40) inflate left-tail R → wick 0.40.
+ * - Root cause of Calmar &lt; 1 after wick lock: shallow HTF alignment losers → HTF sep 0.20%.
+ * - WF fold0 (2021-11→2022-10) still −11%: relief-bounce VAL harvest looked promising but
+ *   full resim breaks Calmar / 2025–26 — knob kept off the lock.
+ * - Vol-target / chop-trail / wick&gt;0.40 / blanket relief-bounce rejected.
+ *
+ * Locked behaviour (H8 + wick0.40 + HTF0.20):
+ * - VAL + va_rejection allow-list
+ * - require prior60d bear floor (−5%)
+ * - rejection: extended-down block (prior20d ≤ −5%) + min wick 0.40
+ * - HTF sep 0.20%
+ * - Relief-bounce VAL block available (`vpValSellBlockReliefBounce`) but NOT locked —
+ *   blanket 0.15 flips WF fold0 green yet breaks 2025–26 / Calmar on full resim.
+ *
+ * Full-window (pre-WF): ~186t / +303% / Calmar ~1.06 / MC p5 ~+9.5% / all years ≥0.
+ * Frequency ~0.66/wk. Core MC+Calmar pass; WF degradation still fails fold0 (−11%).
+ */
+export const VOLUME_PROFILE_FREQ_SOL_15M = {
+  ...VOLUME_PROFILE_BASE,
+  ...VOLUME_PROFILE_FREQ_CORE,
+  symbol: "SOLUSDT",
+  timeframe: "15m",
+  vpAllowedSetups: ["val_breakdown", "va_rejection"],
+  vpRequireHtfAlign: true,
+  vpMinHtfSepPct: 0.002,
+  vpMinScore: 7,
+  vpMinBarGap: 2,
+  vpMaxTradesPerDay: 2,
+  vpValSellRequirePrior60dBear: true,
+  vpValSellPrior60dBearPct: -0.05,
+  vpRejectionSellBlockExtendedDown: true,
+  vpRejectionExtendedPriorPct: 0.05,
+  vpRejectionMinWickRatio: 0.4,
+  vpNoveltyEnabled: false,
+};
+
 /** ETH — open auction funnel + soft BUY HTF; macro-adaptive SELL HTF (2026-07-15).
  * Regime dependencies (2026-07-16 autopsy):
  * - Vacuum VAH (path≥2%) bleeds in bear/chop; structured 1–2% wins → cap vacuum outside bull macro.
@@ -386,21 +430,41 @@ export function resolveVolumeProfileFreqPreset(symbol) {
   if (sym === "ETHUSDT") return VOLUME_PROFILE_FREQ_ETH_15M;
   if (sym === "BTCUSDT") return VOLUME_PROFILE_FREQ_BTC_15M;
   if (sym === "BNBUSDT") return VOLUME_PROFILE_FREQ_BNB_15M;
+  if (sym === "SOLUSDT") return VOLUME_PROFILE_FREQ_SOL_15M;
   return VOLUME_PROFILE_FREQ_15M;
 }
 
-/**
- * Warmup pad so rolling VP lookback / HTF gates see history before the run window.
- * Without this, UI backtests rebuild profiles from in-window bars only and diverge
- * from research scripts that pad ~21d (ETH FREQ 79/+167 vs ~78/+124).
- */
-export function volumeProfilePadFromMs(fromMs, tf = "15m", cfg = {}) {
-  const mpb =
+/** Deepest macro feature lookback used by FREQ gates (`macroPrior60d`). */
+export const VOLUME_PROFILE_MACRO_LOOKBACK_DAYS = 60;
+
+export function volumeProfileMinutesPerBar(tf = "15m") {
+  return (
     { "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240 }[
       String(tf || "15m").toLowerCase()
-    ] ?? 15;
+    ] ?? 15
+  );
+}
+
+/**
+ * Bars of history needed before the first scored bar: VP profile lookback + 1d,
+ * and ≥60d so `macroPrior60d` / bear-flat VAL gates are real (not null / fake-0).
+ */
+export function volumeProfileHistoryBars(tf = "15m", cfg = {}) {
+  const mpb = volumeProfileMinutesPerBar(tf);
   const lookback = Math.max(48, Math.round(Number(cfg?.vpLookbackBars ?? 384)));
-  const padBars = Math.max(lookback + Math.ceil((24 * 60) / mpb), Math.ceil((21 * 24 * 60) / mpb));
+  const lookbackPad = lookback + Math.ceil((24 * 60) / mpb);
+  const macroBars = Math.ceil((VOLUME_PROFILE_MACRO_LOOKBACK_DAYS * 24 * 60) / mpb);
+  return Math.max(lookbackPad, macroBars);
+}
+
+/**
+ * Warmup pad so rolling VP lookback / HTF / macroPrior60d see history before the
+ * run window. Short windows without this pad fake prior60=0 and diverge from live
+ * (live holds a multi-week buffer) and from long research runs.
+ */
+export function volumeProfilePadFromMs(fromMs, tf = "15m", cfg = {}) {
+  const mpb = volumeProfileMinutesPerBar(tf);
+  const padBars = volumeProfileHistoryBars(tf, cfg);
   return Number(fromMs) - padBars * mpb * 60_000;
 }
 

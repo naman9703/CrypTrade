@@ -1,0 +1,67 @@
+{
+  "rows": [
+    {
+      "id": "H8_base",
+      "trades": 205,
+      "ret": 221.55,
+      "dd": 34.4,
+      "calmar": 0.69,
+      "mcP5": -0.12,
+      "allPass": false
+    },
+    {
+      "id": "htf_020",
+      "trades": 196,
+      "ret": 230.22,
+      "dd": 32.5,
+      "calmar": 0.75,
+      "mcP5": -0.75,
+      "allPass": false
+    },
+    {
+      "id": "htf_025",
+      "trades": 184,
+      "ret": 55.32,
+      "dd": 44.57,
+      "calmar": 0.19,
+      "mcP5": -21.79,
+      "allPass": false
+    },
+    {
+      "id": "bear_080",
+      "trades": 194,
+      "ret": 163.89,
+      "dd": 32.5,
+      "calmar": 0.6,
+      "mcP5": -7.03,
+      "allPass": false
+    },
+    {
+      "id": "rej_wick_040",
+      "trades": 195,
+      "ret": 292.53,
+      "dd": 29.4,
+      "calmar": 0.97,
+      "mcP5": 7.96,
+      "allPass": false
+    },
+    {
+      "id": "score_8",
+      "trades": 205,
+      "ret": 221.55,
+      "dd": 34.4,
+      "calmar": 0.69,
+      "mcP5": -0.12,
+      "allPass": false
+    },
+    {
+      "id": "htf020_bear080",
+      "trades": 187,
+      "ret": 198.03,
+      "dd": 30.54,
+      "calmar": 0.72,
+      "mcP5": -1.52,
+      "allPass": false
+    }
+  ]
+}

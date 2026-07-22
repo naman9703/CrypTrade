@@ -35,27 +35,69 @@ function normalizeRestRoot(url, fallback) {
   return s || fallback;
 }
 
-/** Public chart OHLC: mainnet first (read-only), then configured/demo bases. */
-function chartKlineRestCandidates(feedKind) {
+function uniqueBases(bases) {
+  return [...new Set(bases.map((u) => normalizeRestRoot(u, "")).filter(Boolean))];
+}
+
+/**
+ * Public chart OHLC candidates ordered by the current trading mode first, then safe fallbacks.
+ * This keeps Demo/Testnet chart REST repair aligned with the venue the feed is using.
+ */
+export function chartKlineRestCandidates(feedKind, tradingMode) {
   const isFut = String(feedKind || "").toUpperCase() === "BINANCE_FUTURES";
-  const futBases = [
-    process.env.BINANCE_LIVE_FUTURES_REST_BASE,
-    process.env.BINANCE_FUTURES_REST_BASE,
-    "https://fapi.binance.com",
-    process.env.BINANCE_DEMO_FUTURES_REST_BASE,
-    process.env.BINANCE_FUTURES_TESTNET_REST_BASE,
-  ]
-    .map((u) => normalizeRestRoot(u, ""))
-    .filter(Boolean);
-  const spotBases = [
-    process.env.BINANCE_LIVE_REST_BASE,
-    process.env.BINANCE_REST_BASE,
-    "https://api.binance.com",
-    process.env.BINANCE_DEMO_REST_BASE,
-    process.env.BINANCE_TESTNET_REST_BASE,
-  ]
-    .map((u) => normalizeRestRoot(u, ""))
-    .filter(Boolean);
+  const tm = String(tradingMode || "").trim().toUpperCase();
+  const futBases =
+    tm === "BINANCE_DEMO_API"
+      ? uniqueBases([
+          process.env.BINANCE_DEMO_FUTURES_REST_BASE,
+          process.env.BINANCE_FUTURES_TESTNET_REST_BASE,
+          "https://demo-fapi.binance.com",
+          process.env.BINANCE_LIVE_FUTURES_REST_BASE,
+          process.env.BINANCE_FUTURES_REST_BASE,
+          "https://fapi.binance.com",
+        ])
+      : tm === "BINANCE_TESTNET"
+        ? uniqueBases([
+            process.env.BINANCE_FUTURES_TESTNET_REST_BASE,
+            process.env.BINANCE_DEMO_FUTURES_REST_BASE,
+            "https://testnet.binancefuture.com",
+            process.env.BINANCE_LIVE_FUTURES_REST_BASE,
+            process.env.BINANCE_FUTURES_REST_BASE,
+            "https://fapi.binance.com",
+          ])
+        : uniqueBases([
+            process.env.BINANCE_LIVE_FUTURES_REST_BASE,
+            process.env.BINANCE_FUTURES_REST_BASE,
+            "https://fapi.binance.com",
+            process.env.BINANCE_DEMO_FUTURES_REST_BASE,
+            process.env.BINANCE_FUTURES_TESTNET_REST_BASE,
+          ]);
+  const spotBases =
+    tm === "BINANCE_DEMO_API"
+      ? uniqueBases([
+          process.env.BINANCE_DEMO_REST_BASE,
+          process.env.BINANCE_TESTNET_REST_BASE,
+          "https://demo-api.binance.com",
+          process.env.BINANCE_LIVE_REST_BASE,
+          process.env.BINANCE_REST_BASE,
+          "https://api.binance.com",
+        ])
+      : tm === "BINANCE_TESTNET"
+        ? uniqueBases([
+            process.env.BINANCE_TESTNET_REST_BASE,
+            process.env.BINANCE_DEMO_REST_BASE,
+            "https://testnet.binance.vision",
+            process.env.BINANCE_LIVE_REST_BASE,
+            process.env.BINANCE_REST_BASE,
+            "https://api.binance.com",
+          ])
+        : uniqueBases([
+            process.env.BINANCE_LIVE_REST_BASE,
+            process.env.BINANCE_REST_BASE,
+            "https://api.binance.com",
+            process.env.BINANCE_DEMO_REST_BASE,
+            process.env.BINANCE_TESTNET_REST_BASE,
+          ]);
   const ordered = isFut ? [...futBases, ...spotBases] : [...spotBases, ...futBases];
   return [...new Set(ordered)];
 }
@@ -83,6 +125,7 @@ export async function fetchBinanceKlinesRows({
   interval,
   limit = 120,
   feedKind,
+  tradingMode,
   /** UI chart tiles: try multiple public REST hosts (demo trading API can be slow). */
   chartPublic = false,
 } = {}) {
@@ -91,7 +134,7 @@ export async function fetchBinanceKlinesRows({
   const params = { symbol: sym, interval: String(interval || "1m"), limit: lim };
 
   if (chartPublic) {
-    const bases = chartKlineRestCandidates(feedKind);
+    const bases = chartKlineRestCandidates(feedKind, tradingMode);
     const timeoutMs = Math.max(4000, Math.min(12_000, Number(process.env.CHART_KLINES_TIMEOUT_MS ?? 8000)));
     const isFuturesRest = (base) =>
       /fapi|binancefuture/i.test(String(base || ""));
@@ -129,8 +172,17 @@ function rowCapForRange(start, end, stepMs, maxRows) {
 /**
  * Paginated klines between startTime and endTime (both ms, Binance semantics).
  * Used to resolve signal-list verdicts over long histories.
+ * @param {(p: { pct: number }) => void} [onProgress] 0–100 within this range
  */
-export async function fetchBinanceKlinesRange({ symbol, interval, startTime, endTime, maxRows, feedKind } = {}) {
+export async function fetchBinanceKlinesRange({
+  symbol,
+  interval,
+  startTime,
+  endTime,
+  maxRows,
+  feedKind,
+  onProgress,
+} = {}) {
   const h = binanceKlinesHttp(feedKind);
   if (!h) return [];
   const sym = String(symbol || "").toUpperCase();
@@ -138,12 +190,27 @@ export async function fetchBinanceKlinesRange({ symbol, interval, startTime, end
   const stepMs = tfToMs(intv);
   const start = Math.max(0, Number(startTime) || 0);
   const end = Math.max(start, Number(endTime) || 0);
+  const span = Math.max(1, end - start);
   const page = 1000;
   const rowCap = rowCapForRange(start, end, stepMs, maxRows);
   const pageGuard = Math.max(200, Math.ceil(rowCap / page) + 10);
   const byTs = new Map();
   let cur = start;
   let guard = 0;
+  const report = typeof onProgress === "function"
+    ? (cursorMs) => {
+        try {
+          const raw = ((cursorMs - start) / span) * 100;
+          // ceil so the first completed REST page moves off 0% even on long windows
+          const pct =
+            cursorMs >= end ? 100 : Math.max(0, Math.min(99, Math.ceil(raw - 1e-9)));
+          onProgress({ pct });
+        } catch {
+          /* ignore */
+        }
+      }
+    : null;
+  report?.(start);
   while (cur <= end && byTs.size < rowCap && guard < pageGuard) {
     guard += 1;
     const { data } = await axios.get(`${h.base}${h.path}`, {
@@ -163,9 +230,14 @@ export async function fetchBinanceKlinesRange({ symbol, interval, startTime, end
     }
     const lastOpen = Number(data[data.length - 1][0]);
     if (!Number.isFinite(lastOpen)) break;
-    if (data.length < page) break;
+    if (data.length < page) {
+      report?.(end);
+      break;
+    }
     cur = lastOpen + 1;
+    report?.(Math.min(end, cur));
     if (lastOpen >= end) break;
   }
+  report?.(end);
   return [...byTs.values()].sort((a, b) => a.ts - b.ts);
 }

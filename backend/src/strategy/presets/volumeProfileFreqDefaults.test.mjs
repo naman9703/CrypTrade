@@ -122,10 +122,28 @@ test("fillVolumeProfileFreqDefaults — injects locked chop MFE trail when bot o
   assert.equal(out.vpPreparedAllowlistOnly, undefined);
 });
 
-test("volumeProfilePadFromMs — at least 21d or lookback+1d", async () => {
-  const { volumeProfilePadFromMs } = await import("./volumeProfileOptimized.js");
+test("fillVolumeProfileFreqDefaults — resolves SOL VAL+rej wick40 / HTF0.20 lock", () => {
+  const out = fillVolumeProfileFreqDefaults({
+    ...VOLUME_PROFILE_FREQ_PORTFOLIO_15M,
+    symbol: "SOLUSDT",
+  });
+  assert.equal(out.vpPlaybook, "FREQ");
+  assert.deepEqual(out.vpAllowedSetups, ["val_breakdown", "va_rejection"]);
+  assert.equal(out.vpRequireHtfAlign, true);
+  assert.equal(out.vpMinHtfSepPct, 0.002);
+  assert.equal(out.vpValSellRequirePrior60dBear, true);
+  assert.equal(out.vpValSellPrior60dBearPct, -0.05);
+  assert.equal(out.vpRejectionSellBlockExtendedDown, true);
+  assert.equal(out.vpRejectionExtendedPriorPct, 0.05);
+  assert.equal(out.vpRejectionMinWickRatio, 0.4);
+  assert.equal(out.vpNoveltyEnabled, false);
+});
+
+test("volumeProfilePadFromMs — at least 60d for macroPrior60d", async () => {
+  const { volumeProfilePadFromMs, volumeProfileHistoryBars } = await import("./volumeProfileOptimized.js");
   const from = Date.parse("2025-06-01T00:00:00.000Z");
   const pad = volumeProfilePadFromMs(from, "15m", { vpLookbackBars: 384 });
   const days = (from - pad) / 864e5;
-  assert.ok(days >= 21, `expected >=21d pad, got ${days}`);
+  assert.ok(days >= 60, `expected >=60d pad, got ${days}`);
+  assert.equal(volumeProfileHistoryBars("15m", { vpLookbackBars: 384 }), 5760);
 });

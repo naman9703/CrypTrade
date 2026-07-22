@@ -38,6 +38,7 @@ export function HeaderBar({ onOpenSidebar }: Props = {}) {
   const runningByMode = useAppStore((s) => s.runningByMode ?? {});
   const pushLog = useAppStore((s) => s.pushLog);
   const perSessionTradingMode = useAppStore((s) => s.perSessionTradingMode);
+  const modeSwitchPending = useAppStore((s) => s.modeSwitchPending);
   const authActions = useAuthActions();
 
   const modeUpper = String(mode || "PAPER").toUpperCase();
@@ -125,8 +126,10 @@ export function HeaderBar({ onOpenSidebar }: Props = {}) {
             </div>
 
             <select
-              className="max-w-[9.5rem] truncate rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-200/55 dark:bg-slate-100 dark:bg-slate-900/40 px-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 sm:max-w-none"
+              className="max-w-[9.5rem] truncate rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-200/55 dark:bg-slate-100 dark:bg-slate-900/40 px-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-900 disabled:cursor-wait disabled:opacity-60 sm:max-w-none"
               value={mode || "PAPER"}
+              disabled={Boolean(modeSwitchPending)}
+              aria-busy={Boolean(modeSwitchPending)}
               onChange={(e) => {
                 const next = e.target.value;
                 deferTask(() => {
@@ -159,6 +162,16 @@ export function HeaderBar({ onOpenSidebar }: Props = {}) {
               <option value="BINANCE_TESTNET">BINANCE TESTNET (spot + futures testnet)</option>
               <option value="BINANCE_LIVE">BINANCE LIVE (mainnet · real money)</option>
             </select>
+
+            {modeSwitchPending ? (
+              <span
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center"
+                title={`Switching to ${MODE_LABELS[modeSwitchPending] ?? modeSwitchPending}…`}
+                aria-hidden
+              >
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-sky-500 border-t-transparent dark:border-sky-400" />
+              </span>
+            ) : null}
 
             {authActions?.gated && perSessionTradingMode ? (
               <span

@@ -124,7 +124,10 @@ export function createBinanceCombinedMarketFeed({
   function bufFor(symU) {
     let b = buffers.get(symU);
     if (!b) {
-      b = createCandleBuffer({ max: Math.min(4000, Number(process.env.BINANCE_BUFFER_MAX || 3000)) });
+      b = createCandleBuffer({
+        // ≥60d of 15m (~5760) so VP macroPrior60d is real; cap keeps memory bounded.
+        max: Math.min(8000, Number(process.env.BINANCE_BUFFER_MAX || 6500)),
+      });
       buffers.set(symU, b);
     }
     return b;
@@ -293,7 +296,8 @@ export function createBinanceCombinedMarketFeed({
   async function backfillOne(symU) {
     const interval = normalizeInterval(tf);
     const minFor24h = maxBarsForHistory(interval, 24);
-    const target = Math.max(Number(process.env.BINANCE_BACKFILL_LIMIT || 2000), minFor24h);
+    // Default ≥60d of 15m so VOLUME_PROFILE macroPrior60d gates match research/backtest pad.
+    const target = Math.max(Number(process.env.BINANCE_BACKFILL_LIMIT || 6000), minFor24h);
     const pageLimit = 1000;
     let endTime = undefined;
     let fetched = 0;

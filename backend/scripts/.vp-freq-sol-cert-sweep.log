@@ -1,0 +1,22 @@
+
+SOL cert-path sweep (full window compounded years):
+
+H9_locked               154t  0.55/wk ret=    111% DD=26.69% Cal= 0.55 MCp5=-6.04% P:oosPositive F:mcP5Positive F:calmarOver1 P:wfDegradationOk sleeve=false
+  years: 2021-22:-9.02%/31t  2022-23:19.17%/49t  2023-24:17.88%/13t  2024-25:12.74%/29t  2025-26:46.44%/32t
+
+H8_val_rej              262t  0.93/wk ret=  88.38% DD=40.15% Cal= 0.31 MCp5=-24.11% P:oosPositive F:mcP5Positive F:calmarOver1 P:wfDegradationOk sleeve=false
+  years: 2020-21:-4.66%/15t  2021-22:18.28%/55t  2022-23:40.83%/69t  2023-24:0.3%/36t  2024-25:16.89%/43t  2025-26:1.18%/44t
+
+H8_chop_trail           262t  0.93/wk ret=   51.1% DD=45.04% Cal= 0.17 MCp5=-29.62% P:oosPositive F:mcP5Positive F:calmarOver1 P:wfDegradationOk sleeve=false
+  years: 2020-21:-4.66%/15t  2021-22:18.28%/55t  2022-23:23.01%/69t  2023-24:0.3%/36t  2024-25:7.33%/43t  2025-26:1.18%/44t
+
+H8_chop_voltarget       262t  0.93/wk ret=  87.96% DD=30.95% Cal= 0.39 MCp5=-29.62% P:oosPositive F:mcP5Positive F:calmarOver1 P:wfDegradationOk sleeve=false
+  years: 2020-21:-4%/15t  2021-22:8.99%/55t  2022-23:17.08%/69t  2023-24:11.47%/36t  2024-25:29.89%/43t  2025-26:5.97%/44t
+
+H8_bear_rej_only        205t  0.73/wk ret= 220.91% DD= 34.4% Cal= 0.69 MCp5=-0.25% P:oosPositive F:mcP5Positive F:calmarOver1 P:wfDegradationOk sleeve=false
+  years: 2020-21:-0.95%/9t  2021-22:25.27%/41t  2022-23:23.61%/58t  2023-24:14.51%/24t  2024-25:32.9%/36t  2025-26:37.49%/37t
+
+H11_val_rej_chase       251t  0.89/wk ret= 130.75% DD=42.76% Cal= 0.39 MCp5=-20.68% P:oosPositive F:mcP5Positive F:calmarOver1 P:wfDegradationOk sleeve=false
+  years: 2020-21:-4.66%/15t  2021-22:15.56%/52t  2022-23:40.76%/66t  2023-24:0.3%/36t  2024-25:41.89%/39t  2025-26:4.55%/43t
+
+Wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-sol-cert-sweep.json

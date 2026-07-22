@@ -26,6 +26,24 @@ test("store.ts imports symbolPriceSanity (chart + depth routing)", () => {
   );
 });
 
+test("store.ts resets chart market buffers on mode switch", () => {
+  assert.match(
+    storeSrc,
+    /export function resetChartSessionForModeSwitch\(/,
+    "store must export resetChartSessionForModeSwitch for mode changes",
+  );
+  assert.match(
+    storeSrc,
+    /modeChangedHello[\s\S]*base\.candles = \[\]/,
+    "hello handler must clear candles when trading mode changes",
+  );
+  assert.match(
+    storeSrc,
+    /chartRekey \|\| modeChanged \? \{ candles: \[\], market: undefined, depth: undefined \}/,
+    "state snapshot must clear chart feed on mode change",
+  );
+});
+
 /** Mirrors scheduleDepthFlush: reject depth when symbol != active chart view. */
 function depthAppliesToChart(chartDisplaySymbol, botSymbol, depthPayloadSymbol) {
   const chartSym = normalizeSym(chartDisplaySymbol ?? botSymbol);

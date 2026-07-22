@@ -475,19 +475,23 @@ export function passesVpRegimeImmunity(candles, idx, side, setup, vp, pre, path,
       const priorThresh = Number(opts.vpSellMacroPrior20dBullPct ?? 0.02);
       const above = pre.macroAboveEma20d?.[idx] === true;
       const slope = Number(pre.macroEma5dSlope?.[idx] ?? 0);
-      const prior20 = Number(pre.macroPrior20d?.[idx] ?? 0);
-      const macroBull = above || slope > 0 || prior20 > priorThresh;
+      const prior20Raw = pre.macroPrior20d?.[idx];
+      const prior20 =
+        prior20Raw == null ? null : Number.isFinite(Number(prior20Raw)) ? Number(prior20Raw) : null;
+      const macroBull = above || slope > 0 || (prior20 != null && prior20 > priorThresh);
       minSell = macroBull ? hard : soft;
       const nonBearMin = Number(opts.vpSellNonBearMinHtfSepPct ?? 0);
       if (nonBearMin > 0) {
         const bearFloor = Number(opts.vpSellBearPrior60dPct ?? -0.05);
-        const prior60 = Number(pre.macroPrior60d?.[idx] ?? 0);
-        if (prior60 > bearFloor) minSell = Math.max(minSell, nonBearMin);
+        const prior60Raw = pre.macroPrior60d?.[idx];
+        const prior60 =
+          prior60Raw == null ? null : Number.isFinite(Number(prior60Raw)) ? Number(prior60Raw) : null;
+        if (prior60 == null || prior60 > bearFloor) minSell = Math.max(minSell, nonBearMin);
       }
       const weakBearMin = Number(opts.vpSellWeakBearMinHtfSepPct ?? 0);
       if (weakBearMin > 0 && !macroBull) {
         const weakBearFloor = Number(opts.vpSellWeakBearPrior20dFloorPct ?? -0.1);
-        if (prior20 > weakBearFloor) minSell = Math.max(minSell, weakBearMin);
+        if (prior20 == null || prior20 > weakBearFloor) minSell = Math.max(minSell, weakBearMin);
       }
     }
     return htfSep >= minSell;

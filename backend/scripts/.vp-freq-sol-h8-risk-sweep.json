@@ -1,0 +1,54 @@
+{
+  "rows": [
+    {
+      "risk": 2.5,
+      "trades": 205,
+      "ret": 221.55,
+      "dd": 34.4,
+      "calmar": 0.69,
+      "mcP5": -0.12,
+      "allPass": false,
+      "gates": "P:oosPositive F:mcP5Positive F:calmarOver1 P:wfDegradationOk"
+    },
+    {
+      "risk": 2,
+      "trades": 205,
+      "ret": 169.11,
+      "dd": 28.25,
+      "calmar": 0.7,
+      "mcP5": -0.12,
+      "allPass": false,
+      "gates": "P:oosPositive F:mcP5Positive F:calmarOver1 P:wfDegradationOk"
+    },
+    {
+      "risk": 1.75,
+      "trades": 205,
+      "ret": 143.77,
+      "dd": 25.03,
+      "calmar": 0.71,
+      "mcP5": -0.12,
+      "allPass": false,
+      "gates": "P:oosPositive F:mcP5Positive F:calmarOver1 P:wfDegradationOk"
+    },
+    {
+      "risk": 1.5,
+      "trades": 205,
+      "ret": 119.32,
+      "dd": 21.72,
+      "calmar": 0.71,
+      "mcP5": -0.12,
+      "allPass": false,
+      "gates": "P:oosPositive F:mcP5Positive F:calmarOver1 P:wfDegradationOk"
+    },
+    {
+      "risk": 1.25,
+      "trades": 205,
+      "ret": 95.96,
+      "dd": 18.32,
+      "calmar": 0.71,
+      "mcP5": -0.12,
+      "allPass": false,
+      "gates": "P:oosPositive F:mcP5Positive F:calmarOver1 P:wfDegradationOk"
+    }
+  ]
+}

@@ -8521,6 +8521,7 @@ export function createBot({
         interval: state.timeframe,
         limit,
         feedKind: effectiveMarketFeedKind(),
+        tradingMode: runtimeTradingMode(),
         chartPublic: true,
       });
     } catch {

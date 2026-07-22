@@ -2,7 +2,7 @@
  * Form to launch a new backtest. Each strategy has one current saved row (`latestVersion`);
  * manual Save in Trading updates that row in place — we backtest that snapshot only (no version picker).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { ApiTradingModeSlug } from "../../lib/tradingModeSlug";
 import type { Strategy, StrategyVersion } from "../../types/strategy";
@@ -23,6 +23,37 @@ const POPULAR_SYMBOLS = [
   "DOGEUSDT", "ADAUSDT", "LINKUSDT", "AVAXUSDT", "DOTUSDT",
   "MATICUSDT", "LTCUSDT", "UNIUSDT", "ATOMUSDT", "NEARUSDT",
 ];
+
+const EXTRA_SYMBOLS_KEY = "backtest_extra_symbols_v1";
+const SYMBOL_SEARCH_DEBOUNCE_MS = 280;
+
+function readExtraSymbols(): string[] {
+  try {
+    const raw = localStorage.getItem(EXTRA_SYMBOLS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed.map((s) => String(s || "").toUpperCase()).filter(Boolean))];
+  } catch {
+    return [];
+  }
+}
+
+function writeExtraSymbols(symbols: string[]) {
+  try {
+    localStorage.setItem(EXTRA_SYMBOLS_KEY, JSON.stringify(symbols.slice(0, 50)));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+/** Normalize typed base or pair to a USDT symbol (e.g. SOL → SOLUSDT). */
+function normalizeBacktestSymbol(q: string): string | null {
+  const raw = String(q || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!raw) return null;
+  const sym = raw.endsWith("USDT") ? raw : `${raw}USDT`;
+  return /^[A-Z0-9]{2,16}USDT$/.test(sym) ? sym : null;
+}
 
 type BacktestPositionSizingMode = "RISK_AT_SL" | "RISK_AT_SL_FULL_MARGIN" | "FULL_EQUITY_MARGIN";
 type PortfolioPositionSizingMode =
@@ -111,7 +142,13 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
   const [coinMode, setCoinMode] = useState<"single" | "multiple">("single");
   const [symbol, setSymbol] = useState<string>("BTCUSDT");
   const [portfolioSymbols, setPortfolioSymbols] = useState<string[]>([]);
+  const [extraSymbols, setExtraSymbols] = useState<string[]>(() => readExtraSymbols());
   const [customSymbolMode, setCustomSymbolMode] = useState<boolean>(false);
+  const [customQuery, setCustomQuery] = useState<string>("");
+  const [symbolSuggestions, setSymbolSuggestions] = useState<string[]>([]);
+  const [suggestionsBusy, setSuggestionsBusy] = useState(false);
+  const customInputRef = useRef<HTMLInputElement | null>(null);
+  const searchSeqRef = useRef(0);
   const [timeframe, setTimeframe] = useState<string>("15m");
   const [from, setFrom] = useState<string>(() => defaultFromDate());
   const [to, setTo] = useState<string>(() => defaultToDate());
@@ -210,15 +247,39 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
     }
   }, [trailMicroTf, trailMicroTfOptions]);
 
-  /** Merged, de-duped symbol list: strategy config first, then popular defaults. */
+  /** Merged, de-duped symbol list: strategy config, user-added, then popular defaults. */
   const availableSymbols = useMemo(() => {
     const fromCfg = symbolsFromCfg(effectiveCfgRaw);
     const merged = [...fromCfg];
+    for (const s of extraSymbols) {
+      if (!merged.includes(s)) merged.push(s);
+    }
     for (const s of POPULAR_SYMBOLS) {
       if (!merged.includes(s)) merged.push(s);
     }
     return merged;
-  }, [effectiveCfgRaw]);
+  }, [effectiveCfgRaw, extraSymbols]);
+
+  const commitCustomSymbol = (raw: string) => {
+    const next = normalizeBacktestSymbol(raw);
+    if (!next) return;
+    setExtraSymbols((prev) => {
+      if (prev.includes(next)) return prev;
+      const updated = [next, ...prev].slice(0, 50);
+      writeExtraSymbols(updated);
+      return updated;
+    });
+    setSymbol(next);
+    setCustomQuery("");
+    setSymbolSuggestions([]);
+    setCustomSymbolMode(false);
+  };
+
+  const cancelCustomSymbol = () => {
+    setCustomQuery("");
+    setSymbolSuggestions([]);
+    setCustomSymbolMode(false);
+  };
 
   useEffect(() => {
     if (configSource === "instance" && selectedInstance?.strategyVersionId) {
@@ -251,12 +312,55 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
     onSymbolChange?.(symbol);
   }, [symbol, onSymbolChange]);
 
-  // If the current symbol is in the list, exit custom-entry mode automatically
   useEffect(() => {
-    if (customSymbolMode && availableSymbols.includes(symbol)) {
-      setCustomSymbolMode(false);
+    if (!customSymbolMode) return;
+    customInputRef.current?.focus();
+  }, [customSymbolMode]);
+
+  useEffect(() => {
+    if (!customSymbolMode) {
+      setSymbolSuggestions([]);
+      setSuggestionsBusy(false);
+      return;
     }
-  }, [availableSymbols, customSymbolMode, symbol]);
+    const q = customQuery.trim().toUpperCase();
+    if (!q) {
+      setSymbolSuggestions([]);
+      setSuggestionsBusy(false);
+      return;
+    }
+
+    const localHits = availableSymbols.filter((s) => {
+      const su = s.toUpperCase();
+      const base = su.endsWith("USDT") ? su.slice(0, -4) : su;
+      return su.includes(q) || base.includes(q);
+    });
+
+    const seq = ++searchSeqRef.current;
+    setSuggestionsBusy(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const r = await api.universeSymbols({ q });
+          if (searchSeqRef.current !== seq) return;
+          const remote = r?.ok && Array.isArray(r.symbols) ? r.symbols : [];
+          const merged: string[] = [];
+          for (const s of [...localHits, ...remote]) {
+            const u = String(s || "").toUpperCase();
+            if (u && !merged.includes(u)) merged.push(u);
+          }
+          setSymbolSuggestions(merged.slice(0, 40));
+        } catch {
+          if (searchSeqRef.current !== seq) return;
+          setSymbolSuggestions(localHits.slice(0, 40));
+        } finally {
+          if (searchSeqRef.current === seq) setSuggestionsBusy(false);
+        }
+      })();
+    }, SYMBOL_SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [availableSymbols, customQuery, customSymbolMode]);
 
   useEffect(() => {
     onTfChange?.(timeframe);
@@ -579,28 +683,100 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
       <div className="grid grid-cols-2 gap-2">
         <Field label="Symbol">
           {customSymbolMode ? (
-            <div className="flex gap-1">
-              <input
-                autoFocus
-                value={symbol}
-                onChange={(e) => setSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
-                onBlur={() => { if (symbol && !availableSymbols.includes(symbol)) return; setCustomSymbolMode(false); }}
-                className="input-base min-w-0 flex-1"
-                placeholder="e.g. SOLUSDT"
-              />
-              <button
-                type="button"
-                onClick={() => { setSymbol("BTCUSDT"); setCustomSymbolMode(false); }}
-                className="shrink-0 rounded border border-slate-300 px-1.5 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                title="Cancel"
-              >✕</button>
+            <div className="relative">
+              <div className="flex gap-1">
+                <input
+                  ref={customInputRef}
+                  autoFocus
+                  value={customQuery}
+                  onChange={(e) => setCustomQuery(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelCustomSymbol();
+                      return;
+                    }
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const pick = symbolSuggestions[0] ?? customQuery;
+                      commitCustomSymbol(pick);
+                    }
+                  }}
+                  className="input-base min-w-0 flex-1"
+                  placeholder="Type coin (e.g. SOL or SOLUSDT)"
+                  spellCheck={false}
+                  autoComplete="off"
+                  aria-autocomplete="list"
+                  aria-expanded={Boolean(customQuery)}
+                />
+                <button
+                  type="button"
+                  onClick={() => commitCustomSymbol(customQuery)}
+                  disabled={!normalizeBacktestSymbol(customQuery)}
+                  className="shrink-0 rounded border border-sky-300 bg-sky-50 px-2 text-[11px] font-semibold text-sky-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+                  title="Add symbol"
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelCustomSymbol}
+                  className="shrink-0 rounded border border-slate-300 px-1.5 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                  title="Cancel"
+                >
+                  ✕
+                </button>
+              </div>
+              {customQuery ? (
+                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-950">
+                  {suggestionsBusy && symbolSuggestions.length === 0 ? (
+                    <div className="px-2 py-1.5 text-[11px] text-slate-500">Searching…</div>
+                  ) : symbolSuggestions.length === 0 ? (
+                    normalizeBacktestSymbol(customQuery) ? (
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between px-2 py-1.5 text-left font-mono text-[11px] text-emerald-800 hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-emerald-950/40"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => commitCustomSymbol(customQuery)}
+                      >
+                        <span>Add {normalizeBacktestSymbol(customQuery)}</span>
+                        <span className="text-[10px] font-semibold">Enter</span>
+                      </button>
+                    ) : (
+                      <div className="px-2 py-1.5 text-[11px] text-slate-500">Type a valid coin (e.g. SOL)</div>
+                    )
+                  ) : (
+                    <ul>
+                      {symbolSuggestions.map((s) => (
+                        <li key={s}>
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between px-2 py-1.5 text-left font-mono text-[11px] text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => commitCustomSymbol(s)}
+                          >
+                            <span>{s}</span>
+                            {!availableSymbols.includes(s) ? (
+                              <span className="text-[10px] text-slate-500">add</span>
+                            ) : null}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-1 text-[10px] text-slate-500">Type a coin to search, then select or press Enter.</p>
+              )}
             </div>
           ) : (
             <div className="flex gap-1">
               <select
-                value={availableSymbols.includes(symbol) ? symbol : "__custom__"}
+                value={symbol}
                 onChange={(e) => {
                   if (e.target.value === "__custom__") {
+                    setCustomQuery("");
+                    setSymbolSuggestions([]);
                     setCustomSymbolMode(true);
                   } else {
                     setSymbol(e.target.value);

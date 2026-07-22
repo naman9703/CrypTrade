@@ -145,6 +145,24 @@ describe("vpValSellChaseFilter", () => {
   });
 });
 
+describe("vpValSellBlockReliefBounce", () => {
+  const reliefPre = { macroPrior5d: [-0.05], macroPrior20d: [-0.25], macroPrior60d: [-0.3] };
+  const alignedPre = { macroPrior5d: [-0.22], macroPrior20d: [-0.25], macroPrior60d: [-0.3] };
+  const opts = { vpValSellBlockReliefBounce: true, vpValSellReliefBounceMaxPct: 0.15 };
+
+  it("blocks VAL short when 5d has relieved hard vs 20d", () => {
+    assert.equal(passesVpValSellMacroFilter(reliefPre, 0, "SELL", "val_breakdown", opts), false);
+  });
+
+  it("allows VAL short when 5d still tracks 20d dump", () => {
+    assert.equal(passesVpValSellMacroFilter(alignedPre, 0, "SELL", "val_breakdown", opts), true);
+  });
+
+  it("does not touch va_rejection", () => {
+    assert.equal(passesVpValSellMacroFilter(reliefPre, 0, "SELL", "va_rejection", opts), true);
+  });
+});
+
 describe("vpBuyRejectionMinBody", () => {
   const vp = {
     vah: 108,

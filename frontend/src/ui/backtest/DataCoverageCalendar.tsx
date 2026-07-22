@@ -5,6 +5,9 @@
  * Sync pulls Binance **REST klines** (official OHLC) into `ohlcv_candles`: USD-M
  * futures (`/fapi/v1/klines`) vs spot (`/api/v3/klines`) — pick the venue that
  * matches your strategy's market mode or bars won't match live execution.
+ *
+ * Long windows run as async jobs (POST returns jobId); the button polls progress
+ * so it does not stick on "Syncing…" after proxy/HTTP idle timeouts.
  */
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api/client";
@@ -73,6 +76,37 @@ function sumFootprint(a: BacktestCoverage | null, b: BacktestCoverage | null) {
   >;
 }
 
+const PHASE_LABEL: Record<string, string> = {
+  klines: "OHLC",
+  klines_1m: "1m OHLC",
+  mark: "mark",
+  funding: "funding",
+  fear_greed: "F&G",
+  open_interest: "OI",
+  done: "done",
+  failed: "failed",
+};
+
+async function waitForDataSyncJob(
+  jobId: string,
+  onProgress: (pct: number, phase: string | null) => void,
+): Promise<void> {
+  const started = Date.now();
+  const maxMs = 2 * 60 * 60 * 1000;
+  while (Date.now() - started < maxMs) {
+    const st = await api.getDataSyncJob(jobId);
+    const status = String(st?.status ?? "");
+    const pct = Number(st?.progressPct ?? 0);
+    onProgress(Number.isFinite(pct) ? pct : 0, st?.phase != null ? String(st.phase) : null);
+    if (status === "done") return;
+    if (status === "failed") {
+      throw new Error(st?.error ? String(st.error) : "sync_failed");
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error("sync_timeout");
+}
+
 type Props = {
   symbol: string;
   timeframe: string;
@@ -86,7 +120,11 @@ export function DataCoverageCalendar({ symbol, timeframe, onSymbolChange, onTfCh
   const [markCoverage, setMarkCoverage] = useState<BacktestCoverage | null>(null);
   const [markMonthly, setMarkMonthly] = useState<BacktestMonthlyCoverage[]>([]);
   const [syncing, setSyncing] = useState<boolean>(false);
+  const [syncPct, setSyncPct] = useState<number>(0);
+  const [syncPhase, setSyncPhase] = useState<string | null>(null);
   const [markSyncing, setMarkSyncing] = useState<boolean>(false);
+  const [markSyncPct, setMarkSyncPct] = useState<number>(0);
+  const [markSyncPhase, setMarkSyncPhase] = useState<string | null>(null);
   const [historyYears, setHistoryYears] = useState<HistoryYears>(1);
   const [err, setErr] = useState<string | null>(null);
   const [markErr, setMarkErr] = useState<string | null>(null);
@@ -121,24 +159,46 @@ export function DataCoverageCalendar({ symbol, timeframe, onSymbolChange, onTfCh
     void refresh();
   }, [refresh]);
 
+  // While syncing, refresh coverage periodically so the grid updates live.
+  useEffect(() => {
+    if (!syncing && !markSyncing) return;
+    const id = setInterval(() => {
+      void refresh();
+    }, 4000);
+    return () => clearInterval(id);
+  }, [syncing, markSyncing, refresh]);
+
   async function sync() {
     setErr(null);
     setSyncing(true);
+    setSyncPct(0);
+    setSyncPhase("klines");
     try {
       const from = dateYearsAgo(historyYears);
-      await api.syncHistoricalData({
+      const started = await api.syncHistoricalData({
         symbol,
         timeframe,
         from: from.toISOString(),
         to: new Date().toISOString(),
         market,
       });
+      const jobId = started?.jobId != null ? String(started.jobId) : "";
+      if (jobId && started?.async !== false) {
+        await waitForDataSyncJob(jobId, (pct, phase) => {
+          setSyncPct(pct);
+          setSyncPhase(phase);
+        });
+      }
+      setSyncPct(100);
+      setSyncPhase("done");
       await refresh();
     } catch (e: unknown) {
       const m = e instanceof Error ? e.message : String(e ?? "error");
       setErr(m);
     } finally {
       setSyncing(false);
+      setSyncPct(0);
+      setSyncPhase(null);
     }
   }
 
@@ -146,25 +206,51 @@ export function DataCoverageCalendar({ symbol, timeframe, onSymbolChange, onTfCh
     if (market !== "futures") return;
     setMarkErr(null);
     setMarkSyncing(true);
+    setMarkSyncPct(0);
+    setMarkSyncPhase("mark");
     try {
       const from = dateYearsAgo(historyYears);
-      await api.syncMarkHistoricalData({
+      const started = await api.syncMarkHistoricalData({
         symbol,
         from: from.toISOString(),
         to: new Date().toISOString(),
       });
+      const jobId = started?.jobId != null ? String(started.jobId) : "";
+      if (jobId && started?.async !== false) {
+        await waitForDataSyncJob(jobId, (pct, phase) => {
+          setMarkSyncPct(pct);
+          setMarkSyncPhase(phase);
+        });
+      }
+      setMarkSyncPct(100);
+      setMarkSyncPhase("done");
       await refresh();
     } catch (e: unknown) {
       const m = e instanceof Error ? e.message : String(e ?? "error");
       setMarkErr(m);
     } finally {
       setMarkSyncing(false);
+      setMarkSyncPct(0);
+      setMarkSyncPhase(null);
     }
   }
 
   const windowFootprint = sumFootprint(coverage, market === "futures" ? markCoverage : null);
   const ohlcFootprintLine = formatFootprintLine(coverage);
   const markFootprintLine = formatFootprintLine(markCoverage);
+
+  function syncButtonLabel(
+    busy: boolean,
+    pct: number,
+    phase: string | null,
+    idle: string,
+    busyWord: string,
+  ) {
+    if (!busy) return idle;
+    const phaseLabel = phase ? PHASE_LABEL[phase] ?? phase : null;
+    const pctLabel = Number.isFinite(pct) ? `${Math.round(pct)}%` : "…";
+    return phaseLabel ? `${busyWord} ${pctLabel} · ${phaseLabel}` : `${busyWord} ${pctLabel}`;
+  }
 
   function monthlyGrid(items: BacktestMonthlyCoverage[]) {
     return (
@@ -260,9 +346,18 @@ export function DataCoverageCalendar({ symbol, timeframe, onSymbolChange, onTfCh
         type="button"
         onClick={sync}
         disabled={syncing}
-        className="mt-3 w-full rounded bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-500 disabled:opacity-60"
+        className="relative mt-3 w-full overflow-hidden rounded bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-500 disabled:opacity-90"
       >
-        {syncing ? "Syncing…" : `Sync ${historyYears}y backfill`}
+        {syncing && (
+          <span
+            className="absolute inset-y-0 left-0 bg-sky-400/50 transition-[width] duration-300"
+            style={{ width: `${Math.max(2, Math.min(100, syncPct))}%` }}
+            aria-hidden
+          />
+        )}
+        <span className="relative">
+          {syncButtonLabel(syncing, syncPct, syncPhase, `Sync ${historyYears}y backfill`, "Syncing")}
+        </span>
       </button>
       {err && <div className="mt-2 rounded bg-rose-50 px-2 py-1 text-[11px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{err}</div>}
 
@@ -279,9 +374,24 @@ export function DataCoverageCalendar({ symbol, timeframe, onSymbolChange, onTfCh
             type="button"
             onClick={syncMark}
             disabled={markSyncing}
-            className="mt-3 w-full rounded border border-violet-500 bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-60"
+            className="relative mt-3 w-full overflow-hidden rounded border border-violet-500 bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-90"
           >
-            {markSyncing ? "Syncing mark…" : `Sync mark ${historyYears}y (1m)`}
+            {markSyncing && (
+              <span
+                className="absolute inset-y-0 left-0 bg-violet-400/50 transition-[width] duration-300"
+                style={{ width: `${Math.max(2, Math.min(100, markSyncPct))}%` }}
+                aria-hidden
+              />
+            )}
+            <span className="relative">
+              {syncButtonLabel(
+                markSyncing,
+                markSyncPct,
+                markSyncPhase,
+                `Sync mark ${historyYears}y (1m)`,
+                "Syncing mark",
+              )}
+            </span>
           </button>
           {markErr && (
             <div className="mt-2 rounded bg-rose-50 px-2 py-1 text-[11px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
