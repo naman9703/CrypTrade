@@ -1,0 +1,29 @@
+
+=== AVAX VP FREQ certification — AVAXUSDT 15m 2021-01-01→2026-05-31 ===
+locked preset R22 · risk%=2.5 lev=12x · expanding WF folds=5
+
+ensureKlines…
+candles=195456 funding=3286 first=2020-11-02T00:00:00.000Z last=2026-05-30T23:45:00.000Z
+FULL: trades=158 (0.56/wk) net=810.6% CAGR=48.6% Calmar=1.90 maxDD=25.6% Sharpe=1.12 PF=1.91 WR=40%
+  years: 2020-21=13.7%/37  2021-22=107.6%/27  2022-23=-22.7%/23  2023-24=97.7%/32  2024-25=51.2%/20  2025-26=67.0%/19
+  negYears=2022-23
+MC(1% risk): ret p5=48.1% p50=167.2% p95=415.0%  maxDD p95=24.0% ruin=0.0%
+
+WF expanding folds=5 embargo=96bars (~1d)
+  fold 0: 2021-11-26→2022-10-21  trainN=49 testN=23 testRet=62.9% DD=15.7% WR=48%
+  fold 1: 2022-10-21→2023-09-15  trainN=73 testN=17 testRet=6.5% DD=21.7% WR=35%
+  fold 2: 2023-09-16→2024-08-10  trainN=90 testN=30 testRet=41.2% DD=13.6% WR=40%
+  fold 3: 2024-08-10→2025-07-05  trainN=120 testN=20 testRet=56.7% DD=15.8% WR=35%
+  fold 4: 2025-07-05→2026-05-30  trainN=140 testN=18 testRet=72.3% DD=10.1% WR=44%
+
+WF: degradation=-24.3% OOSsumRet=239.7% OOStrades=108
+GATES: PASS:oosPositive PASS:mcP5Positive PASS:calmarOver1 PASS:wfDegradationOk
+EXTRA: PASS:oosTradesGe30 FAIL:frequencyDeployable PASS:noCatastrophicYear
+
+COST STRESS (full window):
+  slip_x2      N=159 ret=345.5% DD=36.3%
+  slip_x4      N=160 ret=-36.2% DD=68.1%
+  liq_crunch   N=164 ret=-96.1% DD=96.3%
+
+VERDICT: RESEARCH_SLEEVE_LOW_FREQ (gates=pass freq=low)
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-avax-certification.json

@@ -757,12 +757,24 @@ export async function runSimulation(args) {
           : applySlippage(isLong ? "SELL" : "BUY", bar.close, cm.slippagePct);
       }
 
-      const deadTradeBars = Math.max(0, Math.floor(Number(cfg?.liqMapDeadTradeExitBars ?? 0)));
-      const deadTradeMinMfeR = Math.max(0, Number(cfg?.liqMapDeadTradeMinMfeR ?? 0));
-      const deadTradeMaxLossR = Math.max(0, Number(cfg?.liqMapDeadTradeMaxLossR ?? 0.55));
+      const deadTradeBars = Math.max(
+        0,
+        Math.floor(
+          Number(cfg?.intradayLiqDeadTradeExitBars ?? cfg?.liqMapDeadTradeExitBars ?? 0),
+        ),
+      );
+      const deadTradeMinMfeR = Math.max(
+        0,
+        Number(cfg?.intradayLiqDeadTradeMinMfeR ?? cfg?.liqMapDeadTradeMinMfeR ?? 0),
+      );
+      const deadTradeMaxLossR = Math.max(
+        0,
+        Number(cfg?.intradayLiqDeadTradeMaxLossR ?? cfg?.liqMapDeadTradeMaxLossR ?? 0.55),
+      );
+      const deadTradeStrategies = new Set(["LIQUIDITY_MAP", "SR_INTRADAY", "INTRADAY_PRO"]);
       if (
         !exitReason &&
-        strategyKey === "LIQUIDITY_MAP" &&
+        deadTradeStrategies.has(strategyKey) &&
         deadTradeBars > 0 &&
         deadTradeMinMfeR > 0 &&
         deadTradeMaxLossR > 0 &&

@@ -1,0 +1,64 @@
+{
+  "note": "partial — process died on last variant",
+  "soft": [
+    {
+      "name": "keep_all",
+      "n": 1034,
+      "tw": 6.6,
+      "pf": 0.654,
+      "ret": -99.68
+    },
+    {
+      "name": "vol_ge_1_2",
+      "n": 820,
+      "tw": 5.24,
+      "pf": 0.697,
+      "ret": -67.28
+    },
+    {
+      "name": "combo_pdh_vol12_h720",
+      "n": 342,
+      "tw": 2.18,
+      "pf": 0.806,
+      "ret": -16.03
+    }
+  ],
+  "hard": {
+    "H0_CORE": {
+      "FULL": {
+        "pf": 0.654,
+        "ret": -99.68,
+        "n": 1034,
+        "tw": 6.6
+      }
+    },
+    "G_vol12": {
+      "FULL": {
+        "pf": 0.737,
+        "ret": -97.93,
+        "n": 869,
+        "tw": 5.55
+      }
+    },
+    "C_guide_full_mild": {
+      "FULL": {
+        "pf": 0.416,
+        "ret": -77.63,
+        "n": 156,
+        "tw": 1
+      },
+      "Y25": {
+        "pf": 1.034,
+        "ret": 0.64
+      }
+    },
+    "C_guide_noHtf": {
+      "FULL": {
+        "pf": 0.514,
+        "ret": -93.4,
+        "n": 325,
+        "tw": 2.08
+      }
+    }
+  }
+}

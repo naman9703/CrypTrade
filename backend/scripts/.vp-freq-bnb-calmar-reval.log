@@ -1,0 +1,28 @@
+
+=== BNB VP FREQ certification — BNBUSDT 15m 2020-01-01→2026-05-31 ===
+locked preset · risk%=1 lev=5x · expanding WF folds=5
+
+candles=220960 funding=6571 first=2020-02-10T08:00:00.000Z last=2026-05-30T23:45:00.000Z
+FULL: trades=108 (0.32/wk) net=74.6% CAGR=9.2% Calmar=0.94 maxDD=9.8% Sharpe=0.92 PF=1.76 WR=42%
+  years: 2019-20=-0.6%/4  2020-21=11.0%/30  2021-22=35.0%/27  2022-23=-3.3%/3  2023-24=-2.4%/14  2024-25=7.9%/14  2025-26=15.2%/16
+  negYears=2019-20,2022-23,2023-24
+MC(1% risk): ret p5=15.8% p50=72.6% p95=162.1%  maxDD p95=18.2% ruin=0.0%
+
+WF expanding folds=5 embargo=96bars (~1d)
+  fold 0: 2021-02-27→2022-03-18  trainN=21 testN=38 testRet=50.4% DD=3.5% WR=55%
+  fold 1: 2022-03-18→2023-04-06  trainN=59 testN=5 testRet=-2.0% DD=4.5% WR=20%
+  fold 2: 2023-04-06→2024-04-23  trainN=64 testN=14 testRet=-2.4% DD=5.6% WR=29%
+  fold 3: 2024-04-23→2025-05-12  trainN=78 testN=14 testRet=7.9% DD=3.6% WR=50%
+  fold 4: 2025-05-12→2026-05-30  trainN=92 testN=16 testRet=15.2% DD=7.1% WR=38%
+
+WF: degradation=7.0% OOSsumRet=69.1% OOStrades=87
+GATES: PASS:oosPositive PASS:mcP5Positive FAIL:calmarOver1 PASS:wfDegradationOk
+EXTRA: PASS:oosTradesGe30 FAIL:frequencyDeployable PASS:noCatastrophicYear
+
+COST STRESS (full window):
+  slip_x2      N=109 ret=44.6% DD=10.8%
+  slip_x4      N=109 ret=24.5% DD=12.9%
+  liq_crunch   N=112 ret=-43.7% DD=44.7%
+
+VERDICT: REJECT_CERTIFICATION (gates=fail freq=low)
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-bnb-certification.json

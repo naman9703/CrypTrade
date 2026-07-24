@@ -1,0 +1,245 @@
+{
+  "generatedAt": "2026-07-23T10:33:03.596Z",
+  "rows": [
+    {
+      "id": "H0_CORE",
+      "f": {
+        "n": 1056,
+        "tw": 6.74,
+        "ret": -99.86,
+        "pf": 0.534,
+        "wr": 31.5,
+        "dd": 99.87,
+        "cal": -0.89,
+        "exits": {
+          "sl": 465,
+          "time_stop": 230,
+          "tp": 206,
+          "be": 154,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 337,
+        "tw": 6.46,
+        "ret": -0.99,
+        "pf": 0.598,
+        "wr": 32.3,
+        "dd": 1,
+        "cal": -0.99,
+        "exits": {
+          "sl": 151,
+          "be": 49,
+          "time_stop": 64,
+          "tp": 72,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    },
+    {
+      "id": "X5_beOff",
+      "f": {
+        "n": 1034,
+        "tw": 6.6,
+        "ret": -99.68,
+        "pf": 0.654,
+        "wr": 39.3,
+        "dd": 99.7,
+        "cal": -0.85,
+        "exits": {
+          "sl": 510,
+          "time_stop": 274,
+          "tp": 249,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 329,
+        "tw": 6.31,
+        "ret": -1.92,
+        "pf": 0.657,
+        "wr": 39.5,
+        "dd": 1.94,
+        "cal": -0.99,
+        "exits": {
+          "sl": 169,
+          "time_stop": 73,
+          "tp": 86,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    },
+    {
+      "id": "X5_beOff_maxTp3",
+      "f": {
+        "n": 1011,
+        "tw": 6.46,
+        "ret": -99.72,
+        "pf": 0.651,
+        "wr": 37.3,
+        "dd": 99.74,
+        "cal": -0.86,
+        "exits": {
+          "sl": 511,
+          "time_stop": 331,
+          "tp": 168,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 318,
+        "tw": 6.1,
+        "ret": -2.36,
+        "pf": 0.553,
+        "wr": 36.8,
+        "dd": 2.38,
+        "cal": -0.99,
+        "exits": {
+          "sl": 167,
+          "time_stop": 98,
+          "tp": 52,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    },
+    {
+      "id": "X5_beOff_maxTp5",
+      "f": {
+        "n": 1006,
+        "tw": 6.43,
+        "ret": -99.79,
+        "pf": 0.629,
+        "wr": 36.5,
+        "dd": 99.81,
+        "cal": -0.87,
+        "exits": {
+          "sl": 513,
+          "time_stop": 360,
+          "tp": 132,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 317,
+        "tw": 6.08,
+        "ret": -2.25,
+        "pf": 0.511,
+        "wr": 36.3,
+        "dd": 2.26,
+        "cal": -0.99,
+        "exits": {
+          "sl": 167,
+          "time_stop": 109,
+          "tp": 40,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    },
+    {
+      "id": "MIT_mid_beOff",
+      "f": {
+        "n": 902,
+        "tw": 5.76,
+        "ret": -97.08,
+        "pf": 0.812,
+        "wr": 41.4,
+        "dd": 97.58,
+        "cal": -0.71,
+        "exits": {
+          "sl": 456,
+          "time_stop": 174,
+          "tp": 271,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 279,
+        "tw": 5.35,
+        "ret": -7.24,
+        "pf": 0.742,
+        "wr": 40.1,
+        "dd": 7.42,
+        "cal": -0.98,
+        "exits": {
+          "sl": 147,
+          "time_stop": 49,
+          "tp": 82,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    },
+    {
+      "id": "MIT_75_beOff",
+      "f": {
+        "n": 735,
+        "tw": 4.69,
+        "ret": -97.65,
+        "pf": 0.752,
+        "wr": 40.7,
+        "dd": 98.02,
+        "cal": -0.73,
+        "exits": {
+          "sl": 387,
+          "tp": 226,
+          "time_stop": 121,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 231,
+        "tw": 4.43,
+        "ret": -6.85,
+        "pf": 0.689,
+        "wr": 39.8,
+        "dd": 7.15,
+        "cal": -0.96,
+        "exits": {
+          "sl": 127,
+          "tp": 71,
+          "time_stop": 32,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    },
+    {
+      "id": "MIT_lvl_beOff",
+      "f": {
+        "n": 581,
+        "tw": 3.71,
+        "ret": -95.37,
+        "pf": 0.771,
+        "wr": 41.8,
+        "dd": 95.8,
+        "cal": -0.67,
+        "exits": {
+          "sl": 303,
+          "tp": 187,
+          "time_stop": 90,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 179,
+        "tw": 3.43,
+        "ret": -18.15,
+        "pf": 0.564,
+        "wr": 36.3,
+        "dd": 19.13,
+        "cal": -0.95,
+        "exits": {
+          "sl": 105,
+          "tp": 51,
+          "time_stop": 22,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    }
+  ]
+}

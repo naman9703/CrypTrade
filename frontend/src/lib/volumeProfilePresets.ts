@@ -155,8 +155,8 @@ export const VOLUME_PROFILE_FREQ_BNB_15M = {
   vpPreparedBlockVacuumValBear: true,
   vpPreparedBlockVacuumVah: false,
   vpValSellBlockFlatPrior60: true,
-  vpValSellFlatPrior60LoPct: -0.05,
-  vpValSellFlatPrior60HiPct: 0.05,
+  vpValSellFlatPrior60LoPct: -0.08,
+  vpValSellFlatPrior60HiPct: 0.08,
   vpValSellChaseFilter: true,
   vpValSellChaseMaxPrior5dPct: 0.05,
   vpNoveltyEnabled: false,
@@ -179,6 +179,38 @@ export const VOLUME_PROFILE_FREQ_SOL_15M = {
   vpRejectionSellBlockExtendedDown: true,
   vpRejectionExtendedPriorPct: 0.05,
   vpRejectionMinWickRatio: 0.4,
+  vpNoveltyEnabled: false,
+};
+
+/** AVAX — VAL+rej prepared-cell stack (2026-07-22 H4). See backend doctrine. */
+export const VOLUME_PROFILE_FREQ_AVAX_15M = {
+  ...VOLUME_PROFILE_BASE,
+  ...VOLUME_PROFILE_FREQ_CORE,
+  symbol: "AVAXUSDT",
+  timeframe: "15m",
+  vpAllowedSetups: ["val_breakdown", "va_rejection"],
+  vpRequireHtfAlign: true,
+  vpMinHtfSepPct: 0.0015,
+  vpMinScore: 7,
+  vpMinBarGap: 2,
+  vpMaxTradesPerDay: 2,
+  vpValSellBlockWeakBearVacuum: true,
+  vpValSellChaseFilter: true,
+  vpValSellChaseMaxPrior5dPct: 0.05,
+  vpPreparedRegimeOnly: true,
+  vpPreparedBlockVacuumVah: false,
+  vpPreparedBlockVacuumValBear: false,
+  vpPreparedBlockCellKeys: [
+    "SELL|val_breakdown|bear_trend|vacuum",
+    "SELL|val_breakdown|bull_chop|vacuum",
+    "SELL|val_breakdown|bear_trend|structured",
+    "SELL|val_breakdown|bull_chop|structured",
+    "SELL|val_breakdown|bear_trend|tight",
+    "SELL|va_rejection|weak_bear|vacuum",
+    "BUY|va_rejection|bull_chop|structured",
+    "BUY|va_rejection|bull_chop|vacuum",
+    "BUY|va_rejection|bull_chop|tight",
+  ],
   vpNoveltyEnabled: false,
 };
 
@@ -280,6 +312,7 @@ export function resolveVolumeProfileFreqPreset(symbol: string) {
   if (sym === "BTCUSDT") return VOLUME_PROFILE_FREQ_BTC_15M;
   if (sym === "BNBUSDT") return VOLUME_PROFILE_FREQ_BNB_15M;
   if (sym === "SOLUSDT") return VOLUME_PROFILE_FREQ_SOL_15M;
+  if (sym === "AVAXUSDT") return VOLUME_PROFILE_FREQ_AVAX_15M;
   return VOLUME_PROFILE_FREQ_15M;
 }
 

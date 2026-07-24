@@ -29,9 +29,11 @@ import { buildSessionVwapSeries } from "./techniques/sessionVwap.js";
 import {
   evaluateSessionLiquiditySweep,
   listSessionLiquiditySetups,
+  listAcceptanceSetups,
   rejectionWickRatio,
   sweepReclaim,
   liqReclaimHoldBars,
+  liqAcceptHoldBars,
 } from "./techniques/liquidity.js";
 import {
   evaluateTrendContinuationSetup,
@@ -43,6 +45,7 @@ import {
 import {
   ensureLiqRegimeSeries,
   passesLiqMarketActivation,
+  buildLiqMarketContext,
 } from "./techniques/liq/marketState.js";
 import { buildIntradayEntryContext } from "./intradayEntryContext.js";
 import { applyIntradayVetoes } from "./intradayLearnedRules.js";
@@ -743,6 +746,9 @@ function liqBracketsFromSetup(liqSig) {
     liqQuality: s.liqQuality ?? 0,
     weightedQuality: s.weightedQuality ?? s.liqQuality ?? 0,
     reclaimIdx: s.reclaimIdx,
+    limitEntryPrice: s.limitEntryPrice ?? null,
+    mitigationEntry: s.mitigationEntry === true,
+    mitigationFrac: s.mitigationFrac ?? null,
     entryContextScore: s.entryContextScore ?? null,
     entryContextBreakdown: s.entryContextBreakdown ?? null,
     liqFeatures: s.liqFeatures ?? null,
@@ -866,18 +872,33 @@ export function selectIntradayPicks(candles, opts = {}) {
         : null;
     const instMode = isInstitutionalSrMode(o);
     pool = [];
+    const liqPlaybook = String(o.intradayLiqPlaybook ?? "").toUpperCase();
+    const acceptPlaybook = liqPlaybook === "LIQ_ACCEPT";
+    const hybridRouter = o.intradayLiqHybridRouter === true;
     for (let i = WARMUP; i < candles.length; i++) {
       if (!passesLiqMarketActivation(candles, i, pre, liqOpts)) continue;
+      const dayCtx = hybridRouter ? buildLiqMarketContext(candles, i, pre, liqOpts) : null;
+      const trendDay =
+        hybridRouter &&
+        (dayCtx?.daySituation === "breakdown" || dayCtx?.daySituation === "breakout");
       for (const side of ["BUY", "SELL"]) {
+        const useAccept = acceptPlaybook || (hybridRouter && trendDay);
         const setups = instMode
           ? [evaluateInstitutionalSrSetup(candles, i, side, pre, liqOpts)].filter(Boolean)
-          : listSessionLiquiditySetups(candles, i, side, pre, liqOpts);
+          : useAccept
+            ? listAcceptanceSetups(candles, i, side, pre, liqOpts)
+            : listSessionLiquiditySetups(candles, i, side, pre, liqOpts);
         for (const setup of setups) {
-          const holdBars = liqReclaimHoldBars(liqOpts);
-          if (setup.reclaimIdx !== i - holdBars || setup.score < liqMinScore) continue;
-          if (liqOpts.intradayLiqClassicEnabled === false) continue;
+          const holdBars = useAccept ? liqAcceptHoldBars(liqOpts) : liqReclaimHoldBars(liqOpts);
+          const signalIdx = setup.acceptIdx ?? setup.reclaimIdx;
+          if (signalIdx !== i - holdBars || setup.score < liqMinScore) continue;
+          if (useAccept) {
+            if (liqOpts.intradayLiqAcceptEnabled === false && !hybridRouter) continue;
+          } else if (liqOpts.intradayLiqClassicEnabled === false) {
+            continue;
+          }
           if (vetoCounterTrendLiqSetup(setup, candles, i, pre, liqOpts)) continue;
-          if (vetoClassicalLiqOnTrendDay(setup, candles, i, pre, liqOpts)) continue;
+          if (!useAccept && vetoClassicalLiqOnTrendDay(setup, candles, i, pre, liqOpts)) continue;
           if (vpProximityMax > 0 && vpBuildOpts) {
             let vp = vpProximityCache.get(i);
             if (vp === undefined) {
@@ -968,7 +989,20 @@ export function selectIntradayPicks(candles, opts = {}) {
       }
       continue;
     }
-    if ((liqSoloFastPath || smcSoloFastPath) && o.intradayLiqOnePickPerDay === true && dayPool.length > 0) {
+    // LIQ_CORE / live-faithful: chronological first-valid (no EOD quality look-ahead).
+    // Legacy research: intradayLiqOnePickPerDay or pickMode=eod_best sorts by quality after the day.
+    const liqPickMode = String(o.intradayLiqPickMode ?? "").toLowerCase();
+    const useChronologicalPicks =
+      liqPickMode === "chronological" ||
+      liqPickMode === "chrono" ||
+      liqPickMode === "first_valid";
+    const useEodBestPicks =
+      !useChronologicalPicks &&
+      (liqPickMode === "eod_best" ||
+        liqPickMode === "eod" ||
+        o.intradayLiqOnePickPerDay === true);
+
+    if ((liqSoloFastPath || smcSoloFastPath) && useEodBestPicks && dayPool.length > 0) {
       let sides = ["BUY", "SELL"];
       if (liqSoloFastPath && o.intradayLiqBreakdownDayBias !== false && dayPool.length > 0) {
         const ref = dayPool[0];
@@ -997,7 +1031,10 @@ export function selectIntradayPicks(candles, opts = {}) {
       }
       continue;
     }
-    for (const c of dayPool) {
+    const chronoPool = useChronologicalPicks
+      ? [...dayPool].sort((a, b) => a.idx - b.idx)
+      : dayPool;
+    for (const c of chronoPool) {
       if (chosen.length >= maxPerDay) break;
       const side = c.sig?.action;
       if (side === "BUY" || side === "SELL") {
@@ -1117,7 +1154,12 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradayLiqMinScore: cfg.intradayLiqMinScore,
     intradayLiqMinQuality: cfg.intradayLiqMinQuality,
     intradayLiqMinWickRatio: cfg.intradayLiqMinWickRatio,
+    /** Guide-style: poke rejection wick/body (e.g. 1.5). Distinct from MinSweepPokeWickRatio (wick/range). */
+    intradayLiqMinSweepWickBodyRatio: cfg.intradayLiqMinSweepWickBodyRatio,
+    intradayLiqMinSweepPokeWickRatio: cfg.intradayLiqMinSweepPokeWickRatio,
     intradayLiqRejectSameBarReclaim: cfg.intradayLiqRejectSameBarReclaim,
+    /** Require sweep+reclaim on same bar (pin). Research opt-in; opposite of RejectSameBar. */
+    intradayLiqRequireSameBarReclaim: cfg.intradayLiqRequireSameBarReclaim,
     intradayLiqMinRr: cfg.intradayLiqMinRr,
     intradayLiqMaxSlPct: cfg.intradayLiqMaxSlPct,
     intradayLiqMaxSweepBars: cfg.intradayLiqMaxSweepBars,
@@ -1134,9 +1176,21 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradayLiqTp2PartialFrac: cfg.intradayLiqTp2PartialFrac,
     intradayLiqMaxTradesPerSidePerDay: cfg.intradayLiqMaxTradesPerSidePerDay,
     intradayLiqOnePickPerDay: cfg.intradayLiqOnePickPerDay,
+    /** chronological = live-faithful first-valid; eod_best = legacy quality sort (look-ahead). */
+    intradayLiqPickMode: cfg.intradayLiqPickMode,
+    intradayLiqPlaybook: cfg.intradayLiqPlaybook,
+    intradayLiqHybridRouter: cfg.intradayLiqHybridRouter,
+    intradayLiqClassicEnabled: cfg.intradayLiqClassicEnabled,
+    intradayLiqAcceptEnabled: cfg.intradayLiqAcceptEnabled,
+    intradayLiqAcceptHoldBars: cfg.intradayLiqAcceptHoldBars,
+    intradayLiqMitigationEntry: cfg.intradayLiqMitigationEntry,
+    intradayLiqMitigationWaitBars: cfg.intradayLiqMitigationWaitBars,
+    intradayLiqMitigationFrac: cfg.intradayLiqMitigationFrac,
     intradayLiqEntryAtSignalClose: cfg.intradayLiqEntryAtSignalClose,
     intradayLiqBreakevenAfterPartial: cfg.intradayLiqBreakevenAfterPartial,
     intradayLiqRequireHtfAlign: cfg.intradayLiqRequireHtfAlign,
+    /** When true with RequireHtfAlign, apply HTF gate to PDH/PDL (not only session clusters). */
+    intradayLiqHtfAlignPdhPdl: cfg.intradayLiqHtfAlignPdhPdl,
     intradayLiqMinHtfSep: cfg.intradayLiqMinHtfSep,
     intradayLiqFirstCycleOnly: cfg.intradayLiqFirstCycleOnly,
     intradayLiqMinReclaimClosePct: cfg.intradayLiqMinReclaimClosePct,
@@ -1150,6 +1204,18 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradayLiqMinEntryScore: cfg.intradayLiqMinEntryScore,
     intradayLiqMarketStateGate: cfg.intradayLiqMarketStateGate,
     intradayLiqDaySituationBias: cfg.intradayLiqDaySituationBias,
+    intradayLiqMacroAlignFade: cfg.intradayLiqMacroAlignFade,
+    intradayLiqMacroBullPrior60: cfg.intradayLiqMacroBullPrior60,
+    intradayLiqMacroBearPrior60: cfg.intradayLiqMacroBearPrior60,
+    /** Allow-list of session narratives (asia_accum / london_sweep / …). */
+    intradayLiqSessionNarratives: cfg.intradayLiqSessionNarratives,
+    /** Guide active session (UTC). Applied on LIQ solo path (unlike srIntradaySession*). */
+    intradayLiqActiveHourStart: cfg.intradayLiqActiveHourStart,
+    intradayLiqActiveHourEnd: cfg.intradayLiqActiveHourEnd,
+    /** Block BUY in day-premium / SELL in day-discount (equilibrium OK). */
+    intradayLiqRequirePremiumDiscountAlign: cfg.intradayLiqRequirePremiumDiscountAlign,
+    intradayLiqDiscountMaxPos: cfg.intradayLiqDiscountMaxPos,
+    intradayLiqPremiumMinPos: cfg.intradayLiqPremiumMinPos,
     intradayLiqContinuationGate: cfg.intradayLiqContinuationGate,
     intradayLiqMinContinuationR: cfg.intradayLiqMinContinuationR,
     intradayLiqMaxDailyRangeUsedPct: cfg.intradayLiqMaxDailyRangeUsedPct,
@@ -1171,6 +1237,13 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradayLiqSessionExtremeSweepPct: cfg.intradayLiqSessionExtremeSweepPct,
     intradayLiqSweepMinVolRatio: cfg.intradayLiqSweepMinVolRatio,
     intradayLiqSweepVolLookback: cfg.intradayLiqSweepVolLookback,
+    intradayLiqSlBufferAtrMult: cfg.intradayLiqSlBufferAtrMult,
+    intradayLiqRequireFollowThrough: cfg.intradayLiqRequireFollowThrough,
+    intradayLiqFollowThroughAtrMult: cfg.intradayLiqFollowThroughAtrMult,
+    intradayLiqFollowThroughBars: cfg.intradayLiqFollowThroughBars,
+    intradayLiqRequirePostReclaimDisplacement: cfg.intradayLiqRequirePostReclaimDisplacement,
+    intradayLiqPostReclaimDispAtrMult: cfg.intradayLiqPostReclaimDispAtrMult,
+    intradayLiqSwingPivotLookback: cfg.intradayLiqSwingPivotLookback,
     intradayLiqMaxSweepMinutes: cfg.intradayLiqMaxSweepMinutes,
     intradayLiqSameBarPinbarWickBody: cfg.intradayLiqSameBarPinbarWickBody,
     intradayGateInstitutionalSr: cfg.intradayGateInstitutionalSr,
@@ -1392,6 +1465,44 @@ function isSmcSoloStack(opts) {
   return isSmcIctMode(opts) && gates.smcIct;
 }
 
+/**
+ * LIQ / institutional-SR solo stacks use selectIntradayPicks in backtests (full-day
+ * chronological scan). Live must use the same path — evaluateIntradayBar applies a
+ * hard UTC session window (default 07–22) that would silently kill Asia / off-hours
+ * sleeves (e.g. AST_VOL15 asia_accum) while backtests still take those trades.
+ */
+export function isLiqSoloStack(opts) {
+  const gates = resolveIntradayGates(opts);
+  if (isSmcIctMode(opts) && gates.smcIct) return false;
+  const ofSolo =
+    gates.orderFlow &&
+    !gates.liquidity &&
+    !gates.session &&
+    !gates.fib &&
+    !gates.vp &&
+    !gates.htfRegime &&
+    !gates.institutionalSr &&
+    !gates.smcIct;
+  if (ofSolo) return false;
+  const liqStackSolo =
+    (gates.liquidity || gates.session) &&
+    !gates.fib &&
+    !gates.vp &&
+    !gates.orderFlow &&
+    !gates.htfRegime;
+  const instSoloStack =
+    isInstitutionalSrMode(opts) &&
+    gates.institutionalSr &&
+    gates.liquidity &&
+    gates.session &&
+    gates.htfRegime &&
+    !gates.fib &&
+    !gates.vp &&
+    !gates.orderFlow &&
+    !gates.smcIct;
+  return opts.intradayLiqStrictMode !== false && (liqStackSolo || instSoloStack);
+}
+
 export function signal({ candles, timeframe, cfg, state } = {}) {
   if (!candles?.length) return { action: "HOLD", reason: "no_candles" };
   const raw = cfg && typeof cfg === "object" ? cfg : state && typeof state === "object" ? state : {};
@@ -1401,8 +1512,10 @@ export function signal({ candles, timeframe, cfg, state } = {}) {
   );
   const tf = timeframe ?? raw.timeframe ?? "5m";
 
-  if (isSmcSoloStack(opts)) {
-    const cfgFilled = fillSmcSoloPresetDefaults(fillLiqSoloPresetDefaults(opts));
+  if (isSmcSoloStack(opts) || isLiqSoloStack(opts)) {
+    const cfgFilled = isSmcSoloStack(opts)
+      ? fillSmcSoloPresetDefaults(fillLiqSoloPresetDefaults(opts))
+      : fillLiqSoloPresetDefaults(opts);
     const o = { ...cfgFilled, ...buildIntradayOptsFromCfg({ ...cfgFilled, timeframe: tf }), timeframe: tf };
     const idx = candles.length - 1;
     const cacheKey = intradayAdapterCacheKey(candles, o, tf);

@@ -59,6 +59,10 @@ import {
   INTRADAY_PRO_BIGMOVE_15M,
   INTRADAY_PRO_SR_APLUS_15M,
   INTRADAY_PRO_LIQ_15M,
+  INTRADAY_PRO_LIQ_CORE_15M,
+  INTRADAY_PRO_LIQ_CORE_PORTFOLIO_15M,
+  INTRADAY_PRO_LIQ_CORE_SIGNATURE_KEYS,
+  INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M,
   INTRADAY_PRO_LIQ_PORTFOLIO_15M,
   INTRADAY_PRO_LIQ_DAILY_15M,
   INTRADAY_PRO_LIQ_ETH_15M,
@@ -88,6 +92,7 @@ import {
   VOLUME_PROFILE_FREQ_BNB_15M,
   VOLUME_PROFILE_FREQ_BTC_15M,
   VOLUME_PROFILE_FREQ_SOL_15M,
+  VOLUME_PROFILE_FREQ_AVAX_15M,
   VOLUME_PROFILE_FREQ_PORTFOLIO_15M,
   VOLUME_PROFILE_BTC_15M,
   VOLUME_PROFILE_5M,
@@ -2482,10 +2487,34 @@ export function TradingPanel() {
             <TrendHtfStPresetButton label="★ BNB 15m Pro" highlight patch={INTRADAY_PRO_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             <TrendHtfStPresetButton label="BNB 15m Fib" patch={INTRADAY_PRO_FIB_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             <TrendHtfStPresetButton label="BNB 15m Inst. A+" patch={INTRADAY_PRO_SR_APLUS_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BNB 15m LIQ Solo" patch={INTRADAY_PRO_LIQ_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             <TrendHtfStPresetButton
-              label="★ BNB+BTC LIQ Portfolio"
+              label="★ LIQ_CORE (rebuild)"
               highlight
+              patch={INTRADAY_PRO_LIQ_CORE_PORTFOLIO_15M}
+              pushLog={pushLog}
+              applyPatch={saveGatedBotConfig}
+              matchBot={bot}
+              signatureKeys={INTRADAY_PRO_LIQ_CORE_SIGNATURE_KEYS}
+            />
+            <TrendHtfStPresetButton
+              label="BNB LIQ AST+vol15 (research sleeve)"
+              patch={INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M}
+              pushLog={pushLog}
+              applyPatch={saveGatedBotConfig}
+              matchBot={bot}
+              signatureKeys={[
+                "intradayLiqSessionNarratives",
+                "intradayLiqSessionExtreme",
+                "intradayLiqRequireSameBarReclaim",
+                "intradayLiqDaySituationBias",
+                "intradayLiqMaxSlPct",
+                "intradayLiqRequirePremiumDiscountAlign",
+                "intradayLiqSweepMinVolRatio",
+              ]}
+            />
+            <TrendHtfStPresetButton label="BNB 15m LIQ Solo (legacy)" patch={INTRADAY_PRO_LIQ_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton
+              label="BNB+BTC LIQ Portfolio (legacy)"
               patch={INTRADAY_PRO_LIQ_PORTFOLIO_15M}
               pushLog={pushLog}
               applyPatch={saveGatedBotConfig}
@@ -2607,6 +2636,7 @@ export function TradingPanel() {
               <TrendHtfStPresetButton label="★ ETH FREQ" highlight patch={VOLUME_PROFILE_FREQ_ETH_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="★ BNB FREQ (VAL lock)" highlight patch={VOLUME_PROFILE_FREQ_BNB_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="★ SOL FREQ (VAL+rej wick40)" highlight patch={VOLUME_PROFILE_FREQ_SOL_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+              <TrendHtfStPresetButton label="★ AVAX FREQ (VAL+rej cells)" highlight patch={VOLUME_PROFILE_FREQ_AVAX_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="BTC FREQ (shorts)" patch={VOLUME_PROFILE_FREQ_BTC_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="FREQ portfolio (ETH+BNB+BTC)" patch={VOLUME_PROFILE_FREQ_PORTFOLIO_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             </div>

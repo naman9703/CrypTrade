@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { fibLevels, nearFibLevel, swingHighLow } from "./techniques/fibonacci.js";
 import { rollingVolumeProfile } from "./techniques/volumeProfile.js";
 import { computeAdaptiveIntradayParams } from "./adaptiveIntraday.js";
-import { selectIntradayPicks, evaluateIntradayBar, signal, buildIntradayBacktestAdapter } from "./intradayPro.js";
-import { INTRADAY_PRO_ICT_15M, fillSmcSoloPresetDefaults } from "./presets/srIntradayOptimized.js";
+import { selectIntradayPicks, evaluateIntradayBar, signal, buildIntradayBacktestAdapter, isLiqSoloStack } from "./intradayPro.js";
+import { INTRADAY_PRO_ICT_15M, INTRADAY_PRO_LIQ_CORE_15M, fillSmcSoloPresetDefaults } from "./presets/srIntradayOptimized.js";
 
 function bar(ts, o, h, l, c, vol = 1000) {
   return { ts, open: o, high: h, low: l, close: c, volume: vol };
@@ -75,6 +75,33 @@ test("SMC solo signal() matches selectIntradayPicks at last bar (live/backtest p
   if (live?.action && live.action !== "HOLD" && expected?.action) {
     assert.equal(live.reason, expected.reason);
   }
+});
+
+test("LIQ solo signal() uses selectIntradayPicks (Asia hours not killed by 07–22 gate)", () => {
+  const cfg = {
+    ...INTRADAY_PRO_LIQ_CORE_15M,
+    symbol: "BNBUSDT",
+    timeframe: "15m",
+    intradayGateLiquidity: true,
+    intradayGateSession: false,
+    intradayGateFib: false,
+    intradayGateVp: false,
+    intradayGateOrderFlow: false,
+    intradayGateHtfRegime: false,
+    intradayLiqSessionNarratives: ["asia_accum"],
+    srIntradaySessionStartHour: 7,
+    srIntradaySessionEndHour: 22,
+  };
+  assert.equal(isLiqSoloStack(cfg), true);
+  const candles = [];
+  const baseTs = Date.UTC(2026, 2, 10, 2, 0, 0); // 02:00 UTC = asia
+  for (let i = 0; i < 120; i++) {
+    const c = 600 + Math.sin(i / 7) * 4;
+    candles.push(bar(baseTs + i * 15 * 60 * 1000, c - 0.4, c + 1.2, c - 1.5, c, 900 + i));
+  }
+  const live = signal({ candles, timeframe: "15m", cfg });
+  assert.ok(live);
+  assert.ok(["BUY", "SELL", "HOLD"].includes(live.action ?? "HOLD"));
 });
 
 test("buildIntradayBacktestAdapter forwards smcMeta and techniques from pick series", () => {

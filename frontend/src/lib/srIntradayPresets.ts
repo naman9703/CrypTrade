@@ -151,6 +151,83 @@ export const INTRADAY_PRO_LIQ_15M = {
 };
 
 /**
+ * LIQ_CORE — concept-only classical rebuild (docs/LIQ_CORE_PLAYBOOK.md).
+ * Chronological picks; PDH/PDL + session extremes; no body/score/V2 stacks.
+ */
+export const INTRADAY_PRO_LIQ_CORE_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  intradayLiqPlaybook: "LIQ_CORE",
+  intradayLiqPickMode: "chronological",
+  intradayLiqOnePickPerDay: false,
+  intradayLiqSessionExtreme: true,
+  intradayLiqSessionExtremeMinTouches: 3,
+  intradayLiqRejectSameBarReclaim: false,
+  intradayLiqMinReclaimBodyRatio: 0,
+  intradayLiqMinReclaimClosePct: 0,
+  intradayLiqMinSweepExtensionPct: 0,
+  intradayLiqMinRr: 1,
+  intradayLiqRequireHtfAlign: false,
+  intradayLiqUseEntryScore: false,
+  intradayLiqUseEntryScoreV2: false,
+  intradayLiqMinEntryScore: 0,
+  // Path confirm (P1): wait 2 bars after reclaim — mild PF lift, freq intact; still EDGE FAIL.
+  intradayLiqReclaimHoldBars: 2,
+  intradayLiqRequireChoch: false,
+  intradayLiqMarketStateGate: false,
+  intradayLiqDaySituationBias: false,
+  intradayLiqContinuationGate: false,
+  intradayLiqSweepQualityGate: false,
+  intradayLiqBreakdownDayBias: false,
+  intradayLiqMaxTradesPerSidePerDay: 2,
+  srIntradayMaxTradesPerDay: 4,
+  srIntradayMinBarGap: 2,
+  intradayLiqMaxHoldBars: 48,
+  // Closer structural TP (T1) + no early TP1 partial (X4). Dead-trade off (REJECT on CORE).
+  intradayLiqMaxTpRr: 2,
+  intradayLiqPartialTp: false,
+  intradayLiqTp1Enabled: false,
+};
+
+export const INTRADAY_PRO_LIQ_CORE_PORTFOLIO_15M = {
+  ...INTRADAY_PRO_LIQ_CORE_15M,
+  symbol: "BNBUSDT",
+  symbols: ["BNBUSDT", "ETHUSDT", "BTCUSDT"],
+};
+
+/** BNB LIQ AST+vol15 research sleeve — asia+london, PDH/PDL-only; low freq. */
+export const INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M = {
+  ...INTRADAY_PRO_LIQ_CORE_15M,
+  symbol: "BNBUSDT",
+  intradayLiqSessionNarratives: ["asia_accum", "london_sweep"],
+  srIntradaySessionStartHour: 0,
+  srIntradaySessionEndHour: 24,
+  intradayLiqSessionExtreme: false,
+  intradayLiqRequireSameBarReclaim: true,
+  intradayLiqDaySituationBias: true,
+  intradayLiqMaxSlPct: 0.008,
+  intradayLiqRequirePremiumDiscountAlign: true,
+  intradayLiqSweepMinVolRatio: 1.5,
+  maxDailyLoss: 3,
+  maxDailyLossUnit: "PCT",
+  riskConsecutiveLossLimit: 3,
+};
+
+export const INTRADAY_PRO_LIQ_CORE_SIGNATURE_KEYS = [
+  "intradayLiqPlaybook",
+  "intradayLiqPickMode",
+  "intradayLiqOnePickPerDay",
+  "intradayLiqSessionExtreme",
+  "intradayLiqRejectSameBarReclaim",
+  "intradayLiqMinReclaimBodyRatio",
+  "intradayLiqMinRr",
+  "intradayLiqUseEntryScore",
+  "intradayLiqPartialTp",
+  "intradayLiqTp1Enabled",
+  "intradayLiqMaxTpRr",
+  "intradayLiqReclaimHoldBars",
+];
+
+/**
  * BTC 15m — research-promoted PDH/PDL sweep+reclaim (BTC-only).
  * Loser autopsy: skip breakdown/breakout-day fades + require CHoCH after sweep + killzone.
  * Research-grade — not validation-gate approved; beats multi-coin LIQ portfolio.

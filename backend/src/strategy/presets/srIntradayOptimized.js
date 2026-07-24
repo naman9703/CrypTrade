@@ -271,6 +271,154 @@ export const INTRADAY_PRO_LIQ_15M = {
 };
 
 /**
+ * LIQ_CORE — concept-only classical sweep+reclaim rebuild (2026-07-23).
+ * Doctrine: docs/LIQ_CORE_PLAYBOOK.md
+ * - Chronological picks (no EOD quality look-ahead)
+ * - PDH/PDL + session EQH/EQL; no body/score/CHoCH/V2 binary stacks
+ * - Parallel to legacy LIQ_15M / failed LIQ_15M_V2 / FREQ_EDGE
+ */
+export const INTRADAY_PRO_LIQ_CORE_15M = {
+  ...INTRADAY_PRO_LIQ_15M,
+  intradayLiqPlaybook: "LIQ_CORE",
+  intradayLiqPickMode: "chronological",
+  intradayLiqOnePickPerDay: false,
+  intradayLiqSessionExtreme: true,
+  intradayLiqSessionExtremeMinTouches: 3,
+  intradayLiqRejectSameBarReclaim: false,
+  intradayLiqMinReclaimBodyRatio: 0,
+  intradayLiqMinReclaimClosePct: 0,
+  intradayLiqMinSweepExtensionPct: 0,
+  intradayLiqMinRr: 1,
+  intradayLiqRequireHtfAlign: false,
+  intradayLiqUseEntryScore: false,
+  intradayLiqUseEntryScoreV2: false,
+  intradayLiqMinEntryScore: 0,
+  // Path confirm (2026-07-23 P1): wait 2 bars after reclaim — PF 0.53→0.60, freq 7.5→6.4/wk.
+  // Still EDGE FAIL; not a live lock. Distinct from rejected dead-trade (post-entry SL compress).
+  intradayLiqReclaimHoldBars: 2,
+  intradayLiqRequireChoch: false,
+  intradayLiqMarketStateGate: false,
+  intradayLiqDaySituationBias: false,
+  intradayLiqContinuationGate: false,
+  intradayLiqSweepQualityGate: false,
+  intradayLiqRequireDisplacementV2: false,
+  intradayLiqBreakdownDayBias: false,
+  intradayLiqVetoCounterTrend: false,
+  intradayLiqTrendContinuation: false,
+  intradayLiqMaxTradesPerSidePerDay: 2,
+  srIntradayMaxTradesPerDay: 4,
+  srIntradayMinBarGap: 2,
+  intradayLiqMaxHoldBars: 48,
+  // Exit geometry (2026-07-23 T1): closer structural TP improves PF/WR without cutting N.
+  // Dead-trade compression REJECTED on CORE (clips slow runners). Still EDGE FAIL — not a live lock.
+  intradayLiqMaxTpRr: 2,
+  intradayLiqMinQuality: 0,
+  intradayLiqMinScore: 5,
+  // Exit enhance (2026-07-23 W/L): winners need full-size runners; early TP1 partials hurt PF.
+  intradayLiqPartialTp: false,
+  intradayLiqTp1Enabled: false,
+  // X5 (2026-07-23): with TP1 off, BreakevenAfterPartial would still arm beAt1RWithoutPartial
+  // and clip runners at 1R (154 BE exits on BNB 3y). Off so full size can reach TP2.
+  // Still EDGE FAIL — not a live lock. HOLD ret slightly worse; FULL PF 0.53→0.65.
+  intradayLiqBreakevenAfterPartial: false,
+};
+
+/** Multi-coin research patch — resolve per symbol via fillLiqSoloPresetDefaults (CORE stays CORE). */
+export const INTRADAY_PRO_LIQ_CORE_PORTFOLIO_15M = {
+  ...INTRADAY_PRO_LIQ_CORE_15M,
+  symbol: "BNBUSDT",
+  symbols: ["BNBUSDT", "ETHUSDT", "BTCUSDT"],
+};
+
+/**
+ * LIQ_ACCEPT — sweep hold-beyond continuation (failed reclaim → trade WITH sweep).
+ * BNB-first research preset (2026-07-23). Not certified until WF+MC+gates pass.
+ */
+export const INTRADAY_PRO_LIQ_ACCEPT_BNB_15M = {
+  ...INTRADAY_PRO_LIQ_CORE_15M,
+  symbol: "BNBUSDT",
+  intradayLiqPlaybook: "LIQ_ACCEPT",
+  intradayLiqClassicEnabled: false,
+  intradayLiqAcceptEnabled: true,
+  intradayLiqAcceptHoldBars: 2,
+  intradayLiqReclaimHoldBars: 0,
+  intradayLiqMinSweepExtensionPct: 0.003,
+  intradayLiqRequireHtfAlign: false,
+  intradayLiqBreakdownDayBias: false,
+  intradayLiqVetoCounterTrend: false,
+};
+
+/**
+ * BNB progress-confirm research sleeve (2026-07-23).
+ * Stop entry after minR favorable excursion; cancel on level rebreak.
+ * PDH/PDL-only (session extremes off). Not a live lock until hard A/B + gates.
+ */
+export const INTRADAY_PRO_LIQ_BNB_PROGRESS_15M = {
+  ...INTRADAY_PRO_LIQ_CORE_15M,
+  symbol: "BNBUSDT",
+  intradayLiqSessionExtreme: false,
+  intradayLiqProgressConfirm: true,
+  intradayLiqProgressConfirmWaitBars: 8,
+  intradayLiqProgressConfirmMinR: 0.5,
+};
+
+/**
+ * BNB LIQ research sleeve (2026-07-23 → improve pass).
+ * Asia+London + same-bar + toxic + maxSl 0.8% + prem/disc + vol≥1.5 +
+ * PDH/PDL only (session extremes OFF).
+ * Hard 2023-07→2026-07: FULL ~+28% PF~1.44 @ ~0.27/wk; Y24/Y25/Y26/H12 green.
+ * Y23H2 residual ~flat/−1%. Still RESEARCH_SLEEVE_LOW_FREQ (≪2/wk) — not live
+ * until WF+MC+gates. Live LIQ solo uses selectIntradayPicks (parity).
+ * Decisions: `2026-07-23-liq-bnb-ast-vol15-sleeve.md`,
+ * `2026-07-23-liq-bnb-freq-restore-noSess.md`.
+ */
+export const INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M = {
+  ...INTRADAY_PRO_LIQ_CORE_15M,
+  symbol: "BNBUSDT",
+  intradayLiqSessionNarratives: ["asia_accum", "london_sweep"],
+  /** Cover Asia+London; narratives own the session filter. */
+  srIntradaySessionStartHour: 0,
+  srIntradaySessionEndHour: 24,
+  /** Session EQH/EQL off — A/B: lifts FULL and greens early sample vs AST. */
+  intradayLiqSessionExtreme: false,
+  intradayLiqRequireSameBarReclaim: true,
+  intradayLiqDaySituationBias: true,
+  intradayLiqMaxSlPct: 0.008,
+  intradayLiqRequirePremiumDiscountAlign: true,
+  intradayLiqSweepMinVolRatio: 1.5,
+  maxDailyLoss: 3,
+  maxDailyLossUnit: "PCT",
+  riskConsecutiveLossLimit: 3,
+};
+
+export const INTRADAY_PRO_LIQ_ACCEPT_SIGNATURE_KEYS = [
+  "intradayLiqPlaybook",
+  "intradayLiqClassicEnabled",
+  "intradayLiqAcceptEnabled",
+  "intradayLiqAcceptHoldBars",
+  "intradayLiqMinSweepExtensionPct",
+  "intradayLiqMaxTpRr",
+  "intradayLiqPartialTp",
+  "intradayLiqTp1Enabled",
+];
+
+export const INTRADAY_PRO_LIQ_CORE_SIGNATURE_KEYS = [
+  "intradayLiqPlaybook",
+  "intradayLiqPickMode",
+  "intradayLiqOnePickPerDay",
+  "intradayLiqSessionExtreme",
+  "intradayLiqRejectSameBarReclaim",
+  "intradayLiqMinReclaimBodyRatio",
+  "intradayLiqMinRr",
+  "intradayLiqUseEntryScore",
+  "intradayLiqPartialTp",
+  "intradayLiqTp1Enabled",
+  "intradayLiqBreakevenAfterPartial",
+  "intradayLiqMaxTpRr",
+  "intradayLiqReclaimHoldBars",
+];
+
+/**
  * LIQ v2 — context-driven classical sweep+reclaim (market state, sweep quality,
  * continuation room, expanded liquidity hierarchy, entry score v2).
  * OOS validation (research-liq-feature-expectancy.mjs) FAILED promotion gates —
@@ -1101,7 +1249,47 @@ export function fillLiqSoloPresetDefaults(cfg = {}) {
   if (!liqSolo && !instSolo) return cfg;
 
   const sym = String(cfg.symbol ?? "").toUpperCase();
-  const freqEdge = String(cfg.intradayLiqPlaybook ?? "").toUpperCase() === "FREQ_EDGE";
+  const playbook = String(cfg.intradayLiqPlaybook ?? "").toUpperCase();
+  const freqEdge = playbook === "FREQ_EDGE";
+  const liqCore = playbook === "LIQ_CORE";
+  const liqAccept = playbook === "LIQ_ACCEPT";
+
+  // LIQ_CORE: fill missing keys from CORE preset only — do not inject legacy BNB/BTC/ETH stacks.
+  if (liqCore && liqSolo && !instSolo) {
+    const out = { ...cfg };
+    const skipSlTp = new Set(["supertrendFuturesFixedSlPct", "supertrendFuturesFixedTpPct"]);
+    const skipHold = new Set(["intradayLiqMaxHoldBars"]);
+    for (const [key, val] of Object.entries(INTRADAY_PRO_LIQ_CORE_15M)) {
+      if (skipSlTp.has(key) || skipHold.has(key) || INSTANCE_PRESET_SKIP.has(key)) continue;
+      if (out[key] === undefined) out[key] = val;
+    }
+    out.intradayLiqPlaybook = "LIQ_CORE";
+    out.intradayLiqPickMode = out.intradayLiqPickMode ?? "chronological";
+    out.intradayLiqOnePickPerDay = false;
+    out.supertrendFuturesFixedSlPct = 0;
+    out.supertrendFuturesFixedTpPct = 0;
+    return out;
+  }
+
+  // LIQ_ACCEPT: BNB-first hold-beyond continuation — no legacy fade stacks.
+  if (liqAccept && liqSolo && !instSolo) {
+    const out = { ...cfg };
+    const skipSlTp = new Set(["supertrendFuturesFixedSlPct", "supertrendFuturesFixedTpPct"]);
+    const skipHold = new Set(["intradayLiqMaxHoldBars"]);
+    for (const [key, val] of Object.entries(INTRADAY_PRO_LIQ_ACCEPT_BNB_15M)) {
+      if (skipSlTp.has(key) || skipHold.has(key) || INSTANCE_PRESET_SKIP.has(key)) continue;
+      if (out[key] === undefined) out[key] = val;
+    }
+    out.intradayLiqPlaybook = "LIQ_ACCEPT";
+    out.intradayLiqClassicEnabled = false;
+    out.intradayLiqAcceptEnabled = out.intradayLiqAcceptEnabled ?? true;
+    out.intradayLiqPickMode = out.intradayLiqPickMode ?? "chronological";
+    out.intradayLiqOnePickPerDay = false;
+    out.supertrendFuturesFixedSlPct = 0;
+    out.supertrendFuturesFixedTpPct = 0;
+    return out;
+  }
+
   if (sym === "BTCUSDT" && liqSolo && !instSolo) {
     const out = { ...cfg };
     const basePreset = freqEdge ? INTRADAY_PRO_LIQ_FREQ_EDGE_BTC_15M : INTRADAY_PRO_LIQ_BTC_15M;

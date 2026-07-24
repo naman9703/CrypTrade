@@ -186,7 +186,18 @@ plumbing as protection, not as edge creation. Decision:
 continuation). Full-window test: best frequency ~1 trade/week on BNB legacy, still
 slightly negative; FREQ_EDGE presets worse. Target 2–5 trades/week/coin **not found**.
 Decision: `2026-07-14-liq-freq-edge-stream-reject.md`. Script: `backtest-liq-freq-edge.mjs`.
-**Next LIQ experiment:** BNB `INTRADAY_PRO_LIQ_15M` + **exit-only** one change (not entry gates).
+
+**LIQ_CORE rebuild (2026-07-23) — active research stream.** Parallel to legacy LIQ:
+concept-only hard gates, chronological picks, PDH/PDL + session extremes.
+Doctrine: `docs/LIQ_CORE_PLAYBOOK.md`.
+Preset: `INTRADAY_PRO_LIQ_CORE_15M` — **X4** + **T1** + **P1** + **X5 BE-off** (still EDGE FAIL at high N).
+Dead-trade / ACCEPT / hybrid / progress-confirm: **REJECT**.
+**BNB LIQ research sleeve (updated 2026-07-23):** `INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M` —
+Asia+**London** + same-bar + toxic + maxSl 0.8% + prem/disc + vol≥1.5 +
+**session extremes OFF** (PDH/PDL). Hard: FULL **~+28%** PF **1.44** @ **~0.27/wk**;
+Y24/Y25/Y26/H12 green; Y23H2 ~flat. Still **`RESEARCH_SLEEVE_LOW_FREQ`** — not live.
+Decisions: `2026-07-23-liq-bnb-ast-vol15-sleeve.md`,
+`2026-07-23-liq-bnb-freq-restore-noSess.md`. Next: WF+MC+gates; multi-coin breadth for freq.
 
 **LIQ SWEEP_RECLAIM classical** — BNB ~1/wk near breakeven on 17mo; ETH/BTC coin-specific.
 Trend continuation + day-router **remain banned** until rewrite.
@@ -218,17 +229,18 @@ Code remains at `backend/src/strategy/fundingArb/` for future reopen only.
    Decision: `2026-07-19-eth-vp-freq-certification-sleeve.md`.
    Prior reject: `2026-07-17-eth-vp-freq-certification-reject.md`.
    UI: rebuild Docker app after preset change (`vpNoveltyEnabled` still false).
-3. **VP BNB FREQ — improved but certification rejected (2026-07-20).**
-   Coin-native `VOLUME_PROFILE_FREQ_BNB_15M` now uses **VAL-only** + bull60
-   dump/non-vac/extending abstains + weak_bear/prepared vacuum VAL blocks +
-   **flat prior60** and **prior5d chase** short filters. Frozen validation
-   2020→2026: **108t / +260.7% / Calmar 0.96 / MC p5 +15.8% / no year ≤−25%**,
-   WF OOS sum **+210.5%** on **87** trades. Verdict:
-   **`REJECT_CERTIFICATION`** because **Calmar < 1** and frequency is only
-   **0.32/wk**. Decision:
-   `2026-07-20-bnb-vp-freq-certification-reject.md`.
+3. **VP BNB FREQ — RESEARCH_SLEEVE_LOW_FREQ (2026-07-23 H9).**
+   Coin-native VAL-only stack + **H9 flat prior60 ±8%** (was ±5%). Cert window:
+   **104t / +303.9% / Calmar 1.31 / MC p5 +22.5% / no year ≤−25%**, WF OOS
+   **+223.7%** on **84** trades. Core gates **PASS**; freq **0.31/wk** fails deploy.
+   Decision: `2026-07-23-bnb-vp-freq-h9-calmar-sleeve.md`.
+   Prior Calmar-miss reject: `2026-07-20-bnb-vp-freq-certification-reject.md`.
 4. **VP FREQ portfolio honesty** — multi-coin sim with wired per-leg resolve (already in worker).
-5. **LIQ BNB exit-only experiment** — partial → runner trail on `INTRADAY_PRO_LIQ_15M`.
+5. **LIQ BNB AST+vol15 sleeve** — hard year windows green; run WF+MC+gates next.
+   Preset `INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M`. Do not promote CORE defaults yet.
+   Freq restore only after expectancy holds. Decision:
+   `2026-07-23-liq-bnb-ast-vol15-sleeve.md`.
+6. ~~VP BNB Calmar~~ **Done** — H9 sleeve above.
 6. Phase 2 Exp-1: disaster SL on locked trail Elite (see phase2 hypothesis).
 7. Funding arb parked until a reopen criterion is met.
 8. Paper-trade only after gates pass under the exit model that will go live.

@@ -1,0 +1,579 @@
+{
+  "generatedAt": "2026-07-22T20:32:04.482Z",
+  "window": {
+    "from": "2025-01-01",
+    "to": "2026-06-01",
+    "tf": "15m",
+    "weeks": 73.71428571428571
+  },
+  "symbols": [
+    "BNBUSDT",
+    "ETHUSDT",
+    "BTCUSDT"
+  ],
+  "risk": 2.5,
+  "leverage": 12,
+  "rows": [
+    {
+      "symbol": "BNBUSDT",
+      "variant": "core",
+      "label": "LIQ_CORE baseline",
+      "candidates": 0,
+      "picked": 774,
+      "trades": 539,
+      "tw": 7.31,
+      "ret": -145.53,
+      "pf": 0.31,
+      "dd": 142.03,
+      "calmar": -1.02,
+      "wr": 25.8,
+      "exits": {
+        "tp2": 45,
+        "time_stop": 129,
+        "sl": 272,
+        "be": 92,
+        "session_end": 1
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "core",
+      "label": "LIQ_CORE baseline",
+      "candidates": 0,
+      "picked": 287,
+      "trades": 245,
+      "tw": 3.32,
+      "ret": -147.38,
+      "pf": 0.35,
+      "dd": 145.26,
+      "calmar": -1.01,
+      "wr": 26.5,
+      "exits": {
+        "tp2": 18,
+        "sl": 131,
+        "time_stop": 52,
+        "be": 44
+      }
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "core",
+      "label": "LIQ_CORE baseline",
+      "candidates": 0,
+      "picked": 828,
+      "trades": 599,
+      "tw": 8.13,
+      "ret": -158.87,
+      "pf": 0.32,
+      "dd": 158.88,
+      "calmar": -1,
+      "wr": 24.4,
+      "exits": {
+        "sl": 306,
+        "be": 106,
+        "time_stop": 130,
+        "tp2": 57
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "legacy",
+      "label": "Legacy LIQ_15M (EOD onePick)",
+      "candidates": 0,
+      "picked": 80,
+      "trades": 75,
+      "tw": 1.02,
+      "ret": -29.09,
+      "pf": 0.55,
+      "dd": 32.41,
+      "calmar": -0.67,
+      "wr": 46.7,
+      "exits": {
+        "sl": 22,
+        "time_stop": 45,
+        "be": 5,
+        "tp2": 3
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "legacy",
+      "label": "Legacy LIQ_15M (EOD onePick)",
+      "candidates": 0,
+      "picked": 6,
+      "trades": 6,
+      "tw": 0.08,
+      "ret": -7.04,
+      "pf": 0.15,
+      "dd": 7.04,
+      "calmar": -0.85,
+      "wr": 16.7,
+      "exits": {
+        "be": 2,
+        "sl": 3,
+        "time_stop": 1
+      }
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "legacy",
+      "label": "Legacy LIQ_15M (EOD onePick)",
+      "candidates": 0,
+      "picked": 4,
+      "trades": 3,
+      "tw": 0.04,
+      "ret": 1.5,
+      "pf": 1.53,
+      "dd": 2.77,
+      "calmar": 2.94,
+      "wr": 66.7,
+      "exits": {
+        "time_stop": 2,
+        "sl": 1
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "core_eod",
+      "label": "CORE + EOD best pick",
+      "candidates": 0,
+      "picked": 465,
+      "trades": 422,
+      "tw": 5.72,
+      "ret": -176.63,
+      "pf": 0.4,
+      "dd": 170.24,
+      "calmar": -1.04,
+      "wr": 24.9,
+      "exits": {
+        "tp2": 41,
+        "time_stop": 68,
+        "sl": 217,
+        "be": 95,
+        "session_end": 1
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "core_eod",
+      "label": "CORE + EOD best pick",
+      "candidates": 0,
+      "picked": 227,
+      "trades": 210,
+      "tw": 2.85,
+      "ret": -144.68,
+      "pf": 0.41,
+      "dd": 142.82,
+      "calmar": -1.01,
+      "wr": 29.5,
+      "exits": {
+        "tp2": 16,
+        "sl": 107,
+        "time_stop": 50,
+        "be": 37
+      }
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "core_eod",
+      "label": "CORE + EOD best pick",
+      "candidates": 0,
+      "picked": 503,
+      "trades": 473,
+      "tw": 6.42,
+      "ret": -195.98,
+      "pf": 0.4,
+      "dd": 196.06,
+      "calmar": -1,
+      "wr": 24.3,
+      "exits": {
+        "sl": 231,
+        "be": 117,
+        "time_stop": 75,
+        "tp2": 50
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "core_body35",
+      "label": "CORE + reclaim body 0.35",
+      "candidates": 0,
+      "picked": 641,
+      "trades": 449,
+      "tw": 6.09,
+      "ret": -138.65,
+      "pf": 0.24,
+      "dd": 137.69,
+      "calmar": -1.01,
+      "wr": 29,
+      "exits": {
+        "tp2": 35,
+        "time_stop": 131,
+        "sl": 218,
+        "be": 65
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "core_body35",
+      "label": "CORE + reclaim body 0.35",
+      "candidates": 0,
+      "picked": 287,
+      "trades": 245,
+      "tw": 3.32,
+      "ret": -147.38,
+      "pf": 0.35,
+      "dd": 145.26,
+      "calmar": -1.01,
+      "wr": 26.5,
+      "exits": {
+        "tp2": 18,
+        "sl": 131,
+        "time_stop": 52,
+        "be": 44
+      }
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "core_body35",
+      "label": "CORE + reclaim body 0.35",
+      "candidates": 0,
+      "picked": 630,
+      "trades": 466,
+      "tw": 6.32,
+      "ret": -162.2,
+      "pf": 0.33,
+      "dd": 162.23,
+      "calmar": -1,
+      "wr": 29,
+      "exits": {
+        "sl": 221,
+        "be": 70,
+        "time_stop": 128,
+        "tp2": 47
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "core_sameBarReject",
+      "label": "CORE + reject same-bar reclaim",
+      "candidates": 0,
+      "picked": 615,
+      "trades": 432,
+      "tw": 5.86,
+      "ret": -131.24,
+      "pf": 0.24,
+      "dd": 130.47,
+      "calmar": -1.01,
+      "wr": 28.9,
+      "exits": {
+        "tp2": 34,
+        "time_stop": 128,
+        "sl": 207,
+        "be": 63
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "core_sameBarReject",
+      "label": "CORE + reject same-bar reclaim",
+      "candidates": 0,
+      "picked": 207,
+      "trades": 181,
+      "tw": 2.46,
+      "ret": -123.1,
+      "pf": 0.29,
+      "dd": 122.47,
+      "calmar": -1.01,
+      "wr": 23.2,
+      "exits": {
+        "tp2": 10,
+        "sl": 98,
+        "time_stop": 36,
+        "be": 37
+      }
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "core_sameBarReject",
+      "label": "CORE + reject same-bar reclaim",
+      "candidates": 0,
+      "picked": 611,
+      "trades": 451,
+      "tw": 6.12,
+      "ret": -158,
+      "pf": 0.32,
+      "dd": 158,
+      "calmar": -1,
+      "wr": 30.4,
+      "exits": {
+        "sl": 214,
+        "be": 62,
+        "time_stop": 135,
+        "tp2": 40
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "core_minRr15",
+      "label": "CORE + minRr 1.5",
+      "candidates": 0,
+      "picked": 730,
+      "trades": 523,
+      "tw": 7.09,
+      "ret": -145.25,
+      "pf": 0.31,
+      "dd": 141.77,
+      "calmar": -1.02,
+      "wr": 23.5,
+      "exits": {
+        "tp2": 36,
+        "time_stop": 110,
+        "sl": 280,
+        "be": 96,
+        "session_end": 1
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "core_minRr15",
+      "label": "CORE + minRr 1.5",
+      "candidates": 0,
+      "picked": 271,
+      "trades": 231,
+      "tw": 3.13,
+      "ret": -140.51,
+      "pf": 0.34,
+      "dd": 138.75,
+      "calmar": -1.01,
+      "wr": 25.1,
+      "exits": {
+        "tp2": 12,
+        "sl": 127,
+        "time_stop": 48,
+        "be": 44
+      }
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "core_minRr15",
+      "label": "CORE + minRr 1.5",
+      "candidates": 0,
+      "picked": 782,
+      "trades": 584,
+      "tw": 7.92,
+      "ret": -158.54,
+      "pf": 0.31,
+      "dd": 158.55,
+      "calmar": -1,
+      "wr": 22.8,
+      "exits": {
+        "sl": 301,
+        "be": 116,
+        "time_stop": 115,
+        "tp2": 52
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "core_noSessionExt",
+      "label": "CORE without session extremes",
+      "candidates": 0,
+      "picked": 639,
+      "trades": 443,
+      "tw": 6.01,
+      "ret": -137.02,
+      "pf": 0.26,
+      "dd": 134.19,
+      "calmar": -1.02,
+      "wr": 25.7,
+      "exits": {
+        "tp2": 28,
+        "time_stop": 119,
+        "sl": 214,
+        "be": 82
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "core_noSessionExt",
+      "label": "CORE without session extremes",
+      "candidates": 0,
+      "picked": 217,
+      "trades": 187,
+      "tw": 2.54,
+      "ret": -128.46,
+      "pf": 0.36,
+      "dd": 129.14,
+      "calmar": -0.99,
+      "wr": 27.3,
+      "exits": {
+        "sl": 96,
+        "time_stop": 44,
+        "tp2": 11,
+        "be": 36
+      }
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "core_noSessionExt",
+      "label": "CORE without session extremes",
+      "candidates": 0,
+      "picked": 706,
+      "trades": 500,
+      "tw": 6.78,
+      "ret": -158.33,
+      "pf": 0.34,
+      "dd": 158.37,
+      "calmar": -1,
+      "wr": 25.6,
+      "exits": {
+        "sl": 251,
+        "be": 90,
+        "time_stop": 113,
+        "tp2": 46
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "core_hold24",
+      "label": "CORE maxHold 24 bars",
+      "candidates": 0,
+      "picked": 774,
+      "trades": 571,
+      "tw": 7.75,
+      "ret": -135.33,
+      "pf": 0.27,
+      "dd": 134.28,
+      "calmar": -1.01,
+      "wr": 27,
+      "exits": {
+        "time_stop": 222,
+        "sl": 244,
+        "tp2": 35,
+        "be": 69,
+        "session_end": 1
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "core_hold24",
+      "label": "CORE maxHold 24 bars",
+      "candidates": 0,
+      "picked": 287,
+      "trades": 249,
+      "tw": 3.38,
+      "ret": -133.57,
+      "pf": 0.31,
+      "dd": 132.32,
+      "calmar": -1.01,
+      "wr": 31.7,
+      "exits": {
+        "tp2": 12,
+        "sl": 121,
+        "time_stop": 90,
+        "be": 26
+      }
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "core_hold24",
+      "label": "CORE maxHold 24 bars",
+      "candidates": 0,
+      "picked": 828,
+      "trades": 625,
+      "tw": 8.48,
+      "ret": -146.64,
+      "pf": 0.3,
+      "dd": 146.65,
+      "calmar": -1,
+      "wr": 26.9,
+      "exits": {
+        "sl": 272,
+        "be": 84,
+        "time_stop": 236,
+        "tp2": 33
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "variant": "core_score52",
+      "label": "CORE + entryScore≥52",
+      "candidates": 0,
+      "picked": 620,
+      "trades": 458,
+      "tw": 6.21,
+      "ret": -139.31,
+      "pf": 0.28,
+      "dd": 138.22,
+      "calmar": -1.01,
+      "wr": 29.5,
+      "exits": {
+        "tp2": 36,
+        "time_stop": 138,
+        "sl": 215,
+        "be": 69
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "variant": "core_score52",
+      "label": "CORE + entryScore≥52",
+      "candidates": 0,
+      "picked": 219,
+      "trades": 194,
+      "tw": 2.63,
+      "ret": -134.71,
+      "pf": 0.34,
+      "dd": 133.99,
+      "calmar": -1.01,
+      "wr": 26.3,
+      "exits": {
+        "tp2": 17,
+        "sl": 102,
+        "be": 37,
+        "time_stop": 38
+      }
+    },
+    {
+      "symbol": "BTCUSDT",
+      "variant": "core_score52",
+      "label": "CORE + entryScore≥52",
+      "candidates": 0,
+      "picked": 661,
+      "trades": 497,
+      "tw": 6.74,
+      "ret": -152.39,
+      "pf": 0.31,
+      "dd": 152.42,
+      "calmar": -1,
+      "wr": 29.2,
+      "exits": {
+        "sl": 240,
+        "be": 71,
+        "time_stop": 137,
+        "tp2": 48,
+        "session_end": 1
+      }
+    }
+  ],
+  "portfolio": {
+    "core": {
+      "id": "core",
+      "coins": 3,
+      "trades": 1383,
+      "tw": 18.76,
+      "retSum": -451.78,
+      "pfMean": 0.33
+    },
+    "legacy": {
+      "id": "legacy",
+      "coins": 3,
+      "trades": 84,
+      "tw": 1.14,
+      "retSum": -34.63,
+      "pfMean": 0.74
+    }
+  },
+  "doctrine": "docs/LIQ_CORE_PLAYBOOK.md"
+}

@@ -125,7 +125,8 @@ ETH is the **template coin** for the regime process (`VP_FREQ_REGIME_OPTIMIZATIO
 5. **Prepared weak-bear:** block vacuum VAL in weak_bear + prepared bear vacuum VAL.
 6. **H7** — flat/transition `prior60` VAL shorts bleed → `vpValSellBlockFlatPrior60` (±5%).
 7. **H8** — sharp 5d rally shorts squeeze → `vpValSellChaseFilter` @ 5% prior5d.
-8. **Rejected for cert:** VAH reopen; copying ETH `volTargetSizing`; flat chop exit overlays; blunt HTF harden as “fix Calmar”; ceilings that crush lock runners.
+8. **H9 (2026-07-23)** — widen flat prior60 to **±8%** → Calmar **1.31** / +304% → sleeve.
+9. **Rejected for cert deploy:** VAH reopen; copying ETH `volTargetSizing`; flat chop exit overlays; blunt HTF harden as “fix Calmar”; ceilings that crush lock runners; frequency still &lt;2/wk.
 
 ### Locked behaviour (summary)
 
@@ -134,24 +135,20 @@ vpAllowedSetups: ["val_breakdown"]   # VAL shorts only
 vpMinHtfSepPct: 0.0025
 vpValSellBlockBull60Dump / NonVac / Extending (extend ratio 0.6)
 vpValSellBlockWeakBearVacuum + vpPreparedRegimeOnly + vpPreparedBlockVacuumValBear
-vpValSellBlockFlatPrior60 (±5%)
+vpValSellBlockFlatPrior60 (±8%)      # H9
 vpValSellChaseFilter @ prior5d 5%
 vpNoveltyEnabled: false
 ```
 
-### Certification (2026-07-20)
+### Certification
 
-| Metric | Result |
-|--------|--------|
-| Window | BNBUSDT 15m, 2020-01-01 → 2026-05-31 |
-| Full sim | **108t / +260.7% / CAGR 22.6% / Calmar 0.96 / DD 23.4% / PF 1.72** |
-| Frequency | **~0.32 / week** |
-| Core gates | **FAIL Calmar** (0.96 &lt; 1); OOS/MC/catastrophic-year **PASS** |
-| Cost stress | Better than early BNB funnels; liq crunch still severe |
-| Verdict | **`REJECT_CERTIFICATION`** (improved research baseline, not sleeve promote) |
+| Date | Result |
+|------|--------|
+| 2026-07-20 | **108t / +260.7% / Calmar 0.96** → `REJECT_CERTIFICATION` (Calmar miss) |
+| **2026-07-23 H9** | **104t / +303.9% / Calmar 1.31 / MC p5 +22.5% / WF OOS +223.7%** → **`RESEARCH_SLEEVE_LOW_FREQ`** (freq 0.31/wk) |
 
-**Decision:** `2026-07-20-bnb-vp-freq-certification-reject.md`  
-**Next on BNB (if revisited):** raise Calmar without N-crush (sizing / one residual bleed cell) — do not reopen VAH without new coin-native evidence.
+**Decisions:** `2026-07-20-bnb-vp-freq-certification-reject.md`, `2026-07-23-bnb-vp-freq-h9-calmar-sleeve.md`  
+**Next on BNB:** frequency restore without destroying Calmar; portfolio with ETH/BTC sleeves — do not reopen VAH without new coin-native evidence.
 
 ---
 

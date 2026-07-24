@@ -33,6 +33,7 @@
     "backtest:trail-hybrid": "node scripts/backtest-trail-hybrid.mjs",
     "backtest:liq-trail-sweep": "node scripts/backtest-liq-trail-sweep.mjs",
     "backtest:liq-freq-edge": "node scripts/backtest-liq-freq-edge.mjs",
+    "backtest:liq-core-baseline": "node scripts/backtest-liq-core-baseline.mjs",
     "backtest:liq-vp-confluence": "node scripts/backtest-liq-vp-confluence.mjs",
     "backtest:liq-vp-proximity": "node scripts/backtest-liq-vp-proximity.mjs",
     "backtest:smc-structure-funnel": "node scripts/backtest-smc-structure-funnel.mjs",

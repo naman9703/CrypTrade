@@ -41,6 +41,8 @@ test("fillVolumeProfileFreqDefaults — overwrites ETH portfolio snapshot on BNB
   assert.equal(out.vpRequireHtfAlign, true);
   assert.equal(out.vpMinHtfSepPct, 0.0025);
   assert.equal(out.vpValSellBlockFlatPrior60, true);
+  assert.equal(out.vpValSellFlatPrior60LoPct, -0.08);
+  assert.equal(out.vpValSellFlatPrior60HiPct, 0.08);
   assert.equal(out.vpValSellChaseFilter, true);
   assert.equal(out.vpPreparedBlockVacuumValBear, true);
   assert.equal(out.vpNoveltyEnabled, false);
@@ -136,6 +138,35 @@ test("fillVolumeProfileFreqDefaults — resolves SOL VAL+rej wick40 / HTF0.20 lo
   assert.equal(out.vpRejectionSellBlockExtendedDown, true);
   assert.equal(out.vpRejectionExtendedPriorPct, 0.05);
   assert.equal(out.vpRejectionMinWickRatio, 0.4);
+  assert.equal(out.vpNoveltyEnabled, false);
+});
+
+test("fillVolumeProfileFreqDefaults — resolves AVAX VAL+rej prepared-cell H4 lock", () => {
+  const out = fillVolumeProfileFreqDefaults({
+    ...VOLUME_PROFILE_FREQ_PORTFOLIO_15M,
+    symbol: "AVAXUSDT",
+  });
+  assert.equal(out.vpPlaybook, "FREQ");
+  assert.deepEqual(out.vpAllowedSetups, ["val_breakdown", "va_rejection"]);
+  assert.equal(out.vpRequireHtfAlign, true);
+  assert.equal(out.vpMinHtfSepPct, 0.0015);
+  assert.equal(out.vpValSellBlockWeakBearVacuum, true);
+  assert.equal(out.vpValSellChaseFilter, true);
+  assert.equal(out.vpValSellChaseMaxPrior5dPct, 0.05);
+  assert.equal(out.vpPreparedRegimeOnly, true);
+  assert.equal(out.vpPreparedBlockVacuumVah, false);
+  assert.equal(out.vpPreparedBlockVacuumValBear, false);
+  assert.deepEqual(out.vpPreparedBlockCellKeys, [
+    "SELL|val_breakdown|bear_trend|vacuum",
+    "SELL|val_breakdown|bull_chop|vacuum",
+    "SELL|val_breakdown|bear_trend|structured",
+    "SELL|val_breakdown|bull_chop|structured",
+    "SELL|val_breakdown|bear_trend|tight",
+    "SELL|va_rejection|weak_bear|vacuum",
+    "BUY|va_rejection|bull_chop|structured",
+    "BUY|va_rejection|bull_chop|vacuum",
+    "BUY|va_rejection|bull_chop|tight",
+  ]);
   assert.equal(out.vpNoveltyEnabled, false);
 });
 

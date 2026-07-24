@@ -199,6 +199,7 @@ export const VOLUME_PROFILE_FREQ_15M = {
  * - weak_bear vacuum VAL block + prepared bear vacuum VAL block
  * - H7 flat prior60 VAL block (transition grind −$23 multi-year)
  * - H8 prior5d chase block on VAL shorts (squeeze shorts −$42 multi-year)
+ * - H9 widen flat prior60 ±5%→±8% (Calmar 0.95→~1.29 on cert window, 2026-07-23)
  */
 export const VOLUME_PROFILE_FREQ_BNB_15M = {
   ...VOLUME_PROFILE_BASE,
@@ -226,8 +227,10 @@ export const VOLUME_PROFILE_FREQ_BNB_15M = {
   vpPreparedBlockVacuumValBear: true,
   vpPreparedBlockVacuumVah: false,
   vpValSellBlockFlatPrior60: true,
-  vpValSellFlatPrior60LoPct: -0.05,
-  vpValSellFlatPrior60HiPct: 0.05,
+  // H9 (2026-07-23): widen flat prior60 abstain ±5%→±8% — cuts transition bleed,
+  // Calmar 0.95→~1.29 / ret +261%→+304% on cert window (see research decision).
+  vpValSellFlatPrior60LoPct: -0.08,
+  vpValSellFlatPrior60HiPct: 0.08,
   vpValSellChaseFilter: true,
   vpValSellChaseMaxPrior5dPct: 0.05,
   vpNoveltyEnabled: false,
@@ -274,6 +277,56 @@ export const VOLUME_PROFILE_FREQ_SOL_15M = {
   vpRejectionSellBlockExtendedDown: true,
   vpRejectionExtendedPriorPct: 0.05,
   vpRejectionMinWickRatio: 0.4,
+  vpNoveltyEnabled: false,
+};
+
+/**
+ * AVAX — VAL+rej coin-native prepared-cell stack (2026-07-22 R22 lock).
+ *
+ * Coin-native Phase 0–4 (FREQ core → funnel → weakBearVac → cell denies → OOS):
+ * - Raw / ETH-shaped funnel fails; VAH bleeds; VAL+rej is the only positive funnel.
+ * - Edge concentrates in bull_trend vacuum VAL + bull/chop vacuum rejection — NOT bear60-only
+ *   (SOL-style bear60 would crush AVAX; do not copy).
+ * - Named bleeds locked via cell deny (not year cuts):
+ *   SELL val bear_trend|vacuum, bull_chop|vacuum, bear_trend|structured, bull_chop|structured;
+ *   SELL va_rejection weak_bear|vacuum;
+ *   BUY va_rejection bull_chop (structured/vacuum/tight) — 2022–23 cert-gap fix (H3).
+ * - VAL prior5d chase filter (5%) improves OOS without collapsing N.
+ * - Wick floors / ext-down rej / ETH sellMacroAdapt / vol-target / deny bear|bull SELL vac rej
+ *   REJECTED on AVAX (kill overall edge — those SELL vac rej cells pay hard).
+ *
+ * DB+funding H3 (2026-07-22): ~166t / +604% / Calmar ~1.48 / DD~29% / OOS +87%;
+ * 2022–23 ~−24% (above −25% catastrophic bar). Frequency ~0.59/wk.
+ * Not WF+MC certified until harness re-pass — research sleeve.
+ */
+export const VOLUME_PROFILE_FREQ_AVAX_15M = {
+  ...VOLUME_PROFILE_BASE,
+  ...VOLUME_PROFILE_FREQ_CORE,
+  symbol: "AVAXUSDT",
+  timeframe: "15m",
+  vpAllowedSetups: ["val_breakdown", "va_rejection"],
+  vpRequireHtfAlign: true,
+  vpMinHtfSepPct: 0.0015,
+  vpMinScore: 7,
+  vpMinBarGap: 2,
+  vpMaxTradesPerDay: 2,
+  vpValSellBlockWeakBearVacuum: true,
+  vpValSellChaseFilter: true,
+  vpValSellChaseMaxPrior5dPct: 0.05,
+  vpPreparedRegimeOnly: true,
+  vpPreparedBlockVacuumVah: false,
+  vpPreparedBlockVacuumValBear: false,
+  vpPreparedBlockCellKeys: [
+    "SELL|val_breakdown|bear_trend|vacuum",
+    "SELL|val_breakdown|bull_chop|vacuum",
+    "SELL|val_breakdown|bear_trend|structured",
+    "SELL|val_breakdown|bull_chop|structured",
+    "SELL|val_breakdown|bear_trend|tight",
+    "SELL|va_rejection|weak_bear|vacuum",
+    "BUY|va_rejection|bull_chop|structured",
+    "BUY|va_rejection|bull_chop|vacuum",
+    "BUY|va_rejection|bull_chop|tight",
+  ],
   vpNoveltyEnabled: false,
 };
 
@@ -431,6 +484,7 @@ export function resolveVolumeProfileFreqPreset(symbol) {
   if (sym === "BTCUSDT") return VOLUME_PROFILE_FREQ_BTC_15M;
   if (sym === "BNBUSDT") return VOLUME_PROFILE_FREQ_BNB_15M;
   if (sym === "SOLUSDT") return VOLUME_PROFILE_FREQ_SOL_15M;
+  if (sym === "AVAXUSDT") return VOLUME_PROFILE_FREQ_AVAX_15M;
   return VOLUME_PROFILE_FREQ_15M;
 }
 

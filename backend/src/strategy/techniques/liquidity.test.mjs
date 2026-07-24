@@ -17,6 +17,8 @@ import {
   maxSweepCycleImpulseAtr,
   passesLiqSweepDisplacement,
   passesPostReclaimDisplacement,
+  passesGuideFollowThrough,
+  rejectionWickBodyRatio,
   passesSweepPokeRejection,
   passesEntryLevelHold,
   passesSweepAttemptCap,
@@ -647,6 +649,38 @@ test("passesPostReclaimDisplacement — requires aligned impulse bar after recla
       intradayLiqPostReclaimDispAtrMult: 1.0,
     }, 1),
     false,
+  );
+});
+
+test("rejectionWickBodyRatio + guide follow-through gates", () => {
+  const pin = { open: 100, high: 100.2, low: 98, close: 100.1, volume: 2000 };
+  assert.ok(rejectionWickBodyRatio(pin, "BUY") >= 1.5);
+  const cycle = { sweepStartIdx: 0, reclaimIdx: 0, wick: 98, level: 99, opposing: 105 };
+  const candles = [
+    { open: 100, high: 100.5, low: 98, close: 100.2, volume: 2000 },
+    { open: 100.2, high: 101.5, low: 100, close: 101.2, volume: 1500 },
+    { open: 101.2, high: 102, low: 101, close: 101.8, volume: 1200 },
+  ];
+  const pre = { atrSeries: [1, 1, 1] };
+  assert.equal(
+    passesGuideFollowThrough(candles, cycle, "BUY", pre, {
+      intradayLiqRequireFollowThrough: true,
+      intradayLiqFollowThroughAtrMult: 0.5,
+      intradayLiqFollowThroughBars: 2,
+    }),
+    true,
+  );
+  assert.equal(
+    passesGuideFollowThrough(candles, cycle, "BUY", pre, {
+      intradayLiqRequireFollowThrough: true,
+      intradayLiqFollowThroughAtrMult: 5,
+      intradayLiqFollowThroughBars: 2,
+    }),
+    false,
+  );
+  assert.equal(
+    passesSweepPokeRejection([pin], { sweepStartIdx: 0 }, "BUY", { intradayLiqMinSweepWickBodyRatio: 1.5 }),
+    true,
   );
 });
 

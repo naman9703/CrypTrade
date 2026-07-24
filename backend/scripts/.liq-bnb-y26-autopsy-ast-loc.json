@@ -1,0 +1,1244 @@
+{
+  "L0": {
+    "y26": {
+      "name": "y26",
+      "n": 9,
+      "wins": 2,
+      "wr": 22.2,
+      "pnl": -17.38,
+      "pf": 0.333,
+      "neverGreen": {
+        "n": 9,
+        "ret": -17.38,
+        "pf": 0.333,
+        "wr": 22.2
+      },
+      "neverGreenDrop": null,
+      "long": null,
+      "short": null,
+      "slLt06": null,
+      "slLt07": null,
+      "slLt08": null,
+      "hourAsia": {
+        "n": 9,
+        "ret": -17.38,
+        "pf": 0.333,
+        "wr": 22.2
+      },
+      "hourLondon": null,
+      "hourNy": null,
+      "byMonth": [
+        {
+          "k": "202605",
+          "n": 2,
+          "ret": -7.46,
+          "pf": 0
+        },
+        {
+          "k": "202606",
+          "n": 2,
+          "ret": -7.06,
+          "pf": 0
+        },
+        {
+          "k": "202603",
+          "n": 1,
+          "ret": -4.1,
+          "pf": 0
+        },
+        {
+          "k": "202604",
+          "n": 2,
+          "ret": 0.59,
+          "pf": 1.16
+        },
+        {
+          "k": "202601",
+          "n": 2,
+          "ret": 0.65,
+          "pf": 1.176
+        }
+      ],
+      "byReason": [
+        {
+          "k": "sl",
+          "n": 7,
+          "ret": -26.04,
+          "pf": 0
+        },
+        {
+          "k": "tp",
+          "n": 2,
+          "ret": 8.66,
+          "pf": 99
+        }
+      ],
+      "bySide": [
+        {
+          "k": "",
+          "n": 9,
+          "ret": -17.38,
+          "pf": 0.333
+        }
+      ],
+      "byLevel": [
+        {
+          "k": "",
+          "n": 9,
+          "ret": -17.38,
+          "pf": 0.333
+        }
+      ],
+      "softKeepIf": {
+        "dropNeverGreen": null,
+        "dropShort": {
+          "n": 9,
+          "ret": -17.38,
+          "pf": 0.333,
+          "wr": 22.2
+        },
+        "dropLong": {
+          "n": 9,
+          "ret": -17.38,
+          "pf": 0.333,
+          "wr": 22.2
+        },
+        "keepSlLt007": null,
+        "keepHour0_6": {
+          "n": 9,
+          "ret": -17.38,
+          "pf": 0.333,
+          "wr": 22.2
+        },
+        "dropHour0_6": null
+      }
+    },
+    "h12": {
+      "name": "h12",
+      "n": 20,
+      "wins": 8,
+      "wr": 40,
+      "pnl": -7.71,
+      "pf": 0.815,
+      "neverGreen": {
+        "n": 20,
+        "ret": -7.71,
+        "pf": 0.815,
+        "wr": 40
+      },
+      "neverGreenDrop": null,
+      "long": null,
+      "short": null,
+      "slLt06": null,
+      "slLt07": null,
+      "slLt08": null,
+      "hourAsia": {
+        "n": 20,
+        "ret": -7.71,
+        "pf": 0.815,
+        "wr": 40
+      },
+      "hourLondon": null,
+      "hourNy": null,
+      "byMonth": [
+        {
+          "k": "202605",
+          "n": 2,
+          "ret": -7.46,
+          "pf": 0
+        },
+        {
+          "k": "202510",
+          "n": 2,
+          "ret": -7.44,
+          "pf": 0
+        },
+        {
+          "k": "202606",
+          "n": 2,
+          "ret": -7.06,
+          "pf": 0
+        },
+        {
+          "k": "202507",
+          "n": 2,
+          "ret": -6.57,
+          "pf": 0
+        },
+        {
+          "k": "202603",
+          "n": 1,
+          "ret": -4.1,
+          "pf": 0
+        },
+        {
+          "k": "202604",
+          "n": 2,
+          "ret": 0.59,
+          "pf": 1.16
+        },
+        {
+          "k": "202601",
+          "n": 2,
+          "ret": 0.65,
+          "pf": 1.176
+        },
+        {
+          "k": "202512",
+          "n": 2,
+          "ret": 2.93,
+          "pf": 2.808
+        },
+        {
+          "k": "202508",
+          "n": 1,
+          "ret": 4.13,
+          "pf": 99
+        },
+        {
+          "k": "202509",
+          "n": 1,
+          "ret": 4.44,
+          "pf": 99
+        },
+        {
+          "k": "202511",
+          "n": 3,
+          "ret": 12.17,
+          "pf": 99
+        }
+      ],
+      "byReason": [
+        {
+          "k": "sl",
+          "n": 11,
+          "ret": -40.04,
+          "pf": 0
+        },
+        {
+          "k": "time_stop",
+          "n": 1,
+          "ret": -1.62,
+          "pf": 0
+        },
+        {
+          "k": "tp",
+          "n": 8,
+          "ret": 33.95,
+          "pf": 99
+        }
+      ],
+      "bySide": [
+        {
+          "k": "",
+          "n": 20,
+          "ret": -7.71,
+          "pf": 0.815
+        }
+      ],
+      "byLevel": [
+        {
+          "k": "",
+          "n": 20,
+          "ret": -7.71,
+          "pf": 0.815
+        }
+      ],
+      "softKeepIf": {
+        "dropNeverGreen": null,
+        "dropShort": {
+          "n": 20,
+          "ret": -7.71,
+          "pf": 0.815,
+          "wr": 40
+        },
+        "dropLong": {
+          "n": 20,
+          "ret": -7.71,
+          "pf": 0.815,
+          "wr": 40
+        },
+        "keepSlLt007": null,
+        "keepHour0_6": {
+          "n": 20,
+          "ret": -7.71,
+          "pf": 0.815,
+          "wr": 40
+        },
+        "dropHour0_6": null
+      }
+    },
+    "y25": {
+      "name": "y25",
+      "n": 19,
+      "wins": 11,
+      "wr": 57.9,
+      "pnl": 15.94,
+      "pf": 1.595,
+      "neverGreen": {
+        "n": 19,
+        "ret": 15.94,
+        "pf": 1.595,
+        "wr": 57.9
+      },
+      "neverGreenDrop": null,
+      "long": null,
+      "short": null,
+      "slLt06": null,
+      "slLt07": null,
+      "slLt08": null,
+      "hourAsia": {
+        "n": 19,
+        "ret": 15.94,
+        "pf": 1.595,
+        "wr": 57.9
+      },
+      "hourLondon": null,
+      "hourNy": null,
+      "byMonth": [
+        {
+          "k": "202510",
+          "n": 2,
+          "ret": -7.44,
+          "pf": 0
+        },
+        {
+          "k": "202507",
+          "n": 2,
+          "ret": -6.57,
+          "pf": 0
+        },
+        {
+          "k": "202504",
+          "n": 1,
+          "ret": -4.06,
+          "pf": 0
+        },
+        {
+          "k": "202501",
+          "n": 5,
+          "ret": 1.93,
+          "pf": 1.272
+        },
+        {
+          "k": "202512",
+          "n": 2,
+          "ret": 2.93,
+          "pf": 2.808
+        },
+        {
+          "k": "202503",
+          "n": 1,
+          "ret": 4.12,
+          "pf": 99
+        },
+        {
+          "k": "202508",
+          "n": 1,
+          "ret": 4.13,
+          "pf": 99
+        },
+        {
+          "k": "202502",
+          "n": 1,
+          "ret": 4.28,
+          "pf": 99
+        },
+        {
+          "k": "202509",
+          "n": 1,
+          "ret": 4.44,
+          "pf": 99
+        },
+        {
+          "k": "202511",
+          "n": 3,
+          "ret": 12.17,
+          "pf": 99
+        }
+      ],
+      "byReason": [
+        {
+          "k": "sl",
+          "n": 7,
+          "ret": -25.17,
+          "pf": 0
+        },
+        {
+          "k": "time_stop",
+          "n": 2,
+          "ret": -0.82,
+          "pf": 0.497
+        },
+        {
+          "k": "tp",
+          "n": 10,
+          "ret": 41.93,
+          "pf": 99
+        }
+      ],
+      "bySide": [
+        {
+          "k": "",
+          "n": 19,
+          "ret": 15.94,
+          "pf": 1.595
+        }
+      ],
+      "byLevel": [
+        {
+          "k": "",
+          "n": 19,
+          "ret": 15.94,
+          "pf": 1.595
+        }
+      ],
+      "softKeepIf": {
+        "dropNeverGreen": null,
+        "dropShort": {
+          "n": 19,
+          "ret": 15.94,
+          "pf": 1.595,
+          "wr": 57.9
+        },
+        "dropLong": {
+          "n": 19,
+          "ret": 15.94,
+          "pf": 1.595,
+          "wr": 57.9
+        },
+        "keepSlLt007": null,
+        "keepHour0_6": {
+          "n": 19,
+          "ret": 15.94,
+          "pf": 1.595,
+          "wr": 57.9
+        },
+        "dropHour0_6": null
+      }
+    },
+    "y24": {
+      "name": "y24",
+      "n": 20,
+      "wins": 9,
+      "wr": 45,
+      "pnl": -0.88,
+      "pf": 0.974,
+      "neverGreen": {
+        "n": 20,
+        "ret": -0.88,
+        "pf": 0.974,
+        "wr": 45
+      },
+      "neverGreenDrop": null,
+      "long": null,
+      "short": null,
+      "slLt06": null,
+      "slLt07": null,
+      "slLt08": null,
+      "hourAsia": {
+        "n": 20,
+        "ret": -0.88,
+        "pf": 0.974,
+        "wr": 45
+      },
+      "hourLondon": null,
+      "hourNy": null,
+      "byMonth": [
+        {
+          "k": "202401",
+          "n": 3,
+          "ret": -9.49,
+          "pf": 0
+        },
+        {
+          "k": "202404",
+          "n": 1,
+          "ret": -3.1,
+          "pf": 0
+        },
+        {
+          "k": "202405",
+          "n": 1,
+          "ret": -2.86,
+          "pf": 0
+        },
+        {
+          "k": "202408",
+          "n": 5,
+          "ret": -1.97,
+          "pf": 0.78
+        },
+        {
+          "k": "202411",
+          "n": 2,
+          "ret": 0.9,
+          "pf": 1.291
+        },
+        {
+          "k": "202403",
+          "n": 1,
+          "ret": 3.59,
+          "pf": 99
+        },
+        {
+          "k": "202412",
+          "n": 1,
+          "ret": 3.86,
+          "pf": 99
+        },
+        {
+          "k": "202410",
+          "n": 3,
+          "ret": 3.9,
+          "pf": 2.313
+        },
+        {
+          "k": "202406",
+          "n": 3,
+          "ret": 4.28,
+          "pf": 2.343
+        }
+      ],
+      "byReason": [
+        {
+          "k": "sl",
+          "n": 11,
+          "ret": -33.65,
+          "pf": 0
+        },
+        {
+          "k": "tp",
+          "n": 9,
+          "ret": 32.77,
+          "pf": 99
+        }
+      ],
+      "bySide": [
+        {
+          "k": "",
+          "n": 20,
+          "ret": -0.88,
+          "pf": 0.974
+        }
+      ],
+      "byLevel": [
+        {
+          "k": "",
+          "n": 20,
+          "ret": -0.88,
+          "pf": 0.974
+        }
+      ],
+      "softKeepIf": {
+        "dropNeverGreen": null,
+        "dropShort": {
+          "n": 20,
+          "ret": -0.88,
+          "pf": 0.974,
+          "wr": 45
+        },
+        "dropLong": {
+          "n": 20,
+          "ret": -0.88,
+          "pf": 0.974,
+          "wr": 45
+        },
+        "keepSlLt007": null,
+        "keepHour0_6": {
+          "n": 20,
+          "ret": -0.88,
+          "pf": 0.974,
+          "wr": 45
+        },
+        "dropHour0_6": null
+      }
+    },
+    "sampleY26": [
+      {
+        "mon": "202601",
+        "side": "",
+        "pnl": -3.71,
+        "reason": "sl",
+        "sl": null,
+        "hour": 4,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202601",
+        "side": "",
+        "pnl": 4.37,
+        "reason": "tp",
+        "sl": null,
+        "hour": 3,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202603",
+        "side": "",
+        "pnl": -4.1,
+        "reason": "sl",
+        "sl": null,
+        "hour": 1,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202604",
+        "side": "",
+        "pnl": -3.7,
+        "reason": "sl",
+        "sl": null,
+        "hour": 2,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202604",
+        "side": "",
+        "pnl": 4.29,
+        "reason": "tp",
+        "sl": null,
+        "hour": 1,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202605",
+        "side": "",
+        "pnl": -3.6,
+        "reason": "sl",
+        "sl": null,
+        "hour": 3,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202605",
+        "side": "",
+        "pnl": -3.86,
+        "reason": "sl",
+        "sl": null,
+        "hour": 5,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202606",
+        "side": "",
+        "pnl": -3.36,
+        "reason": "sl",
+        "sl": null,
+        "hour": 3,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202606",
+        "side": "",
+        "pnl": -3.7,
+        "reason": "sl",
+        "sl": null,
+        "hour": 2,
+        "neverGreen": true,
+        "level": ""
+      }
+    ]
+  },
+  "L6": {
+    "y26": {
+      "name": "y26",
+      "n": 9,
+      "wins": 2,
+      "wr": 22.2,
+      "pnl": -19.15,
+      "pf": 0.333,
+      "neverGreen": {
+        "n": 9,
+        "ret": -19.15,
+        "pf": 0.333,
+        "wr": 22.2
+      },
+      "neverGreenDrop": null,
+      "long": null,
+      "short": null,
+      "slLt06": null,
+      "slLt07": null,
+      "slLt08": null,
+      "hourAsia": {
+        "n": 9,
+        "ret": -19.15,
+        "pf": 0.333,
+        "wr": 22.2
+      },
+      "hourLondon": null,
+      "hourNy": null,
+      "byMonth": [
+        {
+          "k": "202605",
+          "n": 2,
+          "ret": -8.22,
+          "pf": 0
+        },
+        {
+          "k": "202606",
+          "n": 2,
+          "ret": -7.78,
+          "pf": 0
+        },
+        {
+          "k": "202603",
+          "n": 1,
+          "ret": -4.52,
+          "pf": 0
+        },
+        {
+          "k": "202604",
+          "n": 2,
+          "ret": 0.65,
+          "pf": 1.16
+        },
+        {
+          "k": "202601",
+          "n": 2,
+          "ret": 0.72,
+          "pf": 1.176
+        }
+      ],
+      "byReason": [
+        {
+          "k": "sl",
+          "n": 7,
+          "ret": -28.7,
+          "pf": 0
+        },
+        {
+          "k": "tp",
+          "n": 2,
+          "ret": 9.55,
+          "pf": 99
+        }
+      ],
+      "bySide": [
+        {
+          "k": "",
+          "n": 9,
+          "ret": -19.15,
+          "pf": 0.333
+        }
+      ],
+      "byLevel": [
+        {
+          "k": "",
+          "n": 9,
+          "ret": -19.15,
+          "pf": 0.333
+        }
+      ],
+      "softKeepIf": {
+        "dropNeverGreen": null,
+        "dropShort": {
+          "n": 9,
+          "ret": -19.15,
+          "pf": 0.333,
+          "wr": 22.2
+        },
+        "dropLong": {
+          "n": 9,
+          "ret": -19.15,
+          "pf": 0.333,
+          "wr": 22.2
+        },
+        "keepSlLt007": null,
+        "keepHour0_6": {
+          "n": 9,
+          "ret": -19.15,
+          "pf": 0.333,
+          "wr": 22.2
+        },
+        "dropHour0_6": null
+      }
+    },
+    "h12": {
+      "name": "h12",
+      "n": 14,
+      "wins": 6,
+      "wr": 42.9,
+      "pnl": -4.04,
+      "pf": 0.875,
+      "neverGreen": {
+        "n": 14,
+        "ret": -4.04,
+        "pf": 0.875,
+        "wr": 42.9
+      },
+      "neverGreenDrop": null,
+      "long": null,
+      "short": null,
+      "slLt06": null,
+      "slLt07": null,
+      "slLt08": null,
+      "hourAsia": {
+        "n": 14,
+        "ret": -4.04,
+        "pf": 0.875,
+        "wr": 42.9
+      },
+      "hourLondon": null,
+      "hourNy": null,
+      "byMonth": [
+        {
+          "k": "202605",
+          "n": 2,
+          "ret": -8.22,
+          "pf": 0
+        },
+        {
+          "k": "202606",
+          "n": 2,
+          "ret": -7.78,
+          "pf": 0
+        },
+        {
+          "k": "202603",
+          "n": 1,
+          "ret": -4.52,
+          "pf": 0
+        },
+        {
+          "k": "202507",
+          "n": 1,
+          "ret": -3.61,
+          "pf": 0
+        },
+        {
+          "k": "202604",
+          "n": 2,
+          "ret": 0.65,
+          "pf": 1.16
+        },
+        {
+          "k": "202601",
+          "n": 2,
+          "ret": 0.72,
+          "pf": 1.176
+        },
+        {
+          "k": "202508",
+          "n": 1,
+          "ret": 4.52,
+          "pf": 99
+        },
+        {
+          "k": "202512",
+          "n": 1,
+          "ret": 4.95,
+          "pf": 99
+        },
+        {
+          "k": "202511",
+          "n": 2,
+          "ret": 9.25,
+          "pf": 99
+        }
+      ],
+      "byReason": [
+        {
+          "k": "sl",
+          "n": 8,
+          "ret": -32.31,
+          "pf": 0
+        },
+        {
+          "k": "tp",
+          "n": 6,
+          "ret": 28.27,
+          "pf": 99
+        }
+      ],
+      "bySide": [
+        {
+          "k": "",
+          "n": 14,
+          "ret": -4.04,
+          "pf": 0.875
+        }
+      ],
+      "byLevel": [
+        {
+          "k": "",
+          "n": 14,
+          "ret": -4.04,
+          "pf": 0.875
+        }
+      ],
+      "softKeepIf": {
+        "dropNeverGreen": null,
+        "dropShort": {
+          "n": 14,
+          "ret": -4.04,
+          "pf": 0.875,
+          "wr": 42.9
+        },
+        "dropLong": {
+          "n": 14,
+          "ret": -4.04,
+          "pf": 0.875,
+          "wr": 42.9
+        },
+        "keepSlLt007": null,
+        "keepHour0_6": {
+          "n": 14,
+          "ret": -4.04,
+          "pf": 0.875,
+          "wr": 42.9
+        },
+        "dropHour0_6": null
+      }
+    },
+    "y25": {
+      "name": "y25",
+      "n": 12,
+      "wins": 8,
+      "wr": 66.7,
+      "pnl": 17.31,
+      "pf": 2.097,
+      "neverGreen": {
+        "n": 12,
+        "ret": 17.31,
+        "pf": 2.097,
+        "wr": 66.7
+      },
+      "neverGreenDrop": null,
+      "long": null,
+      "short": null,
+      "slLt06": null,
+      "slLt07": null,
+      "slLt08": null,
+      "hourAsia": {
+        "n": 12,
+        "ret": 17.31,
+        "pf": 2.097,
+        "wr": 66.7
+      },
+      "hourLondon": null,
+      "hourNy": null,
+      "byMonth": [
+        {
+          "k": "202504",
+          "n": 1,
+          "ret": -4.31,
+          "pf": 0
+        },
+        {
+          "k": "202507",
+          "n": 1,
+          "ret": -3.61,
+          "pf": 0
+        },
+        {
+          "k": "202501",
+          "n": 5,
+          "ret": 2.14,
+          "pf": 1.272
+        },
+        {
+          "k": "202503",
+          "n": 1,
+          "ret": 4.37,
+          "pf": 99
+        },
+        {
+          "k": "202508",
+          "n": 1,
+          "ret": 4.52,
+          "pf": 99
+        },
+        {
+          "k": "202512",
+          "n": 1,
+          "ret": 4.95,
+          "pf": 99
+        },
+        {
+          "k": "202511",
+          "n": 2,
+          "ret": 9.25,
+          "pf": 99
+        }
+      ],
+      "byReason": [
+        {
+          "k": "sl",
+          "n": 4,
+          "ret": -15.77,
+          "pf": 0
+        },
+        {
+          "k": "time_stop",
+          "n": 1,
+          "ret": 0.89,
+          "pf": 99
+        },
+        {
+          "k": "tp",
+          "n": 7,
+          "ret": 32.19,
+          "pf": 99
+        }
+      ],
+      "bySide": [
+        {
+          "k": "",
+          "n": 12,
+          "ret": 17.31,
+          "pf": 2.097
+        }
+      ],
+      "byLevel": [
+        {
+          "k": "",
+          "n": 12,
+          "ret": 17.31,
+          "pf": 2.097
+        }
+      ],
+      "softKeepIf": {
+        "dropNeverGreen": null,
+        "dropShort": {
+          "n": 12,
+          "ret": 17.31,
+          "pf": 2.097,
+          "wr": 66.7
+        },
+        "dropLong": {
+          "n": 12,
+          "ret": 17.31,
+          "pf": 2.097,
+          "wr": 66.7
+        },
+        "keepSlLt007": null,
+        "keepHour0_6": {
+          "n": 12,
+          "ret": 17.31,
+          "pf": 2.097,
+          "wr": 66.7
+        },
+        "dropHour0_6": null
+      }
+    },
+    "y24": {
+      "name": "y24",
+      "n": 12,
+      "wins": 6,
+      "wr": 50,
+      "pnl": 3.45,
+      "pf": 1.174,
+      "neverGreen": {
+        "n": 12,
+        "ret": 3.45,
+        "pf": 1.174,
+        "wr": 50
+      },
+      "neverGreenDrop": null,
+      "long": null,
+      "short": null,
+      "slLt06": null,
+      "slLt07": null,
+      "slLt08": null,
+      "hourAsia": {
+        "n": 12,
+        "ret": 3.45,
+        "pf": 1.174,
+        "wr": 50
+      },
+      "hourLondon": null,
+      "hourNy": null,
+      "byMonth": [
+        {
+          "k": "202401",
+          "n": 2,
+          "ret": -6.9,
+          "pf": 0
+        },
+        {
+          "k": "202405",
+          "n": 1,
+          "ret": -3.11,
+          "pf": 0
+        },
+        {
+          "k": "202406",
+          "n": 2,
+          "ret": 0.47,
+          "pf": 1.14
+        },
+        {
+          "k": "202408",
+          "n": 4,
+          "ret": 1.05,
+          "pf": 1.161
+        },
+        {
+          "k": "202411",
+          "n": 1,
+          "ret": 4.42,
+          "pf": 99
+        },
+        {
+          "k": "202410",
+          "n": 2,
+          "ret": 7.53,
+          "pf": 99
+        }
+      ],
+      "byReason": [
+        {
+          "k": "sl",
+          "n": 6,
+          "ret": -19.86,
+          "pf": 0
+        },
+        {
+          "k": "tp",
+          "n": 6,
+          "ret": 23.32,
+          "pf": 99
+        }
+      ],
+      "bySide": [
+        {
+          "k": "",
+          "n": 12,
+          "ret": 3.45,
+          "pf": 1.174
+        }
+      ],
+      "byLevel": [
+        {
+          "k": "",
+          "n": 12,
+          "ret": 3.45,
+          "pf": 1.174
+        }
+      ],
+      "softKeepIf": {
+        "dropNeverGreen": null,
+        "dropShort": {
+          "n": 12,
+          "ret": 3.45,
+          "pf": 1.174,
+          "wr": 50
+        },
+        "dropLong": {
+          "n": 12,
+          "ret": 3.45,
+          "pf": 1.174,
+          "wr": 50
+        },
+        "keepSlLt007": null,
+        "keepHour0_6": {
+          "n": 12,
+          "ret": 3.45,
+          "pf": 1.174,
+          "wr": 50
+        },
+        "dropHour0_6": null
+      }
+    },
+    "sampleY26": [
+      {
+        "mon": "202601",
+        "side": "",
+        "pnl": -4.09,
+        "reason": "sl",
+        "sl": null,
+        "hour": 4,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202601",
+        "side": "",
+        "pnl": 4.81,
+        "reason": "tp",
+        "sl": null,
+        "hour": 3,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202603",
+        "side": "",
+        "pnl": -4.52,
+        "reason": "sl",
+        "sl": null,
+        "hour": 1,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202604",
+        "side": "",
+        "pnl": -4.08,
+        "reason": "sl",
+        "sl": null,
+        "hour": 2,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202604",
+        "side": "",
+        "pnl": 4.73,
+        "reason": "tp",
+        "sl": null,
+        "hour": 1,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202605",
+        "side": "",
+        "pnl": -3.97,
+        "reason": "sl",
+        "sl": null,
+        "hour": 3,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202605",
+        "side": "",
+        "pnl": -4.25,
+        "reason": "sl",
+        "sl": null,
+        "hour": 5,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202606",
+        "side": "",
+        "pnl": -3.7,
+        "reason": "sl",
+        "sl": null,
+        "hour": 3,
+        "neverGreen": true,
+        "level": ""
+      },
+      {
+        "mon": "202606",
+        "side": "",
+        "pnl": -4.08,
+        "reason": "sl",
+        "sl": null,
+        "hour": 2,
+        "neverGreen": true,
+        "level": ""
+      }
+    ]
+  }
+}

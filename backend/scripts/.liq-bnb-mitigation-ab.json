@@ -1,0 +1,242 @@
+{
+  "rows": [
+    {
+      "id": "H0",
+      "f": {
+        "n": 1056,
+        "tw": 6.74,
+        "ret": -99.86,
+        "pf": 0.534,
+        "wr": 31.5,
+        "dd": 99.87,
+        "exits": {
+          "sl": 465,
+          "time_stop": 230,
+          "tp": 206,
+          "be": 154,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 337,
+        "tw": 6.46,
+        "ret": -0.99,
+        "pf": 0.598,
+        "wr": 32.3,
+        "dd": 1,
+        "exits": {
+          "sl": 151,
+          "be": 49,
+          "time_stop": 64,
+          "tp": 72,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    },
+    {
+      "id": "M1_mid_w8",
+      "f": {
+        "n": 923,
+        "tw": 5.9,
+        "ret": -98.82,
+        "pf": 0.675,
+        "wr": 30.1,
+        "dd": 98.85,
+        "exits": {
+          "sl": 386,
+          "be": 208,
+          "tp": 204,
+          "time_stop": 124,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 289,
+        "tw": 5.54,
+        "ret": -4.94,
+        "pf": 0.622,
+        "wr": 27,
+        "dd": 4.96,
+        "exits": {
+          "be": 74,
+          "sl": 123,
+          "time_stop": 32,
+          "tp": 59,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    },
+    {
+      "id": "M2_mid_w6",
+      "f": {
+        "n": 908,
+        "tw": 5.8,
+        "ret": -98.7,
+        "pf": 0.669,
+        "wr": 30.1,
+        "dd": 98.73,
+        "exits": {
+          "sl": 377,
+          "be": 208,
+          "tp": 200,
+          "time_stop": 122,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 284,
+        "tw": 5.45,
+        "ret": -4.87,
+        "pf": 0.632,
+        "wr": 27.5,
+        "dd": 4.9,
+        "exits": {
+          "be": 73,
+          "sl": 120,
+          "time_stop": 31,
+          "tp": 59,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    },
+    {
+      "id": "M3_mid_w12",
+      "f": {
+        "n": 930,
+        "tw": 5.94,
+        "ret": -99.06,
+        "pf": 0.672,
+        "wr": 29.9,
+        "dd": 99.08,
+        "exits": {
+          "sl": 393,
+          "be": 208,
+          "tp": 204,
+          "time_stop": 124,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 294,
+        "tw": 5.64,
+        "ret": -4.25,
+        "pf": 0.619,
+        "wr": 26.9,
+        "dd": 4.27,
+        "exits": {
+          "be": 75,
+          "sl": 126,
+          "time_stop": 32,
+          "tp": 60,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    },
+    {
+      "id": "M4_75_w8",
+      "f": {
+        "n": 757,
+        "tw": 4.83,
+        "ret": -98.61,
+        "pf": 0.634,
+        "wr": 28.3,
+        "dd": 98.69,
+        "exits": {
+          "sl": 317,
+          "tp": 163,
+          "be": 186,
+          "time_stop": 90,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 238,
+        "tw": 4.56,
+        "ret": -4.28,
+        "pf": 0.623,
+        "wr": 28.2,
+        "dd": 4.28,
+        "exits": {
+          "be": 59,
+          "sl": 103,
+          "tp": 51,
+          "time_stop": 24,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    },
+    {
+      "id": "M5_lvl_w8",
+      "f": {
+        "n": 592,
+        "tw": 3.78,
+        "ret": -96.87,
+        "pf": 0.687,
+        "wr": 30.7,
+        "dd": 96.94,
+        "exits": {
+          "sl": 254,
+          "tp": 140,
+          "time_stop": 61,
+          "be": 136,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 183,
+        "tw": 3.51,
+        "ret": -10.17,
+        "pf": 0.551,
+        "wr": 27.9,
+        "dd": 11.01,
+        "exits": {
+          "be": 40,
+          "sl": 86,
+          "tp": 40,
+          "time_stop": 16,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    },
+    {
+      "id": "M6_mid_w8_noSame",
+      "f": {
+        "n": 710,
+        "tw": 4.53,
+        "ret": -96.3,
+        "pf": 0.711,
+        "wr": 31,
+        "dd": 96.3,
+        "exits": {
+          "sl": 289,
+          "be": 151,
+          "time_stop": 123,
+          "tp": 146,
+          "session_end": 1
+        }
+      },
+      "h": {
+        "n": 233,
+        "tw": 4.47,
+        "ret": -12.48,
+        "pf": 0.59,
+        "wr": 27.9,
+        "dd": 13.49,
+        "exits": {
+          "be": 52,
+          "sl": 104,
+          "time_stop": 33,
+          "tp": 43,
+          "session_end": 1
+        }
+      },
+      "promote": false
+    }
+  ]
+}

@@ -2,7 +2,7 @@
  * Ranked liquidity level registry for classical LIQ sweeps.
  */
 import { resolveSessionExtremeLevel } from "../liquidity.js";
-import { swingHighLow } from "../fibonacci.js";
+import { swingHighLow, isPivotHigh, isPivotLow } from "../fibonacci.js";
 import { buildHtfLiquidityPools } from "../liquidityMap.js";
 
 const TIER_WEIGHT = Object.freeze({
@@ -153,6 +153,48 @@ export function resolveLiquidityCandidates(candles, idx, side, pre, opts = {}) {
           touches: 1,
         });
       }
+    }
+  }
+
+  // Guide-style fractal pivots: N bars lower/higher on each side (confirmed after `right` bars).
+  if (modes.has("swing_pivot") || modes.has("pivot")) {
+    const lookback = Math.max(1, Math.floor(Number(opts.intradayLiqSwingPivotLookback ?? 5)));
+    const right = lookback;
+    const left = lookback;
+    const searchFrom = idx - right;
+    const searchTo = Math.max(0, idx - 200);
+    let found = null;
+    for (let i = searchFrom; i >= searchTo; i--) {
+      if (side === "BUY" && isPivotLow(candles, i, left, right)) {
+        found = { level: Number(candles[i].low), levelType: "swing_low", pivotIdx: i };
+        break;
+      }
+      if (side === "SELL" && isPivotHigh(candles, i, left, right)) {
+        found = { level: Number(candles[i].high), levelType: "swing_high", pivotIdx: i };
+        break;
+      }
+    }
+    if (found?.level > 0) {
+      // Opposing: most recent opposite pivot in the same lookback window.
+      let opp = defaultOpp(found.level);
+      for (let i = searchFrom; i >= searchTo; i--) {
+        if (side === "BUY" && isPivotHigh(candles, i, left, right)) {
+          opp = Number(candles[i].high);
+          break;
+        }
+        if (side === "SELL" && isPivotLow(candles, i, left, right)) {
+          opp = Number(candles[i].low);
+          break;
+        }
+      }
+      pushCandidate(candidates, seen, {
+        level: found.level,
+        levelType: found.levelType,
+        importance: TIER_WEIGHT[found.levelType] ?? 1.0,
+        opposingLevel: opp > 0 ? opp : defaultOpp(found.level),
+        source: `swing_pivot_${lookback}`,
+        touches: 1,
+      });
     }
   }
 

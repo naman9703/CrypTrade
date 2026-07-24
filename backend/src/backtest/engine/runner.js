@@ -463,6 +463,14 @@ export async function runSimulation(args) {
    * beyond the signal bar's high (BUY) or low (SELL) — exactly mirroring live `bot.js`.
    */
   let pendingBreakout = null; // { side, signalHi, signalLo, barsLeft, flipIdx }
+  /** Pending LIQ mitigation limit — wait for pullback to pool after reclaim. */
+  let pendingLiqMitigation = null; // { signal, limitPx, invalidateWick, barsLeft, side }
+  /**
+   * Pending LIQ progress-confirm stop — wait for minR favorable excursion after signal
+   * before fill; cancel if level rebreaks or structural SL hits first.
+   * (BNB research 2026-07-23: filters instant no-follow without look-ahead cherry-pick.)
+   */
+  let pendingLiqProgress = null; // { signal, stopPx, level, slAbs, tpAbs, barsLeft, side }
   /** Bar index of the ST flip when a deferred breakout entry fires (for big-move gate). */
   let confirmedBreakoutFlipIdx = -1;
   /** @type {null | {
@@ -883,21 +891,92 @@ export async function runSimulation(args) {
       }
 
       /**
-       * LIQUIDITY_MAP dead-trade risk compression.
-       *
-       * The trade-level audit showed most drag comes from setups that never even
-       * reach a small fraction of 1R, then sit until `time_stop` or full SL. A
-       * market exit was too blunt: slow trades often recover. Instead, compress
-       * remaining risk by moving the structural stop closer once the trade has
-       * failed to prove itself. It is gated to pre-TP1 positions so runners that
-       * already proved themselves are still allowed to trail.
+       * Level re-break invalidation (LIQ fade thesis fail).
+       * After sweep+reclaim fade, if price re-pierces the swept pool level within N bars,
+       * exit — structure invalidated (distinct from MFE dead-trade compression).
        */
-      const deadTradeBars = Math.max(0, Math.floor(Number(cfg?.liqMapDeadTradeExitBars ?? 0)));
-      const deadTradeMinMfeR = Math.max(0, Number(cfg?.liqMapDeadTradeMinMfeR ?? 0));
-      const deadTradeMaxLossR = Math.max(0, Number(cfg?.liqMapDeadTradeMaxLossR ?? 0.55));
+      const levelRebreakBars = Math.max(
+        0,
+        Math.floor(Number(cfg?.intradayLiqLevelRebreakExitBars ?? 0)),
+      );
+      const levelRebreakMode = String(cfg?.intradayLiqLevelRebreakMode ?? "close").toLowerCase();
+      const levelRebreakMaxMfeR = Number(cfg?.intradayLiqLevelRebreakMaxMfeR ?? 0);
+      const levelRebreakStrategies = new Set(["SR_INTRADAY", "INTRADAY_PRO", "LIQUIDITY_MAP"]);
       if (
         !exitReason &&
-        strategyKey === "LIQUIDITY_MAP" &&
+        levelRebreakStrategies.has(strategyKey) &&
+        levelRebreakBars > 0 &&
+        pos.levelRebreakChecked !== true &&
+        Number(pos.liqContext?.level) > 0 &&
+        i > pos.entryIdx &&
+        i - pos.entryIdx <= levelRebreakBars
+      ) {
+        const lv = Number(pos.liqContext.level);
+        const useWick = levelRebreakMode === "wick" || levelRebreakMode === "pierce";
+        const rebroke = useWick
+          ? isLong
+            ? Number(bar.low) < lv
+            : Number(bar.high) > lv
+          : isLong
+            ? Number(bar.close) < lv
+            : Number(bar.close) > lv;
+        if (rebroke) {
+          let mfeOk = true;
+          if (levelRebreakMaxMfeR > 0) {
+            const initialRiskFrac =
+              Number(pos.initialSl) > 0 && Number(pos.entryFill) > 0
+                ? Math.abs(Number(pos.entryFill) - Number(pos.initialSl)) / Number(pos.entryFill)
+                : 0;
+            const mfeR = initialRiskFrac > 0 ? Number(pos.mfe) / initialRiskFrac : 0;
+            mfeOk = mfeR < levelRebreakMaxMfeR;
+          }
+          if (mfeOk) {
+            exitReason = "level_rebreak";
+            exitPrice = applySlippage(
+              isLong ? "SELL" : "BUY",
+              useWick ? lv : Number(bar.close),
+              cm.slippagePct,
+            );
+            pos.levelRebreakChecked = true;
+          }
+        }
+      } else if (
+        levelRebreakBars > 0 &&
+        i - pos.entryIdx > levelRebreakBars &&
+        pos.levelRebreakChecked !== true
+      ) {
+        pos.levelRebreakChecked = true;
+      }
+
+      /**
+       * Dead-trade risk compression (LIQUIDITY_MAP + LIQ_CORE / SR_INTRADAY).
+       *
+       * Trade autopsy (LIQ_CORE): ~half of loss $ is never_green + sl_no_follow —
+       * setups that never reach ~0.5% MFE, then take full-R SL. Entry filters that
+       * try to predict this at signal time only cut N. Instead, after N bars with
+       * MFE < minMfeR, compress the structural stop toward entry (maxLossR).
+       * Pre-partial only so proven runners keep full trail room.
+       *
+       * Keys: liqMapDeadTrade* (shared) or intradayLiqDeadTrade* aliases.
+       */
+      const deadTradeBars = Math.max(
+        0,
+        Math.floor(
+          Number(cfg?.intradayLiqDeadTradeExitBars ?? cfg?.liqMapDeadTradeExitBars ?? 0),
+        ),
+      );
+      const deadTradeMinMfeR = Math.max(
+        0,
+        Number(cfg?.intradayLiqDeadTradeMinMfeR ?? cfg?.liqMapDeadTradeMinMfeR ?? 0),
+      );
+      const deadTradeMaxLossR = Math.max(
+        0,
+        Number(cfg?.intradayLiqDeadTradeMaxLossR ?? cfg?.liqMapDeadTradeMaxLossR ?? 0.55),
+      );
+      const deadTradeStrategies = new Set(["LIQUIDITY_MAP", "SR_INTRADAY", "INTRADAY_PRO"]);
+      if (
+        !exitReason &&
+        deadTradeStrategies.has(strategyKey) &&
         deadTradeBars > 0 &&
         deadTradeMinMfeR > 0 &&
         deadTradeMaxLossR > 0 &&
@@ -1008,6 +1087,83 @@ export async function runSimulation(args) {
      * defer for the same signal — the confirmation itself IS the entry trigger.
      */
     let fromConfirmedBreakout = false;
+    let fromConfirmedMitigation = false;
+    let fromConfirmedProgress = false;
+    if (!pos && pendingLiqProgress) {
+      const pp = pendingLiqProgress;
+      pp.barsLeft--;
+      const touched =
+        pp.side === "BUY"
+          ? Number(bar.high) >= pp.stopPx
+          : Number(bar.low) <= pp.stopPx;
+      const level = Number(pp.level);
+      const rebreak =
+        Number.isFinite(level) &&
+        level > 0 &&
+        (pp.side === "BUY" ? Number(bar.close) < level : Number(bar.close) > level);
+      const hitWickSl =
+        Number(pp.slAbs) > 0 &&
+        (pp.side === "BUY" ? Number(bar.low) <= pp.slAbs : Number(bar.high) >= pp.slAbs);
+      if (rebreak || hitWickSl || (!touched && pp.barsLeft <= 0)) {
+        pendingLiqProgress = null;
+        equityCurve.push({ ts: bar.ts, equity, drawdownPct: drawdownAt(equityCurve, equity) });
+        if (onProgress && candles.length) reportProgress(i, candles.length, equity, bar.ts, onProgress);
+        continue;
+      } else if (touched) {
+        const stopPx = Number(pp.stopPx);
+        const slAbs = Number(pp.slAbs);
+        const tpAbs = Number(pp.tpAbs);
+        const slPct = stopPx > 0 ? Math.abs(stopPx - slAbs) / stopPx : 0;
+        const tpPct = stopPx > 0 && tpAbs > 0 ? Math.abs(tpAbs - stopPx) / stopPx : 0;
+        barSignal = {
+          ...pp.signal,
+          liqBrackets: {
+            ...pp.signal.liqBrackets,
+            limitEntryPrice: stopPx,
+            entryPrice: stopPx,
+            slPct,
+            tpPct,
+            progressConfirm: true,
+          },
+        };
+        pendingLiqProgress = null;
+        fromConfirmedProgress = true;
+      } else {
+        equityCurve.push({ ts: bar.ts, equity, drawdownPct: drawdownAt(equityCurve, equity) });
+        if (onProgress && candles.length) reportProgress(i, candles.length, equity, bar.ts, onProgress);
+        continue;
+      }
+    }
+    if (!pos && pendingLiqMitigation) {
+      const pm = pendingLiqMitigation;
+      pm.barsLeft--;
+      const touched =
+        pm.side === "BUY"
+          ? Number(bar.low) <= pm.limitPx
+          : Number(bar.high) >= pm.limitPx;
+      const invalidated =
+        Number(pm.invalidateWick) > 0 &&
+        (pm.side === "BUY"
+          ? Number(bar.low) < pm.invalidateWick
+          : Number(bar.high) > pm.invalidateWick);
+      if (invalidated || (!touched && pm.barsLeft <= 0)) {
+        pendingLiqMitigation = null;
+      } else if (touched) {
+        barSignal = {
+          ...pm.signal,
+          liqBrackets: {
+            ...pm.signal.liqBrackets,
+            limitEntryPrice: pm.limitPx,
+          },
+        };
+        pendingLiqMitigation = null;
+        fromConfirmedMitigation = true;
+      } else {
+        equityCurve.push({ ts: bar.ts, equity, drawdownPct: drawdownAt(equityCurve, equity) });
+        if (onProgress && candles.length) reportProgress(i, candles.length, equity, bar.ts, onProgress);
+        continue;
+      }
+    }
     if (!pos && pendingBreakout) {
       const pb = pendingBreakout;
       const confirmed =
@@ -1104,6 +1260,107 @@ export async function runSimulation(args) {
         equityCurve.push({ ts: bar.ts, equity, drawdownPct: drawdownAt(equityCurve, equity) });
         if (onProgress && candles.length) reportProgress(i, candles.length, equity, bar.ts, onProgress);
         continue;
+      }
+
+      // LIQ progress-confirm: defer fill until minR favorable stop is touched (skip no-follow).
+      const progWait = Math.max(
+        0,
+        Math.floor(Number(cfg?.intradayLiqProgressConfirmWaitBars ?? 0)),
+      );
+      const progMinR = Number(cfg?.intradayLiqProgressConfirmMinR ?? 0);
+      const progEnabled =
+        !fromConfirmedProgress &&
+        !fromConfirmedMitigation &&
+        progWait > 0 &&
+        progMinR > 0 &&
+        cfg?.intradayLiqProgressConfirm === true &&
+        barSignal?.liqBrackets?.slPct > 0 &&
+        (strategyKey === "SR_INTRADAY" || strategyKey === "INTRADAY_PRO");
+      if (progEnabled && !pendingLiqProgress && !pendingLiqMitigation) {
+        const side = barSignal.action;
+        const fillRef = Number(bar.close);
+        const slPct = Number(barSignal.liqBrackets.slPct);
+        const tpPct = Number(barSignal.liqBrackets.tpPct ?? 0);
+        const slAbs =
+          side === "BUY" ? fillRef * (1 - slPct) : fillRef * (1 + slPct);
+        const tpAbs =
+          tpPct > 0
+            ? side === "BUY"
+              ? fillRef * (1 + tpPct)
+              : fillRef * (1 - tpPct)
+            : 0;
+        const risk = Math.abs(fillRef - slAbs);
+        const stopPx =
+          side === "BUY" ? fillRef + progMinR * risk : fillRef - progMinR * risk;
+        const level = Number(barSignal.liqBrackets?.level ?? 0);
+        const alreadyTouched =
+          side === "BUY" ? Number(bar.high) >= stopPx : Number(bar.low) <= stopPx;
+        if (!alreadyTouched && Number.isFinite(stopPx) && stopPx > 0 && risk > 0) {
+          pendingLiqProgress = {
+            signal: { ...barSignal },
+            stopPx,
+            level,
+            slAbs,
+            tpAbs,
+            barsLeft: progWait,
+            side,
+          };
+          equityCurve.push({ ts: bar.ts, equity, drawdownPct: drawdownAt(equityCurve, equity) });
+          if (onProgress && candles.length) reportProgress(i, candles.length, equity, bar.ts, onProgress);
+          continue;
+        }
+        // Same-bar touch → fall through with limitEntryPrice at stop.
+        if (alreadyTouched && Number.isFinite(stopPx) && stopPx > 0) {
+          const newSlPct = Math.abs(stopPx - slAbs) / stopPx;
+          const newTpPct = tpAbs > 0 ? Math.abs(tpAbs - stopPx) / stopPx : tpPct;
+          barSignal = {
+            ...barSignal,
+            liqBrackets: {
+              ...barSignal.liqBrackets,
+              limitEntryPrice: stopPx,
+              entryPrice: stopPx,
+              slPct: newSlPct,
+              tpPct: newTpPct,
+              progressConfirm: true,
+            },
+          };
+        }
+      }
+
+      // LIQ mitigation: defer market fill — wait for pullback to limit near swept pool.
+      const mitWait = Math.max(
+        0,
+        Math.floor(Number(cfg?.intradayLiqMitigationWaitBars ?? 0)),
+      );
+      const mitLimit = Number(barSignal?.liqBrackets?.limitEntryPrice ?? 0);
+      const mitEnabled =
+        !fromConfirmedMitigation &&
+        !fromConfirmedProgress &&
+        !pendingLiqProgress &&
+        mitWait > 0 &&
+        mitLimit > 0 &&
+        (barSignal?.liqBrackets?.mitigationEntry === true ||
+          cfg?.intradayLiqMitigationEntry === true ||
+          Number(cfg?.intradayLiqMitigationFrac ?? 0) > 0) &&
+        (strategyKey === "SR_INTRADAY" || strategyKey === "INTRADAY_PRO");
+      if (mitEnabled && !pendingLiqMitigation) {
+        const alreadyTouched =
+          barSignal.action === "BUY"
+            ? Number(bar.low) <= mitLimit
+            : Number(bar.high) >= mitLimit;
+        if (!alreadyTouched) {
+          pendingLiqMitigation = {
+            signal: { ...barSignal },
+            limitPx: mitLimit,
+            invalidateWick: Number(barSignal?.liqBrackets?.sweepWick ?? 0),
+            barsLeft: mitWait,
+            side: barSignal.action,
+          };
+          equityCurve.push({ ts: bar.ts, equity, drawdownPct: drawdownAt(equityCurve, equity) });
+          if (onProgress && candles.length) reportProgress(i, candles.length, equity, bar.ts, onProgress);
+          continue;
+        }
+        // Same-bar touch → fall through and fill at limit below.
       }
 
       // Big-move entry gate (indicator) — ST-only filter for T1+ expected move; not intelligence gate.

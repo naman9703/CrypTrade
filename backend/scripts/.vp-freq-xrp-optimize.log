@@ -1,0 +1,71 @@
+ensureKlines XRPUSDT…
+candles=195456 funding=4930
+
+══ XRP funnel screen ══ 2021-01-01→2026-05-31 OOS≤2023-06-01
+run F0_open
+F0_open            FULL tr=827 tw=2.93 ret=-99.04 cal=-0.58 pf=0.88 | OOS ret=-94.61 pf=0.88 n=449 | IS ret=-4.43
+  years 2020-21:117/17.49% 2021-22:186/-66.55% 2022-23:146/-86.29% 2023-24:134/-12.84% 2024-25:137/-71.88% 2025-26:107/-27.11%
+run F1_val_rej
+F1_val_rej         FULL tr=520 tw=1.84 ret=-94.61 cal=-0.43 pf=0.84 | OOS ret=-84.49 pf=0.84 n=272 | IS ret=-10.12
+  years 2020-21:63/15.91% 2021-22:118/-52.61% 2022-23:91/-71.76% 2023-24:93/15.28% 2024-25:83/-67.22% 2025-26:72/-7.99%
+run F2_val_only
+F2_val_only        FULL tr=434 tw=1.54 ret=-93.6 cal=-0.41 pf=0.78 | OOS ret=-81.84 pf=0.79 n=220 | IS ret=-11.76
+  years 2020-21:55/1.61% 2021-22:94/-36.53% 2022-23:71/-71.83% 2023-24:75/-15.29% 2024-25:73/-43.7% 2025-26:66/-26.09%
+run F3_rej_only
+F3_rej_only        FULL tr=94 tw=0.33 ret=-19.99 cal=-0.08 pf=0.92 | OOS ret=-7.62 pf=0.95 n=54 | IS ret=-12.36
+  years 2020-21:9/10.87% 2021-22:24/-25.33% 2022-23:21/11.58% 2023-24:21/32.14% 2024-25:11/-43.42% 2025-26:8/15.85%
+run F4_vah_val
+F4_vah_val         FULL tr=735 tw=2.6 ret=-98.55 cal=-0.55 pf=0.84 | OOS ret=-93.5 pf=0.84 n=396 | IS ret=-5.05
+  years 2020-21:111/-3.94% 2021-22:160/-51.39% 2022-23:125/-86.08% 2023-24:117/-34.06% 2024-25:122/-44.1% 2025-26:100/-39.4%
+run F5_val_rej_wbVac
+F5_val_rej_wbVac   FULL tr=438 tw=1.55 ret=-91.4 cal=-0.38 pf=0.85 | OOS ret=-76.16 pf=0.86 n=235 | IS ret=-15.25
+  years 2020-21:47/32.31% 2021-22:110/-48.31% 2022-23:78/-65.14% 2023-24:77/-4.01% 2024-25:59/-58.52% 2025-26:67/-9.43%
+run F6_val_rej_chase
+F6_val_rej_chase   FULL tr=406 tw=1.44 ret=-92.2 cal=-0.39 pf=0.81 | OOS ret=-76.47 pf=0.82 n=212 | IS ret=-15.73
+  years 2020-21:36/18% 2021-22:105/-53.91% 2022-23:71/-56.73% 2023-24:76/-9.39% 2024-25:55/-60.87% 2025-26:63/-6.45%
+
+Best OOS funnel: F3_rej_only (OOS -7.62% / full cal -0.08)
+autopsy F3_rej_only
+
+══ Cell autopsy (F3_rej_only) — worst overall ══
+  7	-22.65	y22 1/-5.99	oos 2/-9.23	BUY|va_rejection|bull_trend|vacuum
+  6	-22.06	y22 2/-7.2	oos 4/-14.17	BUY|va_rejection|bull_chop|vacuum
+  15	-18.99	y22 3/15.52	oos 9/-12.17	SELL|va_rejection|weak_bear|vacuum
+  18	-14.73	y22 2/-6.28	oos 8/-8.58	SELL|va_rejection|bear_trend|vacuum
+  9	-13.36	y22 4/-3.73	oos 8/7.42	BUY|va_rejection|bull_trend|tight
+  3	-10.35	y22 0/0	oos 3/-10.35	BUY|va_rejection|bull_chop|structured
+  9	-9.9	y22 4/-1.23	oos 6/-3.24	BUY|va_rejection|bull_chop|tight
+  1	-3.38	y22 1/-3.38	oos 1/-3.38	SELL|va_rejection|weak_bear|structured
+  1	-3.18	y22 0/0	oos 1/-3.18	BUY|va_rejection|bear_trend|vacuum
+  3	3.12	y22 1/-3.67	oos 1/-3.67	SELL|va_rejection|bear_trend|structured
+  6	3.15	y22 1/-3.82	oos 4/3.5	SELL|va_rejection|bull_chop|vacuum
+  1	3.8	y22 0/0	oos 0/0	SELL|va_rejection|weak_bear|tight
+  2	4.05	y22 0/0	oos 0/0	SELL|va_rejection|bull_trend|structured
+  1	7.29	y22 0/0	oos 0/0	SELL|va_rejection|bear_trend|tight
+  2	7.59	y22 0/0	oos 0/0	BUY|va_rejection|bull_trend|structured
+
+══ Best overall ══
+  8	50.51	y22 1/18.39	oos 5/30.31	SELL|va_rejection|bull_trend|vacuum
+  1	10.97	y22 1/10.97	oos 1/10.97	SELL|va_rejection|bull_chop|structured
+  1	8.15	y22 0/0	oos 1/8.15	BUY|va_rejection|bear_trend|structured
+  2	7.59	y22 0/0	oos 0/0	BUY|va_rejection|bull_trend|structured
+  1	7.29	y22 0/0	oos 0/0	SELL|va_rejection|bear_trend|tight
+  2	4.05	y22 0/0	oos 0/0	SELL|va_rejection|bull_trend|structured
+  1	3.8	y22 0/0	oos 0/0	SELL|va_rejection|weak_bear|tight
+  6	3.15	y22 1/-3.82	oos 4/3.5	SELL|va_rejection|bull_chop|vacuum
+
+══ One-change cell denies vs F3_rej_only ══
+run baseline_again
+run deny_BUY_va_rejection_bull_trend_vacuum
+deny_BUY_va_rejection_bull_trend_vacuum
+  FULL tr=87 ret=0.73 cal=0 pf=1 | OOS ret=0.66 n=52
+  years 2020-21:14.12% 2021-22:-25.33% 2022-23:18.13% 2023-24:39.89% 2024-25:-38.25% 2025-26:15.85%
+run deny_BUY_va_rejection_bull_chop_vacuum
+deny_BUY_va_rejection_bull_chop_vacuum
+  FULL tr=88 ret=-1 cal=0 pf=1 | OOS ret=6.24 n=50
+  years 2020-21:10.87% 2021-22:-20.27% 2022-23:20.19% 2023-24:42.16% 2024-25:-43.42% 2025-26:15.85%
+run deny_SELL_va_rejection_weak_bear_vacuum
+deny_SELL_va_rejection_weak_bear_vacuum
+  FULL tr=79 ret=-3.83 cal=-0.02 pf=0.98 | OOS ret=-0.33 n=45
+  years 2020-21:17.52% 2021-22:-10.99% 2022-23:-4.72% 2023-24:31.82% 2024-25:-36.82% 2025-26:15.85%
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-xrp-optimize.json

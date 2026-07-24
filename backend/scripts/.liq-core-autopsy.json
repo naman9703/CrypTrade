@@ -1,0 +1,587 @@
+{
+  "generatedAt": "2026-07-22T20:46:40.358Z",
+  "symbols": {
+    "BNBUSDT": {
+      "n": 539,
+      "tw": 7.31,
+      "ret": -145.53,
+      "pf": 0.31,
+      "toxic": {
+        "n": 183,
+        "pnl": -48.57
+      },
+      "other": {
+        "n": 356,
+        "pnl": -96.95
+      },
+      "byExit": {
+        "tp2": {
+          "n": 45,
+          "pnl": 33.18014716928707,
+          "wins": 45
+        },
+        "time_stop": {
+          "n": 129,
+          "pnl": 23.66351029912501,
+          "wins": 93
+        },
+        "sl": {
+          "n": 272,
+          "pnl": -200.61948400174046,
+          "wins": 0
+        },
+        "be": {
+          "n": 92,
+          "pnl": -1.7629221734817322,
+          "wins": 0
+        },
+        "session_end": {
+          "n": 1,
+          "pnl": 0.011821898632391959,
+          "wins": 1
+        }
+      },
+      "bySide": {
+        "BUY": {
+          "n": 254,
+          "pnl": -68.33557923767437,
+          "wins": 74
+        },
+        "SELL": {
+          "n": 285,
+          "pnl": -77.19134757050342,
+          "wins": 65
+        }
+      },
+      "byLevel": {
+        "pdl": {
+          "n": 197,
+          "pnl": -59.913007762267924,
+          "wins": 52
+        },
+        "pdh": {
+          "n": 229,
+          "pnl": -71.25801151916735,
+          "wins": 56
+        },
+        "session_low": {
+          "n": 57,
+          "pnl": -8.422571475406492,
+          "wins": 22
+        },
+        "session_high": {
+          "n": 56,
+          "pnl": -5.933336051336024,
+          "wins": 9
+        }
+      },
+      "byDayType": {
+        "range": {
+          "n": 320,
+          "pnl": -86.49362470971938,
+          "wins": 66
+        },
+        "breakout": {
+          "n": 135,
+          "pnl": -33.22653591488505,
+          "wins": 41
+        },
+        "breakdown": {
+          "n": 84,
+          "pnl": -25.80676618357331,
+          "wins": 32
+        }
+      },
+      "bySideDay": {
+        "BUY|range": {
+          "n": 160,
+          "pnl": -42.215582744424275,
+          "wins": 38
+        },
+        "SELL|breakout": {
+          "n": 112,
+          "pnl": -27.840405471612343,
+          "wins": 33
+        },
+        "SELL|range": {
+          "n": 160,
+          "pnl": -44.27804196529516,
+          "wins": 28
+        },
+        "BUY|breakdown": {
+          "n": 71,
+          "pnl": -20.73386604997741,
+          "wins": 28
+        },
+        "BUY|breakout": {
+          "n": 23,
+          "pnl": -5.386130443272709,
+          "wins": 8
+        },
+        "SELL|breakdown": {
+          "n": 13,
+          "pnl": -5.072900133595901,
+          "wins": 4
+        }
+      },
+      "byFail": {
+        "winner": {
+          "n": 139,
+          "pnl": 65.68953995683742,
+          "wins": 139
+        },
+        "sl_no_follow": {
+          "n": 132,
+          "pnl": -90.11049764131079,
+          "wins": 0
+        },
+        "never_green": {
+          "n": 111,
+          "pnl": -75.45035378606099,
+          "wins": 0
+        },
+        "gave_back_after_mfe": {
+          "n": 58,
+          "pnl": -10.18613043647251,
+          "wins": 0
+        },
+        "other_loss": {
+          "n": 74,
+          "pnl": -28.635316133491717,
+          "wins": 0
+        },
+        "time_stop_gave_back": {
+          "n": 25,
+          "pnl": -6.83416876767922,
+          "wins": 0
+        }
+      },
+      "byHour": {
+        "H00": {
+          "n": 41,
+          "pnl": -1.597521487374871,
+          "wins": 10
+        },
+        "H11": {
+          "n": 17,
+          "pnl": -1.1715070806716272,
+          "wins": 5
+        },
+        "H08": {
+          "n": 18,
+          "pnl": 0.7303752377930651,
+          "wins": 5
+        },
+        "H01": {
+          "n": 31,
+          "pnl": -4.867010897618731,
+          "wins": 9
+        },
+        "H10": {
+          "n": 23,
+          "pnl": -8.04195504394213,
+          "wins": 6
+        },
+        "H02": {
+          "n": 27,
+          "pnl": -9.735666712602251,
+          "wins": 10
+        },
+        "H15": {
+          "n": 40,
+          "pnl": -12.632689386671997,
+          "wins": 14
+        },
+        "H07": {
+          "n": 34,
+          "pnl": -8.381014408375012,
+          "wins": 6
+        },
+        "H18": {
+          "n": 14,
+          "pnl": -2.7532507980411056,
+          "wins": 5
+        },
+        "H19": {
+          "n": 12,
+          "pnl": -7.157350190760627,
+          "wins": 2
+        },
+        "H12": {
+          "n": 14,
+          "pnl": -6.200206970278162,
+          "wins": 2
+        },
+        "H17": {
+          "n": 26,
+          "pnl": -5.7593675583862405,
+          "wins": 8
+        },
+        "H06": {
+          "n": 23,
+          "pnl": -1.5949156776220905,
+          "wins": 6
+        },
+        "H03": {
+          "n": 28,
+          "pnl": -14.210400838678183,
+          "wins": 3
+        },
+        "H04": {
+          "n": 25,
+          "pnl": -2.3470972800581325,
+          "wins": 7
+        },
+        "H13": {
+          "n": 19,
+          "pnl": -9.322679418183682,
+          "wins": 4
+        },
+        "H14": {
+          "n": 39,
+          "pnl": -21.08868349240673,
+          "wins": 5
+        },
+        "H23": {
+          "n": 8,
+          "pnl": -5.627713048145279,
+          "wins": 1
+        },
+        "H16": {
+          "n": 27,
+          "pnl": -11.710079223748217,
+          "wins": 6
+        },
+        "H20": {
+          "n": 17,
+          "pnl": 0.5224915512567525,
+          "wins": 10
+        },
+        "H05": {
+          "n": 20,
+          "pnl": -6.640977850594365,
+          "wins": 5
+        },
+        "H09": {
+          "n": 14,
+          "pnl": -6.269789323589679,
+          "wins": 3
+        },
+        "H22": {
+          "n": 13,
+          "pnl": 0.14541185167939139,
+          "wins": 3
+        },
+        "H21": {
+          "n": 9,
+          "pnl": 0.18467123884211023,
+          "wins": 4
+        }
+      },
+      "byBars": {
+        "33+": {
+          "n": 177,
+          "pnl": 11.327204511107258,
+          "wins": 101
+        },
+        "17-32": {
+          "n": 98,
+          "pnl": -12.545480637616143,
+          "wins": 15
+        },
+        "5-16": {
+          "n": 151,
+          "pnl": -68.63400297085848,
+          "wins": 18
+        },
+        "0-4": {
+          "n": 113,
+          "pnl": -75.67464771081042,
+          "wins": 5
+        }
+      },
+      "worst20": [
+        {
+          "entryTs": 1736129700000,
+          "dir": "SELL",
+          "pnl": -3.76,
+          "exit": "sl",
+          "mfe": 0.0006908883317227482,
+          "mae": -0.004101692282636141,
+          "bars": 1,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "pdh",
+          "fail": "never_green",
+          "reason": "ipro_liq_sweep+pdh"
+        },
+        {
+          "entryTs": 1735952400000,
+          "dir": "SELL",
+          "pnl": -3.28,
+          "exit": "sl",
+          "mfe": 0.0020706883013462884,
+          "mae": -0.008730047587860822,
+          "bars": 8,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "pdh",
+          "fail": "sl_no_follow",
+          "reason": "ipro_liq_sweep+pdh"
+        },
+        {
+          "entryTs": 1736073900000,
+          "dir": "BUY",
+          "pnl": -3.27,
+          "exit": "sl",
+          "mfe": 0.0005304151826554565,
+          "mae": -0.008670513318036921,
+          "bars": 14,
+          "dayType": "breakdown",
+          "toxic": true,
+          "levelType": "pdl",
+          "fail": "never_green",
+          "reason": "ipro_liq_sweep+pdl"
+        },
+        {
+          "entryTs": 1737171000000,
+          "dir": "BUY",
+          "pnl": -3.22,
+          "exit": "sl",
+          "mfe": 0.0022104910655664097,
+          "mae": -0.005228556368785506,
+          "bars": 3,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "pdl",
+          "fail": "sl_no_follow",
+          "reason": "ipro_liq_sweep+pdl"
+        },
+        {
+          "entryTs": 1737096300000,
+          "dir": "SELL",
+          "pnl": -3.17,
+          "exit": "sl",
+          "mfe": 0.0027942672326815568,
+          "mae": -0.005651423451365579,
+          "bars": 7,
+          "dayType": "breakout",
+          "toxic": true,
+          "levelType": "pdh",
+          "fail": "sl_no_follow",
+          "reason": "ipro_liq_sweep+pdh"
+        },
+        {
+          "entryTs": 1738243800000,
+          "dir": "SELL",
+          "pnl": -3.16,
+          "exit": "sl",
+          "mfe": 0.001296826382037687,
+          "mae": -0.005641067346193344,
+          "bars": 5,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "pdh",
+          "fail": "sl_no_follow",
+          "reason": "ipro_liq_sweep+pdh"
+        },
+        {
+          "entryTs": 1736131500000,
+          "dir": "SELL",
+          "pnl": -3.13,
+          "exit": "sl",
+          "mfe": 0.0031599114201640204,
+          "mae": -0.006348094432953125,
+          "bars": 28,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "pdh",
+          "fail": "sl_no_follow",
+          "reason": "ipro_liq_sweep+pdh"
+        },
+        {
+          "entryTs": 1736449200000,
+          "dir": "BUY",
+          "pnl": -3.06,
+          "exit": "sl",
+          "mfe": 0,
+          "mae": -0.005845603446750479,
+          "bars": 1,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "session_low",
+          "fail": "never_green",
+          "reason": "ipro_liq_sweep+session_low"
+        },
+        {
+          "entryTs": 1737643500000,
+          "dir": "BUY",
+          "pnl": -3.05,
+          "exit": "sl",
+          "mfe": 0.002149946321928202,
+          "mae": -0.01002707396120847,
+          "bars": 1,
+          "dayType": "breakdown",
+          "toxic": true,
+          "levelType": "pdl",
+          "fail": "sl_no_follow",
+          "reason": "ipro_liq_sweep+pdl"
+        },
+        {
+          "entryTs": 1737600300000,
+          "dir": "BUY",
+          "pnl": -2.94,
+          "exit": "sl",
+          "mfe": 0.0032195763580042986,
+          "mae": -0.006606971042452888,
+          "bars": 6,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "pdl",
+          "fail": "sl_no_follow",
+          "reason": "ipro_liq_sweep+pdl"
+        },
+        {
+          "entryTs": 1737762300000,
+          "dir": "BUY",
+          "pnl": -2.93,
+          "exit": "sl",
+          "mfe": 0.0009544209466558248,
+          "mae": -0.004686000179523924,
+          "bars": 5,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "pdl",
+          "fail": "never_green",
+          "reason": "ipro_liq_sweep+pdl"
+        },
+        {
+          "entryTs": 1736262900000,
+          "dir": "BUY",
+          "pnl": -2.84,
+          "exit": "sl",
+          "mfe": 0.0007109462536824828,
+          "mae": -0.014535381398007662,
+          "bars": 1,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "pdl",
+          "fail": "never_green",
+          "reason": "ipro_liq_sweep+pdl"
+        },
+        {
+          "entryTs": 1739808000000,
+          "dir": "BUY",
+          "pnl": -2.83,
+          "exit": "sl",
+          "mfe": 0.002343480313981465,
+          "mae": -0.004869346378433572,
+          "bars": 1,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "session_low",
+          "fail": "sl_no_follow",
+          "reason": "ipro_liq_sweep+session_low"
+        },
+        {
+          "entryTs": 1737174600000,
+          "dir": "BUY",
+          "pnl": -2.78,
+          "exit": "sl",
+          "mfe": 0,
+          "mae": -0.008258749947538552,
+          "bars": 2,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "pdl",
+          "fail": "never_green",
+          "reason": "ipro_liq_sweep+pdl"
+        },
+        {
+          "entryTs": 1738330200000,
+          "dir": "SELL",
+          "pnl": -2.77,
+          "exit": "sl",
+          "mfe": 0,
+          "mae": -0.0068898518396444735,
+          "bars": 8,
+          "dayType": "breakout",
+          "toxic": true,
+          "levelType": "pdh",
+          "fail": "never_green",
+          "reason": "ipro_liq_sweep+pdh"
+        },
+        {
+          "entryTs": 1737995400000,
+          "dir": "BUY",
+          "pnl": -2.69,
+          "exit": "sl",
+          "mfe": 0.0006287106187231114,
+          "mae": -0.008022821749341453,
+          "bars": 3,
+          "dayType": "breakdown",
+          "toxic": true,
+          "levelType": "pdl",
+          "fail": "never_green",
+          "reason": "ipro_liq_sweep+pdl"
+        },
+        {
+          "entryTs": 1739085300000,
+          "dir": "SELL",
+          "pnl": -2.67,
+          "exit": "sl",
+          "mfe": 0.0014767105335785886,
+          "mae": -0.00745915164347892,
+          "bars": 1,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "pdh",
+          "fail": "sl_no_follow",
+          "reason": "ipro_liq_sweep+pdh"
+        },
+        {
+          "entryTs": 1736264700000,
+          "dir": "BUY",
+          "pnl": -2.61,
+          "exit": "sl",
+          "mfe": 0.004231127343528444,
+          "mae": -0.015892754425319247,
+          "bars": 13,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "pdl",
+          "fail": "sl_no_follow",
+          "reason": "ipro_liq_sweep+pdl"
+        },
+        {
+          "entryTs": 1739408400000,
+          "dir": "SELL",
+          "pnl": -2.53,
+          "exit": "sl",
+          "mfe": 0.0014053833733916948,
+          "mae": -0.021078247679267303,
+          "bars": 2,
+          "dayType": "range",
+          "toxic": false,
+          "levelType": "pdh",
+          "fail": "sl_no_follow",
+          "reason": "ipro_liq_sweep+pdh"
+        },
+        {
+          "entryTs": 1737292500000,
+          "dir": "BUY",
+          "pnl": -2.52,
+          "exit": "sl",
+          "mfe": 0.01802122141252482,
+          "mae": -0.02294331687553191,
+          "bars": 38,
+          "dayType": "breakdown",
+          "toxic": true,
+          "levelType": "pdl",
+          "fail": "gave_back_after_mfe",
+          "reason": "ipro_liq_sweep+pdl"
+        }
+      ]
+    }
+  }
+}

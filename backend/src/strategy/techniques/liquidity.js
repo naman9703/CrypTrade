@@ -154,14 +154,30 @@ export function rejectionWickRatio(bar, side) {
   return (bar.high - bodyTop) / range;
 }
 
+/**
+ * Guide-style rejection: rejection wick / body (not wick/range).
+ * Body==0 → fail when gate is on (doji is not a clear rejection).
+ */
+export function rejectionWickBodyRatio(bar, side) {
+  const body = Math.abs(Number(bar.close) - Number(bar.open));
+  if (!(body > 0)) return 0;
+  const bodyTop = Math.max(bar.open, bar.close);
+  const bodyBot = Math.min(bar.open, bar.close);
+  const wick = side === "BUY" ? bodyBot - Number(bar.low) : Number(bar.high) - bodyTop;
+  return Math.max(0, wick) / body;
+}
+
 /** Sweep poke bar must show real rejection into the level (filters shallow stop-runs). */
 export function passesSweepPokeRejection(candles, cycle, side, opts = {}) {
   const minWick = Number(opts.intradayLiqMinSweepPokeWickRatio ?? 0);
-  if (!(minWick > 0)) return true;
+  const minBody = Number(opts.intradayLiqMinSweepWickBodyRatio ?? 0);
+  if (!(minWick > 0) && !(minBody > 0)) return true;
   const idx = Number(cycle.sweepStartIdx);
   const bar = candles[idx];
   if (!bar) return false;
-  return rejectionWickRatio(bar, side) + 1e-6 >= minWick;
+  if (minWick > 0 && rejectionWickRatio(bar, side) + 1e-6 < minWick) return false;
+  if (minBody > 0 && rejectionWickBodyRatio(bar, side) + 1e-6 < minBody) return false;
+  return true;
 }
 
 /** Entry bar must still hold beyond the swept level (reclaim not already failing). */
@@ -486,11 +502,13 @@ export function resolveSessionExtremeLevel(candles, idx, side, dayStart, opts = 
   };
 }
 
-/** HTF gate on session clusters; PDH/PDL skip trend filter only when counter-trend veto is off. */
+/** HTF gate on session clusters; PDH/PDL skip trend filter only when counter-trend veto is off
+ * and explicit pdh/pdl HTF align is not requested (LIQ_CORE may set intradayLiqHtfAlignPdhPdl). */
 function passesLiqHtfAlign(side, reclaimIdx, pre, opts = {}, levelType = "") {
   if (opts.intradayLiqRequireHtfAlign !== true || !pre) return true;
   const vetoCt = opts.intradayLiqVetoCounterTrend === true;
-  if ((levelType === "pdh" || levelType === "pdl") && !vetoCt) return true;
+  const alignPdhPdl = opts.intradayLiqHtfAlignPdhPdl === true;
+  if ((levelType === "pdh" || levelType === "pdl") && !vetoCt && !alignPdhPdl) return true;
   const minSep = Number(opts.intradayLiqMinHtfSep ?? 0.0008);
   const sep = pre.htfSep?.[reclaimIdx] ?? 0;
   if (sep < minSep) return true;
@@ -571,6 +589,116 @@ function liqReclaimHoldBars(opts = {}) {
 
 export { liqReclaimHoldBars };
 
+function liqAcceptHoldBars(opts = {}) {
+  const raw = opts.intradayLiqAcceptHoldBars ?? opts.intradayLiqReclaimHoldBars ?? 2;
+  return Math.max(0, Math.min(3, Math.round(Number(raw))));
+}
+
+export { liqAcceptHoldBars };
+
+/** Close must remain on the acceptance side (failed reclaim / hold-beyond pool). */
+export function acceptHeldOnBar(candles, barIdx, poolSide, level) {
+  const bar = candles[barIdx];
+  const lv = Number(level);
+  if (!bar || !(lv > 0)) return false;
+  return poolSide === "BUY" ? Number(bar.close) < lv : Number(bar.close) > lv;
+}
+
+export function acceptHeldThrough(candles, acceptIdx, entryIdx, poolSide, level) {
+  if (acceptIdx < 0 || entryIdx < acceptIdx) return false;
+  for (let j = acceptIdx; j <= entryIdx; j++) {
+    if (!acceptHeldOnBar(candles, j, poolSide, level)) return false;
+  }
+  return true;
+}
+
+function poolReclaimedOnBar(candles, barIdx, poolSide, level) {
+  const bar = candles[barIdx];
+  const lv = Number(level);
+  if (!bar || !(lv > 0)) return false;
+  return poolSide === "BUY" ? Number(bar.close) > lv : Number(bar.close) < lv;
+}
+
+/**
+ * Brackets for sweep-acceptance (trade WITH the sweep after failed reclaim).
+ * SL sits back inside the swept pool; TP at opposing session liquidity.
+ */
+export function computeAcceptanceBrackets(tradeSide, entry, level, opposingLevel, opts = {}) {
+  const fill = Number(entry);
+  const lv = Number(level);
+  const tpLevel = Number(opposingLevel);
+  if (!Number.isFinite(fill) || fill <= 0 || !Number.isFinite(lv) || lv <= 0 || !Number.isFinite(tpLevel) || tpLevel <= 0) {
+    return null;
+  }
+
+  const buf = Number(opts.slBufferPct ?? opts.intradayLiqSlBufferPct ?? DEFAULT_LIQ_SL_BUFFER_PCT);
+  const { tp1On, tp2On } = resolveLiqExitStages(opts);
+  const slOnly = !tp1On && !tp2On;
+  const trade = tradeSide === "BUY" || tradeSide === "long" ? "BUY" : "SELL";
+
+  let slPrice;
+  let tp2Price = tp2On ? tpLevel : 0;
+  if (trade === "SELL") {
+    slPrice = lv * (1 + buf);
+    if (!(slPrice > fill)) return null;
+    if (tp2On && !(tp2Price < fill)) return null;
+  } else {
+    slPrice = lv * (1 - buf);
+    if (!(slPrice < fill)) return null;
+    if (tp2On && !(tp2Price > fill)) return null;
+  }
+
+  const slPct = Math.abs(fill - slPrice) / fill;
+  const maxTpRr = Number(opts.intradayLiqMaxTpRr ?? 0);
+  let tpPct = 0;
+  let tp1Pct = 0;
+  let tp1Price = 0;
+
+  if (tp2On && maxTpRr > 0 && slPct > 0) {
+    const cap = slPct * maxTpRr;
+    const rawTp =
+      trade === "BUY" ? Math.max(0, (tp2Price - fill) / fill) : Math.max(0, (fill - tp2Price) / fill);
+    tpPct = Math.min(rawTp, cap);
+    tp2Price = trade === "BUY" ? fill * (1 + tpPct) : fill * (1 - tpPct);
+  } else if (tp2On) {
+    tpPct = trade === "BUY" ? Math.max(0, (tp2Price - fill) / fill) : Math.max(0, (fill - tp2Price) / fill);
+  }
+
+  const structuralTpPct =
+    trade === "BUY" ? Math.max(0, (tpLevel - fill) / fill) : Math.max(0, (fill - tpLevel) / fill);
+  const structuralRr = slPct > 0 ? structuralTpPct / slPct : 0;
+  const rr = slPct > 0 && tp2On ? tpPct / slPct : structuralRr;
+  const minRr = Number(opts.intradayLiqMinRr ?? 0);
+  if (minRr > 0 && rr + 1e-9 < minRr) return null;
+
+  const maxSl = Number(opts.intradayLiqMaxSlPct ?? 0);
+  if (maxSl > 0 && slPct > maxSl) return null;
+
+  return {
+    slPct,
+    tpPct,
+    tp1Pct,
+    slPrice,
+    tpPrice: tp2On ? tp2Price : 0,
+    tp1Price,
+    tp2Price: tp2On ? tp2Price : 0,
+    tpMode: slOnly
+      ? "accept_liquidity_sl_only"
+      : tp1On && tp2On
+        ? "accept_liquidity_partial"
+        : tp2On
+          ? "accept_liquidity"
+          : "accept_liquidity_sl_only",
+    rr,
+    sweepWick: trade === "SELL" ? fill : fill,
+    opposingLevel: tpLevel,
+    partialTp: tp1On,
+    tp2Enabled: tp2On,
+    slOnly,
+    acceptMode: true,
+  };
+}
+
 /**
  * Max bar range / ATR between sweep start and reclaim (inclusive).
  * ICT: reclaim after sweep should follow displacement, not a slow drift in chop.
@@ -621,7 +749,7 @@ export function passesPostReclaimDisplacement(candles, cycle, side, pre, opts = 
 
   for (let j = start; j <= end; j++) {
     const b = candles[j];
-    const atr = Number(pre?.atrSeries?.[j] ?? 0);
+    const atr = Number(pre?.atrSeries?.[j] ?? pre?.atr?.[j] ?? 0);
     if (!b || !(atr > 0)) continue;
     const body = Math.abs(b.close - b.open);
     const aligned = side === "BUY" ? b.close > b.open : b.close < b.open;
@@ -629,6 +757,33 @@ export function passesPostReclaimDisplacement(candles, cycle, side, pre, opts = 
     if (body + 1e-9 >= atr * mult) return true;
   }
   return false;
+}
+
+/**
+ * Reference-guide follow-through: after the sweep candle, the next 1–N bars must
+ * move away from the sweep extreme by ≥ ATR × mult before the setup is tradable.
+ * Distinct from impulse-in-window / post-reclaim body×ATR gates.
+ */
+export function passesGuideFollowThrough(candles, cycle, side, pre, opts = {}) {
+  if (opts.intradayLiqRequireFollowThrough !== true) return true;
+  const mult = Number(opts.intradayLiqFollowThroughAtrMult ?? 0.5);
+  const lookBars = Math.max(1, Math.floor(Number(opts.intradayLiqFollowThroughBars ?? 2)));
+  if (!(mult > 0)) return true;
+  const sweepIdx = Number(cycle.sweepStartIdx);
+  if (!(sweepIdx >= 0) || sweepIdx >= candles.length - 1) return false;
+  const atr = Number(pre?.atrSeries?.[sweepIdx] ?? pre?.atr?.[sweepIdx] ?? 0);
+  if (!(atr > 0)) return true;
+  const end = Math.min(candles.length - 1, sweepIdx + lookBars);
+  const sweepBar = candles[sweepIdx];
+  if (!sweepBar) return false;
+  if (side === "BUY") {
+    let hi = -Infinity;
+    for (let j = sweepIdx + 1; j <= end; j++) hi = Math.max(hi, Number(candles[j].high));
+    return hi - Number(sweepBar.low) + 1e-12 >= atr * mult;
+  }
+  let lo = Infinity;
+  for (let j = sweepIdx + 1; j <= end; j++) lo = Math.min(lo, Number(candles[j].low));
+  return Number(sweepBar.high) - lo + 1e-12 >= atr * mult;
 }
 
 function scoreFromImpulseAtr(impulse) {
@@ -737,7 +892,12 @@ export function computeLiquidityBrackets(side, entry, sweepWick, opposingLevel, 
     return null;
   }
 
-  const buf = Number(opts.slBufferPct ?? opts.intradayLiqSlBufferPct ?? DEFAULT_LIQ_SL_BUFFER_PCT);
+  const bufPct = Number(opts.slBufferPct ?? opts.intradayLiqSlBufferPct ?? DEFAULT_LIQ_SL_BUFFER_PCT);
+  const atrBufMult = Number(opts.intradayLiqSlBufferAtrMult ?? 0);
+  const atr = Number(opts._entryAtr ?? opts.entryAtr ?? 0);
+  // Absolute buffer: max(% of price, ATR×mult). Guide uses ATR×0.2; CORE default is % only.
+  let bufAbs = Number.isFinite(bufPct) && bufPct > 0 ? fill * bufPct : 0;
+  if (atrBufMult > 0 && atr > 0) bufAbs = Math.max(bufAbs, atr * atrBufMult);
   const tradeSide = side === "BUY" || side === "long" ? "BUY" : "SELL";
   const { tp1On, tp2On } = resolveLiqExitStages(opts);
   const slOnly = !tp1On && !tp2On;
@@ -748,14 +908,34 @@ export function computeLiquidityBrackets(side, entry, sweepWick, opposingLevel, 
   let slPrice;
   let tp2Price = tp2On ? tpLevel : 0;
   if (tradeSide === "BUY") {
-    slPrice = wick * (1 - buf);
+    slPrice = bufAbs > 0 ? wick - bufAbs : wick * (1 - Math.max(bufPct, 0));
     if (!(slPrice < fill)) return null;
     if (tp2On && !(tp2Price > fill)) return null;
   } else {
-    slPrice = wick * (1 + buf);
+    slPrice = bufAbs > 0 ? wick + bufAbs : wick * (1 + Math.max(bufPct, 0));
     if (!(slPrice > fill)) return null;
     if (tp2On && !(tp2Price < fill)) return null;
   }
+
+  // Research exit geometry overrides (opt-in). Default remains structural wick SL + opposing TP.
+  // Fixed % / ATR replace structural distances from fill; invalid distances → null setup.
+  const fixedSlPct = Number(opts.intradayLiqFixedSlPct ?? 0);
+  const slAtrMult = Number(opts.intradayLiqSlAtrMult ?? 0);
+  if (fixedSlPct > 0) {
+    slPrice = tradeSide === "BUY" ? fill * (1 - fixedSlPct) : fill * (1 + fixedSlPct);
+  } else if (slAtrMult > 0 && atr > 0) {
+    slPrice = tradeSide === "BUY" ? fill - slAtrMult * atr : fill + slAtrMult * atr;
+  }
+  if (tradeSide === "BUY" ? !(slPrice < fill) : !(slPrice > fill)) return null;
+
+  const fixedTpPct = Number(opts.intradayLiqFixedTpPct ?? 0);
+  const tpAtrMult = Number(opts.intradayLiqTpAtrMult ?? 0);
+  if (tp2On && fixedTpPct > 0) {
+    tp2Price = tradeSide === "BUY" ? fill * (1 + fixedTpPct) : fill * (1 - fixedTpPct);
+  } else if (tp2On && tpAtrMult > 0 && atr > 0) {
+    tp2Price = tradeSide === "BUY" ? fill + tpAtrMult * atr : fill - tpAtrMult * atr;
+  }
+  if (tp2On && (tradeSide === "BUY" ? !(tp2Price > fill) : !(tp2Price < fill))) return null;
 
   const risk = Math.abs(fill - slPrice);
   const tp1RrMult = Math.min(2, Math.max(0.25, Number(opts.intradayLiqTp1Rr ?? 1)));
@@ -879,6 +1059,11 @@ function buildSetupFromCycle(candles, cycle, side, opts, dayStart = 0, entryIdx 
   if (opts.intradayLiqRejectSameBarReclaim === true && cycle.reclaimIdx === cycle.sweepStartIdx) {
     return null;
   }
+  // Opposite gate: require pin-bar reclaim (sweep+reclaim same bar). Y2025 BNB soft:
+  // same-bar was the only positive cell; multi-bar bled — research opt-in only.
+  if (opts.intradayLiqRequireSameBarReclaim === true && cycle.reclaimIdx !== cycle.sweepStartIdx) {
+    return null;
+  }
 
   if (!harvest && !passesReclaimStrength(reclaimBar, cycle, side, opts)) return null;
   if (!harvest && !passesSweepPokeRejection(candles, cycle, side, opts)) return null;
@@ -886,6 +1071,7 @@ function buildSetupFromCycle(candles, cycle, side, opts, dayStart = 0, entryIdx 
   if (!harvest && !passesEntryLevelHold(entryBar, cycle, side, opts)) return null;
   if (!harvest && !passesSweepQualityGate(candles, cycle, side, pre, opts)) return null;
   if (!harvest && !passesDisplacementV2Gate(candles, cycle.sweepStartIdx, entryBarIdx, side, pre, opts)) return null;
+  if (!harvest && !passesGuideFollowThrough(candles, cycle, side, pre, opts)) return null;
 
   const trailOnly = isLiqTrailOnlyExit(opts);
   const useEntryScore = resolveLiqEntryScoreMode(opts);
@@ -912,8 +1098,33 @@ function buildSetupFromCycle(candles, cycle, side, opts, dayStart = 0, entryIdx 
     : harvest
       ? { ...opts, intradayLiqMinRr: 0 }
       : opts;
-  const brackets = computeLiquidityBrackets(side, entryBar.close, cycle.wick, cycle.opposing, bracketOpts);
+  const entryAtr = Number(pre?.atrSeries?.[entryBarIdx] ?? pre?.atr?.[entryBarIdx] ?? 0);
+  const brackets = computeLiquidityBrackets(side, entryBar.close, cycle.wick, cycle.opposing, {
+    ...bracketOpts,
+    _entryAtr: entryAtr,
+  });
   if (!brackets) return null;
+
+  // Mitigation / limit-at-pool entry: wait for pullback toward swept level after reclaim.
+  // Frac 0 = signal close (market), 1 = at level, 0.5 = midpoint (soft BNB A/B winner).
+  const mitFrac = Number(opts.intradayLiqMitigationFrac ?? 0);
+  const mitOn =
+    opts.intradayLiqMitigationEntry === true ||
+    Number(opts.intradayLiqMitigationWaitBars ?? 0) > 0 ||
+    mitFrac > 0;
+  if (mitOn && mitFrac > 0) {
+    const frac = Math.min(1, Math.max(0, mitFrac));
+    const limitPx = Number(entryBar.close) + frac * (Number(cycle.level) - Number(entryBar.close));
+    if (Number.isFinite(limitPx) && limitPx > 0) {
+      const mitBrackets = computeLiquidityBrackets(side, limitPx, cycle.wick, cycle.opposing, bracketOpts);
+      if (mitBrackets) {
+        Object.assign(brackets, mitBrackets);
+        brackets.limitEntryPrice = limitPx;
+        brackets.mitigationEntry = true;
+        brackets.mitigationFrac = frac;
+      }
+    }
+  }
 
   if (
     !harvest &&
@@ -1064,6 +1275,282 @@ function collectSetupsFromCycles(candles, idx, side, cycles, opts, dayStart, lev
     );
     if (s) setups.push(s);
   }
+  return setups;
+}
+
+/**
+ * Scan same UTC day for sweep→failed-reclaim (hold-beyond) acceptance cycles.
+ * `poolSide` is the liquidity pool being swept (BUY = SSL, SELL = BSL).
+ */
+export function scanAcceptanceCycles(candles, idx, poolSide, level, opposing, levelType, sweepPct, dayStart, opts = {}) {
+  if (!level || level <= 0 || !opposing || opposing <= 0) return [];
+
+  const holdBars = liqAcceptHoldBars(opts);
+  const acceptIdx = idx - holdBars;
+  if (acceptIdx < dayStart) return [];
+  if (holdBars > 0 && !acceptHeldThrough(candles, acceptIdx, idx, poolSide, level)) return [];
+
+  const clusterPct = Number(opts.intradayLiqSessionExtremeSweepPct ?? 0.0005);
+  const minSweepVol = Number(opts.intradayLiqSweepMinVolRatio ?? 0);
+  const volLookback = Math.max(2, Number(opts.intradayLiqSweepVolLookback ?? 20));
+  const poked = (j) =>
+    sweepPoked(poolSide, candles[j], level, sweepPct, levelType, clusterPct) &&
+    sweepBarVolumeOk(candles, j, minSweepVol, volLookback);
+
+  let scanOpts = opts;
+  const maxMinutes = Number(opts.intradayLiqMaxSweepMinutes ?? 0);
+  if (maxMinutes > 0 && candles.length > 1) {
+    const barMs = Math.abs(candles[1].ts - candles[0].ts) || 900_000;
+    scanOpts = { ...opts, intradayLiqMaxSweepBars: Math.max(1, Math.round((maxMinutes * 60_000) / barMs)) };
+  }
+
+  let sweepStartIdx = -1;
+  let extreme = poolSide === "BUY" ? Infinity : -Infinity;
+  let lastSweep = null;
+
+  for (let j = dayStart; j <= acceptIdx; j++) {
+    if (poked(j)) {
+      if (sweepStartIdx < 0) sweepStartIdx = j;
+      extreme = poolSide === "BUY" ? Math.min(extreme, candles[j].low) : Math.max(extreme, candles[j].high);
+    } else if (sweepStartIdx >= 0) {
+      extreme =
+        poolSide === "BUY"
+          ? Math.min(extreme, candles[j].low)
+          : Math.max(extreme, candles[j].high);
+    }
+
+    if (sweepStartIdx >= 0 && poolReclaimedOnBar(candles, j, poolSide, level)) {
+      sweepStartIdx = -1;
+      extreme = poolSide === "BUY" ? Infinity : -Infinity;
+      lastSweep = null;
+      continue;
+    }
+
+    if (sweepStartIdx >= 0) {
+      lastSweep = {
+        sweepStartIdx,
+        wick: extreme,
+        extension: sweepExtension(poolSide, level, extreme),
+      };
+    }
+  }
+
+  if (!lastSweep || lastSweep.sweepStartIdx < 0) return [];
+
+  for (let j = lastSweep.sweepStartIdx; j <= idx; j++) {
+    if (poolReclaimedOnBar(candles, j, poolSide, level)) return [];
+  }
+
+  if (
+    !passesSweepFilters(
+      poolSide,
+      level,
+      lastSweep.wick,
+      lastSweep.sweepStartIdx,
+      acceptIdx,
+      scanOpts,
+      levelType,
+    )
+  ) {
+    return [];
+  }
+
+  return [
+    {
+      acceptIdx,
+      wick: lastSweep.wick,
+      sweepStartIdx: lastSweep.sweepStartIdx,
+      level,
+      levelType,
+      opposing,
+      extension: lastSweep.extension,
+      poolSide,
+    },
+  ];
+}
+
+function buildSetupFromAcceptanceCycle(candles, cycle, tradeSide, opts, dayStart = 0, entryIdx = null, levelMeta = null) {
+  const pre = opts._liqPre;
+  const harvest = opts.intradayLiqHarvestMode === true;
+  const poolSide = cycle.poolSide ?? (tradeSide === "SELL" ? "BUY" : "SELL");
+  const entryBarIdx = entryIdx ?? cycle.acceptIdx;
+  const entryBar = candles[entryBarIdx];
+  if (!entryBar) return null;
+
+  if (!harvest && !passesLiqMarketActivationForSetup(candles, entryBarIdx, tradeSide, pre, opts, cycle.levelType)) {
+    return null;
+  }
+  if (!harvest && !passesLiqHtfAlign(tradeSide, entryBarIdx, pre, opts, cycle.levelType)) return null;
+  if (!harvest && !passesLiqAdxEntry(entryBarIdx, pre, opts)) return null;
+  // Guide displacement after sweep (opt-in). Was classic-only — STOPRUN needs it on ACCEPT.
+  if (!harvest && !passesGuideFollowThrough(candles, cycle, tradeSide, pre, opts)) return null;
+
+  const brackets = computeAcceptanceBrackets(tradeSide, entryBar.close, cycle.level, cycle.opposing, opts);
+  if (!brackets) return null;
+
+  const q = cycleQualityScore(cycle, brackets, dayStart, opts, entryBar, tradeSide);
+  const minQ = Number(opts.intradayLiqMinQuality ?? 0);
+  if (!harvest && minQ > 0 && q < minQ) return null;
+
+  const importance = levelMeta?.importance ?? cycle.levelImportance ?? 1;
+  const features = buildLiqFeatureVector({
+    candles,
+    cycle: { ...cycle, reclaimIdx: cycle.acceptIdx },
+    side: tradeSide,
+    pre,
+    opts,
+    entryBarIdx,
+    reclaimBar: entryBar,
+    sweepQuality: null,
+    displacementV2: null,
+    continuationRoom: null,
+    marketContext: null,
+  });
+
+  const techniques = ["liq_accept"];
+  if (cycle.levelType === "pdh" || cycle.levelType === "pdl") techniques.push("liq_pdh_pdl");
+  else if (cycle.levelType === "session_high" || cycle.levelType === "session_low") {
+    techniques.push("liq_session_extreme");
+  }
+
+  return {
+    side: tradeSide,
+    action: tradeSide,
+    playbook: "accept",
+    level: cycle.level,
+    levelType: cycle.levelType,
+    levelImportance: importance,
+    levelSource: levelMeta?.source ?? cycle.levelSource ?? null,
+    wick: cycle.wick,
+    sweepWick: cycle.wick,
+    sweepStartIdx: cycle.sweepStartIdx,
+    acceptIdx: cycle.acceptIdx,
+    reclaimIdx: cycle.acceptIdx,
+    entry: entryBar.close,
+    extension: cycle.extension,
+    liqQuality: q,
+    weightedQuality: q * importance,
+    liqFeatures: features,
+    htfTrend: pre?.htfUp?.[entryBarIdx] ? "up" : pre?.htfDown?.[entryBarIdx] ? "down" : "flat",
+    ...brackets,
+    techniques,
+    score: Math.min(12, Math.round(6 + q / 50)),
+  };
+}
+
+function collectAcceptanceSetupsFromCycles(candles, idx, tradeSide, cycles, opts, dayStart, levelMeta = null) {
+  const holdBars = liqAcceptHoldBars(opts);
+  const poolSide = tradeSide === "SELL" ? "BUY" : "SELL";
+  const setups = [];
+  for (let cycIdx = 0; cycIdx < cycles.length; cycIdx++) {
+    const c = cycles[cycIdx];
+    if (c.acceptIdx !== idx - holdBars) continue;
+    if (holdBars > 0 && !acceptHeldThrough(candles, c.acceptIdx, idx, poolSide, c.level)) continue;
+    if (opts.intradayLiqFirstCycleOnly === true && cycIdx > 0) continue;
+    const s = buildSetupFromAcceptanceCycle(
+      candles,
+      c,
+      tradeSide,
+      opts,
+      dayStart,
+      holdBars > 0 ? idx : null,
+      levelMeta,
+    );
+    if (s) setups.push(s);
+  }
+  return setups;
+}
+
+/** Continuation TP: next liquidity pool in trade direction (not fade opposing extreme). */
+function resolveAcceptanceOpposing(candles, idx, tradeSide, sweptLevel, pre, opts, dayStart) {
+  const entry = Number(candles[idx]?.close ?? 0);
+  const pdh = Number(pre?.prevDayHigh?.[idx] ?? 0);
+  const pdl = Number(pre?.prevDayLow?.[idx] ?? 0);
+  const pwh = Number(pre?.prevWeekHigh?.[idx] ?? 0);
+  const pwl = Number(pre?.prevWeekLow?.[idx] ?? 0);
+  const lv = Number(sweptLevel);
+  if (!(entry > 0) || !(lv > 0)) return 0;
+
+  if (tradeSide === "SELL") {
+    const sess = resolveSessionExtremeLevel(candles, idx, "BUY", dayStart, opts);
+    if (sess?.level > 0 && sess.level < entry) return sess.level;
+    if (pwl > 0 && pwl < entry) return pwl;
+    if (pdl > 0 && pdl < entry && Math.abs(pdl - lv) / lv > 0.001) return pdl;
+    const range = pdh > 0 && pdl > 0 ? pdh - pdl : lv * 0.012;
+    return Math.max(lv * 0.95, lv - Math.max(range, lv * 0.006));
+  }
+
+  const sess = resolveSessionExtremeLevel(candles, idx, "SELL", dayStart, opts);
+  if (sess?.level > 0 && sess.level > entry) return sess.level;
+  if (pwh > 0 && pwh > entry) return pwh;
+  if (pdh > 0 && pdh > entry && Math.abs(pdh - lv) / lv > 0.001) return pdh;
+  const range = pdh > 0 && pdl > 0 ? pdh - pdl : lv * 0.012;
+  return lv + Math.max(range, lv * 0.006);
+}
+
+/**
+ * Sweep-acceptance setups at bar `idx` — enter WITH the sweep after hold-beyond confirms failed reclaim.
+ */
+export function listAcceptanceSetups(candles, idx, tradeSide, pre, opts = {}) {
+  if (!candles?.length || idx < 1) return [];
+  if (opts.intradayLiqAcceptEnabled === false) return [];
+
+  const sweepPct = Number(opts.sweepPct ?? opts.srIntradaySweepPct ?? DEFAULT_LIQ_SWEEP_PCT);
+  const dayStart = dayStartIndex(candles, idx);
+  const poolSide = tradeSide === "SELL" ? "BUY" : "SELL";
+
+  const setups = [];
+  const candidates = resolveLiquidityCandidates(candles, idx, poolSide, pre, opts);
+
+  for (const cand of candidates) {
+    if (!(cand.level > 0)) continue;
+    const opposingLevel = resolveAcceptanceOpposing(
+      candles,
+      idx,
+      tradeSide,
+      cand.level,
+      pre,
+      opts,
+      dayStart,
+    );
+    if (!(opposingLevel > 0)) continue;
+    const minDist = Number(opts.intradayLiqSessionExtremeMinDistFromSession ?? 0.005);
+    const pdh = pre.prevDayHigh?.[idx];
+    const pdl = pre.prevDayLow?.[idx];
+    const sessionLevel = poolSide === "BUY" ? pdl : pdh;
+    if (
+      sessionLevel > 0 &&
+      cand.levelType !== "pdh" &&
+      cand.levelType !== "pdl" &&
+      Math.abs(cand.level - sessionLevel) / sessionLevel <= minDist
+    ) {
+      continue;
+    }
+
+    const cycles = scanAcceptanceCycles(
+      candles,
+      idx,
+      poolSide,
+      cand.level,
+      opposingLevel,
+      cand.levelType,
+      sweepPct,
+      dayStart,
+      opts,
+    );
+    for (const c of cycles) {
+      c.levelImportance = cand.importance;
+      c.levelSource = cand.source;
+      c.opposing = opposingLevel;
+    }
+    setups.push(
+      ...collectAcceptanceSetupsFromCycles(candles, idx, tradeSide, cycles, opts, dayStart, {
+        ...cand,
+        opposingLevel,
+      }),
+    );
+  }
+
   return setups;
 }
 
