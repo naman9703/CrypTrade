@@ -215,6 +215,11 @@ export const INTRADAY_PRO_LIQ_15M = {
   intradayGateVp: false,
   intradayGateOrderFlow: false,
   intradayGateHtfRegime: false,
+  /** Explicit — draft merge must not leave a prior SMC/ICT path on. */
+  intradayGateSmcIct: false,
+  intradaySmcIctMode: false,
+  intradayGateInstitutionalSr: false,
+  intradaySrAPlusMode: false,
   intradayLearnedRulesEnabled: false,
   supertrendHtf4hEnabled: false,
   intradayLiqStrictMode: true,
@@ -389,6 +394,88 @@ export const INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M = {
   maxDailyLoss: 3,
   maxDailyLossUnit: "PCT",
   riskConsecutiveLossLimit: 3,
+};
+
+/**
+ * BNB LIQ prepared-cell research sleeve (2026-07-24/25).
+ * Guide-gap close: displacement ≥1.2 ATR + MinSl ≥1% + mitigation retest (frac 0.5)
+ * + toxic day-situation abstain. Closes ICT steps 3–4 partially (disp + retest entry).
+ *
+ * Hard (fees+slip): Y1 +14% PF 1.15 @ 1.32/wk; HOLD +3.8% PF 1.03 @ 1.76/wk;
+ * FULL 2023-07→2026-07 +12.9% PF 1.04 @ 1.56/wk. Expectancy green Y1+HOLD+FULL.
+ * RESEARCH_SLEEVE — tw still &lt;2/wk deploy floor; not live until WF+MC+gates + freq restore.
+ * Return-max cousin (hours 0–20 + mitFrac 0.35): FULL ~+60% PF~1.16 @ ~1.5/wk — see decision.
+ * Decision: `2026-07-25-liq-bnb-prepared-mit-sleeve.md`.
+ */
+export const INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_15M = {
+  ...INTRADAY_PRO_LIQ_CORE_15M,
+  symbol: "BNBUSDT",
+  intradayLiqRequireDisplacementV2: true,
+  intradayLiqSweepDisplacementMinAtrMult: 1.2,
+  intradayLiqMinSlPct: 0.01,
+  intradayLiqMitigationEntry: true,
+  intradayLiqMitigationFrac: 0.5,
+  intradayLiqMitigationWaitBars: 6,
+  intradayLiqDaySituationBias: true,
+  maxDailyLoss: 3,
+  maxDailyLossUnit: "PCT",
+  riskConsecutiveLossLimit: 3,
+};
+
+/**
+ * BNB LIQ prepared return-max research sleeve (2026-07-25).
+ * Same prepared physics + hours 0–20 UTC + lighter mitigation frac 0.35.
+ * FULL ~+60% PF~1.16 @ ~1.5/wk; Y1/HOLD expectancy green. Lower freq than PREPARED_MIT.
+ * RESEARCH_SLEEVE_LOW_FREQ — not live.
+ */
+export const INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_H020_15M = {
+  ...INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_15M,
+  intradayLiqMitigationFrac: 0.35,
+  intradayLiqMitigationWaitBars: 8,
+  intradayLiqActiveHourStart: 0,
+  intradayLiqActiveHourEnd: 20,
+};
+
+/**
+ * BNB LIQ freq-restored research sleeve (2026-07-25).
+ * One-sided toxic: abstain BUY-into-breakdown only + mitFrac 0.30 / wait 8 / hours 0–20.
+ * Cleared Y1+HOLD tw≥2 with EG; FULL ~+31% PF~1.07 @ ~2.25/wk.
+ * RESEARCH_SLEEVE — not live until WF+MC+4-gates.
+ * Decision: `2026-07-25-liq-bnb-onesided-freq-restore.md`.
+ */
+export const INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M = {
+  ...INTRADAY_PRO_LIQ_CORE_15M,
+  symbol: "BNBUSDT",
+  intradayLiqRequireDisplacementV2: true,
+  intradayLiqSweepDisplacementMinAtrMult: 1.2,
+  intradayLiqMinSlPct: 0.01,
+  intradayLiqMitigationEntry: true,
+  intradayLiqMitigationFrac: 0.3,
+  intradayLiqMitigationWaitBars: 8,
+  intradayLiqActiveHourStart: 0,
+  intradayLiqActiveHourEnd: 20,
+  intradayLiqDaySituationBias: "buy_breakdown",
+  // Compressed-regime stand-down (14d/100d avg daily-range). Hard A/B 2026-07-25:
+  // flips every red half green/flat; FULL +22.8% → +64.5% at tw≥2.
+  intradayLiqRangeCompressionMin: 0.75,
+  // Strong-trend stand-down (never-green SL autopsy → hard A/B 2026-07-25):
+  // maxAdx50 clears 4-gates (Calmar 1.17, MC p5 +8.5%); tw ~1.7 FULL / 1.5 OOS.
+  intradayLiqMaxAdx: 50,
+  maxDailyLoss: 3,
+  maxDailyLossUnit: "PCT",
+  riskConsecutiveLossLimit: 3,
+};
+
+/**
+ * BNB LIQ one-sided return-max cousin (sell_breakout + disp 1.1 ATR).
+ * Y1+HOLD tw≥2 EG; FULL ~+44% PF~1.09 @ ~2.13/wk. RESEARCH_SLEEVE — not live.
+ */
+export const INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_SELLBO_15M = {
+  ...INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M,
+  intradayLiqDaySituationBias: "sell_breakout",
+  intradayLiqMitigationFrac: 0.35,
+  intradayLiqMitigationWaitBars: 8,
+  intradayLiqSweepDisplacementMinAtrMult: 1.1,
 };
 
 export const INTRADAY_PRO_LIQ_ACCEPT_SIGNATURE_KEYS = [

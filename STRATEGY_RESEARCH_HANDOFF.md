@@ -236,10 +236,25 @@ Code remains at `backend/src/strategy/fundingArb/` for future reopen only.
    Decision: `2026-07-23-bnb-vp-freq-h9-calmar-sleeve.md`.
    Prior Calmar-miss reject: `2026-07-20-bnb-vp-freq-certification-reject.md`.
 4. **VP FREQ portfolio honesty** — multi-coin sim with wired per-leg resolve (already in worker).
-5. **LIQ BNB AST+vol15 sleeve** — hard year windows green; run WF+MC+gates next.
-   Preset `INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M`. Do not promote CORE defaults yet.
-   Freq restore only after expectancy holds. Decision:
-   `2026-07-23-liq-bnb-ast-vol15-sleeve.md`.
+5. **VP FREQ next-5 (2026-07-25/26):** ZEC/DOGE/NEAR/ADA/XLM screened.
+   - ZEC F3 soft-reject (green only via N-crush).
+   - **DOGE F3 `RESEARCH_SLEEVE_LOW_FREQ` (2026-07-26 cert):** rej + paying POC (bleed POC
+     denied), minATR 0.8%, BUY body 0.25, score 6, gap 1. FULL **+329% / Calmar 1.49 /
+     tw 0.21**. Core gates **PASS** (OOS/MC/Calmar/WF); freq **FAIL**.
+     Decisions: `2026-07-26-doge-vp-freq-poc-cell-cleanup.md`,
+     `2026-07-26-doge-vp-freq-certification-sleeve.md`.
+     Harness: `backtest-validate-vp-freq-doge.mjs`.
+     Post-cert freq A/B: no path to ≥2/wk without re-redding years — archive N-chase.
+   - Next: **NEAR F3** coin-native stream.
+6. **LIQ BNB BUYBD + compression + maxAdx50 (2026-07-25) — RESEARCH_SLEEVE, 4-gate PASS.**
+   Compression 0.75 fixed regime-red halves; never-green SL autopsy → `intradayLiqMaxAdx: 50`
+   clears Calmar 1.17 + MC p5 +8.5% + OOS +64%. FULL **+108% @ 1.7/wk**. Frequency still
+   under ≥2/wk; mild red half 2025H1 −0.056; BNB-only. Preset:
+   `INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M`.
+   Decisions: `2026-07-25-liq-bnb-buybd-compression-standdown.md`,
+   `2026-07-25-liq-bnb-buybd-nevergreen-maxadx.md` (exit/risk reject:
+   `2026-07-25-liq-bnb-buybd-exit-risk-reject.md`).
+   Next: multi-coin check; do not re-loosen ADX/compression to chase frequency.
 6. ~~VP BNB Calmar~~ **Done** — H9 sleeve above.
 6. Phase 2 Exp-1: disaster SL on locked trail Elite (see phase2 hypothesis).
 7. Funding arb parked until a reopen criterion is met.

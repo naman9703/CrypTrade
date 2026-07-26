@@ -1,0 +1,102 @@
+load DOGEUSDT…
+candles=195456 funding=6109
+
+══ 0) DOGE F3 baseline ══ 2021-01-01→2026-05-31
+H0 n=103 tw=0.36 ret=41.92% pf=1.13 cal=0.15 dd=46.38%
+  years 2020-21:14/-8.59% 2021-22:22/13.56% 2022-23:22/23.7% 2023-24:17/28.21% 2024-25:19/-37.47% 2025-26:9/37.85%
+
+══ 1) Market character — 2024-25 vs good years ══
+bad 2024-25: { n: 19, net: -61.69, wr: 10.5, avg: -3.25 }
+good years pool: { n: 70, net: 112.2, wr: 35.7, avg: 1.6 }
+
+feature means (bad losers vs bad winners vs good all):
+  prior5d    badL=-0.0306 badW=0.2752 good=-0.0054
+  prior20d   badL=-0.0997 badW=0.7703 good=0.0147
+  prior60d   badL=0.1719 badW=1.9065 good=0.1342
+  pathPct    badL=0.0286 badW=0.0434 good=0.0396
+  atr        badL=0.0080 badW=0.0147 good=0.0122
+  htfSep     badL=0.0030 badW=0.0092 good=0.0067
+
+-- 2024-25 cells --
+  SELL|va_rejection|bear_trend|vacuum              n= 6 net= -38.26 wr=0%
+  SELL|va_rejection|bear_trend|structured          n= 3 net= -14.45 wr=0%
+  BUY|va_rejection|bull_chop|vacuum                n= 1 net=  -5.47 wr=0%
+  BUY|va_rejection|bear_trend|tight                n= 1 net=   -5.3 wr=0%
+  SELL|va_rejection|bull_trend|vacuum              n= 1 net=  -3.92 wr=0%
+  BUY|va_rejection|bull_trend|vacuum               n= 3 net=  -0.33 wr=33.3%
+  SELL|va_rejection|weak_bear|vacuum               n= 4 net=   6.04 wr=25%
+
+-- 2024-25 side|vac --
+  SELL|vac=1                                       n=11 net= -36.14 wr=9.1%
+  SELL|vac=0                                       n= 3 net= -14.45 wr=0%
+  BUY|vac=1                                        n= 4 net=  -5.81 wr=25%
+  BUY|vac=0                                        n= 1 net=   -5.3 wr=0%
+
+-- 2024-25 macro --
+  bear_trend                                       n=10 net=    -58 wr=0%
+  bull_chop                                        n= 1 net=  -5.47 wr=0%
+  bull_trend                                       n= 4 net=  -4.25 wr=25%
+  weak_bear                                        n= 4 net=   6.04 wr=25%
+
+-- good years cells --
+  SELL|va_rejection|bull_chop|structured           n= 5 net=  -23.6 wr=0%
+  BUY|va_rejection|bull_trend|structured           n= 3 net= -12.83 wr=0%
+  SELL|va_rejection|bull_trend|vacuum              n= 5 net= -10.33 wr=20%
+  BUY|va_rejection|bull_chop|structured            n= 6 net=  -7.49 wr=16.7%
+  BUY|va_rejection|bull_chop|tight                 n= 4 net=   1.45 wr=50%
+  SELL|va_rejection|bear_trend|vacuum              n=17 net=   3.78 wr=29.4%
+  BUY|va_rejection|bull_trend|tight                n= 3 net=   7.64 wr=66.7%
+  SELL|va_rejection|bull_chop|vacuum               n= 8 net=  11.57 wr=37.5%
+  SELL|va_rejection|bear_trend|tight               n= 1 net=  12.56 wr=100%
+  BUY|va_rejection|bull_chop|vacuum                n= 2 net=  13.26 wr=100%
+  SELL|va_rejection|bear_trend|structured          n= 1 net=  15.15 wr=100%
+  SELL|va_rejection|weak_bear|structured           n= 4 net=  17.14 wr=25%
+  SELL|va_rejection|bull_chop|tight                n= 2 net=  18.02 wr=100%
+  BUY|va_rejection|bull_trend|vacuum               n= 5 net=  30.59 wr=40%
+  SELL|va_rejection|weak_bear|vacuum               n= 4 net=   35.3 wr=50%
+
+══ 2) Soft probes (counterfactual drop on tagged rows) ══
+drop_bad_year_worst_cell         drop=23 FULL n=80 net=76.41 | bad n=13 net=-23.43 | good n=53 net=108.43
+drop_SELL_vacuum                 drop=49 FULL n=54 net=34.04 | bad n=8 net=-25.55 | good n=36 net=71.89
+drop_BUY_vacuum                  drop=16 FULL n=87 net=9.2 | bad n=15 net=-55.88 | good n=63 net=68.36
+drop_weak_bear                   drop=12 FULL n=91 net=-16.55 | bad n=15 net=-67.73 | good n=62 net=59.77
+drop_bull_chop                   drop=28 FULL n=75 net=34.18 | bad n=18 net=-56.22 | good n=43 net=98.99
+drop_bear_trend                  drop=29 FULL n=74 net=68.44 | bad n=9 net=-3.68 | good n=51 net=80.72
+drop_SELL_prior5d_gt5            drop=10 FULL n=93 net=54.56 | bad n=17 net=-44.4 | good n=62 net=107.55
+drop_BUY_prior5d_gt8             drop=11 FULL n=92 net=-2.7 | bad n=18 net=-68.97 | good n=64 net=72.23
+drop_SELL_prior20d_le_m5         drop=36 FULL n=67 net=20.54 | bad n=7 net=-20.09 | good n=46 net=49.23
+drop_path_vacuum                 drop=65 FULL n=38 net=1.31 | bad n=4 net=-19.75 | good n=29 net=28.04
+drop_SELL_ext_down_rej           drop=36 FULL n=67 net=20.54 | bad n=7 net=-20.09 | good n=46 net=49.23
+
+══ 3) Hard A/B (one-family) vs H0 ══
+deny cells from autopsy: SELL|va_rejection|bear_trend|vacuum
+run H0_baseline
+H0_baseline
+  FULL n=103 tw=0.36 ret=41.92 pf=1.13 cal=0.15 dd=46.38 | years 2020-21:-8.59%/14 2021-22:13.56%/22 2022-23:23.7%/22 2023-24:28.21%/17 2024-25:-37.47%/19 2025-26:37.85%/9
+run H1_rej_sell_block_ext_down
+H1_rej_sell_block_ext_down
+  FULL n=67 tw=0.24 ret=11.72 pf=1.07 cal=0.06 dd=33.43 | years 2020-21:-8.59%/14 2021-22:-18.98%/11 2022-23:46.79%/14 2023-24:4.07%/14 2024-25:-14.88%/7 2025-26:16.02%/7
+run H2_buy_rej_block_bull_trend
+H2_buy_rej_block_bull_trend
+  FULL n=79 tw=0.28 ret=36.38 pf=1.15 cal=0.14 dd=44.47 | years 2020-21:3.87%/4 2021-22:21.15%/20 2022-23:-10.01%/18 2023-24:21.06%/15 2024-25:-36.59%/16 2025-26:56.87%/6
+run H3_buy_rej_block_unprepared
+H3_buy_rej_block_unprepared
+  FULL n=79 tw=0.28 ret=36.38 pf=1.15 cal=0.14 dd=44.47 | years 2020-21:3.87%/4 2021-22:21.15%/20 2022-23:-10.01%/18 2023-24:21.06%/15 2024-25:-36.59%/16 2025-26:56.87%/6
+run H4_sell_macro_adapt
+H4_sell_macro_adapt
+  FULL n=77 tw=0.27 ret=62.06 pf=1.28 cal=0.29 dd=33.82 | years 2020-21:-8.59%/14 2021-22:-8.52%/17 2022-23:44.4%/15 2023-24:32.75%/10 2024-25:-24.96%/14 2025-26:34.74%/7
+run H5_wick_floor_040
+H5_wick_floor_040
+  FULL n=69 tw=0.24 ret=-10.24 pf=0.93 cal=-0.05 dd=39.86 | years 2020-21:-12.47%/9 2021-22:-23.26%/15 2022-23:15.02%/13 2023-24:10.53%/12 2024-25:-10.01%/14 2025-26:16.8%/6
+run deny_SELL_va_rejection_bear_trend_vacuum
+deny_SELL_va_rejection_bear_trend_vacuum
+  FULL n=79 tw=0.28 ret=56.15 pf=1.23 cal=0.28 dd=31.44 | years 2020-21:-8.59%/14 2021-22:7.22%/16 2022-23:25.18%/16 2023-24:33.82%/13 2024-25:-18.02%/13 2025-26:16.02%/7
+
+══ 4) Accept scorecard ══
+H4_sell_macro_adapt                      accept=false badΔ -37.47→-24.96 full=62.06% tw=0.27 goodKeep=false fullOk=true freqOk=true
+deny_SELL_va_rejection_bear_trend_vacuum accept=false badΔ -37.47→-18.02 full=56.15% tw=0.28 goodKeep=false fullOk=true freqOk=true
+H2_buy_rej_block_bull_trend              accept=false badΔ -37.47→-36.59 full=36.38% tw=0.28 goodKeep=false fullOk=false freqOk=true
+H3_buy_rej_block_unprepared              accept=false badΔ -37.47→-36.59 full=36.38% tw=0.28 goodKeep=false fullOk=false freqOk=true
+H1_rej_sell_block_ext_down               accept=false badΔ -37.47→-14.88 full=11.72% tw=0.24 goodKeep=false fullOk=false freqOk=false
+H5_wick_floor_040                        accept=false badΔ -37.47→-10.01 full=-10.24% tw=0.24 goodKeep=false fullOk=false freqOk=false
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-doge-f3-2024-autopsy.json

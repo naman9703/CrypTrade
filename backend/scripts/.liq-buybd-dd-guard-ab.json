@@ -1,0 +1,764 @@
+{
+  "generatedAt": "2026-07-25T11:37:00.239Z",
+  "matrix": {
+    "baseline": {
+      "HOLD": {
+        "n": 116,
+        "tw": 2.22,
+        "retPct": 5.31,
+        "ddPct": 24.27,
+        "meanR": 0.033,
+        "pfR": 1.069,
+        "cagr": 5.3,
+        "calmar": 0.22,
+        "halves": {
+          "2023H2": {
+            "n": 48,
+            "meanR": 0.077
+          },
+          "2024H1": {
+            "n": 68,
+            "meanR": 0.002
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "IS": {
+        "n": 111,
+        "tw": 2.13,
+        "retPct": 9.03,
+        "ddPct": 14.12,
+        "meanR": 0.046,
+        "pfR": 1.1,
+        "cagr": 9.04,
+        "calmar": 0.64,
+        "halves": {
+          "2024H2": {
+            "n": 77,
+            "meanR": 0.081
+          },
+          "2025H1": {
+            "n": 34,
+            "meanR": -0.033
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "OOS": {
+        "n": 97,
+        "tw": 1.75,
+        "retPct": 45.99,
+        "ddPct": 15.02,
+        "meanR": 0.172,
+        "pfR": 1.413,
+        "cagr": 42.78,
+        "calmar": 2.85,
+        "halves": {
+          "2025H2": {
+            "n": 61,
+            "meanR": 0.268
+          },
+          "2026H1": {
+            "n": 35,
+            "meanR": 0.021
+          },
+          "2026H2": {
+            "n": 1,
+            "meanR": -0.425
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "FULL": {
+        "n": 323,
+        "tw": 2.02,
+        "retPct": 64.48,
+        "ddPct": 25.59,
+        "meanR": 0.077,
+        "pfR": 1.169,
+        "cagr": 17.64,
+        "calmar": 0.69,
+        "halves": {
+          "2023H2": {
+            "n": 47,
+            "meanR": 0.063
+          },
+          "2024H1": {
+            "n": 68,
+            "meanR": 0.002
+          },
+          "2024H2": {
+            "n": 77,
+            "meanR": 0.081
+          },
+          "2025H1": {
+            "n": 34,
+            "meanR": -0.033
+          },
+          "2025H2": {
+            "n": 61,
+            "meanR": 0.268
+          },
+          "2026H1": {
+            "n": 35,
+            "meanR": 0.021
+          },
+          "2026H2": {
+            "n": 1,
+            "meanR": -0.425
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      }
+    },
+    "kill12": {
+      "HOLD": {
+        "n": 28,
+        "tw": 0.54,
+        "retPct": -0.21,
+        "ddPct": 13.41,
+        "meanR": 0.009,
+        "pfR": 1.021,
+        "cagr": -0.21,
+        "calmar": -0.02,
+        "halves": {
+          "2023H2": {
+            "n": 28,
+            "meanR": 0.009
+          }
+        },
+        "overlay": {
+          "killSwitch": 112,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "IS": {
+        "n": 11,
+        "tw": 0.21,
+        "retPct": -12.78,
+        "ddPct": 12.78,
+        "meanR": -0.487,
+        "pfR": 0.263,
+        "cagr": -12.79,
+        "calmar": -1,
+        "halves": {
+          "2024H2": {
+            "n": 11,
+            "meanR": -0.487
+          }
+        },
+        "overlay": {
+          "killSwitch": 121,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "OOS": {
+        "n": 34,
+        "tw": 0.61,
+        "retPct": 13.02,
+        "ddPct": 13.16,
+        "meanR": 0.161,
+        "pfR": 1.345,
+        "cagr": 12.21,
+        "calmar": 0.93,
+        "halves": {
+          "2025H2": {
+            "n": 34,
+            "meanR": 0.161
+          }
+        },
+        "overlay": {
+          "killSwitch": 75,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "FULL": {
+        "n": 28,
+        "tw": 0.18,
+        "retPct": -0.21,
+        "ddPct": 13.41,
+        "meanR": 0.009,
+        "pfR": 1.021,
+        "cagr": -0.07,
+        "calmar": -0.01,
+        "halves": {
+          "2023H2": {
+            "n": 28,
+            "meanR": 0.009
+          }
+        },
+        "overlay": {
+          "killSwitch": 360,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      }
+    },
+    "kill15": {
+      "HOLD": {
+        "n": 66,
+        "tw": 1.26,
+        "retPct": 3.2,
+        "ddPct": 15.09,
+        "meanR": 0.033,
+        "pfR": 1.072,
+        "cagr": 3.2,
+        "calmar": 0.21,
+        "halves": {
+          "2023H2": {
+            "n": 48,
+            "meanR": 0.077
+          },
+          "2024H1": {
+            "n": 18,
+            "meanR": -0.085
+          }
+        },
+        "overlay": {
+          "killSwitch": 65,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "IS": {
+        "n": 111,
+        "tw": 2.13,
+        "retPct": 9.03,
+        "ddPct": 14.12,
+        "meanR": 0.046,
+        "pfR": 1.1,
+        "cagr": 9.04,
+        "calmar": 0.64,
+        "halves": {
+          "2024H2": {
+            "n": 77,
+            "meanR": 0.081
+          },
+          "2025H1": {
+            "n": 34,
+            "meanR": -0.033
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "OOS": {
+        "n": 36,
+        "tw": 0.65,
+        "retPct": 10.6,
+        "ddPct": 15.02,
+        "meanR": 0.129,
+        "pfR": 1.272,
+        "cagr": 9.95,
+        "calmar": 0.66,
+        "halves": {
+          "2025H2": {
+            "n": 36,
+            "meanR": 0.129
+          }
+        },
+        "overlay": {
+          "killSwitch": 72,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "FULL": {
+        "n": 65,
+        "tw": 0.41,
+        "retPct": 1.27,
+        "ddPct": 15.09,
+        "meanR": 0.022,
+        "pfR": 1.046,
+        "cagr": 0.41,
+        "calmar": 0.03,
+        "halves": {
+          "2023H2": {
+            "n": 47,
+            "meanR": 0.063
+          },
+          "2024H1": {
+            "n": 18,
+            "meanR": -0.085
+          }
+        },
+        "overlay": {
+          "killSwitch": 314,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      }
+    },
+    "kill18": {
+      "HOLD": {
+        "n": 80,
+        "tw": 1.53,
+        "retPct": -2.86,
+        "ddPct": 20.08,
+        "meanR": 0,
+        "pfR": 0.999,
+        "cagr": -2.85,
+        "calmar": -0.14,
+        "halves": {
+          "2023H2": {
+            "n": 48,
+            "meanR": 0.077
+          },
+          "2024H1": {
+            "n": 32,
+            "meanR": -0.117
+          }
+        },
+        "overlay": {
+          "killSwitch": 49,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "IS": {
+        "n": 111,
+        "tw": 2.13,
+        "retPct": 9.03,
+        "ddPct": 14.12,
+        "meanR": 0.046,
+        "pfR": 1.1,
+        "cagr": 9.04,
+        "calmar": 0.64,
+        "halves": {
+          "2024H2": {
+            "n": 77,
+            "meanR": 0.081
+          },
+          "2025H1": {
+            "n": 34,
+            "meanR": -0.033
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "OOS": {
+        "n": 97,
+        "tw": 1.75,
+        "retPct": 45.99,
+        "ddPct": 15.02,
+        "meanR": 0.172,
+        "pfR": 1.413,
+        "cagr": 42.78,
+        "calmar": 2.85,
+        "halves": {
+          "2025H2": {
+            "n": 61,
+            "meanR": 0.268
+          },
+          "2026H1": {
+            "n": 35,
+            "meanR": 0.021
+          },
+          "2026H2": {
+            "n": 1,
+            "meanR": -0.425
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "FULL": {
+        "n": 79,
+        "tw": 0.49,
+        "retPct": -4.68,
+        "ddPct": 20.08,
+        "meanR": -0.01,
+        "pfR": 0.979,
+        "cagr": -1.55,
+        "calmar": -0.08,
+        "halves": {
+          "2023H2": {
+            "n": 47,
+            "meanR": 0.063
+          },
+          "2024H1": {
+            "n": 32,
+            "meanR": -0.117
+          }
+        },
+        "overlay": {
+          "killSwitch": 298,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      }
+    },
+    "week5": {
+      "HOLD": {
+        "n": 111,
+        "tw": 2.12,
+        "retPct": -0.61,
+        "ddPct": 25.56,
+        "meanR": 0.013,
+        "pfR": 1.027,
+        "cagr": -0.61,
+        "calmar": -0.02,
+        "halves": {
+          "2023H2": {
+            "n": 47,
+            "meanR": 0.059
+          },
+          "2024H1": {
+            "n": 64,
+            "meanR": -0.021
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 7,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "IS": {
+        "n": 101,
+        "tw": 1.94,
+        "retPct": 10.64,
+        "ddPct": 12.91,
+        "meanR": 0.055,
+        "pfR": 1.121,
+        "cagr": 10.65,
+        "calmar": 0.82,
+        "halves": {
+          "2024H2": {
+            "n": 69,
+            "meanR": 0.083
+          },
+          "2025H1": {
+            "n": 32,
+            "meanR": -0.006
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 12,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "OOS": {
+        "n": 95,
+        "tw": 1.71,
+        "retPct": 50.45,
+        "ddPct": 12.71,
+        "meanR": 0.188,
+        "pfR": 1.455,
+        "cagr": 46.89,
+        "calmar": 3.69,
+        "halves": {
+          "2025H2": {
+            "n": 60,
+            "meanR": 0.29
+          },
+          "2026H1": {
+            "n": 34,
+            "meanR": 0.026
+          },
+          "2026H2": {
+            "n": 1,
+            "meanR": -0.425
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 2,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "FULL": {
+        "n": 301,
+        "tw": 1.88,
+        "retPct": 42.33,
+        "ddPct": 26.73,
+        "meanR": 0.062,
+        "pfR": 1.134,
+        "cagr": 12.21,
+        "calmar": 0.46,
+        "halves": {
+          "2023H2": {
+            "n": 46,
+            "meanR": 0.043
+          },
+          "2024H1": {
+            "n": 64,
+            "meanR": -0.021
+          },
+          "2024H2": {
+            "n": 67,
+            "meanR": 0.011
+          },
+          "2025H1": {
+            "n": 31,
+            "meanR": 0.009
+          },
+          "2025H2": {
+            "n": 60,
+            "meanR": 0.252
+          },
+          "2026H1": {
+            "n": 32,
+            "meanR": 0.074
+          },
+          "2026H2": {
+            "n": 1,
+            "meanR": -0.425
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 29,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      }
+    },
+    "week8": {
+      "HOLD": {
+        "n": 114,
+        "tw": 2.18,
+        "retPct": 3.42,
+        "ddPct": 22.54,
+        "meanR": 0.027,
+        "pfR": 1.056,
+        "cagr": 3.41,
+        "calmar": 0.15,
+        "halves": {
+          "2023H2": {
+            "n": 48,
+            "meanR": 0.077
+          },
+          "2024H1": {
+            "n": 66,
+            "meanR": -0.01
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 3,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "IS": {
+        "n": 107,
+        "tw": 2.05,
+        "retPct": -2.73,
+        "ddPct": 17.3,
+        "meanR": 0.004,
+        "pfR": 1.009,
+        "cagr": -2.73,
+        "calmar": -0.16,
+        "halves": {
+          "2024H2": {
+            "n": 74,
+            "meanR": 0.024
+          },
+          "2025H1": {
+            "n": 33,
+            "meanR": -0.04
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 4,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "OOS": {
+        "n": 97,
+        "tw": 1.75,
+        "retPct": 45.99,
+        "ddPct": 15.02,
+        "meanR": 0.172,
+        "pfR": 1.413,
+        "cagr": 42.78,
+        "calmar": 2.85,
+        "halves": {
+          "2025H2": {
+            "n": 61,
+            "meanR": 0.268
+          },
+          "2026H1": {
+            "n": 35,
+            "meanR": 0.021
+          },
+          "2026H2": {
+            "n": 1,
+            "meanR": -0.425
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 0,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      },
+      "FULL": {
+        "n": 317,
+        "tw": 1.98,
+        "retPct": 65.8,
+        "ddPct": 25.79,
+        "meanR": 0.079,
+        "pfR": 1.174,
+        "cagr": 17.94,
+        "calmar": 0.7,
+        "halves": {
+          "2023H2": {
+            "n": 47,
+            "meanR": 0.063
+          },
+          "2024H1": {
+            "n": 66,
+            "meanR": -0.01
+          },
+          "2024H2": {
+            "n": 76,
+            "meanR": 0.09
+          },
+          "2025H1": {
+            "n": 32,
+            "meanR": -0.026
+          },
+          "2025H2": {
+            "n": 61,
+            "meanR": 0.268
+          },
+          "2026H1": {
+            "n": 34,
+            "meanR": 0.026
+          },
+          "2026H2": {
+            "n": 1,
+            "meanR": -0.425
+          }
+        },
+        "overlay": {
+          "killSwitch": 0,
+          "weeklyCap": 8,
+          "consecCooldown": 0,
+          "dailyCap": 0
+        }
+      }
+    }
+  },
+  "best": "week8",
+  "walkForward": {
+    "folds": [
+      {
+        "fold": 0,
+        "trainMeanR": 0.075,
+        "testMeanR": -0.035,
+        "degPct": 146.8
+      },
+      {
+        "fold": 1,
+        "trainMeanR": -0.025,
+        "testMeanR": 0.137,
+        "degPct": -657
+      },
+      {
+        "fold": 2,
+        "trainMeanR": 0.046,
+        "testMeanR": 0.126,
+        "degPct": -176.1
+      },
+      {
+        "fold": 3,
+        "trainMeanR": 0.077,
+        "testMeanR": 0.123,
+        "degPct": -59.3
+      }
+    ],
+    "avgDegPct": -186.4
+  },
+  "monteCarlo": {
+    "paths": 2000,
+    "p5ReturnPct": -6.74570014423349,
+    "p50ReturnPct": 43.2915792794019,
+    "p95ReturnPct": 130.0580900782946,
+    "meanReturnPct": 50.533834731711394,
+    "medianMaxDdPct": 16.480104429850368,
+    "p95MaxDdPct": 29.549946820617624,
+    "riskOfRuinPct": 0.05
+  },
+  "gates": {
+    "allPass": false,
+    "gates": {
+      "oosPositive": {
+        "pass": true,
+        "value": 45.99,
+        "threshold": "> 0"
+      },
+      "mcP5Positive": {
+        "pass": false,
+        "value": -6.74570014423349,
+        "threshold": "> 0"
+      },
+      "calmarOver1": {
+        "pass": false,
+        "value": 0.7,
+        "threshold": "> 1"
+      },
+      "wfDegradationOk": {
+        "pass": true,
+        "value": -186.39999999999998,
+        "threshold": "< 35%"
+      }
+    }
+  },
+  "redHalves": [],
+  "verdict": "REJECT"
+}

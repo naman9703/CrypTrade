@@ -1162,6 +1162,7 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradayLiqRequireSameBarReclaim: cfg.intradayLiqRequireSameBarReclaim,
     intradayLiqMinRr: cfg.intradayLiqMinRr,
     intradayLiqMaxSlPct: cfg.intradayLiqMaxSlPct,
+    intradayLiqMinSlPct: cfg.intradayLiqMinSlPct,
     intradayLiqMaxSweepBars: cfg.intradayLiqMaxSweepBars,
     intradayLiqSlBufferPct: cfg.intradayLiqSlBufferPct,
     intradayLiqMinSweepExtensionPct: cfg.intradayLiqMinSweepExtensionPct,
@@ -1207,6 +1208,10 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradayLiqMacroAlignFade: cfg.intradayLiqMacroAlignFade,
     intradayLiqMacroBullPrior60: cfg.intradayLiqMacroBullPrior60,
     intradayLiqMacroBearPrior60: cfg.intradayLiqMacroBearPrior60,
+    /** Stand down when 14d/100d avg daily-range ratio < floor (compressed regime). */
+    intradayLiqRangeCompressionMin: cfg.intradayLiqRangeCompressionMin,
+    /** Stand down when regime ADX > max (strong trend). 0 = off. */
+    intradayLiqMaxAdx: cfg.intradayLiqMaxAdx,
     /** Allow-list of session narratives (asia_accum / london_sweep / …). */
     intradayLiqSessionNarratives: cfg.intradayLiqSessionNarratives,
     /** Guide active session (UTC). Applied on LIQ solo path (unlike srIntradaySession*). */
@@ -1241,6 +1246,18 @@ export function buildIntradayOptsFromCfg(cfg = {}) {
     intradayLiqRequireFollowThrough: cfg.intradayLiqRequireFollowThrough,
     intradayLiqFollowThroughAtrMult: cfg.intradayLiqFollowThroughAtrMult,
     intradayLiqFollowThroughBars: cfg.intradayLiqFollowThroughBars,
+    intradayLiqFollowThroughMode: cfg.intradayLiqFollowThroughMode,
+    intradayLiqFtQuietAtrPct: cfg.intradayLiqFtQuietAtrPct,
+    intradayLiqFtBusyAtrPct: cfg.intradayLiqFtBusyAtrPct,
+    intradayLiqFtQuietMult: cfg.intradayLiqFtQuietMult,
+    intradayLiqFtBusyMult: cfg.intradayLiqFtBusyMult,
+    intradayLiqFtWeakVol: cfg.intradayLiqFtWeakVol,
+    intradayLiqFtWeakVolMult: cfg.intradayLiqFtWeakVolMult,
+    intradayLiqFtStrongVolMult: cfg.intradayLiqFtStrongVolMult,
+    intradayLiqFtRangeMult: cfg.intradayLiqFtRangeMult,
+    intradayLiqFtRangeBars: cfg.intradayLiqFtRangeBars,
+    intradayLiqFtBreakMult: cfg.intradayLiqFtBreakMult,
+    intradayLiqFtBreakBars: cfg.intradayLiqFtBreakBars,
     intradayLiqRequirePostReclaimDisplacement: cfg.intradayLiqRequirePostReclaimDisplacement,
     intradayLiqPostReclaimDispAtrMult: cfg.intradayLiqPostReclaimDispAtrMult,
     intradayLiqSwingPivotLookback: cfg.intradayLiqSwingPivotLookback,

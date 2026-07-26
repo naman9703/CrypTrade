@@ -1,0 +1,155 @@
+=== PREPARED_MIT residual + freq restore ===
+
+Harvest SLEEVE Y1+HOLD…
+SLEEVE Y1  n=69 tw=1.32 ret=14.1% pf=1.149
+SLEEVE HOLD n=92 tw=1.76 ret=3.8% pf=1.031
+
+--- SLEEVE losers pooled n=83 ---
+byExit       worst=sl n=62 pnl=-189.63 pf=0
+bySideDay    worst=BUY|breakout n=5 pnl=-15.29 pf=0
+bySession    worst=asia_accum n=27 pnl=-72.32 pf=0
+byLevel      worst=pdl n=30 pnl=-82.01 pf=0
+byHourBand   worst=other n=10 pnl=-27.93 pf=0
+byChase      worst=chase n=6 pnl=-15.7 pf=0
+byVol        worst=vol12 n=4 pnl=-11.43 pf=0
+byMicro      worst=microMfeSl n=30 pnl=-92.38 pf=0
+byBody       worst=bodyLo n=47 pnl=-126.67 pf=0
+bySpent      worst=room n=69 pnl=-181.08 pf=0
+byImpulse    worst=imp12 n=17 pnl=-50.13 pf=0
+
+========== Path A soft abstain on SLEEVE ==========
+H0                     Y1 tw=1.32 ret=   14.1 pf=1.149 | HOLD tw=1.76 ret=    3.8 pf=1.031 ◆EG
+drop_chase             Y1 tw=1.19 ret=   2.23 pf=1.025 | HOLD tw=1.57 ret=  -3.87 pf=0.965
+drop_asia              Y1 tw=0.9 ret=  24.58 pf=1.415 | HOLD tw=1.25 ret=   -0.6 pf=0.993
+drop_lateNy            Y1 tw=1.07 ret=  19.59 pf=1.271 | HOLD tw=1.48 ret=   7.34 pf=1.072 ◆EG
+kz_only                Y1 tw=0.56 ret=   24.3 pf=1.785 | HOLD tw=0.75 ret=  19.09 pf=1.457 ◆EG
+vol12                  Y1 tw=1.19 ret=   5.71 pf=1.065 | HOLD tw=1.53 ret=    4.9 pf=1.047 ◆EG
+vol15                  Y1 tw=1.04 ret=   4.91 pf=1.064 | HOLD tw=1.53 ret=    4.9 pf=1.047 ◆EG
+drop_spent             Y1 tw=1.07 ret=  17.81 pf=1.24 | HOLD tw=1.44 ret= -17.03 pf=0.841
+bodyHi                 Y1 tw=0.56 ret=  31.72 pf=2.29 | HOLD tw=1.04 ret=  17.24 pf=1.265 ◆EG
+imp15                  Y1 tw=0.98 ret=  13.29 pf=1.2 | HOLD tw=1.5 ret=   9.21 pf=1.092 ◆EG
+imp18                  Y1 tw=0.82 ret=  10.21 pf=1.175 | HOLD tw=1.07 ret=  12.48 pf=1.176 ◆EG
+pdh_pdl                Y1 tw=0.79 ret=  -1.82 pf=0.971 | HOLD tw=0.92 ret=  13.09 pf=1.219
+fadeAlign              Y1 tw=0.82 ret=   4.09 pf=1.064 | HOLD tw=1.07 ret=  -2.05 pf=0.974
+drop_SELL_breakout     Y1 tw=1.32 ret=   14.1 pf=1.149 | HOLD tw=1.76 ret=    3.8 pf=1.031 ◆EG
+drop_BUY_breakdown     Y1 tw=1.32 ret=   14.1 pf=1.149 | HOLD tw=1.76 ret=    3.8 pf=1.031 ◆EG
+drop_chase_spent       Y1 tw=0.96 ret=   6.36 pf=1.093 | HOLD tw=1.3 ret= -17.45 pf=0.822
+drop_asia_chase        Y1 tw=0.82 ret=  14.63 pf=1.261 | HOLD tw=1.11 ret=  -8.06 pf=0.897
+vol12_drop_chase       Y1 tw=1.09 ret=   2.69 pf=1.033 | HOLD tw=1.4 ret=  -5.31 pf=0.948
+kz_vol12               Y1 tw=0.52 ret=  15.45 pf=1.499 | HOLD tw=0.63 ret=   14.3 pf=1.398 ◆EG
+oracle_mfe05           Y1 tw=0.92 ret=  73.31 pf=3.066 | HOLD tw=1.38 ret=  53.12 pf=1.736 ◆EG
+
+Harvest HI_FREQ (mit+minSl+h020, no toxic) Y1+HOLD…
+HI_FREQ Y1  n=122 tw=2.34 ret=2.53% pf=1.015
+HI_FREQ HOLD n=144 tw=2.76 ret=-9.33% pf=0.942
+
+--- HI_FREQ HOLD losers n=76 ---
+bySideDay      worst=BUY|range n=18 pnl=-40.03 pf=0
+byToxic        worst=ok n=39 pnl=-84.24 pf=0
+bySoftToxic    worst=ok n=39 pnl=-84.24 pf=0
+bySession      worst=ny_continuation n=38 pnl=-83.17 pf=0
+byHourBand     worst=lateNy n=15 pnl=-34.7 pf=0
+byChase        worst=ok n=62 pnl=-130.82 pf=0
+byVol          worst=vol12 n=5 pnl=-12.1 pf=0
+byLevel        worst=session_high n=15 pnl=-32.44 pf=0
+bySpent        worst=room n=59 pnl=-125.3 pf=0
+byFade         worst=fade n=34 pnl=-72.51 pf=0
+byMicro        worst=microMfeSl n=22 pnl=-56.65 pf=0
+bySideSession  worst=BUY|ny_continuation n=16 pnl=-39.06 pf=0
+
+========== Path B soft abstain on HI_FREQ (goal: tw≥2 + eg both) ==========
+oracle_mfe05           Y1 tw=1.73 ret=  97.35 pf=2.358 | HOLD tw=2.09 ret=  65.47 pf=1.772 ◆EG
+kz_not_toxic           Y1 tw=0.54 ret=  24.14 pf=1.738 | HOLD tw=0.73 ret=  14.74 pf=1.41 ◆EG
+bodyHi                 Y1 tw=1 ret=  21.07 pf=1.355 | HOLD tw=1.5 ret=  19.06 pf=1.252 ◆EG
+toxic_or_asia          Y1 tw=0.77 ret=  14.71 pf=1.26 | HOLD tw=1.02 ret=  12.39 pf=1.234 ◆EG
+asia_toxic             Y1 tw=0.77 ret=  14.71 pf=1.26 | HOLD tw=1.02 ret=  12.39 pf=1.234 ◆EG
+lateNy_toxic           Y1 tw=0.96 ret=   13.1 pf=1.185 | HOLD tw=1.21 ret=  15.67 pf=1.233 ◆EG
+kz_only                Y1 tw=1.23 ret=  31.94 pf=1.392 | HOLD tw=1.44 ret=  -1.16 pf=0.986
+drop_toxic             Y1 tw=1.19 ret=   3.68 pf=1.039 | HOLD tw=1.5 ret=  13.32 pf=1.158 ◆EG
+drop_softToxic         Y1 tw=1.19 ret=   3.68 pf=1.039 | HOLD tw=1.48 ret=  11.52 pf=1.137 ◆EG
+drop_asia              Y1 tw=1.82 ret=  25.96 pf=1.224 | HOLD tw=2.09 ret=  -5.78 pf=0.95
+toxic_vol12            Y1 tw=1.07 ret=  -0.45 pf=0.995 | HOLD tw=1.28 ret=  10.28 pf=1.14
+softToxic_vol12        Y1 tw=1.07 ret=  -0.45 pf=0.995 | HOLD tw=1.27 ret=   8.49 pf=1.116
+toxic_or_spent         Y1 tw=1 ret=  13.01 pf=1.17 | HOLD tw=1.19 ret=  -6.29 pf=0.913
+softToxic_spent        Y1 tw=1 ret=  13.01 pf=1.17 | HOLD tw=1.17 ret=  -8.09 pf=0.888
+drop_BUY_breakdown     Y1 tw=1.76 ret=    4.7 pf=1.036 | HOLD tw=2.17 ret=   0.73 pf=1.006 ◆EG
+drop_BUY_bd_only       Y1 tw=1.76 ret=    4.7 pf=1.036 | HOLD tw=2.17 ret=   0.73 pf=1.006 ◆EG
+drop_SELL_breakout     Y1 tw=1.76 ret=   1.51 pf=1.012 | HOLD tw=2.09 ret=   3.26 pf=1.027 ◆EG
+drop_SELL_bo_only      Y1 tw=1.76 ret=   1.51 pf=1.012 | HOLD tw=2.09 ret=   3.26 pf=1.027 ◆EG
+drop_lateNy            Y1 tw=1.76 ret=   6.29 pf=1.047 | HOLD tw=2.13 ret=  -4.13 pf=0.967
+drop_spent             Y1 tw=2.03 ret=   6.47 pf=1.045 | HOLD tw=2.21 ret=  -9.73 pf=0.922 ·tw
+H0                     Y1 tw=2.34 ret=   2.53 pf=1.015 | HOLD tw=2.76 ret=  -9.33 pf=0.942 ·tw
+imp15                  Y1 tw=1.92 ret=  -9.53 pf=0.929 | HOLD tw=2.32 ret=  -2.96 pf=0.977
+toxic_or_chase         Y1 tw=1.07 ret= -12.46 pf=0.864 | HOLD tw=1.34 ret=   2.41 pf=1.03
+softToxic_chase        Y1 tw=1.07 ret= -12.46 pf=0.864 | HOLD tw=1.34 ret=   2.41 pf=1.03
+vol15                  Y1 tw=1.98 ret=  -5.94 pf=0.958 | HOLD tw=2.3 ret= -10.87 pf=0.918
+vol12                  Y1 tw=2.15 ret=  -9.19 pf=0.941 | HOLD tw=2.45 ret= -12.59 pf=0.913 ·tw
+pdh_pdl                Y1 tw=1.82 ret=  -2.29 pf=0.983 | HOLD tw=1.96 ret=  -15.5 pf=0.865
+fadeAlign              Y1 tw=1.04 ret=  -7.02 pf=0.922 | HOLD tw=1.17 ret=  -7.63 pf=0.895
+notFade_drop           Y1 tw=1.04 ret=  -7.02 pf=0.922 | HOLD tw=1.17 ret=  -7.63 pf=0.895
+drop_chase             Y1 tw=1.69 ret= -13.64 pf=0.899 | HOLD tw=2.09 ret= -28.15 pf=0.785
+chase_spent            Y1 tw=1.48 ret=  -8.38 pf=0.928 | HOLD tw=1.69 ret= -28.05 pf=0.734
+
+========== HARD Y1+HOLD (28 variants) ==========
+HI_FREQ…
+HI_FREQ                      Y1 n=122 tw=2.34 ret=   2.53 pf=1.015 | HOLD n=144 tw=2.76 ret=  -9.33 pf=0.942
+SLEEVE…
+SLEEVE                       Y1 n= 69 tw=1.32 ret=   14.1 pf=1.149 | HOLD n= 92 tw=1.76 ret=    3.8 pf=1.031 ◆EG
+hf_toxic…
+hf_toxic                     Y1 n= 64 tw=1.23 ret=   9.42 pf=1.107 | HOLD n= 80 tw=1.53 ret=  21.86 pf=1.207 ◆EG
+hf_vol12…
+hf_vol12                     Y1 n=109 tw=2.09 ret=  -10.7 pf=0.921 | HOLD n=131 tw=2.51 ret=  -5.03 pf=0.967
+hf_vol15…
+hf_vol15                     Y1 n=106 tw=2.03 ret=  -4.69 pf=0.966 | HOLD n=124 tw=2.38 ret=   1.21 pf=1.008
+hf_spent…
+hf_spent                     Y1 n=107 tw=2.05 ret=   2.71 pf=1.018 | HOLD n=118 tw=2.26 ret= -16.47 pf=0.863
+hf_chase_htf…
+hf_chase_htf                 Y1 n= 45 tw=0.86 ret=  -0.66 pf=0.989 | HOLD n= 62 tw=1.19 ret=   -9.8 pf=0.851
+hf_noAsia…
+hf_noAsia                    Y1 n=122 tw=2.34 ret=   2.53 pf=1.015 | HOLD n=144 tw=2.76 ret=  -9.33 pf=0.942
+hf_h016…
+hf_h016                      Y1 n= 92 tw=1.76 ret=   5.91 pf=1.044 | HOLD n=116 tw=2.22 ret=   -6.6 pf=0.953
+hf_disp15…
+hf_disp15                    Y1 n=102 tw=1.96 ret= -14.46 pf=0.879 | HOLD n=126 tw=2.42 ret=   4.01 pf=1.027
+hf_toxic_vol12…
+hf_toxic_vol12               Y1 n= 55 tw=1.05 ret=   2.38 pf=1.032 | HOLD n= 70 tw=1.34 ret=   23.6 pf=1.259 ◆EG
+hf_toxic_spent…
+hf_toxic_spent               Y1 n= 53 tw=1.02 ret=  14.59 pf=1.198 | HOLD n= 64 tw=1.23 ret=  -1.16 pf=0.985
+hf_chase_spent…
+hf_chase_spent               Y1 n= 37 tw=0.71 ret=   5.93 pf=1.127 | HOLD n= 52 tw=1 ret=  -4.25 pf=0.923
+hf_vol12_spent…
+hf_vol12_spent               Y1 n= 96 tw=1.84 ret=  -9.19 pf=0.926 | HOLD n=111 tw=2.13 ret=   0.59 pf=1.005
+hf_toxic_h016…
+hf_toxic_h016                Y1 n= 51 tw=0.98 ret=  15.82 pf=1.234 | HOLD n= 67 tw=1.28 ret=  23.05 pf=1.268 ◆EG
+sleeve_vol12…
+sleeve_vol12                 Y1 n= 59 tw=1.13 ret=   2.26 pf=1.028 | HOLD n= 82 tw=1.57 ret=    5.4 pf=1.05 ◆EG
+sleeve_disp10…
+sleeve_disp10                Y1 n= 74 tw=1.42 ret=  18.59 pf=1.181 | HOLD n= 92 tw=1.76 ret=   3.87 pf=1.032 ◆EG
+sleeve_wait8…
+sleeve_wait8                 Y1 n= 70 tw=1.34 ret=  10.97 pf=1.114 | HOLD n= 93 tw=1.78 ret=   8.27 pf=1.066 ◆EG
+sleeve_wait4…
+sleeve_wait4                 Y1 n= 67 tw=1.28 ret=  13.36 pf=1.146 | HOLD n= 87 tw=1.67 ret=    1.9 pf=1.017 ◆EG
+sleeve_mit035…
+sleeve_mit035                Y1 n= 75 tw=1.44 ret=  15.11 pf=1.153 | HOLD n= 95 tw=1.82 ret=   7.99 pf=1.062 ◆EG
+sleeve_noDailyCap…
+sleeve_noDailyCap            Y1 n= 69 tw=1.32 ret=   14.1 pf=1.149 | HOLD n= 92 tw=1.76 ret=    3.8 pf=1.031 ◆EG
+sleeve_side3…
+sleeve_side3                 Y1 n= 71 tw=1.36 ret=   7.92 pf=1.081 | HOLD n= 93 tw=1.78 ret=   8.61 pf=1.069 ◆EG
+sleeve_disp10_vol12…
+sleeve_disp10_vol12          Y1 n= 63 tw=1.21 ret=   9.19 pf=1.105 | HOLD n= 82 tw=1.57 ret=    5.4 pf=1.05 ◆EG
+soft_drop_lateNy…
+soft_drop_lateNy             Y1 n= 92 tw=1.76 ret=   5.91 pf=1.044 | HOLD n=116 tw=2.22 ret=   -6.6 pf=0.953
+soft_kz_only…
+soft_kz_only                 Y1 n= 58 tw=1.11 ret=   7.83 pf=1.098 | HOLD n= 70 tw=1.34 ret= -16.19 pf=0.804
+soft_vol12…
+soft_vol12                   Y1 n=109 tw=2.09 ret=  -10.7 pf=0.921 | HOLD n=131 tw=2.51 ret=  -5.03 pf=0.967
+soft_vol15…
+soft_vol15                   Y1 n=106 tw=2.03 ret=  -4.69 pf=0.966 | HOLD n=124 tw=2.38 ret=   1.21 pf=1.008
+soft_bodyHi…
+soft_bodyHi                  Y1 n= 94 tw=1.8 ret=  30.48 pf=1.235 | HOLD n=100 tw=1.92 ret= -14.34 pf=0.862
+FULL sleeve_mit035…
+FULL sleeve_mit035 n=260 tw=1.66 ret=22.21% pf=1.063
+FULL sleeve_disp10…
+FULL sleeve_disp10 n=254 tw=1.62 ret=15.55% pf=1.047
+
+verdict=EG_BELOW_TW2 best=sleeve_mit035 promote=— wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.liq-bnb-prepared-mit-residual.json

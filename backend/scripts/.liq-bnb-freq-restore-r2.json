@@ -1,0 +1,728 @@
+{
+  "generatedAt": "2026-07-24T19:17:16.944Z",
+  "rows": [
+    {
+      "id": "minSl01_h720_toxic",
+      "over": {
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 47,
+        "tw": 0.9,
+        "ret": 14.42,
+        "pf": 1.248,
+        "wr": 55.3
+      },
+      "hold": {
+        "n": 60,
+        "tw": 1.15,
+        "ret": 1.81,
+        "pf": 1.027,
+        "wr": 48.3
+      },
+      "pass": false,
+      "eg": true,
+      "full": {
+        "n": 166,
+        "tw": 1.06,
+        "ret": 27.87,
+        "pf": 1.138,
+        "wr": 50
+      }
+    },
+    {
+      "id": "mit_h720_toxic",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 29,
+        "tw": 0.56,
+        "ret": 2.38,
+        "pf": 1.065,
+        "wr": 48.3
+      },
+      "hold": {
+        "n": 48,
+        "tw": 0.92,
+        "ret": 24.61,
+        "pf": 1.459,
+        "wr": 56.3
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "minSl008_h720_toxic",
+      "over": {
+        "intradayLiqMinSlPct": 0.008,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 64,
+        "tw": 1.23,
+        "ret": -14.37,
+        "pf": 0.838,
+        "wr": 46.9
+      },
+      "hold": {
+        "n": 72,
+        "tw": 1.38,
+        "ret": -11.77,
+        "pf": 0.859,
+        "wr": 45.8
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "minSl008_h720",
+      "over": {
+        "intradayLiqMinSlPct": 0.008,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20
+      },
+      "y1": {
+        "n": 134,
+        "tw": 2.57,
+        "ret": -18.92,
+        "pf": 0.883,
+        "wr": 47
+      },
+      "hold": {
+        "n": 137,
+        "tw": 2.63,
+        "ret": -33.36,
+        "pf": 0.788,
+        "wr": 43.8
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "minSl01_h720",
+      "over": {
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20
+      },
+      "y1": {
+        "n": 111,
+        "tw": 2.13,
+        "ret": 6.75,
+        "pf": 1.049,
+        "wr": 51.4
+      },
+      "hold": {
+        "n": 121,
+        "tw": 2.32,
+        "ret": -27.05,
+        "pf": 0.792,
+        "wr": 44.6
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "minSl01_h020_toxic",
+      "over": {
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 76,
+        "tw": 1.46,
+        "ret": 2.68,
+        "pf": 1.028,
+        "wr": 51.3
+      },
+      "hold": {
+        "n": 87,
+        "tw": 1.67,
+        "ret": 2.18,
+        "pf": 1.021,
+        "wr": 47.1
+      },
+      "pass": false,
+      "eg": true,
+      "full": {
+        "n": 254,
+        "tw": 1.62,
+        "ret": 15.99,
+        "pf": 1.048,
+        "wr": 48
+      }
+    },
+    {
+      "id": "minSl01_h020",
+      "over": {
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20
+      },
+      "y1": {
+        "n": 141,
+        "tw": 2.7,
+        "ret": -10.37,
+        "pf": 0.94,
+        "wr": 48.9
+      },
+      "hold": {
+        "n": 157,
+        "tw": 3.01,
+        "ret": -31.56,
+        "pf": 0.806,
+        "wr": 43.9
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "minSl008_h020_toxic",
+      "over": {
+        "intradayLiqMinSlPct": 0.008,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 101,
+        "tw": 1.94,
+        "ret": -31.84,
+        "pf": 0.768,
+        "wr": 44.6
+      },
+      "hold": {
+        "n": 108,
+        "tw": 2.07,
+        "ret": 14.32,
+        "pf": 1.11,
+        "wr": 50
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "disp10_minSl01_h720_toxic",
+      "over": {
+        "intradayLiqSweepDisplacementMinAtrMult": 1,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 51,
+        "tw": 0.98,
+        "ret": 15.85,
+        "pf": 1.244,
+        "wr": 54.9
+      },
+      "hold": {
+        "n": 61,
+        "tw": 1.17,
+        "ret": -1,
+        "pf": 0.985,
+        "wr": 47.5
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "disp10_minSl008_h720_toxic",
+      "over": {
+        "intradayLiqSweepDisplacementMinAtrMult": 1,
+        "intradayLiqMinSlPct": 0.008,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 70,
+        "tw": 1.34,
+        "ret": -9.26,
+        "pf": 0.904,
+        "wr": 48.6
+      },
+      "hold": {
+        "n": 74,
+        "tw": 1.42,
+        "ret": -10.51,
+        "pf": 0.878,
+        "wr": 45.9
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "disp10_minSl01_h020_toxic",
+      "over": {
+        "intradayLiqSweepDisplacementMinAtrMult": 1,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 81,
+        "tw": 1.55,
+        "ret": 6.61,
+        "pf": 1.064,
+        "wr": 51.9
+      },
+      "hold": {
+        "n": 89,
+        "tw": 1.71,
+        "ret": -3.32,
+        "pf": 0.968,
+        "wr": 46.1
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "mit_minSl01_h720_toxic",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 42,
+        "tw": 0.81,
+        "ret": 21.9,
+        "pf": 1.392,
+        "wr": 52.4
+      },
+      "hold": {
+        "n": 55,
+        "tw": 1.05,
+        "ret": 20.33,
+        "pf": 1.305,
+        "wr": 54.5
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "mit_minSl01_h020_toxic",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 64,
+        "tw": 1.23,
+        "ret": 9.42,
+        "pf": 1.107,
+        "wr": 48.4
+      },
+      "hold": {
+        "n": 80,
+        "tw": 1.53,
+        "ret": 21.86,
+        "pf": 1.207,
+        "wr": 51.2
+      },
+      "pass": false,
+      "eg": true,
+      "full": {
+        "n": 220,
+        "tw": 1.41,
+        "ret": 46.77,
+        "pf": 1.137,
+        "wr": 48.6
+      }
+    },
+    {
+      "id": "minSl01_noOff",
+      "over": {
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqSessionNarratives": "asia_accum,london_sweep,ny_continuation"
+      },
+      "y1": {
+        "n": 161,
+        "tw": 3.09,
+        "ret": -23.43,
+        "pf": 0.878,
+        "wr": 47.8
+      },
+      "hold": {
+        "n": 180,
+        "tw": 3.45,
+        "ret": -45.98,
+        "pf": 0.734,
+        "wr": 42.2
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "minSl01_noOff_toxic",
+      "over": {
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqSessionNarratives": "asia_accum,london_sweep,ny_continuation",
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 82,
+        "tw": 1.57,
+        "ret": 10.83,
+        "pf": 1.109,
+        "wr": 53.7
+      },
+      "hold": {
+        "n": 101,
+        "tw": 1.94,
+        "ret": -15.66,
+        "pf": 0.868,
+        "wr": 44.6
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "minSl01_h720_toxic_atr",
+      "over": {
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqSlBufferAtrMult": 0.2
+      },
+      "y1": {
+        "n": 47,
+        "tw": 0.9,
+        "ret": 14.44,
+        "pf": 1.249,
+        "wr": 55.3
+      },
+      "hold": {
+        "n": 60,
+        "tw": 1.15,
+        "ret": 6.81,
+        "pf": 1.105,
+        "wr": 50
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "minSl01_h720_toxic_hold1",
+      "over": {
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqReclaimHoldBars": 1
+      },
+      "y1": {
+        "n": 44,
+        "tw": 0.84,
+        "ret": -10.71,
+        "pf": 0.834,
+        "wr": 47.7
+      },
+      "hold": {
+        "n": 46,
+        "tw": 0.88,
+        "ret": -4.12,
+        "pf": 0.903,
+        "wr": 45.7
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "minSl01_h720_toxic_hold0",
+      "over": {
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqReclaimHoldBars": 0
+      },
+      "y1": {
+        "n": 28,
+        "tw": 0.54,
+        "ret": -15.67,
+        "pf": 0.611,
+        "wr": 39.3
+      },
+      "hold": {
+        "n": 41,
+        "tw": 0.79,
+        "ret": -8.94,
+        "pf": 0.824,
+        "wr": 48.8
+      },
+      "pass": false,
+      "eg": false
+    }
+  ],
+  "winners": [],
+  "expGreen": [
+    "minSl01_h020_toxic",
+    "mit_minSl01_h020_toxic",
+    "minSl01_h720_toxic",
+    "minSl01_h720_toxic_atr",
+    "mit_minSl01_h720_toxic",
+    "mit_h720_toxic"
+  ],
+  "multi": [
+    {
+      "sym": "ETHUSDT",
+      "id": "minSl01_h020_toxic",
+      "y1": {
+        "n": 48,
+        "tw": 0.92,
+        "ret": -26.93,
+        "pf": 0.519,
+        "wr": 41.7
+      },
+      "hold": {
+        "n": 46,
+        "tw": 0.88,
+        "ret": 6.52,
+        "pf": 1.112,
+        "wr": 47.8
+      },
+      "full": {
+        "n": 121,
+        "tw": 0.77,
+        "ret": -22.43,
+        "pf": 0.849,
+        "wr": 45.5
+      },
+      "eg": false
+    },
+    {
+      "sym": "BTCUSDT",
+      "id": "minSl01_h020_toxic",
+      "y1": {
+        "n": 49,
+        "tw": 0.94,
+        "ret": -25.92,
+        "pf": 0.513,
+        "wr": 44.9
+      },
+      "hold": {
+        "n": 88,
+        "tw": 1.69,
+        "ret": -33.23,
+        "pf": 0.682,
+        "wr": 43.2
+      },
+      "full": {
+        "n": 203,
+        "tw": 1.3,
+        "ret": -57.8,
+        "pf": 0.699,
+        "wr": 46.8
+      },
+      "eg": false
+    },
+    {
+      "sym": "ETHUSDT",
+      "id": "mit_minSl01_h020_toxic",
+      "y1": {
+        "n": 34,
+        "tw": 0.65,
+        "ret": -24.9,
+        "pf": 0.503,
+        "wr": 32.4
+      },
+      "hold": {
+        "n": 38,
+        "tw": 0.73,
+        "ret": 21.4,
+        "pf": 1.394,
+        "wr": 50
+      },
+      "full": {
+        "n": 96,
+        "tw": 0.61,
+        "ret": -9.06,
+        "pf": 0.938,
+        "wr": 41.7
+      },
+      "eg": false
+    },
+    {
+      "sym": "BTCUSDT",
+      "id": "mit_minSl01_h020_toxic",
+      "y1": {
+        "n": 43,
+        "tw": 0.82,
+        "ret": -9.57,
+        "pf": 0.813,
+        "wr": 44.2
+      },
+      "hold": {
+        "n": 81,
+        "tw": 1.55,
+        "ret": -15.64,
+        "pf": 0.855,
+        "wr": 48.1
+      },
+      "full": {
+        "n": 184,
+        "tw": 1.18,
+        "ret": -20.81,
+        "pf": 0.909,
+        "wr": 49.5
+      },
+      "eg": false
+    },
+    {
+      "sym": "ETHUSDT",
+      "id": "minSl01_h720_toxic",
+      "y1": {
+        "n": 26,
+        "tw": 0.5,
+        "ret": -8.42,
+        "pf": 0.655,
+        "wr": 50
+      },
+      "hold": {
+        "n": 24,
+        "tw": 0.46,
+        "ret": 11.84,
+        "pf": 1.457,
+        "wr": 58.3
+      },
+      "full": {
+        "n": 71,
+        "tw": 0.45,
+        "ret": 1.47,
+        "pf": 1.019,
+        "wr": 52.1
+      },
+      "eg": false
+    },
+    {
+      "sym": "BTCUSDT",
+      "id": "minSl01_h720_toxic",
+      "y1": {
+        "n": 35,
+        "tw": 0.67,
+        "ret": -13.67,
+        "pf": 0.62,
+        "wr": 48.6
+      },
+      "hold": {
+        "n": 62,
+        "tw": 1.19,
+        "ret": -29.46,
+        "pf": 0.627,
+        "wr": 41.9
+      },
+      "full": {
+        "n": 146,
+        "tw": 0.93,
+        "ret": -40.19,
+        "pf": 0.734,
+        "wr": 49.3
+      },
+      "eg": false
+    }
+  ],
+  "best": [
+    {
+      "id": "minSl01_h020_toxic",
+      "y1": {
+        "n": 76,
+        "tw": 1.46,
+        "ret": 2.68,
+        "pf": 1.028,
+        "wr": 51.3
+      },
+      "hold": {
+        "n": 87,
+        "tw": 1.67,
+        "ret": 2.18,
+        "pf": 1.021,
+        "wr": 47.1
+      },
+      "full": {
+        "n": 254,
+        "tw": 1.62,
+        "ret": 15.99,
+        "pf": 1.048,
+        "wr": 48
+      },
+      "pass": false
+    },
+    {
+      "id": "mit_minSl01_h020_toxic",
+      "y1": {
+        "n": 64,
+        "tw": 1.23,
+        "ret": 9.42,
+        "pf": 1.107,
+        "wr": 48.4
+      },
+      "hold": {
+        "n": 80,
+        "tw": 1.53,
+        "ret": 21.86,
+        "pf": 1.207,
+        "wr": 51.2
+      },
+      "full": {
+        "n": 220,
+        "tw": 1.41,
+        "ret": 46.77,
+        "pf": 1.137,
+        "wr": 48.6
+      },
+      "pass": false
+    },
+    {
+      "id": "minSl01_h720_toxic",
+      "y1": {
+        "n": 47,
+        "tw": 0.9,
+        "ret": 14.42,
+        "pf": 1.248,
+        "wr": 55.3
+      },
+      "hold": {
+        "n": 60,
+        "tw": 1.15,
+        "ret": 1.81,
+        "pf": 1.027,
+        "wr": 48.3
+      },
+      "full": {
+        "n": 166,
+        "tw": 1.06,
+        "ret": 27.87,
+        "pf": 1.138,
+        "wr": 50
+      },
+      "pass": false
+    }
+  ]
+}

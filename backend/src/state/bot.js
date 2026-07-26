@@ -925,6 +925,36 @@ export function createBot({
     intradayLiqMinRr: clamp(Number(process.env.INTRADAY_LIQ_MIN_RR ?? 1.5), 0, 5),
     intradayLiqMaxTpRr: clamp(Number(process.env.INTRADAY_LIQ_MAX_TP_RR ?? 5), 0, 20),
     intradayLiqMaxHoldBars: 0,
+    intradayLiqPlaybook: "",
+    intradayLiqPickMode: "chronological",
+    intradayLiqUseEntryScore: false,
+    intradayLiqUseEntryScoreV2: false,
+    intradayLiqMinEntryScore: 0,
+    intradayLiqReclaimHoldBars: 0,
+    intradayLiqRequireChoch: false,
+    intradayLiqMarketStateGate: false,
+    intradayLiqDaySituationBias: false,
+    intradayLiqRangeCompressionMin: 0,
+    intradayLiqMaxAdx: 0,
+    intradayLiqContinuationGate: false,
+    intradayLiqSweepQualityGate: false,
+    intradayLiqBreakdownDayBias: false,
+    intradayLiqRequireDisplacementV2: false,
+    intradayLiqSweepDisplacementMinAtrMult: 0,
+    intradayLiqMinSlPct: 0,
+    intradayLiqMitigationEntry: false,
+    intradayLiqMitigationFrac: 0,
+    intradayLiqMitigationWaitBars: 0,
+    intradayLiqActiveHourStart: undefined,
+    intradayLiqActiveHourEnd: undefined,
+    intradayLiqRequireSameBarReclaim: false,
+    intradayLiqSweepMinVolRatio: 0,
+    intradayLiqRequirePremiumDiscountAlign: false,
+    intradayLiqRequireKillzone: false,
+    intradayLiqHtfAlignPdhPdl: false,
+    intradayLiqVetoCounterTrend: false,
+    intradayLiqMaxDailyRangeUsedPct: 0,
+    intradayLiqSessionNarratives: undefined,
     liqMapLookbackBars: 72,
     liqMapMaxAgeBars: 72,
     liqMapMinTouches: 1,
@@ -2352,6 +2382,52 @@ export function createBot({
         intradayLiqFirstCycleOnly: state.intradayLiqFirstCycleOnly === true,
         intradayLiqEntryAtSignalClose: state.intradayLiqEntryAtSignalClose !== false,
         intradayLiqMaxHoldBars: clamp(Math.round(Number(state.intradayLiqMaxHoldBars ?? 0)), 0, 2000),
+        intradayLiqPlaybook: state.intradayLiqPlaybook != null ? String(state.intradayLiqPlaybook) : undefined,
+        intradayLiqPickMode: state.intradayLiqPickMode != null ? String(state.intradayLiqPickMode) : undefined,
+        intradayLiqUseEntryScore: state.intradayLiqUseEntryScore === true,
+        intradayLiqUseEntryScoreV2: state.intradayLiqUseEntryScoreV2 === true,
+        intradayLiqMinEntryScore: Number(state.intradayLiqMinEntryScore ?? 0),
+        intradayLiqReclaimHoldBars: clamp(Math.round(Number(state.intradayLiqReclaimHoldBars ?? 0)), 0, 20),
+        intradayLiqRequireChoch: state.intradayLiqRequireChoch === true,
+        intradayLiqMarketStateGate: state.intradayLiqMarketStateGate === true,
+        intradayLiqDaySituationBias:
+          state.intradayLiqDaySituationBias === true ||
+          state.intradayLiqDaySituationBias === false ||
+          state.intradayLiqDaySituationBias === "both" ||
+          state.intradayLiqDaySituationBias === "buy_breakdown" ||
+          state.intradayLiqDaySituationBias === "sell_breakout"
+            ? state.intradayLiqDaySituationBias
+            : false,
+        intradayLiqRangeCompressionMin: Number(state.intradayLiqRangeCompressionMin ?? 0),
+        intradayLiqMaxAdx: Number(state.intradayLiqMaxAdx ?? 0),
+        intradayLiqContinuationGate: state.intradayLiqContinuationGate === true,
+        intradayLiqSweepQualityGate: state.intradayLiqSweepQualityGate === true,
+        intradayLiqBreakdownDayBias: state.intradayLiqBreakdownDayBias === true,
+        intradayLiqRequireDisplacementV2: state.intradayLiqRequireDisplacementV2 === true,
+        intradayLiqSweepDisplacementMinAtrMult: Number(state.intradayLiqSweepDisplacementMinAtrMult ?? 0),
+        intradayLiqMinSlPct: Number(state.intradayLiqMinSlPct ?? 0),
+        intradayLiqMitigationEntry: state.intradayLiqMitigationEntry === true,
+        intradayLiqMitigationFrac: Number(state.intradayLiqMitigationFrac ?? 0),
+        intradayLiqMitigationWaitBars: clamp(Math.round(Number(state.intradayLiqMitigationWaitBars ?? 0)), 0, 40),
+        intradayLiqActiveHourStart: Number.isFinite(Number(state.intradayLiqActiveHourStart))
+          ? clamp(Math.round(Number(state.intradayLiqActiveHourStart)), 0, 24)
+          : undefined,
+        intradayLiqActiveHourEnd: Number.isFinite(Number(state.intradayLiqActiveHourEnd))
+          ? clamp(Math.round(Number(state.intradayLiqActiveHourEnd)), 0, 24)
+          : undefined,
+        intradayLiqRequireSameBarReclaim: state.intradayLiqRequireSameBarReclaim === true,
+        intradayLiqSweepMinVolRatio: Number(state.intradayLiqSweepMinVolRatio ?? 0),
+        intradayLiqRequirePremiumDiscountAlign: state.intradayLiqRequirePremiumDiscountAlign === true,
+        intradayLiqRequireKillzone: state.intradayLiqRequireKillzone === true,
+        intradayLiqHtfAlignPdhPdl: state.intradayLiqHtfAlignPdhPdl === true,
+        intradayLiqVetoCounterTrend: state.intradayLiqVetoCounterTrend === true,
+        intradayLiqMaxDailyRangeUsedPct: Number(state.intradayLiqMaxDailyRangeUsedPct ?? 0),
+        intradayLiqSessionNarratives: state.intradayLiqSessionNarratives,
+        intradayLiqSessionExtremeMinTouches: clamp(
+          Math.round(Number(state.intradayLiqSessionExtremeMinTouches ?? 3)),
+          1,
+          20,
+        ),
         ...liqMapPublicSnapshot(),
         srIntradayMaxTradesPerDay: clamp(Math.round(Number(state.srIntradayMaxTradesPerDay ?? 5)), 1, 50),
         srIntradayMinBarGap: clamp(Math.round(Number(state.srIntradayMinBarGap ?? 4)), 1, 200),
@@ -8777,6 +8853,47 @@ export function createBot({
         20,
       ),
       intradayLiqMaxHoldBars: clamp(Math.round(Number(state.intradayLiqMaxHoldBars ?? 0)), 0, 2000),
+      intradayLiqPlaybook: state.intradayLiqPlaybook != null ? String(state.intradayLiqPlaybook) : undefined,
+      intradayLiqPickMode: state.intradayLiqPickMode != null ? String(state.intradayLiqPickMode) : undefined,
+      intradayLiqUseEntryScore: state.intradayLiqUseEntryScore === true,
+      intradayLiqUseEntryScoreV2: state.intradayLiqUseEntryScoreV2 === true,
+      intradayLiqMinEntryScore: Number(state.intradayLiqMinEntryScore ?? 0),
+      intradayLiqReclaimHoldBars: clamp(Math.round(Number(state.intradayLiqReclaimHoldBars ?? 0)), 0, 20),
+      intradayLiqRequireChoch: state.intradayLiqRequireChoch === true,
+      intradayLiqMarketStateGate: state.intradayLiqMarketStateGate === true,
+      intradayLiqDaySituationBias:
+        state.intradayLiqDaySituationBias === true ||
+        state.intradayLiqDaySituationBias === false ||
+        state.intradayLiqDaySituationBias === "both" ||
+        state.intradayLiqDaySituationBias === "buy_breakdown" ||
+        state.intradayLiqDaySituationBias === "sell_breakout"
+          ? state.intradayLiqDaySituationBias
+          : false,
+      intradayLiqRangeCompressionMin: Number(state.intradayLiqRangeCompressionMin ?? 0),
+      intradayLiqMaxAdx: Number(state.intradayLiqMaxAdx ?? 0),
+      intradayLiqContinuationGate: state.intradayLiqContinuationGate === true,
+      intradayLiqSweepQualityGate: state.intradayLiqSweepQualityGate === true,
+      intradayLiqBreakdownDayBias: state.intradayLiqBreakdownDayBias === true,
+      intradayLiqRequireDisplacementV2: state.intradayLiqRequireDisplacementV2 === true,
+      intradayLiqSweepDisplacementMinAtrMult: Number(state.intradayLiqSweepDisplacementMinAtrMult ?? 0),
+      intradayLiqMinSlPct: Number(state.intradayLiqMinSlPct ?? 0),
+      intradayLiqMitigationEntry: state.intradayLiqMitigationEntry === true,
+      intradayLiqMitigationFrac: Number(state.intradayLiqMitigationFrac ?? 0),
+      intradayLiqMitigationWaitBars: clamp(Math.round(Number(state.intradayLiqMitigationWaitBars ?? 0)), 0, 40),
+      intradayLiqActiveHourStart: Number.isFinite(Number(state.intradayLiqActiveHourStart))
+        ? clamp(Math.round(Number(state.intradayLiqActiveHourStart)), 0, 24)
+        : undefined,
+      intradayLiqActiveHourEnd: Number.isFinite(Number(state.intradayLiqActiveHourEnd))
+        ? clamp(Math.round(Number(state.intradayLiqActiveHourEnd)), 0, 24)
+        : undefined,
+      intradayLiqRequireSameBarReclaim: state.intradayLiqRequireSameBarReclaim === true,
+      intradayLiqSweepMinVolRatio: Number(state.intradayLiqSweepMinVolRatio ?? 0),
+      intradayLiqRequirePremiumDiscountAlign: state.intradayLiqRequirePremiumDiscountAlign === true,
+      intradayLiqRequireKillzone: state.intradayLiqRequireKillzone === true,
+      intradayLiqHtfAlignPdhPdl: state.intradayLiqHtfAlignPdhPdl === true,
+      intradayLiqVetoCounterTrend: state.intradayLiqVetoCounterTrend === true,
+      intradayLiqMaxDailyRangeUsedPct: Number(state.intradayLiqMaxDailyRangeUsedPct ?? 0),
+      intradayLiqSessionNarratives: state.intradayLiqSessionNarratives,
       ...liqMapPublicSnapshot(),
       ...volumeProfilePublicSnapshot(state),
       supertrendBigMoveGateEnabled: state.supertrendBigMoveGateEnabled === true,
@@ -11660,6 +11777,121 @@ export function createBot({
     }
     if (patch.intradayLiqSessionExtreme != null) {
       state.intradayLiqSessionExtreme = Boolean(patch.intradayLiqSessionExtreme);
+    }
+    if (patch.intradayLiqPlaybook != null) {
+      state.intradayLiqPlaybook = String(patch.intradayLiqPlaybook);
+    }
+    if (patch.intradayLiqPickMode != null) {
+      state.intradayLiqPickMode = String(patch.intradayLiqPickMode);
+    }
+    if (patch.intradayLiqUseEntryScore != null) {
+      state.intradayLiqUseEntryScore = Boolean(patch.intradayLiqUseEntryScore);
+    }
+    if (patch.intradayLiqUseEntryScoreV2 != null) {
+      state.intradayLiqUseEntryScoreV2 = Boolean(patch.intradayLiqUseEntryScoreV2);
+    }
+    if (patch.intradayLiqMinEntryScore != null && Number.isFinite(Number(patch.intradayLiqMinEntryScore))) {
+      state.intradayLiqMinEntryScore = clamp(Number(patch.intradayLiqMinEntryScore), 0, 100);
+    }
+    if (patch.intradayLiqReclaimHoldBars != null && Number.isFinite(Number(patch.intradayLiqReclaimHoldBars))) {
+      state.intradayLiqReclaimHoldBars = clamp(Math.round(Number(patch.intradayLiqReclaimHoldBars)), 0, 20);
+    }
+    if (patch.intradayLiqRequireChoch != null) {
+      state.intradayLiqRequireChoch = Boolean(patch.intradayLiqRequireChoch);
+    }
+    if (patch.intradayLiqMarketStateGate != null) {
+      state.intradayLiqMarketStateGate = Boolean(patch.intradayLiqMarketStateGate);
+    }
+    if (patch.intradayLiqDaySituationBias != null) {
+      const v = patch.intradayLiqDaySituationBias;
+      if (v === true || v === false || v === "both" || v === "buy_breakdown" || v === "sell_breakout") {
+        state.intradayLiqDaySituationBias = v;
+      } else {
+        state.intradayLiqDaySituationBias = Boolean(v);
+      }
+    }
+    if (patch.intradayLiqContinuationGate != null) {
+      state.intradayLiqContinuationGate = Boolean(patch.intradayLiqContinuationGate);
+    }
+    if (patch.intradayLiqSweepQualityGate != null) {
+      state.intradayLiqSweepQualityGate = Boolean(patch.intradayLiqSweepQualityGate);
+    }
+    if (patch.intradayLiqBreakdownDayBias != null) {
+      state.intradayLiqBreakdownDayBias = Boolean(patch.intradayLiqBreakdownDayBias);
+    }
+    if (patch.intradayLiqRequireDisplacementV2 != null) {
+      state.intradayLiqRequireDisplacementV2 = Boolean(patch.intradayLiqRequireDisplacementV2);
+    }
+    if (
+      patch.intradayLiqSweepDisplacementMinAtrMult != null &&
+      Number.isFinite(Number(patch.intradayLiqSweepDisplacementMinAtrMult))
+    ) {
+      state.intradayLiqSweepDisplacementMinAtrMult = clamp(
+        Number(patch.intradayLiqSweepDisplacementMinAtrMult),
+        0,
+        10,
+      );
+    }
+    if (patch.intradayLiqMinSlPct != null && Number.isFinite(Number(patch.intradayLiqMinSlPct))) {
+      state.intradayLiqMinSlPct = clamp(Number(patch.intradayLiqMinSlPct), 0, 0.2);
+    }
+    if (patch.intradayLiqMitigationEntry != null) {
+      state.intradayLiqMitigationEntry = Boolean(patch.intradayLiqMitigationEntry);
+    }
+    if (patch.intradayLiqMitigationFrac != null && Number.isFinite(Number(patch.intradayLiqMitigationFrac))) {
+      state.intradayLiqMitigationFrac = clamp(Number(patch.intradayLiqMitigationFrac), 0, 1);
+    }
+    if (
+      patch.intradayLiqRangeCompressionMin != null &&
+      Number.isFinite(Number(patch.intradayLiqRangeCompressionMin))
+    ) {
+      state.intradayLiqRangeCompressionMin = clamp(Number(patch.intradayLiqRangeCompressionMin), 0, 2);
+    }
+    if (patch.intradayLiqMaxAdx != null && Number.isFinite(Number(patch.intradayLiqMaxAdx))) {
+      state.intradayLiqMaxAdx = clamp(Number(patch.intradayLiqMaxAdx), 0, 100);
+    }
+    if (patch.intradayLiqMitigationWaitBars != null && Number.isFinite(Number(patch.intradayLiqMitigationWaitBars))) {
+      state.intradayLiqMitigationWaitBars = clamp(Math.round(Number(patch.intradayLiqMitigationWaitBars)), 0, 40);
+    }
+    if (patch.intradayLiqActiveHourStart != null && Number.isFinite(Number(patch.intradayLiqActiveHourStart))) {
+      state.intradayLiqActiveHourStart = clamp(Math.round(Number(patch.intradayLiqActiveHourStart)), 0, 24);
+    }
+    if (patch.intradayLiqActiveHourEnd != null && Number.isFinite(Number(patch.intradayLiqActiveHourEnd))) {
+      state.intradayLiqActiveHourEnd = clamp(Math.round(Number(patch.intradayLiqActiveHourEnd)), 0, 24);
+    }
+    if (patch.intradayLiqRequireSameBarReclaim != null) {
+      state.intradayLiqRequireSameBarReclaim = Boolean(patch.intradayLiqRequireSameBarReclaim);
+    }
+    if (patch.intradayLiqSweepMinVolRatio != null && Number.isFinite(Number(patch.intradayLiqSweepMinVolRatio))) {
+      state.intradayLiqSweepMinVolRatio = clamp(Number(patch.intradayLiqSweepMinVolRatio), 0, 20);
+    }
+    if (patch.intradayLiqRequirePremiumDiscountAlign != null) {
+      state.intradayLiqRequirePremiumDiscountAlign = Boolean(patch.intradayLiqRequirePremiumDiscountAlign);
+    }
+    if (patch.intradayLiqRequireKillzone != null) {
+      state.intradayLiqRequireKillzone = Boolean(patch.intradayLiqRequireKillzone);
+    }
+    if (patch.intradayLiqHtfAlignPdhPdl != null) {
+      state.intradayLiqHtfAlignPdhPdl = Boolean(patch.intradayLiqHtfAlignPdhPdl);
+    }
+    if (patch.intradayLiqVetoCounterTrend != null) {
+      state.intradayLiqVetoCounterTrend = Boolean(patch.intradayLiqVetoCounterTrend);
+    }
+    if (patch.intradayLiqMaxDailyRangeUsedPct != null && Number.isFinite(Number(patch.intradayLiqMaxDailyRangeUsedPct))) {
+      state.intradayLiqMaxDailyRangeUsedPct = clamp(Number(patch.intradayLiqMaxDailyRangeUsedPct), 0, 2);
+    }
+    if (patch.intradayLiqSessionNarratives != null) {
+      state.intradayLiqSessionNarratives = patch.intradayLiqSessionNarratives;
+    }
+    if (
+      patch.intradayLiqSessionExtremeMinTouches != null &&
+      Number.isFinite(Number(patch.intradayLiqSessionExtremeMinTouches))
+    ) {
+      state.intradayLiqSessionExtremeMinTouches = clamp(
+        Math.round(Number(patch.intradayLiqSessionExtremeMinTouches)),
+        1,
+        20,
+      );
     }
     if (patch.intradayLiqMinSweepExtensionPct != null && Number.isFinite(Number(patch.intradayLiqMinSweepExtensionPct))) {
       state.intradayLiqMinSweepExtensionPct = clamp(Number(patch.intradayLiqMinSweepExtensionPct), 0, 0.05);

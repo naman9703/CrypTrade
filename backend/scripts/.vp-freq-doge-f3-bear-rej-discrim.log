@@ -1,0 +1,98 @@
+candles=195456 funding=6109
+
+══ SELL bear_trend rej only ══
+all { n: 28, net: -21.21, wr: 25 }
+bad { n: 9, net: -52.7, wr: 0 }
+good { n: 19, net: 31.49, wr: 36.8 }
+bad means {
+  p5: -0.02353570964062024,
+  p20: -0.20042289171669297,
+  p60: -0.32723084701379695,
+  htf: 0.003058278937104091,
+  path: 0.031160095346426348
+}
+good means {
+  p5: -0.07400204917813197,
+  p20: -0.18168669860150202,
+  p60: -0.27242938936340994,
+  htf: 0.012451922631764563,
+  path: 0.06566489840506005
+}
+
+BAD year buckets
+
+-- prior5d buckets --
+  -0.02→0              n=2 net=-9.58 wr=0%
+  >0.05                n=2 net=-17.29 wr=0%
+  ≤-0.05               n=4 net=-21.54 wr=0%
+  0→0.02               n=1 net=-4.3 wr=0%
+
+-- prior20d buckets --
+  -0.05→0              n=1 net=-5.07 wr=0%
+  -0.1→-0.05           n=1 net=-8.25 wr=0%
+  ≤-0.15               n=7 net=-39.39 wr=0%
+
+-- htfSep buckets --
+  ≤0.002               n=3 net=-14.16 wr=0%
+  0.002→0.0035         n=3 net=-23.72 wr=0%
+  0.0035→0.005         n=2 net=-9.47 wr=0%
+  0.005→0.008          n=1 net=-5.35 wr=0%
+
+-- pathPct buckets --
+  >0.05                n=1 net=-3.42 wr=0%
+  0.01→0.02            n=3 net=-14.45 wr=0%
+  0.02→0.03            n=3 net=-19.36 wr=0%
+  0.03→0.05            n=2 net=-15.48 wr=0%
+
+GOOD years buckets
+
+-- prior5d buckets --
+  -0.02→0              n=4 net=-5.09 wr=25%
+  -0.05→-0.02          n=5 net=17.09 wr=60%
+  >0.05                n=1 net=-4.45 wr=0%
+  ≤-0.05               n=8 net=16.29 wr=25%
+  0.02→0.05            n=1 net=7.65 wr=100%
+
+-- prior20d buckets --
+  -0.05→0              n=3 net=-1.83 wr=33.3%
+  -0.1→-0.05           n=5 net=7.25 wr=40%
+  -0.15→-0.1           n=3 net=17.7 wr=66.7%
+  ≤-0.15               n=8 net=8.37 wr=25%
+
+-- htfSep buckets --
+  >0.008               n=10 net=2.48 wr=30%
+  0.002→0.0035         n=4 net=14.3 wr=50%
+  0.0035→0.005         n=4 net=-7.6 wr=25%
+  0.005→0.008          n=1 net=22.31 wr=100%
+
+-- pathPct buckets --
+  >0.05                n=11 net=9.34 wr=27.3%
+  ≤0.01                n=1 net=12.56 wr=100%
+  0.01→0.02            n=1 net=15.15 wr=100%
+  0.02→0.03            n=3 net=-4.47 wr=33.3%
+  0.03→0.05            n=3 net=-1.09 wr=33.3%
+
+══ Soft subtype drops (bear_trend SELL rej only) ══
+drop vacuum path≥2%                      bad -52.7→-14.45 (n 9→3) | good 31.49→27.71 (n 19→2)
+drop structured/tight                    bad -52.7→-38.26 (n 9→6) | good 31.49→3.78 (n 19→17)
+drop htfSep<0.0035                       bad -52.7→-14.81 (n 9→3) | good 31.49→17.19 (n 19→15)
+drop htfSep<0.005                        bad -52.7→-5.35 (n 9→1) | good 31.49→24.79 (n 19→11)
+drop prior20d≤-10%                       bad -52.7→-13.31 (n 9→2) | good 31.49→5.42 (n 19→8)
+drop prior20d≤-5%                        bad -52.7→-5.07 (n 9→1) | good 31.49→-1.83 (n 19→3)
+drop prior5d>0                           bad -52.7→-31.12 (n 9→6) | good 31.49→28.29 (n 19→17)
+drop prior5d≤-5%                         bad -52.7→-31.16 (n 9→5) | good 31.49→15.2 (n 19→11)
+
+══ Hard A/B ══
+run H0
+H0 FULL n=103 tw=0.36 ret=41.92 pf=1.13 cal=0.15 | 2020-21:-8.59% 2021-22:13.56% 2022-23:23.7% 2023-24:28.21% 2024-25:-37.47% 2025-26:37.85%
+run H_sell_htf_035
+H_sell_htf_035 FULL n=72 tw=0.26 ret=94.37 pf=1.47 cal=0.51 | 2020-21:-8.59% 2021-22:-8.52% 2022-23:42.74% 2023-24:37.27% 2024-25:-6.79% 2025-26:27.29%
+run H_sell_htf_050
+H_sell_htf_050 FULL n=61 tw=0.22 ret=51.25 pf=1.31 cal=0.31 | 2020-21:-8.59% 2021-22:-8.52% 2022-23:59.68% 2023-24:18.73% 2024-25:3.27% 2025-26:-7.6%
+run H_ext_down_05
+H_ext_down_05 FULL n=67 tw=0.24 ret=11.72 pf=1.07 cal=0.06 | 2020-21:-8.59% 2021-22:-18.98% 2022-23:46.79% 2023-24:4.07% 2024-25:-14.88% 2025-26:16.02%
+run H_ext_down_10
+H_ext_down_10 FULL n=77 tw=0.27 ret=34.47 pf=1.15 cal=0.19 | 2020-21:-8.59% 2021-22:13.96% 2022-23:29.01% 2023-24:6.67% 2024-25:-19.15% 2025-26:16.02%
+run deny_bear_structured
+deny_bear_structured FULL n=100 tw=0.35 ret=34.53 pf=1.12 cal=0.14 | 2020-21:-8.59% 2021-22:-1.84% 2022-23:23.7% 2023-24:28.21% 2024-25:-31.43% 2025-26:37.85%
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-doge-f3-bear-rej-discrim.json

@@ -1,0 +1,341 @@
+{
+  "generatedAt": "2026-07-25T10:14:13.940Z",
+  "hypothesis": "Swing-pivot liquidity levels reduce false_reclaim vs PDH/PDL+session CORE by raising level significance.",
+  "split": "2026-03-13T12:00:00.000Z",
+  "core": {
+    "is": {
+      "n": 246,
+      "tw": 6.74,
+      "ret": -70.45,
+      "pf": 0.678,
+      "wr": 42.3,
+      "dd": 71.76,
+      "meanR": -0.182
+    },
+    "oos": {
+      "n": 83,
+      "tw": 5.31,
+      "ret": -15.3,
+      "pf": 0.504,
+      "wr": 31.3,
+      "dd": 16.93,
+      "meanR": -0.335
+    },
+    "hold": {
+      "n": 356,
+      "tw": 6.83,
+      "ret": -83.22,
+      "pf": 0.673,
+      "wr": 40.2,
+      "dd": 84.75,
+      "meanR": -0.185
+    },
+    "y1": {
+      "n": 329,
+      "tw": 6.31,
+      "ret": -85.75,
+      "pf": 0.656,
+      "wr": 39.5,
+      "dd": 86.5,
+      "meanR": -0.22
+    }
+  },
+  "hard": [
+    {
+      "id": "CORE_daily+sess",
+      "over": {},
+      "is": {
+        "n": 246,
+        "tw": 6.74,
+        "ret": -70.45,
+        "pf": 0.678,
+        "wr": 42.3,
+        "dd": 71.76,
+        "meanR": -0.182
+      },
+      "oos": {
+        "n": 83,
+        "tw": 5.31,
+        "ret": -15.3,
+        "pf": 0.504,
+        "wr": 31.3,
+        "dd": 16.93,
+        "meanR": -0.335
+      },
+      "hold": {
+        "n": 356,
+        "tw": 6.83,
+        "ret": -83.22,
+        "pf": 0.673,
+        "wr": 40.2,
+        "dd": 84.75,
+        "meanR": -0.185
+      },
+      "y1": {
+        "n": 329,
+        "tw": 6.31,
+        "ret": -85.75,
+        "pf": 0.656,
+        "wr": 39.5,
+        "dd": 86.5,
+        "meanR": -0.22
+      },
+      "oosPass": false,
+      "holdEg": false
+    },
+    {
+      "id": "pivot_only_L3",
+      "over": {
+        "intradayLiqLevels": "swing_pivot",
+        "intradayLiqSwingPivotLookback": 3,
+        "intradayLiqSessionExtreme": false
+      },
+      "is": {
+        "n": 175,
+        "tw": 4.79,
+        "ret": -79.73,
+        "pf": 0.386,
+        "wr": 43.4,
+        "dd": 80.23,
+        "meanR": -0.354
+      },
+      "oos": {
+        "n": 49,
+        "tw": 3.13,
+        "ret": -7.47,
+        "pf": 0.318,
+        "wr": 34.7,
+        "dd": 7.47,
+        "meanR": -0.365
+      },
+      "hold": {
+        "n": 201,
+        "tw": 3.85,
+        "ret": -88.8,
+        "pf": 0.4,
+        "wr": 38.3,
+        "dd": 89.25,
+        "meanR": -0.424
+      },
+      "y1": {
+        "n": 224,
+        "tw": 4.3,
+        "ret": -87.2,
+        "pf": 0.381,
+        "wr": 41.5,
+        "dd": 87.2,
+        "meanR": -0.356
+      },
+      "oosPass": false,
+      "holdEg": false
+    },
+    {
+      "id": "pivot_only_L5",
+      "over": {
+        "intradayLiqLevels": "swing_pivot",
+        "intradayLiqSwingPivotLookback": 5,
+        "intradayLiqSessionExtreme": false
+      },
+      "is": {
+        "n": 240,
+        "tw": 6.58,
+        "ret": -88.35,
+        "pf": 0.406,
+        "wr": 40.4,
+        "dd": 88.37,
+        "meanR": -0.347
+      },
+      "oos": {
+        "n": 73,
+        "tw": 4.67,
+        "ret": -4.02,
+        "pf": 0.498,
+        "wr": 46.6,
+        "dd": 4.82,
+        "meanR": -0.221
+      },
+      "hold": {
+        "n": 311,
+        "tw": 5.96,
+        "ret": -91.25,
+        "pf": 0.6,
+        "wr": 45.3,
+        "dd": 91.38,
+        "meanR": -0.301
+      },
+      "y1": {
+        "n": 313,
+        "tw": 6,
+        "ret": -92.37,
+        "pf": 0.411,
+        "wr": 41.9,
+        "dd": 92.98,
+        "meanR": -0.318
+      },
+      "oosPass": false,
+      "holdEg": false
+    },
+    {
+      "id": "pivot_only_L7",
+      "over": {
+        "intradayLiqLevels": "swing_pivot",
+        "intradayLiqSwingPivotLookback": 7,
+        "intradayLiqSessionExtreme": false
+      },
+      "is": {
+        "n": 219,
+        "tw": 6,
+        "ret": -82.87,
+        "pf": 0.447,
+        "wr": 39.3,
+        "dd": 83.32,
+        "meanR": -0.31
+      },
+      "oos": {
+        "n": 66,
+        "tw": 4.22,
+        "ret": -3.55,
+        "pf": 0.69,
+        "wr": 50,
+        "dd": 5.99,
+        "meanR": -0.13
+      },
+      "hold": {
+        "n": 294,
+        "tw": 5.64,
+        "ret": -91.14,
+        "pf": 0.568,
+        "wr": 43.9,
+        "dd": 91.49,
+        "meanR": -0.317
+      },
+      "y1": {
+        "n": 285,
+        "tw": 5.47,
+        "ret": -86.42,
+        "pf": 0.464,
+        "wr": 41.8,
+        "dd": 88.31,
+        "meanR": -0.269
+      },
+      "oosPass": false,
+      "holdEg": false
+    },
+    {
+      "id": "daily+pivot_L5",
+      "over": {
+        "intradayLiqLevels": "daily,swing_pivot",
+        "intradayLiqSwingPivotLookback": 5,
+        "intradayLiqSessionExtreme": false
+      },
+      "is": {
+        "n": 365,
+        "tw": 10,
+        "ret": -91.91,
+        "pf": 0.528,
+        "wr": 41.4,
+        "dd": 91.95,
+        "meanR": -0.262
+      },
+      "oos": {
+        "n": 121,
+        "tw": 7.74,
+        "ret": -4.88,
+        "pf": 0.497,
+        "wr": 38,
+        "dd": 5.44,
+        "meanR": -0.292
+      },
+      "hold": {
+        "n": 486,
+        "tw": 9.32,
+        "ret": -94.69,
+        "pf": 0.712,
+        "wr": 43.2,
+        "dd": 95.33,
+        "meanR": -0.227
+      },
+      "y1": {
+        "n": 486,
+        "tw": 9.32,
+        "ret": -96.8,
+        "pf": 0.527,
+        "wr": 40.5,
+        "dd": 96.8,
+        "meanR": -0.269
+      },
+      "oosPass": false,
+      "holdEg": false
+    },
+    {
+      "id": "daily+sess+pivot_L5",
+      "over": {
+        "intradayLiqLevels": "daily,swing_pivot",
+        "intradayLiqSwingPivotLookback": 5,
+        "intradayLiqSessionExtreme": true
+      },
+      "is": {
+        "n": 380,
+        "tw": 10.41,
+        "ret": -91.11,
+        "pf": 0.549,
+        "wr": 41.3,
+        "dd": 91.5,
+        "meanR": -0.24
+      },
+      "oos": {
+        "n": 126,
+        "tw": 8.05,
+        "ret": -5.61,
+        "pf": 0.49,
+        "wr": 35.7,
+        "dd": 6.4,
+        "meanR": -0.302
+      },
+      "hold": {
+        "n": 518,
+        "tw": 9.93,
+        "ret": -96.54,
+        "pf": 0.657,
+        "wr": 41.3,
+        "dd": 96.74,
+        "meanR": -0.245
+      },
+      "y1": {
+        "n": 506,
+        "tw": 9.7,
+        "ret": -96.72,
+        "pf": 0.546,
+        "wr": 39.9,
+        "dd": 96.91,
+        "meanR": -0.255
+      },
+      "oosPass": false,
+      "holdEg": false
+    }
+  ],
+  "best": {
+    "id": "pivot_only_L7",
+    "oos": {
+      "n": 66,
+      "tw": 4.22,
+      "ret": -3.55,
+      "pf": 0.69,
+      "wr": 50,
+      "dd": 5.99,
+      "meanR": -0.13
+    },
+    "hold": {
+      "n": 294,
+      "tw": 5.64,
+      "ret": -91.14,
+      "pf": 0.568,
+      "wr": 43.9,
+      "dd": 91.49,
+      "meanR": -0.317
+    },
+    "oosPass": false,
+    "holdEg": false
+  },
+  "verdict": "IMPROVES_BUT_STILL_RED"
+}

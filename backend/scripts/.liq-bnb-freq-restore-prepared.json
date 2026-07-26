@@ -1,0 +1,457 @@
+{
+  "generatedAt": "2026-07-24T18:21:36.994Z",
+  "rows": [
+    {
+      "id": "kz_toxic",
+      "over": {
+        "intradayLiqRequireKillzone": true,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 17,
+        "tw": 0.33,
+        "ret": 1.92,
+        "pf": 1.105,
+        "wr": 52.9
+      },
+      "hold": {
+        "n": 35,
+        "tw": 0.67,
+        "ret": 8.05,
+        "pf": 1.231,
+        "wr": 51.4
+      },
+      "pass": false
+    },
+    {
+      "id": "toxic",
+      "over": {
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 63,
+        "tw": 1.21,
+        "ret": -2.31,
+        "pf": 0.967,
+        "wr": 52.4
+      },
+      "hold": {
+        "n": 83,
+        "tw": 1.59,
+        "ret": 5.73,
+        "pf": 1.061,
+        "wr": 48.2
+      },
+      "pass": false
+    },
+    {
+      "id": "hours_7_20",
+      "over": {
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20
+      },
+      "y1": {
+        "n": 84,
+        "tw": 1.61,
+        "ret": 3.61,
+        "pf": 1.042,
+        "wr": 51.2
+      },
+      "hold": {
+        "n": 107,
+        "tw": 2.05,
+        "ret": -12.76,
+        "pf": 0.889,
+        "wr": 46.7
+      },
+      "pass": false
+    },
+    {
+      "id": "hours_7_20_toxic",
+      "over": {
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 31,
+        "tw": 0.59,
+        "ret": -0.46,
+        "pf": 0.987,
+        "wr": 51.6
+      },
+      "hold": {
+        "n": 52,
+        "tw": 1,
+        "ret": 11.72,
+        "pf": 1.223,
+        "wr": 51.9
+      },
+      "pass": false
+    },
+    {
+      "id": "hours_0_20",
+      "over": {
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20
+      },
+      "y1": {
+        "n": 110,
+        "tw": 2.11,
+        "ret": -8.48,
+        "pf": 0.927,
+        "wr": 49.1
+      },
+      "hold": {
+        "n": 134,
+        "tw": 2.57,
+        "ret": -9.26,
+        "pf": 0.935,
+        "wr": 46.3
+      },
+      "pass": false
+    },
+    {
+      "id": "hours_0_20_toxic",
+      "over": {
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 55,
+        "tw": 1.05,
+        "ret": -7.12,
+        "pf": 0.889,
+        "wr": 49.1
+      },
+      "hold": {
+        "n": 72,
+        "tw": 1.38,
+        "ret": 18.89,
+        "pf": 1.239,
+        "wr": 50
+      },
+      "pass": false
+    },
+    {
+      "id": "narr_lon_ny",
+      "over": {
+        "intradayLiqSessionNarratives": "london_sweep,ny_continuation"
+      },
+      "y1": {
+        "n": 130,
+        "tw": 2.49,
+        "ret": -16.12,
+        "pf": 0.882,
+        "wr": 49.2
+      },
+      "hold": {
+        "n": 156,
+        "tw": 2.99,
+        "ret": -25.34,
+        "pf": 0.845,
+        "wr": 44.2
+      },
+      "pass": false
+    },
+    {
+      "id": "narr_lon_ny_toxic",
+      "over": {
+        "intradayLiqSessionNarratives": "london_sweep,ny_continuation",
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 63,
+        "tw": 1.21,
+        "ret": -2.31,
+        "pf": 0.967,
+        "wr": 52.4
+      },
+      "hold": {
+        "n": 83,
+        "tw": 1.59,
+        "ret": 5.73,
+        "pf": 1.061,
+        "wr": 48.2
+      },
+      "pass": false
+    },
+    {
+      "id": "narr_no_off",
+      "over": {
+        "intradayLiqSessionNarratives": "asia_accum,london_sweep,ny_continuation"
+      },
+      "y1": {
+        "n": 130,
+        "tw": 2.49,
+        "ret": -16.12,
+        "pf": 0.882,
+        "wr": 49.2
+      },
+      "hold": {
+        "n": 156,
+        "tw": 2.99,
+        "ret": -25.34,
+        "pf": 0.845,
+        "wr": 44.2
+      },
+      "pass": false
+    },
+    {
+      "id": "narr_no_off_toxic",
+      "over": {
+        "intradayLiqSessionNarratives": "asia_accum,london_sweep,ny_continuation",
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 63,
+        "tw": 1.21,
+        "ret": -2.31,
+        "pf": 0.967,
+        "wr": 52.4
+      },
+      "hold": {
+        "n": 83,
+        "tw": 1.59,
+        "ret": 5.73,
+        "pf": 1.061,
+        "wr": 48.2
+      },
+      "pass": false
+    },
+    {
+      "id": "mit_toxic",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 55,
+        "tw": 1.05,
+        "ret": -3.83,
+        "pf": 0.945,
+        "wr": 47.3
+      },
+      "hold": {
+        "n": 78,
+        "tw": 1.5,
+        "ret": 22.63,
+        "pf": 1.235,
+        "wr": 51.3
+      },
+      "pass": false
+    },
+    {
+      "id": "mit_hours_toxic",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 29,
+        "tw": 0.56,
+        "ret": 2.38,
+        "pf": 1.065,
+        "wr": 48.3
+      },
+      "hold": {
+        "n": 48,
+        "tw": 0.92,
+        "ret": 24.61,
+        "pf": 1.459,
+        "wr": 56.3
+      },
+      "pass": false,
+      "full": {
+        "n": 108,
+        "tw": 0.69,
+        "ret": 47.54,
+        "pf": 1.319,
+        "wr": 52.8
+      }
+    },
+    {
+      "id": "minSl01_hours_toxic",
+      "over": {
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 47,
+        "tw": 0.9,
+        "ret": 14.42,
+        "pf": 1.248,
+        "wr": 55.3
+      },
+      "hold": {
+        "n": 60,
+        "tw": 1.15,
+        "ret": 1.81,
+        "pf": 1.027,
+        "wr": 48.3
+      },
+      "pass": false,
+      "full": {
+        "n": 166,
+        "tw": 1.06,
+        "ret": 27.87,
+        "pf": 1.138,
+        "wr": 50
+      }
+    },
+    {
+      "id": "disp10_hours_toxic",
+      "over": {
+        "intradayLiqSweepDisplacementMinAtrMult": 1,
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 33,
+        "tw": 0.63,
+        "ret": 0.93,
+        "pf": 1.024,
+        "wr": 51.5
+      },
+      "hold": {
+        "n": 53,
+        "tw": 1.02,
+        "ret": 8.63,
+        "pf": 1.16,
+        "wr": 50.9
+      },
+      "pass": false,
+      "full": {
+        "n": 125,
+        "tw": 0.8,
+        "ret": 16.68,
+        "pf": 1.119,
+        "wr": 51.2
+      }
+    },
+    {
+      "id": "minSl01_narr_toxic",
+      "over": {
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqSessionNarratives": "london_sweep,ny_continuation",
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 82,
+        "tw": 1.57,
+        "ret": 10.83,
+        "pf": 1.109,
+        "wr": 53.7
+      },
+      "hold": {
+        "n": 101,
+        "tw": 1.94,
+        "ret": -15.66,
+        "pf": 0.868,
+        "wr": 44.6
+      },
+      "pass": false
+    },
+    {
+      "id": "hours_7_20_toxic_vol12",
+      "over": {
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqSweepMinVolRatio": 1.2
+      },
+      "y1": {
+        "n": 27,
+        "tw": 0.52,
+        "ret": -1.26,
+        "pf": 0.961,
+        "wr": 51.9
+      },
+      "hold": {
+        "n": 45,
+        "tw": 0.86,
+        "ret": 3.04,
+        "pf": 1.066,
+        "wr": 48.9
+      },
+      "pass": false
+    },
+    {
+      "id": "hours_7_20_toxic_atrBuf",
+      "over": {
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqSlBufferAtrMult": 0.2
+      },
+      "y1": {
+        "n": 31,
+        "tw": 0.59,
+        "ret": -0.45,
+        "pf": 0.988,
+        "wr": 51.6
+      },
+      "hold": {
+        "n": 52,
+        "tw": 1,
+        "ret": 17.2,
+        "pf": 1.338,
+        "wr": 53.8
+      },
+      "pass": false
+    },
+    {
+      "id": "hours_7_16_toxic",
+      "over": {
+        "intradayLiqActiveHourStart": 7,
+        "intradayLiqActiveHourEnd": 16,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 21,
+        "tw": 0.4,
+        "ret": 11.92,
+        "pf": 1.609,
+        "wr": 61.9
+      },
+      "hold": {
+        "n": 40,
+        "tw": 0.77,
+        "ret": 10.11,
+        "pf": 1.247,
+        "wr": 52.5
+      },
+      "pass": false
+    },
+    {
+      "id": "BASE_only",
+      "over": {},
+      "y1": {
+        "n": 130,
+        "tw": 2.49,
+        "ret": -16.12,
+        "pf": 0.882,
+        "wr": 49.2
+      },
+      "hold": {
+        "n": 156,
+        "tw": 2.99,
+        "ret": -25.34,
+        "pf": 0.845,
+        "wr": 44.2
+      },
+      "pass": false
+    }
+  ],
+  "winners": []
+}

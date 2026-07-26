@@ -1,0 +1,173 @@
+load DOGEUSDT…
+candles=195456 funding=6109
+
+══ STACK baseline ══
+n=76 tw=0.27 ret=128.89% pf=1.42 cal=0.75
+years 2020-21:7/5.35% 2021-22:20/21.15% 2022-23:18/29.1% 2023-24:14/42.28% 2024-25:10/-15.85% 2025-26:7/16.02%
+
+══ 2024-25 vs good ══
+bad { n: 10, net: -37.15, wr: 10 } neverGreenish 7
+good { n: 66, net: 166.04, wr: 37.9 }
+
+feature means badNG vs goodWin vs goodAll:
+  prior5d    badNG=-0.0375 goodW=-0.0087 goodAll=-0.0148
+  prior20d   badNG=-0.0247 goodW=0.1653 goodAll=0.1119
+  prior60d   badNG=0.4164 goodW=0.8858 goodAll=0.4974
+  pathPct    badNG=0.0243 goodW=0.0444 goodAll=0.0438
+  htfSep     badNG=0.0035 goodW=0.0061 goodAll=0.0076
+  adx        badNG=45.8531 goodW=51.3602 goodAll=49.2271
+  atr        badNG=0.0070 goodW=0.0150 goodAll=0.0134
+  volRatio   badNG=0.9741 goodW=2.4556 goodAll=2.0581
+  wick       badNG=0.3659 goodW=0.2524 goodAll=0.2943
+  body       badNG=0.4202 goodW=0.5336 goodAll=0.4189
+
+-- 2024-25 cells --
+  BUY|va_rejection|bull_trend|vacuum       n= 2 net=  -14.6 wr=0%
+  SELL|va_rejection|bear_trend|structured  n= 1 net=  -9.06 wr=0%
+  BUY|va_rejection|bear_trend|tight        n= 1 net=  -8.82 wr=0%
+  BUY|va_rejection|bull_chop|vacuum        n= 1 net=   -8.2 wr=0%
+  SELL|va_rejection|bull_trend|vacuum      n= 1 net=  -6.52 wr=0%
+  SELL|va_rejection|weak_bear|vacuum       n= 4 net=  10.05 wr=25%
+
+-- 2024-25 hour --
+  h12                                      n= 2 net= -18.79 wr=0%
+  h05                                      n= 2 net=  -14.6 wr=0%
+  h17                                      n= 1 net=  -9.06 wr=0%
+  h19                                      n= 1 net=  -8.82 wr=0%
+  h01                                      n= 1 net=  -8.55 wr=0%
+  h15                                      n= 1 net=   -8.2 wr=0%
+  h21                                      n= 2 net=  30.87 wr=50%
+
+-- 2024-25 ADX band --
+  25-35                                    n= 2 net= -17.88 wr=0%
+  adx≥35                                   n= 7 net= -10.72 wr=14.3%
+  20-25                                    n= 1 net=  -8.55 wr=0%
+
+-- 2024-25 ATR% --
+  0.6-1%                                   n= 5 net= -40.17 wr=0%
+  0.4-0.6%                                 n= 3 net= -27.85 wr=0%
+  atr≥1%                                   n= 2 net=  30.87 wr=50%
+
+-- 2024-25 volRatio --
+  0.7-1.0                                  n= 4 net= -35.46 wr=0%
+  vol≥1.5                                  n= 2 net= -15.07 wr=0%
+  vol<0.7                                  n= 1 net=  -6.13 wr=0%
+  1.0-1.5                                  n= 3 net=  19.51 wr=33.3%
+
+-- 2024-25 wick --
+  wick≥0.4                                 n= 4 net= -29.32 wr=0%
+  0.25-0.4                                 n= 1 net=  -9.59 wr=0%
+  wick<0.25                                n= 5 net=   1.76 wr=20%
+
+══ Same-cell contrast (bled in 24-25) ══
+  BUY|va_rejection|bull_chop|vacuum                bad n=1 net=-8.2 | good n=2 net=16.72
+  SELL|va_rejection|bear_trend|structured          bad n=1 net=-9.06 | good n=0 net=0
+  SELL|va_rejection|bull_trend|vacuum              bad n=1 net=-6.52 | good n=9 net=-9.99
+  SELL|va_rejection|weak_bear|vacuum               bad n=4 net=10.05 | good n=4 net=58.88
+  BUY|va_rejection|bear_trend|tight                bad n=1 net=-8.82 | good n=0 net=0
+  BUY|va_rejection|bull_trend|vacuum               bad n=2 net=-14.6 | good n=4 net=40.37
+
+══ Soft probes (full tagged book) ══
+drop_adx_lt_18               drop= 0 ALL n=76 net=128.89 | 24-25 -37.15 (n=10) | good 166.04
+drop_adx_lt_20               drop= 1 ALL n=75 net=131.9 | 24-25 -37.15 (n=10) | good 169.05
+drop_adx_lt_22               drop= 1 ALL n=75 net=131.9 | 24-25 -37.15 (n=10) | good 169.05
+drop_adx_gte_35              drop=60 ALL n=16 net=-56.16 | 24-25 -26.42 (n=3) | good -29.73
+drop_atr_lt_004              drop= 0 ALL n=76 net=128.89 | 24-25 -37.15 (n=10) | good 166.04
+drop_atr_lt_005              drop= 6 ALL n=70 net=152.66 | 24-25 -18.36 (n=8) | good 171.01
+drop_atr_lt_006              drop= 9 ALL n=67 net=165.9 | 24-25 -9.3 (n=7) | good 175.2
+drop_vol_lt_070              drop= 7 ALL n=69 net=148.92 | 24-25 -31.02 (n=9) | good 179.94
+drop_vol_lt_085              drop=18 ALL n=58 net=82.72 | 24-25 -5.15 (n=6) | good 87.86
+drop_vol_lt_100              drop=23 ALL n=53 net=116.02 | 24-25 4.44 (n=5) | good 111.58
+drop_wick_lt_025             drop=32 ALL n=44 net=7.85 | 24-25 -38.9 (n=5) | good 46.75
+drop_wick_lt_030             drop=37 ALL n=39 net=-29.55 | 24-25 -38.9 (n=5) | good 9.36
+drop_body_lt_015             drop=14 ALL n=62 net=208.8 | 24-25 -20.48 (n=8) | good 229.28
+drop_body_lt_020             drop=16 ALL n=60 net=201.36 | 24-25 -13.96 (n=7) | good 215.32
+drop_hour_0_6                drop=12 ALL n=64 net=134.64 | 24-25 -14 (n=7) | good 148.64
+drop_hour_12_16              drop=19 ALL n=57 net=154.02 | 24-25 -10.16 (n=7) | good 164.18
+drop_BUY_atr_lt_006          drop= 1 ALL n=75 net=123.98 | 24-25 -37.15 (n=10) | good 161.12
+drop_BUY_adx_lt_20           drop= 1 ALL n=75 net=131.9 | 24-25 -37.15 (n=10) | good 169.05
+drop_BUY_vol_lt_100          drop=11 ALL n=65 net=123.2 | 24-25 -14.35 (n=7) | good 137.55
+drop_low_vol_low_atr         drop= 5 ALL n=71 net=166.88 | 24-25 -18.36 (n=8) | good 185.24
+
+══ Hard A/B ══
+run H0_stack
+H0_stack
+  FULL n=76 tw=0.27 ret=128.89 pf=1.42 cal=0.75
+  years 2020-21:5.35%/7 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-15.85%/10 2025-26:16.02%/7
+  RED: 2024-25=-15.85% | all≥0=false keepGood=true fix2425=false
+run minAdx_18
+minAdx_18
+  FULL n=76 tw=0.27 ret=128.89 pf=1.42 cal=0.75
+  years 2020-21:5.35%/7 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-15.85%/10 2025-26:16.02%/7
+  RED: 2024-25=-15.85% | all≥0=false keepGood=true fix2425=false
+run minAdx_20
+minAdx_20
+  FULL n=74 tw=0.26 ret=143.92 pf=1.47 cal=0.91
+  years 2020-21:8.4%/6 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-12.84%/9 2025-26:16.02%/7
+  RED: 2024-25=-12.84% | all≥0=false keepGood=true fix2425=false
+run minAdx_22
+minAdx_22
+  FULL n=74 tw=0.26 ret=143.92 pf=1.47 cal=0.91
+  years 2020-21:8.4%/6 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-12.84%/9 2025-26:16.02%/7
+  RED: 2024-25=-12.84% | all≥0=false keepGood=true fix2425=false
+run minAtr_004
+minAtr_004
+  FULL n=76 tw=0.27 ret=128.89 pf=1.42 cal=0.75
+  years 2020-21:5.35%/7 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-15.85%/10 2025-26:16.02%/7
+  RED: 2024-25=-15.85% | all≥0=false keepGood=true fix2425=false
+run minAtr_005
+minAtr_005
+  FULL n=70 tw=0.25 ret=158.01 pf=1.56 cal=0.98
+  years 2020-21:5.35%/7 2021-22:21.15%/20 2022-23:44.54%/15 2023-24:32.01%/13 2024-25:-8.68%/8 2025-26:16.02%/7
+  RED: 2024-25=-8.68% | all≥0=false keepGood=true fix2425=true
+run minAtr_006
+minAtr_006
+  FULL n=66 tw=0.23 ret=182.25 pf=1.67 cal=1.27
+  years 2020-21:5.35%/7 2021-22:25.82%/19 2022-23:40.31%/14 2023-24:37.51%/12 2024-25:-4.87%/7 2025-26:16.02%/7
+  RED: 2024-25=-4.87% | all≥0=false keepGood=true fix2425=true
+run minVol_085
+minVol_085
+  FULL n=76 tw=0.27 ret=128.89 pf=1.42 cal=0.75
+  years 2020-21:5.35%/7 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-15.85%/10 2025-26:16.02%/7
+  RED: 2024-25=-15.85% | all≥0=false keepGood=true fix2425=false
+run minVol_100
+minVol_100
+  FULL n=76 tw=0.27 ret=128.89 pf=1.42 cal=0.75
+  years 2020-21:5.35%/7 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-15.85%/10 2025-26:16.02%/7
+  RED: 2024-25=-15.85% | all≥0=false keepGood=true fix2425=false
+run wick_030
+wick_030
+  FULL n=61 tw=0.22 ret=-5.82 pf=0.96 cal=-0.04
+  years 2020-21:3.58%/5 2021-22:-28.63%/16 2022-23:12.47%/14 2023-24:14.92%/11 2024-25:-5.36%/10 2025-26:4.14%/5
+  RED: 2021-22=-28.63% 2024-25=-5.36% | all≥0=false keepGood=false fix2425=true
+run buy_body_20
+buy_body_20
+  FULL n=73 tw=0.26 ret=161.8 pf=1.55 cal=0.99
+  years 2020-21:8.4%/6 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-12.34%/9 2025-26:23.81%/6
+  RED: 2024-25=-12.34% | all≥0=false keepGood=true fix2425=false
+run minAdx_20+minAtr_005
+minAdx_20+minAtr_005
+  FULL n=68 tw=0.24 ret=174.94 pf=1.62 cal=1.05
+  years 2020-21:8.4%/6 2021-22:21.15%/20 2022-23:44.54%/15 2023-24:32.01%/13 2024-25:-5.42%/7 2025-26:16.02%/7
+  RED: 2024-25=-5.42% | all≥0=false keepGood=true fix2425=true
+run minAtr_005+minVol_100
+minAtr_005+minVol_100
+  FULL n=70 tw=0.25 ret=158.01 pf=1.56 cal=0.98
+  years 2020-21:5.35%/7 2021-22:21.15%/20 2022-23:44.54%/15 2023-24:32.01%/13 2024-25:-8.68%/8 2025-26:16.02%/7
+  RED: 2024-25=-8.68% | all≥0=false keepGood=true fix2425=true
+
+══ Ranked ══
+minAtr_006                   all≥0=false fix=true keep=true ret=182.25% | 24-25=-4.87 20-21=5.35 21-22=25.82 22-23=40.31 25-26=16.02
+minAdx_20+minAtr_005         all≥0=false fix=true keep=true ret=174.94% | 24-25=-5.42 20-21=8.4 21-22=21.15 22-23=44.54 25-26=16.02
+minAtr_005                   all≥0=false fix=true keep=true ret=158.01% | 24-25=-8.68 20-21=5.35 21-22=21.15 22-23=44.54 25-26=16.02
+minAtr_005+minVol_100        all≥0=false fix=true keep=true ret=158.01% | 24-25=-8.68 20-21=5.35 21-22=21.15 22-23=44.54 25-26=16.02
+buy_body_20                  all≥0=false fix=false keep=true ret=161.8% | 24-25=-12.34 20-21=8.4 21-22=21.15 22-23=29.1 25-26=23.81
+minAdx_20                    all≥0=false fix=false keep=true ret=143.92% | 24-25=-12.84 20-21=8.4 21-22=21.15 22-23=29.1 25-26=16.02
+minAdx_22                    all≥0=false fix=false keep=true ret=143.92% | 24-25=-12.84 20-21=8.4 21-22=21.15 22-23=29.1 25-26=16.02
+H0_stack                     all≥0=false fix=false keep=true ret=128.89% | 24-25=-15.85 20-21=5.35 21-22=21.15 22-23=29.1 25-26=16.02
+minAdx_18                    all≥0=false fix=false keep=true ret=128.89% | 24-25=-15.85 20-21=5.35 21-22=21.15 22-23=29.1 25-26=16.02
+minAtr_004                   all≥0=false fix=false keep=true ret=128.89% | 24-25=-15.85 20-21=5.35 21-22=21.15 22-23=29.1 25-26=16.02
+minVol_085                   all≥0=false fix=false keep=true ret=128.89% | 24-25=-15.85 20-21=5.35 21-22=21.15 22-23=29.1 25-26=16.02
+minVol_100                   all≥0=false fix=false keep=true ret=128.89% | 24-25=-15.85 20-21=5.35 21-22=21.15 22-23=29.1 25-26=16.02
+wick_030                     all≥0=false fix=true keep=false ret=-5.82% | 24-25=-5.36 20-21=3.58 21-22=-28.63 22-23=12.47 25-26=4.14
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-doge-f3-2425-feature-discrim.json

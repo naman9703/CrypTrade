@@ -1,0 +1,32 @@
+candles=195456 funding=0
+
+══ ZECUSDT Phase 0 resume A/B ══ 2021-01-01→2026-05-31
+run H0_F3_rej_only
+H0_F3_rej_only
+  FULL n=98 tw=0.35 ret=-36.59 cal=-0.12 pf=0.83 | OOS n=43 ret=-27.47 pf=0.75
+  years 2020-21:14/-6.13% 2021-22:17/9.82% 2022-23:12/-29.64% 2023-24:18/-10.31% 2024-25:23/-19.43% 2025-26:14/20.97%
+run deny_SELL_weak_bear_vacuum
+deny_SELL_weak_bear_vacuum
+  FULL n=80 tw=0.28 ret=-22.74 cal=-0.07 pf=0.9 | OOS n=31 ret=-2.24 pf=0.98
+  years 2020-21:7/18.77% 2021-22:13/12.29% 2022-23:11/-26.7% 2023-24:17/-7.72% 2024-25:20/-27.03% 2025-26:12/17.36%
+run deny_SELL_bull_chop_vacuum
+deny_SELL_bull_chop_vacuum
+  FULL n=89 tw=0.32 ret=-15.5 cal=-0.06 pf=0.93 | OOS n=41 ret=-22.39 pf=0.79
+  years 2020-21:14/-6.13% 2021-22:16/13.38% 2022-23:11/-27.07% 2023-24:15/-2.02% 2024-25:19/-8.15% 2025-26:14/20.97%
+run deny_BUY_bull_chop_tight
+deny_BUY_bull_chop_tight
+  FULL n=93 tw=0.33 ret=-22.25 cal=-0.08 pf=0.9 | OOS n=42 ret=-24.44 pf=0.78
+  years 2020-21:14/-6.13% 2021-22:16/14.39% 2022-23:12/-29.64% 2023-24:14/5.58% 2024-25:23/-19.43% 2025-26:14/20.97%
+run deny_top2_bleeds
+deny_top2_bleeds
+  FULL n=71 tw=0.25 ret=2.96 cal=0.01 pf=1.01 | OOS n=29 ret=4.6 pf=1.05
+  years 2020-21:7/18.77% 2021-22:12/15.93% 2022-23:10/-24.03% 2023-24:14/0.82% 2024-25:16/-16.81% 2025-26:12/17.36%
+run deny_top3_bleeds
+deny_top3_bleeds
+  FULL n=66 tw=0.23 ret=26.25 cal=0.1 pf=1.13 | OOS n=28 ret=8.96 pf=1.1
+  years 2020-21:7/18.77% 2021-22:11/20.76% 2022-23:10/-24.03% 2023-24:10/18.69% 2024-25:16/-16.81% 2025-26:12/17.36%
+run keep_positive_cells_only
+keep_positive_cells_only
+  FULL n=49 tw=0.17 ret=64.77 cal=0.32 pf=1.42 | OOS n=22 ret=11 pf=1.16
+  years 2020-21:7/18.77% 2021-22:9/17.38% 2022-23:6/-20.38% 2023-24:9/23.64% 2024-25:8/-5.58% 2025-26:10/27.16%
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-zec-phase0-resume.json

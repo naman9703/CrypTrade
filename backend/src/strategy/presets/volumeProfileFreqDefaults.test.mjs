@@ -170,6 +170,27 @@ test("fillVolumeProfileFreqDefaults — resolves AVAX VAL+rej prepared-cell H4 l
   assert.equal(out.vpNoveltyEnabled, false);
 });
 
+test("fillVolumeProfileFreqDefaults — resolves DOGE F3 year-clean research sleeve", () => {
+  const out = fillVolumeProfileFreqDefaults({
+    ...VOLUME_PROFILE_FREQ_PORTFOLIO_15M,
+    symbol: "DOGEUSDT",
+  });
+  assert.equal(out.vpPlaybook, "FREQ");
+  assert.deepEqual(out.vpAllowedSetups, ["va_rejection", "poc_bounce"]);
+  assert.equal(out.vpRequireHtfAlign, true);
+  assert.equal(out.vpMinHtfSepPct, 0.0015);
+  assert.equal(out.vpMinScore, 6);
+  assert.equal(out.vpMinBarGap, 1);
+  assert.equal(out.vpRejectionSellBearMinHtfSepPct, 0.005);
+  assert.equal(out.vpBuyRejectionMaxPrior60dPct, 1.0);
+  assert.equal(out.vpMinAtrPct, 0.008);
+  assert.equal(out.vpBuyRejectionMinBody, 0.25);
+  assert.equal(out.vpPreparedRegimeOnly, true);
+  assert.ok(Array.isArray(out.vpPreparedBlockCellKeys));
+  assert.ok(out.vpPreparedBlockCellKeys.includes("SELL|poc_bounce|bear_trend|tight"));
+  assert.equal(out.vpNoveltyEnabled, false);
+});
+
 test("volumeProfilePadFromMs — at least 60d for macroPrior60d", async () => {
   const { volumeProfilePadFromMs, volumeProfileHistoryBars } = await import("./volumeProfileOptimized.js");
   const from = Date.parse("2025-06-01T00:00:00.000Z");

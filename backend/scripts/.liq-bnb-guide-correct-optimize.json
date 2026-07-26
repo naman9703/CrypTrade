@@ -1,0 +1,944 @@
+{
+  "generatedAt": "2026-07-24T15:27:25.225Z",
+  "IMPLEMENTATION_GAP": {
+    "sources": [
+      "https://www.ictkillzone.com/ict-liquidity-sweep",
+      "https://www.ictkillzone.com/ict-previous-day-high-low",
+      "https://huntersalgo.com/guides/ict-liquidity-sweep-explained",
+      "https://internationaltradinginstitute.com/blog/liquidity-sweeps-entry-exit-strategies/"
+    ],
+    "publishedSequence": [
+      "1 Identify named pool (PDH/PDL/EQH/session/swing)",
+      "2 Sweep: wick beyond + close reclaim (Type1) or body breach+next reject (Type2)",
+      "3 Displacement / MSS (CHoCH) — reclaim alone insufficient",
+      "4 Entry on FVG/OB retrace or retest of swept level — NOT market at reclaim close",
+      "5 SL beyond sweep wick + ATR buffer (structural)",
+      "6 TP opposing liquidity / fib (structural)",
+      "7 Prerequisites: killzone OR session liquidity, HTF bias, vol expansion"
+    ],
+    "coreStatus": {
+      "pools": "OK — PDH/PDL + session extremes",
+      "sweepReclaim": "OK — pierce + reclaim; holdBars=2",
+      "displacementMss": "MISSING ON — RequireChoch/DisplacementV2 OFF",
+      "entryTiming": "INCORRECT vs guide — market at reclaim+2, not FVG/retest",
+      "sl": "OK structural wick — ATR buffer OFF (only %)",
+      "tp": "PARTIAL structural opposing — capped maxTpRr=2",
+      "killzoneHtfVol": "OFF on CORE (quality gates disabled)",
+      "fakeSweepFilters": "OFF — wick/body, vol, same-bar, quality gate all off"
+    },
+    "verdict": "CORE is a truncated classical fade trigger, not a complete liquidity-sweep strategy. Edge may exist in guide-complete sequence; CORE omitting steps 3–4/7 explains fake-sweep bleed."
+  },
+  "baselineY1": {
+    "n": 329,
+    "tw": 6.31,
+    "ret": -85.75,
+    "pf": 0.656,
+    "wr": 39.5,
+    "dd": 86.5
+  },
+  "cells": {
+    "prepared": [
+      {
+        "k": "breakout|vol15+|dispOK|slWide",
+        "n": 32,
+        "pnl": 1.14,
+        "avg": 0.0357,
+        "pf": 1.081,
+        "wr": 56.3,
+        "deathPct": 21.9,
+        "label": "prepared"
+      },
+      {
+        "k": "breakdown|vol15+|dispOK|slWide",
+        "n": 33,
+        "pnl": 3.2,
+        "avg": 0.0968,
+        "pf": 1.309,
+        "wr": 48.5,
+        "deathPct": 27.3,
+        "label": "prepared"
+      },
+      {
+        "k": "breakout|vol<15|dispOK|slWide",
+        "n": 7,
+        "pnl": 1.21,
+        "avg": 0.1726,
+        "pf": 1.195,
+        "wr": 42.9,
+        "deathPct": 42.9,
+        "label": "prepared"
+      },
+      {
+        "k": "range|vol<15|dispOK|slWide",
+        "n": 11,
+        "pnl": 3.6,
+        "avg": 0.3271,
+        "pf": 1.635,
+        "wr": 54.5,
+        "deathPct": 27.3,
+        "label": "prepared"
+      }
+    ],
+    "bleed": [
+      {
+        "k": "range|vol15+|dispWeak|slTight",
+        "n": 6,
+        "pnl": -6.14,
+        "avg": -1.0236,
+        "pf": 0.173,
+        "wr": 16.7,
+        "deathPct": 83.3,
+        "label": "bleed"
+      },
+      {
+        "k": "breakout|vol15+|dispOK|slTight",
+        "n": 19,
+        "pnl": -15.87,
+        "avg": -0.835,
+        "pf": 0.314,
+        "wr": 26.3,
+        "deathPct": 42.1,
+        "label": "bleed"
+      },
+      {
+        "k": "breakout|vol<15|dispOK|slTight",
+        "n": 13,
+        "pnl": -7.3,
+        "avg": -0.5615,
+        "pf": 0.416,
+        "wr": 38.5,
+        "deathPct": 46.2,
+        "label": "bleed"
+      },
+      {
+        "k": "range|vol<15|dispWeak|slTight",
+        "n": 19,
+        "pnl": -10.33,
+        "avg": -0.5435,
+        "pf": 0.436,
+        "wr": 26.3,
+        "deathPct": 73.7,
+        "label": "bleed"
+      },
+      {
+        "k": "breakdown|vol<15|dispOK|slWide",
+        "n": 7,
+        "pnl": -3.23,
+        "avg": -0.4618,
+        "pf": 0.35,
+        "wr": 28.6,
+        "deathPct": 28.6,
+        "label": "bleed"
+      },
+      {
+        "k": "range|vol15+|dispOK|slTight",
+        "n": 55,
+        "pnl": -21.56,
+        "avg": -0.392,
+        "pf": 0.557,
+        "wr": 34.5,
+        "deathPct": 52.7,
+        "label": "bleed"
+      },
+      {
+        "k": "breakout|vol<15|dispWeak|slTight",
+        "n": 16,
+        "pnl": -4.19,
+        "avg": -0.2616,
+        "pf": 0.692,
+        "wr": 43.8,
+        "deathPct": 50,
+        "label": "bleed"
+      },
+      {
+        "k": "breakdown|vol15+|dispOK|slTight",
+        "n": 9,
+        "pnl": -1.9,
+        "avg": -0.2113,
+        "pf": 0.626,
+        "wr": 44.4,
+        "deathPct": 44.4,
+        "label": "bleed"
+      },
+      {
+        "k": "range|vol15+|dispOK|slWide",
+        "n": 69,
+        "pnl": -8.22,
+        "avg": -0.1191,
+        "pf": 0.835,
+        "wr": 43.5,
+        "deathPct": 36.2,
+        "label": "bleed"
+      },
+      {
+        "k": "range|vol<15|dispOK|slTight",
+        "n": 11,
+        "pnl": -0.91,
+        "avg": -0.0823,
+        "pf": 0.885,
+        "wr": 27.3,
+        "deathPct": 63.6,
+        "label": "bleed"
+      }
+    ],
+    "byDayImpulse": [
+      {
+        "k": "range|dispWeak",
+        "n": 33,
+        "pnl": -18.79,
+        "avg": -0.5693,
+        "pf": 0.431,
+        "wr": 27.3,
+        "deathPct": 60.6,
+        "label": "bleed"
+      },
+      {
+        "k": "breakdown|dispWeak",
+        "n": 8,
+        "pnl": -3.75,
+        "avg": -0.4683,
+        "pf": 0.312,
+        "wr": 37.5,
+        "deathPct": 37.5,
+        "label": "bleed"
+      },
+      {
+        "k": "breakout|dispWeak",
+        "n": 17,
+        "pnl": -6.39,
+        "avg": -0.3761,
+        "pf": 0.595,
+        "wr": 41.2,
+        "deathPct": 47.1,
+        "label": "bleed"
+      },
+      {
+        "k": "breakout|dispOK",
+        "n": 71,
+        "pnl": -20.81,
+        "avg": -0.2931,
+        "pf": 0.627,
+        "wr": 43.7,
+        "deathPct": 33.8,
+        "label": "bleed"
+      },
+      {
+        "k": "range|dispOK",
+        "n": 146,
+        "pnl": -27.09,
+        "avg": -0.1855,
+        "pf": 0.759,
+        "wr": 39.7,
+        "deathPct": 43.8,
+        "label": "bleed"
+      },
+      {
+        "k": "breakdown|dispOK",
+        "n": 54,
+        "pnl": -8.92,
+        "avg": -0.1653,
+        "pf": 0.674,
+        "wr": 40.7,
+        "deathPct": 37,
+        "label": "bleed"
+      }
+    ],
+    "byWickVol": [
+      {
+        "k": "wick15+|vol15+",
+        "n": 40,
+        "pnl": -17.34,
+        "avg": -0.4336,
+        "pf": 0.449,
+        "wr": 32.5,
+        "deathPct": 50,
+        "label": "bleed"
+      },
+      {
+        "k": "wick<15|vol<15",
+        "n": 86,
+        "pnl": -36.36,
+        "avg": -0.4228,
+        "pf": 0.544,
+        "wr": 31.4,
+        "deathPct": 57,
+        "label": "bleed"
+      },
+      {
+        "k": "wick<15|vol15+",
+        "n": 187,
+        "pnl": -32.69,
+        "avg": -0.1748,
+        "pf": 0.749,
+        "wr": 43.9,
+        "deathPct": 35.8,
+        "label": "bleed"
+      },
+      {
+        "k": "wick15+|vol<15",
+        "n": 16,
+        "pnl": 0.64,
+        "avg": 0.0397,
+        "pf": 1.078,
+        "wr": 50,
+        "deathPct": 18.8,
+        "label": "prepared"
+      }
+    ],
+    "byToxicImpulse": [
+      {
+        "k": "ok|dispWeak",
+        "n": 38,
+        "pnl": -27.13,
+        "avg": -0.7138,
+        "pf": 0.344,
+        "wr": 23.7,
+        "deathPct": 63.2,
+        "label": "bleed"
+      },
+      {
+        "k": "toxic|dispOK",
+        "n": 105,
+        "pnl": -30.06,
+        "avg": -0.2862,
+        "pf": 0.585,
+        "wr": 39,
+        "deathPct": 35.2,
+        "label": "bleed"
+      },
+      {
+        "k": "ok|dispOK",
+        "n": 166,
+        "pnl": -26.77,
+        "avg": -0.1613,
+        "pf": 0.783,
+        "wr": 42.2,
+        "deathPct": 42.8,
+        "label": "bleed"
+      },
+      {
+        "k": "toxic|dispWeak",
+        "n": 20,
+        "pnl": -1.8,
+        "avg": -0.0901,
+        "pf": 0.86,
+        "wr": 50,
+        "deathPct": 35,
+        "label": "bleed"
+      }
+    ]
+  },
+  "soft": [
+    {
+      "label": "H0",
+      "n": 329,
+      "tw": 6.31,
+      "ret": -85.75,
+      "pf": 0.656,
+      "wr": 39.5,
+      "dd": 86.5,
+      "pass": false
+    },
+    {
+      "label": "keep_dispOK",
+      "n": 271,
+      "tw": 5.2,
+      "ret": -56.83,
+      "pf": 0.709,
+      "wr": 41,
+      "dd": 57.05,
+      "pass": false
+    },
+    {
+      "label": "keep_vol15",
+      "n": 227,
+      "tw": 4.35,
+      "ret": -50.03,
+      "pf": 0.69,
+      "wr": 41.9,
+      "dd": 50.34,
+      "pass": false
+    },
+    {
+      "label": "keep_wick15",
+      "n": 56,
+      "tw": 1.07,
+      "ret": -16.71,
+      "pf": 0.579,
+      "wr": 37.5,
+      "dd": 16.71,
+      "pass": false
+    },
+    {
+      "label": "keep_slWide",
+      "n": 172,
+      "tw": 3.3,
+      "ret": -7.76,
+      "pf": 0.924,
+      "wr": 46.5,
+      "dd": 13.2,
+      "pass": false
+    },
+    {
+      "label": "keep_atrHi",
+      "n": 136,
+      "tw": 2.61,
+      "ret": -14.99,
+      "pf": 0.849,
+      "wr": 43.4,
+      "dd": 19.04,
+      "pass": false
+    },
+    {
+      "label": "drop_toxic",
+      "n": 204,
+      "tw": 3.91,
+      "ret": -53.9,
+      "pf": 0.672,
+      "wr": 38.7,
+      "dd": 54.42,
+      "pass": false
+    },
+    {
+      "label": "dispOK_vol15",
+      "n": 217,
+      "tw": 4.16,
+      "ret": -43.21,
+      "pf": 0.714,
+      "wr": 42.4,
+      "dd": 43.52,
+      "pass": false
+    },
+    {
+      "label": "dispOK_slWide",
+      "n": 159,
+      "tw": 3.05,
+      "ret": -2.31,
+      "pf": 0.975,
+      "wr": 47.2,
+      "dd": 12.56,
+      "pass": false
+    },
+    {
+      "label": "dispOK_vol15_slWide",
+      "n": 134,
+      "tw": 2.57,
+      "ret": -3.88,
+      "pf": 0.948,
+      "wr": 47.8,
+      "dd": 13.06,
+      "pass": false
+    },
+    {
+      "label": "guide_min_disp_vol_notToxic",
+      "n": 137,
+      "tw": 2.63,
+      "ret": -25.77,
+      "pf": 0.751,
+      "wr": 42.3,
+      "dd": 28.97,
+      "pass": false
+    },
+    {
+      "label": "sameBar_only",
+      "n": 96,
+      "tw": 1.84,
+      "ret": -32.4,
+      "pf": 0.607,
+      "wr": 35.4,
+      "dd": 34.14,
+      "pass": false
+    },
+    {
+      "label": "pdh_pdl_only",
+      "n": 239,
+      "tw": 4.58,
+      "ret": -50.84,
+      "pf": 0.706,
+      "wr": 40.6,
+      "dd": 50.84,
+      "pass": false
+    },
+    {
+      "label": "prepared_range_disp_vol",
+      "n": 124,
+      "tw": 2.38,
+      "ret": -29.78,
+      "pf": 0.698,
+      "wr": 39.5,
+      "dd": 30.3,
+      "pass": false
+    }
+  ],
+  "softPassers": [],
+  "hard": [
+    {
+      "id": "CORE",
+      "over": {},
+      "y1": {
+        "n": 329,
+        "tw": 6.31,
+        "ret": -85.75,
+        "pf": 0.656,
+        "wr": 39.5,
+        "dd": 86.5
+      },
+      "hold": {
+        "n": 356,
+        "tw": 6.83,
+        "ret": -83.22,
+        "pf": 0.673,
+        "wr": 40.2,
+        "dd": 84.75
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "TP_uncapped",
+      "over": {
+        "intradayLiqMaxTpRr": 0
+      },
+      "y1": {
+        "n": 317,
+        "tw": 6.08,
+        "ret": -92.48,
+        "pf": 0.498,
+        "wr": 36,
+        "dd": 92.9
+      },
+      "hold": {
+        "n": 344,
+        "tw": 6.6,
+        "ret": -82.13,
+        "pf": 0.676,
+        "wr": 36.6,
+        "dd": 84.02
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "TP_cap3",
+      "over": {
+        "intradayLiqMaxTpRr": 3
+      },
+      "y1": {
+        "n": 318,
+        "tw": 6.1,
+        "ret": -89.42,
+        "pf": 0.553,
+        "wr": 36.8,
+        "dd": 90.01
+      },
+      "hold": {
+        "n": 348,
+        "tw": 6.67,
+        "ret": -79.47,
+        "pf": 0.692,
+        "wr": 38.2,
+        "dd": 80.43
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "ATR_SL_buf_0.2",
+      "over": {
+        "intradayLiqSlBufferAtrMult": 0.2
+      },
+      "y1": {
+        "n": 329,
+        "tw": 6.31,
+        "ret": -85.12,
+        "pf": 0.667,
+        "wr": 39.8,
+        "dd": 85.91
+      },
+      "hold": {
+        "n": 354,
+        "tw": 6.79,
+        "ret": -82.53,
+        "pf": 0.677,
+        "wr": 40.4,
+        "dd": 84.13
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "minSl_0.012",
+      "over": {
+        "intradayLiqMinSlPct": 0.012
+      },
+      "y1": {
+        "n": 144,
+        "tw": 2.76,
+        "ret": -14.38,
+        "pf": 0.904,
+        "wr": 50,
+        "dd": 18.91
+      },
+      "hold": {
+        "n": 170,
+        "tw": 3.26,
+        "ret": -19.56,
+        "pf": 0.891,
+        "wr": 45.9,
+        "dd": 37.52
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "wickBody_1.5",
+      "over": {
+        "intradayLiqMinSweepWickBodyRatio": 1.5
+      },
+      "y1": {
+        "n": 126,
+        "tw": 2.42,
+        "ret": -60.64,
+        "pf": 0.588,
+        "wr": 37.3,
+        "dd": 60.64
+      },
+      "hold": {
+        "n": 143,
+        "tw": 2.74,
+        "ret": -68.29,
+        "pf": 0.546,
+        "wr": 36.4,
+        "dd": 70.87
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "vol_1.5",
+      "over": {
+        "intradayLiqSweepMinVolRatio": 1.5
+      },
+      "y1": {
+        "n": 246,
+        "tw": 4.72,
+        "ret": -72.73,
+        "pf": 0.666,
+        "wr": 41.5,
+        "dd": 72.73
+      },
+      "hold": {
+        "n": 267,
+        "tw": 5.12,
+        "ret": -57.87,
+        "pf": 0.797,
+        "wr": 42.3,
+        "dd": 64.97
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "sameBar",
+      "over": {
+        "intradayLiqRequireSameBarReclaim": true
+      },
+      "y1": {
+        "n": 167,
+        "tw": 3.2,
+        "ret": -75.59,
+        "pf": 0.54,
+        "wr": 36.5,
+        "dd": 77.6
+      },
+      "hold": {
+        "n": 181,
+        "tw": 3.47,
+        "ret": -77.73,
+        "pf": 0.512,
+        "wr": 34.8,
+        "dd": 78.72
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "dispV2_1.2",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2
+      },
+      "y1": {
+        "n": 267,
+        "tw": 5.12,
+        "ret": -70.16,
+        "pf": 0.723,
+        "wr": 41.9,
+        "dd": 70.75
+      },
+      "hold": {
+        "n": 296,
+        "tw": 5.68,
+        "ret": -79.21,
+        "pf": 0.649,
+        "wr": 39.2,
+        "dd": 79.91
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "choch",
+      "over": {
+        "intradayLiqRequireChoch": true
+      },
+      "y1": {
+        "n": 129,
+        "tw": 2.47,
+        "ret": -45,
+        "pf": 0.641,
+        "wr": 44.2,
+        "dd": 45
+      },
+      "hold": {
+        "n": 154,
+        "tw": 2.95,
+        "ret": -25.78,
+        "pf": 0.857,
+        "wr": 45.5,
+        "dd": 40.54
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "killzone",
+      "over": {
+        "intradayLiqRequireKillzone": true
+      },
+      "y1": {
+        "n": 139,
+        "tw": 2.67,
+        "ret": -46.55,
+        "pf": 0.72,
+        "wr": 41,
+        "dd": 52.14
+      },
+      "hold": {
+        "n": 156,
+        "tw": 2.99,
+        "ret": -62.58,
+        "pf": 0.613,
+        "wr": 35.9,
+        "dd": 63.82
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "mitigation_0.5",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 8
+      },
+      "y1": {
+        "n": 279,
+        "tw": 5.35,
+        "ret": -71.3,
+        "pf": 0.742,
+        "wr": 40.1,
+        "dd": 73.08
+      },
+      "hold": {
+        "n": 319,
+        "tw": 6.12,
+        "ret": -71.02,
+        "pf": 0.78,
+        "wr": 41.4,
+        "dd": 79.26
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "disp_vol",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepMinVolRatio": 1.5
+      },
+      "y1": {
+        "n": 215,
+        "tw": 4.12,
+        "ret": -61.97,
+        "pf": 0.715,
+        "wr": 42.8,
+        "dd": 61.97
+      },
+      "hold": {
+        "n": 241,
+        "tw": 4.62,
+        "ret": -63.06,
+        "pf": 0.715,
+        "wr": 41.1,
+        "dd": 63.54
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "disp_vol_minSl",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepMinVolRatio": 1.5,
+        "intradayLiqMinSlPct": 0.012
+      },
+      "y1": {
+        "n": 110,
+        "tw": 2.11,
+        "ret": -6.76,
+        "pf": 0.942,
+        "wr": 50.9,
+        "dd": 21.95
+      },
+      "hold": {
+        "n": 136,
+        "tw": 2.61,
+        "ret": -27.41,
+        "pf": 0.797,
+        "wr": 43.4,
+        "dd": 35.61
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "disp_vol_atrBuf",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepMinVolRatio": 1.5,
+        "intradayLiqSlBufferAtrMult": 0.2
+      },
+      "y1": {
+        "n": 215,
+        "tw": 4.12,
+        "ret": -62.09,
+        "pf": 0.714,
+        "wr": 42.8,
+        "dd": 62.09
+      },
+      "hold": {
+        "n": 241,
+        "tw": 4.62,
+        "ret": -61.28,
+        "pf": 0.728,
+        "wr": 41.5,
+        "dd": 61.8
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "choch_disp",
+      "over": {
+        "intradayLiqRequireChoch": true,
+        "intradayLiqRequireDisplacementV2": true
+      },
+      "y1": {
+        "n": 109,
+        "tw": 2.09,
+        "ret": -48.17,
+        "pf": 0.533,
+        "wr": 43.1,
+        "dd": 48.17
+      },
+      "hold": {
+        "n": 127,
+        "tw": 2.44,
+        "ret": -10.66,
+        "pf": 0.932,
+        "wr": 47.2,
+        "dd": 30.12
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "guide_lite",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepMinVolRatio": 1.5,
+        "intradayLiqSlBufferAtrMult": 0.2,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 123,
+        "tw": 2.36,
+        "ret": -34.23,
+        "pf": 0.791,
+        "wr": 45.5,
+        "dd": 44.61
+      },
+      "hold": {
+        "n": 143,
+        "tw": 2.74,
+        "ret": -26.05,
+        "pf": 0.849,
+        "wr": 44.8,
+        "dd": 27.27
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "guide_mss_entry",
+      "over": {
+        "intradayLiqRequireChoch": true,
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqSlBufferAtrMult": 0.2
+      },
+      "y1": {
+        "n": 87,
+        "tw": 1.67,
+        "ret": -45.01,
+        "pf": 0.564,
+        "wr": 39.1,
+        "dd": 45.01
+      },
+      "hold": {
+        "n": 108,
+        "tw": 2.07,
+        "ret": 52.86,
+        "pf": 1.289,
+        "wr": 53.7,
+        "dd": 18
+      },
+      "pass": false,
+      "y1Only": false
+    }
+  ],
+  "bestY1": {
+    "id": "disp_vol_minSl",
+    "y1": {
+      "n": 110,
+      "tw": 2.11,
+      "ret": -6.76,
+      "pf": 0.942,
+      "wr": 50.9,
+      "dd": 21.95
+    },
+    "hold": {
+      "n": 136,
+      "tw": 2.61,
+      "ret": -27.41,
+      "pf": 0.797,
+      "wr": 43.4,
+      "dd": 35.61
+    }
+  },
+  "promote": [],
+  "verdict": "REJECT"
+}

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * XRP VP FREQ — Phase 1 funnel + cell autopsy + one-change A/B (IS/OOS).
+ * Generic next-coin VP FREQ — Phase 0 funnel + cell autopsy + one-change A/B.
  *
- * Coin-native only — do not copy AVAX/SOL/ETH cell matrices.
- * Prior 1y screen: uniform ETH-shaped −37% (VAH+VAL bleed).
+ * Coin-native only — do not copy AVAX/SOL/ETH/BTC/BNB cell matrices.
  *
- * Usage: node scripts/backtest-vp-freq-xrp-optimize.mjs
+ * Usage:
+ *   SYMBOL=DOGEUSDT SKIP_ENSURE=1 node scripts/backtest-vp-freq-xrp-optimize.mjs
  */
 import path from "path";
 import fs from "fs";
@@ -15,8 +15,8 @@ import dotenv from "dotenv";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "..", ".env"), override: false });
 
-const SYMBOL = "XRPUSDT";
-const TF = "15m";
+const SYMBOL = String(process.env.SYMBOL || "XRPUSDT").toUpperCase();
+const TF = process.env.TF || "15m";
 const FROM = process.env.FROM || "2021-01-01";
 const TO = process.env.TO || "2026-05-31";
 const OOS_END = process.env.OOS_END || "2023-06-01";
@@ -230,7 +230,7 @@ const funding = await readFundingRates(SYMBOL, padFrom, toMs).catch(() => []);
 process.stderr.write(`candles=${candles.length} funding=${funding.length}\n`);
 
 const funnelRows = [];
-console.log(`\n══ XRP funnel screen ══ ${FROM}→${TO} OOS≤${OOS_END}`);
+console.log(`\n══ ${SYMBOL} funnel screen ══ ${FROM}→${TO} OOS≤${OOS_END}`);
 for (const f of FUNNELS) {
   process.stderr.write(`run ${f.id}\n`);
   const trades = await run(candles, funding, f.over);
@@ -315,7 +315,8 @@ const report = {
   cells: cells.slice(0, 40),
   oneChange: abRows,
 };
-const outPath = path.join(__dirname, ".vp-freq-xrp-optimize.json");
+const symbolSlug = SYMBOL.toLowerCase().replace(/usdt$/, "");
+const outPath = path.join(__dirname, `.vp-freq-${symbolSlug}-phase0.json`);
 fs.writeFileSync(outPath, JSON.stringify(report, null, 2));
 console.error("wrote", outPath);
 

@@ -1,0 +1,102 @@
+load DOGEUSDT…
+candles=195456 funding=6109
+
+══ DOGE year-clean freq restore A/B ══
+run H0_year_clean_lock
+H0_year_clean_lock
+  FULL n=46 tw=0.16 ret=231.93% pf=2.48 cal=1.28
+  years 2020-21:3.87%/4 2021-22:12.07%/14 2022-23:40.16%/12 2023-24:58.53%/8 2024-25:6.34%/4 2025-26:20.66%/4
+  RED: none | yearClean=true tw↑=false retOk=true → reject
+run gap1
+gap1
+  FULL n=45 tw=0.16 ret=242.18% pf=2.55 cal=1.5
+  years 2020-21:3.87%/4 2021-22:15.54%/13 2022-23:40.16%/12 2023-24:58.53%/8 2024-25:6.34%/4 2025-26:20.66%/4
+  RED: none | yearClean=true tw↑=false retOk=true → reject
+run score6
+score6
+  FULL n=55 tw=0.19 ret=226.56% pf=2.25 cal=1.14
+  years 2020-21:3.87%/4 2021-22:10.43%/19 2022-23:36.22%/13 2023-24:62.82%/9 2024-25:9.46%/5 2025-26:17.27%/5
+  RED: none | yearClean=true tw↑=true retOk=true → ACCEPT
+run maxDay3
+maxDay3
+  FULL n=48 tw=0.17 ret=212.69% pf=2.36 cal=1.09
+  years 2020-21:3.87%/4 2021-22:5.58%/16 2022-23:40.16%/12 2023-24:58.53%/8 2024-25:6.34%/4 2025-26:20.66%/4
+  RED: none | yearClean=true tw↑=false retOk=true → reject
+run buyBody_20
+buyBody_20
+  FULL n=47 tw=0.17 ret=221.46% pf=2.34 cal=1.24
+  years 2020-21:3.87%/4 2021-22:12.07%/14 2022-23:40.16%/12 2023-24:58.53%/8 2024-25:6.34%/4 2025-26:16.86%/5
+  RED: none | yearClean=true tw↑=false retOk=true → reject
+run minAtr_007
+minAtr_007
+  FULL n=51 tw=0.18 ret=272.32% pf=2.45 cal=1.9
+  years 2020-21:3.87%/4 2021-22:34.74%/17 2022-23:34.56%/13 2023-24:54.07%/9 2024-25:6.34%/4 2025-26:20.66%/4
+  RED: none | yearClean=true tw↑=true retOk=true → ACCEPT
+run htf_0010
+htf_0010
+  FULL n=48 tw=0.17 ret=258.22% pf=2.65 cal=1.37
+  years 2020-21:3.87%/4 2021-22:8.8%/15 2022-23:40.16%/12 2023-24:58.53%/8 2024-25:6.34%/4 2025-26:34.14%/5
+  RED: none | yearClean=true tw↑=false retOk=true → reject
+run add_val
+add_val
+  FULL n=217 tw=0.77 ret=-66.94% pf=0.77 cal=-0.28
+  years 2020-21:-43.2%/43 2021-22:-23.76%/54 2022-23:2.7%/32 2023-24:12.06%/31 2024-25:-32.61%/35 2025-26:-1.57%/22
+  RED: 2020-21=-43.2% 2021-22=-23.76% 2024-25=-32.61% 2025-26=-1.57% | yearClean=false tw↑=true retOk=false → reject
+run add_val_bear60
+add_val_bear60
+  FULL n=114 tw=0.4 ret=9.68% pf=1.03 cal=0.04
+  years 2020-21:3.87%/4 2021-22:-6.61%/39 2022-23:15.65%/19 2023-24:26.59%/14 2024-25:-25.85%/21 2025-26:4.16%/17
+  RED: 2021-22=-6.61% 2024-25=-25.85% | yearClean=false tw↑=true retOk=false → reject
+run add_vah
+add_vah
+  FULL n=208 tw=0.74 ret=21.48% pf=1.05 cal=0.08
+  years 2020-21:-7.42%/42 2021-22:-20.09%/50 2022-23:15.81%/45 2023-24:65.46%/36 2024-25:-20.13%/27 2025-26:7.27%/8
+  RED: 2020-21=-7.42% 2021-22=-20.09% 2024-25=-20.13% | yearClean=false tw↑=true retOk=false → reject
+run add_lvn
+add_lvn
+  FULL n=46 tw=0.16 ret=231.93% pf=2.48 cal=1.28
+  years 2020-21:3.87%/4 2021-22:12.07%/14 2022-23:40.16%/12 2023-24:58.53%/8 2024-25:6.34%/4 2025-26:20.66%/4
+  RED: none | yearClean=true tw↑=false retOk=true → reject
+run add_poc
+add_poc
+  FULL n=58 tw=0.21 ret=235.03% pf=1.86 cal=1.11
+  years 2020-21:9.84%/5 2021-22:30.53%/16 2022-23:42.12%/14 2023-24:43.31%/10 2024-25:3.36%/5 2025-26:11%/8
+  RED: none | yearClean=true tw↑=true retOk=true → ACCEPT
+run add_naked
+add_naked
+  FULL n=46 tw=0.16 ret=231.93% pf=2.48 cal=1.28
+  years 2020-21:3.87%/4 2021-22:12.07%/14 2022-23:40.16%/12 2023-24:58.53%/8 2024-25:6.34%/4 2025-26:20.66%/4
+  RED: none | yearClean=true tw↑=false retOk=true → reject
+run add_val_vah
+add_val_vah
+  FULL n=379 tw=1.34 ret=-87.9% pf=0.75 cal=-0.37
+  years 2020-21:-49.38%/81 2021-22:-45.64%/90 2022-23:-15.14%/65 2023-24:16.96%/59 2024-25:-49.38%/58 2025-26:-12.49%/26
+  RED: 2020-21=-49.38% 2021-22=-45.64% 2022-23=-15.14% 2024-25=-49.38% 2025-26=-12.49% | yearClean=false tw↑=true retOk=false → reject
+run add_val_bear60_gap1
+add_val_bear60_gap1
+  FULL n=113 tw=0.4 ret=13.07% pf=1.04 cal=0.06
+  years 2020-21:3.87%/4 2021-22:-3.73%/38 2022-23:15.65%/19 2023-24:26.59%/14 2024-25:-25.85%/21 2025-26:4.16%/17
+  RED: 2021-22=-3.73% 2024-25=-25.85% | yearClean=false tw↑=true retOk=false → reject
+
+══ Ranked ══
+add_poc                  accept=true yearClean=true tw=0.21 (Δ0.05) ret=235.03% | RED:none
+score6                   accept=true yearClean=true tw=0.19 (Δ0.03) ret=226.56% | RED:none
+minAtr_007               accept=true yearClean=true tw=0.18 (Δ0.02) ret=272.32% | RED:none
+htf_0010                 accept=false yearClean=true tw=0.17 (Δ0.01) ret=258.22% | RED:none
+buyBody_20               accept=false yearClean=true tw=0.17 (Δ0.01) ret=221.46% | RED:none
+maxDay3                  accept=false yearClean=true tw=0.17 (Δ0.01) ret=212.69% | RED:none
+gap1                     accept=false yearClean=true tw=0.16 (Δ0) ret=242.18% | RED:none
+H0_year_clean_lock       accept=false yearClean=true tw=0.16 (Δ0) ret=231.93% | RED:none
+add_lvn                  accept=false yearClean=true tw=0.16 (Δ0) ret=231.93% | RED:none
+add_naked                accept=false yearClean=true tw=0.16 (Δ0) ret=231.93% | RED:none
+add_val_vah              accept=false yearClean=false tw=1.34 (Δ1.18) ret=-87.9% | RED:2020-21=-49.38%,2021-22=-45.64%,2022-23=-15.14%,2024-25=-49.38%,2025-26=-12.49%
+add_val                  accept=false yearClean=false tw=0.77 (Δ0.61) ret=-66.94% | RED:2020-21=-43.2%,2021-22=-23.76%,2024-25=-32.61%,2025-26=-1.57%
+add_vah                  accept=false yearClean=false tw=0.74 (Δ0.58) ret=21.48% | RED:2020-21=-7.42%,2021-22=-20.09%,2024-25=-20.13%
+add_val_bear60_gap1      accept=false yearClean=false tw=0.4 (Δ0.24) ret=13.07% | RED:2021-22=-3.73%,2024-25=-25.85%
+add_val_bear60           accept=false yearClean=false tw=0.4 (Δ0.24) ret=9.68% | RED:2021-22=-6.61%,2024-25=-25.85%
+
+══ Accepted restores: 3 ══
+  add_poc tw=0.21 ret=235.03% cal=1.11
+  score6 tw=0.19 ret=226.56% cal=1.14
+  minAtr_007 tw=0.18 ret=272.32% cal=1.9
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-doge-f3-freq-restore.json

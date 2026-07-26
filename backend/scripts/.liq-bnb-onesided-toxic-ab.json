@@ -1,0 +1,518 @@
+{
+  "generatedAt": "2026-07-24T20:31:17.310Z",
+  "hypothesis": "one-sided DaySituationBias restores freq vs full toxic while keeping HOLD green",
+  "hard": [
+    {
+      "id": "hf_none",
+      "over": {},
+      "y1": {
+        "n": 122,
+        "tw": 2.34,
+        "ret": 2.53,
+        "pf": 1.015,
+        "wr": 47.5,
+        "dd": 27.03
+      },
+      "hold": {
+        "n": 144,
+        "tw": 2.76,
+        "ret": -9.33,
+        "pf": 0.942,
+        "wr": 47.2,
+        "dd": 20.95
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "hf_both",
+      "over": {
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 64,
+        "tw": 1.23,
+        "ret": 9.42,
+        "pf": 1.107,
+        "wr": 48.4,
+        "dd": 21.05
+      },
+      "hold": {
+        "n": 80,
+        "tw": 1.53,
+        "ret": 21.86,
+        "pf": 1.207,
+        "wr": 51.2,
+        "dd": 10.77
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "hf_buy_bd",
+      "over": {
+        "intradayLiqDaySituationBias": "buy_breakdown"
+      },
+      "y1": {
+        "n": 93,
+        "tw": 1.78,
+        "ret": 9.65,
+        "pf": 1.076,
+        "wr": 47.3,
+        "dd": 28
+      },
+      "hold": {
+        "n": 113,
+        "tw": 2.17,
+        "ret": 1.05,
+        "pf": 1.008,
+        "wr": 48.7,
+        "dd": 13.92
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "hf_sell_bo",
+      "over": {
+        "intradayLiqDaySituationBias": "sell_breakout"
+      },
+      "y1": {
+        "n": 94,
+        "tw": 1.8,
+        "ret": -0.55,
+        "pf": 0.996,
+        "wr": 47.9,
+        "dd": 21.82
+      },
+      "hold": {
+        "n": 111,
+        "tw": 2.13,
+        "ret": 9.34,
+        "pf": 1.069,
+        "wr": 48.6,
+        "dd": 14.29
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "buy_bd_mit035",
+      "over": {
+        "intradayLiqDaySituationBias": "buy_breakdown",
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8
+      },
+      "y1": {
+        "n": 103,
+        "tw": 1.98,
+        "ret": 18.23,
+        "pf": 1.129,
+        "wr": 49.5,
+        "dd": 26.34
+      },
+      "hold": {
+        "n": 116,
+        "tw": 2.22,
+        "ret": 5.89,
+        "pf": 1.04,
+        "wr": 47.4,
+        "dd": 15.19
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sell_bo_mit035",
+      "over": {
+        "intradayLiqDaySituationBias": "sell_breakout",
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8
+      },
+      "y1": {
+        "n": 101,
+        "tw": 1.94,
+        "ret": 3.04,
+        "pf": 1.023,
+        "wr": 48.5,
+        "dd": 18.57
+      },
+      "hold": {
+        "n": 115,
+        "tw": 2.21,
+        "ret": 24.96,
+        "pf": 1.163,
+        "wr": 49.6,
+        "dd": 24.04
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_disp10",
+      "over": {
+        "intradayLiqDaySituationBias": "buy_breakdown",
+        "intradayLiqSweepDisplacementMinAtrMult": 1
+      },
+      "y1": {
+        "n": 98,
+        "tw": 1.88,
+        "ret": 13.97,
+        "pf": 1.103,
+        "wr": 48,
+        "dd": 28
+      },
+      "hold": {
+        "n": 115,
+        "tw": 2.21,
+        "ret": -4.53,
+        "pf": 0.967,
+        "wr": 47.8,
+        "dd": 16.36
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "sell_bo_disp10",
+      "over": {
+        "intradayLiqDaySituationBias": "sell_breakout",
+        "intradayLiqSweepDisplacementMinAtrMult": 1
+      },
+      "y1": {
+        "n": 102,
+        "tw": 1.96,
+        "ret": 8.91,
+        "pf": 1.065,
+        "wr": 50,
+        "dd": 20.1
+      },
+      "hold": {
+        "n": 111,
+        "tw": 2.13,
+        "ret": 7.78,
+        "pf": 1.058,
+        "wr": 48.6,
+        "dd": 14.82
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_wait4",
+      "over": {
+        "intradayLiqDaySituationBias": "buy_breakdown",
+        "intradayLiqMitigationWaitBars": 4
+      },
+      "y1": {
+        "n": 90,
+        "tw": 1.73,
+        "ret": 6.16,
+        "pf": 1.051,
+        "wr": 46.7,
+        "dd": 28
+      },
+      "hold": {
+        "n": 110,
+        "tw": 2.11,
+        "ret": -0.84,
+        "pf": 0.994,
+        "wr": 48.2,
+        "dd": 17.44
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "sell_bo_wait4",
+      "over": {
+        "intradayLiqDaySituationBias": "sell_breakout",
+        "intradayLiqMitigationWaitBars": 4
+      },
+      "y1": {
+        "n": 91,
+        "tw": 1.75,
+        "ret": 1.57,
+        "pf": 1.013,
+        "wr": 48.4,
+        "dd": 21.82
+      },
+      "hold": {
+        "n": 108,
+        "tw": 2.07,
+        "ret": 3.33,
+        "pf": 1.026,
+        "wr": 48.1,
+        "dd": 13.18
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_side3",
+      "over": {
+        "intradayLiqDaySituationBias": "buy_breakdown",
+        "intradayLiqMaxTradesPerSidePerDay": 3,
+        "srIntradayMaxTradesPerDay": 6
+      },
+      "y1": {
+        "n": 94,
+        "tw": 1.8,
+        "ret": 6.38,
+        "pf": 1.05,
+        "wr": 46.8,
+        "dd": 28
+      },
+      "hold": {
+        "n": 114,
+        "tw": 2.19,
+        "ret": 5.58,
+        "pf": 1.039,
+        "wr": 49.1,
+        "dd": 13.92
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sell_bo_side3",
+      "over": {
+        "intradayLiqDaySituationBias": "sell_breakout",
+        "intradayLiqMaxTradesPerSidePerDay": 3,
+        "srIntradayMaxTradesPerDay": 6
+      },
+      "y1": {
+        "n": 96,
+        "tw": 1.84,
+        "ret": -6.03,
+        "pf": 0.952,
+        "wr": 46.9,
+        "dd": 21.82
+      },
+      "hold": {
+        "n": 112,
+        "tw": 2.15,
+        "ret": 14.23,
+        "pf": 1.102,
+        "wr": 49.1,
+        "dd": 14.29
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "buy_bd_noHour",
+      "over": {
+        "intradayLiqDaySituationBias": "buy_breakdown",
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 24
+      },
+      "y1": {
+        "n": 104,
+        "tw": 1.99,
+        "ret": 4.68,
+        "pf": 1.032,
+        "wr": 46.2,
+        "dd": 27.03
+      },
+      "hold": {
+        "n": 128,
+        "tw": 2.45,
+        "ret": -8.97,
+        "pf": 0.94,
+        "wr": 47.7,
+        "dd": 15.63
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "sell_bo_noHour",
+      "over": {
+        "intradayLiqDaySituationBias": "sell_breakout",
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 24
+      },
+      "y1": {
+        "n": 104,
+        "tw": 1.99,
+        "ret": -4.23,
+        "pf": 0.969,
+        "wr": 47.1,
+        "dd": 21.85
+      },
+      "hold": {
+        "n": 128,
+        "tw": 2.45,
+        "ret": -13.23,
+        "pf": 0.912,
+        "wr": 45.3,
+        "dd": 27.53
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "buy_bd_h022",
+      "over": {
+        "intradayLiqDaySituationBias": "buy_breakdown",
+        "intradayLiqActiveHourEnd": 22
+      },
+      "y1": {
+        "n": 101,
+        "tw": 1.94,
+        "ret": -1.17,
+        "pf": 0.992,
+        "wr": 45.5,
+        "dd": 28.13
+      },
+      "hold": {
+        "n": 120,
+        "tw": 2.3,
+        "ret": -4.84,
+        "pf": 0.965,
+        "wr": 48.3,
+        "dd": 16.81
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "sell_bo_h022",
+      "over": {
+        "intradayLiqDaySituationBias": "sell_breakout",
+        "intradayLiqActiveHourEnd": 22
+      },
+      "y1": {
+        "n": 100,
+        "tw": 1.92,
+        "ret": -6.02,
+        "pf": 0.955,
+        "wr": 47,
+        "dd": 22.05
+      },
+      "hold": {
+        "n": 119,
+        "tw": 2.28,
+        "ret": -4.21,
+        "pf": 0.97,
+        "wr": 47.1,
+        "dd": 21.86
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "buy_bd_h023",
+      "over": {
+        "intradayLiqDaySituationBias": "buy_breakdown",
+        "intradayLiqActiveHourEnd": 23
+      },
+      "y1": {
+        "n": 103,
+        "tw": 1.98,
+        "ret": 0.25,
+        "pf": 1.002,
+        "wr": 45.6,
+        "dd": 30.11
+      },
+      "hold": {
+        "n": 126,
+        "tw": 2.42,
+        "ret": -13.42,
+        "pf": 0.907,
+        "wr": 46.8,
+        "dd": 18.07
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "sell_bo_h023",
+      "over": {
+        "intradayLiqDaySituationBias": "sell_breakout",
+        "intradayLiqActiveHourEnd": 23
+      },
+      "y1": {
+        "n": 102,
+        "tw": 1.96,
+        "ret": -7.2,
+        "pf": 0.947,
+        "wr": 47.1,
+        "dd": 24.21
+      },
+      "hold": {
+        "n": 125,
+        "tw": 2.4,
+        "ret": -12.84,
+        "pf": 0.912,
+        "wr": 45.6,
+        "dd": 27.53
+      },
+      "pass": false,
+      "eg": false
+    }
+  ],
+  "fullRuns": [
+    {
+      "id": "buy_bd_mit035",
+      "full": {
+        "n": 342,
+        "tw": 2.18,
+        "ret": 24.36,
+        "pf": 1.053,
+        "wr": 46.5,
+        "dd": 29.22
+      },
+      "eg": true
+    },
+    {
+      "id": "sell_bo_mit035",
+      "full": {
+        "n": 327,
+        "tw": 2.09,
+        "ret": 44.93,
+        "pf": 1.088,
+        "wr": 48.9,
+        "dd": 24.43
+      },
+      "eg": true
+    },
+    {
+      "id": "sell_bo_disp10",
+      "full": {
+        "n": 320,
+        "tw": 2.04,
+        "ret": 29.28,
+        "pf": 1.062,
+        "wr": 49.1,
+        "dd": 34.88
+      },
+      "eg": true
+    }
+  ],
+  "promote": [],
+  "egTw": [],
+  "best": {
+    "id": "buy_bd_mit035",
+    "y1": {
+      "n": 103,
+      "tw": 1.98,
+      "ret": 18.23,
+      "pf": 1.129,
+      "wr": 49.5,
+      "dd": 26.34
+    },
+    "hold": {
+      "n": 116,
+      "tw": 2.22,
+      "ret": 5.89,
+      "pf": 1.04,
+      "wr": 47.4,
+      "dd": 15.19
+    },
+    "pass": false,
+    "eg": true
+  },
+  "verdict": "EG_BELOW_TW2"
+}

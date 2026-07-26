@@ -1,0 +1,60 @@
+ensureKlines ZECUSDT…
+candles=195456 funding=0
+
+══ ZECUSDT funnel screen ══ 2021-01-01→2026-05-31 OOS≤2023-06-01
+run F0_open
+F0_open            FULL tr=952 tw=3.37 ret=-99.7 cal=-0.66 pf=0.79 | OOS ret=-85.8 pf=0.81 n=432 | IS ret=-13.9
+  years 2020-21:95/-22.65% 2021-22:193/-57.28% 2022-23:144/-57.04% 2023-24:160/-81.23% 2024-25:201/-84.94% 2025-26:159/-25.14%
+run F1_val_rej
+F1_val_rej         FULL tr=552 tw=1.96 ret=-97.85 cal=-0.52 pf=0.77 | OOS ret=-68.83 pf=0.81 n=249 | IS ret=-29.02
+  years 2020-21:48/-14.88% 2021-22:116/-11.08% 2022-23:85/-58.82% 2023-24:99/-78.85% 2024-25:116/-52.22% 2025-26:88/-31.66%
+run F2_val_only
+F2_val_only        FULL tr=462 tw=1.64 ret=-96.17 cal=-0.47 pf=0.73 | OOS ret=-61.11 pf=0.79 n=209 | IS ret=-35.06
+  years 2020-21:36/-14.64% 2021-22:99/-19.03% 2022-23:74/-43.73% 2023-24:84/-74.13% 2024-25:94/-42.84% 2025-26:75/-33.4%
+run F3_rej_only
+F3_rej_only        FULL tr=98 tw=0.35 ret=-36.59 cal=-0.12 pf=0.83 | OOS ret=-27.47 pf=0.75 n=43 | IS ret=-9.13
+  years 2020-21:14/-6.13% 2021-22:17/9.82% 2022-23:12/-29.64% 2023-24:18/-10.31% 2024-25:23/-19.43% 2025-26:14/20.97%
+run F4_vah_val
+F4_vah_val         FULL tr=861 tw=3.05 ret=-99.54 cal=-0.63 pf=0.77 | OOS ret=-81.94 pf=0.79 n=390 | IS ret=-17.61
+  years 2020-21:83/-22.43% 2021-22:179/-64.51% 2022-23:128/-34.39% 2023-24:143/-82.77% 2024-25:180/-80.41% 2025-26:148/-24.95%
+run F5_val_rej_wbVac
+F5_val_rej_wbVac   FULL tr=505 tw=1.79 ret=-98.5 cal=-0.55 pf=0.68 | OOS ret=-79.13 pf=0.71 n=226 | IS ret=-19.38
+  years 2020-21:43/-33.9% 2021-22:102/-15.73% 2022-23:81/-62.53% 2023-24:95/-78.47% 2024-25:102/-56.46% 2025-26:82/-23.4%
+run F6_val_rej_chase
+F6_val_rej_chase   FULL tr=450 tw=1.59 ret=-96.34 cal=-0.47 pf=0.69 | OOS ret=-75.48 pf=0.7 n=209 | IS ret=-20.86
+  years 2020-21:40/-34.36% 2021-22:93/-13.76% 2022-23:76/-56.68% 2023-24:84/-70.02% 2024-25:91/-49.59% 2025-26:66/-1.12%
+
+Best OOS funnel: F3_rej_only (OOS -27.47% / full cal -0.12)
+autopsy F3_rej_only
+
+══ Cell autopsy (F3_rej_only) — worst overall ══
+  18	-21.62	y22 1/-3.02	oos 12/-27.57	SELL|va_rejection|weak_bear|vacuum
+  9	-19.08	y22 1/-3.12	oos 2/-6.45	SELL|va_rejection|bull_chop|vacuum
+  5	-15.56	y22 0/0	oos 1/-4.25	BUY|va_rejection|bull_chop|tight
+  9	-6.94	y22 3/-7.76	oos 4/-0.67	BUY|va_rejection|bull_chop|vacuum
+  2	-5.79	y22 0/0	oos 0/0	SELL|va_rejection|bear_trend|structured
+  4	-2.59	y22 1/3.3	oos 1/3.3	BUY|va_rejection|bull_chop|structured
+  2	-1.38	y22 0/0	oos 1/-4.29	BUY|va_rejection|bull_trend|tight
+  9	1.5	y22 3/-10.1	oos 4/-13.14	SELL|va_rejection|bear_trend|vacuum
+  3	1.5	y22 0/0	oos 0/0	BUY|va_rejection|bull_trend|structured
+  25	3.79	y22 3/-9.84	oos 14/-7.73	SELL|va_rejection|bull_trend|vacuum
+  2	5.2	y22 0/0	oos 1/8.09	SELL|va_rejection|bull_trend|structured
+  10	24.38	y22 0/0	oos 3/25.25	BUY|va_rejection|bull_trend|vacuum
+
+══ Best overall ══
+  10	24.38	y22 0/0	oos 3/25.25	BUY|va_rejection|bull_trend|vacuum
+  2	5.2	y22 0/0	oos 1/8.09	SELL|va_rejection|bull_trend|structured
+  25	3.79	y22 3/-9.84	oos 14/-7.73	SELL|va_rejection|bull_trend|vacuum
+  3	1.5	y22 0/0	oos 0/0	BUY|va_rejection|bull_trend|structured
+  9	1.5	y22 3/-10.1	oos 4/-13.14	SELL|va_rejection|bear_trend|vacuum
+  2	-1.38	y22 0/0	oos 1/-4.29	BUY|va_rejection|bull_trend|tight
+  4	-2.59	y22 1/3.3	oos 1/3.3	BUY|va_rejection|bull_chop|structured
+  2	-5.79	y22 0/0	oos 0/0	SELL|va_rejection|bear_trend|structured
+
+══ One-change cell denies vs F3_rej_only ══
+run baseline_again
+run deny_SELL_va_rejection_weak_bear_vacuum
+deny_SELL_va_rejection_weak_bear_vacuum
+  FULL tr=80 ret=-22.74 cal=-0.07 pf=0.9 | OOS ret=-2.24 n=31
+  years 2020-21:18.77% 2021-22:12.29% 2022-23:-26.7% 2023-24:-7.72% 2024-25:-27.03% 2025-26:17.36%
+run deny_SELL_va_rejection_bull_chop_vacuum

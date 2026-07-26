@@ -69,6 +69,95 @@ export function ensureLiqRegimeSeries(candles, opts = {}) {
   return buildRegimeSeries(candles, opts.regimeCfg ?? {});
 }
 
+// Completed-day range series cache (per candle batch). Each day's hi/lo/close are
+// only read for days strictly BEFORE the current bar's day, so no look-ahead.
+const DAY_MS = 86_400_000;
+const dayRangeCache = new WeakMap();
+
+function getCompletedDaySeries(candles) {
+  let rec = dayRangeCache.get(candles);
+  if (rec && rec.n === candles.length) return rec;
+  const days = [];
+  let cur = null;
+  for (const c of candles) {
+    const d = Math.floor(Number(c.ts) / DAY_MS);
+    if (!cur || cur.day !== d) {
+      if (cur) days.push(cur);
+      cur = { day: d, hi: Number(c.high), lo: Number(c.low), close: Number(c.close) };
+    } else {
+      cur.hi = Math.max(cur.hi, Number(c.high));
+      cur.lo = Math.min(cur.lo, Number(c.low));
+      cur.close = Number(c.close);
+    }
+  }
+  if (cur) days.push(cur);
+  rec = { n: candles.length, days };
+  dayRangeCache.set(candles, rec);
+  return rec;
+}
+
+/**
+ * Rolling range-compression ratio at a bar: mean(daily range % last 14 completed
+ * days) / mean(last 100 completed days). Returns null while history < 30 days.
+ * Low values = compressed regime where sweep→reclaim lacks follow-through fuel.
+ */
+export function liqRangeCompressionAt(candles, idx) {
+  if (!candles?.length || idx < 0) return null;
+  const curDay = Math.floor(Number(candles[idx].ts) / DAY_MS);
+  const { days } = getCompletedDaySeries(candles);
+  // last index with day < curDay (binary search)
+  let lo = 0;
+  let hi = days.length - 1;
+  let last = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (days[mid].day < curDay) {
+      last = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  if (last < 29) return null;
+  const meanRange = (n) => {
+    let s = 0;
+    let c = 0;
+    for (let k = Math.max(0, last - n + 1); k <= last; k++) {
+      if (days[k].close > 0) {
+        s += (days[k].hi - days[k].lo) / days[k].close;
+        c++;
+      }
+    }
+    return c ? s / c : null;
+  };
+  const r14 = meanRange(14);
+  const r100 = meanRange(100);
+  return r14 != null && r100 != null && r100 > 0 ? r14 / r100 : null;
+}
+
+/** Calendar days of candle history LIQ activation needs before the signal window. */
+export const LIQ_INTRADAY_PAD_DAYS = 150;
+
+/**
+ * Warmup pad so range-compression (100d), ADX/regime, PDH/PDL, and session state
+ * are causal from bar one of the backtest window. Without this, short UI windows
+ * (e.g. 2026-01→07) start with null compression and take false-reclaim fades that
+ * research runs with pad correctly stand down.
+ */
+export function liqIntradayPadFromMs(fromMs, _tf = "15m", _cfg = {}) {
+  return Number(fromMs) - LIQ_INTRADAY_PAD_DAYS * 86_400_000;
+}
+
+/** True when cfg is classical LIQ / LIQ research (needs the pad above). */
+export function needsLiqIntradayPad(cfg = {}) {
+  if (cfg.intradayGateLiquidity === true) return true;
+  const playbook = String(cfg.intradayLiqPlaybook ?? "").toUpperCase();
+  if (playbook === "LIQ_CORE" || playbook === "LIQ_ACCEPT" || playbook.startsWith("LIQ")) return true;
+  if (Number(cfg.intradayLiqRangeCompressionMin ?? 0) > 0) return true;
+  if (Number(cfg.intradayLiqMaxAdx ?? 0) > 0) return true;
+  if (cfg.intradayLiqMitigationEntry === true) return true;
+  if (cfg.intradayLiqRequireDisplacementV2 === true) return true;
+  return false;
+}
+
 /**
  * Should classical LIQ scan/run on this bar? (bar-level, side-agnostic)
  * Killzone can apply independently of the full market-state gate (LIQ_CORE).
@@ -76,6 +165,20 @@ export function ensureLiqRegimeSeries(candles, opts = {}) {
 export function passesLiqMarketActivation(candles, idx, pre, opts = {}) {
   const ctx = buildLiqMarketContext(candles, idx, pre, opts);
   if (opts.intradayLiqRequireKillzone === true && !ctx.killzoneOk) return false;
+
+  // Range-compression stand-down: in compressed regimes (14d avg daily range well
+  // below the 100d norm) sweeps lack follow-through fuel → false reclaims dominate
+  // (Phase 4 top root cause). Relative, causal, side-agnostic. 0/unset = off.
+  const compMin = Number(opts.intradayLiqRangeCompressionMin ?? 0);
+  if (compMin > 0) {
+    const ratio = liqRangeCompressionAt(candles, idx);
+    if (ratio != null && ratio < compMin) return false;
+  }
+
+  // Strong-trend stand-down: high ADX → never-green fade SLs concentrate (BUYBD
+  // residual autopsy 2026-07-25). 0/unset = off.
+  const maxAdx = Number(opts.intradayLiqMaxAdx ?? 0);
+  if (maxAdx > 0 && ctx.adx != null && Number(ctx.adx) > maxAdx) return false;
 
   // Guide active-session gate (LIQ-native). Outer srIntradaySession* is skipped on
   // LIQ solo fast path — this is the real hour filter for classical LIQ.
@@ -110,9 +213,16 @@ export function passesLiqMarketActivationForSetup(candles, idx, side, pre, opts 
 
   // Toxic fade abstain: do not fade against an accepted day-break (any pool type).
   // BUY after SSL sweep on a breakdown day = fighting continuation; SELL on breakout same.
-  if (opts.intradayLiqDaySituationBias === true) {
-    if (ctx.daySituation === "breakdown" && side === "BUY") return false;
-    if (ctx.daySituation === "breakout" && side === "SELL") return false;
+  // Mode: true|"both" = both sides; "buy_breakdown" / "sell_breakout" = one-sided (freq restore).
+  const dayBias = opts.intradayLiqDaySituationBias;
+  if (dayBias === true || dayBias === "both" || dayBias === "buy_breakdown" || dayBias === "sell_breakout") {
+    const mode = dayBias === true ? "both" : dayBias;
+    if ((mode === "both" || mode === "buy_breakdown") && ctx.daySituation === "breakdown" && side === "BUY") {
+      return false;
+    }
+    if ((mode === "both" || mode === "sell_breakout") && ctx.daySituation === "breakout" && side === "SELL") {
+      return false;
+    }
   }
 
   // Macro-align fade (VP-style relative rule): abstain counter-macro fades.

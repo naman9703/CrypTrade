@@ -36,6 +36,7 @@ import { pickRawIntradayPanelFromBot, materializeIntradayPanelOnCfg, materialize
 import { fillSmcSoloPresetDefaults, materializeIntradayEngineCfgSync } from "../strategy/presets/srIntradayOptimized.js";
 import { mergeInstanceIntoCfgRaw, ensureBacktestMarketMode, stripInstanceFieldsFromCfgRaw, uiOperationalPatchToInstColumns, applyInstanceOperationalToConfigSnapshot, applyInstanceOperationalToBot, INSTANCE_FIELD_KEYS } from "../lib/strategyInstanceSplit.js";
 import { sanitizeSignalBrainCfgRaw, sanitizeBacktestConfigSnapshot, BACKTEST_SNAPSHOT_META_KEYS } from "../lib/strategySignalBrain.js";
+import { enforceLiqGateCoherence } from "../lib/strategyConfigSlices.js";
 import { resolveSituationRouterCfg } from "../strategy/situationIntraday.js";
 import { resolveCrtTbsCfg } from "../strategy/crtTbsIntraday.js";
 import { resolveTokyoSessionCfg } from "../strategy/tokyoSessionIntraday.js";
@@ -1437,8 +1438,12 @@ function materializeBacktestEngineSnapshot(cfgRaw) {
   } else if (strat === "SUPERTREND_ELITE" || strat === "UNIFIED_ELITE") {
     engine = { ...b, ...preserved };
   } else {
-    engine = materializeIntradayEngineCfgSync(b, materializeIntradayPanelOnCfg);
+    // Repair leaked SMC/ICT gate flags on a LIQ-research config before + after materialize,
+    // so a `_with_live_panel` overlay from a running SMC engine can't turn a LIQ backtest
+    // into an SMC one.
+    engine = materializeIntradayEngineCfgSync(enforceLiqGateCoherence(b), materializeIntradayPanelOnCfg);
     Object.assign(engine, preserved);
+    engine = enforceLiqGateCoherence(engine);
     didIntradayMaterialize = true;
   }
   engine._intradayEngineMaterialized = true;

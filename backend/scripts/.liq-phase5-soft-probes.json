@@ -1,0 +1,461 @@
+{
+  "generatedAt": "2026-07-25T10:10:23.915Z",
+  "split": "2026-03-13T12:00:00.000Z",
+  "baseIs": {
+    "n": 246,
+    "tw": 6.74,
+    "ret": -70.45,
+    "pf": 0.678,
+    "wr": 42.3,
+    "meanR": -0.182
+  },
+  "baseOos": {
+    "n": 83,
+    "tw": 5.31,
+    "ret": -15.3,
+    "pf": 0.504,
+    "wr": 31.3,
+    "meanR": -0.335
+  },
+  "results": [
+    {
+      "id": "baseline",
+      "is": {
+        "n": 246,
+        "tw": 6.74,
+        "ret": -70.45,
+        "pf": 0.678,
+        "wr": 42.3,
+        "meanR": -0.182
+      },
+      "oos": {
+        "n": 83,
+        "tw": 5.31,
+        "ret": -15.3,
+        "pf": 0.504,
+        "wr": 31.3,
+        "meanR": -0.335
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": false
+    },
+    {
+      "id": "drop_impulseAtr<1.0",
+      "is": {
+        "n": 237,
+        "tw": 6.49,
+        "ret": -67.35,
+        "pf": 0.678,
+        "wr": 42.6,
+        "meanR": -0.178
+      },
+      "oos": {
+        "n": 75,
+        "tw": 4.79,
+        "ret": -13.99,
+        "pf": 0.486,
+        "wr": 30.7,
+        "meanR": -0.341
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": false
+    },
+    {
+      "id": "drop_impulseAtr<1.2",
+      "is": {
+        "n": 204,
+        "tw": 5.59,
+        "ret": -45.52,
+        "pf": 0.735,
+        "wr": 44.1,
+        "meanR": -0.148
+      },
+      "oos": {
+        "n": 67,
+        "tw": 4.28,
+        "ret": -11.31,
+        "pf": 0.522,
+        "wr": 31.3,
+        "meanR": -0.292
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": true
+    },
+    {
+      "id": "drop_mom<0.35",
+      "is": {
+        "n": 219,
+        "tw": 6,
+        "ret": -67.53,
+        "pf": 0.654,
+        "wr": 42,
+        "meanR": -0.199
+      },
+      "oos": {
+        "n": 74,
+        "tw": 4.73,
+        "ret": -11.61,
+        "pf": 0.55,
+        "wr": 32.4,
+        "meanR": -0.294
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": true
+    },
+    {
+      "id": "drop_volSpike<1.5",
+      "is": {
+        "n": 173,
+        "tw": 4.74,
+        "ret": -45.03,
+        "pf": 0.691,
+        "wr": 43.9,
+        "meanR": -0.169
+      },
+      "oos": {
+        "n": 54,
+        "tw": 3.45,
+        "ret": -5.01,
+        "pf": 0.685,
+        "wr": 35.2,
+        "meanR": -0.174
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": true
+    },
+    {
+      "id": "drop_exhaust<0.25",
+      "is": {
+        "n": 140,
+        "tw": 3.84,
+        "ret": -61.24,
+        "pf": 0.559,
+        "wr": 37.1,
+        "meanR": -0.266
+      },
+      "oos": {
+        "n": 39,
+        "tw": 2.49,
+        "ret": -3.6,
+        "pf": 0.751,
+        "wr": 38.5,
+        "meanR": -0.155
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": true
+    },
+    {
+      "id": "drop_wickBody<0.4",
+      "is": {
+        "n": 68,
+        "tw": 1.86,
+        "ret": -14.23,
+        "pf": 0.763,
+        "wr": 42.6,
+        "meanR": -0.132
+      },
+      "oos": {
+        "n": 19,
+        "tw": 1.21,
+        "ret": -4.86,
+        "pf": 0.392,
+        "wr": 26.3,
+        "meanR": -0.479
+      },
+      "pass": false,
+      "eg": false,
+      "freq": false,
+      "meanRLift": false
+    },
+    {
+      "id": "drop_distSl<0.8%",
+      "is": {
+        "n": 178,
+        "tw": 4.88,
+        "ret": -39.94,
+        "pf": 0.718,
+        "wr": 44.4,
+        "meanR": -0.154
+      },
+      "oos": {
+        "n": 46,
+        "tw": 2.94,
+        "ret": -2.45,
+        "pf": 0.798,
+        "wr": 37,
+        "meanR": -0.131
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": true
+    },
+    {
+      "id": "drop_distSl<1.0%",
+      "is": {
+        "n": 139,
+        "tw": 3.81,
+        "ret": -6.52,
+        "pf": 0.931,
+        "wr": 48.9,
+        "meanR": -0.038
+      },
+      "oos": {
+        "n": 33,
+        "tw": 2.11,
+        "ret": -1.24,
+        "pf": 0.84,
+        "wr": 36.4,
+        "meanR": -0.109
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": true
+    },
+    {
+      "id": "drop_distSl<1.2%",
+      "is": {
+        "n": 104,
+        "tw": 2.85,
+        "ret": 6.15,
+        "pf": 1.098,
+        "wr": 53.8,
+        "meanR": 0.068
+      },
+      "oos": {
+        "n": 22,
+        "tw": 1.41,
+        "ret": -1.71,
+        "pf": 0.647,
+        "wr": 36.4,
+        "meanR": -0.193
+      },
+      "pass": false,
+      "eg": false,
+      "freq": false,
+      "meanRLift": true
+    },
+    {
+      "id": "drop_BUY|breakdown",
+      "is": {
+        "n": 210,
+        "tw": 5.75,
+        "ret": -62.45,
+        "pf": 0.683,
+        "wr": 41.4,
+        "meanR": -0.191
+      },
+      "oos": {
+        "n": 67,
+        "tw": 4.28,
+        "ret": -12.44,
+        "pf": 0.517,
+        "wr": 34.3,
+        "meanR": -0.333
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": false
+    },
+    {
+      "id": "drop_SELL|breakout",
+      "is": {
+        "n": 196,
+        "tw": 5.37,
+        "ret": -49.79,
+        "pf": 0.702,
+        "wr": 42.9,
+        "meanR": -0.168
+      },
+      "oos": {
+        "n": 60,
+        "tw": 3.84,
+        "ret": -14.97,
+        "pf": 0.383,
+        "wr": 25,
+        "meanR": -0.465
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": false
+    },
+    {
+      "id": "drop_both_toxic",
+      "is": {
+        "n": 160,
+        "tw": 4.38,
+        "ret": -41.79,
+        "pf": 0.712,
+        "wr": 41.9,
+        "meanR": -0.178
+      },
+      "oos": {
+        "n": 44,
+        "tw": 2.81,
+        "ret": -12.1,
+        "pf": 0.368,
+        "wr": 27.3,
+        "meanR": -0.51
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": false
+    },
+    {
+      "id": "drop_against_trend",
+      "is": {
+        "n": 124,
+        "tw": 3.4,
+        "ret": -31.53,
+        "pf": 0.708,
+        "wr": 42.7,
+        "meanR": -0.176
+      },
+      "oos": {
+        "n": 40,
+        "tw": 2.56,
+        "ret": -7.78,
+        "pf": 0.505,
+        "wr": 30,
+        "meanR": -0.335
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": false
+    },
+    {
+      "id": "drop_SQUEEZE",
+      "is": {
+        "n": 235,
+        "tw": 6.44,
+        "ret": -63.54,
+        "pf": 0.694,
+        "wr": 43,
+        "meanR": -0.167
+      },
+      "oos": {
+        "n": 80,
+        "tw": 5.11,
+        "ret": -13.8,
+        "pf": 0.53,
+        "wr": 32.5,
+        "meanR": -0.31
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": true
+    },
+    {
+      "id": "drop_off_session",
+      "is": {
+        "n": 177,
+        "tw": 4.85,
+        "ret": -42.69,
+        "pf": 0.716,
+        "wr": 44.1,
+        "meanR": -0.151
+      },
+      "oos": {
+        "n": 60,
+        "tw": 3.84,
+        "ret": -5.54,
+        "pf": 0.712,
+        "wr": 40,
+        "meanR": -0.124
+      },
+      "pass": false,
+      "eg": false,
+      "freq": true,
+      "meanRLift": true
+    },
+    {
+      "id": "minSl1%+buy_bd",
+      "is": {
+        "n": 112,
+        "tw": 3.07,
+        "ret": -8.7,
+        "pf": 0.896,
+        "wr": 47.3,
+        "meanR": -0.076
+      },
+      "oos": {
+        "n": 23,
+        "tw": 1.47,
+        "ret": 0.65,
+        "pf": 1.134,
+        "wr": 47.8,
+        "meanR": 0.041
+      },
+      "pass": false,
+      "eg": true,
+      "freq": false,
+      "meanRLift": true
+    },
+    {
+      "id": "minSl1.2%+against_trend",
+      "is": {
+        "n": 46,
+        "tw": 1.26,
+        "ret": -0.31,
+        "pf": 0.989,
+        "wr": 52.2,
+        "meanR": 0.025
+      },
+      "oos": {
+        "n": 8,
+        "tw": 0.51,
+        "ret": -1.15,
+        "pf": 0.459,
+        "wr": 25,
+        "meanR": -0.37
+      },
+      "pass": false,
+      "eg": false,
+      "freq": false,
+      "meanRLift": false
+    },
+    {
+      "id": "keep_scoreV2>=70",
+      "is": {
+        "n": 0,
+        "tw": 0,
+        "ret": 0,
+        "pf": 0,
+        "wr": 0,
+        "meanR": null
+      },
+      "oos": {
+        "n": 0,
+        "tw": 0,
+        "ret": 0,
+        "pf": 0,
+        "wr": 0,
+        "meanR": null
+      },
+      "pass": false,
+      "eg": false,
+      "freq": false,
+      "meanRLift": false
+    }
+  ],
+  "passers": [],
+  "verdict": "NO_CAUSAL_PASSER_ON_ENTRY_FEATURES"
+}

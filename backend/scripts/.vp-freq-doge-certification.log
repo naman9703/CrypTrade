@@ -1,0 +1,28 @@
+
+=== DOGE VP FREQ certification — DOGEUSDT 15m 2021-01-01→2026-05-31 ===
+locked preset · risk%=2.5 lev=12x · expanding WF folds=5
+
+candles=195456 funding=6109 first=2020-11-02T00:00:00.000Z last=2026-05-30T23:45:00.000Z
+FULL: trades=58 (0.21/wk) net=328.8% CAGR=29.8% Calmar=1.49 maxDD=20.0% Sharpe=1.02 PF=2.46 WR=47%
+  years: 2020-21=3.9%/4  2021-22=38.1%/19  2022-23=38.1%/15  2023-24=62.8%/9  2024-25=9.5%/5  2025-26=21.4%/6
+  negYears=none
+MC(1% risk): ret p5=26.2% p50=86.9% p95=190.7%  maxDD p95=14.9% ruin=0.0%
+
+WF expanding folds=5 embargo=96bars (~1d)
+  fold 0: 2021-11-26→2022-10-21  trainN=13 testN=13 testRet=18.9% DD=20.0% WR=31%
+  fold 1: 2022-10-21→2023-09-15  trainN=26 testN=14 testRet=19.1% DD=18.4% WR=43%
+  fold 2: 2023-09-16→2024-08-10  trainN=40 testN=7 testRet=42.6% DD=5.4% WR=71%
+  fold 3: 2024-08-10→2025-07-05  trainN=47 testN=5 testRet=9.5% DD=6.9% WR=40%
+  fold 4: 2025-07-05→2026-05-30  trainN=52 testN=6 testRet=21.4% DD=9.1% WR=50%
+
+WF: degradation=31.0% OOSsumRet=111.5% OOStrades=45
+GATES: PASS:oosPositive PASS:mcP5Positive PASS:calmarOver1 PASS:wfDegradationOk
+EXTRA: PASS:oosTradesGe30 FAIL:frequencyDeployable PASS:noCatastrophicYear
+
+COST STRESS (full window):
+  slip_x2      N=58 ret=259.6% DD=21.9%
+  slip_x4      N=58 ret=103.0% DD=27.3%
+  liq_crunch   N=58 ret=-46.6% DD=61.4%
+
+VERDICT: RESEARCH_SLEEVE_LOW_FREQ (gates=pass freq=low)
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-doge-certification.json

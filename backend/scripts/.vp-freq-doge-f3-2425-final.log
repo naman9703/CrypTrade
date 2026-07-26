@@ -1,0 +1,87 @@
+candles=195456 funding=6109
+
+STACK baseline n=76 ret=128.89%
+years 2020-21:5.35%/7 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-15.85%/10 2025-26:16.02%/7
+
+2024-25 residual under STACK: { n: 10, net: -37.15, wr: 10 }
+
+-- cells --
+  BUY|va_rejection|bull_trend|vacuum               n= 2 net=  -14.6 wr=0%
+  SELL|va_rejection|bear_trend|structured          n= 1 net=  -9.06 wr=0%
+  BUY|va_rejection|bear_trend|tight                n= 1 net=  -8.82 wr=0%
+  BUY|va_rejection|bull_chop|vacuum                n= 1 net=   -8.2 wr=0%
+  SELL|va_rejection|bull_trend|vacuum              n= 1 net=  -6.52 wr=0%
+  SELL|va_rejection|weak_bear|vacuum               n= 4 net=  10.05 wr=25%
+
+-- side|macro --
+  BUY|bull_trend                                   n= 2 net=  -14.6 wr=0%
+  SELL|bear_trend                                  n= 1 net=  -9.06 wr=0%
+  BUY|bear_trend                                   n= 1 net=  -8.82 wr=0%
+  BUY|bull_chop                                    n= 1 net=   -8.2 wr=0%
+  SELL|bull_trend                                  n= 1 net=  -6.52 wr=0%
+  SELL|weak_bear                                   n= 4 net=  10.05 wr=25%
+
+Soft drops on 2024-25 / full:
+deny_residual_bear_vac       drop=10 ALL 113.65 | 24-25 -37.15 (n=10) | other 150.8
+deny_residual_bear_any       drop=12 ALL 107.26 | 24-25 -28.09 (n=9) | other 135.36
+deny_BUY_bear_tight          drop=1 ALL 137.72 | 24-25 -28.33 (n=9) | other 166.04
+deny_SELL_bull_trend_vac     drop=10 ALL 145.4 | 24-25 -30.63 (n=9) | other 176.03
+deny_BUY_bull_chop_vac       drop=3 ALL 120.38 | 24-25 -28.95 (n=9) | other 149.32
+deny_BUY_bull_trend_vac      drop=6 ALL 103.12 | 24-25 -22.55 (n=8) | other 125.67
+drop_SELL_p20_le_m15         drop=15 ALL 126.47 | 24-25 -38.14 (n=5) | other 164.61
+drop_SELL_p20_le_m20         drop=12 ALL 108.55 | 24-25 -47.2 (n=6) | other 155.75
+drop_htf_lt_008_sell         drop=33 ALL 20.23 | 24-25 -31.62 (n=4) | other 51.85
+drop_bear_htf_lt_008         drop=2 ALL 110.52 | 24-25 -28.09 (n=9) | other 138.61
+
+══ Hard A/B ══
+run H0_stack
+H0_stack
+  FULL n=76 tw=0.27 ret=128.89 pf=1.42 cal=0.75
+  years 2020-21:5.35%/7 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-15.85%/10 2025-26:16.02%/7
+  RED: 2024-25=-15.85% | all≥0=false
+run deny_bear_vac
+deny_bear_vac
+  FULL n=66 tw=0.23 ret=103.44 pf=1.41 cal=0.63
+  years 2020-21:5.35%/7 2021-22:14.38%/14 2022-23:25.18%/16 2023-24:38.13%/12 2024-25:-15.85%/10 2025-26:16.02%/7
+  RED: 2024-25=-15.85% | all≥0=false
+run deny_bear_any_path
+deny_bear_any_path
+  FULL n=64 tw=0.23 ret=83.18 pf=1.38 cal=0.48
+  years 2020-21:5.35%/7 2021-22:-1.13%/13 2022-23:25.18%/16 2023-24:38.13%/12 2024-25:-12.34%/9 2025-26:16.02%/7
+  RED: 2021-22=-1.13% 2024-25=-12.34% | all≥0=false
+run ext_down_15
+ext_down_15
+  FULL n=61 tw=0.22 ret=121.8 pf=1.53 cal=0.7
+  years 2020-21:5.35%/7 2021-22:17.93%/13 2022-23:29.25%/15 2023-24:42.28%/14 2024-25:-16.33%/5 2025-26:16.02%/7
+  RED: 2024-25=-16.33% | all≥0=false
+run ext_down_20
+ext_down_20
+  FULL n=65 tw=0.23 ret=157.07 pf=1.53 cal=0.75
+  years 2020-21:5.35%/7 2021-22:47.02%/15 2022-23:25.18%/16 2023-24:42.28%/14 2024-25:-19.68%/6 2025-26:16.02%/7
+  RED: 2024-25=-19.68% | all≥0=false
+run bear_htf_008
+bear_htf_008
+  FULL n=75 tw=0.27 ret=138.44 pf=1.45 cal=0.79
+  years 2020-21:5.35%/7 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-12.34%/9 2025-26:16.02%/7
+  RED: 2024-25=-12.34% | all≥0=false
+run deny_BUY_bear_tight
+deny_BUY_bear_tight
+  FULL n=76 tw=0.27 ret=128.89 pf=1.42 cal=0.75
+  years 2020-21:5.35%/7 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-15.85%/10 2025-26:16.02%/7
+  RED: 2024-25=-15.85% | all≥0=false
+run deny_top_bleed_cells
+deny_top_bleed_cells
+  FULL n=51 tw=0.18 ret=76.04 pf=1.45 cal=0.38
+  years 2020-21:1.42%/3 2021-22:-10.36%/10 2022-23:22%/14 2023-24:46.07%/10 2024-25:-6.35%/7 2025-26:16.02%/7
+  RED: 2021-22=-10.36% 2024-25=-6.35% | all≥0=false
+
+══ Ranked ══
+ext_down_20              all≥0=false ret=157.07% 24-25=-19.68 20-21=5.35 21-22=47.02 25-26=16.02
+bear_htf_008             all≥0=false ret=138.44% 24-25=-12.34 20-21=5.35 21-22=21.15 25-26=16.02
+H0_stack                 all≥0=false ret=128.89% 24-25=-15.85 20-21=5.35 21-22=21.15 25-26=16.02
+deny_BUY_bear_tight      all≥0=false ret=128.89% 24-25=-15.85 20-21=5.35 21-22=21.15 25-26=16.02
+ext_down_15              all≥0=false ret=121.8% 24-25=-16.33 20-21=5.35 21-22=17.93 25-26=16.02
+deny_bear_vac            all≥0=false ret=103.44% 24-25=-15.85 20-21=5.35 21-22=14.38 25-26=16.02
+deny_bear_any_path       all≥0=false ret=83.18% 24-25=-12.34 20-21=5.35 21-22=-1.13 25-26=16.02
+deny_top_bleed_cells     all≥0=false ret=76.04% 24-25=-6.35 20-21=1.42 21-22=-10.36 25-26=16.02
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-doge-f3-2425-final.json

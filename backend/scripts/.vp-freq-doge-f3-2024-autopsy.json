@@ -1,0 +1,864 @@
+{
+  "generatedAt": "2026-07-25T18:45:36.090Z",
+  "symbol": "DOGEUSDT",
+  "baseline": {
+    "trades": 103,
+    "tw": 0.36,
+    "ret": 41.92,
+    "calmar": 0.15,
+    "dd": 46.38,
+    "pf": 1.13,
+    "years": {
+      "2020-21": {
+        "n": 14,
+        "start": 100,
+        "net": -8.59,
+        "end": 91.4077234162957,
+        "retPct": -8.59
+      },
+      "2021-22": {
+        "n": 22,
+        "start": 91.4077234162957,
+        "net": 12.4,
+        "end": 103.80697727873137,
+        "retPct": 13.56
+      },
+      "2022-23": {
+        "n": 22,
+        "start": 103.80697727873137,
+        "net": 24.6,
+        "end": 128.41056327034056,
+        "retPct": 23.7
+      },
+      "2023-24": {
+        "n": 17,
+        "start": 128.41056327034056,
+        "net": 36.23,
+        "end": 164.64017518984315,
+        "retPct": 28.21
+      },
+      "2024-25": {
+        "n": 19,
+        "start": 164.64017518984315,
+        "net": -61.69,
+        "end": 102.95242009792905,
+        "retPct": -37.47
+      },
+      "2025-26": {
+        "n": 9,
+        "start": 102.95242009792905,
+        "net": 38.97,
+        "end": 141.9242701888241,
+        "retPct": 37.85
+      }
+    }
+  },
+  "badYear": "2024-25",
+  "badSummary": {
+    "n": 19,
+    "net": -61.69,
+    "wr": 10.5,
+    "avg": -3.25
+  },
+  "goodSummary": {
+    "n": 70,
+    "net": 112.2,
+    "wr": 35.7,
+    "avg": 1.6
+  },
+  "badCells": [
+    {
+      "k": "SELL|va_rejection|bear_trend|vacuum",
+      "n": 6,
+      "net": -38.26,
+      "wr": 0,
+      "avg": -6.38
+    },
+    {
+      "k": "SELL|va_rejection|bear_trend|structured",
+      "n": 3,
+      "net": -14.45,
+      "wr": 0,
+      "avg": -4.82
+    },
+    {
+      "k": "BUY|va_rejection|bull_chop|vacuum",
+      "n": 1,
+      "net": -5.47,
+      "wr": 0,
+      "avg": -5.47
+    },
+    {
+      "k": "BUY|va_rejection|bear_trend|tight",
+      "n": 1,
+      "net": -5.3,
+      "wr": 0,
+      "avg": -5.3
+    },
+    {
+      "k": "SELL|va_rejection|bull_trend|vacuum",
+      "n": 1,
+      "net": -3.92,
+      "wr": 0,
+      "avg": -3.92
+    },
+    {
+      "k": "BUY|va_rejection|bull_trend|vacuum",
+      "n": 3,
+      "net": -0.33,
+      "wr": 33.3,
+      "avg": -0.11
+    },
+    {
+      "k": "SELL|va_rejection|weak_bear|vacuum",
+      "n": 4,
+      "net": 6.04,
+      "wr": 25,
+      "avg": 1.51
+    }
+  ],
+  "softRows": [
+    {
+      "id": "drop_bad_year_worst_cell",
+      "full": {
+        "dropped": 23,
+        "n": 80,
+        "net": 76.41,
+        "wr": 32.5,
+        "avg": 0.96
+      },
+      "badOnly": {
+        "dropped": 6,
+        "n": 13,
+        "net": -23.43,
+        "wr": 15.4,
+        "avg": -1.8
+      },
+      "goodOnly": {
+        "dropped": 17,
+        "n": 53,
+        "net": 108.43,
+        "wr": 37.7,
+        "avg": 2.05
+      }
+    },
+    {
+      "id": "drop_SELL_vacuum",
+      "full": {
+        "dropped": 49,
+        "n": 54,
+        "net": 34.04,
+        "wr": 31.5,
+        "avg": 0.63
+      },
+      "badOnly": {
+        "dropped": 11,
+        "n": 8,
+        "net": -25.55,
+        "wr": 12.5,
+        "avg": -3.19
+      },
+      "goodOnly": {
+        "dropped": 34,
+        "n": 36,
+        "net": 71.89,
+        "wr": 38.9,
+        "avg": 2
+      }
+    },
+    {
+      "id": "drop_BUY_vacuum",
+      "full": {
+        "dropped": 16,
+        "n": 87,
+        "net": 9.2,
+        "wr": 28.7,
+        "avg": 0.11
+      },
+      "badOnly": {
+        "dropped": 4,
+        "n": 15,
+        "net": -55.88,
+        "wr": 6.7,
+        "avg": -3.73
+      },
+      "goodOnly": {
+        "dropped": 7,
+        "n": 63,
+        "net": 68.36,
+        "wr": 33.3,
+        "avg": 1.09
+      }
+    },
+    {
+      "id": "drop_weak_bear",
+      "full": {
+        "dropped": 12,
+        "n": 91,
+        "net": -16.55,
+        "wr": 29.7,
+        "avg": -0.18
+      },
+      "badOnly": {
+        "dropped": 4,
+        "n": 15,
+        "net": -67.73,
+        "wr": 6.7,
+        "avg": -4.52
+      },
+      "goodOnly": {
+        "dropped": 8,
+        "n": 62,
+        "net": 59.77,
+        "wr": 35.5,
+        "avg": 0.96
+      }
+    },
+    {
+      "id": "drop_bull_chop",
+      "full": {
+        "dropped": 28,
+        "n": 75,
+        "net": 34.18,
+        "wr": 28,
+        "avg": 0.46
+      },
+      "badOnly": {
+        "dropped": 1,
+        "n": 18,
+        "net": -56.22,
+        "wr": 11.1,
+        "avg": -3.12
+      },
+      "goodOnly": {
+        "dropped": 27,
+        "n": 43,
+        "net": 98.99,
+        "wr": 34.9,
+        "avg": 2.3
+      }
+    },
+    {
+      "id": "drop_bear_trend",
+      "full": {
+        "dropped": 29,
+        "n": 74,
+        "net": 68.44,
+        "wr": 32.4,
+        "avg": 0.92
+      },
+      "badOnly": {
+        "dropped": 10,
+        "n": 9,
+        "net": -3.68,
+        "wr": 22.2,
+        "avg": -0.41
+      },
+      "goodOnly": {
+        "dropped": 19,
+        "n": 51,
+        "net": 80.72,
+        "wr": 35.3,
+        "avg": 1.58
+      }
+    },
+    {
+      "id": "drop_SELL_prior5d_gt5",
+      "full": {
+        "dropped": 10,
+        "n": 93,
+        "net": 54.56,
+        "wr": 31.2,
+        "avg": 0.59
+      },
+      "badOnly": {
+        "dropped": 2,
+        "n": 17,
+        "net": -44.4,
+        "wr": 11.8,
+        "avg": -2.61
+      },
+      "goodOnly": {
+        "dropped": 8,
+        "n": 62,
+        "net": 107.55,
+        "wr": 37.1,
+        "avg": 1.73
+      }
+    },
+    {
+      "id": "drop_BUY_prior5d_gt8",
+      "full": {
+        "dropped": 11,
+        "n": 92,
+        "net": -2.7,
+        "wr": 28.3,
+        "avg": -0.03
+      },
+      "badOnly": {
+        "dropped": 1,
+        "n": 18,
+        "net": -68.97,
+        "wr": 5.6,
+        "avg": -3.83
+      },
+      "goodOnly": {
+        "dropped": 6,
+        "n": 64,
+        "net": 72.23,
+        "wr": 34.4,
+        "avg": 1.13
+      }
+    },
+    {
+      "id": "drop_SELL_prior20d_le_m5",
+      "full": {
+        "dropped": 36,
+        "n": 67,
+        "net": 20.54,
+        "wr": 32.8,
+        "avg": 0.31
+      },
+      "badOnly": {
+        "dropped": 12,
+        "n": 7,
+        "net": -20.09,
+        "wr": 14.3,
+        "avg": -2.87
+      },
+      "goodOnly": {
+        "dropped": 24,
+        "n": 46,
+        "net": 49.23,
+        "wr": 37,
+        "avg": 1.07
+      }
+    },
+    {
+      "id": "drop_path_vacuum",
+      "full": {
+        "dropped": 65,
+        "n": 38,
+        "net": 1.31,
+        "wr": 28.9,
+        "avg": 0.03
+      },
+      "badOnly": {
+        "dropped": 15,
+        "n": 4,
+        "net": -19.75,
+        "wr": 0,
+        "avg": -4.94
+      },
+      "goodOnly": {
+        "dropped": 41,
+        "n": 29,
+        "net": 28.04,
+        "wr": 34.5,
+        "avg": 0.97
+      }
+    },
+    {
+      "id": "drop_SELL_ext_down_rej",
+      "full": {
+        "dropped": 36,
+        "n": 67,
+        "net": 20.54,
+        "wr": 32.8,
+        "avg": 0.31
+      },
+      "badOnly": {
+        "dropped": 12,
+        "n": 7,
+        "net": -20.09,
+        "wr": 14.3,
+        "avg": -2.87
+      },
+      "goodOnly": {
+        "dropped": 24,
+        "n": 46,
+        "net": 49.23,
+        "wr": 37,
+        "avg": 1.07
+      }
+    }
+  ],
+  "denyCells": [
+    "SELL|va_rejection|bear_trend|vacuum"
+  ],
+  "ab": [
+    {
+      "id": "H0_baseline",
+      "over": {},
+      "trades": 103,
+      "tw": 0.36,
+      "ret": 41.92,
+      "calmar": 0.15,
+      "dd": 46.38,
+      "pf": 1.13,
+      "years": {
+        "2020-21": {
+          "n": 14,
+          "start": 100,
+          "net": -8.59,
+          "end": 91.4077234162957,
+          "retPct": -8.59
+        },
+        "2021-22": {
+          "n": 22,
+          "start": 91.4077234162957,
+          "net": 12.4,
+          "end": 103.80697727873137,
+          "retPct": 13.56
+        },
+        "2022-23": {
+          "n": 22,
+          "start": 103.80697727873137,
+          "net": 24.6,
+          "end": 128.41056327034056,
+          "retPct": 23.7
+        },
+        "2023-24": {
+          "n": 17,
+          "start": 128.41056327034056,
+          "net": 36.23,
+          "end": 164.64017518984315,
+          "retPct": 28.21
+        },
+        "2024-25": {
+          "n": 19,
+          "start": 164.64017518984315,
+          "net": -61.69,
+          "end": 102.95242009792905,
+          "retPct": -37.47
+        },
+        "2025-26": {
+          "n": 9,
+          "start": 102.95242009792905,
+          "net": 38.97,
+          "end": 141.9242701888241,
+          "retPct": 37.85
+        }
+      }
+    },
+    {
+      "id": "H1_rej_sell_block_ext_down",
+      "over": {
+        "vpRejectionSellBlockExtendedDown": true,
+        "vpRejectionExtendedPriorPct": 0.05
+      },
+      "trades": 67,
+      "tw": 0.24,
+      "ret": 11.72,
+      "calmar": 0.06,
+      "dd": 33.43,
+      "pf": 1.07,
+      "years": {
+        "2020-21": {
+          "n": 14,
+          "start": 100,
+          "net": -8.59,
+          "end": 91.4077234162957,
+          "retPct": -8.59
+        },
+        "2021-22": {
+          "n": 11,
+          "start": 91.4077234162957,
+          "net": -17.35,
+          "end": 74.06215783001836,
+          "retPct": -18.98
+        },
+        "2022-23": {
+          "n": 14,
+          "start": 74.06215783001836,
+          "net": 34.65,
+          "end": 108.71703969712676,
+          "retPct": 46.79
+        },
+        "2023-24": {
+          "n": 14,
+          "start": 108.71703969712676,
+          "net": 4.42,
+          "end": 113.13799668468596,
+          "retPct": 4.07
+        },
+        "2024-25": {
+          "n": 7,
+          "start": 113.13799668468596,
+          "net": -16.84,
+          "end": 96.29970438154899,
+          "retPct": -14.88
+        },
+        "2025-26": {
+          "n": 7,
+          "start": 96.29970438154899,
+          "net": 15.42,
+          "end": 111.72424663632015,
+          "retPct": 16.02
+        }
+      }
+    },
+    {
+      "id": "H2_buy_rej_block_bull_trend",
+      "over": {
+        "vpBuyRejectionBlockBullTrend": true
+      },
+      "trades": 79,
+      "tw": 0.28,
+      "ret": 36.38,
+      "calmar": 0.14,
+      "dd": 44.47,
+      "pf": 1.15,
+      "years": {
+        "2020-21": {
+          "n": 4,
+          "start": 100,
+          "net": 3.87,
+          "end": 103.87307430135358,
+          "retPct": 3.87
+        },
+        "2021-22": {
+          "n": 20,
+          "start": 103.87307430135358,
+          "net": 21.97,
+          "end": 125.84403586195666,
+          "retPct": 21.15
+        },
+        "2022-23": {
+          "n": 18,
+          "start": 125.84403586195666,
+          "net": -12.59,
+          "end": 113.25308357125834,
+          "retPct": -10.01
+        },
+        "2023-24": {
+          "n": 15,
+          "start": 113.25308357125834,
+          "net": 23.85,
+          "end": 137.1042145999996,
+          "retPct": 21.06
+        },
+        "2024-25": {
+          "n": 16,
+          "start": 137.1042145999996,
+          "net": -50.17,
+          "end": 86.93829822167918,
+          "retPct": -36.59
+        },
+        "2025-26": {
+          "n": 6,
+          "start": 86.93829822167918,
+          "net": 49.44,
+          "end": 136.37806852552652,
+          "retPct": 56.87
+        }
+      }
+    },
+    {
+      "id": "H3_buy_rej_block_unprepared",
+      "over": {
+        "vpBuyRejectionBlockUnpreparedMacro": true
+      },
+      "trades": 79,
+      "tw": 0.28,
+      "ret": 36.38,
+      "calmar": 0.14,
+      "dd": 44.47,
+      "pf": 1.15,
+      "years": {
+        "2020-21": {
+          "n": 4,
+          "start": 100,
+          "net": 3.87,
+          "end": 103.87307430135358,
+          "retPct": 3.87
+        },
+        "2021-22": {
+          "n": 20,
+          "start": 103.87307430135358,
+          "net": 21.97,
+          "end": 125.84403586195666,
+          "retPct": 21.15
+        },
+        "2022-23": {
+          "n": 18,
+          "start": 125.84403586195666,
+          "net": -12.59,
+          "end": 113.25308357125834,
+          "retPct": -10.01
+        },
+        "2023-24": {
+          "n": 15,
+          "start": 113.25308357125834,
+          "net": 23.85,
+          "end": 137.1042145999996,
+          "retPct": 21.06
+        },
+        "2024-25": {
+          "n": 16,
+          "start": 137.1042145999996,
+          "net": -50.17,
+          "end": 86.93829822167918,
+          "retPct": -36.59
+        },
+        "2025-26": {
+          "n": 6,
+          "start": 86.93829822167918,
+          "net": 49.44,
+          "end": 136.37806852552652,
+          "retPct": 56.87
+        }
+      }
+    },
+    {
+      "id": "H4_sell_macro_adapt",
+      "over": {
+        "vpSellMacroAdapt": true,
+        "vpSellMinHtfSepPct": 0.0025,
+        "vpSellMacroBullMinHtfSepPct": 0.005,
+        "vpSellMacroPrior20dBullPct": 0.02
+      },
+      "trades": 77,
+      "tw": 0.27,
+      "ret": 62.06,
+      "calmar": 0.29,
+      "dd": 33.82,
+      "pf": 1.28,
+      "years": {
+        "2020-21": {
+          "n": 14,
+          "start": 100,
+          "net": -8.59,
+          "end": 91.4077234162957,
+          "retPct": -8.59
+        },
+        "2021-22": {
+          "n": 17,
+          "start": 91.4077234162957,
+          "net": -7.79,
+          "end": 83.61536539434042,
+          "retPct": -8.52
+        },
+        "2022-23": {
+          "n": 15,
+          "start": 83.61536539434042,
+          "net": 37.12,
+          "end": 120.73745719251065,
+          "retPct": 44.4
+        },
+        "2023-24": {
+          "n": 10,
+          "start": 120.73745719251065,
+          "net": 39.54,
+          "end": 160.27947716540763,
+          "retPct": 32.75
+        },
+        "2024-25": {
+          "n": 14,
+          "start": 160.27947716540763,
+          "net": -40,
+          "end": 120.2803852773702,
+          "retPct": -24.96
+        },
+        "2025-26": {
+          "n": 7,
+          "start": 120.2803852773702,
+          "net": 41.78,
+          "end": 162.0637443043359,
+          "retPct": 34.74
+        }
+      }
+    },
+    {
+      "id": "H5_wick_floor_040",
+      "over": {
+        "vpRejectionMinWickRatio": 0.4
+      },
+      "trades": 69,
+      "tw": 0.24,
+      "ret": -10.24,
+      "calmar": -0.05,
+      "dd": 39.86,
+      "pf": 0.93,
+      "years": {
+        "2020-21": {
+          "n": 9,
+          "start": 100,
+          "net": -12.47,
+          "end": 87.52926683738377,
+          "retPct": -12.47
+        },
+        "2021-22": {
+          "n": 15,
+          "start": 87.52926683738377,
+          "net": -20.36,
+          "end": 67.17154532663015,
+          "retPct": -23.26
+        },
+        "2022-23": {
+          "n": 13,
+          "start": 67.17154532663015,
+          "net": 10.09,
+          "end": 77.25888723591527,
+          "retPct": 15.02
+        },
+        "2023-24": {
+          "n": 12,
+          "start": 77.25888723591527,
+          "net": 8.14,
+          "end": 85.39510673358023,
+          "retPct": 10.53
+        },
+        "2024-25": {
+          "n": 14,
+          "start": 85.39510673358023,
+          "net": -8.55,
+          "end": 76.84709125704696,
+          "retPct": -10.01
+        },
+        "2025-26": {
+          "n": 6,
+          "start": 76.84709125704696,
+          "net": 12.91,
+          "end": 89.76077118483387,
+          "retPct": 16.8
+        }
+      }
+    },
+    {
+      "id": "deny_SELL_va_rejection_bear_trend_vacuum",
+      "over": {
+        "vpPreparedRegimeOnly": true,
+        "vpPreparedBlockVacuumVah": false,
+        "vpPreparedBlockVacuumValBear": false,
+        "vpPreparedBlockCellKeys": [
+          "SELL|va_rejection|bear_trend|vacuum"
+        ]
+      },
+      "trades": 79,
+      "tw": 0.28,
+      "ret": 56.15,
+      "calmar": 0.28,
+      "dd": 31.44,
+      "pf": 1.23,
+      "years": {
+        "2020-21": {
+          "n": 14,
+          "start": 100,
+          "net": -8.59,
+          "end": 91.4077234162957,
+          "retPct": -8.59
+        },
+        "2021-22": {
+          "n": 16,
+          "start": 91.4077234162957,
+          "net": 6.6,
+          "end": 98.0075634879667,
+          "retPct": 7.22
+        },
+        "2022-23": {
+          "n": 16,
+          "start": 98.0075634879667,
+          "net": 24.68,
+          "end": 122.68753799749533,
+          "retPct": 25.18
+        },
+        "2023-24": {
+          "n": 13,
+          "start": 122.68753799749533,
+          "net": 41.49,
+          "end": 164.18041210797983,
+          "retPct": 33.82
+        },
+        "2024-25": {
+          "n": 13,
+          "start": 164.18041210797983,
+          "net": -29.59,
+          "end": 134.59296493728414,
+          "retPct": -18.02
+        },
+        "2025-26": {
+          "n": 7,
+          "start": 134.59296493728414,
+          "net": 21.56,
+          "end": 156.15102566242007,
+          "retPct": 16.02
+        }
+      }
+    }
+  ],
+  "scorecard": [
+    {
+      "id": "H4_sell_macro_adapt",
+      "improvedBad": true,
+      "goodKeep": false,
+      "fullOk": true,
+      "freqOk": true,
+      "accept": false,
+      "badY": -24.96,
+      "h0Bad": -37.47,
+      "ret": 62.06,
+      "tw": 0.27
+    },
+    {
+      "id": "deny_SELL_va_rejection_bear_trend_vacuum",
+      "improvedBad": true,
+      "goodKeep": false,
+      "fullOk": true,
+      "freqOk": true,
+      "accept": false,
+      "badY": -18.02,
+      "h0Bad": -37.47,
+      "ret": 56.15,
+      "tw": 0.28
+    },
+    {
+      "id": "H2_buy_rej_block_bull_trend",
+      "improvedBad": false,
+      "goodKeep": false,
+      "fullOk": false,
+      "freqOk": true,
+      "accept": false,
+      "badY": -36.59,
+      "h0Bad": -37.47,
+      "ret": 36.38,
+      "tw": 0.28
+    },
+    {
+      "id": "H3_buy_rej_block_unprepared",
+      "improvedBad": false,
+      "goodKeep": false,
+      "fullOk": false,
+      "freqOk": true,
+      "accept": false,
+      "badY": -36.59,
+      "h0Bad": -37.47,
+      "ret": 36.38,
+      "tw": 0.28
+    },
+    {
+      "id": "H1_rej_sell_block_ext_down",
+      "improvedBad": true,
+      "goodKeep": false,
+      "fullOk": false,
+      "freqOk": false,
+      "accept": false,
+      "badY": -14.88,
+      "h0Bad": -37.47,
+      "ret": 11.72,
+      "tw": 0.24
+    },
+    {
+      "id": "H5_wick_floor_040",
+      "improvedBad": true,
+      "goodKeep": false,
+      "fullOk": false,
+      "freqOk": false,
+      "accept": false,
+      "badY": -10.01,
+      "h0Bad": -37.47,
+      "ret": -10.24,
+      "tw": 0.24
+    }
+  ]
+}

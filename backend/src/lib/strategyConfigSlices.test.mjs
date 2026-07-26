@@ -130,3 +130,45 @@ test("materializeStrategyCfgRawForSave preserves explicit ETH LIQ overrides", as
   assert.equal(raw.bot.intradayLiqMinRr, 2);
   assert.equal(raw.bot.intradayLiqMaxHoldBars, 36);
 });
+
+test("materializeStrategyCfgRawForSave repairs leaked SMC gate on a one-sided LIQ config", async () => {
+  const { materializeStrategyCfgRawForSave } = await import("./strategyConfigSlices.js");
+  // UI race: LIQ preset tuning applied, but the live SMC gate flags leaked through.
+  const raw = await materializeStrategyCfgRawForSave({
+    v: 1,
+    bot: {
+      manualStrategy: "SR_INTRADAY",
+      symbol: "BNBUSDT",
+      timeframe: "15m",
+      intradayLiqPlaybook: "LIQ_CORE",
+      intradayLiqDaySituationBias: "buy_breakdown",
+      intradayLiqMitigationEntry: true,
+      intradayLiqRequireDisplacementV2: true,
+      intradayGateLiquidity: false,
+      intradayGateSmcIct: true,
+      intradaySmcIctMode: true,
+    },
+  });
+  assert.equal(raw.bot.intradayGateLiquidity, true);
+  assert.equal(raw.bot.intradayGateSmcIct, false);
+  assert.equal(raw.bot.intradaySmcIctMode, false);
+  assert.equal(raw.bot.intradayLiqDaySituationBias, "buy_breakdown");
+});
+
+test("materializeStrategyCfgRawForSave leaves a genuine SMC/ICT config untouched", async () => {
+  const { materializeStrategyCfgRawForSave } = await import("./strategyConfigSlices.js");
+  const raw = await materializeStrategyCfgRawForSave({
+    v: 1,
+    bot: {
+      manualStrategy: "SR_INTRADAY",
+      symbol: "BNBUSDT",
+      timeframe: "15m",
+      intradayGateLiquidity: false,
+      intradayGateSmcIct: true,
+      intradaySmcIctMode: true,
+      intradaySmcMinScore: 6,
+    },
+  });
+  assert.equal(raw.bot.intradayGateSmcIct, true);
+  assert.equal(raw.bot.intradayGateLiquidity, false);
+});

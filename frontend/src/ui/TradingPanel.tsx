@@ -63,6 +63,10 @@ import {
   INTRADAY_PRO_LIQ_CORE_PORTFOLIO_15M,
   INTRADAY_PRO_LIQ_CORE_SIGNATURE_KEYS,
   INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M,
+  INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_15M,
+  INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_H020_15M,
+  INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M,
+  INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_SELLBO_15M,
   INTRADAY_PRO_LIQ_PORTFOLIO_15M,
   INTRADAY_PRO_LIQ_DAILY_15M,
   INTRADAY_PRO_LIQ_ETH_15M,
@@ -93,6 +97,7 @@ import {
   VOLUME_PROFILE_FREQ_BTC_15M,
   VOLUME_PROFILE_FREQ_SOL_15M,
   VOLUME_PROFILE_FREQ_AVAX_15M,
+  VOLUME_PROFILE_FREQ_DOGE_15M,
   VOLUME_PROFILE_FREQ_PORTFOLIO_15M,
   VOLUME_PROFILE_BTC_15M,
   VOLUME_PROFILE_5M,
@@ -156,7 +161,7 @@ function TrendHtfStPresetButton({
             ? "rounded border-2 border-sky-500 bg-sky-100 dark:bg-sky-900/50 px-2 py-0.5 text-[10px] font-bold hover:bg-sky-200 dark:hover:bg-sky-800/60"
             : "rounded border border-sky-400 dark:border-sky-600 bg-white/80 dark:bg-sky-950/50 px-2 py-0.5 text-[10px] font-semibold hover:bg-sky-100 dark:hover:bg-sky-900/50"
       }
-      title={isActive ? "Applied — Save strategy to persist for backtest" : undefined}
+      title={isActive ? "Applied — click Save strategy, then run backtest" : undefined}
       onClick={() => {
         void applyPatch(patch)
           .then(() =>
@@ -164,7 +169,7 @@ function TrendHtfStPresetButton({
               level: "info",
               msg: isActive
                 ? `Re-applied: ${label}`
-                : `Applied: ${label} — Save strategy to persist for backtest`,
+                : `Applied: ${label} — click amber Save strategy, then backtest (unsaved draft is ignored)`,
             }),
           )
           .catch((e: unknown) => {
@@ -2512,6 +2517,75 @@ export function TradingPanel() {
                 "intradayLiqSweepMinVolRatio",
               ]}
             />
+            <TrendHtfStPresetButton
+              label="BNB LIQ prepared-mit (research ~1.5/wk)"
+              patch={INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_15M}
+              pushLog={pushLog}
+              applyPatch={saveGatedBotConfig}
+              matchBot={bot}
+              signatureKeys={[
+                "intradayLiqRequireDisplacementV2",
+                "intradayLiqMinSlPct",
+                "intradayLiqMitigationEntry",
+                "intradayLiqMitigationFrac",
+                "intradayLiqDaySituationBias",
+              ]}
+            />
+            <TrendHtfStPresetButton
+              label="BNB LIQ prepared-mit H020 (return-max research)"
+              patch={INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_H020_15M}
+              pushLog={pushLog}
+              applyPatch={saveGatedBotConfig}
+              matchBot={bot}
+              signatureKeys={[
+                "intradayLiqRequireDisplacementV2",
+                "intradayLiqMinSlPct",
+                "intradayLiqMitigationEntry",
+                "intradayLiqMitigationFrac",
+                "intradayLiqActiveHourStart",
+                "intradayLiqActiveHourEnd",
+                "intradayLiqDaySituationBias",
+              ]}
+            />
+            <TrendHtfStPresetButton
+              label="★ BNB LIQ buyBD mit030 (freq≥2 research)"
+              highlight
+              patch={INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M}
+              pushLog={pushLog}
+              applyPatch={saveGatedBotConfig}
+              matchBot={bot}
+              signatureKeys={[
+                "intradayLiqRequireDisplacementV2",
+                "intradayLiqMinSlPct",
+                "intradayLiqMitigationEntry",
+                "intradayLiqMitigationFrac",
+                "intradayLiqActiveHourStart",
+                "intradayLiqActiveHourEnd",
+                "intradayLiqDaySituationBias",
+                "intradayLiqSweepDisplacementMinAtrMult",
+                "intradayLiqRangeCompressionMin",
+                "intradayLiqMaxAdx",
+              ]}
+            />
+            <TrendHtfStPresetButton
+              label="BNB LIQ sellBO disp11 (return-max research)"
+              patch={INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_SELLBO_15M}
+              pushLog={pushLog}
+              applyPatch={saveGatedBotConfig}
+              matchBot={bot}
+              signatureKeys={[
+                "intradayLiqRequireDisplacementV2",
+                "intradayLiqMinSlPct",
+                "intradayLiqMitigationEntry",
+                "intradayLiqMitigationFrac",
+                "intradayLiqActiveHourStart",
+                "intradayLiqActiveHourEnd",
+                "intradayLiqDaySituationBias",
+                "intradayLiqSweepDisplacementMinAtrMult",
+                "intradayLiqRangeCompressionMin",
+                "intradayLiqMaxAdx",
+              ]}
+            />
             <TrendHtfStPresetButton label="BNB 15m LIQ Solo (legacy)" patch={INTRADAY_PRO_LIQ_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             <TrendHtfStPresetButton
               label="BNB+BTC LIQ Portfolio (legacy)"
@@ -2637,6 +2711,7 @@ export function TradingPanel() {
               <TrendHtfStPresetButton label="★ BNB FREQ (VAL lock)" highlight patch={VOLUME_PROFILE_FREQ_BNB_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="★ SOL FREQ (VAL+rej wick40)" highlight patch={VOLUME_PROFILE_FREQ_SOL_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="★ AVAX FREQ (VAL+rej cells)" highlight patch={VOLUME_PROFILE_FREQ_AVAX_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+              <TrendHtfStPresetButton label="★ DOGE FREQ (low-freq sleeve)" highlight patch={VOLUME_PROFILE_FREQ_DOGE_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="BTC FREQ (shorts)" patch={VOLUME_PROFILE_FREQ_BTC_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="FREQ portfolio (ETH+BNB+BTC)" patch={VOLUME_PROFILE_FREQ_PORTFOLIO_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             </div>

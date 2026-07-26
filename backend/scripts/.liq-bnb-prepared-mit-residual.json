@@ -1,0 +1,2613 @@
+{
+  "generatedAt": "2026-07-24T20:06:53.552Z",
+  "sleeveBaseline": {
+    "y1": {
+      "n": 69,
+      "tw": 1.32,
+      "ret": 14.1,
+      "pf": 1.149,
+      "wr": 49.3,
+      "dd": 16.46
+    },
+    "hold": {
+      "n": 92,
+      "tw": 1.76,
+      "ret": 3.8,
+      "pf": 1.031,
+      "wr": 47.8,
+      "dd": 17.12
+    }
+  },
+  "hiFreqBaseline": {
+    "y1": {
+      "n": 122,
+      "tw": 2.34,
+      "ret": 2.53,
+      "pf": 1.015,
+      "wr": 47.5,
+      "dd": 27.03
+    },
+    "hold": {
+      "n": 144,
+      "tw": 2.76,
+      "ret": -9.33,
+      "pf": 0.942,
+      "wr": 47.2,
+      "dd": 20.95
+    }
+  },
+  "sleeveClusters": {
+    "byExit": [
+      {
+        "k": "sl",
+        "n": 62,
+        "pnl": -189.63,
+        "avg": -3.0585,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "time_stop",
+        "n": 21,
+        "pnl": -26.61,
+        "avg": -1.2674,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "bySideDay": [
+      {
+        "k": "BUY|breakout",
+        "n": 5,
+        "pnl": -15.29,
+        "avg": -3.058,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "BUY|range",
+        "n": 44,
+        "pnl": -115.64,
+        "avg": -2.6282,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "SELL|range",
+        "n": 27,
+        "pnl": -68.65,
+        "avg": -2.5425,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "SELL|breakdown",
+        "n": 7,
+        "pnl": -16.66,
+        "avg": -2.3801,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "bySession": [
+      {
+        "k": "asia_accum",
+        "n": 27,
+        "pnl": -72.32,
+        "avg": -2.6784,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "off_hours",
+        "n": 11,
+        "pnl": -28.91,
+        "avg": -2.6278,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "ny_continuation",
+        "n": 34,
+        "pnl": -86.96,
+        "avg": -2.5577,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "london_sweep",
+        "n": 11,
+        "pnl": -28.06,
+        "avg": -2.5508,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byLevel": [
+      {
+        "k": "pdl",
+        "n": 30,
+        "pnl": -82.01,
+        "avg": -2.7338,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "session_high",
+        "n": 17,
+        "pnl": -44.15,
+        "avg": -2.5973,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "session_low",
+        "n": 19,
+        "pnl": -48.92,
+        "avg": -2.5748,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "pdh",
+        "n": 17,
+        "pnl": -41.15,
+        "avg": -2.4209,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byHourBand": [
+      {
+        "k": "other",
+        "n": 10,
+        "pnl": -27.93,
+        "avg": -2.7926,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "lateNy",
+        "n": 16,
+        "pnl": -42.27,
+        "avg": -2.6421,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "asia",
+        "n": 28,
+        "pnl": -73.3,
+        "avg": -2.6177,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "kz",
+        "n": 29,
+        "pnl": -72.75,
+        "avg": -2.5085,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byChase": [
+      {
+        "k": "chase",
+        "n": 6,
+        "pnl": -15.7,
+        "avg": -2.6172,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "ok",
+        "n": 77,
+        "pnl": -200.54,
+        "avg": -2.6044,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byVol": [
+      {
+        "k": "vol12",
+        "n": 4,
+        "pnl": -11.43,
+        "avg": -2.8571,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "volLo",
+        "n": 9,
+        "pnl": -23.34,
+        "avg": -2.5936,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "vol15+",
+        "n": 70,
+        "pnl": -181.47,
+        "avg": -2.5924,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byMicro": [
+      {
+        "k": "microMfeSl",
+        "n": 30,
+        "pnl": -92.38,
+        "avg": -3.0794,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "other",
+        "n": 53,
+        "pnl": -123.86,
+        "avg": -2.337,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byBody": [
+      {
+        "k": "bodyLo",
+        "n": 47,
+        "pnl": -126.67,
+        "avg": -2.6951,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "bodyHi",
+        "n": 36,
+        "pnl": -89.57,
+        "avg": -2.4882,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "bySpent": [
+      {
+        "k": "room",
+        "n": 69,
+        "pnl": -181.08,
+        "avg": -2.6243,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "spent",
+        "n": 14,
+        "pnl": -35.16,
+        "avg": -2.5115,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byImpulse": [
+      {
+        "k": "imp12",
+        "n": 17,
+        "pnl": -50.13,
+        "avg": -2.9487,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "imp18+",
+        "n": 50,
+        "pnl": -129.04,
+        "avg": -2.5809,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "imp15",
+        "n": 16,
+        "pnl": -37.07,
+        "avg": -2.317,
+        "pf": 0,
+        "wr": 0
+      }
+    ]
+  },
+  "hfClusters": {
+    "bySideDay": [
+      {
+        "k": "BUY|range",
+        "n": 18,
+        "pnl": -40.03,
+        "avg": -2.2237,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "SELL|breakdown",
+        "n": 4,
+        "pnl": -8.61,
+        "avg": -2.1519,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "SELL|breakout",
+        "n": 19,
+        "pnl": -40.4,
+        "avg": -2.1262,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "SELL|range",
+        "n": 17,
+        "pnl": -35.61,
+        "avg": -2.0946,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "BUY|breakdown",
+        "n": 18,
+        "pnl": -34.97,
+        "avg": -1.9427,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byToxic": [
+      {
+        "k": "ok",
+        "n": 39,
+        "pnl": -84.24,
+        "avg": -2.1601,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "toxic",
+        "n": 37,
+        "pnl": -75.37,
+        "avg": -2.0369,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "bySoftToxic": [
+      {
+        "k": "ok",
+        "n": 39,
+        "pnl": -84.24,
+        "avg": -2.1601,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "softToxic",
+        "n": 37,
+        "pnl": -75.37,
+        "avg": -2.0369,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "bySession": [
+      {
+        "k": "ny_continuation",
+        "n": 38,
+        "pnl": -83.17,
+        "avg": -2.1886,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "asia_accum",
+        "n": 21,
+        "pnl": -44.84,
+        "avg": -2.1351,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "london_sweep",
+        "n": 17,
+        "pnl": -31.61,
+        "avg": -1.8591,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byHourBand": [
+      {
+        "k": "lateNy",
+        "n": 15,
+        "pnl": -34.7,
+        "avg": -2.3135,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "asia",
+        "n": 21,
+        "pnl": -44.84,
+        "avg": -2.1351,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "kz",
+        "n": 40,
+        "pnl": -80.07,
+        "avg": -2.0018,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byChase": [
+      {
+        "k": "ok",
+        "n": 62,
+        "pnl": -130.82,
+        "avg": -2.1099,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "chase",
+        "n": 14,
+        "pnl": -28.79,
+        "avg": -2.0566,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byVol": [
+      {
+        "k": "vol12",
+        "n": 5,
+        "pnl": -12.1,
+        "avg": -2.4192,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "vol15+",
+        "n": 63,
+        "pnl": -132.09,
+        "avg": -2.0966,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "volLo",
+        "n": 8,
+        "pnl": -15.43,
+        "avg": -1.9284,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byLevel": [
+      {
+        "k": "session_high",
+        "n": 15,
+        "pnl": -32.44,
+        "avg": -2.1628,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "pdl",
+        "n": 30,
+        "pnl": -62.85,
+        "avg": -2.0949,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "pdh",
+        "n": 25,
+        "pnl": -52.17,
+        "avg": -2.0869,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "session_low",
+        "n": 6,
+        "pnl": -12.15,
+        "avg": -2.0245,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "bySpent": [
+      {
+        "k": "room",
+        "n": 59,
+        "pnl": -125.3,
+        "avg": -2.1236,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "spent",
+        "n": 17,
+        "pnl": -34.31,
+        "avg": -2.0184,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byFade": [
+      {
+        "k": "fade",
+        "n": 34,
+        "pnl": -72.51,
+        "avg": -2.1325,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "notFade",
+        "n": 42,
+        "pnl": -87.1,
+        "avg": -2.0739,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "byMicro": [
+      {
+        "k": "microMfeSl",
+        "n": 22,
+        "pnl": -56.65,
+        "avg": -2.5751,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "other",
+        "n": 54,
+        "pnl": -102.96,
+        "avg": -1.9066,
+        "pf": 0,
+        "wr": 0
+      }
+    ],
+    "bySideSession": [
+      {
+        "k": "BUY|ny_continuation",
+        "n": 16,
+        "pnl": -39.06,
+        "avg": -2.441,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "SELL|asia_accum",
+        "n": 10,
+        "pnl": -24.34,
+        "avg": -2.4342,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "SELL|london_sweep",
+        "n": 8,
+        "pnl": -16.16,
+        "avg": -2.0201,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "SELL|ny_continuation",
+        "n": 22,
+        "pnl": -44.11,
+        "avg": -2.0051,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "BUY|asia_accum",
+        "n": 11,
+        "pnl": -20.49,
+        "avg": -1.8631,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "BUY|london_sweep",
+        "n": 9,
+        "pnl": -15.44,
+        "avg": -1.7161,
+        "pf": 0,
+        "wr": 0
+      }
+    ]
+  },
+  "pathA": [
+    {
+      "label": "H0",
+      "y1": {
+        "n": 69,
+        "tw": 1.32,
+        "ret": 14.1,
+        "pf": 1.149,
+        "wr": 49.3
+      },
+      "hold": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 3.8,
+        "pf": 1.031,
+        "wr": 47.8
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "drop_chase",
+      "y1": {
+        "n": 62,
+        "tw": 1.19,
+        "ret": 2.23,
+        "pf": 1.025,
+        "wr": 46.8
+      },
+      "hold": {
+        "n": 82,
+        "tw": 1.57,
+        "ret": -3.87,
+        "pf": 0.965,
+        "wr": 46.3
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "drop_asia",
+      "y1": {
+        "n": 47,
+        "tw": 0.9,
+        "ret": 24.58,
+        "pf": 1.415,
+        "wr": 53.2
+      },
+      "hold": {
+        "n": 65,
+        "tw": 1.25,
+        "ret": -0.6,
+        "pf": 0.993,
+        "wr": 49.2
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "drop_lateNy",
+      "y1": {
+        "n": 56,
+        "tw": 1.07,
+        "ret": 19.59,
+        "pf": 1.271,
+        "wr": 51.8
+      },
+      "hold": {
+        "n": 77,
+        "tw": 1.48,
+        "ret": 7.34,
+        "pf": 1.072,
+        "wr": 48.1
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "kz_only",
+      "y1": {
+        "n": 29,
+        "tw": 0.56,
+        "ret": 24.3,
+        "pf": 1.785,
+        "wr": 58.6
+      },
+      "hold": {
+        "n": 39,
+        "tw": 0.75,
+        "ret": 19.09,
+        "pf": 1.457,
+        "wr": 56.4
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "vol12",
+      "y1": {
+        "n": 62,
+        "tw": 1.19,
+        "ret": 5.71,
+        "pf": 1.065,
+        "wr": 48.4
+      },
+      "hold": {
+        "n": 80,
+        "tw": 1.53,
+        "ret": 4.9,
+        "pf": 1.047,
+        "wr": 47.5
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "vol15",
+      "y1": {
+        "n": 54,
+        "tw": 1.04,
+        "ret": 4.91,
+        "pf": 1.064,
+        "wr": 48.1
+      },
+      "hold": {
+        "n": 80,
+        "tw": 1.53,
+        "ret": 4.9,
+        "pf": 1.047,
+        "wr": 47.5
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "drop_spent",
+      "y1": {
+        "n": 56,
+        "tw": 1.07,
+        "ret": 17.81,
+        "pf": 1.24,
+        "wr": 50
+      },
+      "hold": {
+        "n": 75,
+        "tw": 1.44,
+        "ret": -17.03,
+        "pf": 0.841,
+        "wr": 45.3
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "bodyHi",
+      "y1": {
+        "n": 29,
+        "tw": 0.56,
+        "ret": 31.72,
+        "pf": 2.29,
+        "wr": 65.5
+      },
+      "hold": {
+        "n": 54,
+        "tw": 1.04,
+        "ret": 17.24,
+        "pf": 1.265,
+        "wr": 51.9
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "imp15",
+      "y1": {
+        "n": 51,
+        "tw": 0.98,
+        "ret": 13.29,
+        "pf": 1.2,
+        "wr": 51
+      },
+      "hold": {
+        "n": 78,
+        "tw": 1.5,
+        "ret": 9.21,
+        "pf": 1.092,
+        "wr": 47.4
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "imp18",
+      "y1": {
+        "n": 43,
+        "tw": 0.82,
+        "ret": 10.21,
+        "pf": 1.175,
+        "wr": 51.2
+      },
+      "hold": {
+        "n": 56,
+        "tw": 1.07,
+        "ret": 12.48,
+        "pf": 1.176,
+        "wr": 48.2
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "pdh_pdl",
+      "y1": {
+        "n": 41,
+        "tw": 0.79,
+        "ret": -1.82,
+        "pf": 0.971,
+        "wr": 46.3
+      },
+      "hold": {
+        "n": 48,
+        "tw": 0.92,
+        "ret": 13.09,
+        "pf": 1.219,
+        "wr": 47.9
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "fadeAlign",
+      "y1": {
+        "n": 43,
+        "tw": 0.82,
+        "ret": 4.09,
+        "pf": 1.064,
+        "wr": 46.5
+      },
+      "hold": {
+        "n": 56,
+        "tw": 1.07,
+        "ret": -2.05,
+        "pf": 0.974,
+        "wr": 44.6
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "drop_SELL_breakout",
+      "y1": {
+        "n": 69,
+        "tw": 1.32,
+        "ret": 14.1,
+        "pf": 1.149,
+        "wr": 49.3
+      },
+      "hold": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 3.8,
+        "pf": 1.031,
+        "wr": 47.8
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "drop_BUY_breakdown",
+      "y1": {
+        "n": 69,
+        "tw": 1.32,
+        "ret": 14.1,
+        "pf": 1.149,
+        "wr": 49.3
+      },
+      "hold": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 3.8,
+        "pf": 1.031,
+        "wr": 47.8
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "drop_chase_spent",
+      "y1": {
+        "n": 50,
+        "tw": 0.96,
+        "ret": 6.36,
+        "pf": 1.093,
+        "wr": 48
+      },
+      "hold": {
+        "n": 68,
+        "tw": 1.3,
+        "ret": -17.45,
+        "pf": 0.822,
+        "wr": 44.1
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "drop_asia_chase",
+      "y1": {
+        "n": 43,
+        "tw": 0.82,
+        "ret": 14.63,
+        "pf": 1.261,
+        "wr": 51.2
+      },
+      "hold": {
+        "n": 58,
+        "tw": 1.11,
+        "ret": -8.06,
+        "pf": 0.897,
+        "wr": 46.6
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "vol12_drop_chase",
+      "y1": {
+        "n": 57,
+        "tw": 1.09,
+        "ret": 2.69,
+        "pf": 1.033,
+        "wr": 47.4
+      },
+      "hold": {
+        "n": 73,
+        "tw": 1.4,
+        "ret": -5.31,
+        "pf": 0.948,
+        "wr": 45.2
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "kz_vol12",
+      "y1": {
+        "n": 27,
+        "tw": 0.52,
+        "ret": 15.45,
+        "pf": 1.499,
+        "wr": 55.6
+      },
+      "hold": {
+        "n": 33,
+        "tw": 0.63,
+        "ret": 14.3,
+        "pf": 1.398,
+        "wr": 54.5
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "oracle_mfe05",
+      "y1": {
+        "n": 48,
+        "tw": 0.92,
+        "ret": 73.31,
+        "pf": 3.066,
+        "wr": 70.8
+      },
+      "hold": {
+        "n": 72,
+        "tw": 1.38,
+        "ret": 53.12,
+        "pf": 1.736,
+        "wr": 61.1
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    }
+  ],
+  "pathB": [
+    {
+      "label": "oracle_mfe05",
+      "y1": {
+        "n": 90,
+        "tw": 1.73,
+        "ret": 97.35,
+        "pf": 2.358,
+        "wr": 64.4
+      },
+      "hold": {
+        "n": 109,
+        "tw": 2.09,
+        "ret": 65.47,
+        "pf": 1.772,
+        "wr": 62.4
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "kz_not_toxic",
+      "y1": {
+        "n": 28,
+        "tw": 0.54,
+        "ret": 24.14,
+        "pf": 1.738,
+        "wr": 57.1
+      },
+      "hold": {
+        "n": 38,
+        "tw": 0.73,
+        "ret": 14.74,
+        "pf": 1.41,
+        "wr": 55.3
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "bodyHi",
+      "y1": {
+        "n": 52,
+        "tw": 1,
+        "ret": 21.07,
+        "pf": 1.355,
+        "wr": 55.8
+      },
+      "hold": {
+        "n": 78,
+        "tw": 1.5,
+        "ret": 19.06,
+        "pf": 1.252,
+        "wr": 53.8
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "toxic_or_asia",
+      "y1": {
+        "n": 40,
+        "tw": 0.77,
+        "ret": 14.71,
+        "pf": 1.26,
+        "wr": 50
+      },
+      "hold": {
+        "n": 53,
+        "tw": 1.02,
+        "ret": 12.39,
+        "pf": 1.234,
+        "wr": 52.8
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "asia_toxic",
+      "y1": {
+        "n": 40,
+        "tw": 0.77,
+        "ret": 14.71,
+        "pf": 1.26,
+        "wr": 50
+      },
+      "hold": {
+        "n": 53,
+        "tw": 1.02,
+        "ret": 12.39,
+        "pf": 1.234,
+        "wr": 52.8
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "lateNy_toxic",
+      "y1": {
+        "n": 50,
+        "tw": 0.96,
+        "ret": 13.1,
+        "pf": 1.185,
+        "wr": 50
+      },
+      "hold": {
+        "n": 63,
+        "tw": 1.21,
+        "ret": 15.67,
+        "pf": 1.233,
+        "wr": 50.8
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "kz_only",
+      "y1": {
+        "n": 64,
+        "tw": 1.23,
+        "ret": 31.94,
+        "pf": 1.392,
+        "wr": 53.1
+      },
+      "hold": {
+        "n": 75,
+        "tw": 1.44,
+        "ret": -1.16,
+        "pf": 0.986,
+        "wr": 46.7
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "drop_toxic",
+      "y1": {
+        "n": 62,
+        "tw": 1.19,
+        "ret": 3.68,
+        "pf": 1.039,
+        "wr": 46.8
+      },
+      "hold": {
+        "n": 78,
+        "tw": 1.5,
+        "ret": 13.32,
+        "pf": 1.158,
+        "wr": 50
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "drop_softToxic",
+      "y1": {
+        "n": 62,
+        "tw": 1.19,
+        "ret": 3.68,
+        "pf": 1.039,
+        "wr": 46.8
+      },
+      "hold": {
+        "n": 77,
+        "tw": 1.48,
+        "ret": 11.52,
+        "pf": 1.137,
+        "wr": 49.4
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "drop_asia",
+      "y1": {
+        "n": 95,
+        "tw": 1.82,
+        "ret": 25.96,
+        "pf": 1.224,
+        "wr": 51.6
+      },
+      "hold": {
+        "n": 109,
+        "tw": 2.09,
+        "ret": -5.78,
+        "pf": 0.95,
+        "wr": 49.5
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "toxic_vol12",
+      "y1": {
+        "n": 56,
+        "tw": 1.07,
+        "ret": -0.45,
+        "pf": 0.995,
+        "wr": 46.4
+      },
+      "hold": {
+        "n": 67,
+        "tw": 1.28,
+        "ret": 10.28,
+        "pf": 1.14,
+        "wr": 49.3
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "softToxic_vol12",
+      "y1": {
+        "n": 56,
+        "tw": 1.07,
+        "ret": -0.45,
+        "pf": 0.995,
+        "wr": 46.4
+      },
+      "hold": {
+        "n": 66,
+        "tw": 1.27,
+        "ret": 8.49,
+        "pf": 1.116,
+        "wr": 48.5
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "toxic_or_spent",
+      "y1": {
+        "n": 52,
+        "tw": 1,
+        "ret": 13.01,
+        "pf": 1.17,
+        "wr": 48.1
+      },
+      "hold": {
+        "n": 62,
+        "tw": 1.19,
+        "ret": -6.29,
+        "pf": 0.913,
+        "wr": 46.8
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "softToxic_spent",
+      "y1": {
+        "n": 52,
+        "tw": 1,
+        "ret": 13.01,
+        "pf": 1.17,
+        "wr": 48.1
+      },
+      "hold": {
+        "n": 61,
+        "tw": 1.17,
+        "ret": -8.09,
+        "pf": 0.888,
+        "wr": 45.9
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "drop_BUY_breakdown",
+      "y1": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 4.7,
+        "pf": 1.036,
+        "wr": 46.7
+      },
+      "hold": {
+        "n": 113,
+        "tw": 2.17,
+        "ret": 0.73,
+        "pf": 1.006,
+        "wr": 48.7
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "drop_BUY_bd_only",
+      "y1": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 4.7,
+        "pf": 1.036,
+        "wr": 46.7
+      },
+      "hold": {
+        "n": 113,
+        "tw": 2.17,
+        "ret": 0.73,
+        "pf": 1.006,
+        "wr": 48.7
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "drop_SELL_breakout",
+      "y1": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 1.51,
+        "pf": 1.012,
+        "wr": 47.8
+      },
+      "hold": {
+        "n": 109,
+        "tw": 2.09,
+        "ret": 3.26,
+        "pf": 1.027,
+        "wr": 47.7
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "drop_SELL_bo_only",
+      "y1": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 1.51,
+        "pf": 1.012,
+        "wr": 47.8
+      },
+      "hold": {
+        "n": 109,
+        "tw": 2.09,
+        "ret": 3.26,
+        "pf": 1.027,
+        "wr": 47.7
+      },
+      "pass": false,
+      "eg": true,
+      "twOk": false
+    },
+    {
+      "label": "drop_lateNy",
+      "y1": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 6.29,
+        "pf": 1.047,
+        "wr": 46.7
+      },
+      "hold": {
+        "n": 111,
+        "tw": 2.13,
+        "ret": -4.13,
+        "pf": 0.967,
+        "wr": 45
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "drop_spent",
+      "y1": {
+        "n": 106,
+        "tw": 2.03,
+        "ret": 6.47,
+        "pf": 1.045,
+        "wr": 46.2
+      },
+      "hold": {
+        "n": 115,
+        "tw": 2.21,
+        "ret": -9.73,
+        "pf": 0.922,
+        "wr": 48.7
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": true
+    },
+    {
+      "label": "H0",
+      "y1": {
+        "n": 122,
+        "tw": 2.34,
+        "ret": 2.53,
+        "pf": 1.015,
+        "wr": 47.5
+      },
+      "hold": {
+        "n": 144,
+        "tw": 2.76,
+        "ret": -9.33,
+        "pf": 0.942,
+        "wr": 47.2
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": true
+    },
+    {
+      "label": "imp15",
+      "y1": {
+        "n": 100,
+        "tw": 1.92,
+        "ret": -9.53,
+        "pf": 0.929,
+        "wr": 47
+      },
+      "hold": {
+        "n": 121,
+        "tw": 2.32,
+        "ret": -2.96,
+        "pf": 0.977,
+        "wr": 47.1
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "toxic_or_chase",
+      "y1": {
+        "n": 56,
+        "tw": 1.07,
+        "ret": -12.46,
+        "pf": 0.864,
+        "wr": 42.9
+      },
+      "hold": {
+        "n": 70,
+        "tw": 1.34,
+        "ret": 2.41,
+        "pf": 1.03,
+        "wr": 47.1
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "softToxic_chase",
+      "y1": {
+        "n": 56,
+        "tw": 1.07,
+        "ret": -12.46,
+        "pf": 0.864,
+        "wr": 42.9
+      },
+      "hold": {
+        "n": 70,
+        "tw": 1.34,
+        "ret": 2.41,
+        "pf": 1.03,
+        "wr": 47.1
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "vol15",
+      "y1": {
+        "n": 103,
+        "tw": 1.98,
+        "ret": -5.94,
+        "pf": 0.958,
+        "wr": 46.6
+      },
+      "hold": {
+        "n": 120,
+        "tw": 2.3,
+        "ret": -10.87,
+        "pf": 0.918,
+        "wr": 47.5
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "vol12",
+      "y1": {
+        "n": 112,
+        "tw": 2.15,
+        "ret": -9.19,
+        "pf": 0.941,
+        "wr": 46.4
+      },
+      "hold": {
+        "n": 128,
+        "tw": 2.45,
+        "ret": -12.59,
+        "pf": 0.913,
+        "wr": 46.9
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": true
+    },
+    {
+      "label": "pdh_pdl",
+      "y1": {
+        "n": 95,
+        "tw": 1.82,
+        "ret": -2.29,
+        "pf": 0.983,
+        "wr": 47.4
+      },
+      "hold": {
+        "n": 102,
+        "tw": 1.96,
+        "ret": -15.5,
+        "pf": 0.865,
+        "wr": 46.1
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "fadeAlign",
+      "y1": {
+        "n": 54,
+        "tw": 1.04,
+        "ret": -7.02,
+        "pf": 0.922,
+        "wr": 40.7
+      },
+      "hold": {
+        "n": 61,
+        "tw": 1.17,
+        "ret": -7.63,
+        "pf": 0.895,
+        "wr": 44.3
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "notFade_drop",
+      "y1": {
+        "n": 54,
+        "tw": 1.04,
+        "ret": -7.02,
+        "pf": 0.922,
+        "wr": 40.7
+      },
+      "hold": {
+        "n": 61,
+        "tw": 1.17,
+        "ret": -7.63,
+        "pf": 0.895,
+        "wr": 44.3
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "drop_chase",
+      "y1": {
+        "n": 88,
+        "tw": 1.69,
+        "ret": -13.64,
+        "pf": 0.899,
+        "wr": 44.3
+      },
+      "hold": {
+        "n": 109,
+        "tw": 2.09,
+        "ret": -28.15,
+        "pf": 0.785,
+        "wr": 43.1
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    },
+    {
+      "label": "chase_spent",
+      "y1": {
+        "n": 77,
+        "tw": 1.48,
+        "ret": -8.38,
+        "pf": 0.928,
+        "wr": 44.2
+      },
+      "hold": {
+        "n": 88,
+        "tw": 1.69,
+        "ret": -28.05,
+        "pf": 0.734,
+        "wr": 43.2
+      },
+      "pass": false,
+      "eg": false,
+      "twOk": false
+    }
+  ],
+  "softHits": [],
+  "hard": [
+    {
+      "id": "HI_FREQ",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20
+      },
+      "y1": {
+        "n": 122,
+        "tw": 2.34,
+        "ret": 2.53,
+        "pf": 1.015,
+        "wr": 47.5,
+        "dd": 27.03
+      },
+      "hold": {
+        "n": 144,
+        "tw": 2.76,
+        "ret": -9.33,
+        "pf": 0.942,
+        "wr": 47.2,
+        "dd": 20.95
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "SLEEVE",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 69,
+        "tw": 1.32,
+        "ret": 14.1,
+        "pf": 1.149,
+        "wr": 49.3,
+        "dd": 16.46
+      },
+      "hold": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 3.8,
+        "pf": 1.031,
+        "wr": 47.8,
+        "dd": 17.12
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "hf_toxic",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20
+      },
+      "y1": {
+        "n": 64,
+        "tw": 1.23,
+        "ret": 9.42,
+        "pf": 1.107,
+        "wr": 48.4,
+        "dd": 21.05
+      },
+      "hold": {
+        "n": 80,
+        "tw": 1.53,
+        "ret": 21.86,
+        "pf": 1.207,
+        "wr": 51.2,
+        "dd": 10.77
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "hf_vol12",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqSweepMinVolRatio": 1.2
+      },
+      "y1": {
+        "n": 109,
+        "tw": 2.09,
+        "ret": -10.7,
+        "pf": 0.921,
+        "wr": 45.9,
+        "dd": 26.14
+      },
+      "hold": {
+        "n": 131,
+        "tw": 2.51,
+        "ret": -5.03,
+        "pf": 0.967,
+        "wr": 47.3,
+        "dd": 19.55
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "hf_vol15",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqSweepMinVolRatio": 1.5
+      },
+      "y1": {
+        "n": 106,
+        "tw": 2.03,
+        "ret": -4.69,
+        "pf": 0.966,
+        "wr": 46.2,
+        "dd": 26.14
+      },
+      "hold": {
+        "n": 124,
+        "tw": 2.38,
+        "ret": 1.21,
+        "pf": 1.008,
+        "wr": 48.4,
+        "dd": 17.46
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "hf_spent",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqContinuationGate": true,
+        "intradayLiqMaxDailyRangeUsedPct": 0.7
+      },
+      "y1": {
+        "n": 107,
+        "tw": 2.05,
+        "ret": 2.71,
+        "pf": 1.018,
+        "wr": 45.8,
+        "dd": 21.76
+      },
+      "hold": {
+        "n": 118,
+        "tw": 2.26,
+        "ret": -16.47,
+        "pf": 0.863,
+        "wr": 47.5,
+        "dd": 25.54
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "hf_chase_htf",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqRequireHtfAlign": true,
+        "intradayLiqHtfAlignPdhPdl": true
+      },
+      "y1": {
+        "n": 45,
+        "tw": 0.86,
+        "ret": -0.66,
+        "pf": 0.989,
+        "wr": 44.4,
+        "dd": 22.01
+      },
+      "hold": {
+        "n": 62,
+        "tw": 1.19,
+        "ret": -9.8,
+        "pf": 0.851,
+        "wr": 48.4,
+        "dd": 26.27
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "hf_noAsia",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqSessionNarratives": "london_sweep,ny_continuation"
+      },
+      "y1": {
+        "n": 122,
+        "tw": 2.34,
+        "ret": 2.53,
+        "pf": 1.015,
+        "wr": 47.5,
+        "dd": 27.03
+      },
+      "hold": {
+        "n": 144,
+        "tw": 2.76,
+        "ret": -9.33,
+        "pf": 0.942,
+        "wr": 47.2,
+        "dd": 20.95
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "hf_h016",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 16
+      },
+      "y1": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 5.91,
+        "pf": 1.044,
+        "wr": 46.7,
+        "dd": 24.02
+      },
+      "hold": {
+        "n": 116,
+        "tw": 2.22,
+        "ret": -6.6,
+        "pf": 0.953,
+        "wr": 44.8,
+        "dd": 19.07
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "hf_disp15",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.5,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20
+      },
+      "y1": {
+        "n": 102,
+        "tw": 1.96,
+        "ret": -14.46,
+        "pf": 0.879,
+        "wr": 46.1,
+        "dd": 20.94
+      },
+      "hold": {
+        "n": 126,
+        "tw": 2.42,
+        "ret": 4.01,
+        "pf": 1.027,
+        "wr": 47.6,
+        "dd": 16.35
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "hf_toxic_vol12",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqSweepMinVolRatio": 1.2
+      },
+      "y1": {
+        "n": 55,
+        "tw": 1.05,
+        "ret": 2.38,
+        "pf": 1.032,
+        "wr": 47.3,
+        "dd": 21.08
+      },
+      "hold": {
+        "n": 70,
+        "tw": 1.34,
+        "ret": 23.6,
+        "pf": 1.259,
+        "wr": 51.4,
+        "dd": 9.67
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "hf_toxic_spent",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqContinuationGate": true,
+        "intradayLiqMaxDailyRangeUsedPct": 0.7
+      },
+      "y1": {
+        "n": 53,
+        "tw": 1.02,
+        "ret": 14.59,
+        "pf": 1.198,
+        "wr": 49.1,
+        "dd": 12.71
+      },
+      "hold": {
+        "n": 64,
+        "tw": 1.23,
+        "ret": -1.16,
+        "pf": 0.985,
+        "wr": 48.4,
+        "dd": 12.84
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "hf_chase_spent",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqRequireHtfAlign": true,
+        "intradayLiqHtfAlignPdhPdl": true,
+        "intradayLiqContinuationGate": true,
+        "intradayLiqMaxDailyRangeUsedPct": 0.7
+      },
+      "y1": {
+        "n": 37,
+        "tw": 0.71,
+        "ret": 5.93,
+        "pf": 1.127,
+        "wr": 45.9,
+        "dd": 17.04
+      },
+      "hold": {
+        "n": 52,
+        "tw": 1,
+        "ret": -4.25,
+        "pf": 0.923,
+        "wr": 50,
+        "dd": 20.21
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "hf_vol12_spent",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqSweepMinVolRatio": 1.2,
+        "intradayLiqContinuationGate": true,
+        "intradayLiqMaxDailyRangeUsedPct": 0.7
+      },
+      "y1": {
+        "n": 96,
+        "tw": 1.84,
+        "ret": -9.19,
+        "pf": 0.926,
+        "wr": 43.8,
+        "dd": 23
+      },
+      "hold": {
+        "n": 111,
+        "tw": 2.13,
+        "ret": 0.59,
+        "pf": 1.005,
+        "wr": 49.5,
+        "dd": 19.63
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "hf_toxic_h016",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 16
+      },
+      "y1": {
+        "n": 51,
+        "tw": 0.98,
+        "ret": 15.82,
+        "pf": 1.234,
+        "wr": 51,
+        "dd": 18.15
+      },
+      "hold": {
+        "n": 67,
+        "tw": 1.28,
+        "ret": 23.05,
+        "pf": 1.268,
+        "wr": 52.2,
+        "dd": 9.67
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sleeve_vol12",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqSweepMinVolRatio": 1.2
+      },
+      "y1": {
+        "n": 59,
+        "tw": 1.13,
+        "ret": 2.26,
+        "pf": 1.028,
+        "wr": 47.5,
+        "dd": 20.02
+      },
+      "hold": {
+        "n": 82,
+        "tw": 1.57,
+        "ret": 5.4,
+        "pf": 1.05,
+        "wr": 47.6,
+        "dd": 15.52
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sleeve_disp10",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 74,
+        "tw": 1.42,
+        "ret": 18.59,
+        "pf": 1.181,
+        "wr": 50,
+        "dd": 16.46
+      },
+      "hold": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 3.87,
+        "pf": 1.032,
+        "wr": 47.8,
+        "dd": 17.12
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sleeve_wait8",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 70,
+        "tw": 1.34,
+        "ret": 10.97,
+        "pf": 1.114,
+        "wr": 48.6,
+        "dd": 16.46
+      },
+      "hold": {
+        "n": 93,
+        "tw": 1.78,
+        "ret": 8.27,
+        "pf": 1.066,
+        "wr": 48.4,
+        "dd": 17.12
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sleeve_wait4",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 4,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 67,
+        "tw": 1.28,
+        "ret": 13.36,
+        "pf": 1.146,
+        "wr": 49.3,
+        "dd": 16.46
+      },
+      "hold": {
+        "n": 87,
+        "tw": 1.67,
+        "ret": 1.9,
+        "pf": 1.017,
+        "wr": 48.3,
+        "dd": 17.1
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sleeve_mit035",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 75,
+        "tw": 1.44,
+        "ret": 15.11,
+        "pf": 1.153,
+        "wr": 50.7,
+        "dd": 14.53
+      },
+      "hold": {
+        "n": 95,
+        "tw": 1.82,
+        "ret": 7.99,
+        "pf": 1.062,
+        "wr": 47.4,
+        "dd": 25.78
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sleeve_noDailyCap",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": true,
+        "maxDailyLoss": 0,
+        "riskConsecutiveLossLimit": 0
+      },
+      "y1": {
+        "n": 69,
+        "tw": 1.32,
+        "ret": 14.1,
+        "pf": 1.149,
+        "wr": 49.3,
+        "dd": 16.46
+      },
+      "hold": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 3.8,
+        "pf": 1.031,
+        "wr": 47.8,
+        "dd": 17.12
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sleeve_side3",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqMaxTradesPerSidePerDay": 3,
+        "srIntradayMaxTradesPerDay": 6
+      },
+      "y1": {
+        "n": 71,
+        "tw": 1.36,
+        "ret": 7.92,
+        "pf": 1.081,
+        "wr": 47.9,
+        "dd": 18.68
+      },
+      "hold": {
+        "n": 93,
+        "tw": 1.78,
+        "ret": 8.61,
+        "pf": 1.069,
+        "wr": 48.4,
+        "dd": 16.99
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sleeve_disp10_vol12",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqSweepMinVolRatio": 1.2
+      },
+      "y1": {
+        "n": 63,
+        "tw": 1.21,
+        "ret": 9.19,
+        "pf": 1.105,
+        "wr": 49.2,
+        "dd": 20.02
+      },
+      "hold": {
+        "n": 82,
+        "tw": 1.57,
+        "ret": 5.4,
+        "pf": 1.05,
+        "wr": 47.6,
+        "dd": 15.52
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "soft_drop_lateNy",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 16
+      },
+      "y1": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 5.91,
+        "pf": 1.044,
+        "wr": 46.7,
+        "dd": 24.02
+      },
+      "hold": {
+        "n": 116,
+        "tw": 2.22,
+        "ret": -6.6,
+        "pf": 0.953,
+        "wr": 44.8,
+        "dd": 19.07
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "soft_kz_only",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqRequireKillzone": true
+      },
+      "y1": {
+        "n": 58,
+        "tw": 1.11,
+        "ret": 7.83,
+        "pf": 1.098,
+        "wr": 48.3,
+        "dd": 15.21
+      },
+      "hold": {
+        "n": 70,
+        "tw": 1.34,
+        "ret": -16.19,
+        "pf": 0.804,
+        "wr": 44.3,
+        "dd": 17.15
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "soft_vol12",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqSweepMinVolRatio": 1.2
+      },
+      "y1": {
+        "n": 109,
+        "tw": 2.09,
+        "ret": -10.7,
+        "pf": 0.921,
+        "wr": 45.9,
+        "dd": 26.14
+      },
+      "hold": {
+        "n": 131,
+        "tw": 2.51,
+        "ret": -5.03,
+        "pf": 0.967,
+        "wr": 47.3,
+        "dd": 19.55
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "soft_vol15",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqSweepMinVolRatio": 1.5
+      },
+      "y1": {
+        "n": 106,
+        "tw": 2.03,
+        "ret": -4.69,
+        "pf": 0.966,
+        "wr": 46.2,
+        "dd": 26.14
+      },
+      "hold": {
+        "n": 124,
+        "tw": 2.38,
+        "ret": 1.21,
+        "pf": 1.008,
+        "wr": 48.4,
+        "dd": 17.46
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "soft_bodyHi",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqDaySituationBias": false,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqMinReclaimBodyRatio": 0.5
+      },
+      "y1": {
+        "n": 94,
+        "tw": 1.8,
+        "ret": 30.48,
+        "pf": 1.235,
+        "wr": 53.2,
+        "dd": 17.01
+      },
+      "hold": {
+        "n": 100,
+        "tw": 1.92,
+        "ret": -14.34,
+        "pf": 0.862,
+        "wr": 45,
+        "dd": 23.28
+      },
+      "pass": false,
+      "eg": false
+    }
+  ],
+  "fullRuns": [
+    {
+      "id": "sleeve_mit035",
+      "full": {
+        "n": 260,
+        "tw": 1.66,
+        "ret": 22.21,
+        "pf": 1.063,
+        "wr": 46.5,
+        "dd": 25.78
+      }
+    },
+    {
+      "id": "sleeve_disp10",
+      "full": {
+        "n": 254,
+        "tw": 1.62,
+        "ret": 15.55,
+        "pf": 1.047,
+        "wr": 46.5,
+        "dd": 25.2
+      }
+    }
+  ],
+  "promote": [],
+  "egTw": [],
+  "best": {
+    "id": "sleeve_mit035",
+    "y1": {
+      "n": 75,
+      "tw": 1.44,
+      "ret": 15.11,
+      "pf": 1.153,
+      "wr": 50.7,
+      "dd": 14.53
+    },
+    "hold": {
+      "n": 95,
+      "tw": 1.82,
+      "ret": 7.99,
+      "pf": 1.062,
+      "wr": 47.4,
+      "dd": 25.78
+    },
+    "pass": false,
+    "eg": true
+  },
+  "verdict": "EG_BELOW_TW2"
+}

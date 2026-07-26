@@ -423,7 +423,37 @@ export function passesVpBuyRejectionMacroFilter(pre, idx, side, setup, opts = {}
     // Prepared-ish for ETH rej: bull_chop / bear_trend. Abstain bull_trend + weak_bear.
     if (macro === "bull_trend" || macro === "weak_bear") return false;
   }
+
+  // Blow-off / parabolic prior60: BUY rejection into extreme extension (DOGE 2020–21).
+  // Threshold is relative (prior60d %), not a calendar cut. Missing prior60 → fail closed.
+  const maxPrior60 = Number(opts.vpBuyRejectionMaxPrior60dPct ?? 0);
+  if (maxPrior60 > 0) {
+    if (prior60n == null || prior60n > maxPrior60) return false;
+  }
   return true;
+}
+
+/**
+ * SELL va_rejection inside bear_trend with shallow HTF — DOGE F3 2024–25 autopsy.
+ * Soft buckets: bear_trend SELL rej losers cluster at htfSep≲0.35–0.5%; good-year
+ * winners of the same cell sit at ~1.2% mean HTF. Scoped to bear_trend so
+ * bull/chop shorts (2021–22) are not crushed by a global sell HTF floor.
+ *
+ * @returns {boolean} false = abstain
+ */
+export function passesVpSellRejectionBearHtfFilter(pre, idx, side, setup, opts = {}) {
+  if (side !== "SELL" || setup !== "va_rejection") return true;
+  const minSep = Number(opts.vpRejectionSellBearMinHtfSepPct ?? 0);
+  if (!(minSep > 0)) return true;
+  const bearFloor = Number(opts.vpValSellPrior60dBearPct ?? opts.vpSellBearPrior60dPct ?? -0.05);
+  const prior60n = macroPctAt(pre?.macroPrior60d, idx);
+  const macroBull = vpMacroBullAt(pre, idx, opts);
+  const macro = classifyVpMacro(prior60n, macroBull, bearFloor);
+  if (macro !== "bear_trend") return true;
+  const sep = Number(pre?.htfSep?.[idx] ?? NaN);
+  // Missing HTF → fail closed once the floor is armed.
+  if (!Number.isFinite(sep)) return false;
+  return sep >= minSep;
 }
 
 /**
@@ -597,6 +627,7 @@ export function evaluateVolumeProfileBar(candles, idx, opts = {}, pre = null) {
 
     const pathPreview = pathToNextHvn(candles[idx].close, side, vp);
     if (!passesVpBuyRejectionMacroFilter(P, idx, side, setup.setup, { ...vpOpts, ...opts, path: pathPreview })) continue;
+    if (!passesVpSellRejectionBearHtfFilter(P, idx, side, setup.setup, { ...vpOpts, ...opts })) continue;
 
     if (!passesVpValSellMacroFilter(P, idx, side, setup.setup, { ...vpOpts, ...opts, path: pathPreview })) {
       continue;
@@ -882,6 +913,7 @@ export function buildVolumeProfileOptsFromCfg(cfg = {}) {
     vpSellWeakBearMinHtfSepPct: cfg.vpSellWeakBearMinHtfSepPct,
     vpSellWeakBearPrior20dFloorPct: cfg.vpSellWeakBearPrior20dFloorPct,
     vpRejectionSellBlockExtendedDown: cfg.vpRejectionSellBlockExtendedDown,
+    vpRejectionSellBearMinHtfSepPct: cfg.vpRejectionSellBearMinHtfSepPct,
     vpBuyChaseFilter: cfg.vpBuyChaseFilter,
     vpBuyChaseMaxPrior5dPct: cfg.vpBuyChaseMaxPrior5dPct,
     vpBuyChaseNonBullOnly: cfg.vpBuyChaseNonBullOnly,
@@ -915,6 +947,7 @@ export function buildVolumeProfileOptsFromCfg(cfg = {}) {
     vpBuyRejectionMinBody: cfg.vpBuyRejectionMinBody,
     vpBuyRejectionBlockPrior120: cfg.vpBuyRejectionBlockPrior120,
     vpBuyRejectionPrior120Pct: cfg.vpBuyRejectionPrior120Pct,
+    vpBuyRejectionMaxPrior60dPct: cfg.vpBuyRejectionMaxPrior60dPct,
     vpBuyBreakoutBlockBullTight: cfg.vpBuyBreakoutBlockBullTight,
     vpBuyBreakoutBlockBullVacuum: cfg.vpBuyBreakoutBlockBullVacuum,
     vpNoveltyEnabled: cfg.vpNoveltyEnabled,
@@ -1025,6 +1058,7 @@ export const VOLUME_PROFILE = {
   passesVpPreparedRegimeFilter,
   passesVpValSellMacroFilter,
   passesVpBuyRejectionMacroFilter,
+  passesVpSellRejectionBearHtfFilter,
   passesVpBuyBreakoutTightBullFilter,
   passesVpBuyBreakoutBullVacuumFilter,
   passesVpBuyChaseFilter,

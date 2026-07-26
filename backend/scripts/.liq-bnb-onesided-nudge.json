@@ -1,0 +1,751 @@
+{
+  "generatedAt": "2026-07-24T20:53:15.440Z",
+  "hard": [
+    {
+      "id": "buy_bd_mit035",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "buy_breakdown"
+      },
+      "y1": {
+        "n": 103,
+        "tw": 1.98,
+        "ret": 18.23,
+        "pf": 1.129,
+        "wr": 49.5,
+        "dd": 26.34
+      },
+      "hold": {
+        "n": 116,
+        "tw": 2.22,
+        "ret": 5.89,
+        "pf": 1.04,
+        "wr": 47.4,
+        "dd": 15.19
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_mit040",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.4,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "buy_breakdown"
+      },
+      "y1": {
+        "n": 100,
+        "tw": 1.92,
+        "ret": 13.4,
+        "pf": 1.097,
+        "wr": 48,
+        "dd": 28.77
+      },
+      "hold": {
+        "n": 116,
+        "tw": 2.22,
+        "ret": 6.37,
+        "pf": 1.044,
+        "wr": 47.4,
+        "dd": 14.13
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_mit030",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.3,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "buy_breakdown"
+      },
+      "y1": {
+        "n": 105,
+        "tw": 2.01,
+        "ret": 22.47,
+        "pf": 1.156,
+        "wr": 50.5,
+        "dd": 24.21
+      },
+      "hold": {
+        "n": 120,
+        "tw": 2.3,
+        "ret": 7.11,
+        "pf": 1.049,
+        "wr": 45.8,
+        "dd": 12.42
+      },
+      "pass": true,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_wait6",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "buy_breakdown"
+      },
+      "y1": {
+        "n": 102,
+        "tw": 1.96,
+        "ret": 18.53,
+        "pf": 1.131,
+        "wr": 50,
+        "dd": 26.34
+      },
+      "hold": {
+        "n": 115,
+        "tw": 2.21,
+        "ret": 1.18,
+        "pf": 1.008,
+        "wr": 47,
+        "dd": 18.96
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_wait10",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 10,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "buy_breakdown"
+      },
+      "y1": {
+        "n": 103,
+        "tw": 1.98,
+        "ret": 18.23,
+        "pf": 1.129,
+        "wr": 49.5,
+        "dd": 26.34
+      },
+      "hold": {
+        "n": 116,
+        "tw": 2.22,
+        "ret": 5.89,
+        "pf": 1.04,
+        "wr": 47.4,
+        "dd": 15.19
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_disp11",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.1,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "buy_breakdown"
+      },
+      "y1": {
+        "n": 105,
+        "tw": 2.01,
+        "ret": 18.05,
+        "pf": 1.125,
+        "wr": 49.5,
+        "dd": 26.34
+      },
+      "hold": {
+        "n": 116,
+        "tw": 2.22,
+        "ret": 5.89,
+        "pf": 1.04,
+        "wr": 47.4,
+        "dd": 15.19
+      },
+      "pass": true,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_disp10",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "buy_breakdown"
+      },
+      "y1": {
+        "n": 108,
+        "tw": 2.07,
+        "ret": 24.44,
+        "pf": 1.161,
+        "wr": 50,
+        "dd": 26.34
+      },
+      "hold": {
+        "n": 120,
+        "tw": 2.3,
+        "ret": -5.63,
+        "pf": 0.963,
+        "wr": 45.8,
+        "dd": 20.85
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "buy_bd_side3",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "buy_breakdown",
+        "intradayLiqMaxTradesPerSidePerDay": 3,
+        "srIntradayMaxTradesPerDay": 6
+      },
+      "y1": {
+        "n": 104,
+        "tw": 1.99,
+        "ret": 13.85,
+        "pf": 1.098,
+        "wr": 49,
+        "dd": 26.34
+      },
+      "hold": {
+        "n": 116,
+        "tw": 2.22,
+        "ret": 5.89,
+        "pf": 1.04,
+        "wr": 47.4,
+        "dd": 15.19
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_h021",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 21,
+        "intradayLiqDaySituationBias": "buy_breakdown"
+      },
+      "y1": {
+        "n": 107,
+        "tw": 2.05,
+        "ret": 16.71,
+        "pf": 1.114,
+        "wr": 49.5,
+        "dd": 26.04
+      },
+      "hold": {
+        "n": 119,
+        "tw": 2.28,
+        "ret": 2.36,
+        "pf": 1.016,
+        "wr": 46.2,
+        "dd": 15.19
+      },
+      "pass": true,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_minSl009",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.009,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "buy_breakdown"
+      },
+      "y1": {
+        "n": 119,
+        "tw": 2.28,
+        "ret": -9.31,
+        "pf": 0.945,
+        "wr": 46.2,
+        "dd": 38.25
+      },
+      "hold": {
+        "n": 127,
+        "tw": 2.44,
+        "ret": 37.17,
+        "pf": 1.214,
+        "wr": 50.4,
+        "dd": 11.52
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "buy_bd_mit035_side3",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "buy_breakdown",
+        "intradayLiqMaxTradesPerSidePerDay": 3,
+        "srIntradayMaxTradesPerDay": 6
+      },
+      "y1": {
+        "n": 104,
+        "tw": 1.99,
+        "ret": 13.85,
+        "pf": 1.098,
+        "wr": 49,
+        "dd": 26.34
+      },
+      "hold": {
+        "n": 116,
+        "tw": 2.22,
+        "ret": 5.89,
+        "pf": 1.04,
+        "wr": 47.4,
+        "dd": 15.19
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_mit040_side3",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.4,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "buy_breakdown",
+        "intradayLiqMaxTradesPerSidePerDay": 3,
+        "srIntradayMaxTradesPerDay": 6
+      },
+      "y1": {
+        "n": 101,
+        "tw": 1.94,
+        "ret": 8.48,
+        "pf": 1.061,
+        "wr": 47.5,
+        "dd": 28.77
+      },
+      "hold": {
+        "n": 117,
+        "tw": 2.24,
+        "ret": 11.18,
+        "pf": 1.075,
+        "wr": 47.9,
+        "dd": 14.13
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "buy_bd_disp11_side3",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.1,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "buy_breakdown",
+        "intradayLiqMaxTradesPerSidePerDay": 3,
+        "srIntradayMaxTradesPerDay": 6
+      },
+      "y1": {
+        "n": 106,
+        "tw": 2.03,
+        "ret": 13.67,
+        "pf": 1.095,
+        "wr": 49.1,
+        "dd": 26.34
+      },
+      "hold": {
+        "n": 116,
+        "tw": 2.22,
+        "ret": 5.89,
+        "pf": 1.04,
+        "wr": 47.4,
+        "dd": 15.19
+      },
+      "pass": true,
+      "eg": true
+    },
+    {
+      "id": "sell_bo_mit035",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "sell_breakout"
+      },
+      "y1": {
+        "n": 101,
+        "tw": 1.94,
+        "ret": 3.04,
+        "pf": 1.023,
+        "wr": 48.5,
+        "dd": 18.57
+      },
+      "hold": {
+        "n": 115,
+        "tw": 2.21,
+        "ret": 24.96,
+        "pf": 1.163,
+        "wr": 49.6,
+        "dd": 24.04
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sell_bo_mit040",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.4,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "sell_breakout"
+      },
+      "y1": {
+        "n": 100,
+        "tw": 1.92,
+        "ret": 3.64,
+        "pf": 1.028,
+        "wr": 48,
+        "dd": 18.51
+      },
+      "hold": {
+        "n": 115,
+        "tw": 2.21,
+        "ret": 26.13,
+        "pf": 1.174,
+        "wr": 49.6,
+        "dd": 18.74
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sell_bo_disp11",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.1,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "sell_breakout"
+      },
+      "y1": {
+        "n": 106,
+        "tw": 2.03,
+        "ret": 6.91,
+        "pf": 1.051,
+        "wr": 50,
+        "dd": 18.57
+      },
+      "hold": {
+        "n": 114,
+        "tw": 2.19,
+        "ret": 27.13,
+        "pf": 1.179,
+        "wr": 50,
+        "dd": 23.17
+      },
+      "pass": true,
+      "eg": true
+    },
+    {
+      "id": "sell_bo_side3",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "sell_breakout",
+        "intradayLiqMaxTradesPerSidePerDay": 3,
+        "srIntradayMaxTradesPerDay": 6
+      },
+      "y1": {
+        "n": 103,
+        "tw": 1.98,
+        "ret": -2.63,
+        "pf": 0.98,
+        "wr": 47.6,
+        "dd": 18.71
+      },
+      "hold": {
+        "n": 115,
+        "tw": 2.21,
+        "ret": 24.96,
+        "pf": 1.163,
+        "wr": 49.6,
+        "dd": 24.04
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "sell_bo_h021",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 21,
+        "intradayLiqDaySituationBias": "sell_breakout"
+      },
+      "y1": {
+        "n": 104,
+        "tw": 1.99,
+        "ret": 0.7,
+        "pf": 1.005,
+        "wr": 48.1,
+        "dd": 20.15
+      },
+      "hold": {
+        "n": 120,
+        "tw": 2.3,
+        "ret": 13.63,
+        "pf": 1.086,
+        "wr": 48.3,
+        "dd": 26.98
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "sell_bo_mit035_side3",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "sell_breakout",
+        "intradayLiqMaxTradesPerSidePerDay": 3,
+        "srIntradayMaxTradesPerDay": 6
+      },
+      "y1": {
+        "n": 103,
+        "tw": 1.98,
+        "ret": -2.63,
+        "pf": 0.98,
+        "wr": 47.6,
+        "dd": 18.71
+      },
+      "hold": {
+        "n": 115,
+        "tw": 2.21,
+        "ret": 24.96,
+        "pf": 1.163,
+        "wr": 49.6,
+        "dd": 24.04
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "sell_bo_disp11_side3",
+      "over": {
+        "intradayLiqRequireDisplacementV2": true,
+        "intradayLiqSweepDisplacementMinAtrMult": 1.1,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": "sell_breakout",
+        "intradayLiqMaxTradesPerSidePerDay": 3,
+        "srIntradayMaxTradesPerDay": 6
+      },
+      "y1": {
+        "n": 108,
+        "tw": 2.07,
+        "ret": 1.03,
+        "pf": 1.008,
+        "wr": 49.1,
+        "dd": 18.71
+      },
+      "hold": {
+        "n": 114,
+        "tw": 2.19,
+        "ret": 27.13,
+        "pf": 1.179,
+        "wr": 50,
+        "dd": 23.17
+      },
+      "pass": true,
+      "eg": true
+    }
+  ],
+  "fullRuns": [
+    {
+      "id": "buy_bd_mit030",
+      "full": {
+        "n": 352,
+        "tw": 2.25,
+        "ret": 31.25,
+        "pf": 1.067,
+        "wr": 46.6,
+        "dd": 26.35
+      },
+      "eg": true
+    },
+    {
+      "id": "buy_bd_disp11",
+      "full": {
+        "n": 346,
+        "tw": 2.21,
+        "ret": 20.52,
+        "pf": 1.045,
+        "wr": 46.2,
+        "dd": 31.21
+      },
+      "eg": true
+    },
+    {
+      "id": "buy_bd_h021",
+      "full": {
+        "n": 351,
+        "tw": 2.24,
+        "ret": 12.12,
+        "pf": 1.027,
+        "wr": 45.9,
+        "dd": 31.25
+      },
+      "eg": true
+    },
+    {
+      "id": "buy_bd_disp11_side3",
+      "full": {
+        "n": 350,
+        "tw": 2.24,
+        "ret": 9.63,
+        "pf": 1.022,
+        "wr": 45.7,
+        "dd": 35.01
+      },
+      "eg": true
+    },
+    {
+      "id": "sell_bo_disp11",
+      "full": {
+        "n": 334,
+        "tw": 2.13,
+        "ret": 44.35,
+        "pf": 1.089,
+        "wr": 49.1,
+        "dd": 24.43
+      },
+      "eg": true
+    }
+  ],
+  "promote": [
+    "buy_bd_mit030",
+    "buy_bd_disp11",
+    "buy_bd_h021",
+    "buy_bd_disp11_side3",
+    "sell_bo_disp11",
+    "sell_bo_disp11_side3"
+  ],
+  "best": {
+    "id": "sell_bo_disp11_side3",
+    "y1": {
+      "n": 108,
+      "tw": 2.07,
+      "ret": 1.03,
+      "pf": 1.008,
+      "wr": 49.1,
+      "dd": 18.71
+    },
+    "hold": {
+      "n": 114,
+      "tw": 2.19,
+      "ret": 27.13,
+      "pf": 1.179,
+      "wr": 50,
+      "dd": 23.17
+    },
+    "pass": true,
+    "eg": true
+  },
+  "verdict": "PROMOTE_CANDIDATE"
+}

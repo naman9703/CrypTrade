@@ -1,0 +1,30 @@
+candles=195456 funding=6109
+
+══ DOGE F3 bear-scoped SELL rej HTF A/B ══
+run H0_baseline
+H0_baseline
+  FULL n=103 tw=0.36 ret=41.92 pf=1.13 cal=0.15 dd=46.38
+  years 2020-21:-8.59%/14 2021-22:13.56%/22 2022-23:23.7%/22 2023-24:28.21%/17 2024-25:-37.47%/19 2025-26:37.85%/9
+run global_sell_htf_035
+global_sell_htf_035
+  FULL n=72 tw=0.26 ret=94.37 pf=1.47 cal=0.51 dd=26.79
+  years 2020-21:-8.59%/14 2021-22:-8.52%/17 2022-23:42.74%/15 2023-24:37.27%/9 2024-25:-6.79%/10 2025-26:27.29%/7
+run bear_rej_htf_035
+bear_rej_htf_035
+  FULL n=94 tw=0.33 ret=63.48 pf=1.22 cal=0.34 dd=28.67
+  years 2020-21:-8.59%/14 2021-22:13.56%/22 2022-23:20.13%/20 2023-24:32.58%/16 2024-25:-19.55%/14 2025-26:22.91%/8
+run bear_rej_htf_050
+bear_rej_htf_050
+  FULL n=87 tw=0.31 ret=91.01 pf=1.32 cal=0.49 dd=26.79
+  years 2020-21:-8.59%/14 2021-22:13.56%/22 2022-23:29.1%/18 2023-24:37.84%/15 2024-25:-10.87%/11 2025-26:16.02%/7
+run bear_rej_htf_025
+bear_rej_htf_025
+  FULL n=99 tw=0.35 ret=50.55 pf=1.17 cal=0.2 dd=39.73
+  years 2020-21:-8.59%/14 2021-22:13.56%/22 2022-23:16.75%/21 2023-24:28.21%/17 2024-25:-29.72%/16 2025-26:37.85%/9
+
+══ Accept vs H0 (bad↑, 21-22/25-26 keep, full↑, tw≥70%) ══
+global_sell_htf_035    accept=false bad -37.47→-6.79 | 21-22 13.56→-8.52 | 25-26 37.85→27.29 | full 41.92→94.37 tw 0.36→0.26
+bear_rej_htf_035       accept=true bad -37.47→-19.55 | 21-22 13.56→13.56 | 25-26 37.85→22.91 | full 41.92→63.48 tw 0.36→0.33
+bear_rej_htf_050       accept=false bad -37.47→-10.87 | 21-22 13.56→13.56 | 25-26 37.85→16.02 | full 41.92→91.01 tw 0.36→0.31
+bear_rej_htf_025       accept=true bad -37.47→-29.72 | 21-22 13.56→13.56 | 25-26 37.85→37.85 | full 41.92→50.55 tw 0.36→0.35
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-doge-f3-bear-htf-ab.json

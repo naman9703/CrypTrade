@@ -123,6 +123,11 @@ export const INTRADAY_PRO_LIQ_15M = {
   intradayGateVp: false,
   intradayGateOrderFlow: false,
   intradayGateHtfRegime: false,
+  /** Explicit — draft merge must not leave a prior SMC/ICT path on. */
+  intradayGateSmcIct: false,
+  intradaySmcIctMode: false,
+  intradayGateInstitutionalSr: false,
+  intradaySrAPlusMode: false,
   intradayLearnedRulesEnabled: false,
   supertrendHtf4hEnabled: false,
   intradayLiqStrictMode: true,
@@ -210,6 +215,62 @@ export const INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M = {
   maxDailyLoss: 3,
   maxDailyLossUnit: "PCT",
   riskConsecutiveLossLimit: 3,
+};
+
+/** BNB LIQ prepared-mit research sleeve — disp+minSl+mitigation+toxic; ~1.5/wk. */
+export const INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_15M = {
+  ...INTRADAY_PRO_LIQ_CORE_15M,
+  symbol: "BNBUSDT",
+  intradayLiqRequireDisplacementV2: true,
+  intradayLiqSweepDisplacementMinAtrMult: 1.2,
+  intradayLiqMinSlPct: 0.01,
+  intradayLiqMitigationEntry: true,
+  intradayLiqMitigationFrac: 0.5,
+  intradayLiqMitigationWaitBars: 6,
+  intradayLiqDaySituationBias: true,
+  maxDailyLoss: 3,
+  maxDailyLossUnit: "PCT",
+  riskConsecutiveLossLimit: 3,
+};
+
+/** BNB prepared-mit return-max — hours 0–20 + mitFrac 0.35. */
+export const INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_H020_15M = {
+  ...INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_15M,
+  intradayLiqMitigationFrac: 0.35,
+  intradayLiqMitigationWaitBars: 8,
+  intradayLiqActiveHourStart: 0,
+  intradayLiqActiveHourEnd: 20,
+};
+
+/** BNB prepared-mit freq-restore — one-sided buy_breakdown + mit 0.30 / h020. */
+export const INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M = {
+  ...INTRADAY_PRO_LIQ_CORE_15M,
+  symbol: "BNBUSDT",
+  intradayLiqRequireDisplacementV2: true,
+  intradayLiqSweepDisplacementMinAtrMult: 1.2,
+  intradayLiqMinSlPct: 0.01,
+  intradayLiqMitigationEntry: true,
+  intradayLiqMitigationFrac: 0.3,
+  intradayLiqMitigationWaitBars: 8,
+  intradayLiqActiveHourStart: 0,
+  intradayLiqActiveHourEnd: 20,
+  intradayLiqDaySituationBias: "buy_breakdown",
+  // Compressed-regime stand-down — see 2026-07-25-liq-bnb-buybd-compression-standdown.md
+  intradayLiqRangeCompressionMin: 0.75,
+  // Strong-trend stand-down — see 2026-07-25-liq-bnb-buybd-nevergreen-maxadx.md
+  intradayLiqMaxAdx: 50,
+  maxDailyLoss: 3,
+  maxDailyLossUnit: "PCT",
+  riskConsecutiveLossLimit: 3,
+};
+
+/** BNB prepared-mit sell_breakout return-max cousin — disp 1.1. */
+export const INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_SELLBO_15M = {
+  ...INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M,
+  intradayLiqDaySituationBias: "sell_breakout",
+  intradayLiqMitigationFrac: 0.35,
+  intradayLiqMitigationWaitBars: 8,
+  intradayLiqSweepDisplacementMinAtrMult: 1.1,
 };
 
 export const INTRADAY_PRO_LIQ_CORE_SIGNATURE_KEYS = [

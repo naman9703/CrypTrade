@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   INTRADAY_PRO_LIQ_CORE_15M,
   INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M,
+  INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M,
+  INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_SELLBO_15M,
   fillLiqSoloPresetDefaults,
 } from "./srIntradayOptimized.js";
 
@@ -38,6 +40,17 @@ test("LIQ BNB AST+vol15 research sleeve — gate stack locked", () => {
   assert.equal(INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M.intradayLiqPickMode, "chronological");
   assert.equal(INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M.intradayLiqPartialTp, false);
   assert.equal(INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M.intradayLiqMaxTpRr, 2);
+});
+
+test("LIQ BNB BUYBD freq-restore sleeve — one-sided toxic + mit030", () => {
+  assert.equal(INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M.symbol, "BNBUSDT");
+  assert.equal(INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M.intradayLiqDaySituationBias, "buy_breakdown");
+  assert.equal(INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M.intradayLiqMitigationFrac, 0.3);
+  assert.equal(INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M.intradayLiqMitigationWaitBars, 8);
+  assert.equal(INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M.intradayLiqActiveHourEnd, 20);
+  assert.equal(INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M.intradayLiqRequireDisplacementV2, true);
+  assert.equal(INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_SELLBO_15M.intradayLiqDaySituationBias, "sell_breakout");
+  assert.equal(INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_SELLBO_15M.intradayLiqSweepDisplacementMinAtrMult, 1.1);
 });
 
 test("fillLiqSoloPresetDefaults — LIQ_CORE does not inject legacy body/score stack", () => {

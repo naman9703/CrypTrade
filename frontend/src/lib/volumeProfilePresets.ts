@@ -271,6 +271,39 @@ export const VOLUME_PROFILE_FREQ_ETH_15M = {
   vpNoveltyEnabled: false,
 };
 
+/**
+ * DOGE — F3 rej + paying POC cells (2026-07-26). Bleed POC denied.
+ * Backend resolve when vpPlaybook=FREQ + DOGEUSDT. Not deploy-certified (tw ~0.21).
+ */
+export const VOLUME_PROFILE_FREQ_DOGE_15M = {
+  ...VOLUME_PROFILE_BASE,
+  ...VOLUME_PROFILE_FREQ_CORE,
+  symbol: "DOGEUSDT",
+  timeframe: "15m",
+  vpAllowedSetups: ["va_rejection", "poc_bounce"],
+  vpRequireHtfAlign: true,
+  vpMinHtfSepPct: 0.0015,
+  vpMinScore: 6,
+  vpMinBarGap: 1,
+  vpMaxTradesPerDay: 2,
+  vpRejectionSellBearMinHtfSepPct: 0.005,
+  vpBuyRejectionMaxPrior60dPct: 1.0,
+  vpMinAtrPct: 0.008,
+  vpBuyRejectionMinBody: 0.25,
+  vpPreparedRegimeOnly: true,
+  vpPreparedBlockVacuumVah: false,
+  vpPreparedBlockVacuumValBear: false,
+  vpPreparedBlockCellKeys: [
+    "SELL|poc_bounce|weak_bear|structured",
+    "SELL|poc_bounce|bear_trend|tight",
+    "SELL|poc_bounce|bull_trend|vacuum",
+    "SELL|poc_bounce|bear_trend|structured",
+    "BUY|poc_bounce|bull_trend|vacuum",
+    "SELL|poc_bounce|bear_trend|vacuum",
+  ],
+  vpNoveltyEnabled: false,
+};
+
 /** BTC — two-sided; prepared-regime abstention + vacuum-cap / short locks (2026-07-17). */
 export const VOLUME_PROFILE_FREQ_BTC_15M = {
   ...VOLUME_PROFILE_BASE,
@@ -313,6 +346,7 @@ export function resolveVolumeProfileFreqPreset(symbol: string) {
   if (sym === "BNBUSDT") return VOLUME_PROFILE_FREQ_BNB_15M;
   if (sym === "SOLUSDT") return VOLUME_PROFILE_FREQ_SOL_15M;
   if (sym === "AVAXUSDT") return VOLUME_PROFILE_FREQ_AVAX_15M;
+  if (sym === "DOGEUSDT") return VOLUME_PROFILE_FREQ_DOGE_15M;
   return VOLUME_PROFILE_FREQ_15M;
 }
 

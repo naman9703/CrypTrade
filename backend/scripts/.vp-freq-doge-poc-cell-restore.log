@@ -1,0 +1,110 @@
+load DOGEUSDT…
+candles=195456 funding=6109
+
+══ H0 lock (rej+poc year-clean) ══
+n=67 tw=0.24 ret=229.61% pf=1.76 cal=1
+years 2020-21:9.84%/5 2021-22:28.61%/21 2022-23:38.13%/15 2023-24:47.18%/11 2024-25:6.38%/6 2025-26:7.88%/9
+
+══ Setup split ══
+poc { n: 12, net: -31.53, wr: 33.3 }
+rej { n: 55, net: 261.14, wr: 43.6 }
+
+══ POC cells (net sorted) ══
+  SELL|poc_bounce|weak_bear|structured             n= 2 net= -21.95 wr=0%
+  SELL|poc_bounce|bear_trend|tight                 n= 2 net= -20.22 wr=0%
+  SELL|poc_bounce|bull_trend|vacuum                n= 1 net= -16.79 wr=0%
+  SELL|poc_bounce|bear_trend|structured            n= 1 net=  -14.9 wr=0%
+  BUY|poc_bounce|bull_trend|vacuum                 n= 1 net=  -8.31 wr=0%
+  SELL|poc_bounce|bear_trend|vacuum                n= 1 net=  -5.91 wr=0%
+  BUY|poc_bounce|bull_trend|tight                  n= 1 net=   6.15 wr=100%
+  BUY|poc_bounce|bull_chop|tight                   n= 1 net=    9.2 wr=100%
+  SELL|poc_bounce|weak_bear|tight                  n= 2 net=   41.2 wr=100%
+
+══ REJ cells (net sorted) ══
+  SELL|va_rejection|bull_trend|vacuum              n=10 net= -23.02 wr=30%
+  BUY|va_rejection|bull_chop|structured            n= 7 net=  -9.29 wr=28.6%
+  BUY|va_rejection|bull_trend|structured           n= 2 net=  -5.94 wr=50%
+  BUY|va_rejection|bull_chop|vacuum                n= 5 net=   2.06 wr=40%
+  SELL|va_rejection|bull_chop|structured           n= 2 net=   3.15 wr=50%
+  BUY|va_rejection|bull_trend|tight                n= 2 net=   4.88 wr=50%
+  BUY|va_rejection|bull_chop|tight                 n= 3 net=  10.99 wr=66.7%
+  SELL|va_rejection|bull_chop|tight                n= 1 net=  16.84 wr=100%
+  SELL|va_rejection|bear_trend|tight               n= 1 net=  23.57 wr=100%
+  SELL|va_rejection|bear_trend|vacuum              n= 8 net=  23.61 wr=37.5%
+  SELL|va_rejection|bull_chop|vacuum               n= 3 net=  36.68 wr=66.7%
+  SELL|va_rejection|weak_bear|structured           n= 2 net=  38.88 wr=50%
+  BUY|va_rejection|bull_trend|vacuum               n= 5 net=  40.29 wr=40%
+  SELL|va_rejection|weak_bear|vacuum               n= 4 net=  98.44 wr=50%
+
+bleed POC cells (6): SELL|poc_bounce|weak_bear|structured | SELL|poc_bounce|bear_trend|tight | SELL|poc_bounce|bull_trend|vacuum | SELL|poc_bounce|bear_trend|structured | BUY|poc_bounce|bull_trend|vacuum | SELL|poc_bounce|bear_trend|vacuum
+pay POC cells (3): BUY|poc_bounce|bull_trend|tight | BUY|poc_bounce|bull_chop|tight | SELL|poc_bounce|weak_bear|tight
+
+══ Soft: drop bleed POC cells ══
+  drop SELL|poc_bounce|weak_bear|structured → n=65 net=251.56 | 2020-21:9.8% 2021-22:28.6% 2022-23:38.1% 2023-24:52.7% 2024-25:6.2% 2025-26:11.1%
+  drop SELL|poc_bounce|bear_trend|tight → n=65 net=249.83 | 2020-21:9.8% 2021-22:28.6% 2022-23:43.2% 2023-24:45.5% 2024-25:6.2% 2025-26:11.9%
+  drop SELL|poc_bounce|bull_trend|vacuum → n=66 net=246.4 | 2020-21:9.8% 2021-22:28.6% 2022-23:38.1% 2023-24:55.8% 2024-25:6% 2025-26:7.5%
+  drop SELL|poc_bounce|bear_trend|structured → n=66 net=244.51 | 2020-21:9.8% 2021-22:28.6% 2022-23:38.1% 2023-24:47.2% 2024-25:6.4% 2025-26:12.8%
+  drop BUY|poc_bounce|bull_trend|vacuum → n=66 net=237.92 | 2020-21:9.8% 2021-22:28.6% 2022-23:38.1% 2023-24:47.2% 2024-25:9.3% 2025-26:7.7%
+  drop SELL|poc_bounce|bear_trend|vacuum → n=66 net=235.52 | 2020-21:9.8% 2021-22:34% 2022-23:36.6% 2023-24:45.8% 2024-25:6.3% 2025-26:7.7%
+  drop ALL bleed POC → { n: 59, net: 317.69, wr: 47.5 }
+
+══ Hard A/B (9) ══
+run H0
+H0
+  n=67 tw=0.24 ret=229.61% cal=1 pf=1.76
+  years 2020-21:9.84%/5 2021-22:28.61%/21 2022-23:38.13%/15 2023-24:47.18%/11 2024-25:6.38%/6 2025-26:7.88%/9
+  RED: none | yearClean=true accept=false
+run block_bleed_poc
+block_bleed_poc
+  n=59 tw=0.21 ret=315.97% cal=1.4 pf=2.41
+  years 2020-21:3.87%/4 2021-22:34%/20 2022-23:38.13%/15 2023-24:62.82%/9 2024-25:9.46%/5 2025-26:21.4%/6
+  RED: none | yearClean=true accept=true
+run block_bleed_poc+atr007
+block_bleed_poc+atr007
+  n=68 tw=0.24 ret=312.03% cal=1.7 pf=2.06
+  years 2020-21:3.87%/4 2021-22:61.09%/23 2022-23:28.84%/17 2023-24:58.23%/10 2024-25:-0.51%/8 2025-26:21.4%/6
+  RED: 2024-25=-0.51% | yearClean=false accept=false
+run block_bleed_poc+score5
+block_bleed_poc+score5
+  n=59 tw=0.21 ret=315.97% cal=1.4 pf=2.41
+  years 2020-21:3.87%/4 2021-22:34%/20 2022-23:38.13%/15 2023-24:62.82%/9 2024-25:9.46%/5 2025-26:21.4%/6
+  RED: none | yearClean=true accept=true
+run block_bleed_poc+gap1
+block_bleed_poc+gap1
+  n=58 tw=0.21 ret=328.82% cal=1.61 pf=2.46
+  years 2020-21:3.87%/4 2021-22:38.14%/19 2022-23:38.13%/15 2023-24:62.82%/9 2024-25:9.46%/5 2025-26:21.4%/6
+  RED: none | yearClean=true accept=true
+run block_bleed_poc+atr007+score5
+block_bleed_poc+atr007+score5
+  n=68 tw=0.24 ret=312.03% cal=1.7 pf=2.06
+  years 2020-21:3.87%/4 2021-22:61.09%/23 2022-23:28.84%/17 2023-24:58.23%/10 2024-25:-0.51%/8 2025-26:21.4%/6
+  RED: 2024-25=-0.51% | yearClean=false accept=false
+run poc_allow_pay_only
+poc_allow_pay_only
+  n=59 tw=0.21 ret=315.97% cal=1.4 pf=2.41
+  years 2020-21:3.87%/4 2021-22:34%/20 2022-23:38.13%/15 2023-24:62.82%/9 2024-25:9.46%/5 2025-26:21.4%/6
+  RED: none | yearClean=true accept=true
+run atr007_alone
+atr007_alone
+  n=77 tw=0.27 ret=213.42% cal=1.33 pf=1.56
+  years 2020-21:9.84%/5 2021-22:54.62%/24 2022-23:28.84%/17 2023-24:43.04%/12 2024-25:-3.31%/9 2025-26:3.56%/10
+  RED: 2024-25=-3.31% | yearClean=false accept=false
+run score5_alone
+score5_alone
+  n=67 tw=0.24 ret=229.61% cal=1 pf=1.76
+  years 2020-21:9.84%/5 2021-22:28.61%/21 2022-23:38.13%/15 2023-24:47.18%/11 2024-25:6.38%/6 2025-26:7.88%/9
+  RED: none | yearClean=true accept=false
+
+══ Ranked ══
+block_bleed_poc+gap1             accept=true clean=true cal≥1=true tw=0.21 ret=328.82% cal=1.61 | none
+block_bleed_poc                  accept=true clean=true cal≥1=true tw=0.21 ret=315.97% cal=1.4 | none
+block_bleed_poc+score5           accept=true clean=true cal≥1=true tw=0.21 ret=315.97% cal=1.4 | none
+poc_allow_pay_only               accept=true clean=true cal≥1=true tw=0.21 ret=315.97% cal=1.4 | none
+H0                               accept=false clean=true cal≥1=true tw=0.24 ret=229.61% cal=1 | none
+score5_alone                     accept=false clean=true cal≥1=true tw=0.24 ret=229.61% cal=1 | none
+atr007_alone                     accept=false clean=false cal≥1=true tw=0.27 ret=213.42% cal=1.33 | 2024-25=-3.31%
+block_bleed_poc+atr007           accept=false clean=false cal≥1=true tw=0.24 ret=312.03% cal=1.7 | 2024-25=-0.51%
+block_bleed_poc+atr007+score5    accept=false clean=false cal≥1=true tw=0.24 ret=312.03% cal=1.7 | 2024-25=-0.51%
+
+══ Best candidate: block_bleed_poc+gap1 ══
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-doge-poc-cell-restore.json

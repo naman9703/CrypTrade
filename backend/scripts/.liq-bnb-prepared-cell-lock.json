@@ -1,0 +1,1313 @@
+{
+  "generatedAt": "2026-07-24T17:45:21.361Z",
+  "base": {
+    "intradayLiqRequireDisplacementV2": true,
+    "intradayLiqSweepDisplacementMinAtrMult": 1.2,
+    "intradayLiqMinSlPct": 0.012
+  },
+  "baselineY1": {
+    "n": 130,
+    "tw": 2.49,
+    "ret": -16.12,
+    "pf": 0.882,
+    "wr": 49.2,
+    "dd": 21.64
+  },
+  "clusters": {
+    "bySession": [
+      {
+        "k": "off_hours",
+        "n": 23,
+        "pnl": -11.63,
+        "avg": -0.5058,
+        "pf": 0.6,
+        "wr": 47.8
+      },
+      {
+        "k": "ny_continuation",
+        "n": 55,
+        "pnl": -14.53,
+        "avg": -0.2642,
+        "pf": 0.731,
+        "wr": 45.5
+      },
+      {
+        "k": "asia_accum",
+        "n": 28,
+        "pnl": -6.92,
+        "avg": -0.2471,
+        "pf": 0.804,
+        "wr": 46.4
+      },
+      {
+        "k": "london_sweep",
+        "n": 24,
+        "pnl": 16.96,
+        "avg": 0.7066,
+        "pf": 1.941,
+        "wr": 62.5
+      }
+    ],
+    "byLevel": [
+      {
+        "k": "session_low",
+        "n": 12,
+        "pnl": -6.81,
+        "avg": -0.5677,
+        "pf": 0.558,
+        "wr": 33.3
+      },
+      {
+        "k": "pdl",
+        "n": 61,
+        "pnl": -15.68,
+        "avg": -0.257,
+        "pf": 0.781,
+        "wr": 42.6
+      },
+      {
+        "k": "pdh",
+        "n": 42,
+        "pnl": 1.29,
+        "avg": 0.0307,
+        "pf": 1.033,
+        "wr": 54.8
+      },
+      {
+        "k": "session_high",
+        "n": 15,
+        "pnl": 5.08,
+        "avg": 0.3386,
+        "pf": 1.493,
+        "wr": 73.3
+      }
+    ],
+    "byDay": [
+      {
+        "k": "breakdown",
+        "n": 38,
+        "pnl": -10.97,
+        "avg": -0.2886,
+        "pf": 0.712,
+        "wr": 44.7
+      },
+      {
+        "k": "breakout",
+        "n": 41,
+        "pnl": -9.89,
+        "avg": -0.2413,
+        "pf": 0.77,
+        "wr": 51.2
+      },
+      {
+        "k": "range",
+        "n": 51,
+        "pnl": 4.74,
+        "avg": 0.0929,
+        "pf": 1.086,
+        "wr": 51
+      }
+    ],
+    "bySideDay": [
+      {
+        "k": "SELL|breakdown",
+        "n": 5,
+        "pnl": -3.07,
+        "avg": -0.6143,
+        "pf": 0.455,
+        "wr": 60
+      },
+      {
+        "k": "BUY|range",
+        "n": 36,
+        "pnl": -11.87,
+        "avg": -0.3298,
+        "pf": 0.758,
+        "wr": 38.9
+      },
+      {
+        "k": "BUY|breakdown",
+        "n": 33,
+        "pnl": -7.9,
+        "avg": -0.2392,
+        "pf": 0.757,
+        "wr": 42.4
+      },
+      {
+        "k": "SELL|breakout",
+        "n": 37,
+        "pnl": -7.17,
+        "avg": -0.1938,
+        "pf": 0.81,
+        "wr": 51.4
+      },
+      {
+        "k": "SELL|range",
+        "n": 15,
+        "pnl": 16.61,
+        "avg": 1.1073,
+        "pf": 3.692,
+        "wr": 80
+      }
+    ],
+    "byToxic": [
+      {
+        "k": "toxic",
+        "n": 70,
+        "pnl": -15.06,
+        "avg": -0.2152,
+        "pf": 0.785,
+        "wr": 47.1
+      },
+      {
+        "k": "ok",
+        "n": 60,
+        "pnl": -1.06,
+        "avg": -0.0176,
+        "pf": 0.984,
+        "wr": 51.7
+      }
+    ],
+    "byFade": [
+      {
+        "k": "notFade",
+        "n": 79,
+        "pnl": -10.92,
+        "avg": -0.1383,
+        "pf": 0.849,
+        "wr": 53.2
+      },
+      {
+        "k": "fadeAlign",
+        "n": 51,
+        "pnl": -5.2,
+        "avg": -0.1019,
+        "pf": 0.919,
+        "wr": 43.1
+      }
+    ],
+    "byChase": [
+      {
+        "k": "ok",
+        "n": 84,
+        "pnl": -12.56,
+        "avg": -0.1495,
+        "pf": 0.871,
+        "wr": 47.6
+      },
+      {
+        "k": "chase",
+        "n": 46,
+        "pnl": -3.56,
+        "avg": -0.0775,
+        "pf": 0.908,
+        "wr": 52.2
+      }
+    ],
+    "byHourBand": [
+      {
+        "k": "off",
+        "n": 51,
+        "pnl": -26.89,
+        "avg": -0.5272,
+        "pf": 0.521,
+        "wr": 45.1
+      },
+      {
+        "k": "asia",
+        "n": 28,
+        "pnl": -6.92,
+        "avg": -0.2471,
+        "pf": 0.804,
+        "wr": 46.4
+      },
+      {
+        "k": "kz",
+        "n": 51,
+        "pnl": 17.68,
+        "avg": 0.3467,
+        "pf": 1.393,
+        "wr": 54.9
+      }
+    ],
+    "byVol": [
+      {
+        "k": "vol15+",
+        "n": 110,
+        "pnl": -14.97,
+        "avg": -0.1361,
+        "pf": 0.868,
+        "wr": 49.1
+      },
+      {
+        "k": "vol<15",
+        "n": 20,
+        "pnl": -1.15,
+        "avg": -0.0576,
+        "pf": 0.951,
+        "wr": 50
+      }
+    ],
+    "bySideSession": [
+      {
+        "k": "BUY|off_hours",
+        "n": 12,
+        "pnl": -14.77,
+        "avg": -1.2306,
+        "pf": 0.218,
+        "wr": 33.3
+      },
+      {
+        "k": "SELL|asia_accum",
+        "n": 9,
+        "pnl": -6.88,
+        "avg": -0.7645,
+        "pf": 0.436,
+        "wr": 44.4
+      },
+      {
+        "k": "BUY|ny_continuation",
+        "n": 32,
+        "pnl": -13.49,
+        "avg": -0.4216,
+        "pf": 0.631,
+        "wr": 37.5
+      },
+      {
+        "k": "SELL|ny_continuation",
+        "n": 23,
+        "pnl": -1.04,
+        "avg": -0.0452,
+        "pf": 0.941,
+        "wr": 56.5
+      },
+      {
+        "k": "BUY|asia_accum",
+        "n": 19,
+        "pnl": -0.04,
+        "avg": -0.0019,
+        "pf": 0.998,
+        "wr": 47.4
+      },
+      {
+        "k": "SELL|off_hours",
+        "n": 11,
+        "pnl": 3.13,
+        "avg": 0.2848,
+        "pf": 1.307,
+        "wr": 63.6
+      },
+      {
+        "k": "BUY|london_sweep",
+        "n": 10,
+        "pnl": 5.8,
+        "avg": 0.5802,
+        "pf": 1.696,
+        "wr": 50
+      },
+      {
+        "k": "SELL|london_sweep",
+        "n": 14,
+        "pnl": 11.16,
+        "avg": 0.7969,
+        "pf": 2.153,
+        "wr": 71.4
+      }
+    ],
+    "byLevelDay": [
+      {
+        "k": "pdl|range",
+        "n": 27,
+        "pnl": -10.94,
+        "avg": -0.4052,
+        "pf": 0.724,
+        "wr": 37
+      },
+      {
+        "k": "pdl|breakdown",
+        "n": 32,
+        "pnl": -7.37,
+        "avg": -0.2302,
+        "pf": 0.769,
+        "wr": 43.8
+      },
+      {
+        "k": "session_low|range",
+        "n": 9,
+        "pnl": -0.93,
+        "avg": -0.1038,
+        "pf": 0.902,
+        "wr": 44.4
+      },
+      {
+        "k": "pdh|breakout",
+        "n": 34,
+        "pnl": -3.34,
+        "avg": -0.0982,
+        "pf": 0.897,
+        "wr": 52.9
+      },
+      {
+        "k": "pdh|range",
+        "n": 6,
+        "pnl": 5.5,
+        "avg": 0.9168,
+        "pf": 2.334,
+        "wr": 66.7
+      },
+      {
+        "k": "session_high|range",
+        "n": 9,
+        "pnl": 11.11,
+        "avg": 1.2344,
+        "pf": 6.433,
+        "wr": 88.9
+      }
+    ]
+  },
+  "soft": [
+    {
+      "label": "H0",
+      "n": 130,
+      "tw": 2.49,
+      "ret": -16.12,
+      "pf": 0.882,
+      "wr": 49.2,
+      "dd": 21.64,
+      "pass": false
+    },
+    {
+      "label": "drop_toxic",
+      "n": 60,
+      "tw": 1.15,
+      "ret": -1.06,
+      "pf": 0.984,
+      "wr": 51.7,
+      "dd": 11.99,
+      "pass": false
+    },
+    {
+      "label": "keep_fadeAlign",
+      "n": 51,
+      "tw": 0.98,
+      "ret": -5.2,
+      "pf": 0.919,
+      "wr": 43.1,
+      "dd": 17.98,
+      "pass": false
+    },
+    {
+      "label": "drop_chase",
+      "n": 84,
+      "tw": 1.61,
+      "ret": -12.56,
+      "pf": 0.871,
+      "wr": 47.6,
+      "dd": 24.17,
+      "pass": false
+    },
+    {
+      "label": "asia_only",
+      "n": 28,
+      "tw": 0.54,
+      "ret": -6.92,
+      "pf": 0.804,
+      "wr": 46.4,
+      "dd": 12.78,
+      "pass": false
+    },
+    {
+      "label": "kz_only",
+      "n": 51,
+      "tw": 0.98,
+      "ret": 17.68,
+      "pf": 1.393,
+      "wr": 54.9,
+      "dd": 8.36,
+      "pass": false
+    },
+    {
+      "label": "drop_asia",
+      "n": 102,
+      "tw": 1.96,
+      "ret": -9.21,
+      "pf": 0.909,
+      "wr": 50,
+      "dd": 24.44,
+      "pass": false
+    },
+    {
+      "label": "pdh_pdl",
+      "n": 103,
+      "tw": 1.98,
+      "ret": -14.39,
+      "pf": 0.87,
+      "wr": 47.6,
+      "dd": 24.69,
+      "pass": false
+    },
+    {
+      "label": "vol15",
+      "n": 110,
+      "tw": 2.11,
+      "ret": -14.97,
+      "pf": 0.868,
+      "wr": 49.1,
+      "dd": 19.54,
+      "pass": false
+    },
+    {
+      "label": "drop_spent",
+      "n": 115,
+      "tw": 2.21,
+      "ret": -7.94,
+      "pf": 0.935,
+      "wr": 50.4,
+      "dd": 19.06,
+      "pass": false
+    },
+    {
+      "label": "absLo",
+      "n": 71,
+      "tw": 1.36,
+      "ret": -16.77,
+      "pf": 0.777,
+      "wr": 49.3,
+      "dd": 27.63,
+      "pass": false
+    },
+    {
+      "label": "bodyHi",
+      "n": 55,
+      "tw": 1.05,
+      "ret": -0.86,
+      "pf": 0.982,
+      "wr": 54.5,
+      "dd": 18.19,
+      "pass": false
+    },
+    {
+      "label": "fade_not_toxic",
+      "n": 33,
+      "tw": 0.63,
+      "ret": -2.18,
+      "pf": 0.948,
+      "wr": 42.4,
+      "dd": 9.65,
+      "pass": false
+    },
+    {
+      "label": "fade_pdh_pdl",
+      "n": 39,
+      "tw": 0.75,
+      "ret": -2.86,
+      "pf": 0.942,
+      "wr": 43.6,
+      "dd": 14.76,
+      "pass": false
+    },
+    {
+      "label": "not_toxic_kz",
+      "n": 19,
+      "tw": 0.36,
+      "ret": 7.08,
+      "pf": 1.427,
+      "wr": 57.9,
+      "dd": 8.91,
+      "pass": false
+    },
+    {
+      "label": "not_toxic_vol15",
+      "n": 48,
+      "tw": 0.92,
+      "ret": -0.69,
+      "pf": 0.987,
+      "wr": 52.1,
+      "dd": 11.99,
+      "pass": false
+    },
+    {
+      "label": "not_toxic_fade_vol",
+      "n": 31,
+      "tw": 0.59,
+      "ret": -5.2,
+      "pf": 0.873,
+      "wr": 41.9,
+      "dd": 9.65,
+      "pass": false
+    },
+    {
+      "label": "drop_SELL_breakout",
+      "n": 93,
+      "tw": 1.78,
+      "ret": -8.95,
+      "pf": 0.909,
+      "wr": 48.4,
+      "dd": 18.98,
+      "pass": false
+    },
+    {
+      "label": "drop_BUY_breakdown",
+      "n": 97,
+      "tw": 1.86,
+      "ret": -8.23,
+      "pf": 0.921,
+      "wr": 51.5,
+      "dd": 13.64,
+      "pass": false
+    },
+    {
+      "label": "range_only",
+      "n": 51,
+      "tw": 0.98,
+      "ret": 4.74,
+      "pf": 1.086,
+      "wr": 51,
+      "dd": 13.11,
+      "pass": false
+    },
+    {
+      "label": "range_or_aligned",
+      "n": 74,
+      "tw": 1.42,
+      "ret": -5.15,
+      "pf": 0.94,
+      "wr": 48.6,
+      "dd": 16.62,
+      "pass": false
+    },
+    {
+      "label": "oracle_mfe05",
+      "n": 91,
+      "tw": 1.75,
+      "ret": 67.97,
+      "pf": 2.31,
+      "wr": 65.9,
+      "dd": 6.66,
+      "pass": false
+    }
+  ],
+  "softPass": [],
+  "hard": [
+    {
+      "id": "BASE",
+      "over": {},
+      "y1": {
+        "n": 130,
+        "tw": 2.49,
+        "ret": -16.12,
+        "pf": 0.882,
+        "wr": 49.2,
+        "dd": 21.64
+      },
+      "hold": {
+        "n": 156,
+        "tw": 2.99,
+        "ret": -25.34,
+        "pf": 0.845,
+        "wr": 44.2,
+        "dd": 39.12
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_tp15",
+      "over": {
+        "intradayLiqMaxTpRr": 1.5
+      },
+      "y1": {
+        "n": 130,
+        "tw": 2.49,
+        "ret": -22.86,
+        "pf": 0.823,
+        "wr": 50,
+        "dd": 26.04
+      },
+      "hold": {
+        "n": 157,
+        "tw": 3.01,
+        "ret": -27.92,
+        "pf": 0.819,
+        "wr": 45.2,
+        "dd": 40.88
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_tp25",
+      "over": {
+        "intradayLiqMaxTpRr": 2.5
+      },
+      "y1": {
+        "n": 129,
+        "tw": 2.47,
+        "ret": -21.58,
+        "pf": 0.833,
+        "wr": 48.8,
+        "dd": 28.47
+      },
+      "hold": {
+        "n": 155,
+        "tw": 2.97,
+        "ret": -21.65,
+        "pf": 0.874,
+        "wr": 43.9,
+        "dd": 37.6
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_hold24",
+      "over": {
+        "intradayLiqMaxHoldBars": 24
+      },
+      "y1": {
+        "n": 132,
+        "tw": 2.53,
+        "ret": -22.61,
+        "pf": 0.783,
+        "wr": 47,
+        "dd": 24.63
+      },
+      "hold": {
+        "n": 164,
+        "tw": 3.15,
+        "ret": -41.63,
+        "pf": 0.688,
+        "wr": 42.7,
+        "dd": 45.85
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_hold36",
+      "over": {
+        "intradayLiqMaxHoldBars": 36
+      },
+      "y1": {
+        "n": 130,
+        "tw": 2.49,
+        "ret": -19.99,
+        "pf": 0.845,
+        "wr": 46.2,
+        "dd": 28.22
+      },
+      "hold": {
+        "n": 159,
+        "tw": 3.05,
+        "ret": -23.96,
+        "pf": 0.843,
+        "wr": 44,
+        "dd": 38.08
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_atrBuf",
+      "over": {
+        "intradayLiqSlBufferAtrMult": 0.2
+      },
+      "y1": {
+        "n": 129,
+        "tw": 2.47,
+        "ret": -14.18,
+        "pf": 0.895,
+        "wr": 49.6,
+        "dd": 19.99
+      },
+      "hold": {
+        "n": 155,
+        "tw": 2.97,
+        "ret": -23.05,
+        "pf": 0.861,
+        "wr": 44.5,
+        "dd": 37.28
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_minSl010",
+      "over": {
+        "intradayLiqMinSlPct": 0.01
+      },
+      "y1": {
+        "n": 161,
+        "tw": 3.09,
+        "ret": -23.43,
+        "pf": 0.878,
+        "wr": 47.8,
+        "dd": 37
+      },
+      "hold": {
+        "n": 180,
+        "tw": 3.45,
+        "ret": -45.98,
+        "pf": 0.734,
+        "wr": 42.2,
+        "dd": 49.36
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_disp15",
+      "over": {
+        "intradayLiqSweepDisplacementMinAtrMult": 1.5
+      },
+      "y1": {
+        "n": 113,
+        "tw": 2.17,
+        "ret": -15.88,
+        "pf": 0.864,
+        "wr": 48.7,
+        "dd": 21.73
+      },
+      "hold": {
+        "n": 141,
+        "tw": 2.7,
+        "ret": -23.34,
+        "pf": 0.844,
+        "wr": 43.3,
+        "dd": 31.37
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_disp10",
+      "over": {
+        "intradayLiqSweepDisplacementMinAtrMult": 1
+      },
+      "y1": {
+        "n": 137,
+        "tw": 2.63,
+        "ret": -13.88,
+        "pf": 0.903,
+        "wr": 49.6,
+        "dd": 19.99
+      },
+      "hold": {
+        "n": 161,
+        "tw": 3.09,
+        "ret": -31.35,
+        "pf": 0.813,
+        "wr": 43.5,
+        "dd": 43.34
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_risk1",
+      "over": {
+        "riskPerTrade": 1
+      },
+      "y1": {
+        "n": 130,
+        "tw": 2.49,
+        "ret": -5.94,
+        "pf": 0.894,
+        "wr": 49.2,
+        "dd": 8.67
+      },
+      "hold": {
+        "n": 156,
+        "tw": 2.99,
+        "ret": -10.06,
+        "pf": 0.854,
+        "wr": 44.2,
+        "dd": 17.33
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_mit05",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6
+      },
+      "y1": {
+        "n": 115,
+        "tw": 2.21,
+        "ret": -14.59,
+        "pf": 0.896,
+        "wr": 45.2,
+        "dd": 23.15
+      },
+      "hold": {
+        "n": 146,
+        "tw": 2.8,
+        "ret": -0.67,
+        "pf": 0.996,
+        "wr": 45.9,
+        "dd": 25.87
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_toxic",
+      "over": {
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 63,
+        "tw": 1.21,
+        "ret": -2.31,
+        "pf": 0.967,
+        "wr": 52.4,
+        "dd": 11.98
+      },
+      "hold": {
+        "n": 83,
+        "tw": 1.59,
+        "ret": 5.73,
+        "pf": 1.061,
+        "wr": 48.2,
+        "dd": 13.91
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_toxic_vol12",
+      "over": {
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqSweepMinVolRatio": 1.2
+      },
+      "y1": {
+        "n": 56,
+        "tw": 1.07,
+        "ret": -4.72,
+        "pf": 0.925,
+        "wr": 51.8,
+        "dd": 11.98
+      },
+      "hold": {
+        "n": 78,
+        "tw": 1.5,
+        "ret": -3.83,
+        "pf": 0.956,
+        "wr": 46.2,
+        "dd": 13.91
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_toxic_pdh",
+      "over": {
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqSessionExtreme": false
+      },
+      "y1": {
+        "n": 37,
+        "tw": 0.71,
+        "ret": -5.46,
+        "pf": 0.885,
+        "wr": 45.9,
+        "dd": 10.78
+      },
+      "hold": {
+        "n": 48,
+        "tw": 0.92,
+        "ret": 20.07,
+        "pf": 1.352,
+        "wr": 50,
+        "dd": 14.54
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_toxic_hold24",
+      "over": {
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqMaxHoldBars": 24
+      },
+      "y1": {
+        "n": 64,
+        "tw": 1.23,
+        "ret": -2.3,
+        "pf": 0.958,
+        "wr": 54.7,
+        "dd": 11.05
+      },
+      "hold": {
+        "n": 85,
+        "tw": 1.63,
+        "ret": -13.26,
+        "pf": 0.829,
+        "wr": 44.7,
+        "dd": 21.58
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_toxic_tp15",
+      "over": {
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqMaxTpRr": 1.5
+      },
+      "y1": {
+        "n": 63,
+        "tw": 1.21,
+        "ret": -12.17,
+        "pf": 0.816,
+        "wr": 52.4,
+        "dd": 12.17
+      },
+      "hold": {
+        "n": 83,
+        "tw": 1.59,
+        "ret": -0.31,
+        "pf": 0.997,
+        "wr": 49.4,
+        "dd": 14.38
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_fade_toxic",
+      "over": {
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqRequireHtfAlign": true,
+        "intradayLiqHtfAlignPdhPdl": true
+      },
+      "y1": {
+        "n": 30,
+        "tw": 0.58,
+        "ret": 10.52,
+        "pf": 1.412,
+        "wr": 63.3,
+        "dd": 8.7
+      },
+      "hold": {
+        "n": 50,
+        "tw": 0.96,
+        "ret": -24.01,
+        "pf": 0.556,
+        "wr": 42,
+        "dd": 26.88
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_kz_toxic",
+      "over": {
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqRequireKillzone": true
+      },
+      "y1": {
+        "n": 17,
+        "tw": 0.33,
+        "ret": 1.92,
+        "pf": 1.105,
+        "wr": 52.9,
+        "dd": 12.64
+      },
+      "hold": {
+        "n": 35,
+        "tw": 0.67,
+        "ret": 8.05,
+        "pf": 1.231,
+        "wr": 51.4,
+        "dd": 6.44
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_vol15_toxic",
+      "over": {
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqSweepMinVolRatio": 1.5
+      },
+      "y1": {
+        "n": 51,
+        "tw": 0.98,
+        "ret": -2.59,
+        "pf": 0.954,
+        "wr": 52.9,
+        "dd": 11.98
+      },
+      "hold": {
+        "n": 77,
+        "tw": 1.48,
+        "ret": -2.06,
+        "pf": 0.976,
+        "wr": 46.8,
+        "dd": 13.91
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "soft_drop_spent",
+      "over": {
+        "intradayLiqContinuationGate": true,
+        "intradayLiqMaxDailyRangeUsedPct": 0.7
+      },
+      "y1": {
+        "n": 116,
+        "tw": 2.22,
+        "ret": -11.4,
+        "pf": 0.912,
+        "wr": 50,
+        "dd": 20.5
+      },
+      "hold": {
+        "n": 132,
+        "tw": 2.53,
+        "ret": -31.57,
+        "pf": 0.757,
+        "wr": 43.2,
+        "dd": 41.42
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "soft_drop_asia",
+      "over": {
+        "intradayLiqSessionNarratives": "london_sweep,ny_continuation"
+      },
+      "y1": {
+        "n": 130,
+        "tw": 2.49,
+        "ret": -16.12,
+        "pf": 0.882,
+        "wr": 49.2,
+        "dd": 21.64
+      },
+      "hold": {
+        "n": 156,
+        "tw": 2.99,
+        "ret": -25.34,
+        "pf": 0.845,
+        "wr": 44.2,
+        "dd": 39.12
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "soft_drop_chase",
+      "over": {
+        "intradayLiqRequireHtfAlign": true,
+        "intradayLiqHtfAlignPdhPdl": true
+      },
+      "y1": {
+        "n": 40,
+        "tw": 0.77,
+        "ret": -8.73,
+        "pf": 0.786,
+        "wr": 50,
+        "dd": 10.33
+      },
+      "hold": {
+        "n": 64,
+        "tw": 1.23,
+        "ret": -26.48,
+        "pf": 0.597,
+        "wr": 43.8,
+        "dd": 34.88
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "soft_pdh_pdl",
+      "over": {
+        "intradayLiqSessionExtreme": false
+      },
+      "y1": {
+        "n": 105,
+        "tw": 2.01,
+        "ret": -16.77,
+        "pf": 0.855,
+        "wr": 47.6,
+        "dd": 25.37
+      },
+      "hold": {
+        "n": 119,
+        "tw": 2.28,
+        "ret": -28.61,
+        "pf": 0.777,
+        "wr": 43.7,
+        "dd": 39.08
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "soft_vol15",
+      "over": {
+        "intradayLiqSweepMinVolRatio": 1.5
+      },
+      "y1": {
+        "n": 110,
+        "tw": 2.11,
+        "ret": -6.76,
+        "pf": 0.942,
+        "wr": 50.9,
+        "dd": 21.95
+      },
+      "hold": {
+        "n": 136,
+        "tw": 2.61,
+        "ret": -27.41,
+        "pf": 0.797,
+        "wr": 43.4,
+        "dd": 35.61
+      },
+      "pass": false,
+      "y1Only": false
+    },
+    {
+      "id": "BASE_toxic_risk1",
+      "over": {
+        "intradayLiqDaySituationBias": true,
+        "riskPerTrade": 1
+      },
+      "y1": {
+        "n": 63,
+        "tw": 1.21,
+        "ret": -0.43,
+        "pf": 0.985,
+        "wr": 52.4,
+        "dd": 4.92
+      },
+      "hold": {
+        "n": 83,
+        "tw": 1.59,
+        "ret": 2.94,
+        "pf": 1.08,
+        "wr": 48.2,
+        "dd": 5.77
+      },
+      "pass": false
+    },
+    {
+      "id": "BASE_toxic_vol12_risk1",
+      "over": {
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqSweepMinVolRatio": 1.2,
+        "riskPerTrade": 1
+      },
+      "y1": {
+        "n": 56,
+        "tw": 1.07,
+        "ret": -1.49,
+        "pf": 0.942,
+        "wr": 51.8,
+        "dd": 4.92
+      },
+      "hold": {
+        "n": 78,
+        "tw": 1.5,
+        "ret": -0.94,
+        "pf": 0.973,
+        "wr": 46.2,
+        "dd": 5.77
+      },
+      "pass": false
+    },
+    {
+      "id": "BASE_kz_toxic_risk1",
+      "over": {
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqRequireKillzone": true,
+        "riskPerTrade": 1
+      },
+      "y1": {
+        "n": 17,
+        "tw": 0.33,
+        "ret": 0.91,
+        "pf": 1.128,
+        "wr": 52.9,
+        "dd": 5.21
+      },
+      "hold": {
+        "n": 35,
+        "tw": 0.67,
+        "ret": 3.42,
+        "pf": 1.252,
+        "wr": 51.4,
+        "dd": 2.6
+      },
+      "pass": false
+    }
+  ],
+  "multi": [
+    {
+      "symbol": "BNBUSDT",
+      "id": "BASE_kz_toxic",
+      "full": {
+        "n": 71,
+        "tw": 0.45,
+        "ret": 14.55,
+        "pf": 1.188,
+        "wr": 52.1,
+        "dd": 12.64
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "id": "BASE_kz_toxic",
+      "full": {
+        "n": 43,
+        "tw": 0.27,
+        "ret": -7,
+        "pf": 0.853,
+        "wr": 51.2,
+        "dd": 18.2
+      }
+    },
+    {
+      "symbol": "BTCUSDT",
+      "id": "BASE_kz_toxic",
+      "full": {
+        "n": 74,
+        "tw": 0.47,
+        "ret": -2.97,
+        "pf": 0.967,
+        "wr": 54.1,
+        "dd": 32.04
+      }
+    }
+  ],
+  "best": {
+    "id": "BASE_kz_toxic_risk1",
+    "y1": {
+      "n": 17,
+      "tw": 0.33,
+      "ret": 0.91,
+      "pf": 1.128,
+      "wr": 52.9,
+      "dd": 5.21
+    },
+    "hold": {
+      "n": 35,
+      "tw": 0.67,
+      "ret": 3.42,
+      "pf": 1.252,
+      "wr": 51.4,
+      "dd": 2.6
+    },
+    "pass": false
+  },
+  "promote": [],
+  "verdict": "REJECT"
+}

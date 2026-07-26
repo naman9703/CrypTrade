@@ -129,6 +129,54 @@ export function persistCfgRawWithStrategySlices(cfgRaw, { fillFrom = null } = {}
   return stripInstanceFieldsFromCfgRaw(wrapWithSlices(activeBot, root, byStrategy));
 }
 
+const LIQ_ONE_SIDED_DAY_BIAS = new Set(["both", "buy_breakdown", "sell_breakout"]);
+
+/**
+ * True when a bot carries an unambiguous LIQ-research signature — a config shape that
+ * is only ever produced by the LIQ presets, never by an SMC/ICT strategy.
+ *
+ * Used to detect the stale-live-gate race: applying a LIQ preset draft over a running
+ * SMC engine can persist the LIQ tuning keys while the SMC gate flags leak through from
+ * the live bot (WS-tick draft clear). The tuning keys below make SMC gating incoherent.
+ */
+function hasLiqResearchSignature(bot) {
+  if (!bot || typeof bot !== "object") return false;
+  if (LIQ_ONE_SIDED_DAY_BIAS.has(String(bot.intradayLiqDaySituationBias ?? ""))) return true;
+  const playbook = String(bot.intradayLiqPlaybook ?? "").toUpperCase();
+  const liqPlaybook = playbook === "LIQ_CORE" || playbook === "LIQ_ACCEPT";
+  return (
+    liqPlaybook &&
+    bot.intradayLiqMitigationEntry === true &&
+    bot.intradayLiqRequireDisplacementV2 === true
+  );
+}
+
+/**
+ * Force gate coherence for a LIQ-research config: the liquidity gate on, SMC/ICT and
+ * institutional-SR gates off. No-op for any config without the LIQ signature, so live
+ * SMC/ICT strategies are never touched.
+ */
+export function enforceLiqGateCoherence(bot) {
+  if (!hasLiqResearchSignature(bot)) return bot;
+  if (
+    bot.intradayGateLiquidity === true &&
+    bot.intradayGateSmcIct !== true &&
+    bot.intradaySmcIctMode !== true &&
+    bot.intradayGateInstitutionalSr !== true &&
+    bot.intradaySrAPlusMode !== true
+  ) {
+    return bot;
+  }
+  return {
+    ...bot,
+    intradayGateLiquidity: true,
+    intradayGateSmcIct: false,
+    intradaySmcIctMode: false,
+    intradayGateInstitutionalSr: false,
+    intradaySrAPlusMode: false,
+  };
+}
+
 /**
  * Apply intraday engine materialization before strategy Save (parity with backtest worker).
  * Stops stale SMC/SR keys on the live engine from persisting when a preset draft was applied.
@@ -141,11 +189,16 @@ export async function materializeStrategyCfgRawForSave(cfgRaw) {
   if (manual !== "SR_INTRADAY" && manual !== "INTRADAY_PRO") return cfgRaw;
   const { materializeIntradayEngineCfgSync } = await import("../strategy/presets/srIntradayOptimized.js");
   const { materializeIntradayPanelOnCfg } = await import("../strategy/intradayPanelKeys.js");
-  const materialized = materializeIntradayEngineCfgSync({ ...bot }, materializeIntradayPanelOnCfg);
+  // Repair gate leakage *before* materialize so LIQ solo-preset defaults fill correctly.
+  const materialized = materializeIntradayEngineCfgSync(
+    enforceLiqGateCoherence({ ...bot }),
+    materializeIntradayPanelOnCfg,
+  );
+  const coherent = enforceLiqGateCoherence(materialized);
   if (root.bot && typeof root.bot === "object") {
-    return { ...root, bot: materialized };
+    return { ...root, bot: coherent };
   }
-  return { ...root, ...materialized };
+  return { ...root, ...coherent };
 }
 
 /** Expand byStrategy into active `bot` for engine reload (preserves all slices). */

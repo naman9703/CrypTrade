@@ -1,0 +1,250 @@
+{
+  "generatedAt": "2026-07-24T19:27:46.466Z",
+  "rows": [
+    {
+      "id": "mit_minSl01_toxic",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 69,
+        "tw": 1.32,
+        "ret": 14.1,
+        "pf": 1.149,
+        "wr": 49.3
+      },
+      "hold": {
+        "n": 92,
+        "tw": 1.76,
+        "ret": 3.8,
+        "pf": 1.031,
+        "wr": 47.8
+      },
+      "full": {
+        "n": 245,
+        "tw": 1.56,
+        "ret": 12.85,
+        "pf": 1.04,
+        "wr": 46.5
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "mit_minSl01_h022_toxic",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 22,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 67,
+        "tw": 1.28,
+        "ret": 7.59,
+        "pf": 1.082,
+        "wr": 47.8
+      },
+      "hold": {
+        "n": 84,
+        "tw": 1.61,
+        "ret": 13.7,
+        "pf": 1.124,
+        "wr": 50
+      },
+      "full": {
+        "n": 231,
+        "tw": 1.48,
+        "ret": 23.54,
+        "pf": 1.071,
+        "wr": 47.2
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "mit_minSl01_h023_toxic",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 23,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 68,
+        "tw": 1.3,
+        "ret": 9.28,
+        "pf": 1.099,
+        "wr": 48.5
+      },
+      "hold": {
+        "n": 90,
+        "tw": 1.73,
+        "ret": 3.45,
+        "pf": 1.029,
+        "wr": 47.8
+      },
+      "full": {
+        "n": 240,
+        "tw": 1.53,
+        "ret": 11.61,
+        "pf": 1.036,
+        "wr": 46.7
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "mit_minSl01_h020",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20
+      },
+      "y1": {
+        "n": 122,
+        "tw": 2.34,
+        "ret": 2.53,
+        "pf": 1.015,
+        "wr": 47.5
+      },
+      "hold": {
+        "n": 144,
+        "tw": 2.76,
+        "ret": -9.33,
+        "pf": 0.942,
+        "wr": 47.2
+      },
+      "full": {
+        "n": 404,
+        "tw": 2.58,
+        "ret": -23.6,
+        "pf": 0.946,
+        "wr": 46
+      },
+      "pass": false,
+      "eg": false
+    },
+    {
+      "id": "mit05_minSl01_h020_toxic",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.35,
+        "intradayLiqMitigationWaitBars": 8,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true
+      },
+      "y1": {
+        "n": 70,
+        "tw": 1.34,
+        "ret": 11.54,
+        "pf": 1.125,
+        "wr": 50
+      },
+      "hold": {
+        "n": 81,
+        "tw": 1.55,
+        "ret": 26.27,
+        "pf": 1.245,
+        "wr": 50.6
+      },
+      "full": {
+        "n": 233,
+        "tw": 1.49,
+        "ret": 59.91,
+        "pf": 1.163,
+        "wr": 48.5
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "mit_minSl01_h020_toxic_tp25",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqMaxTpRr": 2.5
+      },
+      "y1": {
+        "n": 63,
+        "tw": 1.21,
+        "ret": 6.29,
+        "pf": 1.074,
+        "wr": 47.6
+      },
+      "hold": {
+        "n": 78,
+        "tw": 1.5,
+        "ret": 18.1,
+        "pf": 1.176,
+        "wr": 50
+      },
+      "full": {
+        "n": 217,
+        "tw": 1.39,
+        "ret": 51.54,
+        "pf": 1.144,
+        "wr": 47.9
+      },
+      "pass": false,
+      "eg": true
+    },
+    {
+      "id": "mit_minSl01_h020_toxic_maxSide3",
+      "over": {
+        "intradayLiqMitigationEntry": true,
+        "intradayLiqMitigationFrac": 0.5,
+        "intradayLiqMitigationWaitBars": 6,
+        "intradayLiqMinSlPct": 0.01,
+        "intradayLiqActiveHourStart": 0,
+        "intradayLiqActiveHourEnd": 20,
+        "intradayLiqDaySituationBias": true,
+        "intradayLiqMaxTradesPerSidePerDay": 3,
+        "srIntradayMaxTradesPerDay": 6
+      },
+      "y1": {
+        "n": 65,
+        "tw": 1.25,
+        "ret": 6.31,
+        "pf": 1.071,
+        "wr": 47.7
+      },
+      "hold": {
+        "n": 81,
+        "tw": 1.55,
+        "ret": 27.31,
+        "pf": 1.251,
+        "wr": 51.9
+      },
+      "full": {
+        "n": 222,
+        "tw": 1.42,
+        "ret": 48.98,
+        "pf": 1.139,
+        "wr": 48.6
+      },
+      "pass": false,
+      "eg": true
+    }
+  ]
+}

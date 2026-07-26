@@ -1,0 +1,170 @@
+load DOGEUSDT…
+candles=195456 funding=6109
+
+══ ATR ladder hard A/B ══
+run H0_stack
+H0_stack
+  FULL n=76 tw=0.27 ret=128.89 pf=1.42 cal=0.75
+  years 2020-21:5.35%/7 2021-22:21.15%/20 2022-23:29.1%/18 2023-24:42.28%/14 2024-25:-15.85%/10 2025-26:16.02%/7
+  RED: 2024-25=-15.85% | all≥0=false keepGood=true
+run minAtr_006
+minAtr_006
+  FULL n=66 tw=0.23 ret=182.25 pf=1.67 cal=1.27
+  years 2020-21:5.35%/7 2021-22:25.82%/19 2022-23:40.31%/14 2023-24:37.51%/12 2024-25:-4.87%/7 2025-26:16.02%/7
+  RED: 2024-25=-4.87% | all≥0=false keepGood=true
+run minAtr_007
+minAtr_007
+  FULL n=56 tw=0.2 ret=204.22 pf=1.88 cal=1.57
+  years 2020-21:0.95%/5 2021-22:34.74%/17 2022-23:34.56%/13 2023-24:54.07%/9 2024-25:-1.48%/6 2025-26:9.5%/6
+  RED: 2024-25=-1.48% | all≥0=false keepGood=true
+run minAtr_008
+minAtr_008
+  FULL n=50 tw=0.18 ret=181.05 pf=1.95 cal=1.09
+  years 2020-21:0.95%/5 2021-22:12.07%/14 2022-23:40.16%/12 2023-24:58.53%/8 2024-25:2.09%/5 2025-26:9.5%/6
+  RED: none | all≥0=true keepGood=true
+run minAtr_009
+minAtr_009
+  FULL n=41 tw=0.15 ret=133.2 pf=1.83 cal=0.91
+  years 2020-21:0.95%/5 2021-22:21.06%/12 2022-23:42.18%/9 2023-24:49.58%/7 2024-25:2.09%/5 2025-26:-12.12%/3
+  RED: 2025-26=-12.12% | all≥0=false keepGood=false
+run minAtr_010
+minAtr_010
+  FULL n=32 tw=0.11 ret=66.2 pf=1.68 cal=0.67
+  years 2020-21:0.95%/5 2021-22:1.53%/9 2022-23:27.17%/7 2023-24:49.58%/7 2024-25:-3%/1 2025-26:-12.12%/3
+  RED: 2024-25=-3% 2025-26=-12.12% | all≥0=false keepGood=false
+run minAtr_012
+minAtr_012
+  FULL n=20 tw=0.07 ret=29.47 pf=1.63 cal=0.54
+  years 2020-21:0.95%/5 2021-22:4.2%/6 2022-23:-3.76%/4 2023-24:27.89%/5
+  RED: 2022-23=-3.76% | all≥0=false keepGood=false
+
+══ Ranked ATR ladder ══
+minAtr_008     all≥0=true keep=true ret=181.05% | 24-25=2.09% n=5 | tw=0.18
+minAtr_007     all≥0=false keep=true ret=204.22% | 24-25=-1.48% n=6 | tw=0.2
+minAtr_006     all≥0=false keep=true ret=182.25% | 24-25=-4.87% n=7 | tw=0.23
+H0_stack       all≥0=false keep=true ret=128.89% | 24-25=-15.85% n=10 | tw=0.27
+minAtr_009     all≥0=false keep=false ret=133.2% | 24-25=2.09% n=5 | tw=0.15
+minAtr_010     all≥0=false keep=false ret=66.2% | 24-25=-3% n=1 | tw=0.11
+minAtr_012     all≥0=false keep=false ret=29.47% | 24-25=undefined% n=undefined | tw=0.07
+
+══ Residual autopsy under minAtr_008 ══
+bad { n: 5, net: 5.26, wr: 20 } neverGreenish 2
+good { n: 45, net: 175.79, wr: 42.2 }
+
+feature means badNG vs goodWin vs goodAll (engine ATR/vol):
+  prior5d    badNG=-0.1057 goodW=-0.0134 goodAll=-0.0283
+  prior20d   badNG=0.2276 goodW=0.2138 goodAll=0.1720
+  prior60d   badNG=0.2488 goodW=1.1211 goodAll=0.7426
+  pathPct    badNG=0.0256 goodW=0.0529 goodAll=0.0536
+  htfSep     badNG=0.0035 goodW=0.0070 goodAll=0.0092
+  adx        badNG=49.7169 goodW=51.6521 goodAll=49.0190
+  atr        badNG=0.0095 goodW=0.0177 goodAll=0.0166
+  volRatio   badNG=0.7379 goodW=2.7920 goodAll=2.3764
+  wick       badNG=0.6064 goodW=0.2513 goodAll=0.2971
+  body       badNG=0.2664 goodW=0.5654 goodAll=0.4426
+
+-- 2024-25 cells --
+  BUY|va_rejection|bull_trend|vacuum           n= 2 net= -18.99 wr=0%
+  BUY|va_rejection|bear_trend|tight            n= 1 net= -11.48 wr=0%
+  SELL|va_rejection|bull_trend|vacuum          n= 1 net=  -7.55 wr=0%
+  SELL|va_rejection|weak_bear|vacuum           n= 1 net=  43.28 wr=100%
+
+-- 2024-25 side×macro --
+  BUY|bull_trend|vacuum                        n= 2 net= -18.99 wr=0%
+  BUY|bear_trend|tight                         n= 1 net= -11.48 wr=0%
+  SELL|bull_trend|vacuum                       n= 1 net=  -7.55 wr=0%
+  SELL|weak_bear|vacuum                        n= 1 net=  43.28 wr=100%
+
+-- 2024-25 ATR% --
+  0.8-1%                                       n= 3 net= -30.47 wr=0%
+  1-1.2%                                       n= 2 net=  35.73 wr=50%
+
+-- 2024-25 engine vol --
+  vol<1.2                                      n= 3 net= -30.47 wr=0%
+  vol≥2.0                                      n= 1 net=  -7.55 wr=0%
+  1.2-1.5                                      n= 1 net=  43.28 wr=100%
+
+-- 2024-25 exit --
+  sl                                           n= 4 net= -38.02 wr=0%
+  tp                                           n= 1 net=  43.28 wr=100%
+
+══ Same-cell contrast (bled in 24-25 under residual base) ══
+  SELL|va_rejection|bull_trend|vacuum              bad n=1 net=-7.55 | good n=9 net=-9.38
+  BUY|va_rejection|bear_trend|tight                bad n=1 net=-11.48 | good n=0 net=0
+  BUY|va_rejection|bull_trend|vacuum               bad n=2 net=-18.99 | good n=4 net=32.58
+
+══ Soft probes on residual book (engine features) ══
+drop_BUY                     drop=20 ALL n=30 net=180.16 | 24-25 35.73 (n=2) | good 144.43
+drop_BUY_bull_trend          drop=10 ALL n=40 net=181.29 | 24-25 24.25 (n=3) | good 157.04
+drop_BUY_vacuum              drop= 8 ALL n=42 net=150.92 | 24-25 24.25 (n=3) | good 126.67
+drop_SELL_bull               drop=15 ALL n=35 net=158.05 | 24-25 12.81 (n=4) | good 145.24
+drop_SELL_bear_struct        drop= 0 ALL n=50 net=181.05 | 24-25 5.26 (n=5) | good 175.79
+drop_BUY_bear_tight          drop= 1 ALL n=49 net=192.53 | 24-25 16.74 (n=4) | good 175.79
+drop_path_lt_02              drop=17 ALL n=33 net=151.77 | 24-25 16.74 (n=4) | good 135.03
+drop_path_lt_025             drop=19 ALL n=31 net=103.25 | 24-25 24.71 (n=3) | good 78.54
+drop_htf_lt_004              drop=20 ALL n=30 net=215.74 | 24-25 43.28 (n=1) | good 172.47
+drop_htf_lt_005              drop=24 ALL n=26 net=128.56 | 24-25 43.28 (n=1) | good 85.29
+drop_prior20_neg             drop=22 ALL n=28 net=80.25 | 24-25 -26.54 (n=3) | good 106.79
+drop_BUY_prior20_neg         drop= 6 ALL n=44 net=236.16 | 24-25 16.74 (n=4) | good 219.42
+drop_vol_lt_15               drop=28 ALL n=22 net=138.88 | 24-25 -7.55 (n=1) | good 146.43
+drop_vol_lt_20               drop=32 ALL n=18 net=160.11 | 24-25 -7.55 (n=1) | good 167.66
+drop_wick_gte_04             drop=18 ALL n=32 net=168.32 | 24-25 31.8 (n=2) | good 136.52
+drop_body_lt_03              drop=17 ALL n=33 net=217.59 | 24-25 23.83 (n=3) | good 193.77
+drop_hour_12_16              drop=14 ALL n=36 net=193.49 | 24-25 5.26 (n=5) | good 188.23
+drop_BUY_bull_vac            drop= 6 ALL n=44 net=167.46 | 24-25 24.25 (n=3) | good 143.21
+drop_low_path_BUY            drop=13 ALL n=37 net=218.26 | 24-25 24.71 (n=3) | good 193.55
+
+══ Hard residual A/B under minAtr_008 ══
+run minAtr_008_base
+minAtr_008_base
+  FULL n=50 tw=0.18 ret=181.05 pf=1.95 cal=1.09
+  years 2020-21:0.95%/5 2021-22:12.07%/14 2022-23:40.16%/12 2023-24:58.53%/8 2024-25:2.09%/5 2025-26:9.5%/6
+  RED: none | all≥0=true keepGood=true
+run minAtr_008+buyRejBlockBullTrend
+minAtr_008+buyRejBlockBullTrend
+  FULL n=40 tw=0.14 ret=145.23 pf=2.29 cal=0.93
+  years 2020-21:3.87%/4 2021-22:12.07%/14 2022-23:6.32%/9 2023-24:45.02%/7 2024-25:9.65%/3 2025-26:24.6%/3
+  RED: none | all≥0=true keepGood=false
+run minAtr_008+rejVol_15
+minAtr_008+rejVol_15
+  FULL n=38 tw=0.13 ret=161.35 pf=2.28 cal=1
+  years 2020-21:3.87%/4 2021-22:19.01%/13 2022-23:50.03%/10 2023-24:53.91%/6 2024-25:-6.88%/2 2025-26:-1.68%/3
+  RED: 2024-25=-6.88% 2025-26=-1.68% | all≥0=false keepGood=false
+run minAtr_008+rejVol_18
+minAtr_008+rejVol_18
+  FULL n=34 tw=0.12 ret=206.84 pf=2.83 cal=1.19
+  years 2020-21:3.87%/4 2021-22:34.14%/10 2022-23:50.03%/10 2023-24:53.91%/6 2024-25:-3%/1 2025-26:-1.68%/3
+  RED: 2024-25=-3% 2025-26=-1.68% | all≥0=false keepGood=false
+run minAtr_008+buyBody_25
+minAtr_008+buyBody_25
+  FULL n=46 tw=0.16 ret=231.93 pf=2.48 cal=1.28
+  years 2020-21:3.87%/4 2021-22:12.07%/14 2022-23:40.16%/12 2023-24:58.53%/8 2024-25:6.34%/4 2025-26:20.66%/4
+  RED: none | all≥0=true keepGood=true
+run minAtr_008+buyCloseStr_55
+minAtr_008+buyCloseStr_55
+  FULL n=38 tw=0.13 ret=143.8 pf=2.17 cal=1.33
+  years 2020-21:0.95%/5 2021-22:18.48%/10 2022-23:17.7%/9 2023-24:39.48%/6 2024-25:6.34%/4 2025-26:16.75%/4
+  RED: none | all≥0=true keepGood=true
+run minAtr_008+sellBearHtf_006
+minAtr_008+sellBearHtf_006
+  FULL n=50 tw=0.18 ret=181.05 pf=1.95 cal=1.09
+  years 2020-21:0.95%/5 2021-22:12.07%/14 2022-23:40.16%/12 2023-24:58.53%/8 2024-25:2.09%/5 2025-26:9.5%/6
+  RED: none | all≥0=true keepGood=true
+
+══ Ranked hard residual ══
+minAtr_008+buyBody_25                all≥0=true keep=true ret=231.93% | 24-25=6.34% | RED:none
+minAtr_008+buyCloseStr_55            all≥0=true keep=true ret=143.8% | 24-25=6.34% | RED:none
+minAtr_008_base                      all≥0=true keep=true ret=181.05% | 24-25=2.09% | RED:none
+minAtr_008+sellBearHtf_006           all≥0=true keep=true ret=181.05% | 24-25=2.09% | RED:none
+minAtr_008+buyRejBlockBullTrend      all≥0=true keep=false ret=145.23% | 24-25=9.65% | RED:none
+minAtr_008+rejVol_18                 all≥0=false keep=false ret=206.84% | 24-25=-3% | RED:2024-25=-3%,2025-26=-1.68%
+minAtr_008+rejVol_15                 all≥0=false keep=false ret=161.35% | 24-25=-6.88% | RED:2024-25=-6.88%,2025-26=-1.68%
+
+══ Year-clean candidates: 6 ══
+  minAtr_008 ret=181.05% tw=0.18 cal=1.09
+  minAtr_008+buyBody_25 ret=231.93% tw=0.16 cal=1.28
+  minAtr_008+buyCloseStr_55 ret=143.8% tw=0.13 cal=1.33
+  minAtr_008_base ret=181.05% tw=0.18 cal=1.09
+  minAtr_008+sellBearHtf_006 ret=181.05% tw=0.18 cal=1.09
+  minAtr_008+buyRejBlockBullTrend ret=145.23% tw=0.14 cal=0.93
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-doge-f3-2425-atr-residual.json

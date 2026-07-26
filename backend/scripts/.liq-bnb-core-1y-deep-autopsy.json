@@ -1,0 +1,1136 @@
+{
+  "generatedAt": "2026-07-24T14:43:07.776Z",
+  "symbol": "BNBUSDT",
+  "y1": {
+    "from": "2025-07-01",
+    "to": "2026-07-01"
+  },
+  "hold": {
+    "from": "2024-07-01",
+    "to": "2025-07-01"
+  },
+  "baseline": {
+    "n": 329,
+    "tw": 6.31,
+    "ret": -85.75,
+    "pf": 0.656,
+    "wr": 39.5
+  },
+  "primary": {
+    "entryLossShare": 38.1,
+    "exitLossShare": 15.6,
+    "topPath": "immediate_sl",
+    "topPathDay": "never_green_slow|breakout",
+    "note": "Dominant $ loss is ENTRY (immediate/never-green/chase/toxic) — fix trigger/confirm, not trail"
+  },
+  "clusters": {
+    "byFail": [
+      {
+        "k": "never_green",
+        "n": 49,
+        "pnl": -71.96,
+        "avg": -1.4686,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "sl_no_follow",
+        "n": 90,
+        "pnl": -111.48,
+        "avg": -1.2386,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "other_loss",
+        "n": 60,
+        "pnl": -66.21,
+        "avg": -1.1035,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "winner",
+        "n": 130,
+        "pnl": 163.89,
+        "avg": 1.2607,
+        "pf": 99,
+        "wr": 100
+      }
+    ],
+    "byPath": [
+      {
+        "k": "immediate_sl",
+        "n": 6,
+        "pnl": -9.52,
+        "avg": -1.5871,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "never_green_slow",
+        "n": 26,
+        "pnl": -37.88,
+        "avg": -1.4569,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "mfe_not_captured",
+        "n": 22,
+        "pnl": -28.92,
+        "avg": -1.3146,
+        "pf": 0.005,
+        "wr": 4.5
+      },
+      {
+        "k": "micro_mfe_then_sl",
+        "n": 100,
+        "pnl": -118.49,
+        "avg": -1.1849,
+        "pf": 0.018,
+        "wr": 5
+      },
+      {
+        "k": "ok_path",
+        "n": 112,
+        "pnl": 69.52,
+        "avg": 0.6207,
+        "pf": 2.63,
+        "wr": 67
+      },
+      {
+        "k": "gave_back_after_green",
+        "n": 62,
+        "pnl": 39.49,
+        "avg": 0.637,
+        "pf": 4.992,
+        "wr": 77.4
+      }
+    ],
+    "byIssue": [
+      {
+        "k": "entry",
+        "n": 33,
+        "pnl": -47.36,
+        "avg": -1.435,
+        "pf": 0.001,
+        "wr": 3
+      },
+      {
+        "k": "mixed",
+        "n": 90,
+        "pnl": -115.67,
+        "avg": -1.2853,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "entry_regime",
+        "n": 42,
+        "pnl": -47.6,
+        "avg": -1.1333,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "exit",
+        "n": 84,
+        "pnl": 10.57,
+        "avg": 0.1259,
+        "pf": 1.271,
+        "wr": 58.3
+      },
+      {
+        "k": "none",
+        "n": 80,
+        "pnl": 114.3,
+        "avg": 1.4288,
+        "pf": 99,
+        "wr": 100
+      }
+    ],
+    "byPathDay": [
+      {
+        "k": "never_green_slow|breakout",
+        "n": 7,
+        "pnl": -12.24,
+        "avg": -1.7484,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "mfe_not_captured|breakout",
+        "n": 8,
+        "pnl": -11.67,
+        "avg": -1.459,
+        "pf": 0.013,
+        "wr": 12.5
+      },
+      {
+        "k": "never_green_slow|range",
+        "n": 14,
+        "pnl": -19.29,
+        "avg": -1.3781,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "mfe_not_captured|range",
+        "n": 8,
+        "pnl": -10.61,
+        "avg": -1.3262,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "micro_mfe_then_sl|breakout",
+        "n": 24,
+        "pnl": -31.19,
+        "avg": -1.2998,
+        "pf": 0.001,
+        "wr": 4.2
+      },
+      {
+        "k": "never_green_slow|breakdown",
+        "n": 5,
+        "pnl": -6.35,
+        "avg": -1.2696,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "micro_mfe_then_sl|range",
+        "n": 58,
+        "pnl": -72.02,
+        "avg": -1.2418,
+        "pf": 0.017,
+        "wr": 3.4
+      },
+      {
+        "k": "mfe_not_captured|breakdown",
+        "n": 6,
+        "pnl": -6.64,
+        "avg": -1.1068,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "micro_mfe_then_sl|breakdown",
+        "n": 18,
+        "pnl": -15.27,
+        "avg": -0.8483,
+        "pf": 0.052,
+        "wr": 11.1
+      },
+      {
+        "k": "gave_back_after_green|breakout",
+        "n": 21,
+        "pnl": 6.67,
+        "avg": 0.3174,
+        "pf": 2.334,
+        "wr": 71.4
+      },
+      {
+        "k": "ok_path|breakdown",
+        "n": 18,
+        "pnl": 8.19,
+        "avg": 0.4551,
+        "pf": 5.156,
+        "wr": 72.2
+      },
+      {
+        "k": "ok_path|range",
+        "n": 67,
+        "pnl": 37.25,
+        "avg": 0.556,
+        "pf": 2.158,
+        "wr": 61.2
+      },
+      {
+        "k": "gave_back_after_green|breakdown",
+        "n": 13,
+        "pnl": 8.49,
+        "avg": 0.653,
+        "pf": 14.082,
+        "wr": 69.2
+      },
+      {
+        "k": "gave_back_after_green|range",
+        "n": 28,
+        "pnl": 24.34,
+        "avg": 0.8693,
+        "pf": 6.728,
+        "wr": 85.7
+      },
+      {
+        "k": "ok_path|breakout",
+        "n": 27,
+        "pnl": 24.07,
+        "avg": 0.8915,
+        "pf": 3.836,
+        "wr": 77.8
+      }
+    ],
+    "byToxic": [
+      {
+        "k": "ok",
+        "n": 204,
+        "pnl": -53.9,
+        "avg": -0.2642,
+        "pf": 0.672,
+        "wr": 38.7
+      },
+      {
+        "k": "toxic",
+        "n": 125,
+        "pnl": -31.86,
+        "avg": -0.2549,
+        "pf": 0.626,
+        "wr": 40.8
+      }
+    ],
+    "byChase": [
+      {
+        "k": "not_chase",
+        "n": 278,
+        "pnl": -90.9,
+        "avg": -0.327,
+        "pf": 0.598,
+        "wr": 37.4
+      },
+      {
+        "k": "chase",
+        "n": 51,
+        "pnl": 5.15,
+        "avg": 0.1009,
+        "pf": 1.221,
+        "wr": 51
+      }
+    ],
+    "byAligned": [
+      {
+        "k": "aligned_into",
+        "n": 179,
+        "pnl": -51.79,
+        "avg": -0.2893,
+        "pf": 0.646,
+        "wr": 35.8
+      },
+      {
+        "k": "not_aligned",
+        "n": 150,
+        "pnl": -33.97,
+        "avg": -0.2264,
+        "pf": 0.672,
+        "wr": 44
+      }
+    ],
+    "bySession": [
+      {
+        "k": "off_hours",
+        "n": 40,
+        "pnl": -19.74,
+        "avg": -0.4936,
+        "pf": 0.442,
+        "wr": 35
+      },
+      {
+        "k": "asia_accum",
+        "n": 92,
+        "pnl": -37.53,
+        "avg": -0.4079,
+        "pf": 0.533,
+        "wr": 30.4
+      },
+      {
+        "k": "london_sweep",
+        "n": 71,
+        "pnl": -14.44,
+        "avg": -0.2034,
+        "pf": 0.746,
+        "wr": 43.7
+      },
+      {
+        "k": "ny_continuation",
+        "n": 126,
+        "pnl": -14.04,
+        "avg": -0.1114,
+        "pf": 0.818,
+        "wr": 45.2
+      }
+    ],
+    "byLevel": [
+      {
+        "k": "session_low",
+        "n": 46,
+        "pnl": -22.09,
+        "avg": -0.4802,
+        "pf": 0.468,
+        "wr": 30.4
+      },
+      {
+        "k": "session_high",
+        "n": 44,
+        "pnl": -12.82,
+        "avg": -0.2914,
+        "pf": 0.638,
+        "wr": 43.2
+      },
+      {
+        "k": "pdh",
+        "n": 125,
+        "pnl": -29.2,
+        "avg": -0.2336,
+        "pf": 0.7,
+        "wr": 40
+      },
+      {
+        "k": "pdl",
+        "n": 114,
+        "pnl": -21.65,
+        "avg": -0.1899,
+        "pf": 0.713,
+        "wr": 41.2
+      }
+    ],
+    "byExit": [
+      {
+        "k": "sl",
+        "n": 169,
+        "pnl": -238.22,
+        "avg": -1.4096,
+        "pf": 0,
+        "wr": 0
+      },
+      {
+        "k": "time_stop",
+        "n": 74,
+        "pnl": 19.81,
+        "avg": 0.2677,
+        "pf": 2.767,
+        "wr": 60.8
+      },
+      {
+        "k": "tp",
+        "n": 85,
+        "pnl": 132.88,
+        "avg": 1.5632,
+        "pf": 99,
+        "wr": 100
+      }
+    ]
+  },
+  "soft": [
+    {
+      "label": "H0_all",
+      "keep": 329,
+      "n": 329,
+      "tw": 6.31,
+      "ret": -85.75,
+      "pf": 0.656,
+      "wr": 39.5
+    },
+    {
+      "label": "drop_immediate_sl",
+      "keep": 323,
+      "n": 323,
+      "tw": 6.19,
+      "ret": -76.23,
+      "pf": 0.683,
+      "wr": 40.2
+    },
+    {
+      "label": "drop_never_green_path",
+      "keep": 297,
+      "n": 297,
+      "tw": 5.7,
+      "ret": -38.35,
+      "pf": 0.81,
+      "wr": 43.8
+    },
+    {
+      "label": "drop_toxic",
+      "keep": 204,
+      "n": 204,
+      "tw": 3.91,
+      "ret": -53.9,
+      "pf": 0.672,
+      "wr": 38.7
+    },
+    {
+      "label": "drop_chase",
+      "keep": 278,
+      "n": 278,
+      "tw": 5.33,
+      "ret": -90.9,
+      "pf": 0.598,
+      "wr": 37.4
+    },
+    {
+      "label": "keep_aligned_into",
+      "keep": 179,
+      "n": 179,
+      "tw": 3.43,
+      "ret": -51.79,
+      "pf": 0.646,
+      "wr": 35.8
+    },
+    {
+      "label": "drop_toxic_or_chase",
+      "keep": 193,
+      "n": 193,
+      "tw": 3.7,
+      "ret": -58.29,
+      "pf": 0.635,
+      "wr": 36.8
+    },
+    {
+      "label": "drop_session_ext",
+      "keep": 239,
+      "n": 239,
+      "tw": 4.58,
+      "ret": -50.84,
+      "pf": 0.706,
+      "wr": 40.6
+    },
+    {
+      "label": "asia_only",
+      "keep": 92,
+      "n": 92,
+      "tw": 1.76,
+      "ret": -37.53,
+      "pf": 0.533,
+      "wr": 30.4
+    },
+    {
+      "label": "drop_high_dailyUsed",
+      "keep": 250,
+      "n": 250,
+      "tw": 4.79,
+      "ret": -51.67,
+      "pf": 0.715,
+      "wr": 42
+    },
+    {
+      "label": "drop_weak_vol",
+      "keep": 258,
+      "n": 258,
+      "tw": 4.95,
+      "ret": -56.67,
+      "pf": 0.696,
+      "wr": 41.1
+    },
+    {
+      "label": "drop_weak_absorb",
+      "keep": 255,
+      "n": 255,
+      "tw": 4.89,
+      "ret": -71.05,
+      "pf": 0.643,
+      "wr": 38
+    },
+    {
+      "label": "entry_body_ge_0.35",
+      "keep": 189,
+      "n": 189,
+      "tw": 3.62,
+      "ret": -33.89,
+      "pf": 0.748,
+      "wr": 41.3
+    },
+    {
+      "label": "aligned_not_toxic",
+      "keep": 141,
+      "n": 141,
+      "tw": 2.7,
+      "ret": -39.57,
+      "pf": 0.668,
+      "wr": 34.8
+    },
+    {
+      "label": "aligned_not_chase_not_toxic",
+      "keep": 141,
+      "n": 141,
+      "tw": 2.7,
+      "ret": -39.57,
+      "pf": 0.668,
+      "wr": 34.8
+    },
+    {
+      "label": "oracle_drop_entry_issues",
+      "keep": 254,
+      "n": 254,
+      "tw": 4.87,
+      "ret": 9.2,
+      "pf": 1.059,
+      "wr": 50.8
+    },
+    {
+      "label": "oracle_mfe05",
+      "keep": 190,
+      "n": 190,
+      "tw": 3.64,
+      "ret": 83.04,
+      "pf": 2.063,
+      "wr": 64.7
+    }
+  ],
+  "softPass": [],
+  "hardResults": [
+    {
+      "id": "CORE",
+      "window": "Y1",
+      "n": 329,
+      "tw": 6.31,
+      "ret": -85.75,
+      "pf": 0.656,
+      "wr": 39.5
+    },
+    {
+      "id": "entry_body_ge_0.35",
+      "window": "Y1",
+      "over": {
+        "intradayLiqMinReclaimBodyRatio": 0.35
+      },
+      "soft": {
+        "label": "entry_body_ge_0.35",
+        "keep": 189,
+        "n": 189,
+        "tw": 3.62,
+        "ret": -33.89,
+        "pf": 0.748,
+        "wr": 41.3
+      },
+      "n": 282,
+      "tw": 5.41,
+      "ret": -77.26,
+      "pf": 0.682,
+      "wr": 40.8,
+      "pass": false
+    },
+    {
+      "id": "drop_high_dailyUsed",
+      "window": "Y1",
+      "over": {
+        "intradayLiqContinuationGate": true,
+        "intradayLiqMaxDailyRangeUsedPct": 0.7
+      },
+      "soft": {
+        "label": "drop_high_dailyUsed",
+        "keep": 250,
+        "n": 250,
+        "tw": 4.79,
+        "ret": -51.67,
+        "pf": 0.715,
+        "wr": 42
+      },
+      "n": 268,
+      "tw": 5.14,
+      "ret": -73.27,
+      "pf": 0.694,
+      "wr": 41.4,
+      "pass": false
+    },
+    {
+      "id": "drop_session_ext",
+      "window": "Y1",
+      "over": {
+        "intradayLiqSessionExtreme": false
+      },
+      "soft": {
+        "label": "drop_session_ext",
+        "keep": 239,
+        "n": 239,
+        "tw": 4.58,
+        "ret": -50.84,
+        "pf": 0.706,
+        "wr": 40.6
+      },
+      "n": 250,
+      "tw": 4.79,
+      "ret": -73.89,
+      "pf": 0.687,
+      "wr": 40.4,
+      "pass": false
+    },
+    {
+      "id": "CORE",
+      "window": "HOLD",
+      "n": 356,
+      "tw": 6.83,
+      "ret": -83.22,
+      "pf": 0.673,
+      "wr": 40.2
+    },
+    {
+      "id": "entry_body_ge_0.35",
+      "window": "HOLD",
+      "over": {
+        "intradayLiqMinReclaimBodyRatio": 0.35
+      },
+      "n": 280,
+      "tw": 5.37,
+      "ret": -79.88,
+      "pf": 0.64,
+      "wr": 39.3,
+      "pass": false
+    },
+    {
+      "id": "drop_high_dailyUsed",
+      "window": "HOLD",
+      "over": {
+        "intradayLiqContinuationGate": true,
+        "intradayLiqMaxDailyRangeUsedPct": 0.7
+      },
+      "n": 299,
+      "tw": 5.73,
+      "ret": -84.62,
+      "pf": 0.587,
+      "wr": 38.1,
+      "pass": false
+    },
+    {
+      "id": "drop_session_ext",
+      "window": "HOLD",
+      "over": {
+        "intradayLiqSessionExtreme": false
+      },
+      "n": 267,
+      "tw": 5.12,
+      "ret": -67.21,
+      "pf": 0.752,
+      "wr": 41.2,
+      "pass": false
+    }
+  ],
+  "verdict": "REJECT",
+  "worstTrades": [
+    {
+      "ts": "2025-07-10T07:00:00.000Z",
+      "side": "SELL",
+      "pnl": -3.1478586473129115,
+      "fc": "other_loss",
+      "path": "gave_back_after_green",
+      "issue": "exit",
+      "day": "breakout",
+      "session": "london_sweep",
+      "level": "pdh",
+      "exit": "sl",
+      "priorRet": 0.00074,
+      "mfe": 0.00576,
+      "mae": 0.00369,
+      "toxic": true,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-09T08:00:00.000Z",
+      "side": "SELL",
+      "pnl": -3.1444354920404125,
+      "fc": "other_loss",
+      "path": "ok_path",
+      "issue": "entry_regime",
+      "day": "breakout",
+      "session": "london_sweep",
+      "level": "pdh",
+      "exit": "sl",
+      "priorRet": 0.00169,
+      "mfe": 0.00578,
+      "mae": 0.00183,
+      "toxic": true,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-04T08:45:00.000Z",
+      "side": "BUY",
+      "pnl": -3.0333294437688982,
+      "fc": "sl_no_follow",
+      "path": "micro_mfe_then_sl",
+      "issue": "mixed",
+      "day": "range",
+      "session": "london_sweep",
+      "level": "pdl",
+      "exit": "sl",
+      "priorRet": -0.00306,
+      "mfe": 0.00296,
+      "mae": 0.00717,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-14T19:45:00.000Z",
+      "side": "BUY",
+      "pnl": -2.836749484318158,
+      "fc": "never_green",
+      "path": "immediate_sl",
+      "issue": "entry",
+      "day": "breakout",
+      "session": "ny_continuation",
+      "level": "session_low",
+      "exit": "sl",
+      "priorRet": -0.00403,
+      "mfe": 0.00009,
+      "mae": 0.00644,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-11T22:30:00.000Z",
+      "side": "SELL",
+      "pnl": -2.6311662123165642,
+      "fc": "never_green",
+      "path": "micro_mfe_then_sl",
+      "issue": "entry_regime",
+      "day": "breakout",
+      "session": "off_hours",
+      "level": "pdh",
+      "exit": "sl",
+      "priorRet": -0.01763,
+      "mfe": 0.00127,
+      "mae": 0.01093,
+      "toxic": true,
+      "chase": true
+    },
+    {
+      "ts": "2025-07-20T05:00:00.000Z",
+      "side": "SELL",
+      "pnl": -2.562811766287309,
+      "fc": "sl_no_follow",
+      "path": "micro_mfe_then_sl",
+      "issue": "mixed",
+      "day": "range",
+      "session": "asia_accum",
+      "level": "pdh",
+      "exit": "sl",
+      "priorRet": 0.00687,
+      "mfe": 0.00178,
+      "mae": 0.00668,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-27T11:45:00.000Z",
+      "side": "SELL",
+      "pnl": -2.5519292586715925,
+      "fc": "sl_no_follow",
+      "path": "micro_mfe_then_sl",
+      "issue": "mixed",
+      "day": "range",
+      "session": "london_sweep",
+      "level": "pdh",
+      "exit": "sl",
+      "priorRet": 0.0005,
+      "mfe": 0.00357,
+      "mae": 0.02601,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-16T13:15:00.000Z",
+      "side": "SELL",
+      "pnl": -2.53212331035017,
+      "fc": "never_green",
+      "path": "never_green_slow",
+      "issue": "entry",
+      "day": "breakout",
+      "session": "ny_continuation",
+      "level": "pdh",
+      "exit": "sl",
+      "priorRet": -0.00433,
+      "mfe": 0.00077,
+      "mae": 0.00939,
+      "toxic": true,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-21T05:15:00.000Z",
+      "side": "SELL",
+      "pnl": -2.3061779115167016,
+      "fc": "never_green",
+      "path": "never_green_slow",
+      "issue": "entry",
+      "day": "breakout",
+      "session": "asia_accum",
+      "level": "pdh",
+      "exit": "sl",
+      "priorRet": 0.01306,
+      "mfe": 0,
+      "mae": 0.01043,
+      "toxic": true,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-17T03:00:00.000Z",
+      "side": "SELL",
+      "pnl": -2.281050085772207,
+      "fc": "other_loss",
+      "path": "mfe_not_captured",
+      "issue": "exit",
+      "day": "breakout",
+      "session": "asia_accum",
+      "level": "session_high",
+      "exit": "sl",
+      "priorRet": 0.00736,
+      "mfe": 0.01011,
+      "mae": 0.01335,
+      "toxic": true,
+      "chase": false
+    },
+    {
+      "ts": "2025-08-03T23:45:00.000Z",
+      "side": "SELL",
+      "pnl": -2.274977967490304,
+      "fc": "never_green",
+      "path": "never_green_slow",
+      "issue": "entry",
+      "day": "range",
+      "session": "off_hours",
+      "level": "session_high",
+      "exit": "sl",
+      "priorRet": -0.00216,
+      "mfe": 0.00063,
+      "mae": 0.01102,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-28T23:00:00.000Z",
+      "side": "BUY",
+      "pnl": -2.2745391836564073,
+      "fc": "other_loss",
+      "path": "mfe_not_captured",
+      "issue": "exit",
+      "day": "breakout",
+      "session": "off_hours",
+      "level": "session_low",
+      "exit": "sl",
+      "priorRet": -0.00799,
+      "mfe": 0.00992,
+      "mae": 0.01666,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-20T21:15:00.000Z",
+      "side": "SELL",
+      "pnl": -2.2688308537568336,
+      "fc": "never_green",
+      "path": "micro_mfe_then_sl",
+      "issue": "entry_regime",
+      "day": "breakout",
+      "session": "off_hours",
+      "level": "session_high",
+      "exit": "sl",
+      "priorRet": -0.00427,
+      "mfe": 0.00286,
+      "mae": 0.01377,
+      "toxic": true,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-23T22:30:00.000Z",
+      "side": "BUY",
+      "pnl": -2.207642818344556,
+      "fc": "other_loss",
+      "path": "mfe_not_captured",
+      "issue": "exit",
+      "day": "breakout",
+      "session": "off_hours",
+      "level": "session_low",
+      "exit": "sl",
+      "priorRet": 0.00172,
+      "mfe": 0.01679,
+      "mae": 0.0179,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-10-23T01:45:00.000Z",
+      "side": "SELL",
+      "pnl": -2.1603597486120165,
+      "fc": "sl_no_follow",
+      "path": "micro_mfe_then_sl",
+      "issue": "mixed",
+      "day": "range",
+      "session": "asia_accum",
+      "level": "pdh",
+      "exit": "sl",
+      "priorRet": 0.02407,
+      "mfe": 0.00362,
+      "mae": 0.00554,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-08-01T00:45:00.000Z",
+      "side": "BUY",
+      "pnl": -2.153640341317404,
+      "fc": "other_loss",
+      "path": "gave_back_after_green",
+      "issue": "exit",
+      "day": "range",
+      "session": "asia_accum",
+      "level": "pdl",
+      "exit": "sl",
+      "priorRet": -0.00727,
+      "mfe": 0.00813,
+      "mae": 0.01827,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-10-02T02:15:00.000Z",
+      "side": "SELL",
+      "pnl": -2.1433026940096576,
+      "fc": "other_loss",
+      "path": "ok_path",
+      "issue": "mixed",
+      "day": "range",
+      "session": "asia_accum",
+      "level": "pdh",
+      "exit": "sl",
+      "priorRet": 0.01345,
+      "mfe": 0.00672,
+      "mae": 0.00719,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-08-04T02:15:00.000Z",
+      "side": "SELL",
+      "pnl": -2.132201796901457,
+      "fc": "sl_no_follow",
+      "path": "micro_mfe_then_sl",
+      "issue": "entry_regime",
+      "day": "breakout",
+      "session": "asia_accum",
+      "level": "pdh",
+      "exit": "sl",
+      "priorRet": 0.00371,
+      "mfe": 0.00266,
+      "mae": 0.00828,
+      "toxic": true,
+      "chase": false
+    },
+    {
+      "ts": "2025-08-23T21:30:00.000Z",
+      "side": "BUY",
+      "pnl": -2.11973660184978,
+      "fc": "other_loss",
+      "path": "ok_path",
+      "issue": "mixed",
+      "day": "range",
+      "session": "off_hours",
+      "level": "session_low",
+      "exit": "sl",
+      "priorRet": 0.00017,
+      "mfe": 0.00646,
+      "mae": 0.00709,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-28T03:00:00.000Z",
+      "side": "SELL",
+      "pnl": -2.1151899668808194,
+      "fc": "sl_no_follow",
+      "path": "micro_mfe_then_sl",
+      "issue": "mixed",
+      "day": "range",
+      "session": "asia_accum",
+      "level": "pdh",
+      "exit": "sl",
+      "priorRet": 0.00319,
+      "mfe": 0.00404,
+      "mae": 0.02122,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-08-05T16:30:00.000Z",
+      "side": "BUY",
+      "pnl": -2.096539534789174,
+      "fc": "sl_no_follow",
+      "path": "micro_mfe_then_sl",
+      "issue": "entry_regime",
+      "day": "breakdown",
+      "session": "ny_continuation",
+      "level": "pdl",
+      "exit": "sl",
+      "priorRet": -0.01128,
+      "mfe": 0.00385,
+      "mae": 0.00853,
+      "toxic": true,
+      "chase": false
+    },
+    {
+      "ts": "2025-07-22T01:45:00.000Z",
+      "side": "BUY",
+      "pnl": -2.0920511020401054,
+      "fc": "sl_no_follow",
+      "path": "micro_mfe_then_sl",
+      "issue": "mixed",
+      "day": "range",
+      "session": "asia_accum",
+      "level": "session_low",
+      "exit": "sl",
+      "priorRet": 0.01056,
+      "mfe": 0.00241,
+      "mae": 0.03333,
+      "toxic": false,
+      "chase": true
+    },
+    {
+      "ts": "2025-08-02T17:00:00.000Z",
+      "side": "BUY",
+      "pnl": -2.0764751053270407,
+      "fc": "never_green",
+      "path": "never_green_slow",
+      "issue": "entry",
+      "day": "range",
+      "session": "ny_continuation",
+      "level": "pdl",
+      "exit": "sl",
+      "priorRet": -0.00386,
+      "mfe": 0,
+      "mae": 0.01512,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-08-12T17:30:00.000Z",
+      "side": "SELL",
+      "pnl": -2.0530161076040647,
+      "fc": "never_green",
+      "path": "never_green_slow",
+      "issue": "entry",
+      "day": "range",
+      "session": "ny_continuation",
+      "level": "pdh",
+      "exit": "sl",
+      "priorRet": 0.02091,
+      "mfe": 0.00075,
+      "mae": 0.00788,
+      "toxic": false,
+      "chase": false
+    },
+    {
+      "ts": "2025-09-27T11:30:00.000Z",
+      "side": "SELL",
+      "pnl": -2.0381747020569208,
+      "fc": "sl_no_follow",
+      "path": "micro_mfe_then_sl",
+      "issue": "entry_regime",
+      "day": "breakout",
+      "session": "london_sweep",
+      "level": "session_high",
+      "exit": "sl",
+      "priorRet": 0.00062,
+      "mfe": 0.00259,
+      "mae": 0.00861,
+      "toxic": true,
+      "chase": false
+    }
+  ],
+  "nRows": 329
+}

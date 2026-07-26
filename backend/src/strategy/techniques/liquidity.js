@@ -673,6 +673,8 @@ export function computeAcceptanceBrackets(tradeSide, entry, level, opposingLevel
 
   const maxSl = Number(opts.intradayLiqMaxSlPct ?? 0);
   if (maxSl > 0 && slPct > maxSl) return null;
+  const minSl = Number(opts.intradayLiqMinSlPct ?? 0);
+  if (minSl > 0 && slPct + 1e-12 < minSl) return null;
 
   return {
     slPct,
@@ -760,30 +762,133 @@ export function passesPostReclaimDisplacement(candles, cycle, side, pre, opts = 
 }
 
 /**
+ * Resolve follow-through ATR mult / lookback bars.
+ * Modes (opts.intradayLiqFollowThroughMode):
+ *   fixed   — base mult/bars (default)
+ *   atrPct  — quiet ATR% → higher mult; busy → lower
+ *   volSpike — weak sweep vol → higher mult
+ *   regime  — range vs breakout/breakdown (mult, bars)
+ *
+ * @param {object} opts
+ * @param {{ atrPct?: number, volSpike?: number, daySituation?: string }} ctx
+ */
+export function resolveFollowThroughParams(opts = {}, ctx = {}) {
+  const mode = String(opts.intradayLiqFollowThroughMode ?? "fixed").toLowerCase();
+  let mult = Number(opts.intradayLiqFollowThroughAtrMult ?? 0.5);
+  let lookBars = Math.max(1, Math.floor(Number(opts.intradayLiqFollowThroughBars ?? 2)));
+  const atrPct = Number(ctx.atrPct ?? 0);
+  const volSpike = Number(ctx.volSpike ?? 1);
+  const daySituation = String(ctx.daySituation ?? "range");
+
+  if (mode === "atrpct") {
+    const quietThresh = Number(opts.intradayLiqFtQuietAtrPct ?? 0.004);
+    const busyThresh = Number(opts.intradayLiqFtBusyAtrPct ?? 0.01);
+    const quietMult = Number(opts.intradayLiqFtQuietMult ?? 1.0);
+    const busyMult = Number(opts.intradayLiqFtBusyMult ?? 0.4);
+    if (atrPct > 0 && atrPct <= quietThresh) mult = quietMult;
+    else if (atrPct >= busyThresh) mult = busyMult;
+    else if (atrPct > 0) {
+      const t = (atrPct - quietThresh) / Math.max(1e-9, busyThresh - quietThresh);
+      mult = quietMult + t * (busyMult - quietMult);
+    }
+  } else if (mode === "volspike") {
+    const weakVol = Number(opts.intradayLiqFtWeakVol ?? 1.2);
+    const weakMult = Number(opts.intradayLiqFtWeakVolMult ?? 1.0);
+    const strongMult = Number(opts.intradayLiqFtStrongVolMult ?? 0.4);
+    mult = volSpike < weakVol ? weakMult : strongMult;
+  } else if (mode === "regime") {
+    const rangeMult = Number(opts.intradayLiqFtRangeMult ?? 0.5);
+    const rangeBars = Math.max(1, Math.floor(Number(opts.intradayLiqFtRangeBars ?? 2)));
+    const breakMult = Number(opts.intradayLiqFtBreakMult ?? 1.0);
+    const breakBars = Math.max(1, Math.floor(Number(opts.intradayLiqFtBreakBars ?? 3)));
+    if (daySituation === "breakout" || daySituation === "breakdown") {
+      mult = breakMult;
+      lookBars = breakBars;
+    } else {
+      mult = rangeMult;
+      lookBars = rangeBars;
+    }
+  }
+
+  return { mult, lookBars, mode };
+}
+
+/**
+ * Measure post-sweep displacement in ATR units (research + gate helper).
+ * @returns {{ atrMoved: number, atr: number, ratio: number, ok: boolean }}
+ */
+export function measureGuideFollowThrough(candles, cycle, side, pre, lookBars = 2) {
+  const sweepIdx = Number(cycle?.sweepStartIdx);
+  const empty = { atrMoved: 0, atr: 0, ratio: 0, ok: false };
+  if (!(sweepIdx >= 0) || !candles?.length || sweepIdx >= candles.length - 1) return empty;
+  const atr = Number(pre?.atrSeries?.[sweepIdx] ?? pre?.atr?.[sweepIdx] ?? 0);
+  const bars = Math.max(1, Math.floor(Number(lookBars) || 2));
+  const end = Math.min(candles.length - 1, sweepIdx + bars);
+  const sweepBar = candles[sweepIdx];
+  if (!sweepBar) return empty;
+  let atrMoved = 0;
+  if (side === "BUY") {
+    let hi = -Infinity;
+    for (let j = sweepIdx + 1; j <= end; j++) hi = Math.max(hi, Number(candles[j].high));
+    atrMoved = hi - Number(sweepBar.low);
+  } else {
+    let lo = Infinity;
+    for (let j = sweepIdx + 1; j <= end; j++) lo = Math.min(lo, Number(candles[j].low));
+    atrMoved = Number(sweepBar.high) - lo;
+  }
+  const ratio = atr > 0 ? atrMoved / atr : 0;
+  return {
+    atrMoved,
+    atr,
+    ratio: Number(ratio.toFixed(4)),
+    ok: atr > 0 ? atrMoved + 1e-12 >= atr * 0.01 : false,
+  };
+}
+
+function followThroughContext(candles, cycle, side, pre, opts = {}) {
+  const sweepIdx = Number(cycle?.sweepStartIdx);
+  const atr = Number(pre?.atrSeries?.[sweepIdx] ?? pre?.atr?.[sweepIdx] ?? 0);
+  const close = Number(candles?.[sweepIdx]?.close ?? 0);
+  const atrPct = atr > 0 && close > 0 ? atr / close : Number(opts._ftAtrPct ?? 0);
+  let volSpike = Number(opts._ftVolSpike ?? NaN);
+  if (!(volSpike > 0)) {
+    const look = Math.max(5, Math.floor(Number(opts.intradayLiqSweepVolLookback ?? 20)));
+    const v0 = Number(candles?.[sweepIdx]?.volume ?? 0);
+    let sum = 0;
+    let n = 0;
+    for (let j = Math.max(0, sweepIdx - look); j < sweepIdx; j++) {
+      sum += Number(candles[j]?.volume ?? 0);
+      n += 1;
+    }
+    const avg = n > 0 ? sum / n : 0;
+    volSpike = avg > 0 ? v0 / avg : 1;
+  }
+  let daySituation = String(opts._ftDaySituation ?? opts._liqMarketContext?.daySituation ?? "");
+  if (!daySituation && candles?.length && Number.isFinite(sweepIdx) && sweepIdx >= 0) {
+    const entryIdx = Number(cycle?.reclaimIdx ?? sweepIdx);
+    daySituation = buildLiqMarketContext(candles, entryIdx, pre, opts)?.daySituation ?? "range";
+  }
+  if (!daySituation) daySituation = "range";
+  return { atrPct, volSpike, daySituation };
+}
+
+/**
  * Reference-guide follow-through: after the sweep candle, the next 1–N bars must
  * move away from the sweep extreme by ≥ ATR × mult before the setup is tradable.
  * Distinct from impulse-in-window / post-reclaim body×ATR gates.
+ * Supports relative modes via intradayLiqFollowThroughMode (fixed|atrPct|volSpike|regime).
  */
 export function passesGuideFollowThrough(candles, cycle, side, pre, opts = {}) {
   if (opts.intradayLiqRequireFollowThrough !== true) return true;
-  const mult = Number(opts.intradayLiqFollowThroughAtrMult ?? 0.5);
-  const lookBars = Math.max(1, Math.floor(Number(opts.intradayLiqFollowThroughBars ?? 2)));
+  const ctx = followThroughContext(candles, cycle, side, pre, opts);
+  const { mult, lookBars } = resolveFollowThroughParams(opts, ctx);
   if (!(mult > 0)) return true;
   const sweepIdx = Number(cycle.sweepStartIdx);
   if (!(sweepIdx >= 0) || sweepIdx >= candles.length - 1) return false;
   const atr = Number(pre?.atrSeries?.[sweepIdx] ?? pre?.atr?.[sweepIdx] ?? 0);
   if (!(atr > 0)) return true;
-  const end = Math.min(candles.length - 1, sweepIdx + lookBars);
-  const sweepBar = candles[sweepIdx];
-  if (!sweepBar) return false;
-  if (side === "BUY") {
-    let hi = -Infinity;
-    for (let j = sweepIdx + 1; j <= end; j++) hi = Math.max(hi, Number(candles[j].high));
-    return hi - Number(sweepBar.low) + 1e-12 >= atr * mult;
-  }
-  let lo = Infinity;
-  for (let j = sweepIdx + 1; j <= end; j++) lo = Math.min(lo, Number(candles[j].low));
-  return Number(sweepBar.high) - lo + 1e-12 >= atr * mult;
+  const m = measureGuideFollowThrough(candles, cycle, side, pre, lookBars);
+  return m.atrMoved + 1e-12 >= atr * mult;
 }
 
 function scoreFromImpulseAtr(impulse) {
@@ -989,6 +1094,8 @@ export function computeLiquidityBrackets(side, entry, sweepWick, opposingLevel, 
 
   const maxSl = Number(opts.intradayLiqMaxSlPct ?? 0);
   if (maxSl > 0 && slPct > maxSl) return null;
+  const minSl = Number(opts.intradayLiqMinSlPct ?? 0);
+  if (minSl > 0 && slPct + 1e-12 < minSl) return null;
 
   return {
     slPct,

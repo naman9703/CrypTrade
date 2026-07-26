@@ -1,0 +1,341 @@
+{
+  "hypothesis": "CORE fade enters on reclaim alone; RequireFollowThrough 0.5ATR/2bars keeps only displacement survivors",
+  "symbol": "BNBUSDT",
+  "tf": "15m",
+  "from": "2023-07-01",
+  "to": "2026-07-01",
+  "riskPct": 2.5,
+  "leverage": 12,
+  "variants": [
+    {
+      "id": "CORE",
+      "label": "LIQ_CORE baseline",
+      "over": {},
+      "windows": {
+        "Y2023": {
+          "n": 167,
+          "tw": 6.35,
+          "ret": -59.08,
+          "pf": 0.651,
+          "wr": 41.9,
+          "dd": 59.21,
+          "calmar": -1.4,
+          "classes": {
+            "sl_no_follow": 37,
+            "winner": 70,
+            "never_green": 30,
+            "other_loss": 30
+          },
+          "deathLossShare": 80.8
+        },
+        "Y2024": {
+          "n": 377,
+          "tw": 7.21,
+          "ret": -36.7,
+          "pf": 0.65,
+          "wr": 36.1,
+          "dd": 41.22,
+          "calmar": -0.89,
+          "classes": {
+            "winner": 136,
+            "other_loss": 94,
+            "never_green": 55,
+            "sl_no_follow": 92
+          },
+          "deathLossShare": 67.6
+        },
+        "Y2025": {
+          "n": 343,
+          "tw": 6.58,
+          "ret": -2.98,
+          "pf": 0.746,
+          "wr": 44.9,
+          "dd": 3.54,
+          "calmar": -0.84,
+          "classes": {
+            "winner": 154,
+            "sl_no_follow": 77,
+            "other_loss": 61,
+            "never_green": 51
+          },
+          "deathLossShare": 70
+        },
+        "Y2026": {
+          "n": 147,
+          "tw": 5.69,
+          "ret": -0.92,
+          "pf": 0.477,
+          "wr": 31.3,
+          "dd": 0.95,
+          "calmar": -1.96,
+          "classes": {
+            "winner": 46,
+            "other_loss": 30,
+            "never_green": 22,
+            "sl_no_follow": 49
+          },
+          "deathLossShare": 78.4
+        },
+        "H12m": {
+          "n": 329,
+          "tw": 6.31,
+          "ret": -1.92,
+          "pf": 0.656,
+          "wr": 39.5,
+          "dd": 1.93,
+          "calmar": -0.99,
+          "classes": {
+            "sl_no_follow": 90,
+            "other_loss": 60,
+            "never_green": 49,
+            "winner": 130
+          },
+          "deathLossShare": 73.5
+        },
+        "FULL": {
+          "n": 1034,
+          "tw": 6.6,
+          "ret": -99.68,
+          "pf": 0.654,
+          "wr": 39.3,
+          "dd": 99.7,
+          "calmar": -0.86,
+          "classes": {
+            "sl_no_follow": 255,
+            "winner": 406,
+            "never_green": 158,
+            "other_loss": 215
+          },
+          "deathLossShare": 75.5
+        }
+      }
+    },
+    {
+      "id": "CORE_FT_05_2",
+      "label": "CORE + RequireFollowThrough 0.5ATR / 2 bars",
+      "over": {
+        "intradayLiqRequireFollowThrough": true,
+        "intradayLiqFollowThroughAtrMult": 0.5,
+        "intradayLiqFollowThroughBars": 2
+      },
+      "windows": {
+        "Y2023": {
+          "n": 162,
+          "tw": 6.16,
+          "ret": -59.52,
+          "pf": 0.647,
+          "wr": 41.4,
+          "dd": 59.65,
+          "calmar": -1.4,
+          "classes": {
+            "sl_no_follow": 36,
+            "winner": 67,
+            "never_green": 28,
+            "other_loss": 31
+          },
+          "deathLossShare": 79.4
+        },
+        "Y2024": {
+          "n": 369,
+          "tw": 7.06,
+          "ret": -36.29,
+          "pf": 0.665,
+          "wr": 36,
+          "dd": 40.68,
+          "calmar": -0.89,
+          "classes": {
+            "winner": 133,
+            "other_loss": 89,
+            "never_green": 58,
+            "sl_no_follow": 89
+          },
+          "deathLossShare": 69.4
+        },
+        "Y2025": {
+          "n": 329,
+          "tw": 6.31,
+          "ret": -2.94,
+          "pf": 0.733,
+          "wr": 44.1,
+          "dd": 3.57,
+          "calmar": -0.82,
+          "classes": {
+            "winner": 145,
+            "sl_no_follow": 78,
+            "other_loss": 57,
+            "never_green": 49
+          },
+          "deathLossShare": 71.3
+        },
+        "Y2026": {
+          "n": 141,
+          "tw": 5.45,
+          "ret": -0.91,
+          "pf": 0.464,
+          "wr": 31.9,
+          "dd": 0.94,
+          "calmar": -1.95,
+          "classes": {
+            "winner": 45,
+            "other_loss": 29,
+            "never_green": 23,
+            "sl_no_follow": 44
+          },
+          "deathLossShare": 77.5
+        },
+        "H12m": {
+          "n": 315,
+          "tw": 6.04,
+          "ret": -1.72,
+          "pf": 0.665,
+          "wr": 39.7,
+          "dd": 1.74,
+          "calmar": -0.99,
+          "classes": {
+            "sl_no_follow": 83,
+            "other_loss": 58,
+            "never_green": 49,
+            "winner": 125
+          },
+          "deathLossShare": 73
+        },
+        "FULL": {
+          "n": 1001,
+          "tw": 6.39,
+          "ret": -99.67,
+          "pf": 0.656,
+          "wr": 39,
+          "dd": 99.69,
+          "calmar": -0.85,
+          "classes": {
+            "sl_no_follow": 247,
+            "winner": 390,
+            "never_green": 158,
+            "other_loss": 206
+          },
+          "deathLossShare": 75.3
+        }
+      }
+    }
+  ],
+  "compare": {
+    "Y2023": {
+      "dN": -5,
+      "dTw": -0.19,
+      "dRet": -0.44,
+      "dPf": -0.004,
+      "base": {
+        "n": 167,
+        "tw": 6.35,
+        "ret": -59.08,
+        "pf": 0.651
+      },
+      "ft": {
+        "n": 162,
+        "tw": 6.16,
+        "ret": -59.52,
+        "pf": 0.647
+      }
+    },
+    "Y2024": {
+      "dN": -8,
+      "dTw": -0.15,
+      "dRet": 0.41,
+      "dPf": 0.015,
+      "base": {
+        "n": 377,
+        "tw": 7.21,
+        "ret": -36.7,
+        "pf": 0.65
+      },
+      "ft": {
+        "n": 369,
+        "tw": 7.06,
+        "ret": -36.29,
+        "pf": 0.665
+      }
+    },
+    "Y2025": {
+      "dN": -14,
+      "dTw": -0.27,
+      "dRet": 0.04,
+      "dPf": -0.013,
+      "base": {
+        "n": 343,
+        "tw": 6.58,
+        "ret": -2.98,
+        "pf": 0.746
+      },
+      "ft": {
+        "n": 329,
+        "tw": 6.31,
+        "ret": -2.94,
+        "pf": 0.733
+      }
+    },
+    "Y2026": {
+      "dN": -6,
+      "dTw": -0.24,
+      "dRet": 0.01,
+      "dPf": -0.013,
+      "base": {
+        "n": 147,
+        "tw": 5.69,
+        "ret": -0.92,
+        "pf": 0.477
+      },
+      "ft": {
+        "n": 141,
+        "tw": 5.45,
+        "ret": -0.91,
+        "pf": 0.464
+      }
+    },
+    "H12m": {
+      "dN": -14,
+      "dTw": -0.27,
+      "dRet": 0.2,
+      "dPf": 0.009,
+      "base": {
+        "n": 329,
+        "tw": 6.31,
+        "ret": -1.92,
+        "pf": 0.656
+      },
+      "ft": {
+        "n": 315,
+        "tw": 6.04,
+        "ret": -1.72,
+        "pf": 0.665
+      }
+    },
+    "FULL": {
+      "dN": -33,
+      "dTw": -0.21,
+      "dRet": 0.01,
+      "dPf": 0.002,
+      "base": {
+        "n": 1034,
+        "tw": 6.6,
+        "ret": -99.68,
+        "pf": 0.654
+      },
+      "ft": {
+        "n": 1001,
+        "tw": 6.39,
+        "ret": -99.67,
+        "pf": 0.656
+      }
+    }
+  },
+  "gates": {
+    "target": "FULL PF≥1 + Y25 ret>0 + H12m ret>0 + tw≥2",
+    "fullPf": 0.656,
+    "y25Ret": -2.94,
+    "h12Ret": -1.72,
+    "tw": 6.39,
+    "pass": false
+  },
+  "verdict": "SOFT_IMPROVE_HOLD_OUT_FAIL",
+  "ts": "2026-07-24T13:11:09.774Z"
+}

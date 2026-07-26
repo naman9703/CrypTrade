@@ -224,8 +224,10 @@ async function execute({ runId }) {
       stratEarly === "INTRADAY_PRO" ||
       !cfg._intradayEngineMaterialized
     ) {
+      const { enforceLiqGateCoherence } = await import("../../lib/strategyConfigSlices.js");
       // Always replace cfg — polluted snapshots merge stale SMC/SR keys if we spread onto prior bot.
-      cfg = materializeIntradayEngineCfgSync(cfg, materializeIntradayPanelOnCfg);
+      cfg = materializeIntradayEngineCfgSync(enforceLiqGateCoherence(cfg), materializeIntradayPanelOnCfg);
+      cfg = enforceLiqGateCoherence(cfg);
       cfg._intradayEngineMaterialized = true;
     }
     if (run.instance_operational_snapshot && typeof run.instance_operational_snapshot === "object") {
@@ -303,6 +305,12 @@ async function execute({ runId }) {
   } else if (strategyKey === "VOLUME_PROFILE") {
     const { volumeProfilePadFromMs } = await import("../../strategy/presets/volumeProfileOptimized.js");
     candleFromMs = volumeProfilePadFromMs(fromMs, tf, cfg);
+  } else if (
+    (strategyKey === "SR_INTRADAY" || strategyKey === "INTRADAY_PRO") &&
+    (await import("../../strategy/techniques/liq/marketState.js")).needsLiqIntradayPad(cfg)
+  ) {
+    const { liqIntradayPadFromMs } = await import("../../strategy/techniques/liq/marketState.js");
+    candleFromMs = liqIntradayPadFromMs(fromMs, tf, cfg);
   }
 
   const covPre = await getCoverage(symbol, tf, { from: candleFromMs, to: toMs }).catch(() => ({
@@ -521,6 +529,12 @@ async function executePortfolio({
   } else if (strategyKey === "VOLUME_PROFILE") {
     const { volumeProfilePadFromMs } = await import("../../strategy/presets/volumeProfileOptimized.js");
     candleFromMs = volumeProfilePadFromMs(fromMs, tf, cfg);
+  } else if (
+    (strategyKey === "SR_INTRADAY" || strategyKey === "INTRADAY_PRO") &&
+    (await import("../../strategy/techniques/liq/marketState.js")).needsLiqIntradayPad(cfg)
+  ) {
+    const { liqIntradayPadFromMs } = await import("../../strategy/techniques/liq/marketState.js");
+    candleFromMs = liqIntradayPadFromMs(fromMs, tf, cfg);
   }
 
   const coveragePcts = [];

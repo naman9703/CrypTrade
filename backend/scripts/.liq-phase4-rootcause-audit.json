@@ -1,0 +1,376 @@
+{
+  "generatedAt": "2026-07-25T10:09:38.151Z",
+  "phase0Doc": "docs/LIQ_SWEEP_RECLAIM_PHASE0.md",
+  "window": {
+    "from": "2025-07-01",
+    "to": "2026-07-01"
+  },
+  "symbol": "BNBUSDT",
+  "timeframe": "15m",
+  "dataQuality": {
+    "candles": 38880,
+    "gapsApprox": 0,
+    "zeroVol": 0
+  },
+  "baseline": {
+    "strategyMode": "MANUAL",
+    "manualStrategy": "SR_INTRADAY",
+    "marketMode": "FUTURES",
+    "supertrendFuturesAuto": false,
+    "trailingStopLossAuto": false,
+    "futuresTrailingStopMode": "SUPERTREND",
+    "supertrendFuturesExitOnFlip": false,
+    "supertrendHtf4hEnabled": false,
+    "supertrendHtf4hPeriod": 10,
+    "supertrendHtf4hMultiplier": 3,
+    "futuresLeverage": 12,
+    "backtestPositionSizing": "RISK_AT_SL",
+    "riskPerTrade": 2.5,
+    "riskPerTradeUnit": "PCT",
+    "slippagePct": 0.0005,
+    "supertrendFuturesFixedSlPct": 0,
+    "supertrendFuturesFixedTpPct": 0,
+    "srIntradayMaxTradesPerDay": 4,
+    "srIntradayMinBarGap": 2,
+    "srIntradayMinScore": 5,
+    "intradaySoloGateMinScore": 5,
+    "intradayFibStrictMode": true,
+    "intradayFibLookback": 80,
+    "intradayFibPivotLeft": 3,
+    "intradayFibPivotRight": 3,
+    "intradayFibMinLegAtrMult": 2,
+    "intradayFibAllowedRatios": [
+      0.5,
+      0.618
+    ],
+    "intradayFibTolPct": 0.0016,
+    "intradayFibMinRetraceRatio": 0.48,
+    "intradayFibMaxRetraceRatio": 0.72,
+    "intradayFibMaxBarsSinceSwing": 28,
+    "intradayFibMinWickRatio": 0.4,
+    "intradayFibMinAdx": 22,
+    "intradayFibRequireHtfAlign": true,
+    "intradayFibMinRr": 1.25,
+    "intradayFibMaxSlPct": 0.006,
+    "intradayFibMaxTpPct": 0.012,
+    "intradayFibMinScore": 8,
+    "intradayFibConfirmNextBar": true,
+    "intradayFibMinHtfSep": 0.00065,
+    "intradayFibSessionStartHour": 8,
+    "intradayFibSessionEndHour": 20,
+    "srIntradaySessionStartHour": 7,
+    "srIntradaySessionEndHour": 22,
+    "intradayMinTechniqueCount": 1,
+    "intradayRequireSessionReclaim": false,
+    "intradayRequireFibOrVp": false,
+    "intradayLearnedRulesEnabled": false,
+    "intradayGateLiquidity": true,
+    "intradayGateSession": false,
+    "intradayLiqStrictMode": true,
+    "intradayGateFib": false,
+    "intradayGateVp": false,
+    "intradayGateOrderFlow": false,
+    "intradayGateHtfRegime": false,
+    "intradayBigMoveMinScore": 11,
+    "symbol": "BNBUSDT",
+    "timeframe": "15m",
+    "intradayGateSmcIct": false,
+    "intradaySmcIctMode": false,
+    "intradayGateInstitutionalSr": false,
+    "intradaySrAPlusMode": false,
+    "intradayLiqMinScore": 5,
+    "intradayLiqMinQuality": 0,
+    "intradayLiqMinRr": 1,
+    "intradayLiqMinWickRatio": 0,
+    "intradayLiqRejectSameBarReclaim": false,
+    "intradayLiqFirstCycleOnly": false,
+    "intradayLiqMinReclaimClosePct": 0,
+    "intradayLiqMinReclaimBodyRatio": 0,
+    "intradayLiqMaxSlPct": 0.035,
+    "intradayLiqMaxSweepBars": 40,
+    "intradayLiqMinSweepExtensionPct": 0,
+    "intradayLiqSessionExtreme": true,
+    "intradayLiqSessionExtremeMinTouches": 3,
+    "intradayLiqSessionExtremeMinExtensionPct": 0.008,
+    "intradayLiqSessionExtremeMinDistFromSession": 0.005,
+    "intradayLiqPartialTp": false,
+    "intradayLiqTp1Enabled": false,
+    "intradayLiqTp2Enabled": true,
+    "intradayLiqPartialFrac": 0.5,
+    "intradayLiqMaxTradesPerSidePerDay": 2,
+    "intradayLiqOnePickPerDay": false,
+    "intradayLiqRequireHtfAlign": false,
+    "intradayLiqMinHtfSep": 0.0008,
+    "intradayLiqEntryAtSignalClose": true,
+    "intradayLiqMaxHoldBars": 48,
+    "intradayLiqMaxTpRr": 2,
+    "supertrendFuturesUseFixedSl": true,
+    "supertrendFuturesUseFixedTp": true,
+    "backtestBreakevenAtMfePct": 0,
+    "intradayLiqBreakevenAfterPartial": false,
+    "intradayLiqUseEntryScore": false,
+    "intradayLiqMinEntryScore": 0,
+    "intradayLiqReclaimHoldBars": 2,
+    "intradayLiqBreakdownDayBias": false,
+    "intradayLiqPlaybook": "LIQ_CORE",
+    "intradayLiqPickMode": "chronological",
+    "intradayLiqUseEntryScoreV2": false,
+    "intradayLiqRequireChoch": false,
+    "intradayLiqMarketStateGate": false,
+    "intradayLiqDaySituationBias": false,
+    "intradayLiqContinuationGate": false,
+    "intradayLiqSweepQualityGate": false,
+    "intradayLiqRequireDisplacementV2": false,
+    "intradayLiqVetoCounterTrend": false,
+    "intradayLiqTrendContinuation": false,
+    "maxDailyLoss": 0,
+    "riskConsecutiveLossLimit": 0,
+    "intradayLiqMitigationEntry": false,
+    "intradayLiqMitigationFrac": 0,
+    "intradayLiqMitigationWaitBars": 0,
+    "intradayLiqSweepDisplacementMinAtrMult": 0,
+    "intradayLiqRequireSweepDisplacement": false,
+    "intradayLiqRequireFollowThrough": false,
+    "intradayLiqRequirePostReclaimDisplacement": false,
+    "intradayLiqRequireKillzone": false,
+    "intradayLiqMinSlPct": 0
+  },
+  "baselineMetrics": {
+    "n": 329,
+    "tw": 6.31,
+    "ret": -85.75,
+    "pf": 0.656,
+    "wr": 39.5,
+    "dd": 86.5,
+    "meanR": -0.22
+  },
+  "nTrades": 329,
+  "nLosers": 199,
+  "lossDollars": 249.65,
+  "causeRank": [
+    {
+      "cause": "false_reclaim",
+      "n": 93,
+      "pctOfLosers": 46.7,
+      "pctOfLossDollars": 51.7,
+      "pnl": -129.08
+    },
+    {
+      "cause": "regime_mismatch",
+      "n": 92,
+      "pctOfLosers": 46.2,
+      "pctOfLossDollars": 40.6,
+      "pnl": -101.41
+    },
+    {
+      "cause": "low_quality_sweep",
+      "n": 5,
+      "pctOfLosers": 2.5,
+      "pctOfLossDollars": 2.7,
+      "pnl": -6.68
+    },
+    {
+      "cause": "bad_exit",
+      "n": 3,
+      "pctOfLosers": 1.5,
+      "pctOfLossDollars": 1.9,
+      "pnl": -4.81
+    },
+    {
+      "cause": "other_unclassified",
+      "n": 2,
+      "pctOfLosers": 1,
+      "pctOfLossDollars": 1.8,
+      "pnl": -4.39
+    },
+    {
+      "cause": "session_timing",
+      "n": 3,
+      "pctOfLosers": 1.5,
+      "pctOfLossDollars": 0.9,
+      "pnl": -2.31
+    },
+    {
+      "cause": "missing_displacement",
+      "n": 1,
+      "pctOfLosers": 0.5,
+      "pctOfLossDollars": 0.4,
+      "pnl": -0.96
+    }
+  ],
+  "regimeRows": [
+    {
+      "regime": "TREND_UP",
+      "n": 143,
+      "wr": 39.2,
+      "pnl": -49.21,
+      "avg": -0.344
+    },
+    {
+      "regime": "TREND_DOWN",
+      "n": 125,
+      "wr": 43.2,
+      "pnl": -18.38,
+      "avg": -0.147
+    },
+    {
+      "regime": "RANGE",
+      "n": 40,
+      "wr": 35,
+      "pnl": -11.04,
+      "avg": -0.276
+    },
+    {
+      "regime": "SQUEEZE",
+      "n": 14,
+      "wr": 21.4,
+      "pnl": -8.41,
+      "avg": -0.601
+    },
+    {
+      "regime": "VOLATILE_AVOID",
+      "n": 7,
+      "wr": 42.9,
+      "pnl": 1.29,
+      "avg": 0.184
+    }
+  ],
+  "causeRegimeTop": [
+    {
+      "cell": "false_reclaim|TREND_UP",
+      "n": 41,
+      "pnl": -59.43
+    },
+    {
+      "cell": "regime_mismatch|TREND_UP",
+      "n": 41,
+      "pnl": -51.49
+    },
+    {
+      "cell": "false_reclaim|TREND_DOWN",
+      "n": 30,
+      "pnl": -40.67
+    },
+    {
+      "cell": "regime_mismatch|TREND_DOWN",
+      "n": 38,
+      "pnl": -40.08
+    },
+    {
+      "cell": "false_reclaim|RANGE",
+      "n": 14,
+      "pnl": -19.14
+    },
+    {
+      "cell": "false_reclaim|SQUEEZE",
+      "n": 6,
+      "pnl": -7
+    },
+    {
+      "cell": "regime_mismatch|SQUEEZE",
+      "n": 4,
+      "pnl": -4.88
+    },
+    {
+      "cell": "other_unclassified|TREND_UP",
+      "n": 2,
+      "pnl": -4.39
+    },
+    {
+      "cell": "regime_mismatch|RANGE",
+      "n": 7,
+      "pnl": -4.25
+    },
+    {
+      "cell": "low_quality_sweep|RANGE",
+      "n": 3,
+      "pnl": -3.18
+    },
+    {
+      "cell": "false_reclaim|VOLATILE_AVOID",
+      "n": 2,
+      "pnl": -2.83
+    },
+    {
+      "cell": "bad_exit|RANGE",
+      "n": 2,
+      "pnl": -2.6
+    },
+    {
+      "cell": "bad_exit|TREND_UP",
+      "n": 1,
+      "pnl": -2.21
+    },
+    {
+      "cell": "low_quality_sweep|TREND_UP",
+      "n": 1,
+      "pnl": -1.82
+    },
+    {
+      "cell": "low_quality_sweep|TREND_DOWN",
+      "n": 1,
+      "pnl": -1.68
+    },
+    {
+      "cell": "session_timing|TREND_DOWN",
+      "n": 1,
+      "pnl": -1.08
+    },
+    {
+      "cell": "missing_displacement|TREND_DOWN",
+      "n": 1,
+      "pnl": -0.96
+    },
+    {
+      "cell": "session_timing|SQUEEZE",
+      "n": 1,
+      "pnl": -0.74
+    },
+    {
+      "cell": "regime_mismatch|VOLATILE_AVOID",
+      "n": 2,
+      "pnl": -0.72
+    },
+    {
+      "cell": "session_timing|TREND_UP",
+      "n": 1,
+      "pnl": -0.49
+    }
+  ],
+  "featureContrast": {
+    "impulseAtr": {
+      "win": 1.9968769230769225,
+      "loss": 1.9147738693467344
+    },
+    "momentum": {
+      "win": 0.5875838461538462,
+      "loss": 0.5996673366834173
+    },
+    "volSpike": {
+      "win": 3.1675846153846154,
+      "loss": 2.9030804020100502
+    },
+    "exhaustion": {
+      "win": 0.3264846153846155,
+      "loss": 0.33582412060301514
+    },
+    "wickBody": {
+      "win": 0.2581433982597232,
+      "loss": 0.26913990762327117
+    },
+    "distSlPct": {
+      "win": 0.013033574508599627,
+      "loss": 0.010737012253395148
+    },
+    "mfePct": {
+      "win": 0.01819536718579571,
+      "loss": 0.004499514555033056
+    }
+  },
+  "diagnosis": {
+    "topLossCause": "false_reclaim",
+    "topLossSharePct": 51.7,
+    "note": "Phase 5 may address ONLY the topLossCause with one isolated, toggleable change. Do not stack filters. Do not accept N-only cuts without OOS expectancy lift."
+  },
+  "nTradesLogged": 329
+}

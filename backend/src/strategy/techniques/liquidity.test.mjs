@@ -18,6 +18,8 @@ import {
   passesLiqSweepDisplacement,
   passesPostReclaimDisplacement,
   passesGuideFollowThrough,
+  resolveFollowThroughParams,
+  measureGuideFollowThrough,
   rejectionWickBodyRatio,
   passesSweepPokeRejection,
   passesEntryLevelHold,
@@ -675,6 +677,29 @@ test("rejectionWickBodyRatio + guide follow-through gates", () => {
       intradayLiqRequireFollowThrough: true,
       intradayLiqFollowThroughAtrMult: 5,
       intradayLiqFollowThroughBars: 2,
+    }),
+    false,
+  );
+  const regimeBreak = resolveFollowThroughParams(
+    {
+      intradayLiqFollowThroughMode: "regime",
+      intradayLiqFtRangeMult: 0.5,
+      intradayLiqFtBreakMult: 1.0,
+      intradayLiqFtBreakBars: 3,
+    },
+    { daySituation: "breakout" },
+  );
+  assert.equal(regimeBreak.mult, 1.0);
+  assert.equal(regimeBreak.lookBars, 3);
+  assert.ok(measureGuideFollowThrough(candles, cycle, "BUY", pre, 2).ratio >= 0.5);
+  assert.equal(
+    passesGuideFollowThrough(candles, cycle, "BUY", pre, {
+      intradayLiqRequireFollowThrough: true,
+      intradayLiqFollowThroughMode: "regime",
+      intradayLiqFtRangeMult: 0.5,
+      intradayLiqFtBreakMult: 5,
+      intradayLiqFtBreakBars: 2,
+      _ftDaySituation: "breakout",
     }),
     false,
   );

@@ -478,6 +478,55 @@ export const VOLUME_PROFILE_FREQ_BTC_15M = {
   vpMaxTradesPerDay: 2,
 };
 
+/**
+ * DOGE — F3 va_rejection + poc_bounce research sleeve (2026-07-26).
+ *
+ * Coin-native locks (research sleeve — NOT deploy-certified):
+ * - `vpRejectionSellBearMinHtfSepPct: 0.005` — shallow-HTF SELL rej in bear_trend
+ * - `vpBuyRejectionMaxPrior60dPct: 1.0` — BUY rej blow-off (prior60 > +100%)
+ * - `vpMinAtrPct: 0.008` — primary year-clean (low-ATR never-green SLs)
+ * - `vpBuyRejectionMinBody: 0.25` — stronger BUY reclaim body
+ * - `vpAllowedSetups: [va_rejection, poc_bounce]` + `vpMinScore: 6`
+ * - POC-cell deny (autopsy 2026-07-26): open POC was net‑negative; keep only paying
+ *   tight POC cells. Bleed SELL/BUY vacuum+bear POC blocked via prepared deny list.
+ * - `vpMinBarGap: 1` — small N restore after POC cleanup (year-clean held)
+ *
+ * Stack after POC cleanup (2021-01→2026-05):
+ *   FULL ~+329% / Calmar ~1.61 / tw ~0.21 / n=58 · all years ≥0
+ *
+ * Decisions: `2026-07-26-doge-vp-freq-year-clean-minatr.md`,
+ * `2026-07-26-doge-vp-freq-restore-poc-score.md`,
+ * `2026-07-26-doge-vp-freq-poc-cell-cleanup.md`.
+ */
+export const VOLUME_PROFILE_FREQ_DOGE_15M = {
+  ...VOLUME_PROFILE_BASE,
+  ...VOLUME_PROFILE_FREQ_CORE,
+  symbol: "DOGEUSDT",
+  timeframe: "15m",
+  vpAllowedSetups: ["va_rejection", "poc_bounce"],
+  vpRequireHtfAlign: true,
+  vpMinHtfSepPct: 0.0015,
+  vpMinScore: 6,
+  vpMinBarGap: 1,
+  vpMaxTradesPerDay: 2,
+  vpRejectionSellBearMinHtfSepPct: 0.005,
+  vpBuyRejectionMaxPrior60dPct: 1.0,
+  vpMinAtrPct: 0.008,
+  vpBuyRejectionMinBody: 0.25,
+  vpPreparedRegimeOnly: true,
+  vpPreparedBlockVacuumVah: false,
+  vpPreparedBlockVacuumValBear: false,
+  vpPreparedBlockCellKeys: [
+    "SELL|poc_bounce|weak_bear|structured",
+    "SELL|poc_bounce|bear_trend|tight",
+    "SELL|poc_bounce|bull_trend|vacuum",
+    "SELL|poc_bounce|bear_trend|structured",
+    "BUY|poc_bounce|bull_trend|vacuum",
+    "SELL|poc_bounce|bear_trend|vacuum",
+  ],
+  vpNoveltyEnabled: false,
+};
+
 export function resolveVolumeProfileFreqPreset(symbol) {
   const sym = String(symbol ?? "").toUpperCase();
   if (sym === "ETHUSDT") return VOLUME_PROFILE_FREQ_ETH_15M;
@@ -485,6 +534,7 @@ export function resolveVolumeProfileFreqPreset(symbol) {
   if (sym === "BNBUSDT") return VOLUME_PROFILE_FREQ_BNB_15M;
   if (sym === "SOLUSDT") return VOLUME_PROFILE_FREQ_SOL_15M;
   if (sym === "AVAXUSDT") return VOLUME_PROFILE_FREQ_AVAX_15M;
+  if (sym === "DOGEUSDT") return VOLUME_PROFILE_FREQ_DOGE_15M;
   return VOLUME_PROFILE_FREQ_15M;
 }
 
