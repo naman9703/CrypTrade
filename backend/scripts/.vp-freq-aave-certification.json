@@ -1,0 +1,202 @@
+{
+  "generatedAt": "2026-07-26T20:13:14.297Z",
+  "symbol": "AAVEUSDT",
+  "timeframe": "15m",
+  "window": {
+    "from": "2021-01-01",
+    "to": "2026-05-31"
+  },
+  "preset": "VOLUME_PROFILE_FREQ_AAVE_15M",
+  "full": {
+    "trades": 30,
+    "tPerWk": 0.1062753036437247,
+    "returnPct": 129.60222609967002,
+    "cagrPct": 16.068301440629252,
+    "calmar": 1.3959923489338224,
+    "maxDdPct": 11.51030766959524,
+    "sharpe": 0.6980190452101452,
+    "profitFactor": 2.2211556562681616,
+    "winRate": 0.43333333333333335,
+    "years": {
+      "2020-21": {
+        "n": 16,
+        "net": 62.725228395595046,
+        "start": 100,
+        "end": 162.72522839559505,
+        "retPct": 62.72522839559505
+      },
+      "2021-22": {
+        "n": 1,
+        "net": 5.304291480331188,
+        "start": 162.72522839559505,
+        "end": 168.02951987592624,
+        "retPct": 3.259661413678356
+      },
+      "2022-23": {
+        "n": 5,
+        "net": 47.82266078766211,
+        "start": 168.02951987592624,
+        "end": 215.85218066358837,
+        "retPct": 28.460868556295704
+      },
+      "2023-24": {
+        "n": 2,
+        "net": -0.7417216590828595,
+        "start": 215.85218066358837,
+        "end": 215.1104590045055,
+        "retPct": -0.3436248162064567
+      },
+      "2024-25": {
+        "n": 5,
+        "net": 21.4386426078747,
+        "start": 215.1104590045055,
+        "end": 236.54910161238018,
+        "retPct": 9.966341342531218
+      },
+      "2025-26": {
+        "n": 1,
+        "net": -6.946875512710171,
+        "start": 236.54910161238018,
+        "end": 229.60222609967002,
+        "retPct": -2.936758358141483
+      }
+    },
+    "negYears": [
+      "2023-24",
+      "2025-26"
+    ]
+  },
+  "monteCarlo": {
+    "paths": 3000,
+    "p5ReturnPct": 3.1079217591625907,
+    "p50ReturnPct": 43.414013195319654,
+    "p95ReturnPct": 109.82012802361645,
+    "meanReturnPct": 48.177726615060486,
+    "medianMaxDdPct": 7.30923713736771,
+    "p95MaxDdPct": 14.411157278002007,
+    "riskOfRuinPct": 0
+  },
+  "walkForward": {
+    "folds": [
+      {
+        "fold": 0,
+        "trainN": 17,
+        "testN": 2,
+        "testRet": -4.342737195447597,
+        "testDd": 5.988354316125495,
+        "testWr": 50,
+        "from": "2021-11-26",
+        "to": "2022-10-21"
+      },
+      {
+        "fold": 1,
+        "trainN": 19,
+        "testN": 4,
+        "testRet": 38.36071960441464,
+        "testDd": 3.3068052537659516,
+        "testWr": 75,
+        "from": "2022-10-21",
+        "to": "2023-09-15"
+      },
+      {
+        "fold": 2,
+        "trainN": 23,
+        "testN": 2,
+        "testRet": -6.01167995006422,
+        "testDd": 6.01167995006422,
+        "testWr": 0,
+        "from": "2023-09-16",
+        "to": "2024-08-10"
+      },
+      {
+        "fold": 3,
+        "trainN": 25,
+        "testN": 5,
+        "testRet": 9.846407825062471,
+        "testDd": 9.225602904779096,
+        "testWr": 20,
+        "from": "2024-08-10",
+        "to": "2025-07-05"
+      },
+      {
+        "fold": 4,
+        "trainN": 30,
+        "testN": 0,
+        "testRet": 0,
+        "testDd": 0,
+        "testWr": 0,
+        "from": "2025-07-05",
+        "to": "2026-05-30"
+      }
+    ],
+    "degradationPct": 69.89564353107787,
+    "oosReturnSum": 37.852710283965294,
+    "oosTrades": 13
+  },
+  "gates": {
+    "allPass": false,
+    "gates": {
+      "oosPositive": {
+        "pass": true,
+        "value": 37.852710283965294,
+        "threshold": "> 0"
+      },
+      "mcP5Positive": {
+        "pass": true,
+        "value": 3.1079217591625907,
+        "threshold": "> 0"
+      },
+      "calmarOver1": {
+        "pass": true,
+        "value": 1.3959923489338224,
+        "threshold": "> 1"
+      },
+      "wfDegradationOk": {
+        "pass": false,
+        "value": 69.89564353107787,
+        "threshold": "< 35%"
+      }
+    }
+  },
+  "extraGates": {
+    "oosTradesGe30": {
+      "pass": false,
+      "value": 13,
+      "threshold": ">= 30"
+    },
+    "frequencyDeployable": {
+      "pass": false,
+      "value": 0.106,
+      "threshold": ">= 2/wk"
+    },
+    "noCatastrophicYear": {
+      "pass": true,
+      "value": [
+        "2023-24",
+        "2025-26"
+      ],
+      "threshold": "no year ret <= -25%"
+    }
+  },
+  "costStress": [
+    {
+      "label": "slip_x2",
+      "n": 30,
+      "ret": 98.81779719094203,
+      "dd": 15.221063301266504
+    },
+    {
+      "label": "slip_x4",
+      "n": 30,
+      "ret": 65.50526472037785,
+      "dd": 18.297282879116896
+    },
+    {
+      "label": "liq_crunch",
+      "n": 30,
+      "ret": 0.6825645085775705,
+      "dd": 40.38717318480442
+    }
+  ],
+  "verdict": "REJECT_CERTIFICATION"
+}

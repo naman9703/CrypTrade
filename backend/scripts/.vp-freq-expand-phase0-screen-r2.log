@@ -1,0 +1,115 @@
+
+══ VP FREQ expand Phase 0 — 11 symbols · 2021-01-01→2026-05-31 ══
+
+=== UNIUSDT load ===
+candles=195456 funding=6109 2020-11-02→2026-05-30
+run UNIUSDT F3_rej_only
+UNIUSDT    F3_rej_only   FULL n=121 tw=0.43 ret=10.51% pf=1.03 cal=0.03 | OOS n=60 ret=-14.8% | IS ret=25.31%
+  years 2020-21:18/54.46% 2021-22:21/-47.37% 2022-23:21/4.8% 2023-24:15/-10.98% 2024-25:23/27.61% 2025-26:23/14.18%
+  RED: 2021-22=-47.37% 2023-24=-10.98%
+
+=== AAVEUSDT load ===
+candles=195456 funding=6109 2020-11-02→2026-05-30
+run AAVEUSDT F3_rej_only
+AAVEUSDT   F3_rej_only   FULL n=112 tw=0.4 ret=2.79% pf=1.01 cal=0.01 | OOS n=55 ret=45.96% | IS ret=-43.17%
+  years 2020-21:18/87.28% 2021-22:15/-20.41% 2022-23:22/-2.07% 2023-24:25/-31.28% 2024-25:19/36.62% 2025-26:13/-24.99%
+  RED: 2021-22=-20.41% 2022-23=-2.07% 2023-24=-31.28% 2025-26=-24.99%
+
+=== FILUSDT load ===
+candles=195456 funding=6109 2020-11-02→2026-05-30
+run FILUSDT F3_rej_only
+FILUSDT    F3_rej_only   FULL n=106 tw=0.38 ret=-72.53% pf=0.61 cal=-0.26 | OOS n=68 ret=-65.76% | IS ret=-6.77%
+  years 2020-21:14/6.31% 2021-22:21/-41.05% 2022-23:33/-45.37% 2023-24:6/-4.28% 2024-25:15/-16.34% 2025-26:17/0.19%
+  RED: 2021-22=-41.05% 2022-23=-45.37% 2023-24=-4.28% 2024-25=-16.34%
+
+=== LTCUSDT load ===
+candles=195456 funding=6109 2020-11-02→2026-05-30
+run LTCUSDT F3_rej_only
+LTCUSDT    F3_rej_only   FULL n=73 tw=0.26 ret=-48.29% pf=0.81 cal=-0.2 | OOS n=34 ret=-11.51% | IS ret=-36.78%
+  years 2020-21:6/-11.3% 2021-22:15/-17.6% 2022-23:13/21.08% 2023-24:18/21.22% 2024-25:15/5.28% 2025-26:6/-54.21%
+  RED: 2020-21=-11.3% 2021-22=-17.6% 2025-26=-54.21%
+
+=== TRXUSDT load ===
+candles=195456 funding=6109 2020-11-02→2026-05-30
+run TRXUSDT F3_rej_only
+TRXUSDT    F3_rej_only   FULL n=49 tw=0.17 ret=-48.13% pf=0.53 cal=-0.24 | OOS n=32 ret=-34.25% | IS ret=-13.88%
+  years 2020-21:6/5.56% 2021-22:16/-35.15% 2022-23:10/-3.95% 2023-24:3/-4.79% 2024-25:10/-17.23% 2025-26:4/0.11%
+  RED: 2021-22=-35.15% 2022-23=-3.95% 2023-24=-4.79% 2024-25=-17.23%
+
+=== INJUSDT load ===
+candles=132757 funding=4151 2022-08-17→2026-05-30
+run INJUSDT F3_rej_only
+INJUSDT    F3_rej_only   FULL n=94 tw=0.33 ret=-57.23% pf=0.8 cal=-0.2 | OOS n=22 ret=29.67% | IS ret=-86.9%
+  years 2022-23:22/29.67% 2023-24:23/-45.37% 2024-25:27/39.09% 2025-26:22/-56.59%
+  RED: 2023-24=-45.37% 2025-26=-56.59%
+
+=== APTUSDT load ===
+candles=126712 funding=3962 2022-10-19→2026-05-30
+run APTUSDT F3_rej_only
+APTUSDT    F3_rej_only   FULL n=91 tw=0.32 ret=-24.57% pf=0.85 cal=-0.08 | OOS n=20 ret=-28.94% | IS ret=4.38%
+  years 2022-23:20/-28.94% 2023-24:23/-39.85% 2024-25:22/43.23% 2025-26:26/23.22%
+  RED: 2022-23=-28.94% 2023-24=-39.85%
+
+=== OPUSDT load ===
+candles=140104 funding=4380 2022-06-01→2026-05-30
+run OPUSDT F3_rej_only
+OPUSDT     F3_rej_only   FULL n=76 tw=0.27 ret=-29.08% pf=0.87 cal=-0.09 | OOS n=19 ret=13.1% | IS ret=-42.18%
+  years 2022-23:19/13.1% 2023-24:24/-7.28% 2024-25:17/-41.91% 2025-26:16/16.42%
+  RED: 2023-24=-7.28% 2024-25=-41.91%
+
+=== ARBUSDT load ===
+candles=111780 funding=3495 2023-03-23→2026-05-30
+run ARBUSDT F3_rej_only
+ARBUSDT    F3_rej_only   FULL n=52 tw=0.18 ret=48.6% pf=1.32 cal=0.16 | OOS n=5 ret=-1.11% | IS ret=49.71%
+  years 2022-23:5/-1.11% 2023-24:16/47.58% 2024-25:19/-38.84% 2025-26:12/66.49%
+  RED: 2022-23=-1.11% 2024-25=-38.84%
+
+=== SUIUSDT load ===
+candles=107840 funding=3371 2023-05-03→2026-05-30
+run SUIUSDT F3_rej_only
+SUIUSDT    F3_rej_only   FULL n=60 tw=0.21 ret=-76% pf=0.44 cal=-0.29 | OOS n=1 ret=5.94% | IS ret=-81.94%
+  years 2022-23:1/5.94% 2023-24:33/-50.37% 2024-25:16/-19.22% 2025-26:10/-43.49%
+  RED: 2023-24=-50.37% 2024-25=-19.22% 2025-26=-43.49%
+
+=== ICPUSDT load ===
+candles=128822 funding=5538 2022-09-27→2026-05-30
+run ICPUSDT F3_rej_only
+ICPUSDT    F3_rej_only   FULL n=63 tw=0.22 ret=1.44% pf=1.01 cal=0.01 | OOS n=14 ret=26.05% | IS ret=-24.6%
+  years 2022-23:14/26.05% 2023-24:16/-10.05% 2024-25:18/52.61% 2025-26:15/-41.37%
+  RED: 2023-24=-10.05% 2025-26=-41.37%
+
+══ F3 rank (usable first: OOS>0 & FULL>0) ══
+★ AAVEUSDT   OOS   45.96% n= 55 | FULL    2.79% tw=0.4 cal=0.01 | red=4
+★ ICPUSDT    OOS   26.05% n= 14 | FULL    1.44% tw=0.22 cal=0.01 | red=2
+  INJUSDT    OOS   29.67% n= 22 | FULL  -57.23% tw=0.33 cal=-0.2 | red=2
+  OPUSDT     OOS    13.1% n= 19 | FULL  -29.08% tw=0.27 cal=-0.09 | red=2
+  SUIUSDT    OOS    5.94% n=  1 | FULL     -76% tw=0.21 cal=-0.29 | red=3
+  ARBUSDT    OOS   -1.11% n=  5 | FULL    48.6% tw=0.18 cal=0.16 | red=2
+  LTCUSDT    OOS  -11.51% n= 34 | FULL  -48.29% tw=0.26 cal=-0.2 | red=3
+  UNIUSDT    OOS   -14.8% n= 60 | FULL   10.51% tw=0.43 cal=0.03 | red=2
+  APTUSDT    OOS  -28.94% n= 20 | FULL  -24.57% tw=0.32 cal=-0.08 | red=2
+  TRXUSDT    OOS  -34.25% n= 32 | FULL  -48.13% tw=0.17 cal=-0.24 | red=4
+  FILUSDT    OOS  -65.76% n= 68 | FULL  -72.53% tw=0.38 cal=-0.26 | red=4
+
+══ Deep funnels on top 3: AAVEUSDT, ICPUSDT, INJUSDT ══
+run AAVEUSDT F0_open
+AAVEUSDT   F0_open        FULL n=947 tw=3.35 ret=-95.42% pf=0.87 cal=-0.44 | OOS n=462 ret=-80.77% | IS ret=-14.65%
+  RED: 2020-21=-3.41% 2021-22=-41.08% 2022-23=-66.21% 2023-24=-55.75% 2025-26=-52.37%
+run AAVEUSDT F1_val_rej
+AAVEUSDT   F1_val_rej     FULL n=532 tw=1.88 ret=-80.94% pf=0.88 cal=-0.3 | OOS n=263 ret=-56.42% | IS ret=-24.52%
+  RED: 2020-21=-9.72% 2021-22=-27.39% 2022-23=-33.52% 2023-24=-43.83% 2025-26=-51.39%
+run ICPUSDT F0_open
+ICPUSDT    F0_open        FULL n=617 tw=2.19 ret=-89.99% pf=0.88 cal=-0.38 | OOS n=108 ret=-7.79% | IS ret=-82.2%
+  RED: 2022-23=-7.79% 2023-24=-40.78% 2024-25=-15.92% 2025-26=-78.21%
+run ICPUSDT F1_val_rej
+ICPUSDT    F1_val_rej     FULL n=370 tw=1.31 ret=-70.69% pf=0.89 cal=-0.27 | OOS n=66 ret=-11.9% | IS ret=-58.79%
+  RED: 2022-23=-11.9% 2023-24=-22.79% 2025-26=-65.89%
+run INJUSDT F0_open
+INJUSDT    F0_open        FULL n=692 tw=2.45 ret=-86.62% pf=0.91 cal=-0.33 | OOS n=162 ret=19.95% | IS ret=-106.57%
+  RED: 2023-24=-68.67% 2025-26=-78.83%
+run INJUSDT F1_val_rej
+INJUSDT    F1_val_rej     FULL n=413 tw=1.46 ret=-84.2% pf=0.86 cal=-0.31 | OOS n=93 ret=-14.23% | IS ret=-69.97%
+  RED: 2022-23=-14.23% 2023-24=-67.57% 2025-26=-65.9%
+
+══ Next deep-work pick: AAVEUSDT F3 (OOS 45.96% / FULL 2.79% / tw 0.4) ══
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-expand-phase0-screen.json

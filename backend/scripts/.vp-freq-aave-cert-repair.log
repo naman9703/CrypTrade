@@ -1,0 +1,61 @@
+load AAVEUSDT…
+candles=195456
+
+══ Phase A — FULL rank (restore N / cut earlyShare) ══
+FULL LOCKED_htf35_REJECT
+LOCKED_htf35_REJECT n=30 tw=0.11 ret=129.6% cal=1.4 early=0.57 cat=false | RED:2023-24=-0.34%,2025-26=-2.94%
+FULL htf15_sellExt_bleed
+htf15_sellExt_bleed n=54 tw=0.19 ret=163.39% cal=0.77 early=0.37 cat=false | RED:2023-24=-8.85%,2025-26=-7.96%
+FULL htf20_sellExt_bleed
+htf20_sellExt_bleed n=44 tw=0.16 ret=177.33% cal=1.27 early=0.45 cat=false | RED:2025-26=-6.18%
+FULL htf25_sellExt_bleed
+htf25_sellExt_bleed n=40 tw=0.14 ret=168.1% cal=1.51 early=0.5 cat=false | RED:2025-26=-6.18%
+FULL htf30_sellExt_bleed
+htf30_sellExt_bleed n=34 tw=0.12 ret=213.2% cal=1.85 early=0.53 cat=false | RED:2025-26=-6.18%
+FULL htf15_bleed_only
+htf15_bleed_only n=59 tw=0.21 ret=111.96% cal=0.42 early=0.34 cat=false | RED:2023-24=-11.68%,2025-26=-11.64%
+FULL htf15_no_bearVac
+htf15_no_bearVac n=56 tw=0.2 ret=205.18% cal=0.89 early=0.36 cat=false | RED:2023-24=-8.85%
+FULL htf20_no_bearVac
+htf20_no_bearVac n=46 tw=0.16 ret=221.32% cal=1.48 early=0.43 cat=false | RED:none
+FULL htf15_bleed_poc
+htf15_bleed_poc n=77 tw=0.27 ret=118.97% cal=0.6 early=0.29 cat=false | RED:2021-22=-7.09%,2025-26=-22.19%
+FULL htf20_bleed_poc
+htf20_bleed_poc n=66 tw=0.23 ret=140.16% cal=0.76 early=0.33 cat=false | RED:2021-22=-7.09%,2025-26=-20.69%
+
+══ Phase A ranked ══
+htf20_no_bearVac           n=46 early=0.43 cal=1.48 ret=221.32% reds=0 cat=false
+htf15_bleed_poc            n=77 early=0.29 cal=0.6 ret=118.97% reds=2 cat=false
+htf20_bleed_poc            n=66 early=0.33 cal=0.76 ret=140.16% reds=2 cat=false
+htf15_bleed_only           n=59 early=0.34 cal=0.42 ret=111.96% reds=2 cat=false
+htf15_no_bearVac           n=56 early=0.36 cal=0.89 ret=205.18% reds=1 cat=false
+htf15_sellExt_bleed        n=54 early=0.37 cal=0.77 ret=163.39% reds=2 cat=false
+htf20_sellExt_bleed        n=44 early=0.45 cal=1.27 ret=177.33% reds=1 cat=false
+htf25_sellExt_bleed        n=40 early=0.5 cal=1.51 ret=168.1% reds=1 cat=false
+htf30_sellExt_bleed        n=34 early=0.53 cal=1.85 ret=213.2% reds=1 cat=false
+LOCKED_htf35_REJECT        n=30 early=0.57 cal=1.4 ret=129.6% reds=2 cat=false
+
+══ Phase B — WF+MC on: LOCKED_htf35_REJECT, htf20_no_bearVac, htf15_bleed_poc, htf20_bleed_poc, htf15_bleed_only ══
+WF LOCKED_htf35_REJECT
+LOCKED_htf35_REJECT
+  n=30 early=0.57 cal=1.4 oosN=13 wfDeg=69.9% mcP5=3.47 oosSum=37.85%
+  core=false sleeve=false folds=2/4/2/5/0 | RED:2023-24=-0.34%,2025-26=-2.94%
+WF htf20_no_bearVac
+htf20_no_bearVac
+  n=46 early=0.43 cal=1.48 oosN=27 wfDeg=44.1% mcP5=12.84 oosSum=61.29%
+  core=false sleeve=false folds=3/8/6/8/2 | RED:none
+WF htf15_bleed_poc
+htf15_bleed_poc
+  n=77 early=0.29 cal=0.6 oosN=56 wfDeg=96% mcP5=-9.53 oosSum=27.04%
+  core=false sleeve=false folds=6/11/11/19/9 | RED:2021-22=-7.09%,2025-26=-22.19%
+WF htf20_bleed_poc
+htf20_bleed_poc
+  n=66 early=0.33 cal=0.76 oosN=45 wfDeg=82.9% mcP5=-2.62 oosSum=38.24%
+  core=false sleeve=false folds=6/9/8/14/8 | RED:2021-22=-7.09%,2025-26=-20.69%
+WF htf15_bleed_only
+htf15_bleed_only
+  n=59 early=0.34 cal=0.42 oosN=40 wfDeg=92.9% mcP5=-7.8 oosSum=22.21%
+  core=false sleeve=false folds=3/11/12/12/2 | RED:2023-24=-11.68%,2025-26=-11.64%
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-aave-cert-repair.json
+
+══ Best repair: htf20_bleed_poc sleeve=false core=false ══

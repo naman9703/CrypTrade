@@ -1,0 +1,17 @@
+load AAVEUSDT…
+
+══ no_bearVac HTF fine ladder + WF ══
+run noBear_htf_0015
+noBear_htf_0015 n=56 early=0.36 cal=0.89 oosN=37 wfDeg=49.6% mcP5=8.08 | RED:2023-24=-8.85% | core=false sleeve=false folds=3/10/9/12/3
+run noBear_htf_0017
+noBear_htf_0017 n=53 early=0.38 cal=1.27 oosN=34 wfDeg=49.1% mcP5=11.77 | RED:2023-24=-2.14% | core=false sleeve=false folds=3/9/7/12/3
+run noBear_htf_0018
+noBear_htf_0018 n=52 early=0.38 cal=1.31 oosN=33 wfDeg=46.2% mcP5=16.6 | RED:2023-24=-2.14% | core=false sleeve=false folds=3/8/7/12/3
+run noBear_htf_002
+noBear_htf_002 n=46 early=0.43 cal=1.48 oosN=27 wfDeg=44.1% mcP5=12.84 | RED:none | core=false sleeve=false folds=3/8/6/8/2
+run noBear_htf_0022
+noBear_htf_0022 n=44 early=0.45 cal=1.39 oosN=25 wfDeg=100% mcP5=7.99 | RED:2025-26=-9.93% | core=false sleeve=false folds=3/8/5/8/1
+run noBear_htf_0025
+noBear_htf_0025 n=41 early=0.49 cal=1.17 oosN=22 wfDeg=101.4% mcP5=4.46 | RED:2025-26=-9.93% | core=false sleeve=false folds=3/7/4/7/1
+
+══ Best: noBear_htf_002 sleeve=false core=false yearClean=true ══

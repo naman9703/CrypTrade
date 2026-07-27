@@ -1,0 +1,28 @@
+
+=== AAVE VP FREQ certification — AAVEUSDT 15m 2021-01-01→2026-05-31 ===
+locked preset · risk%=2.5 lev=12x · expanding WF folds=5
+
+candles=195456 funding=6109 first=2020-11-02T00:00:00.000Z last=2026-05-30T23:45:00.000Z
+FULL: trades=30 (0.11/wk) net=129.6% CAGR=16.1% Calmar=1.40 maxDD=11.5% Sharpe=0.70 PF=2.22 WR=43%
+  years: 2020-21=62.7%/16  2021-22=3.3%/1  2022-23=28.5%/5  2023-24=-0.3%/2  2024-25=10.0%/5  2025-26=-2.9%/1
+  negYears=2023-24,2025-26
+MC(1% risk): ret p5=3.1% p50=43.4% p95=109.8%  maxDD p95=14.4% ruin=0.0%
+
+WF expanding folds=5 embargo=96bars (~1d)
+  fold 0: 2021-11-26→2022-10-21  trainN=17 testN=2 testRet=-4.3% DD=6.0% WR=50%
+  fold 1: 2022-10-21→2023-09-15  trainN=19 testN=4 testRet=38.4% DD=3.3% WR=75%
+  fold 2: 2023-09-16→2024-08-10  trainN=23 testN=2 testRet=-6.0% DD=6.0% WR=0%
+  fold 3: 2024-08-10→2025-07-05  trainN=25 testN=5 testRet=9.8% DD=9.2% WR=20%
+  fold 4: 2025-07-05→2026-05-30  trainN=30 testN=0 testRet=0.0% DD=0.0% WR=0%
+
+WF: degradation=69.9% OOSsumRet=37.9% OOStrades=13
+GATES: PASS:oosPositive PASS:mcP5Positive PASS:calmarOver1 FAIL:wfDegradationOk
+EXTRA: FAIL:oosTradesGe30 FAIL:frequencyDeployable PASS:noCatastrophicYear
+
+COST STRESS (full window):
+  slip_x2      N=30 ret=98.8% DD=15.2%
+  slip_x4      N=30 ret=65.5% DD=18.3%
+  liq_crunch   N=30 ret=0.7% DD=40.4%
+
+VERDICT: REJECT_CERTIFICATION (gates=fail freq=low)
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-aave-certification.json

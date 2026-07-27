@@ -1,0 +1,1045 @@
+{
+  "generatedAt": "2026-07-27T01:52:56.009Z",
+  "rows": [
+    {
+      "id": "H0_noBear_htf20",
+      "over": {},
+      "n": 46,
+      "tw": 0.16,
+      "ret": 221.32,
+      "calmar": 1.48,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 187.28059910490353,
+          "end": 187.63838627958648,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 7,
+          "start": 187.63838627958648,
+          "end": 223.65419834610776,
+          "retPct": 19.19
+        },
+        "2023-24": {
+          "n": 8,
+          "start": 223.65419834610776,
+          "end": 228.22252794127454,
+          "retPct": 2.04
+        },
+        "2024-25": {
+          "n": 7,
+          "start": 228.22252794127454,
+          "end": 295.5966343016681,
+          "retPct": 29.52
+        },
+        "2025-26": {
+          "n": 4,
+          "start": 295.5966343016681,
+          "end": 321.31653521355673,
+          "retPct": 8.7
+        }
+      },
+      "negYears": [],
+      "earlyShare": 0.43,
+      "y2021": 87.28,
+      "catYear": false,
+      "oosTrades": 27,
+      "wfDeg": 44.1,
+      "avgTrainExp": 4.174,
+      "avgTestExp": 2.335,
+      "oosSum": 61.29,
+      "mcP5": 12.84,
+      "folds": [
+        {
+          "fold": 0,
+          "testN": 3,
+          "testRet": -7.19,
+          "trainExp": 4.915
+        },
+        {
+          "fold": 1,
+          "testN": 8,
+          "testRet": 38.08,
+          "trainExp": 3.613
+        },
+        {
+          "fold": 2,
+          "testN": 6,
+          "testRet": -10.52,
+          "trainExp": 4.928
+        },
+        {
+          "fold": 3,
+          "testN": 8,
+          "testRet": 25.06,
+          "trainExp": 3.382
+        },
+        {
+          "fold": 4,
+          "testN": 2,
+          "testRet": 15.86,
+          "trainExp": 4.03
+        }
+      ],
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "htf20_buyP60_100",
+      "over": {
+        "vpBuyRejectionMaxPrior60dPct": 1
+      },
+      "n": 44,
+      "tw": 0.16,
+      "ret": 211.53,
+      "calmar": 1.43,
+      "years": {
+        "2020-21": {
+          "n": 16,
+          "start": 100,
+          "end": 181.57843727581925,
+          "retPct": 81.58
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 181.57843727581925,
+          "end": 181.92533084817413,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 7,
+          "start": 181.92533084817413,
+          "end": 216.84456382539983,
+          "retPct": 19.19
+        },
+        "2023-24": {
+          "n": 8,
+          "start": 216.84456382539983,
+          "end": 221.27380077154294,
+          "retPct": 2.04
+        },
+        "2024-25": {
+          "n": 7,
+          "start": 221.27380077154294,
+          "end": 286.5965571288232,
+          "retPct": 29.52
+        },
+        "2025-26": {
+          "n": 4,
+          "start": 286.5965571288232,
+          "end": 311.5333601761783,
+          "retPct": 8.7
+        }
+      },
+      "negYears": [],
+      "earlyShare": 0.41,
+      "y2021": 81.58,
+      "catYear": false,
+      "oosTrades": 27,
+      "wfDeg": 45.1,
+      "avgTrainExp": 4.252,
+      "avgTestExp": 2.335,
+      "oosSum": 61.29,
+      "mcP5": 10.81,
+      "folds": [
+        {
+          "fold": 0,
+          "testN": 3,
+          "testRet": -7.19,
+          "trainExp": 5.147
+        },
+        {
+          "fold": 1,
+          "testN": 8,
+          "testRet": 38.08,
+          "trainExp": 3.701
+        },
+        {
+          "fold": 2,
+          "testN": 6,
+          "testRet": -10.52,
+          "trainExp": 5.011
+        },
+        {
+          "fold": 3,
+          "testN": 8,
+          "testRet": 25.06,
+          "trainExp": 3.383
+        },
+        {
+          "fold": 4,
+          "testN": 2,
+          "testRet": 15.86,
+          "trainExp": 4.021
+        }
+      ],
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "htf15_buyP60_050",
+      "over": {
+        "vpMinHtfSepPct": 0.0015,
+        "vpBuyRejectionMaxPrior60dPct": 0.5
+      },
+      "n": 48,
+      "tw": 0.17,
+      "ret": 98,
+      "calmar": 0.45,
+      "years": {
+        "2020-21": {
+          "n": 13,
+          "start": 100,
+          "end": 116.30703819752729,
+          "retPct": 16.31
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 116.30703819752729,
+          "end": 116.52923508706803,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 9,
+          "start": 116.52923508706803,
+          "end": 129.58880017678888,
+          "retPct": 11.21
+        },
+        "2023-24": {
+          "n": 10,
+          "start": 129.58880017678888,
+          "end": 111.54674456807736,
+          "retPct": -13.92
+        },
+        "2024-25": {
+          "n": 9,
+          "start": 111.54674456807736,
+          "end": 179.46141907384606,
+          "retPct": 60.88
+        },
+        "2025-26": {
+          "n": 5,
+          "start": 179.46141907384606,
+          "end": 198.00052115922233,
+          "retPct": 10.33
+        }
+      },
+      "negYears": [
+        "2023-24=-13.92%"
+      ],
+      "earlyShare": 0.31,
+      "y2021": 16.31,
+      "catYear": false,
+      "oosTrades": 34,
+      "wfDeg": -87.8,
+      "avgTrainExp": 1.063,
+      "avgTestExp": 1.996,
+      "oosSum": 68.6,
+      "mcP5": -5.92,
+      "folds": [
+        {
+          "fold": 0,
+          "testN": 3,
+          "testRet": -7.19,
+          "trainExp": 1.436
+        },
+        {
+          "fold": 1,
+          "testN": 10,
+          "testRet": 28.83,
+          "trainExp": 0.675
+        },
+        {
+          "fold": 2,
+          "testN": 8,
+          "testRet": -24.52,
+          "trainExp": 1.615
+        },
+        {
+          "fold": 3,
+          "testN": 10,
+          "testRet": 48.3,
+          "trainExp": 0.24
+        },
+        {
+          "fold": 4,
+          "testN": 3,
+          "testRet": 23.18,
+          "trainExp": 1.35
+        }
+      ],
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "htf18_buyP60_050",
+      "over": {
+        "vpMinHtfSepPct": 0.0018,
+        "vpBuyRejectionMaxPrior60dPct": 0.5
+      },
+      "n": 44,
+      "tw": 0.16,
+      "ret": 127.86,
+      "calmar": 0.67,
+      "years": {
+        "2020-21": {
+          "n": 13,
+          "start": 100,
+          "end": 116.30703819752729,
+          "retPct": 16.31
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 116.30703819752729,
+          "end": 116.52923508706803,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 7,
+          "start": 116.52923508706803,
+          "end": 138.89616711182885,
+          "retPct": 19.19
+        },
+        "2023-24": {
+          "n": 8,
+          "start": 138.89616711182885,
+          "end": 128.36579547317595,
+          "retPct": -7.58
+        },
+        "2024-25": {
+          "n": 9,
+          "start": 128.36579547317595,
+          "end": 206.52066454615226,
+          "retPct": 60.88
+        },
+        "2025-26": {
+          "n": 5,
+          "start": 206.52066454615226,
+          "end": 227.85509788853767,
+          "retPct": 10.33
+        }
+      },
+      "negYears": [
+        "2023-24=-7.58%"
+      ],
+      "earlyShare": 0.34,
+      "y2021": 16.31,
+      "catYear": false,
+      "oosTrades": 30,
+      "wfDeg": -64.8,
+      "avgTrainExp": 1.427,
+      "avgTestExp": 2.352,
+      "oosSum": 83.41,
+      "mcP5": -0.3,
+      "folds": [
+        {
+          "fold": 0,
+          "testN": 3,
+          "testRet": -7.19,
+          "trainExp": 1.436
+        },
+        {
+          "fold": 1,
+          "testN": 8,
+          "testRet": 38.08,
+          "trainExp": 0.675
+        },
+        {
+          "fold": 2,
+          "testN": 6,
+          "testRet": -18.96,
+          "trainExp": 2.157
+        },
+        {
+          "fold": 3,
+          "testN": 10,
+          "testRet": 48.3,
+          "trainExp": 0.798
+        },
+        {
+          "fold": 4,
+          "testN": 3,
+          "testRet": 23.18,
+          "trainExp": 2.073
+        }
+      ],
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "htf18",
+      "over": {
+        "vpMinHtfSepPct": 0.0018
+      },
+      "n": 52,
+      "tw": 0.18,
+      "ret": 251.19,
+      "calmar": 1.31,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 187.28059910490353,
+          "end": 187.63838627958648,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 7,
+          "start": 187.63838627958648,
+          "end": 223.65419834610776,
+          "retPct": 19.19
+        },
+        "2023-24": {
+          "n": 9,
+          "start": 223.65419834610776,
+          "end": 218.87167898881,
+          "retPct": -2.14
+        },
+        "2024-25": {
+          "n": 10,
+          "start": 218.87167898881,
+          "end": 329.3156336441973,
+          "retPct": 50.46
+        },
+        "2025-26": {
+          "n": 6,
+          "start": 329.3156336441973,
+          "end": 351.19047952033446,
+          "retPct": 6.64
+        }
+      },
+      "negYears": [
+        "2023-24=-2.14%"
+      ],
+      "earlyShare": 0.38,
+      "y2021": 87.28,
+      "catYear": false,
+      "oosTrades": 33,
+      "wfDeg": 46.2,
+      "avgTrainExp": 4.056,
+      "avgTestExp": 2.18,
+      "oosSum": 73.94,
+      "mcP5": 16.6,
+      "folds": [
+        {
+          "fold": 0,
+          "testN": 3,
+          "testRet": -7.19,
+          "trainExp": 4.915
+        },
+        {
+          "fold": 1,
+          "testN": 8,
+          "testRet": 38.08,
+          "trainExp": 3.613
+        },
+        {
+          "fold": 2,
+          "testN": 7,
+          "testRet": -14.19,
+          "trainExp": 4.928
+        },
+        {
+          "fold": 3,
+          "testN": 12,
+          "testRet": 34.06,
+          "trainExp": 3.045
+        },
+        {
+          "fold": 4,
+          "testN": 3,
+          "testRet": 23.18,
+          "trainExp": 3.778
+        }
+      ],
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "htf18_buyP60_100",
+      "over": {
+        "vpMinHtfSepPct": 0.0018,
+        "vpBuyRejectionMaxPrior60dPct": 1
+      },
+      "n": 50,
+      "tw": 0.18,
+      "ret": 240.5,
+      "calmar": 1.28,
+      "years": {
+        "2020-21": {
+          "n": 16,
+          "start": 100,
+          "end": 181.57843727581925,
+          "retPct": 81.58
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 181.57843727581925,
+          "end": 181.92533084817413,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 7,
+          "start": 181.92533084817413,
+          "end": 216.84456382539983,
+          "retPct": 19.19
+        },
+        "2023-24": {
+          "n": 9,
+          "start": 216.84456382539983,
+          "end": 212.2076585864698,
+          "retPct": -2.14
+        },
+        "2024-25": {
+          "n": 10,
+          "start": 212.2076585864698,
+          "end": 319.2889087999716,
+          "retPct": 50.46
+        },
+        "2025-26": {
+          "n": 6,
+          "start": 319.2889087999716,
+          "end": 340.49772780643735,
+          "retPct": 6.64
+        }
+      },
+      "negYears": [
+        "2023-24=-2.14%"
+      ],
+      "earlyShare": 0.36,
+      "y2021": 81.58,
+      "catYear": false,
+      "oosTrades": 33,
+      "wfDeg": 47.2,
+      "avgTrainExp": 4.129,
+      "avgTestExp": 2.18,
+      "oosSum": 73.94,
+      "mcP5": 12.65,
+      "folds": [
+        {
+          "fold": 0,
+          "testN": 3,
+          "testRet": -7.19,
+          "trainExp": 5.147
+        },
+        {
+          "fold": 1,
+          "testN": 8,
+          "testRet": 38.08,
+          "trainExp": 3.701
+        },
+        {
+          "fold": 2,
+          "testN": 7,
+          "testRet": -14.19,
+          "trainExp": 5.011
+        },
+        {
+          "fold": 3,
+          "testN": 12,
+          "testRet": 34.06,
+          "trainExp": 3.034
+        },
+        {
+          "fold": 4,
+          "testN": 3,
+          "testRet": 23.18,
+          "trainExp": 3.754
+        }
+      ],
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "htf20_deny_BUY_bullVac",
+      "over": {
+        "vpPreparedBlockCellKeys": [
+          "SELL|va_rejection|weak_bear|vacuum",
+          "BUY|va_rejection|bull_chop|vacuum",
+          "BUY|va_rejection|bull_chop|structured",
+          "SELL|va_rejection|bull_chop|vacuum",
+          "BUY|va_rejection|bull_trend|vacuum"
+        ]
+      },
+      "n": 35,
+      "tw": 0.12,
+      "ret": 79.41,
+      "calmar": 0.6,
+      "years": {
+        "2020-21": {
+          "n": 10,
+          "start": 100,
+          "end": 103.99723027391069,
+          "retPct": 4
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 103.99723027391069,
+          "end": 104.19591009110687,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 7,
+          "start": 104.19591009110687,
+          "end": 124.19555083812236,
+          "retPct": 19.19
+        },
+        "2023-24": {
+          "n": 7,
+          "start": 124.19555083812236,
+          "end": 119.68343222922428,
+          "retPct": -3.63
+        },
+        "2024-25": {
+          "n": 6,
+          "start": 119.68343222922428,
+          "end": 159.531445479721,
+          "retPct": 33.29
+        },
+        "2025-26": {
+          "n": 3,
+          "start": 159.531445479721,
+          "end": 179.40921295375458,
+          "retPct": 12.46
+        }
+      },
+      "negYears": [
+        "2023-24=-3.63%"
+      ],
+      "earlyShare": 0.34,
+      "y2021": 4,
+      "catYear": false,
+      "oosTrades": 24,
+      "wfDeg": -135.1,
+      "avgTrainExp": 0.955,
+      "avgTestExp": 2.247,
+      "oosSum": 63.1,
+      "mcP5": -5.27,
+      "folds": [
+        {
+          "fold": 0,
+          "testN": 3,
+          "testRet": -7.19,
+          "trainExp": 0.672
+        },
+        {
+          "fold": 1,
+          "testN": 8,
+          "testRet": 38.08,
+          "trainExp": -0.024
+        },
+        {
+          "fold": 2,
+          "testN": 4,
+          "testRet": -13.04,
+          "trainExp": 1.71
+        },
+        {
+          "fold": 3,
+          "testN": 7,
+          "testRet": 29.38,
+          "trainExp": 0.757
+        },
+        {
+          "fold": 4,
+          "testN": 2,
+          "testRet": 15.86,
+          "trainExp": 1.662
+        }
+      ],
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "htf18_deny_BUY_bullVac",
+      "over": {
+        "vpMinHtfSepPct": 0.0018,
+        "vpPreparedBlockCellKeys": [
+          "SELL|va_rejection|weak_bear|vacuum",
+          "BUY|va_rejection|bull_chop|vacuum",
+          "BUY|va_rejection|bull_chop|structured",
+          "SELL|va_rejection|bull_chop|vacuum",
+          "BUY|va_rejection|bull_trend|vacuum"
+        ]
+      },
+      "n": 40,
+      "tw": 0.14,
+      "ret": 104.47,
+      "calmar": 0.74,
+      "years": {
+        "2020-21": {
+          "n": 10,
+          "start": 100,
+          "end": 103.99723027391069,
+          "retPct": 4
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 103.99723027391069,
+          "end": 104.19591009110687,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 7,
+          "start": 104.19591009110687,
+          "end": 124.19555083812236,
+          "retPct": 19.19
+        },
+        "2023-24": {
+          "n": 7,
+          "start": 124.19555083812236,
+          "end": 119.68343222922428,
+          "retPct": -3.63
+        },
+        "2024-25": {
+          "n": 9,
+          "start": 119.68343222922428,
+          "end": 185.32248117914077,
+          "retPct": 54.84
+        },
+        "2025-26": {
+          "n": 5,
+          "start": 185.32248117914077,
+          "end": 204.4670550659747,
+          "retPct": 10.33
+        }
+      },
+      "negYears": [
+        "2023-24=-3.63%"
+      ],
+      "earlyShare": 0.3,
+      "y2021": 4,
+      "catYear": false,
+      "oosTrades": 29,
+      "wfDeg": -111.2,
+      "avgTrainExp": 0.98,
+      "avgTestExp": 2.07,
+      "oosSum": 79.73,
+      "mcP5": -2.48,
+      "folds": [
+        {
+          "fold": 0,
+          "testN": 3,
+          "testRet": -7.19,
+          "trainExp": 0.672
+        },
+        {
+          "fold": 1,
+          "testN": 8,
+          "testRet": 38.08,
+          "trainExp": -0.024
+        },
+        {
+          "fold": 2,
+          "testN": 4,
+          "testRet": -13.04,
+          "trainExp": 1.71
+        },
+        {
+          "fold": 3,
+          "testN": 11,
+          "testRet": 38.69,
+          "trainExp": 0.757
+        },
+        {
+          "fold": 4,
+          "testN": 3,
+          "testRet": 23.18,
+          "trainExp": 1.784
+        }
+      ],
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "htf20_buyP60_050",
+      "over": {
+        "vpBuyRejectionMaxPrior60dPct": 0.5
+      },
+      "n": 38,
+      "tw": 0.13,
+      "ret": 108.47,
+      "calmar": 0.69,
+      "years": {
+        "2020-21": {
+          "n": 13,
+          "start": 100,
+          "end": 116.30703819752729,
+          "retPct": 16.31
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 116.30703819752729,
+          "end": 116.52923508706803,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 7,
+          "start": 116.52923508706803,
+          "end": 138.89616711182885,
+          "retPct": 19.19
+        },
+        "2023-24": {
+          "n": 7,
+          "start": 138.89616711182885,
+          "end": 133.8499639580076,
+          "retPct": -3.63
+        },
+        "2024-25": {
+          "n": 6,
+          "start": 133.8499639580076,
+          "end": 185.37478065661247,
+          "retPct": 38.49
+        },
+        "2025-26": {
+          "n": 3,
+          "start": 185.37478065661247,
+          "end": 208.47265189047226,
+          "retPct": 12.46
+        }
+      },
+      "negYears": [
+        "2023-24=-3.63%"
+      ],
+      "earlyShare": 0.39,
+      "y2021": 16.31,
+      "catYear": false,
+      "oosTrades": 24,
+      "wfDeg": -81.4,
+      "avgTrainExp": 1.498,
+      "avgTestExp": 2.717,
+      "oosSum": 69.6,
+      "mcP5": 0.91,
+      "folds": [
+        {
+          "fold": 0,
+          "testN": 3,
+          "testRet": -7.19,
+          "trainExp": 1.436
+        },
+        {
+          "fold": 1,
+          "testN": 8,
+          "testRet": 38.08,
+          "trainExp": 0.675
+        },
+        {
+          "fold": 2,
+          "testN": 5,
+          "testRet": -15.5,
+          "trainExp": 2.157
+        },
+        {
+          "fold": 3,
+          "testN": 6,
+          "testRet": 38.34,
+          "trainExp": 1.002
+        },
+        {
+          "fold": 4,
+          "testN": 2,
+          "testRet": 15.86,
+          "trainExp": 2.22
+        }
+      ],
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "htf20_buyBody25",
+      "over": {
+        "vpBuyRejectionMinBody": 0.25
+      },
+      "n": 41,
+      "tw": 0.15,
+      "ret": 222.33,
+      "calmar": 1.4,
+      "years": {
+        "2020-21": {
+          "n": 17,
+          "start": 100,
+          "end": 200.57028017602838,
+          "retPct": 100.57
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 200.57028017602838,
+          "end": 200.95345640577418,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 6,
+          "start": 200.95345640577418,
+          "end": 221.66521139538617,
+          "retPct": 10.31
+        },
+        "2023-24": {
+          "n": 6,
+          "start": 221.66521139538617,
+          "end": 214.1059761545293,
+          "retPct": -3.41
+        },
+        "2024-25": {
+          "n": 6,
+          "start": 214.1059761545293,
+          "end": 296.5249088850525,
+          "retPct": 38.49
+        },
+        "2025-26": {
+          "n": 4,
+          "start": 296.5249088850525,
+          "end": 322.32557908702483,
+          "retPct": 8.7
+        }
+      },
+      "negYears": [
+        "2023-24=-3.41%"
+      ],
+      "earlyShare": 0.46,
+      "y2021": 100.57,
+      "catYear": false,
+      "oosTrades": 23,
+      "wfDeg": 45.3,
+      "avgTrainExp": 4.677,
+      "avgTestExp": 2.558,
+      "oosSum": 52.83,
+      "mcP5": 12.68,
+      "folds": [
+        {
+          "fold": 0,
+          "testN": 3,
+          "testRet": -7.19,
+          "trainExp": 5.95
+        },
+        {
+          "fold": 1,
+          "testN": 5,
+          "testRet": 20.96,
+          "trainExp": 4.392
+        },
+        {
+          "fold": 2,
+          "testN": 6,
+          "testRet": -10.52,
+          "trainExp": 5.097
+        },
+        {
+          "fold": 3,
+          "testN": 7,
+          "testRet": 33.72,
+          "trainExp": 3.376
+        },
+        {
+          "fold": 4,
+          "testN": 2,
+          "testRet": 15.86,
+          "trainExp": 4.569
+        }
+      ],
+      "corePass": false,
+      "sleeveOk": false
+    }
+  ],
+  "best": {
+    "id": "H0_noBear_htf20",
+    "over": {},
+    "n": 46,
+    "tw": 0.16,
+    "ret": 221.32,
+    "calmar": 1.48,
+    "years": {
+      "2020-21": {
+        "n": 18,
+        "start": 100,
+        "end": 187.28059910490353,
+        "retPct": 87.28
+      },
+      "2021-22": {
+        "n": 2,
+        "start": 187.28059910490353,
+        "end": 187.63838627958648,
+        "retPct": 0.19
+      },
+      "2022-23": {
+        "n": 7,
+        "start": 187.63838627958648,
+        "end": 223.65419834610776,
+        "retPct": 19.19
+      },
+      "2023-24": {
+        "n": 8,
+        "start": 223.65419834610776,
+        "end": 228.22252794127454,
+        "retPct": 2.04
+      },
+      "2024-25": {
+        "n": 7,
+        "start": 228.22252794127454,
+        "end": 295.5966343016681,
+        "retPct": 29.52
+      },
+      "2025-26": {
+        "n": 4,
+        "start": 295.5966343016681,
+        "end": 321.31653521355673,
+        "retPct": 8.7
+      }
+    },
+    "negYears": [],
+    "earlyShare": 0.43,
+    "y2021": 87.28,
+    "catYear": false,
+    "oosTrades": 27,
+    "wfDeg": 44.1,
+    "avgTrainExp": 4.174,
+    "avgTestExp": 2.335,
+    "oosSum": 61.29,
+    "mcP5": 12.84,
+    "folds": [
+      {
+        "fold": 0,
+        "testN": 3,
+        "testRet": -7.19,
+        "trainExp": 4.915
+      },
+      {
+        "fold": 1,
+        "testN": 8,
+        "testRet": 38.08,
+        "trainExp": 3.613
+      },
+      {
+        "fold": 2,
+        "testN": 6,
+        "testRet": -10.52,
+        "trainExp": 4.928
+      },
+      {
+        "fold": 3,
+        "testN": 8,
+        "testRet": 25.06,
+        "trainExp": 3.382
+      },
+      {
+        "fold": 4,
+        "testN": 2,
+        "testRet": 15.86,
+        "trainExp": 4.03
+      }
+    ],
+    "corePass": false,
+    "sleeveOk": false
+  }
+}

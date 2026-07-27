@@ -1,0 +1,28 @@
+
+=== NEAR VP FREQ certification — NEARUSDT 15m 2021-01-01→2026-05-31 ===
+locked preset · risk%=2.5 lev=12x · expanding WF folds=5
+
+candles=195456 funding=6109 first=2020-11-02T00:00:00.000Z last=2026-05-30T23:45:00.000Z
+FULL: trades=46 (0.16/wk) net=231.6% CAGR=24.0% Calmar=1.64 maxDD=14.7% Sharpe=0.89 PF=2.37 WR=46%
+  years: 2020-21=23.2%/5  2021-22=4.0%/10  2022-23=9.1%/9  2023-24=51.9%/11  2024-25=3.9%/6  2025-26=50.1%/5
+  negYears=none
+MC(1% risk): ret p5=13.8% p50=67.4% p95=154.8%  maxDD p95=17.7% ruin=0.0%
+
+WF expanding folds=5 embargo=96bars (~1d)
+  fold 0: 2021-11-26→2022-10-21  trainN=8 testN=11 testRet=20.5% DD=13.5% WR=55%
+  fold 1: 2022-10-21→2023-09-15  trainN=19 testN=6 testRet=30.2% DD=9.8% WR=50%
+  fold 2: 2023-09-16→2024-08-10  trainN=25 testN=11 testRet=20.2% DD=14.7% WR=27%
+  fold 3: 2024-08-10→2025-07-05  trainN=36 testN=5 testRet=6.9% DD=9.2% WR=40%
+  fold 4: 2025-07-05→2026-05-30  trainN=41 testN=5 testRet=50.1% DD=3.3% WR=80%
+
+WF: degradation=-72.5% OOSsumRet=127.9% OOStrades=38
+GATES: PASS:oosPositive PASS:mcP5Positive PASS:calmarOver1 PASS:wfDegradationOk
+EXTRA: PASS:oosTradesGe30 FAIL:frequencyDeployable PASS:noCatastrophicYear
+
+COST STRESS (full window):
+  slip_x2      N=46 ret=120.4% DD=15.7%
+  slip_x4      N=46 ret=44.9% DD=27.6%
+  liq_crunch   N=46 ret=-70.0% DD=79.0%
+
+VERDICT: RESEARCH_SLEEVE_LOW_FREQ (gates=pass freq=low)
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-near-certification.json

@@ -245,7 +245,38 @@ Code remains at `backend/src/strategy/fundingArb/` for future reopen only.
      `2026-07-26-doge-vp-freq-certification-sleeve.md`.
      Harness: `backtest-validate-vp-freq-doge.mjs`.
      Post-cert freq A/B: no path to ≥2/wk without re-redding years — archive N-chase.
-   - Next: **NEAR F3** coin-native stream.
+   - **NEAR F3 `RESEARCH_SLEEVE_LOW_FREQ` (2026-07-26 cert):** HTF sep **0.45%** +
+     `va_rejection`+`poc_bounce`. FULL **+232% / Calmar 1.64 / tw 0.16**. All years ≥0.
+     Core gates **PASS** (OOS/MC/Calmar/WF); freq **FAIL**.
+     Decisions: `2026-07-26-near-vp-freq-year-clean-htf.md`,
+     `2026-07-26-near-vp-freq-certification-sleeve.md`.
+     Preset: `VOLUME_PROFILE_FREQ_NEAR_15M`. Harness: `backtest-validate-vp-freq-near.mjs`.
+     Open F3 without HTF is structurally −99% — do not reopen.
+   - Next: **ADA / XLM** coin-native streams.
+6. **VP FREQ expand screen (2026-07-26):** 14 liquid alts beyond next-5.
+   - **Next pick: AAVEUSDT F3** — only FULL>0 **and** OOS>0 with usable N
+     (OOS **+46%** / FULL **+2.8%** / tw 0.40 / OOS n=55). 4 red years — needs
+     year-clean autopsy (same DOGE/NEAR playbook). Weaker FULL than DOGE/NEAR
+     Phase 0 baselines; still best remaining.
+   - Reject / defer: LINK, DOT, FIL, LTC, TRX, APT, OP, SUI (deep red);
+     ATOM (OOS mirage); UNI (FULL green / OOS red); ICP/ARB (thin OOS N);
+     XRP already parked thin-N.
+   - Decision: `2026-07-26-vp-freq-expand-phase0-aave.md`.
+   - Script: `research-vp-freq-expand-phase0-screen.mjs`.
+   - **AAVE F3 `REJECT_CERTIFICATION` (2026-07-26):** sellExt + bleed-cell deny +
+     HTF **0.35%**. FULL **+130% / Calmar 1.40 / tw 0.11**. Residual reds −0.3%/−2.9%.
+     Gates: OOS/MC/Calmar PASS; **WF degradation FAIL (70%)**; OOS n=13 FAIL; freq FAIL.
+     Root cause: **N-crush / early-year concentration**. The locked stack keeps only
+     30 trades, with most concentrated in early winning years, so WF folds are too
+     sparse (`2/4/2/5/0`) and train expectancy overstates live reliability.
+     Repair autopsy:
+       `htf20_no_bearVac` reached **year-clean + Calmar 1.48 + OOS n=27**, but still
+       failed WF degradation (**44%**).
+       Higher-N repairs (`poc_bounce`) restored OOS N but broke Calmar / MC / year path.
+     Decisions: `2026-07-26-aave-vp-freq-near-clean-sleeve.md`,
+     `2026-07-26-aave-vp-freq-certification-reject.md`.
+     Preset: `VOLUME_PROFILE_FREQ_AAVE_15M` (research checkpoint only — **not** a sleeve).
+     Harness: `backtest-validate-vp-freq-aave.mjs`. Do not paper-size.
 6. **LIQ BNB BUYBD + compression + maxAdx50 (2026-07-25) — RESEARCH_SLEEVE, 4-gate PASS.**
    Compression 0.75 fixed regime-red halves; never-green SL autopsy → `intradayLiqMaxAdx: 50`
    clears Calmar 1.17 + MC p5 +8.5% + OOS +64%. FULL **+108% @ 1.7/wk**. Frequency still

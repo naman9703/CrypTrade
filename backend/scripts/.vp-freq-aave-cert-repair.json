@@ -1,0 +1,1195 @@
+{
+  "generatedAt": "2026-07-26T21:46:25.440Z",
+  "rootCause": "HTF 0.35% over-filter → early-year concentration (earlyShare~0.57) + WF fold sparsity (testN 0-5) → degradation 70% / OOS n=13. Not an expectancy failure.",
+  "phaseA": [
+    {
+      "id": "htf20_no_bearVac",
+      "over": {
+        "vpMinHtfSepPct": 0.002,
+        "vpPreparedBlockCellKeys": [
+          "SELL|va_rejection|weak_bear|vacuum",
+          "BUY|va_rejection|bull_chop|vacuum",
+          "BUY|va_rejection|bull_chop|structured",
+          "SELL|va_rejection|bull_chop|vacuum"
+        ]
+      },
+      "n": 46,
+      "tw": 0.16,
+      "ret": 221.32,
+      "calmar": 1.48,
+      "dd": 15.76,
+      "pf": 2.15,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 187.28059910490353,
+          "end": 187.63838627958648,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 7,
+          "start": 187.63838627958648,
+          "end": 223.65419834610776,
+          "retPct": 19.19
+        },
+        "2023-24": {
+          "n": 8,
+          "start": 223.65419834610776,
+          "end": 228.22252794127454,
+          "retPct": 2.04
+        },
+        "2024-25": {
+          "n": 7,
+          "start": 228.22252794127454,
+          "end": 295.5966343016681,
+          "retPct": 29.52
+        },
+        "2025-26": {
+          "n": 4,
+          "start": 295.5966343016681,
+          "end": 321.31653521355673,
+          "retPct": 8.7
+        }
+      },
+      "negYears": [],
+      "earlyShare": 0.43,
+      "catYear": false
+    },
+    {
+      "id": "htf15_bleed_poc",
+      "over": {
+        "vpMinHtfSepPct": 0.0015,
+        "vpAllowedSetups": [
+          "va_rejection",
+          "poc_bounce"
+        ]
+      },
+      "n": 77,
+      "tw": 0.27,
+      "ret": 118.97,
+      "calmar": 0.6,
+      "dd": 25.28,
+      "pf": 1.32,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 4,
+          "start": 187.28059910490353,
+          "end": 174.00423910021067,
+          "retPct": -7.09
+        },
+        "2022-23": {
+          "n": 12,
+          "start": 174.00423910021067,
+          "end": 189.8843378608271,
+          "retPct": 9.13
+        },
+        "2023-24": {
+          "n": 14,
+          "start": 189.8843378608271,
+          "end": 196.16688888641914,
+          "retPct": 3.31
+        },
+        "2024-25": {
+          "n": 17,
+          "start": 196.16688888641914,
+          "end": 281.40460674273044,
+          "retPct": 43.45
+        },
+        "2025-26": {
+          "n": 12,
+          "start": 281.40460674273044,
+          "end": 218.96910881436412,
+          "retPct": -22.19
+        }
+      },
+      "negYears": [
+        "2021-22=-7.09%",
+        "2025-26=-22.19%"
+      ],
+      "earlyShare": 0.29,
+      "catYear": false
+    },
+    {
+      "id": "htf20_bleed_poc",
+      "over": {
+        "vpMinHtfSepPct": 0.002,
+        "vpAllowedSetups": [
+          "va_rejection",
+          "poc_bounce"
+        ]
+      },
+      "n": 66,
+      "tw": 0.23,
+      "ret": 140.16,
+      "calmar": 0.76,
+      "dd": 22.45,
+      "pf": 1.43,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 4,
+          "start": 187.28059910490353,
+          "end": 174.00423910021067,
+          "retPct": -7.09
+        },
+        "2022-23": {
+          "n": 10,
+          "start": 174.00423910021067,
+          "end": 203.52226957465408,
+          "retPct": 16.96
+        },
+        "2023-24": {
+          "n": 11,
+          "start": 203.52226957465408,
+          "end": 235.38948724027523,
+          "retPct": 15.66
+        },
+        "2024-25": {
+          "n": 13,
+          "start": 235.38948724027523,
+          "end": 302.79727752756554,
+          "retPct": 28.64
+        },
+        "2025-26": {
+          "n": 10,
+          "start": 302.79727752756554,
+          "end": 240.16339767537053,
+          "retPct": -20.69
+        }
+      },
+      "negYears": [
+        "2021-22=-7.09%",
+        "2025-26=-20.69%"
+      ],
+      "earlyShare": 0.33,
+      "catYear": false
+    },
+    {
+      "id": "htf15_bleed_only",
+      "over": {
+        "vpMinHtfSepPct": 0.0015,
+        "vpRejectionSellBlockExtendedDown": false
+      },
+      "n": 59,
+      "tw": 0.21,
+      "ret": 111.96,
+      "calmar": 0.42,
+      "dd": 34.06,
+      "pf": 1.42,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 187.28059910490353,
+          "end": 187.63838627958648,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 10,
+          "start": 187.63838627958648,
+          "end": 199.61243381640054,
+          "retPct": 6.38
+        },
+        "2023-24": {
+          "n": 12,
+          "start": 199.61243381640054,
+          "end": 176.2943558200613,
+          "retPct": -11.68
+        },
+        "2024-25": {
+          "n": 12,
+          "start": 176.2943558200613,
+          "end": 239.893252970605,
+          "retPct": 36.08
+        },
+        "2025-26": {
+          "n": 5,
+          "start": 239.893252970605,
+          "end": 211.96470892810845,
+          "retPct": -11.64
+        }
+      },
+      "negYears": [
+        "2023-24=-11.68%",
+        "2025-26=-11.64%"
+      ],
+      "earlyShare": 0.34,
+      "catYear": false
+    },
+    {
+      "id": "htf15_no_bearVac",
+      "over": {
+        "vpMinHtfSepPct": 0.0015,
+        "vpPreparedBlockCellKeys": [
+          "SELL|va_rejection|weak_bear|vacuum",
+          "BUY|va_rejection|bull_chop|vacuum",
+          "BUY|va_rejection|bull_chop|structured",
+          "SELL|va_rejection|bull_chop|vacuum"
+        ]
+      },
+      "n": 56,
+      "tw": 0.2,
+      "ret": 205.18,
+      "calmar": 0.89,
+      "dd": 24.75,
+      "pf": 1.81,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 187.28059910490353,
+          "end": 187.63838627958648,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 9,
+          "start": 187.63838627958648,
+          "end": 208.66723553889466,
+          "retPct": 11.21
+        },
+        "2023-24": {
+          "n": 11,
+          "start": 208.66723553889466,
+          "end": 190.19414930087655,
+          "retPct": -8.85
+        },
+        "2024-25": {
+          "n": 10,
+          "start": 190.19414930087655,
+          "end": 286.1672514315544,
+          "retPct": 50.46
+        },
+        "2025-26": {
+          "n": 6,
+          "start": 286.1672514315544,
+          "end": 305.17595882449393,
+          "retPct": 6.64
+        }
+      },
+      "negYears": [
+        "2023-24=-8.85%"
+      ],
+      "earlyShare": 0.36,
+      "catYear": false
+    },
+    {
+      "id": "htf15_sellExt_bleed",
+      "over": {
+        "vpMinHtfSepPct": 0.0015
+      },
+      "n": 54,
+      "tw": 0.19,
+      "ret": 163.39,
+      "calmar": 0.77,
+      "dd": 24.75,
+      "pf": 1.68,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 187.28059910490353,
+          "end": 187.63838627958648,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 9,
+          "start": 187.63838627958648,
+          "end": 208.66723553889466,
+          "retPct": 11.21
+        },
+        "2023-24": {
+          "n": 11,
+          "start": 208.66723553889466,
+          "end": 190.19414930087655,
+          "retPct": -8.85
+        },
+        "2024-25": {
+          "n": 10,
+          "start": 190.19414930087655,
+          "end": 286.1672514315544,
+          "retPct": 50.46
+        },
+        "2025-26": {
+          "n": 4,
+          "start": 286.1672514315544,
+          "end": 263.39447957832203,
+          "retPct": -7.96
+        }
+      },
+      "negYears": [
+        "2023-24=-8.85%",
+        "2025-26=-7.96%"
+      ],
+      "earlyShare": 0.37,
+      "catYear": false
+    },
+    {
+      "id": "htf20_sellExt_bleed",
+      "over": {
+        "vpMinHtfSepPct": 0.002
+      },
+      "n": 44,
+      "tw": 0.16,
+      "ret": 177.33,
+      "calmar": 1.27,
+      "dd": 15.76,
+      "pf": 1.99,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 187.28059910490353,
+          "end": 187.63838627958648,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 7,
+          "start": 187.63838627958648,
+          "end": 223.65419834610776,
+          "retPct": 19.19
+        },
+        "2023-24": {
+          "n": 8,
+          "start": 223.65419834610776,
+          "end": 228.22252794127454,
+          "retPct": 2.04
+        },
+        "2024-25": {
+          "n": 7,
+          "start": 228.22252794127454,
+          "end": 295.5966343016681,
+          "retPct": 29.52
+        },
+        "2025-26": {
+          "n": 2,
+          "start": 295.5966343016681,
+          "end": 277.3252581837766,
+          "retPct": -6.18
+        }
+      },
+      "negYears": [
+        "2025-26=-6.18%"
+      ],
+      "earlyShare": 0.45,
+      "catYear": false
+    },
+    {
+      "id": "htf25_sellExt_bleed",
+      "over": {
+        "vpMinHtfSepPct": 0.0025
+      },
+      "n": 40,
+      "tw": 0.14,
+      "ret": 168.1,
+      "calmar": 1.51,
+      "dd": 12.79,
+      "pf": 2.03,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 187.28059910490353,
+          "end": 187.63838627958648,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 7,
+          "start": 187.63838627958648,
+          "end": 223.65419834610776,
+          "retPct": 19.19
+        },
+        "2023-24": {
+          "n": 5,
+          "start": 223.65419834610776,
+          "end": 232.3189782811373,
+          "retPct": 3.87
+        },
+        "2024-25": {
+          "n": 6,
+          "start": 232.3189782811373,
+          "end": 285.7644824315335,
+          "retPct": 23.01
+        },
+        "2025-26": {
+          "n": 2,
+          "start": 285.7644824315335,
+          "end": 268.10084985338784,
+          "retPct": -6.18
+        }
+      },
+      "negYears": [
+        "2025-26=-6.18%"
+      ],
+      "earlyShare": 0.5,
+      "catYear": false
+    },
+    {
+      "id": "htf30_sellExt_bleed",
+      "over": {
+        "vpMinHtfSepPct": 0.003
+      },
+      "n": 34,
+      "tw": 0.12,
+      "ret": 213.2,
+      "calmar": 1.85,
+      "dd": 12.26,
+      "pf": 2.5,
+      "years": {
+        "2020-21": {
+          "n": 17,
+          "start": 100,
+          "end": 193.88741595203325,
+          "retPct": 93.89
+        },
+        "2021-22": {
+          "n": 1,
+          "start": 193.88741595203325,
+          "end": 200.20748923579973,
+          "retPct": 3.26
+        },
+        "2022-23": {
+          "n": 5,
+          "start": 200.20748923579973,
+          "end": 257.18827958706055,
+          "retPct": 28.46
+        },
+        "2023-24": {
+          "n": 3,
+          "start": 257.18827958706055,
+          "end": 271.3999224367562,
+          "retPct": 5.53
+        },
+        "2024-25": {
+          "n": 6,
+          "start": 271.3999224367562,
+          "end": 333.83608580287483,
+          "retPct": 23.01
+        },
+        "2025-26": {
+          "n": 2,
+          "start": 333.83608580287483,
+          "end": 313.2010582768033,
+          "retPct": -6.18
+        }
+      },
+      "negYears": [
+        "2025-26=-6.18%"
+      ],
+      "earlyShare": 0.53,
+      "catYear": false
+    },
+    {
+      "id": "LOCKED_htf35_REJECT",
+      "over": {
+        "vpMinHtfSepPct": 0.0035
+      },
+      "n": 30,
+      "tw": 0.11,
+      "ret": 129.6,
+      "calmar": 1.4,
+      "dd": 11.51,
+      "pf": 2.22,
+      "years": {
+        "2020-21": {
+          "n": 16,
+          "start": 100,
+          "end": 162.72522839559505,
+          "retPct": 62.73
+        },
+        "2021-22": {
+          "n": 1,
+          "start": 162.72522839559505,
+          "end": 168.02951987592624,
+          "retPct": 3.26
+        },
+        "2022-23": {
+          "n": 5,
+          "start": 168.02951987592624,
+          "end": 215.85218066358837,
+          "retPct": 28.46
+        },
+        "2023-24": {
+          "n": 2,
+          "start": 215.85218066358837,
+          "end": 215.1104590045055,
+          "retPct": -0.34
+        },
+        "2024-25": {
+          "n": 5,
+          "start": 215.1104590045055,
+          "end": 236.54910161238018,
+          "retPct": 9.97
+        },
+        "2025-26": {
+          "n": 1,
+          "start": 236.54910161238018,
+          "end": 229.60222609967002,
+          "retPct": -2.94
+        }
+      },
+      "negYears": [
+        "2023-24=-0.34%",
+        "2025-26=-2.94%"
+      ],
+      "earlyShare": 0.57,
+      "catYear": false
+    }
+  ],
+  "phaseB": [
+    {
+      "id": "htf20_bleed_poc",
+      "over": {
+        "vpMinHtfSepPct": 0.002,
+        "vpAllowedSetups": [
+          "va_rejection",
+          "poc_bounce"
+        ]
+      },
+      "n": 66,
+      "tw": 0.23,
+      "ret": 140.16,
+      "calmar": 0.76,
+      "dd": 22.45,
+      "pf": 1.43,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 4,
+          "start": 187.28059910490353,
+          "end": 174.00423910021067,
+          "retPct": -7.09
+        },
+        "2022-23": {
+          "n": 10,
+          "start": 174.00423910021067,
+          "end": 203.52226957465408,
+          "retPct": 16.96
+        },
+        "2023-24": {
+          "n": 11,
+          "start": 203.52226957465408,
+          "end": 235.38948724027523,
+          "retPct": 15.66
+        },
+        "2024-25": {
+          "n": 13,
+          "start": 235.38948724027523,
+          "end": 302.79727752756554,
+          "retPct": 28.64
+        },
+        "2025-26": {
+          "n": 10,
+          "start": 302.79727752756554,
+          "end": 240.16339767537053,
+          "retPct": -20.69
+        }
+      },
+      "negYears": [
+        "2021-22=-7.09%",
+        "2025-26=-20.69%"
+      ],
+      "earlyShare": 0.33,
+      "catYear": false,
+      "oosTrades": 45,
+      "wfDeg": 82.9,
+      "oosSum": 38.24,
+      "mcP5": -2.62,
+      "folds": [
+        {
+          "fold": 0,
+          "trainN": 21,
+          "testN": 6,
+          "testRet": -8.92
+        },
+        {
+          "fold": 1,
+          "trainN": 27,
+          "testN": 9,
+          "testRet": 33.6
+        },
+        {
+          "fold": 2,
+          "trainN": 36,
+          "testN": 8,
+          "testRet": 4.82
+        },
+        {
+          "fold": 3,
+          "trainN": 44,
+          "testN": 14,
+          "testRet": 24.2
+        },
+        {
+          "fold": 4,
+          "trainN": 58,
+          "testN": 8,
+          "testRet": -15.46
+        }
+      ],
+      "gates": {
+        "oosPositive": {
+          "pass": true,
+          "value": 38.23661598335168,
+          "threshold": "> 0"
+        },
+        "mcP5Positive": {
+          "pass": false,
+          "value": -2.6179712983939063,
+          "threshold": "> 0"
+        },
+        "calmarOver1": {
+          "pass": false,
+          "value": 0.757499654679316,
+          "threshold": "> 1"
+        },
+        "wfDegradationOk": {
+          "pass": false,
+          "value": 82.94439023350604,
+          "threshold": "< 35%"
+        }
+      },
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "htf15_bleed_only",
+      "over": {
+        "vpMinHtfSepPct": 0.0015,
+        "vpRejectionSellBlockExtendedDown": false
+      },
+      "n": 59,
+      "tw": 0.21,
+      "ret": 111.96,
+      "calmar": 0.42,
+      "dd": 34.06,
+      "pf": 1.42,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 187.28059910490353,
+          "end": 187.63838627958648,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 10,
+          "start": 187.63838627958648,
+          "end": 199.61243381640054,
+          "retPct": 6.38
+        },
+        "2023-24": {
+          "n": 12,
+          "start": 199.61243381640054,
+          "end": 176.2943558200613,
+          "retPct": -11.68
+        },
+        "2024-25": {
+          "n": 12,
+          "start": 176.2943558200613,
+          "end": 239.893252970605,
+          "retPct": 36.08
+        },
+        "2025-26": {
+          "n": 5,
+          "start": 239.893252970605,
+          "end": 211.96470892810845,
+          "retPct": -11.64
+        }
+      },
+      "negYears": [
+        "2023-24=-11.68%",
+        "2025-26=-11.64%"
+      ],
+      "earlyShare": 0.34,
+      "catYear": false,
+      "oosTrades": 40,
+      "wfDeg": 92.9,
+      "oosSum": 22.21,
+      "mcP5": -7.8,
+      "folds": [
+        {
+          "fold": 0,
+          "trainN": 19,
+          "testN": 3,
+          "testRet": -7.19
+        },
+        {
+          "fold": 1,
+          "trainN": 22,
+          "testN": 11,
+          "testRet": 23.24
+        },
+        {
+          "fold": 2,
+          "trainN": 33,
+          "testN": 12,
+          "testRet": -29.96
+        },
+        {
+          "fold": 3,
+          "trainN": 45,
+          "testN": 12,
+          "testRet": 34.06
+        },
+        {
+          "fold": 4,
+          "trainN": 57,
+          "testN": 2,
+          "testRet": 2.06
+        }
+      ],
+      "gates": {
+        "oosPositive": {
+          "pass": true,
+          "value": 22.207680567114735,
+          "threshold": "> 0"
+        },
+        "mcP5Positive": {
+          "pass": false,
+          "value": -7.804290210272402,
+          "threshold": "> 0"
+        },
+        "calmarOver1": {
+          "pass": false,
+          "value": 0.4232957979489523,
+          "threshold": "> 1"
+        },
+        "wfDegradationOk": {
+          "pass": false,
+          "value": 92.89414926882841,
+          "threshold": "< 35%"
+        }
+      },
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "htf15_bleed_poc",
+      "over": {
+        "vpMinHtfSepPct": 0.0015,
+        "vpAllowedSetups": [
+          "va_rejection",
+          "poc_bounce"
+        ]
+      },
+      "n": 77,
+      "tw": 0.27,
+      "ret": 118.97,
+      "calmar": 0.6,
+      "dd": 25.28,
+      "pf": 1.32,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 4,
+          "start": 187.28059910490353,
+          "end": 174.00423910021067,
+          "retPct": -7.09
+        },
+        "2022-23": {
+          "n": 12,
+          "start": 174.00423910021067,
+          "end": 189.8843378608271,
+          "retPct": 9.13
+        },
+        "2023-24": {
+          "n": 14,
+          "start": 189.8843378608271,
+          "end": 196.16688888641914,
+          "retPct": 3.31
+        },
+        "2024-25": {
+          "n": 17,
+          "start": 196.16688888641914,
+          "end": 281.40460674273044,
+          "retPct": 43.45
+        },
+        "2025-26": {
+          "n": 12,
+          "start": 281.40460674273044,
+          "end": 218.96910881436412,
+          "retPct": -22.19
+        }
+      },
+      "negYears": [
+        "2021-22=-7.09%",
+        "2025-26=-22.19%"
+      ],
+      "earlyShare": 0.29,
+      "catYear": false,
+      "oosTrades": 56,
+      "wfDeg": 96,
+      "oosSum": 27.04,
+      "mcP5": -9.53,
+      "folds": [
+        {
+          "fold": 0,
+          "trainN": 21,
+          "testN": 6,
+          "testRet": -8.92
+        },
+        {
+          "fold": 1,
+          "trainN": 27,
+          "testN": 11,
+          "testRet": 24.64
+        },
+        {
+          "fold": 2,
+          "trainN": 38,
+          "testN": 11,
+          "testRet": -6.37
+        },
+        {
+          "fold": 3,
+          "trainN": 49,
+          "testN": 19,
+          "testRet": 27.81
+        },
+        {
+          "fold": 4,
+          "trainN": 68,
+          "testN": 9,
+          "testRet": -10.12
+        }
+      ],
+      "gates": {
+        "oosPositive": {
+          "pass": true,
+          "value": 27.041374995762027,
+          "threshold": "> 0"
+        },
+        "mcP5Positive": {
+          "pass": false,
+          "value": -9.53388141088849,
+          "threshold": "> 0"
+        },
+        "calmarOver1": {
+          "pass": false,
+          "value": 0.5967903531777395,
+          "threshold": "> 1"
+        },
+        "wfDegradationOk": {
+          "pass": false,
+          "value": 95.99317259202702,
+          "threshold": "< 35%"
+        }
+      },
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "htf20_no_bearVac",
+      "over": {
+        "vpMinHtfSepPct": 0.002,
+        "vpPreparedBlockCellKeys": [
+          "SELL|va_rejection|weak_bear|vacuum",
+          "BUY|va_rejection|bull_chop|vacuum",
+          "BUY|va_rejection|bull_chop|structured",
+          "SELL|va_rejection|bull_chop|vacuum"
+        ]
+      },
+      "n": 46,
+      "tw": 0.16,
+      "ret": 221.32,
+      "calmar": 1.48,
+      "dd": 15.76,
+      "pf": 2.15,
+      "years": {
+        "2020-21": {
+          "n": 18,
+          "start": 100,
+          "end": 187.28059910490353,
+          "retPct": 87.28
+        },
+        "2021-22": {
+          "n": 2,
+          "start": 187.28059910490353,
+          "end": 187.63838627958648,
+          "retPct": 0.19
+        },
+        "2022-23": {
+          "n": 7,
+          "start": 187.63838627958648,
+          "end": 223.65419834610776,
+          "retPct": 19.19
+        },
+        "2023-24": {
+          "n": 8,
+          "start": 223.65419834610776,
+          "end": 228.22252794127454,
+          "retPct": 2.04
+        },
+        "2024-25": {
+          "n": 7,
+          "start": 228.22252794127454,
+          "end": 295.5966343016681,
+          "retPct": 29.52
+        },
+        "2025-26": {
+          "n": 4,
+          "start": 295.5966343016681,
+          "end": 321.31653521355673,
+          "retPct": 8.7
+        }
+      },
+      "negYears": [],
+      "earlyShare": 0.43,
+      "catYear": false,
+      "oosTrades": 27,
+      "wfDeg": 44.1,
+      "oosSum": 61.29,
+      "mcP5": 12.84,
+      "folds": [
+        {
+          "fold": 0,
+          "trainN": 19,
+          "testN": 3,
+          "testRet": -7.19
+        },
+        {
+          "fold": 1,
+          "trainN": 22,
+          "testN": 8,
+          "testRet": 38.08
+        },
+        {
+          "fold": 2,
+          "trainN": 30,
+          "testN": 6,
+          "testRet": -10.52
+        },
+        {
+          "fold": 3,
+          "trainN": 36,
+          "testN": 8,
+          "testRet": 25.06
+        },
+        {
+          "fold": 4,
+          "trainN": 44,
+          "testN": 2,
+          "testRet": 15.86
+        }
+      ],
+      "gates": {
+        "oosPositive": {
+          "pass": true,
+          "value": 61.29136590992799,
+          "threshold": "> 0"
+        },
+        "mcP5Positive": {
+          "pass": true,
+          "value": 12.839127646964755,
+          "threshold": "> 0"
+        },
+        "calmarOver1": {
+          "pass": true,
+          "value": 1.4771354763897637,
+          "threshold": "> 1"
+        },
+        "wfDegradationOk": {
+          "pass": false,
+          "value": 44.057277960905274,
+          "threshold": "< 35%"
+        }
+      },
+      "corePass": false,
+      "sleeveOk": false
+    },
+    {
+      "id": "LOCKED_htf35_REJECT",
+      "over": {
+        "vpMinHtfSepPct": 0.0035
+      },
+      "n": 30,
+      "tw": 0.11,
+      "ret": 129.6,
+      "calmar": 1.4,
+      "dd": 11.51,
+      "pf": 2.22,
+      "years": {
+        "2020-21": {
+          "n": 16,
+          "start": 100,
+          "end": 162.72522839559505,
+          "retPct": 62.73
+        },
+        "2021-22": {
+          "n": 1,
+          "start": 162.72522839559505,
+          "end": 168.02951987592624,
+          "retPct": 3.26
+        },
+        "2022-23": {
+          "n": 5,
+          "start": 168.02951987592624,
+          "end": 215.85218066358837,
+          "retPct": 28.46
+        },
+        "2023-24": {
+          "n": 2,
+          "start": 215.85218066358837,
+          "end": 215.1104590045055,
+          "retPct": -0.34
+        },
+        "2024-25": {
+          "n": 5,
+          "start": 215.1104590045055,
+          "end": 236.54910161238018,
+          "retPct": 9.97
+        },
+        "2025-26": {
+          "n": 1,
+          "start": 236.54910161238018,
+          "end": 229.60222609967002,
+          "retPct": -2.94
+        }
+      },
+      "negYears": [
+        "2023-24=-0.34%",
+        "2025-26=-2.94%"
+      ],
+      "earlyShare": 0.57,
+      "catYear": false,
+      "oosTrades": 13,
+      "wfDeg": 69.9,
+      "oosSum": 37.85,
+      "mcP5": 3.47,
+      "folds": [
+        {
+          "fold": 0,
+          "trainN": 17,
+          "testN": 2,
+          "testRet": -4.34
+        },
+        {
+          "fold": 1,
+          "trainN": 19,
+          "testN": 4,
+          "testRet": 38.36
+        },
+        {
+          "fold": 2,
+          "trainN": 23,
+          "testN": 2,
+          "testRet": -6.01
+        },
+        {
+          "fold": 3,
+          "trainN": 25,
+          "testN": 5,
+          "testRet": 9.85
+        },
+        {
+          "fold": 4,
+          "trainN": 30,
+          "testN": 0,
+          "testRet": 0
+        }
+      ],
+      "gates": {
+        "oosPositive": {
+          "pass": true,
+          "value": 37.852710283965294,
+          "threshold": "> 0"
+        },
+        "mcP5Positive": {
+          "pass": true,
+          "value": 3.471690676017003,
+          "threshold": "> 0"
+        },
+        "calmarOver1": {
+          "pass": true,
+          "value": 1.3959923489338224,
+          "threshold": "> 1"
+        },
+        "wfDegradationOk": {
+          "pass": false,
+          "value": 69.89564353107787,
+          "threshold": "< 35%"
+        }
+      },
+      "corePass": false,
+      "sleeveOk": false
+    }
+  ],
+  "best": {
+    "id": "htf20_bleed_poc",
+    "over": {
+      "vpMinHtfSepPct": 0.002,
+      "vpAllowedSetups": [
+        "va_rejection",
+        "poc_bounce"
+      ]
+    },
+    "n": 66,
+    "oosTrades": 45,
+    "wfDeg": 82.9,
+    "calmar": 0.76,
+    "earlyShare": 0.33,
+    "corePass": false,
+    "sleeveOk": false,
+    "negYears": [
+      "2021-22=-7.09%",
+      "2025-26=-20.69%"
+    ]
+  }
+}

@@ -1,0 +1,85 @@
+
+══ VP FREQ expand Phase 0 — 14 symbols · 2021-01-01→2026-05-31 ══
+
+=== LINKUSDT load ===
+candles=195456 funding=6109 2020-11-02→2026-05-30
+run LINKUSDT F3_rej_only
+LINKUSDT   F3_rej_only   FULL n=71 tw=0.25 ret=-78.95% pf=0.42 cal=-0.32 | OOS n=38 ret=-53.03% | IS ret=-25.92%
+  years 2020-21:3/-10.43% 2021-22:18/-11.36% 2022-23:17/-40.84% 2023-24:13/-16.09% 2024-25:12/-19.03% 2025-26:8/-34.04%
+  RED: 2020-21=-10.43% 2021-22=-11.36% 2022-23=-40.84% 2023-24=-16.09% 2024-25=-19.03% 2025-26=-34.04%
+
+=== DOTUSDT load ===
+candles=195456 funding=6109 2020-11-02→2026-05-30
+run DOTUSDT F3_rej_only
+DOTUSDT    F3_rej_only   FULL n=92 tw=0.33 ret=-90.13% pf=0.24 cal=-0.39 | OOS n=56 ret=-78.14% | IS ret=-11.99%
+  years 2020-21:19/-51.05% 2021-22:14/-15.65% 2022-23:23/-47.05% 2023-24:14/-43.3% 2024-25:9/9.63% 2025-26:13/-27.36%
+  RED: 2020-21=-51.05% 2021-22=-15.65% 2022-23=-47.05% 2023-24=-43.3% 2025-26=-27.36%
+
+=== ATOMUSDT load ===
+candles=195456 funding=6109 2020-11-02→2026-05-30
+run ATOMUSDT F3_rej_only
+ATOMUSDT   F3_rej_only   FULL n=76 tw=0.27 ret=-12.46% pf=0.95 cal=-0.04 | OOS n=45 ret=56.52% | IS ret=-68.98%
+  years 2020-21:12/38.9% 2021-22:22/19.81% 2022-23:11/-5.94% 2023-24:10/-29.45% 2024-25:9/-28.86% 2025-26:12/11.44%
+  RED: 2022-23=-5.94% 2023-24=-29.45% 2024-25=-28.86%
+
+=== UNIUSDT load ===
+FAIL UNIUSDT: timeout of 20000ms exceeded
+
+=== AAVEUSDT load ===
+FAIL AAVEUSDT: timeout of 20000ms exceeded
+
+=== FILUSDT load ===
+FAIL FILUSDT: getaddrinfo ENOTFOUND fapi.binance.com
+
+=== LTCUSDT load ===
+FAIL LTCUSDT: getaddrinfo ENOTFOUND fapi.binance.com
+
+=== TRXUSDT load ===
+FAIL TRXUSDT: getaddrinfo ENOTFOUND fapi.binance.com
+
+=== INJUSDT load ===
+FAIL INJUSDT: getaddrinfo ENOTFOUND fapi.binance.com
+
+=== APTUSDT load ===
+FAIL APTUSDT: getaddrinfo ENOTFOUND fapi.binance.com
+
+=== OPUSDT load ===
+FAIL OPUSDT: getaddrinfo ENOTFOUND fapi.binance.com
+
+=== ARBUSDT load ===
+FAIL ARBUSDT: getaddrinfo ENOTFOUND fapi.binance.com
+
+=== SUIUSDT load ===
+FAIL SUIUSDT: getaddrinfo ENOTFOUND fapi.binance.com
+
+=== ICPUSDT load ===
+FAIL ICPUSDT: getaddrinfo ENOTFOUND fapi.binance.com
+
+══ F3 rank (usable first: OOS>0 & FULL>0) ══
+  ATOMUSDT   OOS   56.52% n= 45 | FULL  -12.46% tw=0.27 cal=-0.04 | red=3
+  LINKUSDT   OOS  -53.03% n= 38 | FULL  -78.95% tw=0.25 cal=-0.32 | red=6
+  DOTUSDT    OOS  -78.14% n= 56 | FULL  -90.13% tw=0.33 cal=-0.39 | red=5
+
+══ Deep funnels on top 4: ATOMUSDT, LINKUSDT, DOTUSDT ══
+run ATOMUSDT F0_open
+ATOMUSDT   F0_open        FULL n=841 tw=2.98 ret=-98.4% pf=0.87 cal=-0.54 | OOS n=450 ret=-63.6% | IS ret=-34.8%
+  RED: 2021-22=-47.67% 2022-23=-30.51% 2023-24=-58.76% 2024-25=-71.28% 2025-26=-62.93%
+run ATOMUSDT F1_val_rej
+ATOMUSDT   F1_val_rej     FULL n=500 tw=1.77 ret=-88.8% pf=0.9 cal=-0.35 | OOS n=261 ret=-25.45% | IS ret=-63.35%
+  RED: 2022-23=-46.66% 2023-24=-43.83% 2024-25=-56.21% 2025-26=-38.93%
+run LINKUSDT F0_open
+LINKUSDT   F0_open        FULL n=877 tw=3.11 ret=-98.63% pf=0.82 cal=-0.56 | OOS n=443 ret=-79.19% | IS ret=-19.44%
+  RED: 2020-21=-51.74% 2022-23=-63.94% 2023-24=-62.3% 2024-25=-54.01% 2025-26=-61.9%
+run LINKUSDT F1_val_rej
+LINKUSDT   F1_val_rej     FULL n=486 tw=1.72 ret=-96.31% pf=0.76 cal=-0.47 | OOS n=246 ret=-71.58% | IS ret=-24.73%
+  RED: 2020-21=-16.41% 2021-22=-40.33% 2022-23=-43.03% 2023-24=-51.75% 2024-25=-35.69% 2025-26=-58.18%
+run DOTUSDT F0_open
+DOTUSDT    F0_open        FULL n=869 tw=3.08 ret=-99.84% pf=0.66 cal=-0.7 | OOS n=447 ret=-96.54% | IS ret=-3.3%
+  RED: 2020-21=-68.74% 2021-22=-57.42% 2022-23=-74.01% 2023-24=-83.13% 2024-25=-26.23% 2025-26=-63.25%
+run DOTUSDT F1_val_rej
+DOTUSDT    F1_val_rej     FULL n=551 tw=1.95 ret=-98.88% pf=0.72 cal=-0.57 | OOS n=271 ret=-89.36% | IS ret=-9.52%
+  RED: 2020-21=-41.43% 2021-22=-32.86% 2022-23=-72.95% 2023-24=-76.66% 2024-25=-1.27% 2025-26=-54.31%
+
+══ Next deep-work pick: ATOMUSDT F3 (OOS 56.52% / FULL -12.46% / tw 0.27) ══
+Skipped: UNIUSDT(timeout of 20000ms exceeded); AAVEUSDT(timeout of 20000ms exceeded); FILUSDT(getaddrinfo ENOTFOUND fapi.binance.com); LTCUSDT(getaddrinfo ENOTFOUND fapi.binance.com); TRXUSDT(getaddrinfo ENOTFOUND fapi.binance.com); INJUSDT(getaddrinfo ENOTFOUND fapi.binance.com); APTUSDT(getaddrinfo ENOTFOUND fapi.binance.com); OPUSDT(getaddrinfo ENOTFOUND fapi.binance.com); ARBUSDT(getaddrinfo ENOTFOUND fapi.binance.com); SUIUSDT(getaddrinfo ENOTFOUND fapi.binance.com); ICPUSDT(getaddrinfo ENOTFOUND fapi.binance.com)
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-expand-phase0-screen.json

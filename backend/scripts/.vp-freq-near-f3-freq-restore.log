@@ -1,0 +1,83 @@
+load NEARUSDT…
+candles=195456 funding=6109
+
+══ NEAR year-clean freq restore A/B ══
+run H0_year_clean_lock
+H0_year_clean_lock
+  FULL n=35 tw=0.12 ret=193.24% pf=2.68 cal=1.6
+  years 2020-21:27.65%/4 2021-22:1.37%/9 2022-23:5.94%/7 2023-24:38.07%/7 2024-25:7.14%/5 2025-26:44.61%/3
+  RED: none | yearClean=true tw↑=false retOk=true → reject
+run gap1
+gap1
+  FULL n=35 tw=0.12 ret=193.24% pf=2.68 cal=1.6
+  years 2020-21:27.65%/4 2021-22:1.37%/9 2022-23:5.94%/7 2023-24:38.07%/7 2024-25:7.14%/5 2025-26:44.61%/3
+  RED: none | yearClean=true tw↑=false retOk=true → reject
+run score6
+score6
+  FULL n=39 tw=0.14 ret=179% pf=2.47 cal=1.18
+  years 2020-21:27.65%/4 2021-22:-3.55%/13 2022-23:5.94%/7 2023-24:38.07%/7 2024-25:7.14%/5 2025-26:44.61%/3
+  RED: 2021-22=-3.55% | yearClean=false tw↑=true retOk=true → reject
+run maxDay3
+maxDay3
+  FULL n=37 tw=0.13 ret=176.98% pf=2.47 cal=1.51
+  years 2020-21:27.65%/4 2021-22:-1.48%/10 2022-23:5.94%/7 2023-24:34.18%/8 2024-25:7.14%/5 2025-26:44.61%/3
+  RED: 2021-22=-1.48% | yearClean=false tw↑=false retOk=true → reject
+run sep_0040
+sep_0040
+  FULL n=45 tw=0.16 ret=105.64% pf=1.71 cal=0.91
+  years 2020-21:17.84%/6 2021-22:-1.62%/10 2022-23:2.14%/8 2023-24:30.42%/9 2024-25:-0.43%/7 2025-26:33.75%/5
+  RED: 2021-22=-1.62% 2024-25=-0.43% | yearClean=false tw↑=true retOk=false → reject
+run add_poc
+add_poc
+  FULL n=46 tw=0.16 ret=231.64% pf=2.37 cal=1.81
+  years 2020-21:23.25%/5 2021-22:4.04%/10 2022-23:9.12%/9 2023-24:51.95%/11 2024-25:3.94%/6 2025-26:50.09%/5
+  RED: none | yearClean=true tw↑=true retOk=true → ACCEPT
+run add_val
+add_val
+  FULL n=333 tw=1.18 ret=-56.46% pf=0.89 cal=-0.21
+  years 2020-21:-1.62%/38 2021-22:-22.49%/80 2022-23:-19.36%/58 2023-24:3.71%/49 2024-25:5.86%/58 2025-26:-35.49%/50
+  RED: 2020-21=-1.62% 2021-22=-22.49% 2022-23=-19.36% 2025-26=-35.49% | yearClean=false tw↑=true retOk=false → reject
+run add_vah
+add_vah
+  FULL n=321 tw=1.14 ret=63.79% pf=1.06 cal=0.17
+  years 2020-21:36.73%/48 2021-22:42.54%/70 2022-23:-19%/53 2023-24:55.95%/54 2024-25:-23.18%/52 2025-26:-13.39%/44
+  RED: 2022-23=-19% 2024-25=-23.18% 2025-26=-13.39% | yearClean=false tw↑=true retOk=false → reject
+run add_lvn
+add_lvn
+  FULL n=35 tw=0.12 ret=193.24% pf=2.68 cal=1.6
+  years 2020-21:27.65%/4 2021-22:1.37%/9 2022-23:5.94%/7 2023-24:38.07%/7 2024-25:7.14%/5 2025-26:44.61%/3
+  RED: none | yearClean=true tw↑=false retOk=true → reject
+run add_naked
+add_naked
+  FULL n=35 tw=0.12 ret=193.24% pf=2.68 cal=1.6
+  years 2020-21:27.65%/4 2021-22:1.37%/9 2022-23:5.94%/7 2023-24:38.07%/7 2024-25:7.14%/5 2025-26:44.61%/3
+  RED: none | yearClean=true tw↑=false retOk=true → reject
+run add_poc_score6
+add_poc_score6
+  FULL n=51 tw=0.18 ret=224.69% pf=2.27 cal=1.56
+  years 2020-21:23.25%/5 2021-22:-1.02%/14 2022-23:9.12%/9 2023-24:56.35%/12 2024-25:3.94%/6 2025-26:50.09%/5
+  RED: 2021-22=-1.02% | yearClean=false tw↑=true retOk=true → reject
+run add_poc_gap1
+add_poc_gap1
+  FULL n=46 tw=0.16 ret=231.64% pf=2.37 cal=1.81
+  years 2020-21:23.25%/5 2021-22:4.04%/10 2022-23:9.12%/9 2023-24:51.95%/11 2024-25:3.94%/6 2025-26:50.09%/5
+  RED: none | yearClean=true tw↑=true retOk=true → ACCEPT
+
+══ Ranked ══
+add_poc                  accept=true yearClean=true tw=0.16 (Δ0.04) ret=231.64% cal=1.81 | RED:none
+add_poc_gap1             accept=true yearClean=true tw=0.16 (Δ0.04) ret=231.64% cal=1.81 | RED:none
+H0_year_clean_lock       accept=false yearClean=true tw=0.12 (Δ0) ret=193.24% cal=1.6 | RED:none
+gap1                     accept=false yearClean=true tw=0.12 (Δ0) ret=193.24% cal=1.6 | RED:none
+add_lvn                  accept=false yearClean=true tw=0.12 (Δ0) ret=193.24% cal=1.6 | RED:none
+add_naked                accept=false yearClean=true tw=0.12 (Δ0) ret=193.24% cal=1.6 | RED:none
+add_val                  accept=false yearClean=false tw=1.18 (Δ1.06) ret=-56.46% cal=-0.21 | RED:2020-21=-1.62%,2021-22=-22.49%,2022-23=-19.36%,2025-26=-35.49%
+add_vah                  accept=false yearClean=false tw=1.14 (Δ1.02) ret=63.79% cal=0.17 | RED:2022-23=-19%,2024-25=-23.18%,2025-26=-13.39%
+add_poc_score6           accept=false yearClean=false tw=0.18 (Δ0.06) ret=224.69% cal=1.56 | RED:2021-22=-1.02%
+sep_0040                 accept=false yearClean=false tw=0.16 (Δ0.04) ret=105.64% cal=0.91 | RED:2021-22=-1.62%,2024-25=-0.43%
+score6                   accept=false yearClean=false tw=0.14 (Δ0.02) ret=179% cal=1.18 | RED:2021-22=-3.55%
+maxDay3                  accept=false yearClean=false tw=0.13 (Δ0.01) ret=176.98% cal=1.51 | RED:2021-22=-1.48%
+
+══ Accepted restores: 2 ══
+  add_poc tw=0.16 ret=231.64% cal=1.81
+  add_poc_gap1 tw=0.16 ret=231.64% cal=1.81
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-near-f3-freq-restore.json

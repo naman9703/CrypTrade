@@ -1,0 +1,45 @@
+load AAVEUSDT…
+
+══ Phase D — early-expectancy cut ══
+run H0_noBear_htf20
+H0_noBear_htf20
+  n=46 y21=87.28% early=0.43 cal=1.48 trainExp=4.174 testExp=2.335
+  oosN=27 wfDeg=44.1% mcP5=12.84 | RED:none | core=false sleeve=false
+run htf18
+htf18
+  n=52 y21=87.28% early=0.38 cal=1.31 trainExp=4.056 testExp=2.18
+  oosN=33 wfDeg=46.2% mcP5=16.6 | RED:2023-24=-2.14% | core=false sleeve=false
+run htf20_buyP60_100
+htf20_buyP60_100
+  n=44 y21=81.58% early=0.41 cal=1.43 trainExp=4.252 testExp=2.335
+  oosN=27 wfDeg=45.1% mcP5=10.81 | RED:none | core=false sleeve=false
+run htf20_buyP60_050
+htf20_buyP60_050
+  n=38 y21=16.31% early=0.39 cal=0.69 trainExp=1.498 testExp=2.717
+  oosN=24 wfDeg=-81.4% mcP5=0.91 | RED:2023-24=-3.63% | core=false sleeve=false
+run htf20_buyBody25
+htf20_buyBody25
+  n=41 y21=100.57% early=0.46 cal=1.4 trainExp=4.677 testExp=2.558
+  oosN=23 wfDeg=45.3% mcP5=12.68 | RED:2023-24=-3.41% | core=false sleeve=false
+run htf20_deny_BUY_bullVac
+htf20_deny_BUY_bullVac
+  n=35 y21=4% early=0.34 cal=0.6 trainExp=0.955 testExp=2.247
+  oosN=24 wfDeg=-135.1% mcP5=-5.27 | RED:2023-24=-3.63% | core=false sleeve=false
+run htf18_buyP60_100
+htf18_buyP60_100
+  n=50 y21=81.58% early=0.36 cal=1.28 trainExp=4.129 testExp=2.18
+  oosN=33 wfDeg=47.2% mcP5=12.65 | RED:2023-24=-2.14% | core=false sleeve=false
+run htf18_buyP60_050
+htf18_buyP60_050
+  n=44 y21=16.31% early=0.34 cal=0.67 trainExp=1.427 testExp=2.352
+  oosN=30 wfDeg=-64.8% mcP5=-0.3 | RED:2023-24=-7.58% | core=false sleeve=false
+run htf18_deny_BUY_bullVac
+htf18_deny_BUY_bullVac
+  n=40 y21=4% early=0.3 cal=0.74 trainExp=0.98 testExp=2.07
+  oosN=29 wfDeg=-111.2% mcP5=-2.48 | RED:2023-24=-3.63% | core=false sleeve=false
+run htf15_buyP60_050
+htf15_buyP60_050
+  n=48 y21=16.31% early=0.31 cal=0.45 trainExp=1.063 testExp=1.996
+  oosN=34 wfDeg=-87.8% mcP5=-5.92 | RED:2023-24=-13.92% | core=false sleeve=false
+
+══ Best: H0_noBear_htf20 sleeve=false core=false wfDeg=44.1 oosN=27 ══

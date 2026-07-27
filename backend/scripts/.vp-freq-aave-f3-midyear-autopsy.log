@@ -1,0 +1,284 @@
+load AAVEUSDT…
+candles=195456 funding=6109
+
+══ AAVE F3 Phase 0 baseline (HTF 0.15) ══
+n=112 tw=0.4 ret=2.79% pf=1.01 cal=0.01 dd=63.76
+years 2020-21:18/87.28% 2021-22:15/-20.41% 2022-23:22/-2.07% 2023-24:25/-31.28% 2024-25:19/36.62% 2025-26:13/-24.99%
+
+══ Red years vs good ══
+bad { n: 75, net: -121.22, wr: 18.7 } neverGreen 36
+good { n: 37, net: 124.01, wr: 35.1 }
+
+feature means badLosers vs goodWinners:
+  prior5d    badL=0.0003 goodW=0.0415
+  prior20d   badL=-0.0251 goodW=0.3253
+  prior60d   badL=0.0340 goodW=0.7801
+  pathPct    badL=0.0365 goodW=0.0251
+  htfSep     badL=0.0048 goodW=0.0096
+  adx        badL=49.2086 goodW=44.5951
+  atr        badL=0.0105 goodW=0.0235
+
+══ 2021-22 cells ══ { n: 15, net: -38.23, wr: 13.3 }
+
+-- 2021-22 cells --
+  SELL|va_rejection|weak_bear|vacuum               n= 4 net=  -32.2 wr=0%
+  BUY|va_rejection|bull_chop|structured            n= 3 net= -17.27 wr=0%
+  SELL|va_rejection|bull_chop|vacuum               n= 3 net= -13.34 wr=0%
+  BUY|va_rejection|bull_chop|vacuum                n= 1 net=  -4.83 wr=0%
+  SELL|va_rejection|bull_trend|vacuum              n= 1 net=  -4.01 wr=0%
+  BUY|va_rejection|weak_bear|tight                 n= 1 net=   5.63 wr=100%
+  SELL|va_rejection|bear_trend|vacuum              n= 2 net=  27.79 wr=50%
+
+-- 2021-22 side×macro --
+  SELL|weak_bear                                   n= 4 net=  -32.2 wr=0%
+  BUY|bull_chop                                    n= 4 net= -22.11 wr=0%
+  SELL|bull_chop                                   n= 3 net= -13.34 wr=0%
+  SELL|bull_trend                                  n= 1 net=  -4.01 wr=0%
+  BUY|weak_bear                                    n= 1 net=   5.63 wr=100%
+  SELL|bear_trend                                  n= 2 net=  27.79 wr=50%
+
+══ 2022-23 cells ══ { n: 22, net: -3.09, wr: 18.2 }
+
+-- 2022-23 cells --
+  SELL|va_rejection|bear_trend|vacuum              n= 6 net= -37.21 wr=0%
+  SELL|va_rejection|bull_trend|vacuum              n= 3 net= -18.82 wr=0%
+  SELL|va_rejection|bull_chop|vacuum               n= 2 net= -12.71 wr=0%
+  SELL|va_rejection|weak_bear|structured           n= 1 net=   -6.9 wr=0%
+  BUY|va_rejection|bull_trend|structured           n= 1 net=  -5.99 wr=0%
+  BUY|va_rejection|bull_trend|tight                n= 4 net=   2.87 wr=50%
+  SELL|va_rejection|weak_bear|vacuum               n= 3 net=  27.22 wr=33.3%
+  SELL|va_rejection|bull_chop|tight                n= 2 net=  48.46 wr=50%
+
+-- 2022-23 side×macro --
+  SELL|bear_trend                                  n= 6 net= -37.21 wr=0%
+  SELL|bull_trend                                  n= 3 net= -18.82 wr=0%
+  BUY|bull_trend                                   n= 5 net=  -3.12 wr=40%
+  SELL|weak_bear                                   n= 4 net=  20.31 wr=25%
+  SELL|bull_chop                                   n= 4 net=  35.75 wr=25%
+
+══ 2023-24 cells ══ { n: 25, net: -45.65, wr: 24 }
+
+-- 2023-24 cells --
+  SELL|va_rejection|bull_trend|vacuum              n= 6 net= -25.17 wr=0%
+  SELL|va_rejection|weak_bear|vacuum               n= 1 net= -12.43 wr=0%
+  BUY|va_rejection|bull_chop|vacuum                n= 5 net= -10.81 wr=20%
+  SELL|va_rejection|bull_trend|structured          n= 1 net=  -4.98 wr=0%
+  BUY|va_rejection|bull_chop|tight                 n= 3 net=  -1.22 wr=66.7%
+  SELL|va_rejection|bear_trend|vacuum              n= 6 net=   0.34 wr=16.7%
+  BUY|va_rejection|bull_trend|vacuum               n= 2 net=   1.75 wr=50%
+  BUY|va_rejection|bull_trend|tight                n= 1 net=   6.86 wr=100%
+
+-- 2023-24 side×macro --
+  SELL|bull_trend                                  n= 7 net= -30.15 wr=0%
+  SELL|weak_bear                                   n= 1 net= -12.43 wr=0%
+  BUY|bull_chop                                    n= 8 net= -12.02 wr=37.5%
+  SELL|bear_trend                                  n= 6 net=   0.34 wr=16.7%
+  BUY|bull_trend                                   n= 3 net=   8.61 wr=66.7%
+
+══ 2024-25 cells ══ { n: 19, net: 36.73, wr: 26.3 }
+
+-- 2024-25 cells --
+  SELL|va_rejection|weak_bear|structured           n= 2 net=  -9.59 wr=0%
+  BUY|va_rejection|bull_trend|vacuum               n= 2 net=  -8.75 wr=0%
+  SELL|va_rejection|weak_bear|vacuum               n= 2 net=  -8.41 wr=0%
+  SELL|va_rejection|bull_chop|vacuum               n= 2 net=   -6.6 wr=0%
+  BUY|va_rejection|bull_chop|vacuum                n= 1 net=   -3.1 wr=0%
+  SELL|va_rejection|bear_trend|vacuum              n= 1 net=  -2.55 wr=0%
+  BUY|va_rejection|bull_chop|tight                 n= 1 net=   4.46 wr=100%
+  SELL|va_rejection|bear_trend|structured          n= 1 net=  25.27 wr=100%
+  SELL|va_rejection|bull_trend|vacuum              n= 7 net=  46.01 wr=42.9%
+
+-- 2024-25 side×macro --
+  SELL|weak_bear                                   n= 4 net=    -18 wr=0%
+  BUY|bull_trend                                   n= 2 net=  -8.75 wr=0%
+  SELL|bull_chop                                   n= 2 net=   -6.6 wr=0%
+  BUY|bull_chop                                    n= 2 net=   1.36 wr=50%
+  SELL|bear_trend                                  n= 2 net=  22.71 wr=50%
+  SELL|bull_trend                                  n= 7 net=  46.01 wr=42.9%
+
+══ 2025-26 cells ══ { n: 13, net: -34.24, wr: 15.4 }
+
+-- 2025-26 cells --
+  SELL|va_rejection|bear_trend|vacuum              n= 4 net= -19.18 wr=0%
+  SELL|va_rejection|bull_chop|vacuum               n= 1 net= -17.31 wr=0%
+  SELL|va_rejection|bull_trend|vacuum              n= 2 net= -14.29 wr=0%
+  BUY|va_rejection|bull_trend|structured           n= 1 net=   -4.1 wr=0%
+  BUY|va_rejection|bull_chop|vacuum                n= 1 net=  -3.56 wr=0%
+  BUY|va_rejection|bull_chop|tight                 n= 1 net=  -3.44 wr=0%
+  BUY|va_rejection|bear_trend|vacuum               n= 1 net=   7.49 wr=100%
+  SELL|va_rejection|bear_trend|structured          n= 2 net=  20.16 wr=50%
+
+-- 2025-26 side×macro --
+  SELL|bull_chop                                   n= 1 net= -17.31 wr=0%
+  SELL|bull_trend                                  n= 2 net= -14.29 wr=0%
+  BUY|bull_chop                                    n= 2 net=     -7 wr=0%
+  BUY|bull_trend                                   n= 1 net=   -4.1 wr=0%
+  SELL|bear_trend                                  n= 6 net=   0.98 wr=16.7%
+  BUY|bear_trend                                   n= 1 net=   7.49 wr=100%
+
+══ 2020-21 cells ══ { n: 18, net: 87.28, wr: 44.4 }
+
+-- 2020-21 cells --
+  SELL|va_rejection|bull_trend|structured          n= 1 net=  -5.02 wr=0%
+  SELL|va_rejection|bull_trend|vacuum              n= 7 net=  -2.96 wr=14.3%
+  BUY|va_rejection|bull_chop|tight                 n= 1 net=    3.9 wr=100%
+  BUY|va_rejection|bull_trend|tight                n= 3 net=  13.23 wr=66.7%
+  BUY|va_rejection|bull_trend|vacuum               n= 6 net=  78.14 wr=66.7%
+
+-- 2020-21 side×macro --
+  SELL|bull_trend                                  n= 8 net=  -7.98 wr=12.5%
+  BUY|bull_chop                                    n= 1 net=    3.9 wr=100%
+  BUY|bull_trend                                   n= 9 net=  91.37 wr=66.7%
+
+══ Soft probes (full book) ══
+drop_BUY                     drop=39 ALL net=-58.46 mid=-94.6 good=36.13 redY=2020-21,2021-22,2023-24,2025-26
+drop_SELL                    drop=73 ALL net=61.25 mid=-26.62 good=87.87 redY=2021-22,2022-23,2023-24,2024-25,2025-26
+drop_BUY_bull                drop=37 ALL net=-45.34 mid=-81.48 good=36.13 redY=2020-21,2021-22,2023-24,2025-26
+drop_SELL_bull               drop=38 ALL net=33.55 mid=-59.04 good=92.59 redY=2021-22,2022-23,2023-24,2024-25,2025-26
+drop_vacuum                  drop=82 ALL net=72.3 mid=40.07 good=32.23 redY=2021-22
+drop_SELL_vacuum             drop=63 ALL net=128.64 mid=30.11 good=98.53 redY=2021-22,2023-24
+drop_BUY_vacuum              drop=19 ALL net=-53.55 mid=-111.26 good=57.71 redY=2021-22,2022-23,2023-24,2025-26
+drop_atr_lt_006              drop= 9 ALL net=30.29 mid=-93.72 good=124.01 redY=2021-22,2023-24,2025-26
+drop_atr_lt_008              drop=24 ALL net=76.24 mid=-46.92 good=123.17 redY=2021-22,2023-24,2025-26
+drop_atr_lt_010              drop=50 ALL net=139.62 mid=18.53 good=121.08 redY=2021-22,2023-24,2025-26
+drop_htf_lt_0035             drop=53 ALL net=57.72 mid=8.65 good=49.07 redY=2021-22,2023-24,2025-26
+drop_htf_lt_005              drop=82 ALL net=85.65 mid=8.33 good=77.32 redY=2023-24,2025-26
+drop_htf_lt_006              drop=89 ALL net=87.19 mid=32.45 good=54.73 redY=2023-24,2024-25,2025-26
+drop_BUY_prior60_gt_50       drop= 9 ALL net=-64.46 mid=-123.77 good=59.31 redY=2021-22,2022-23,2023-24,2025-26
+drop_BUY_prior60_gt_100      drop= 4 ALL net=-38.11 mid=-121.22 good=83.11 redY=2021-22,2022-23,2023-24,2025-26
+drop_SELL_ext_down           drop=29 ALL net=100.69 mid=-41.33 good=142.02 redY=2021-22,2023-24,2025-26
+drop_adx_lt_20               drop= 4 ALL net=24.26 mid=-116.01 good=140.27 redY=2021-22,2023-24,2025-26
+drop_neverGreen              drop=50 ALL net=295.68 mid=111.77 good=183.91 redY=2021-22
+
+══ Hard A/B ══
+run H0_phase0
+H0_phase0
+  n=112 tw=0.4 ret=2.79% cal=0.01 pf=1.01
+  years 2020-21:87.28%/18 2021-22:-20.41%/15 2022-23:-2.07%/22 2023-24:-31.28%/25 2024-25:36.62%/19 2025-26:-24.99%/13
+  RED: 2021-22=-20.41% 2022-23=-2.07% 2023-24=-31.28% 2025-26=-24.99% | yearClean=false keepGood=true midFix=false → reject
+run htf_0035
+htf_0035
+  n=66 tw=0.23 ret=80.27% cal=0.31 pf=1.26
+  years 2020-21:62.73%/16 2021-22:-0.34%/11 2022-23:41.22%/13 2023-24:-21.21%/10 2024-25:26.74%/9 2025-26:-21.18%/7
+  RED: 2021-22=-0.34% 2023-24=-21.21% 2025-26=-21.18% | yearClean=false keepGood=false midFix=true → reject
+run htf_0040
+htf_0040
+  n=55 tw=0.19 ret=29.94% cal=0.14 pf=1.14
+  years 2020-21:59.05%/15 2021-22:11.13%/8 2022-23:4.48%/11 2023-24:-16.47%/8 2024-25:2.11%/7 2025-26:-17.51%/6
+  RED: 2023-24=-16.47% 2025-26=-17.51% | yearClean=false keepGood=false midFix=true → reject
+run htf_0045
+htf_0045
+  n=49 tw=0.17 ret=58.84% cal=0.27 pf=1.29
+  years 2020-21:71.03%/13 2021-22:14.35%/7 2022-23:4.48%/11 2023-24:-14.01%/7 2024-25:2.11%/7 2025-26:-11.47%/4
+  RED: 2023-24=-14.01% 2025-26=-11.47% | yearClean=false keepGood=false midFix=true → reject
+run htf_0050
+htf_0050
+  n=38 tw=0.13 ret=50.22% cal=0.39 pf=1.39
+  years 2020-21:41.22%/10 2021-22:10.74%/6 2022-23:4.17%/8 2023-24:-11.1%/6 2024-25:13.69%/5 2025-26:-8.76%/3
+  RED: 2023-24=-11.1% 2025-26=-8.76% | yearClean=false keepGood=false midFix=true → reject
+run htf_0060
+htf_0060
+  n=28 tw=0.1 ret=55.06% cal=0.5 pf=1.54
+  years 2020-21:54.51%/7 2021-22:14.49%/5 2022-23:7.67%/7 2023-24:-8.25%/5 2024-25:-6.05%/2 2025-26:-5.55%/2
+  RED: 2023-24=-8.25% 2024-25=-6.05% 2025-26=-5.55% | yearClean=false keepGood=false midFix=true → reject
+run minAtr_006
+minAtr_006
+  n=101 tw=0.36 ret=38.43% cal=0.11 pf=1.09
+  years 2020-21:87.28%/18 2021-22:-20.41%/15 2022-23:27.07%/16 2023-24:-31.85%/21 2024-25:36.62%/19 2025-26:-21.49%/12
+  RED: 2021-22=-20.41% 2023-24=-31.85% 2025-26=-21.49% | yearClean=false keepGood=true midFix=true → reject
+run minAtr_008
+minAtr_008
+  n=83 tw=0.29 ret=31.97% cal=0.1 pf=1.09
+  years 2020-21:87.28%/18 2021-22:-20.41%/15 2022-23:-3.4%/10 2023-24:-13.83%/14 2024-25:33.66%/17 2025-26:-20.42%/9
+  RED: 2021-22=-20.41% 2022-23=-3.4% 2023-24=-13.83% 2025-26=-20.42% | yearClean=false keepGood=true midFix=true → reject
+run minAtr_010
+minAtr_010
+  n=64 tw=0.23 ret=68.17% cal=0.3 pf=1.23
+  years 2020-21:93.89%/17 2021-22:-5.82%/11 2022-23:-5.06%/9 2023-24:-4.27%/11 2024-25:28.22%/12 2025-26:-20.97%/4
+  RED: 2021-22=-5.82% 2022-23=-5.06% 2023-24=-4.27% 2025-26=-20.97% | yearClean=false keepGood=true midFix=true → reject
+run buyBody_20
+buyBody_20
+  n=106 tw=0.38 ret=3.48% cal=0.01 pf=1.01
+  years 2020-21:100.57%/17 2021-22:-17.99%/14 2022-23:-9.38%/21 2023-24:-34.95%/23 2024-25:42.25%/18 2025-26:-24.99%/13
+  RED: 2021-22=-17.99% 2022-23=-9.38% 2023-24=-34.95% 2025-26=-24.99% | yearClean=false keepGood=true midFix=false → reject
+run buyBody_25
+buyBody_25
+  n=105 tw=0.37 ret=10.64% cal=0.03 pf=1.02
+  years 2020-21:100.57%/17 2021-22:-17.99%/14 2022-23:-9.38%/21 2023-24:-34.95%/23 2024-25:52.11%/17 2025-26:-24.99%/13
+  RED: 2021-22=-17.99% 2022-23=-9.38% 2023-24=-34.95% 2025-26=-24.99% | yearClean=false keepGood=true midFix=false → reject
+run buyPrior60_100
+buyPrior60_100
+  n=110 tw=0.39 ret=-0.34% cal=0 pf=1
+  years 2020-21:81.58%/16 2021-22:-20.41%/15 2022-23:-2.07%/22 2023-24:-31.28%/25 2024-25:36.62%/19 2025-26:-24.99%/13
+  RED: 2021-22=-20.41% 2022-23=-2.07% 2023-24=-31.28% 2025-26=-24.99% | yearClean=false keepGood=true midFix=false → reject
+run buyPrior60_050
+buyPrior60_050
+  n=104 tw=0.37 ret=-33.31% cal=-0.11 pf=0.88
+  years 2020-21:16.31%/13 2021-22:-20.41%/15 2022-23:-2.07%/22 2023-24:-35.1%/24 2024-25:46.08%/18 2025-26:-22.39%/12
+  RED: 2021-22=-20.41% 2022-23=-2.07% 2023-24=-35.1% 2025-26=-22.39% | yearClean=false keepGood=false midFix=false → reject
+run sellExtDown
+sellExtDown
+  n=83 tw=0.29 ret=114.63% cal=0.39 pf=1.28
+  years 2020-21:87.28%/18 2021-22:-21.14%/9 2022-23:28.7%/15 2023-24:-22.78%/17 2024-25:67.63%/15 2025-26:-12.75%/9
+  RED: 2021-22=-21.14% 2023-24=-22.78% 2025-26=-12.75% | yearClean=false keepGood=true midFix=true → reject
+run sellBearHtf_005
+sellBearHtf_005
+  n=100 tw=0.35 ret=5.42% cal=0.02 pf=1.01
+  years 2020-21:87.28%/18 2021-22:-17.61%/14 2022-23:4.68%/21 2023-24:-36.17%/21 2024-25:40.57%/18 2025-26:-27.26%/8
+  RED: 2021-22=-17.61% 2023-24=-36.17% 2025-26=-27.26% | yearClean=false keepGood=true midFix=false → reject
+run minAdx_18
+minAdx_18
+  n=110 tw=0.39 ret=13.66% cal=0.04 pf=1.03
+  years 2020-21:87.28%/18 2021-22:-20.41%/15 2022-23:-2.07%/22 2023-24:-31.28%/25 2024-25:51.06%/17 2025-26:-24.99%/13
+  RED: 2021-22=-20.41% 2022-23=-2.07% 2023-24=-31.28% 2025-26=-24.99% | yearClean=false keepGood=true midFix=false → reject
+run minAdx_22
+minAdx_22
+  n=106 tw=0.38 ret=45.77% cal=0.14 pf=1.09
+  years 2020-21:105.21%/18 2021-22:-17.71%/14 2022-23:6.61%/20 2023-24:-28.54%/24 2024-25:51.06%/17 2025-26:-24.99%/13
+  RED: 2021-22=-17.71% 2023-24=-28.54% 2025-26=-24.99% | yearClean=false keepGood=true midFix=true → reject
+run htf45+atr008
+htf45+atr008
+  n=42 tw=0.15 ret=83.43% cal=0.45 pf=1.48
+  years 2020-21:71.03%/13 2021-22:14.35%/7 2022-23:7.54%/7 2023-24:-3.53%/4 2024-25:2.11%/7 2025-26:-11.47%/4
+  RED: 2023-24=-3.53% 2025-26=-11.47% | yearClean=false keepGood=false midFix=true → reject
+run htf50+atr008
+htf50+atr008
+  n=33 tw=0.12 ret=79.95% cal=0.73 pf=1.73
+  years 2020-21:41.22%/10 2021-22:10.74%/6 2022-23:11.22%/6 2023-24:-0.26%/3 2024-25:13.69%/5 2025-26:-8.76%/3
+  RED: 2023-24=-0.26% 2025-26=-8.76% | yearClean=false keepGood=false midFix=true → reject
+run htf45+buyBody25
+htf45+buyBody25
+  n=45 tw=0.16 ret=68.66% cal=0.4 pf=1.37
+  years 2020-21:71.03%/13 2021-22:17.84%/6 2022-23:-3.31%/10 2023-24:-14.01%/7 2024-25:13.69%/5 2025-26:-11.47%/4
+  RED: 2022-23=-3.31% 2023-24=-14.01% 2025-26=-11.47% | yearClean=false keepGood=false midFix=true → reject
+run htf50+atr008+body25
+htf50+atr008+body25
+  n=32 tw=0.11 ret=85.44% cal=0.77 pf=1.79
+  years 2020-21:41.22%/10 2021-22:14.12%/5 2022-23:11.22%/6 2023-24:-0.26%/3 2024-25:13.69%/5 2025-26:-8.76%/3
+  RED: 2023-24=-0.26% 2025-26=-8.76% | yearClean=false keepGood=false midFix=true → reject
+
+══ Ranked ══
+sellExtDown              accept=false clean=false keep=true midFix=true tw=0.29 ret=114.63% cal=0.39 | 2021-22=-21.14%,2023-24=-22.78%,2025-26=-12.75%
+minAtr_010               accept=false clean=false keep=true midFix=true tw=0.23 ret=68.17% cal=0.3 | 2021-22=-5.82%,2022-23=-5.06%,2023-24=-4.27%,2025-26=-20.97%
+minAdx_22                accept=false clean=false keep=true midFix=true tw=0.38 ret=45.77% cal=0.14 | 2021-22=-17.71%,2023-24=-28.54%,2025-26=-24.99%
+minAtr_006               accept=false clean=false keep=true midFix=true tw=0.36 ret=38.43% cal=0.11 | 2021-22=-20.41%,2023-24=-31.85%,2025-26=-21.49%
+minAtr_008               accept=false clean=false keep=true midFix=true tw=0.29 ret=31.97% cal=0.1 | 2021-22=-20.41%,2022-23=-3.4%,2023-24=-13.83%,2025-26=-20.42%
+htf50+atr008+body25      accept=false clean=false keep=false midFix=true tw=0.11 ret=85.44% cal=0.77 | 2023-24=-0.26%,2025-26=-8.76%
+htf50+atr008             accept=false clean=false keep=false midFix=true tw=0.12 ret=79.95% cal=0.73 | 2023-24=-0.26%,2025-26=-8.76%
+htf_0060                 accept=false clean=false keep=false midFix=true tw=0.1 ret=55.06% cal=0.5 | 2023-24=-8.25%,2024-25=-6.05%,2025-26=-5.55%
+htf45+atr008             accept=false clean=false keep=false midFix=true tw=0.15 ret=83.43% cal=0.45 | 2023-24=-3.53%,2025-26=-11.47%
+htf45+buyBody25          accept=false clean=false keep=false midFix=true tw=0.16 ret=68.66% cal=0.4 | 2022-23=-3.31%,2023-24=-14.01%,2025-26=-11.47%
+htf_0050                 accept=false clean=false keep=false midFix=true tw=0.13 ret=50.22% cal=0.39 | 2023-24=-11.1%,2025-26=-8.76%
+htf_0035                 accept=false clean=false keep=false midFix=true tw=0.23 ret=80.27% cal=0.31 | 2021-22=-0.34%,2023-24=-21.21%,2025-26=-21.18%
+htf_0045                 accept=false clean=false keep=false midFix=true tw=0.17 ret=58.84% cal=0.27 | 2023-24=-14.01%,2025-26=-11.47%
+htf_0040                 accept=false clean=false keep=false midFix=true tw=0.19 ret=29.94% cal=0.14 | 2023-24=-16.47%,2025-26=-17.51%
+minAdx_18                accept=false clean=false keep=true midFix=false tw=0.39 ret=13.66% cal=0.04 | 2021-22=-20.41%,2022-23=-2.07%,2023-24=-31.28%,2025-26=-24.99%
+buyBody_25               accept=false clean=false keep=true midFix=false tw=0.37 ret=10.64% cal=0.03 | 2021-22=-17.99%,2022-23=-9.38%,2023-24=-34.95%,2025-26=-24.99%
+sellBearHtf_005          accept=false clean=false keep=true midFix=false tw=0.35 ret=5.42% cal=0.02 | 2021-22=-17.61%,2023-24=-36.17%,2025-26=-27.26%
+buyBody_20               accept=false clean=false keep=true midFix=false tw=0.38 ret=3.48% cal=0.01 | 2021-22=-17.99%,2022-23=-9.38%,2023-24=-34.95%,2025-26=-24.99%
+H0_phase0                accept=false clean=false keep=true midFix=false tw=0.4 ret=2.79% cal=0.01 | 2021-22=-20.41%,2022-23=-2.07%,2023-24=-31.28%,2025-26=-24.99%
+buyPrior60_100           accept=false clean=false keep=true midFix=false tw=0.39 ret=-0.34% cal=0 | 2021-22=-20.41%,2022-23=-2.07%,2023-24=-31.28%,2025-26=-24.99%
+buyPrior60_050           accept=false clean=false keep=false midFix=false tw=0.37 ret=-33.31% cal=-0.11 | 2021-22=-20.41%,2022-23=-2.07%,2023-24=-35.1%,2025-26=-22.39%
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-aave-f3-midyear-autopsy.json
+
+══ Best: sellExtDown ══

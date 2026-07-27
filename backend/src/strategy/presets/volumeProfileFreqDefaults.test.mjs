@@ -191,6 +191,33 @@ test("fillVolumeProfileFreqDefaults — resolves DOGE F3 year-clean research sle
   assert.equal(out.vpNoveltyEnabled, false);
 });
 
+test("fillVolumeProfileFreqDefaults — resolves NEAR F3 year-clean research sleeve", () => {
+  const out = fillVolumeProfileFreqDefaults({
+    ...VOLUME_PROFILE_FREQ_PORTFOLIO_15M,
+    symbol: "NEARUSDT",
+  });
+  assert.equal(out.vpPlaybook, "FREQ");
+  assert.deepEqual(out.vpAllowedSetups, ["va_rejection", "poc_bounce"]);
+  assert.equal(out.vpRequireHtfAlign, true);
+  assert.equal(out.vpMinHtfSepPct, 0.0045);
+  assert.equal(out.vpNoveltyEnabled, false);
+});
+
+test("fillVolumeProfileFreqDefaults — resolves AAVE F3 near-clean research sleeve", () => {
+  const out = fillVolumeProfileFreqDefaults({
+    ...VOLUME_PROFILE_FREQ_PORTFOLIO_15M,
+    symbol: "AAVEUSDT",
+  });
+  assert.equal(out.vpPlaybook, "FREQ");
+  assert.deepEqual(out.vpAllowedSetups, ["va_rejection"]);
+  assert.equal(out.vpRequireHtfAlign, true);
+  assert.equal(out.vpMinHtfSepPct, 0.0035);
+  assert.equal(out.vpRejectionSellBlockExtendedDown, true);
+  assert.ok(Array.isArray(out.vpPreparedBlockCellKeys));
+  assert.ok(out.vpPreparedBlockCellKeys.includes("SELL|va_rejection|weak_bear|vacuum"));
+  assert.equal(out.vpNoveltyEnabled, false);
+});
+
 test("volumeProfilePadFromMs — at least 60d for macroPrior60d", async () => {
   const { volumeProfilePadFromMs, volumeProfileHistoryBars } = await import("./volumeProfileOptimized.js");
   const from = Date.parse("2025-06-01T00:00:00.000Z");

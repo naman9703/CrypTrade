@@ -98,6 +98,8 @@ import {
   VOLUME_PROFILE_FREQ_SOL_15M,
   VOLUME_PROFILE_FREQ_AVAX_15M,
   VOLUME_PROFILE_FREQ_DOGE_15M,
+  VOLUME_PROFILE_FREQ_NEAR_15M,
+  VOLUME_PROFILE_FREQ_AAVE_15M,
   VOLUME_PROFILE_FREQ_PORTFOLIO_15M,
   VOLUME_PROFILE_BTC_15M,
   VOLUME_PROFILE_5M,
@@ -2712,6 +2714,8 @@ export function TradingPanel() {
               <TrendHtfStPresetButton label="★ SOL FREQ (VAL+rej wick40)" highlight patch={VOLUME_PROFILE_FREQ_SOL_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="★ AVAX FREQ (VAL+rej cells)" highlight patch={VOLUME_PROFILE_FREQ_AVAX_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="★ DOGE FREQ (low-freq sleeve)" highlight patch={VOLUME_PROFILE_FREQ_DOGE_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+              <TrendHtfStPresetButton label="★ NEAR FREQ (low-freq sleeve)" highlight patch={VOLUME_PROFILE_FREQ_NEAR_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+              <TrendHtfStPresetButton label="AAVE FREQ (cert REJECT)" patch={VOLUME_PROFILE_FREQ_AAVE_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="BTC FREQ (shorts)" patch={VOLUME_PROFILE_FREQ_BTC_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="FREQ portfolio (ETH+BNB+BTC)" patch={VOLUME_PROFILE_FREQ_PORTFOLIO_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             </div>

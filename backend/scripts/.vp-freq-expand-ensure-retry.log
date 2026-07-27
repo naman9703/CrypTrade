@@ -1,0 +1,12 @@
+ensure UNIUSDT
+UNIUSDT FAIL db_not_configured
+ensure AAVEUSDT
+AAVEUSDT FAIL db_not_configured
+ensure FILUSDT
+FILUSDT FAIL db_not_configured
+ensure LTCUSDT
+LTCUSDT FAIL db_not_configured
+ensure TRXUSDT
+TRXUSDT FAIL db_not_configured
+ensure INJUSDT
+INJUSDT FAIL db_not_configured

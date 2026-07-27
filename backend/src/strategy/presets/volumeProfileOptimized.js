@@ -527,6 +527,53 @@ export const VOLUME_PROFILE_FREQ_DOGE_15M = {
   vpNoveltyEnabled: false,
 };
 
+/**
+ * NEAR — F3 rej + poc_bounce year-clean research sleeve (2026-07-26).
+ * HTF sep ≥0.45% is the master lever (open F3 = −99.99%). Not deploy-certified
+ * (tw ~0.16). See `2026-07-26-near-vp-freq-year-clean-htf.md`.
+ */
+export const VOLUME_PROFILE_FREQ_NEAR_15M = {
+  ...VOLUME_PROFILE_BASE,
+  ...VOLUME_PROFILE_FREQ_CORE,
+  symbol: "NEARUSDT",
+  timeframe: "15m",
+  vpAllowedSetups: ["va_rejection", "poc_bounce"],
+  vpRequireHtfAlign: true,
+  vpMinHtfSepPct: 0.0045,
+  vpMinAdx: 0.0001,
+  vpNoveltyEnabled: false,
+};
+
+/**
+ * AAVE — F3 rej research sleeve (2026-07-26).
+ * sellExtDown + bleed-cell deny + HTF sep 0.35%. Near year-clean (tiny reds
+ * −0.3% / −2.9%); Calmar ~1.78. Not deploy-certified (tw ~0.11).
+ * See `2026-07-26-aave-vp-freq-near-clean-sleeve.md`.
+ */
+export const VOLUME_PROFILE_FREQ_AAVE_15M = {
+  ...VOLUME_PROFILE_BASE,
+  ...VOLUME_PROFILE_FREQ_CORE,
+  symbol: "AAVEUSDT",
+  timeframe: "15m",
+  vpAllowedSetups: ["va_rejection"],
+  vpRequireHtfAlign: true,
+  vpMinHtfSepPct: 0.0035,
+  vpMinAdx: 0.0001,
+  vpMinScore: 7,
+  vpMinBarGap: 2,
+  vpMaxTradesPerDay: 2,
+  vpRejectionSellBlockExtendedDown: true,
+  vpRejectionExtendedPriorPct: 0.05,
+  vpPreparedBlockCellKeys: [
+    "SELL|va_rejection|weak_bear|vacuum",
+    "SELL|va_rejection|bear_trend|vacuum",
+    "BUY|va_rejection|bull_chop|vacuum",
+    "BUY|va_rejection|bull_chop|structured",
+    "SELL|va_rejection|bull_chop|vacuum",
+  ],
+  vpNoveltyEnabled: false,
+};
+
 export function resolveVolumeProfileFreqPreset(symbol) {
   const sym = String(symbol ?? "").toUpperCase();
   if (sym === "ETHUSDT") return VOLUME_PROFILE_FREQ_ETH_15M;
@@ -535,6 +582,8 @@ export function resolveVolumeProfileFreqPreset(symbol) {
   if (sym === "SOLUSDT") return VOLUME_PROFILE_FREQ_SOL_15M;
   if (sym === "AVAXUSDT") return VOLUME_PROFILE_FREQ_AVAX_15M;
   if (sym === "DOGEUSDT") return VOLUME_PROFILE_FREQ_DOGE_15M;
+  if (sym === "NEARUSDT") return VOLUME_PROFILE_FREQ_NEAR_15M;
+  if (sym === "AAVEUSDT") return VOLUME_PROFILE_FREQ_AAVE_15M;
   return VOLUME_PROFILE_FREQ_15M;
 }
 

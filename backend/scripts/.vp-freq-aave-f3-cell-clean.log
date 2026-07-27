@@ -1,0 +1,99 @@
+load AAVEUSDT…
+candles=195456 funding=6109
+
+══ AAVE F3 cell/vacuum clean A/B ══
+run H0
+H0
+  n=112 tw=0.4 ret=2.79% cal=0.01 pf=1.01 dd=63.76
+  years 2020-21:87.28%/18 2021-22:-20.41%/15 2022-23:-2.07%/22 2023-24:-31.28%/25 2024-25:36.62%/19 2025-26:-24.99%/13
+  RED: 2021-22=-20.41% 2022-23=-2.07% 2023-24=-31.28% 2025-26=-24.99% | clean=false keepGood=true → reject
+run deny_bleed_select
+deny_bleed_select
+  n=59 tw=0.21 ret=111.96% cal=0.45 pf=1.42 dd=34.06
+  years 2020-21:87.28%/18 2021-22:0.19%/2 2022-23:6.38%/10 2023-24:-11.68%/12 2024-25:36.08%/12 2025-26:-11.64%/5
+  RED: 2023-24=-11.68% 2025-26=-11.64% | clean=false keepGood=true → reject
+run deny_all_vacuum
+deny_all_vacuum
+  n=19 tw=0.07 ret=-19.66% cal=-0.15 pf=0.6 dd=26.35
+  years 2020-21:2.31%/1 2021-22:-4.07%/3 2022-23:-6.31%/6 2023-24:2.19%/4 2024-25:-10.94%/4 2025-26:-4%/1
+  RED: 2021-22=-4.07% 2022-23=-6.31% 2024-25=-10.94% 2025-26=-4% | clean=false keepGood=false → reject
+run deny_vac+chopStruct
+deny_vac+chopStruct
+  n=16 tw=0.06 ret=-6.22% cal=-0.06 pf=0.84 dd=20.13
+  years 2020-21:2.31%/1 2021-22:3.26%/1 2022-23:-6.31%/6 2023-24:10.82%/3 2024-25:-10.94%/4 2025-26:-4%/1
+  RED: 2022-23=-6.31% 2024-25=-10.94% 2025-26=-4% | clean=false keepGood=false → reject
+run deny_SELL_vac
+deny_SELL_vac
+  n=43 tw=0.15 ret=21.59% cal=0.1 pf=1.13 dd=39.79
+  years 2020-21:95.2%/10 2021-22:-9.94%/5 2022-23:-6.31%/6 2023-24:-4.66%/11 2024-25:-16.89%/6 2025-26:-6.83%/5
+  RED: 2021-22=-9.94% 2022-23=-6.31% 2023-24=-4.66% 2024-25=-16.89% 2025-26=-6.83% | clean=false keepGood=false → reject
+run deny_SELL_bull_vac
+deny_SELL_bull_vac
+  n=62 tw=0.22 ret=26.65% cal=0.11 pf=1.1 dd=43.05
+  years 2020-21:95.2%/10 2021-22:11.9%/7 2022-23:-22.37%/11 2023-24:-4.35%/17 2024-25:-19.23%/7 2025-26:-3.31%/10
+  RED: 2022-23=-22.37% 2023-24=-4.35% 2024-25=-19.23% 2025-26=-3.31% | clean=false keepGood=false → reject
+run sellExtDown
+sellExtDown
+  n=83 tw=0.29 ret=114.63% cal=0.39 pf=1.28 dd=41.28
+  years 2020-21:87.28%/18 2021-22:-21.14%/9 2022-23:28.7%/15 2023-24:-22.78%/17 2024-25:67.63%/15 2025-26:-12.75%/9
+  RED: 2021-22=-21.14% 2023-24=-22.78% 2025-26=-12.75% | clean=false keepGood=true → reject
+run sellExt+bleed
+sellExt+bleed
+  n=54 tw=0.19 ret=163.39% cal=0.89 pf=1.68 dd=24.75
+  years 2020-21:87.28%/18 2021-22:0.19%/2 2022-23:11.21%/9 2023-24:-8.85%/11 2024-25:50.46%/10 2025-26:-7.96%/4
+  RED: 2023-24=-8.85% 2025-26=-7.96% | clean=false keepGood=true → reject
+run htf50+atr008
+htf50+atr008
+  n=33 tw=0.12 ret=79.95% cal=0.73 pf=1.73 dd=16.7
+  years 2020-21:41.22%/10 2021-22:10.74%/6 2022-23:11.22%/6 2023-24:-0.26%/3 2024-25:13.69%/5 2025-26:-8.76%/3
+  RED: 2023-24=-0.26% 2025-26=-8.76% | clean=false keepGood=false → reject
+run htf50+atr008+bleed
+htf50+atr008+bleed
+  n=16 tw=0.06 ret=58.84% cal=1.54 pf=2.39 dd=8.63
+  years 2020-21:41.22%/10 2022-23:22.95%/3 2024-25:-8.52%/3
+  RED: 2024-25=-8.52% | clean=false keepGood=false → reject
+run htf50+atr008+denyVac
+htf50+atr008+denyVac
+  n=1 tw=0 ret=1.75% cal=0 pf=999 dd=0
+  years 2022-23:1.75%/1
+  RED: none | clean=true keepGood=true → ACCEPT
+run htf50+atr008+sellExt+bleed
+htf50+atr008+sellExt+bleed
+  n=16 tw=0.06 ret=58.84% cal=1.54 pf=2.39 dd=8.63
+  years 2020-21:41.22%/10 2022-23:22.95%/3 2024-25:-8.52%/3
+  RED: 2024-25=-8.52% | clean=false keepGood=false → reject
+run deny_vac+chop+sellExt
+deny_vac+chop+sellExt
+  n=12 tw=0.04 ret=12.91% cal=0.27 pf=1.64 dd=10.92
+  years 2020-21:2.31%/1 2021-22:3.26%/1 2022-23:-2.06%/5 2023-24:10.82%/3 2024-25:-1.52%/2
+  RED: 2022-23=-2.06% 2024-25=-1.52% | clean=false keepGood=false → reject
+run SELL_only
+SELL_only
+  n=112 tw=0.4 ret=2.79% cal=0.01 pf=1.01 dd=63.76
+  years 2020-21:87.28%/18 2021-22:-20.41%/15 2022-23:-2.07%/22 2023-24:-31.28%/25 2024-25:36.62%/19 2025-26:-24.99%/13
+  RED: 2021-22=-20.41% 2022-23=-2.07% 2023-24=-31.28% 2025-26=-24.99% | clean=false keepGood=true → reject
+run SELL_only+bleed
+SELL_only+bleed
+  n=59 tw=0.21 ret=111.96% cal=0.45 pf=1.42 dd=34.06
+  years 2020-21:87.28%/18 2021-22:0.19%/2 2022-23:6.38%/10 2023-24:-11.68%/12 2024-25:36.08%/12 2025-26:-11.64%/5
+  RED: 2023-24=-11.68% 2025-26=-11.64% | clean=false keepGood=true → reject
+
+══ Ranked ══
+htf50+atr008+denyVac         accept=true clean=true keep=true n=1 tw=0 ret=1.75% cal=0 | none
+sellExt+bleed                accept=false clean=false keep=true n=54 tw=0.19 ret=163.39% cal=0.89 | 2023-24=-8.85%,2025-26=-7.96%
+deny_bleed_select            accept=false clean=false keep=true n=59 tw=0.21 ret=111.96% cal=0.45 | 2023-24=-11.68%,2025-26=-11.64%
+SELL_only+bleed              accept=false clean=false keep=true n=59 tw=0.21 ret=111.96% cal=0.45 | 2023-24=-11.68%,2025-26=-11.64%
+sellExtDown                  accept=false clean=false keep=true n=83 tw=0.29 ret=114.63% cal=0.39 | 2021-22=-21.14%,2023-24=-22.78%,2025-26=-12.75%
+H0                           accept=false clean=false keep=true n=112 tw=0.4 ret=2.79% cal=0.01 | 2021-22=-20.41%,2022-23=-2.07%,2023-24=-31.28%,2025-26=-24.99%
+SELL_only                    accept=false clean=false keep=true n=112 tw=0.4 ret=2.79% cal=0.01 | 2021-22=-20.41%,2022-23=-2.07%,2023-24=-31.28%,2025-26=-24.99%
+htf50+atr008+bleed           accept=false clean=false keep=false n=16 tw=0.06 ret=58.84% cal=1.54 | 2024-25=-8.52%
+htf50+atr008+sellExt+bleed   accept=false clean=false keep=false n=16 tw=0.06 ret=58.84% cal=1.54 | 2024-25=-8.52%
+htf50+atr008                 accept=false clean=false keep=false n=33 tw=0.12 ret=79.95% cal=0.73 | 2023-24=-0.26%,2025-26=-8.76%
+deny_vac+chop+sellExt        accept=false clean=false keep=false n=12 tw=0.04 ret=12.91% cal=0.27 | 2022-23=-2.06%,2024-25=-1.52%
+deny_SELL_bull_vac           accept=false clean=false keep=false n=62 tw=0.22 ret=26.65% cal=0.11 | 2022-23=-22.37%,2023-24=-4.35%,2024-25=-19.23%,2025-26=-3.31%
+deny_SELL_vac                accept=false clean=false keep=false n=43 tw=0.15 ret=21.59% cal=0.1 | 2021-22=-9.94%,2022-23=-6.31%,2023-24=-4.66%,2024-25=-16.89%,2025-26=-6.83%
+deny_vac+chopStruct          accept=false clean=false keep=false n=16 tw=0.06 ret=-6.22% cal=-0.06 | 2022-23=-6.31%,2024-25=-10.94%,2025-26=-4%
+deny_all_vacuum              accept=false clean=false keep=false n=19 tw=0.07 ret=-19.66% cal=-0.15 | 2021-22=-4.07%,2022-23=-6.31%,2024-25=-10.94%,2025-26=-4%
+wrote /Users/namanpaliwal/Desktop/trading/backend/scripts/.vp-freq-aave-f3-cell-clean.json
+
+══ Best: htf50+atr008+denyVac ══
