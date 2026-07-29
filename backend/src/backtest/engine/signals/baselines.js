@@ -39,6 +39,14 @@ import {
   resolveSituationRouterCfg,
 } from "../../../strategy/situationIntraday.js";
 import { buildCrtTbsBacktestAdapter, resolveCrtTbsCfg } from "../../../strategy/crtTbsIntraday.js";
+import {
+  buildLiqCascadeBacktestAdapter,
+  resolveLiqCascadeCfg,
+} from "../../../strategy/liqCascadeIntraday.js";
+import {
+  buildMlctsBacktestAdapter,
+  resolveMlctsCfg,
+} from "../../../strategy/mlctsIntraday.js";
 import { buildScalpMrBacktestAdapter } from "../../../strategy/scalpMr.js";
 import {
   buildTokyoSessionBacktestAdapter,
@@ -79,6 +87,8 @@ export function buildBaselineAdapters() {
     UNIFIED_ELITE: makeAdapter("UNIFIED_ELITE"),
     SITUATION_INTRADAY: makeAdapter("SITUATION_INTRADAY"),
     CRT_TBS: makeAdapter("CRT_TBS"),
+    LIQ_CASCADE: makeAdapter("LIQ_CASCADE"),
+    MLCTS: makeAdapter("MLCTS"),
     SCALP_MR: makeAdapter("SCALP_MR"),
     TOKYO_SESSION: makeAdapter("TOKYO_SESSION"),
     LIQUIDITY_MAP: makeAdapter("LIQUIDITY_MAP"),
@@ -211,6 +221,22 @@ export async function buildBacktestAdapters({ strategyKey, cfg, symbol, tf, cand
   if (strategyKey === "CRT_TBS" && typeof buildCrtTbsBacktestAdapter === "function") {
     const crtCfg = resolveCrtTbsCfg(cfg);
     adapters.CRT_TBS = buildCrtTbsBacktestAdapter(candles, crtCfg, tf);
+  }
+
+  if (strategyKey === "LIQ_CASCADE" && typeof buildLiqCascadeBacktestAdapter === "function") {
+    const lcCfg = resolveLiqCascadeCfg(cfg);
+    adapters.LIQ_CASCADE = buildLiqCascadeBacktestAdapter(candles, lcCfg, tf, {
+      liqSeries: cfg._liqCascadeLiqSeries ?? [],
+      oiSeries: cfg._liqCascadeOiSeries ?? [],
+    });
+  }
+
+  if (strategyKey === "MLCTS" && typeof buildMlctsBacktestAdapter === "function") {
+    const mcCfg = resolveMlctsCfg(cfg);
+    adapters.MLCTS = buildMlctsBacktestAdapter(candles, mcCfg, tf, {
+      oiSeries: cfg._mlctsOiSeries ?? [],
+      fundingSeries: cfg._mlctsFundingSeries ?? [],
+    });
   }
 
   if (strategyKey === "SCALP_MR" && typeof buildScalpMrBacktestAdapter === "function") {

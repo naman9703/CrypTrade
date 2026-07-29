@@ -39,6 +39,8 @@ import { sanitizeSignalBrainCfgRaw, sanitizeBacktestConfigSnapshot, BACKTEST_SNA
 import { enforceLiqGateCoherence } from "../lib/strategyConfigSlices.js";
 import { resolveSituationRouterCfg } from "../strategy/situationIntraday.js";
 import { resolveCrtTbsCfg } from "../strategy/crtTbsIntraday.js";
+import { resolveLiqCascadeCfg } from "../strategy/liqCascadeIntraday.js";
+import { resolveMlctsCfg } from "../strategy/mlctsIntraday.js";
 import { resolveTokyoSessionCfg } from "../strategy/tokyoSessionIntraday.js";
 import { InsufficientCapitalError } from "../db/services/capitalAllotmentService.js";
 import {
@@ -1433,6 +1435,10 @@ function materializeBacktestEngineSnapshot(cfgRaw) {
     engine = { ...resolveSituationRouterCfg(b), ...preserved };
   } else if (strat === "CRT_TBS") {
     engine = { ...resolveCrtTbsCfg(b), ...preserved };
+  } else if (strat === "LIQ_CASCADE") {
+    engine = { ...resolveLiqCascadeCfg(b), ...preserved };
+  } else if (strat === "MLCTS") {
+    engine = { ...resolveMlctsCfg(b), ...preserved };
   } else if (strat === "TOKYO_SESSION") {
     engine = { ...resolveTokyoSessionCfg(b), ...preserved };
   } else if (strat === "SUPERTREND_ELITE" || strat === "UNIFIED_ELITE") {
@@ -1451,6 +1457,8 @@ function materializeBacktestEngineSnapshot(cfgRaw) {
   const replaceBotRoot =
     strat === "SITUATION_INTRADAY" ||
     strat === "CRT_TBS" ||
+    strat === "LIQ_CASCADE" ||
+    strat === "MLCTS" ||
     strat === "TOKYO_SESSION" ||
     didIntradayMaterialize;
   if (replaceBotRoot) {

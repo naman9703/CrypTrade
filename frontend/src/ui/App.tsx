@@ -9,6 +9,8 @@ import { ChartErrorBoundary } from "./ChartErrorBoundary";
 import { TradingPanel } from "./TradingPanel";
 import { InsightsPanel } from "./InsightsPanel";
 import { PortfolioPanel } from "./PortfolioPanel";
+import { MlctsLayersPanel } from "./MlctsLayersPanel";
+import type { MlctsLayerStatus } from "./MlctsLayersPanel";
 import { LogsPanel } from "./LogsPanel";
 import { ThemeToggle } from "./ThemeToggle";
 import { TradingModeBadge } from "./TradingModeBadge";
@@ -24,6 +26,18 @@ import { ModeSwitchOverlay } from "./ModeSwitchOverlay";
 const BacktestPage = lazy(() =>
   import("./backtest/BacktestPage").then((m) => ({ default: m.BacktestPage })),
 );
+
+function MlctsLayersSection() {
+  const manualStrategy = useAppStore((s) => String(s.bot?.manualStrategy ?? "").toUpperCase());
+  const fromBot = useAppStore((s) => s.bot?.mlctsLayerStatus as MlctsLayerStatus | undefined);
+  const fromMarket = useAppStore((s) => (s.market as { mlctsLayerStatus?: MlctsLayerStatus } | undefined)?.mlctsLayerStatus);
+  if (manualStrategy !== "MLCTS") return null;
+  return (
+    <div className="lg:col-span-2">
+      <MlctsLayersPanel status={fromMarket ?? fromBot} />
+    </div>
+  );
+}
 
 function notificationsEnabledFromEnv(): boolean {
   const raw = String(import.meta.env.VITE_ACTIVITY_NOTIFICATIONS ?? "1").trim().toLowerCase();
@@ -107,6 +121,8 @@ export function App() {
               <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
                 <PortfolioPanel />
               </div>
+
+              <MlctsLayersSection />
 
               <div className="space-y-3">
                 <div className="rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">

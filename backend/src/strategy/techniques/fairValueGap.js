@@ -52,13 +52,31 @@ export function detectFvgAt(candles, idx, side, opts = {}) {
 }
 
 /**
- * Find most recent active FVG before/at idx (not fully mitigated).
+ * Fully mitigated when price wicks through the far edge after formation.
+ * BUY FVG: low ≤ bottom. SELL FVG: high ≥ top.
  */
-export function findActiveFvg(candles, idx, side, opts = {}) {
+export function isFvgMitigated(candles, fvg, idx, side) {
+  if (!fvg || fvg.formedIdx == null) return false;
+  for (let j = fvg.formedIdx + 1; j <= idx; j++) {
+    const b = candles[j];
+    if (!b) continue;
+    if (side === "BUY" && b.low <= fvg.bottom) return true;
+    if (side === "SELL" && b.high >= fvg.top) return true;
+  }
+  return false;
+}
+
+/**
+ * Find most recent active FVG before/at idx (not fully mitigated).
+ * @param {number} [minFormedIdx] reject gaps formed before this bar (e.g. CHoCH)
+ */
+export function findActiveFvg(candles, idx, side, opts = {}, minFormedIdx = 0) {
   const maxAge = Math.max(3, Number(opts.intradaySmcFvgMaxAgeBars ?? 24));
   const start = Math.max(2, idx - maxAge);
+  const minIdx = Math.max(2, Math.floor(minFormedIdx));
   let best = null;
   for (let i = idx; i >= start; i--) {
+    if (i < minIdx) break;
     const fvg = detectFvgAt(candles, i, side, opts);
     if (!fvg) continue;
     if (!isFvgMitigated(candles, fvg, idx, side)) {
@@ -67,15 +85,6 @@ export function findActiveFvg(candles, idx, side, opts = {}) {
     }
   }
   return best;
-}
-
-function isFvgMitigated(candles, fvg, idx, side) {
-  for (let j = fvg.formedIdx + 1; j <= idx; j++) {
-    const b = candles[j];
-    if (side === "BUY" && b.low <= fvg.bottom) return true;
-    if (side === "SELL" && b.high >= fvg.top) return true;
-  }
-  return false;
 }
 
 /**

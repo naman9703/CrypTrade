@@ -1,0 +1,38 @@
+{
+  "generatedAt": "2026-07-28T17:14:48.767Z",
+  "window": {
+    "FROM": "2025-01-01",
+    "TO": "2026-06-01",
+    "OOS_END": "2025-10-01"
+  },
+  "results": [
+    {
+      "id": "legacy_no_invalidation",
+      "n": 90,
+      "tw": 1.22,
+      "wr": 8.9,
+      "ret": -81.46,
+      "pf": 0.14,
+      "dd": 82.03,
+      "oosN": 46,
+      "oosRet": -19.86,
+      "neverGreen": 17,
+      "note": "Prior practical path — concept flags forced OFF",
+      "sec": 550
+    },
+    {
+      "id": "prerequisite_concept",
+      "n": 9,
+      "tw": 0.12,
+      "wr": 22.2,
+      "ret": -5.89,
+      "pf": 0.57,
+      "dd": 10.63,
+      "oosN": 4,
+      "oosRet": -1.09,
+      "neverGreen": 2,
+      "note": "Invalidation + PD-after-CHoCH (defaults for RequireChoch)",
+      "sec": 548
+    }
+  ]
+}

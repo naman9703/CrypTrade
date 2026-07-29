@@ -337,6 +337,9 @@ function passesSweepFilters(side, level, wick, sweepStartIdx, reclaimIdx, opts, 
   const ext = sweepExtension(side, level, wick);
   if (minExt > 0 && ext + 1e-6 < minExt) {
     if (!isSessionClusterLevel(levelType)) return false;
+    // Opt-in hard floor: default soft-pass still allows directional shallow pokes
+    // (BTC SMC autopsy: ~45% of sweep entries had extension < 0.3% via this path).
+    if (opts.intradayLiqSessionExtremeHardMinExt === true) return false;
     if (side === "BUY" && wick > level) return false;
     if (side === "SELL" && wick < level) return false;
   }

@@ -92,6 +92,7 @@ type MarketPayload = {
   supertrendSignals?: Array<{ time: number; side: "buy" | "sell" }>;
   /** Backend pauses autotrade only; chart still updates from buffer. */
   feedExecutionPause?: { reason: string; since: number } | null;
+  mlctsLayerStatus?: Record<string, unknown>;
 };
 
 export type LogPayload = {
@@ -1009,7 +1010,11 @@ function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial
     supertrendLine: stLine,
     supertrendSignals: stSig,
   };
-  return { market: marketMerged, candles: next };
+  const nextBot =
+    p.mlctsLayerStatus != null && s.bot && typeof s.bot === "object"
+      ? { ...s.bot, mlctsLayerStatus: p.mlctsLayerStatus }
+      : s.bot;
+  return { market: marketMerged, candles: next, bot: nextBot };
 }
 
 function mergeHybridAccountSnapshot(prevAccount: unknown, nextAccount: unknown): unknown {

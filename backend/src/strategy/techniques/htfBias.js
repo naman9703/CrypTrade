@@ -7,6 +7,7 @@ import {
   structureBiasAllowsSide,
   htfBiasDisagreement,
 } from "./htfStructureBias.js";
+import { attachHtf1hNarrativeToPre, getHtf1hNarrativeMeta } from "./htf1hNarrative.js";
 
 const H4_MS = 4 * 60 * 60 * 1000;
 const MIN_BUCKETS = 50;
@@ -130,6 +131,7 @@ function emaBiasAllowsSide(side, smcHtf, idx, strict, minSep) {
 export function getSmcHtfBiasMeta(pre, idx, opts = {}) {
   const smcHtf = pre._smcHtf || null;
   const mode = String(opts.intradaySmcHtfBiasMode ?? "parallel").toLowerCase();
+  const h1Meta = getHtf1hNarrativeMeta(pre, idx);
   if (!smcHtf) {
     return {
       htfBiasMode: mode,
@@ -137,6 +139,7 @@ export function getSmcHtfBiasMeta(pre, idx, opts = {}) {
       htfStructureDir: null,
       htfStructureState: null,
       htfBiasDisagreement: false,
+      ...h1Meta,
     };
   }
   const emaDir = smcHtf.h4Up[idx] ? "up" : smcHtf.h4Down[idx] ? "down" : "flat";
@@ -149,6 +152,7 @@ export function getSmcHtfBiasMeta(pre, idx, opts = {}) {
     htfStructureDir: stDir,
     htfStructureState: stState,
     htfBiasDisagreement: htfBiasDisagreement(smcHtf, idx),
+    ...h1Meta,
   };
 }
 
@@ -172,6 +176,11 @@ export function passesSmcHtfBias(side, pre, idx, opts = {}) {
   const emaOk = emaBiasAllowsSide(side, smcHtf, idx, strict, minSep);
   const structureOk = structureBiasAllowsSide(side, smcHtf, idx);
 
+  // Opt-in: block when 4H EMA and structure point opposite directions (BTC SMC autopsy).
+  if (opts.intradaySmcDenyHtfDisagreement === true && htfBiasDisagreement(smcHtf, idx)) {
+    return false;
+  }
+
   if (mode === "ema") return emaOk;
   if (mode === "structure") return structureOk;
   // parallel — block only when both disagree with trade side
@@ -182,5 +191,6 @@ export function passesSmcHtfBias(side, pre, idx, opts = {}) {
 /** Attach SMC HTF series to precompute blob (call from intradayPro if needed). */
 export function attachSmcHtfToPre(candles, pre, opts = {}) {
   pre._smcHtf = buildHtfBiasSeries(candles, pre, opts);
+  attachHtf1hNarrativeToPre(candles, pre, opts);
   return pre;
 }

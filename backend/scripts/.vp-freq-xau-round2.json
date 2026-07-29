@@ -1,0 +1,831 @@
+{
+  "all": [
+    {
+      "id": "5m_poc_only",
+      "tf": "5m",
+      "trades": 9,
+      "tw": 0.3,
+      "ret": -18.85,
+      "calmar": -1.8,
+      "pf": 0.21,
+      "dd": 18.85,
+      "oosN": 6,
+      "oosRet": -14.41,
+      "redMonths": [
+        "2025-12=-3.56%",
+        "2026-02=-0.9%",
+        "2026-04=-14.11%",
+        "2026-05=-3.48%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5
+      }
+    },
+    {
+      "id": "5m_poc_naked",
+      "tf": "5m",
+      "trades": 9,
+      "tw": 0.3,
+      "ret": -18.85,
+      "calmar": -1.8,
+      "pf": 0.21,
+      "dd": 18.85,
+      "oosN": 6,
+      "oosRet": -14.41,
+      "redMonths": [
+        "2025-12=-3.56%",
+        "2026-02=-0.9%",
+        "2026-04=-14.11%",
+        "2026-05=-3.48%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce",
+          "naked_poc"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5
+      }
+    },
+    {
+      "id": "5m_poc_rej_noHtf",
+      "tf": "5m",
+      "trades": 38,
+      "tw": 1.26,
+      "ret": -29.68,
+      "calmar": -1.16,
+      "pf": 0.63,
+      "dd": 39.5,
+      "oosN": 20,
+      "oosRet": -13.42,
+      "redMonths": [
+        "2025-12=-11.45%",
+        "2026-01=-10.5%",
+        "2026-04=-23.11%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce",
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5
+      }
+    },
+    {
+      "id": "5m_poc_htf0003",
+      "tf": "5m",
+      "trades": 6,
+      "tw": 0.2,
+      "ret": -14.39,
+      "calmar": -1.84,
+      "pf": 0.17,
+      "dd": 14.39,
+      "oosN": 4,
+      "oosRet": -13.73,
+      "redMonths": [
+        "2025-12=-3.56%",
+        "2026-04=-10.71%",
+        "2026-05=-3.48%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0003,
+        "vpMinScore": 5
+      }
+    },
+    {
+      "id": "5m_no_val_vah",
+      "tf": "5m",
+      "trades": 15,
+      "tw": 0.5,
+      "ret": -32.55,
+      "calmar": -1.53,
+      "pf": 0.19,
+      "dd": 32.55,
+      "oosN": 11,
+      "oosRet": -24.49,
+      "redMonths": [
+        "2025-12=-3.56%",
+        "2026-02=-4.67%",
+        "2026-03=-4.98%",
+        "2026-04=-16.84%",
+        "2026-05=-7.15%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce",
+          "va_rejection",
+          "lvn_vacuum",
+          "naked_poc"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6
+      }
+    },
+    {
+      "id": "5m_rej_noHtf",
+      "tf": "5m",
+      "trades": 31,
+      "tw": 1.03,
+      "ret": -19.33,
+      "calmar": -1.02,
+      "pf": 0.71,
+      "dd": 30.59,
+      "oosN": 15,
+      "oosRet": -4.08,
+      "redMonths": [
+        "2025-12=-8.17%",
+        "2026-01=-10.5%",
+        "2026-04=-13.82%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5,
+        "vpMinBarGap": 1
+      }
+    },
+    {
+      "id": "5m_rej_htf0003",
+      "tf": "5m",
+      "trades": 9,
+      "tw": 0.3,
+      "ret": -21.22,
+      "calmar": -1.61,
+      "pf": 0.18,
+      "dd": 21.22,
+      "oosN": 7,
+      "oosRet": -13.76,
+      "redMonths": [
+        "2026-02=-7.46%",
+        "2026-03=-4.98%",
+        "2026-04=-6.86%",
+        "2026-05=-3.8%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0003,
+        "vpMinScore": 5,
+        "vpMinBarGap": 1
+      }
+    },
+    {
+      "id": "5m_poc_SELL",
+      "tf": "5m",
+      "trades": 9,
+      "tw": 0.3,
+      "ret": -18.85,
+      "calmar": -1.8,
+      "pf": 0.21,
+      "dd": 18.85,
+      "oosN": 6,
+      "oosRet": -14.41,
+      "redMonths": [
+        "2025-12=-3.56%",
+        "2026-02=-0.9%",
+        "2026-04=-14.11%",
+        "2026-05=-3.48%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5,
+        "vpAllowedSides": [
+          "SELL"
+        ]
+      }
+    },
+    {
+      "id": "5m_poc_BUY",
+      "tf": "5m",
+      "trades": 9,
+      "tw": 0.3,
+      "ret": -18.85,
+      "calmar": -1.8,
+      "pf": 0.21,
+      "dd": 18.85,
+      "oosN": 6,
+      "oosRet": -14.41,
+      "redMonths": [
+        "2025-12=-3.56%",
+        "2026-02=-0.9%",
+        "2026-04=-14.11%",
+        "2026-05=-3.48%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5,
+        "vpAllowedSides": [
+          "BUY"
+        ]
+      }
+    },
+    {
+      "id": "1h_poc_only",
+      "tf": "1h",
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "pf": 0,
+      "dd": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "redMonths": [],
+      "monthClean": true,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5
+      }
+    },
+    {
+      "id": "1h_poc_naked",
+      "tf": "1h",
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "pf": 0,
+      "dd": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "redMonths": [],
+      "monthClean": true,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce",
+          "naked_poc"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5
+      }
+    },
+    {
+      "id": "1h_poc_rej_noHtf",
+      "tf": "1h",
+      "trades": 29,
+      "tw": 0.96,
+      "ret": -49.74,
+      "calmar": -1.29,
+      "pf": 0.19,
+      "dd": 53.9,
+      "oosN": 19,
+      "oosRet": -16.22,
+      "redMonths": [
+        "2026-01=-26.85%",
+        "2026-02=-9.12%",
+        "2026-03=-12.85%",
+        "2026-04=-17.19%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce",
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5
+      }
+    },
+    {
+      "id": "1h_poc_htf0003",
+      "tf": "1h",
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "pf": 0,
+      "dd": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "redMonths": [],
+      "monthClean": true,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0003,
+        "vpMinScore": 5
+      }
+    },
+    {
+      "id": "1h_no_val_vah",
+      "tf": "1h",
+      "trades": 3,
+      "tw": 0.1,
+      "ret": -9.3,
+      "calmar": -1.75,
+      "pf": 0,
+      "dd": 9.3,
+      "oosN": 3,
+      "oosRet": -9.3,
+      "redMonths": [
+        "2026-04=-6.42%",
+        "2026-05=-3.07%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce",
+          "va_rejection",
+          "lvn_vacuum",
+          "naked_poc"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6
+      }
+    },
+    {
+      "id": "1h_rej_noHtf",
+      "tf": "1h",
+      "trades": 29,
+      "tw": 0.96,
+      "ret": -49.74,
+      "calmar": -1.29,
+      "pf": 0.19,
+      "dd": 53.9,
+      "oosN": 19,
+      "oosRet": -16.22,
+      "redMonths": [
+        "2026-01=-26.85%",
+        "2026-02=-9.12%",
+        "2026-03=-12.85%",
+        "2026-04=-17.19%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5,
+        "vpMinBarGap": 1
+      }
+    },
+    {
+      "id": "1h_rej_htf0003",
+      "tf": "1h",
+      "trades": 3,
+      "tw": 0.1,
+      "ret": -9.3,
+      "calmar": -1.75,
+      "pf": 0,
+      "dd": 9.3,
+      "oosN": 3,
+      "oosRet": -9.3,
+      "redMonths": [
+        "2026-04=-6.42%",
+        "2026-05=-3.07%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0003,
+        "vpMinScore": 5,
+        "vpMinBarGap": 1
+      }
+    },
+    {
+      "id": "1h_poc_SELL",
+      "tf": "1h",
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "pf": 0,
+      "dd": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "redMonths": [],
+      "monthClean": true,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5,
+        "vpAllowedSides": [
+          "SELL"
+        ]
+      }
+    },
+    {
+      "id": "1h_poc_BUY",
+      "tf": "1h",
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "pf": 0,
+      "dd": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "redMonths": [],
+      "monthClean": true,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5,
+        "vpAllowedSides": [
+          "BUY"
+        ]
+      }
+    }
+  ],
+  "ranked": [
+    {
+      "id": "5m_rej_noHtf",
+      "tf": "5m",
+      "trades": 31,
+      "tw": 1.03,
+      "ret": -19.33,
+      "calmar": -1.02,
+      "pf": 0.71,
+      "dd": 30.59,
+      "oosN": 15,
+      "oosRet": -4.08,
+      "redMonths": [
+        "2025-12=-8.17%",
+        "2026-01=-10.5%",
+        "2026-04=-13.82%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5,
+        "vpMinBarGap": 1
+      }
+    },
+    {
+      "id": "5m_poc_rej_noHtf",
+      "tf": "5m",
+      "trades": 38,
+      "tw": 1.26,
+      "ret": -29.68,
+      "calmar": -1.16,
+      "pf": 0.63,
+      "dd": 39.5,
+      "oosN": 20,
+      "oosRet": -13.42,
+      "redMonths": [
+        "2025-12=-11.45%",
+        "2026-01=-10.5%",
+        "2026-04=-23.11%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce",
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5
+      }
+    },
+    {
+      "id": "1h_poc_rej_noHtf",
+      "tf": "1h",
+      "trades": 29,
+      "tw": 0.96,
+      "ret": -49.74,
+      "calmar": -1.29,
+      "pf": 0.19,
+      "dd": 53.9,
+      "oosN": 19,
+      "oosRet": -16.22,
+      "redMonths": [
+        "2026-01=-26.85%",
+        "2026-02=-9.12%",
+        "2026-03=-12.85%",
+        "2026-04=-17.19%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce",
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5
+      }
+    },
+    {
+      "id": "1h_rej_noHtf",
+      "tf": "1h",
+      "trades": 29,
+      "tw": 0.96,
+      "ret": -49.74,
+      "calmar": -1.29,
+      "pf": 0.19,
+      "dd": 53.9,
+      "oosN": 19,
+      "oosRet": -16.22,
+      "redMonths": [
+        "2026-01=-26.85%",
+        "2026-02=-9.12%",
+        "2026-03=-12.85%",
+        "2026-04=-17.19%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5,
+        "vpMinBarGap": 1
+      }
+    },
+    {
+      "id": "5m_no_val_vah",
+      "tf": "5m",
+      "trades": 15,
+      "tw": 0.5,
+      "ret": -32.55,
+      "calmar": -1.53,
+      "pf": 0.19,
+      "dd": 32.55,
+      "oosN": 11,
+      "oosRet": -24.49,
+      "redMonths": [
+        "2025-12=-3.56%",
+        "2026-02=-4.67%",
+        "2026-03=-4.98%",
+        "2026-04=-16.84%",
+        "2026-05=-7.15%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce",
+          "va_rejection",
+          "lvn_vacuum",
+          "naked_poc"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6
+      }
+    },
+    {
+      "id": "5m_rej_htf0003",
+      "tf": "5m",
+      "trades": 9,
+      "tw": 0.3,
+      "ret": -21.22,
+      "calmar": -1.61,
+      "pf": 0.18,
+      "dd": 21.22,
+      "oosN": 7,
+      "oosRet": -13.76,
+      "redMonths": [
+        "2026-02=-7.46%",
+        "2026-03=-4.98%",
+        "2026-04=-6.86%",
+        "2026-05=-3.8%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0003,
+        "vpMinScore": 5,
+        "vpMinBarGap": 1
+      }
+    },
+    {
+      "id": "1h_no_val_vah",
+      "tf": "1h",
+      "trades": 3,
+      "tw": 0.1,
+      "ret": -9.3,
+      "calmar": -1.75,
+      "pf": 0,
+      "dd": 9.3,
+      "oosN": 3,
+      "oosRet": -9.3,
+      "redMonths": [
+        "2026-04=-6.42%",
+        "2026-05=-3.07%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce",
+          "va_rejection",
+          "lvn_vacuum",
+          "naked_poc"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6
+      }
+    },
+    {
+      "id": "1h_rej_htf0003",
+      "tf": "1h",
+      "trades": 3,
+      "tw": 0.1,
+      "ret": -9.3,
+      "calmar": -1.75,
+      "pf": 0,
+      "dd": 9.3,
+      "oosN": 3,
+      "oosRet": -9.3,
+      "redMonths": [
+        "2026-04=-6.42%",
+        "2026-05=-3.07%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0003,
+        "vpMinScore": 5,
+        "vpMinBarGap": 1
+      }
+    },
+    {
+      "id": "5m_poc_only",
+      "tf": "5m",
+      "trades": 9,
+      "tw": 0.3,
+      "ret": -18.85,
+      "calmar": -1.8,
+      "pf": 0.21,
+      "dd": 18.85,
+      "oosN": 6,
+      "oosRet": -14.41,
+      "redMonths": [
+        "2025-12=-3.56%",
+        "2026-02=-0.9%",
+        "2026-04=-14.11%",
+        "2026-05=-3.48%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5
+      }
+    },
+    {
+      "id": "5m_poc_naked",
+      "tf": "5m",
+      "trades": 9,
+      "tw": 0.3,
+      "ret": -18.85,
+      "calmar": -1.8,
+      "pf": 0.21,
+      "dd": 18.85,
+      "oosN": 6,
+      "oosRet": -14.41,
+      "redMonths": [
+        "2025-12=-3.56%",
+        "2026-02=-0.9%",
+        "2026-04=-14.11%",
+        "2026-05=-3.48%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce",
+          "naked_poc"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5
+      }
+    },
+    {
+      "id": "5m_poc_SELL",
+      "tf": "5m",
+      "trades": 9,
+      "tw": 0.3,
+      "ret": -18.85,
+      "calmar": -1.8,
+      "pf": 0.21,
+      "dd": 18.85,
+      "oosN": 6,
+      "oosRet": -14.41,
+      "redMonths": [
+        "2025-12=-3.56%",
+        "2026-02=-0.9%",
+        "2026-04=-14.11%",
+        "2026-05=-3.48%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5,
+        "vpAllowedSides": [
+          "SELL"
+        ]
+      }
+    },
+    {
+      "id": "5m_poc_BUY",
+      "tf": "5m",
+      "trades": 9,
+      "tw": 0.3,
+      "ret": -18.85,
+      "calmar": -1.8,
+      "pf": 0.21,
+      "dd": 18.85,
+      "oosN": 6,
+      "oosRet": -14.41,
+      "redMonths": [
+        "2025-12=-3.56%",
+        "2026-02=-0.9%",
+        "2026-04=-14.11%",
+        "2026-05=-3.48%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5,
+        "vpAllowedSides": [
+          "BUY"
+        ]
+      }
+    },
+    {
+      "id": "5m_poc_htf0003",
+      "tf": "5m",
+      "trades": 6,
+      "tw": 0.2,
+      "ret": -14.39,
+      "calmar": -1.84,
+      "pf": 0.17,
+      "dd": 14.39,
+      "oosN": 4,
+      "oosRet": -13.73,
+      "redMonths": [
+        "2025-12=-3.56%",
+        "2026-04=-10.71%",
+        "2026-05=-3.48%"
+      ],
+      "monthClean": false,
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0003,
+        "vpMinScore": 5
+      }
+    }
+  ]
+}

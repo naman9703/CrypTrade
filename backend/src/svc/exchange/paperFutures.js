@@ -714,6 +714,16 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     state.openOrders = remaining;
   }
 
+  function resetState() {
+    state.equity = 10_000;
+    state.dailyStartEquity = 10_000;
+    state.dayKey = null;
+    state.positions = [];
+    state.trades = [];
+    state.openOrders = [];
+    persistSoon();
+  }
+
   return {
     name,
     supportsAutoTrading: true,
@@ -893,6 +903,13 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
     },
     async close() {
       // no-op
+    },
+    async reset({ confirm }) {
+      if (confirm !== true) return { ok: false, error: "confirm_required" };
+      store.resetFiles();
+      resetState();
+      log?.warn?.("paper_futures_reset", { dir: store.dir });
+      return { ok: true };
     },
     getStatus() {
       return { udf: { ok: true, syncMode: "sim", error: null } };

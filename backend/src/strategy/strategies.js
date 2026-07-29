@@ -13,6 +13,8 @@ import { VOLUME_PROFILE } from "./volumeProfileStrategy.js";
 import { REGIME_ADAPTIVE } from "./regimeAdaptive.js";
 import { SITUATION_INTRADAY } from "./situationIntraday.js";
 import { CRT_TBS } from "./crtTbsIntraday.js";
+import { LIQ_CASCADE } from "./liqCascadeIntraday.js";
+import { MLCTS } from "./mlctsIntraday.js";
 import { SCALP_MR } from "./scalpMr.js";
 import { TOKYO_SESSION } from "./tokyoSessionIntraday.js";
 import { UNIFIED_ELITE } from "./unifiedElite.js";
@@ -268,6 +270,8 @@ export const strategies = {
   REGIME_ADAPTIVE,
   SITUATION_INTRADAY,
   CRT_TBS,
+  LIQ_CASCADE,
+  MLCTS,
   SCALP_MR,
   TOKYO_SESSION,
   UNIFIED_ELITE,

@@ -96,6 +96,63 @@ export function getIntelligenceScore(symbol) {
   };
 }
 
+function normalizeIntelSymbol(symbol) {
+  return String(symbol || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .trim()
+    .toUpperCase();
+}
+
+/**
+ * Symbols for REST pollers — intel candle cache plus bot chart/trade symbol so OI/funding
+ * work before the first bar close (LIQ_CASCADE feed panel, etc.).
+ */
+export function resolveIntelligencePollSymbols() {
+  const syms = new Set(
+    Object.keys(intelligenceCache.candles)
+      .map(normalizeIntelSymbol)
+      .filter((s) => s.length >= 5),
+  );
+
+  const botState = intelligenceAppStateRef?.bot?.getPublicState?.() ?? {};
+  for (const raw of [
+    botState.symbol,
+    botState.uiChartFocusSymbol,
+    ...(Array.isArray(botState.multiCoinSignalTabSymbols) ? botState.multiCoinSignalTabSymbols : []),
+  ]) {
+    const sym = normalizeIntelSymbol(raw);
+    if (sym.length >= 5) syms.add(sym);
+  }
+
+  return [...syms];
+}
+
+/** @type {Record<string, number>} */
+const openInterestFetchedAt = {};
+
+/**
+ * Fetch Binance OI for symbols and merge into `intelligenceCache.openInterest`.
+ * @param {string[]} [symbols]
+ */
+export async function ensureOpenInterestForSymbols(symbols) {
+  const syms = (Array.isArray(symbols) ? symbols : resolveIntelligencePollSymbols())
+    .map(normalizeIntelSymbol)
+    .filter((s) => s.length >= 5);
+  if (!syms.length) return intelligenceCache.openInterest;
+
+  const fresh = await openInterestCollector.collect(syms);
+  for (const [sym, row] of Object.entries(fresh)) {
+    intelligenceCache.openInterest[sym] = row;
+    openInterestFetchedAt[sym] = Date.now();
+  }
+  return intelligenceCache.openInterest;
+}
+
+export function getOpenInterestFetchedAt(symbol) {
+  const sym = normalizeIntelSymbol(symbol);
+  return openInterestFetchedAt[sym] ?? null;
+}
+
 /**
  * Recompute confluence, volatility, composite, persist, and optionally WS broadcast.
  * Used by the periodic poller and by bar-close for fresher UI than 30s-only ticks.
@@ -211,23 +268,32 @@ export function startIntelligenceEngine(wsHub, appState = null) {
 
   void refreshMarketIntelApisFromStore().catch(() => {});
 
-  startLiquidationStream();
+  startLiquidationStream({
+    getTradingMode: () =>
+      intelligenceAppStateRef?.bot?.getPublicState?.()?.tradingMode ||
+      process.env.TRADING_MODE ||
+      "PAPER",
+  });
 
   setTimeout(() => runPoller('fearGreed', async () => {
     intelligenceCache.fearGreed = await fearGreedCollector.collect();
   }, INTERVALS.fearGreed), 1000);
 
   setTimeout(() => runPoller('funding', async () => {
-    const syms = Object.keys(intelligenceCache.candles);
-    if (syms.length)
-      intelligenceCache.funding = await fundingCollector.collect(syms);
+    const syms = resolveIntelligencePollSymbols();
+    if (!syms.length) return;
+    const fresh = await fundingCollector.collect(syms);
+    intelligenceCache.funding = { ...intelligenceCache.funding, ...fresh };
   }, INTERVALS.funding), 3000);
 
   setTimeout(() => runPoller('openInterest', async () => {
-    const syms = Object.keys(intelligenceCache.candles);
-    if (syms.length)
-      intelligenceCache.openInterest = await openInterestCollector.collect(syms);
+    await ensureOpenInterestForSymbols();
   }, INTERVALS.openInterest), 5000);
+
+  setTimeout(() => {
+    const syms = resolveIntelligencePollSymbols();
+    if (syms.length) void ensureOpenInterestForSymbols(syms).catch(() => {});
+  }, 2500);
 
   setTimeout(() => runPoller('options', async () => {
     const syms = Object.keys(intelligenceCache.candles);

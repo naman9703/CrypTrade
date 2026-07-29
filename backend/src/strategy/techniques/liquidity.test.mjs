@@ -742,3 +742,24 @@ test("passesSweepAttemptCap — blocks repeated pool sweeps when gate off", () =
     true,
   );
 });
+
+test("scanSessionLiquidityCycles — HardMinExt rejects shallow session cluster poke", () => {
+  const day = Date.parse("2026-05-21T00:00:00Z");
+  // Session cluster at 100: shallow wick 99.85 (=0.15% ext) then reclaim.
+  const candles = [
+    bar(day, 100.1, 100.2, 99.95, 100.05),
+    bar(day + 900_000, 100.05, 100.1, 99.85, 99.9),
+    bar(day + 1_800_000, 99.9, 100.2, 99.88, 100.15),
+  ];
+  const soft = scanSessionLiquidityCycles(candles, 2, "BUY", 100, 105, "session_low", 0.001, 0, {
+    intradayLiqMinSweepExtensionPct: 0.003,
+    intradayLiqSessionExtremeMinExtensionPct: 0.003,
+  });
+  assert.ok(soft.length >= 1, "soft-pass allows shallow session poke");
+  const hard = scanSessionLiquidityCycles(candles, 2, "BUY", 100, 105, "session_low", 0.001, 0, {
+    intradayLiqMinSweepExtensionPct: 0.003,
+    intradayLiqSessionExtremeMinExtensionPct: 0.003,
+    intradayLiqSessionExtremeHardMinExt: true,
+  });
+  assert.equal(hard.length, 0, "hard min blocks shallow session poke");
+});

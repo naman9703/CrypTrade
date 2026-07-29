@@ -9,11 +9,15 @@
  * @param {object} pre
  * @param {object} [opts]
  */
-export function findOrderBlock(candles, idx, side, pre, opts = {}) {
+/**
+ * @param {number} [minObIdx] reject OB printed before this bar (e.g. CHoCH)
+ */
+export function findOrderBlock(candles, idx, side, pre, opts = {}, minObIdx = 0) {
   const lookback = Math.max(5, Number(opts.intradaySmcObLookback ?? 20));
   const atrMult = Number(opts.intradaySmcObMinDisplacementAtr ?? 1.2);
   const start = Math.max(0, idx - lookback);
   const atr = pre.atrSeries?.[idx] ?? 0;
+  const minIdx = Math.max(0, Math.floor(minObIdx));
 
   for (let j = idx; j >= start + 1; j--) {
     const b = candles[j];
@@ -21,6 +25,7 @@ export function findOrderBlock(candles, idx, side, pre, opts = {}) {
     if (!Number.isFinite(atr) || atr <= 0 || body < atr * atrMult) continue;
 
     const prev = candles[j - 1];
+    if (j - 1 < minIdx) continue;
     if (side === "BUY" && prev.close < prev.open && b.close > b.open) {
       return {
         side: "BUY",

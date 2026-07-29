@@ -38,8 +38,16 @@ export function inSmcKillzone(ts, opts = {}) {
   if (opts.intradaySmcKillzoneEnabled === false) return true;
   const mode = String(opts.intradaySmcKillzoneMode ?? "LONDON_NY").toUpperCase();
   if (mode === "ALL") return true;
+  const h = utcHourFromTs(ts);
+  // Deny Asian range only — keep London/NY/off hours (BTC autopsy: Asia was worst slice).
+  if (mode === "NO_ASIA") {
+    return !inHourWindow(h, PRESETS.ASIA.start, PRESETS.ASIA.end);
+  }
+  // Wider Asia deny matching research autopsy bucket (00–07 UTC).
+  if (mode === "NO_ASIA_WIDE") {
+    return !inHourWindow(h, 0, 7);
+  }
   if (mode === "LONDON_NY") {
-    const h = utcHourFromTs(ts);
     return inHourWindow(h, PRESETS.LONDON.start, PRESETS.LONDON.end)
       || inHourWindow(h, PRESETS.NY.start, PRESETS.NY.end);
   }
@@ -57,7 +65,6 @@ export function inSmcKillzone(ts, opts = {}) {
     end = 17;
   }
 
-  const h = utcHourFromTs(ts);
   return inHourWindow(h, start, end);
 }
 

@@ -33,6 +33,14 @@ test("default mode is LONDON_NY when unset", () => {
   assert.equal(inSmcKillzone(tsAtUtcHour(5), {}), false);
 });
 
-test("utcHourFromTs", () => {
-  assert.equal(utcHourFromTs(tsAtUtcHour(14)), 14);
+test("NO_ASIA denies Asia window only", () => {
+  assert.equal(inSmcKillzone(tsAtUtcHour(2), { intradaySmcKillzoneMode: "NO_ASIA" }), false);
+  assert.equal(inSmcKillzone(tsAtUtcHour(5), { intradaySmcKillzoneMode: "NO_ASIA" }), true);
+  assert.equal(inSmcKillzone(tsAtUtcHour(8), { intradaySmcKillzoneMode: "NO_ASIA" }), true);
+  assert.equal(inSmcKillzone(tsAtUtcHour(18), { intradaySmcKillzoneMode: "NO_ASIA" }), true);
+});
+
+test("NO_ASIA_WIDE denies 00–07 UTC", () => {
+  assert.equal(inSmcKillzone(tsAtUtcHour(6), { intradaySmcKillzoneMode: "NO_ASIA_WIDE" }), false);
+  assert.equal(inSmcKillzone(tsAtUtcHour(7), { intradaySmcKillzoneMode: "NO_ASIA_WIDE" }), true);
 });

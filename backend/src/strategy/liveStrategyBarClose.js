@@ -30,6 +30,8 @@ export const PANEL_MANUAL_STRATEGY_KEYS = new Set([
   "VOLUME_PROFILE",
   "REGIME_ADAPTIVE",
   "CRT_TBS",
+  "LIQ_CASCADE",
+  "MLCTS",
   "SCALP_MR",
   "TOKYO_SESSION",
   "UNIFIED_ELITE",
@@ -54,6 +56,8 @@ export const manualStrategyUsesBarCloseAdapter = manualStrategyUsesLiveBarClose;
 export function manualStrategyBarCloseActive(state, mmUp) {
   if (!state?.running) return false;
   if (!manualStrategyUsesLiveBarClose(state)) return false;
+  // Tick executor owns LIQ_CASCADE when live-tick mode is on — avoid duplicate bar-close orders.
+  if (manualStrategyKey(state) === "LIQ_CASCADE" && state?.liqCascadeLiveTickEnabled === true) return false;
   const mm = String(mmUp ?? state?.marketMode ?? "AUTO").toUpperCase();
   return mm === "SPOT" || mm === "FUTURES" || mm === "AUTO";
 }

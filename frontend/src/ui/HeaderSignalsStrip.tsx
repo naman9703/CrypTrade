@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { deferTask } from "../lib/deferTask";
 import { useAppStore } from "../ws/store";
+import { LiqCascadeFeedHeaderStrip } from "./LiqCascadeFeedStatus";
+import type { LiqCascadeFeedStatus } from "./LiqCascadeFeedStatus";
 
 function StripDot({ ok }: { ok: boolean }) {
   return (
@@ -36,6 +38,12 @@ export function HeaderSignalsStrip() {
     | undefined;
 
   const feedError = useAppStore((s) => s.bot?.feed?.error);
+  const manualStrategy = useAppStore((s) => String(s.bot?.manualStrategy ?? "").toUpperCase());
+  const liqCascadeFeedStatus = useAppStore((s) =>
+    String(s.bot?.manualStrategy ?? "").toUpperCase() === "LIQ_CASCADE"
+      ? (s.bot?.liqCascadeFeedStatus as LiqCascadeFeedStatus | undefined)
+      : undefined,
+  );
   const pendingSt = useAppStore((s) => s.bot?.pendingSupertrendAction) as
     | { side?: string; venue?: string }
     | undefined;
@@ -226,6 +234,12 @@ export function HeaderSignalsStrip() {
           <StripDot ok={feedOk} />
           <span className="truncate">{feedSource}</span>
         </span>
+        {manualStrategy === "LIQ_CASCADE" ? (
+          <>
+            <Sep />
+            <LiqCascadeFeedHeaderStrip status={liqCascadeFeedStatus} />
+          </>
+        ) : null}
         <Sep />
         <span
           className="inline-flex shrink-0 items-center text-slate-700 dark:text-slate-300"

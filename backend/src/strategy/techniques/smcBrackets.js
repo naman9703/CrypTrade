@@ -46,8 +46,23 @@ export function resolveSmcTp2Level(side, entry, opposing, internal, opts = {}) {
 export function buildSmcBrackets(side, entry, setup, candles, idx, opts = {}) {
   const slMode = String(opts.intradaySmcSlMode ?? "sweep").toLowerCase();
   let sweepWick = setup.wick;
+  const bufferPct = Number(opts.intradaySmcPdArraySlBufferPct ?? opts.slBufferPct ?? 0.0015);
 
-  if (slMode === "structure") {
+  if (slMode === "pd_array" || slMode === "ob_edge") {
+    // Guide: stop just beyond the PD array (OB preferred, else FVG) far edge.
+    // Do not widen to the sweep wick — that reintroduces structure/sweep SL geometry.
+    const ob = setup.ob ?? null;
+    const fvg = setup.fvg ?? null;
+    let farEdge = null;
+    if (ob && Number.isFinite(ob.top) && Number.isFinite(ob.bottom)) {
+      farEdge = side === "BUY" ? Number(ob.bottom) : Number(ob.top);
+    } else if (fvg && Number.isFinite(fvg.top) && Number.isFinite(fvg.bottom)) {
+      farEdge = side === "BUY" ? Number(fvg.bottom) : Number(fvg.top);
+    }
+    if (farEdge != null && farEdge > 0) {
+      sweepWick = farEdge;
+    }
+  } else if (slMode === "structure") {
     if (side === "BUY") {
       const sl = lastSwingLowBefore(candles, idx, opts);
       if (sl?.price) sweepWick = Math.min(sweepWick, sl.price);
@@ -67,6 +82,7 @@ export function buildSmcBrackets(side, entry, setup, candles, idx, opts = {}) {
   const br = computeLiquidityBrackets(side, entry, sweepWick, tp2Target, {
     ...opts,
     intradayLiqMinRr: 0,
+    slBufferPct: bufferPct,
   });
   if (!br) return null;
 

@@ -140,6 +140,14 @@ async function materializeCfg(run) {
       const { resolveCrtTbsCfg } = await import("../../strategy/crtTbsIntraday.js");
       cfg = resolveCrtTbsCfg(cfg);
       cfg._intradayEngineMaterialized = true;
+    } else if (stratEarly === "LIQ_CASCADE") {
+      const { resolveLiqCascadeCfg } = await import("../../strategy/liqCascadeIntraday.js");
+      cfg = resolveLiqCascadeCfg(cfg);
+      cfg._intradayEngineMaterialized = true;
+    } else if (stratEarly === "MLCTS") {
+      const { resolveMlctsCfg } = await import("../../strategy/mlctsIntraday.js");
+      cfg = resolveMlctsCfg(cfg);
+      cfg._intradayEngineMaterialized = true;
     } else if (stratEarly === "SCALP_MR") {
       const { resolveScalpMrCfg } = await import("../../strategy/scalpMr.js");
       cfg = resolveScalpMrCfg(cfg);

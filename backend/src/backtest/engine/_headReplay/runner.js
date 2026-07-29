@@ -216,6 +216,12 @@ export async function runSimulation(args) {
   } else if (strategyKey === "CRT_TBS" && cfg && typeof cfg === "object") {
     const { resolveCrtTbsCfg } = await import("../../strategy/crtTbsIntraday.js");
     cfg = resolveCrtTbsCfg(cfg);
+  } else if (strategyKey === "LIQ_CASCADE" && cfg && typeof cfg === "object") {
+    const { resolveLiqCascadeCfg } = await import("../../strategy/liqCascadeIntraday.js");
+    cfg = resolveLiqCascadeCfg(cfg);
+  } else if (strategyKey === "MLCTS" && cfg && typeof cfg === "object") {
+    const { resolveMlctsCfg } = await import("../../strategy/mlctsIntraday.js");
+    cfg = resolveMlctsCfg(cfg);
   } else if (strategyKey === "TOKYO_SESSION" && cfg && typeof cfg === "object") {
     const { resolveTokyoSessionCfg } = await import("../../strategy/tokyoSessionIntraday.js");
     cfg = resolveTokyoSessionCfg(cfg);

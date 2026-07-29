@@ -77,6 +77,9 @@ try {
   } else if (stratEarly === "CRT_TBS") {
     const { resolveCrtTbsCfg } = await import("../src/strategy/crtTbsIntraday.js");
     cfg = resolveCrtTbsCfg(cfg);
+  } else if (stratEarly === "LIQ_CASCADE") {
+    const { resolveLiqCascadeCfg } = await import("../src/strategy/liqCascadeIntraday.js");
+    cfg = resolveLiqCascadeCfg(cfg);
     cfg._intradayEngineMaterialized = true;
   } else if (stratEarly === "SCALP_MR") {
     const { resolveScalpMrCfg } = await import("../src/strategy/scalpMr.js");

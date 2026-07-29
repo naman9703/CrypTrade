@@ -1,0 +1,273 @@
+{
+  "generatedAt": "2026-07-28T17:58:17.801Z",
+  "tape": ".smc-btc-1h15m-phase0-tape.jsonl",
+  "n": 90,
+  "losers": 82,
+  "rankedModes": [
+    {
+      "mode": "wrong_htf_narrative",
+      "n": 57,
+      "pnl": -6171.57,
+      "examples": [
+        {
+          "entryIso": "2025-01-03T21:30:00.000Z",
+          "side": "SELL",
+          "netPnl": -10.41,
+          "mfePct": 0.0048327788011377215,
+          "h1StructureState": "BULLISH",
+          "h1PoiAligned": true,
+          "h1SideAligned": false,
+          "entryZone": "fvg",
+          "utcHour": 21
+        },
+        {
+          "entryIso": "2025-01-04T12:00:00.000Z",
+          "side": "BUY",
+          "netPnl": -13.61,
+          "mfePct": 0.002773754665429863,
+          "h1StructureState": "BEARISH",
+          "h1PoiAligned": false,
+          "h1SideAligned": false,
+          "entryZone": "fvg",
+          "utcHour": 12
+        },
+        {
+          "entryIso": "2025-01-25T11:15:00.000Z",
+          "side": "BUY",
+          "netPnl": -15.61,
+          "mfePct": 0.003473359105887697,
+          "h1StructureState": "BEARISH",
+          "h1PoiAligned": true,
+          "h1SideAligned": false,
+          "entryZone": "fvg",
+          "utcHour": 11
+        }
+      ]
+    },
+    {
+      "mode": "wrong_htf_poi",
+      "n": 13,
+      "pnl": -1966.05,
+      "examples": [
+        {
+          "entryIso": "2025-03-17T07:00:00.000Z",
+          "side": "SELL",
+          "netPnl": -277.08,
+          "mfePct": 0.001062322142779018,
+          "h1StructureState": "BEARISH",
+          "h1PoiAligned": false,
+          "h1SideAligned": true,
+          "entryZone": "fvg",
+          "utcHour": 7
+        },
+        {
+          "entryIso": "2025-05-13T02:00:00.000Z",
+          "side": "SELL",
+          "netPnl": -224.84,
+          "mfePct": 0.005959055381928143,
+          "h1StructureState": "BEARISH",
+          "h1PoiAligned": false,
+          "h1SideAligned": true,
+          "entryZone": "fvg",
+          "utcHour": 2
+        },
+        {
+          "entryIso": "2025-05-29T01:45:00.000Z",
+          "side": "BUY",
+          "netPnl": -212.81,
+          "mfePct": 0.0027048372109529785,
+          "h1StructureState": "BULLISH",
+          "h1PoiAligned": false,
+          "h1SideAligned": true,
+          "entryZone": "ob",
+          "utcHour": 1
+        }
+      ]
+    },
+    {
+      "mode": "session_asia_risk",
+      "n": 2,
+      "pnl": -557.91,
+      "examples": [
+        {
+          "entryIso": "2025-01-01T02:30:00.000Z",
+          "side": "BUY",
+          "netPnl": -325.14,
+          "mfePct": 0.001363922813727715,
+          "h1StructureState": "BULLISH",
+          "h1PoiAligned": true,
+          "h1SideAligned": true,
+          "entryZone": "fvg",
+          "utcHour": 2
+        },
+        {
+          "entryIso": "2025-05-28T05:00:00.000Z",
+          "side": "BUY",
+          "netPnl": -232.77,
+          "mfePct": 0.0018617058533132828,
+          "h1StructureState": "BULLISH",
+          "h1PoiAligned": true,
+          "h1SideAligned": true,
+          "entryZone": "ob",
+          "utcHour": 5
+        }
+      ]
+    },
+    {
+      "mode": "never_green",
+      "n": 1,
+      "pnl": -341.82,
+      "examples": [
+        {
+          "entryIso": "2025-01-14T18:00:00.000Z",
+          "side": "SELL",
+          "netPnl": -341.82,
+          "mfePct": 0.000006811036712033723,
+          "h1StructureState": "BEARISH",
+          "h1PoiAligned": true,
+          "h1SideAligned": true,
+          "entryZone": "fvg",
+          "utcHour": 18
+        }
+      ]
+    },
+    {
+      "mode": "htf_disagree",
+      "n": 1,
+      "pnl": -296.4,
+      "examples": [
+        {
+          "entryIso": "2025-02-14T15:30:00.000Z",
+          "side": "SELL",
+          "netPnl": -296.4,
+          "mfePct": 0.001989483155523249,
+          "h1StructureState": "NEUTRAL",
+          "h1PoiAligned": true,
+          "h1SideAligned": true,
+          "entryZone": "fvg",
+          "utcHour": 15
+        }
+      ]
+    },
+    {
+      "mode": "micro_sweep",
+      "n": 1,
+      "pnl": -150.53,
+      "examples": [
+        {
+          "entryIso": "2025-10-12T14:00:00.000Z",
+          "side": "SELL",
+          "netPnl": -150.53,
+          "mfePct": 0.0017153450537205244,
+          "h1StructureState": "BEARISH",
+          "h1PoiAligned": true,
+          "h1SideAligned": true,
+          "entryZone": "ob",
+          "utcHour": 14
+        }
+      ]
+    },
+    {
+      "mode": "mfe_giveback",
+      "n": 7,
+      "pnl": -29.35,
+      "examples": [
+        {
+          "entryIso": "2025-10-15T05:00:00.000Z",
+          "side": "SELL",
+          "netPnl": -3.6,
+          "mfePct": 0.004923846510728608,
+          "h1StructureState": "BEARISH",
+          "h1PoiAligned": true,
+          "h1SideAligned": true,
+          "entryZone": "fvg",
+          "utcHour": 5
+        },
+        {
+          "entryIso": "2025-11-26T05:15:00.000Z",
+          "side": "SELL",
+          "netPnl": -2.42,
+          "mfePct": 0.013752512344507731,
+          "h1StructureState": "BEARISH",
+          "h1PoiAligned": true,
+          "h1SideAligned": true,
+          "entryZone": "ob",
+          "utcHour": 5
+        },
+        {
+          "entryIso": "2025-12-20T08:00:00.000Z",
+          "side": "SELL",
+          "netPnl": -6.03,
+          "mfePct": 0.005999963911627753,
+          "h1StructureState": "BEARISH",
+          "h1PoiAligned": true,
+          "h1SideAligned": true,
+          "entryZone": "fvg",
+          "utcHour": 8
+        }
+      ]
+    }
+  ],
+  "topFailure": "wrong_htf_narrative",
+  "namedHypothesis": "H1: Require completed-1H narrative soft alignment (block hard opposite bias only).",
+  "winPatterns": {
+    "BUY|h1=BEARISH|poi=Y": {
+      "n": 1,
+      "pnl": 500.60826195696967
+    },
+    "SELL|h1=BULLISH|poi=Y": {
+      "n": 4,
+      "pnl": 562.5895758654632
+    },
+    "BUY|h1=BEARISH|poi=N": {
+      "n": 1,
+      "pnl": 75.22398279183443
+    },
+    "SELL|h1=BEARISH|poi=N": {
+      "n": 1,
+      "pnl": 171.72819744739925
+    },
+    "BUY|h1=BULLISH|poi=N": {
+      "n": 1,
+      "pnl": 57.86872829469145
+    }
+  },
+  "losePatterns": {
+    "BUY|h1=BULLISH|poi=Y": {
+      "n": 3,
+      "pnl": -562.7783767963464
+    },
+    "SELL|h1=BULLISH|poi=Y": {
+      "n": 24,
+      "pnl": -2626.837112513673
+    },
+    "BUY|h1=BEARISH|poi=N": {
+      "n": 5,
+      "pnl": -519.7182006568471
+    },
+    "SELL|h1=BEARISH|poi=Y": {
+      "n": 7,
+      "pnl": -513.422330596458
+    },
+    "BUY|h1=BEARISH|poi=Y": {
+      "n": 25,
+      "pnl": -2495.6880573716294
+    },
+    "SELL|h1=NEUTRAL|poi=Y": {
+      "n": 2,
+      "pnl": -299.81537775570126
+    },
+    "SELL|h1=BEARISH|poi=N": {
+      "n": 8,
+      "pnl": -1215.5826906157733
+    },
+    "SELL|h1=BULLISH|poi=N": {
+      "n": 3,
+      "pnl": -529.3310689819314
+    },
+    "BUY|h1=BULLISH|poi=N": {
+      "n": 5,
+      "pnl": -750.462433820736
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "generatedAt": "2026-07-28T18:32:14.572Z",
+  "window": {
+    "FROM": "2025-01-01",
+    "TO": "2026-06-01",
+    "OOS_END": "2025-10-01"
+  },
+  "results": [
+    {
+      "id": "baseline_practical",
+      "n": 90,
+      "tw": 1.22,
+      "td": 0.17,
+      "wr": 8.9,
+      "ret": -81.46,
+      "pf": 0.14,
+      "dd": 82.03,
+      "oosN": 46,
+      "oosRet": -19.86,
+      "neverGreen": 17,
+      "sec": 818
+    },
+    {
+      "id": "h1_narrative",
+      "n": 27,
+      "tw": 0.37,
+      "td": 0.05,
+      "wr": 7.4,
+      "ret": -36.87,
+      "pf": 0.09,
+      "dd": 40.15,
+      "oosN": 17,
+      "oosRet": -8.23,
+      "neverGreen": 4,
+      "sec": 591
+    },
+    {
+      "id": "h1_narrative_dr",
+      "n": 13,
+      "tw": 0.18,
+      "td": 0.03,
+      "wr": 7.7,
+      "ret": -11.95,
+      "pf": 0.24,
+      "dd": 15.36,
+      "oosN": 9,
+      "oosRet": 0.46,
+      "neverGreen": 1,
+      "sec": 610
+    }
+  ],
+  "verdicts": {
+    "narrative": "NARRATIVE_NCRUSH_STILL_RED",
+    "dealingRange": "NARRATIVE_DR_NCRUSH_STILL_RED"
+  }
+}

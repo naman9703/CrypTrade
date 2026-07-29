@@ -1,0 +1,22 @@
+{
+  "generatedAt": "2026-07-28T17:58:04.254Z",
+  "window": {
+    "FROM": "2025-01-01",
+    "TO": "2026-06-01",
+    "OOS_END": "2025-10-01"
+  },
+  "note": "Practical ICT harvest; invalidation OFF. Not an edge claim.",
+  "summary": {
+    "n": 90,
+    "tw": 1.22,
+    "td": 0.17,
+    "wr": 8.9,
+    "ret": -81.46,
+    "pf": 0.14,
+    "dd": 82.03,
+    "oosN": 46,
+    "oosRet": -19.86,
+    "sampleOk": true
+  },
+  "profile": "HARVEST_PRACTICAL"
+}

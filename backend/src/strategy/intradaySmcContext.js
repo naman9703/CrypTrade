@@ -32,5 +32,8 @@ export function buildSmcEntryContext(setup, opts, pre, idx) {
     adxAtEntry: pre.adxSeries?.[idx] ?? null,
     rrPlanned: setup.liqBrackets?.rr ?? null,
     failReason: meta.failReason ?? null,
+    trendState: meta.trendState ?? null,
+    invalidationEnforced: meta.invalidationEnforced ?? null,
+    pdAfterChoch: meta.pdAfterChoch ?? null,
   };
 }

@@ -273,6 +273,14 @@ export function createHybridExchange({ spot, futures, log }) {
         futures: futures?.getStatus?.() || null,
       };
     },
+    async reset({ confirm } = {}) {
+      if (confirm !== true) return { ok: false, error: "confirm_required" };
+      const out = { ok: true, spot: null, futures: null };
+      if (typeof spot?.reset === "function") out.spot = await spot.reset({ confirm: true });
+      if (typeof futures?.reset === "function") out.futures = await futures.reset({ confirm: true });
+      log?.warn?.("hybrid_paper_reset", { dir: "spot+futures" });
+      return out;
+    },
   };
 }
 

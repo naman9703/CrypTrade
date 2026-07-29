@@ -12,9 +12,9 @@ export const SMC_ICT_GAP_ROWS: SmcGapRow[] = [
   {
     step: 1,
     label: "HTF narrative",
-    ideal: "Dealing-range premium/discount; daily/weekly bias",
-    sweep: "4H EMA21 vs EMA50; premium/discount optional (full preset ON)",
-    codeSupport: "partial",
+    ideal: "Completed 1H structure + dealing-range POI; multi 15m entries while valid",
+    sweep: "4H EMA21 vs EMA50; opt-in 1H narrative (`RequireHtfNarrative` + POI mode)",
+    codeSupport: "yes",
   },
   {
     step: 2,
@@ -40,8 +40,8 @@ export const SMC_ICT_GAP_ROWS: SmcGapRow[] = [
   {
     step: 5,
     label: "CHoCH",
-    ideal: "Required shift after sweep",
-    sweep: "OFF on sweep preset; ON on full profile",
+    ideal: "Required shift after sweep; invalid if immediately reclaimed",
+    sweep: "OFF on sweep preset; ON on full/research; reclaimed-CHoCH abort when enforced",
     codeSupport: "yes",
   },
   {
@@ -54,9 +54,9 @@ export const SMC_ICT_GAP_ROWS: SmcGapRow[] = [
   {
     step: 7,
     label: "PD array",
-    ideal: "FVG/OB from displacement leg only; CE (50%) entry",
-    sweep: "Any active FVG/OB near reclaim when MSS off",
-    codeSupport: "partial",
+    ideal: "FVG/OB from displacement / after CHoCH only; CE (50%) entry",
+    sweep: "Sweep: any recent FVG/OB; CHoCH paths require PD after CHoCH + invalidation",
+    codeSupport: "yes",
   },
   {
     step: 8,
@@ -67,16 +67,16 @@ export const SMC_ICT_GAP_ROWS: SmcGapRow[] = [
   },
   {
     step: 9,
-    label: "Confirm candle",
-    ideal: "Optional ICT confirm (rejection, flip)",
-    sweep: "Optional; OFF on sweep preset",
+    label: "Confirm / invalidation",
+    ideal: "Skip reclaimed CHoCH, blown OB, mitigated FVG, continuation sweeps",
+    sweep: "Enforced when CHoCH required or full/balanced; OFF on bare sweep",
     codeSupport: "yes",
   },
   {
     step: 10,
     label: "Stop loss",
     ideal: "Beyond sweep + invalidation structure",
-    sweep: "Structure mode: min(sweep wick, last swing)",
+    sweep: "Structure mode: min(sweep wick, last swing); pd_array opt-in",
     codeSupport: "yes",
   },
   {
@@ -89,7 +89,7 @@ export const SMC_ICT_GAP_ROWS: SmcGapRow[] = [
   {
     step: 12,
     label: "Trade frequency",
-    ideal: "Low (1–3 quality setups/day)",
+    ideal: "Low (1–3 quality setups/day); skip empty months",
     sweep: "Up to 5/day, per_signal pick mode",
     codeSupport: "yes",
   },

@@ -91,6 +91,26 @@
       "usesIntradayMaxHold": true,
       "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
     },
+    "LIQ_CASCADE": {
+      "label": "Liq Cascade",
+      "category": "intraday",
+      "nativePrefixes": ["liqCascade", "intraday"],
+      "overlays": ["intelligence", "marketDecision"],
+      "prepare": "none",
+      "chartMarkup": "none",
+      "usesIntradayMaxHold": true,
+      "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
+    },
+    "MLCTS": {
+      "label": "MLCTS",
+      "category": "intraday",
+      "nativePrefixes": ["mlcts", "intraday"],
+      "overlays": ["intelligence", "marketDecision"],
+      "prepare": "none",
+      "chartMarkup": "smc_ict",
+      "usesIntradayMaxHold": true,
+      "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
+    },
     "TOKYO_SESSION": {
       "label": "Tokyo Session",
       "category": "intraday",

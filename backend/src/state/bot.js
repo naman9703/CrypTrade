@@ -4,6 +4,7 @@ import {
   updateIntelligenceAdx,
   updateIntelligenceOrderBook,
   computeAndBroadcastIntelligenceSnapshot,
+  ensureOpenInterestForSymbols,
   intelligenceCache,
 } from "../intelligence/index.js";
 import { tradeCloseFeeUsdtFromNotional, tradeCloseFeeRate } from "../lib/tradeCloseFee.js";
@@ -89,6 +90,9 @@ import {
   applyVolumeProfilePatchToState,
   volumeProfilePublicSnapshot,
 } from "../strategy/volumeProfileConfigKeys.js";
+import { buildLiqCascadeFeedStatus } from "../strategy/liqCascadeFeedStatus.js";
+import { buildMlctsLiveSnapshotFromBot } from "../strategy/mlctsIntraday.js";
+import { ensureWeeklyLiquidityForSymbol } from "../strategy/weeklyLiquidityCache.js";
 import {
   manualStrategyUsesLiveBarClose,
   manualStrategyUsesBarCloseAdapter,
@@ -3996,10 +4000,29 @@ export function createBot({
     }
 
     const orderSymbol = String(tradeSymbol || state.symbol).toUpperCase();
+    const primarySymbol = String(state.symbol || "").toUpperCase();
     const _hasCandlesOverride = Array.isArray(candlesOverride) && candlesOverride.length > 0;
-    const candles = _hasCandlesOverride ? candlesOverride : feed.getCandles();
+    let candles = _hasCandlesOverride ? candlesOverride : feed.getCandles();
+    if (
+      !_hasCandlesOverride &&
+      orderSymbol !== primarySymbol &&
+      typeof feed.getCandlesForSymbol === "function"
+    ) {
+      const symCandles = feed.getCandlesForSymbol(orderSymbol);
+      if (Array.isArray(symCandles) && symCandles.length) candles = symCandles;
+    }
     const anchorTsFut = Number(anchorBarTs);
     let last = candles.length ? candles[candles.length - 1] : null;
+    const tickEntryPx = Number(adapterSignal?.liqBrackets?.entryPrice);
+    if (
+      strategyKey === "LIQ_CASCADE" &&
+      Number.isFinite(tickEntryPx) &&
+      tickEntryPx > 0 &&
+      last &&
+      orderSymbol !== primarySymbol
+    ) {
+      last = { ...last, close: tickEntryPx };
+    }
     let anchoredFromBarTs = false;
     if (Number.isFinite(anchorTsFut) && anchorTsFut > 0 && Array.isArray(candles)) {
       const hit = candles.find((c) => Number(c?.ts) === anchorTsFut);
@@ -7680,6 +7703,22 @@ export function createBot({
     state.multiSymbolWatchSignals = next;
   }
 
+  function primeStrategyIntelFeeds(symbol) {
+    const strat = String(state.manualStrategy ?? "").toUpperCase();
+    if (strat !== "LIQ_CASCADE" && strat !== "MLCTS") return;
+    const sym = String(symbol || state.symbol || "BTCUSDT").trim().toUpperCase();
+    if (!sym) return;
+    void ensureOpenInterestForSymbols([sym]).catch(() => {});
+    if (strat === "MLCTS") {
+      void ensureWeeklyLiquidityForSymbol(sym, effectiveMarketFeedKind()).catch(() => {});
+    }
+  }
+
+  /** @deprecated use primeStrategyIntelFeeds */
+  function primeLiqCascadeIntelFeeds(symbol) {
+    primeStrategyIntelFeeds(symbol);
+  }
+
   /** Background warmup so first trade on a symbol doesn't block on exchangeInfo/meta. */
   let warmMetaTimer = null;
   async function warmSymbolMetaForWatchlist(symbols) {
@@ -7886,13 +7925,20 @@ export function createBot({
         return { ...p, markPrice: rowMark, unrealizedPnl: Number.isFinite(apiUpnl) ? apiUpnl : null };
       }
       const isLong = p.side === "BUY";
-      if (p?.symbol !== state.symbol) {
-        return { ...p, markPrice, unrealizedPnl: null };
+      const rowSym = String(p?.symbol || "").toUpperCase();
+      let rowMark = rowSym === symU ? markPrice : null;
+      if (!(Number.isFinite(rowMark) && rowMark > 0) && typeof feed.getCandlesForSymbol === "function") {
+        const pbars = feed.getCandlesForSymbol(rowSym);
+        const px = pbars?.length ? Number(pbars[pbars.length - 1].close) : NaN;
+        if (Number.isFinite(px) && px > 0) rowMark = px;
+      }
+      if (!(Number.isFinite(rowMark) && rowMark > 0)) {
+        return { ...p, markPrice: markPrice, unrealizedPnl: null };
       }
       const uPnl = isLong
-        ? (markPrice - Number(p.entryPrice)) * Number(p.qty)
-        : (Number(p.entryPrice) - markPrice) * Number(p.qty);
-      return { ...p, markPrice, unrealizedPnl: uPnl };
+        ? (rowMark - Number(p.entryPrice)) * Number(p.qty)
+        : (Number(p.entryPrice) - rowMark) * Number(p.qty);
+      return { ...p, markPrice: rowMark, unrealizedPnl: uPnl };
     });
     const unrealizedPnl = positionsMtM.reduce((a, p) => a + Number(p.unrealizedPnl || 0), 0);
     const wBaseTick = walletBaseFromAccount(account);
@@ -9033,6 +9079,27 @@ export function createBot({
           : {},
       uiChartFocusSymbol: state.uiChartFocusSymbol != null ? String(state.uiChartFocusSymbol).toUpperCase() : null,
       multiCoinSignalTabSymbols: resolveMultiCoinUiSymbolCandidates().length ? computeAutoMultiWatchSymbolList() : [],
+      ...(String(state.manualStrategy ?? "").toUpperCase() === "LIQ_CASCADE"
+        ? {
+            liqCascadeLiveTickEnabled: state.liqCascadeLiveTickEnabled === true,
+            liqCascadeFeedStatus: buildLiqCascadeFeedStatus({
+              symbol: state.symbol,
+              feedStatus: feed.getStatus?.() ?? null,
+              marketFeedLive: marketFeedUsesLiveBinance(),
+              liqCascadeLiveTickEnabled: state.liqCascadeLiveTickEnabled === true,
+              botRunning: state.running,
+            }),
+          }
+        : {}),
+      ...(String(state.manualStrategy ?? "").toUpperCase() === "MLCTS"
+        ? {
+            mlctsLayerStatus: (() => {
+              const symU = String(state.symbol || "BTCUSDT").toUpperCase();
+              void ensureWeeklyLiquidityForSymbol(symU, effectiveMarketFeedKind()).catch(() => {});
+              return buildMlctsLiveSnapshotFromBot(state, feed, intelligenceCache);
+            })(),
+          }
+        : {}),
     };
   }
 
@@ -9738,6 +9805,15 @@ export function createBot({
       supertrendSignals: stModelForMarket.signals,
       feedExecutionPause: state.feedExecutionPause,
       originTradingMode: runtimeTradingMode(),
+      ...(String(state.manualStrategy ?? "").toUpperCase() === "MLCTS"
+        ? {
+            mlctsLayerStatus: (() => {
+              const symU = String(state.symbol || "BTCUSDT").toUpperCase();
+              void ensureWeeklyLiquidityForSymbol(symU, effectiveMarketFeedKind()).catch(() => {});
+              return buildMlctsLiveSnapshotFromBot(state, feed, intelligenceCache);
+            })(),
+          }
+        : {}),
     });
 
     /**
@@ -10015,6 +10091,21 @@ export function createBot({
       await exch.markToMarket({
         symbol: state.symbol,
         price: last.close,
+        markPxBySymbol: (() => {
+          const pxMap = {};
+          const symU = String(state.symbol || "").toUpperCase();
+          if (Number.isFinite(Number(last?.close)) && Number(last.close) > 0) pxMap[symU] = Number(last.close);
+          for (const p of _cachedPositions || []) {
+            const ps = String(p?.symbol || "").toUpperCase();
+            if (!ps || pxMap[ps] != null) continue;
+            if (typeof feed.getCandlesForSymbol === "function") {
+              const pbars = feed.getCandlesForSymbol(ps);
+              const px = pbars?.length ? Number(pbars[pbars.length - 1].close) : NaN;
+              if (Number.isFinite(px) && px > 0) pxMap[ps] = px;
+            }
+          }
+          return pxMap;
+        })(),
         trailingStopLoss,
         onTrailingSlAdvance,
         notifyActivity,
@@ -10211,6 +10302,8 @@ export function createBot({
       strategyKey === "INTRADAY_PRO" ||
       strategyKey === "SITUATION_INTRADAY" ||
       strategyKey === "CRT_TBS" ||
+      strategyKey === "LIQ_CASCADE" ||
+      strategyKey === "MLCTS" ||
       strategyKey === "SCALP_MR" ||
       strategyKey === "TOKYO_SESSION"
     ) {
@@ -10219,7 +10312,49 @@ export function createBot({
         .toUpperCase();
       const obSnap = intelligenceCache.orderBook?.[symKey] ?? null;
       const cfgWithBook = obSnap ? { ...state, orderBookSnapshot: obSnap } : state;
-      signal = strat.signal({ candles, indicators, regime, cfg: cfgWithBook, timeframe: state.timeframe });
+      if (strategyKey === "LIQ_CASCADE") {
+        const { getRecentLiquidations } = await import("../intelligence/collectors/liquidationCollector.js");
+        const { aggregateTicksToLiqSeries, optsFromLiqCascadeCfg } = await import(
+          "../strategy/liqCascadeIntraday.js",
+        );
+        const opts = optsFromLiqCascadeCfg(state);
+        const intervalMs =
+          String(opts.liqInterval) === "1min"
+            ? 60_000
+            : String(opts.liqInterval) === "5min"
+              ? 300_000
+              : 300_000;
+        const ticks = getRecentLiquidations(state.symbol, intervalMs * opts.liqLookbackBars);
+        const liqSeries = aggregateTicksToLiqSeries(ticks, intervalMs);
+        signal = strat.signal({
+          candles,
+          cfg: cfgWithBook,
+          liqSeries,
+          oiSeries: [],
+          timeframe: state.timeframe,
+        });
+      } else if (strategyKey === "MLCTS") {
+        const symKey = String(state.symbol || "")
+          .replace(/[^A-Za-z0-9]/g, "")
+          .toUpperCase();
+        const oi = intelligenceCache.openInterest?.[symKey] ?? null;
+        const funding = intelligenceCache.funding?.[symKey] ?? null;
+        signal = strat.signal({
+          candles,
+          cfg: cfgWithBook,
+          // ts: 0 so lookupSeriesAt (rows with ts <= bar open time) accepts the live snapshot.
+          oiSeries: oi
+            ? [{ ts: 0, changePct: oi.change4hPct ?? 0, change4hPct: oi.change4hPct ?? 0 }]
+            : [],
+          fundingSeries: funding
+            ? [{ ts: 0, rate: funding.current ?? 0, current: funding.current ?? 0 }]
+            : [],
+          orderBookImbalance: obSnap?.imbalanceRatio ?? null,
+          timeframe: state.timeframe,
+        });
+      } else {
+        signal = strat.signal({ candles, indicators, regime, cfg: cfgWithBook, timeframe: state.timeframe });
+      }
     } else {
       signal = strat.signal({ candles, indicators, regime });
     }
@@ -11172,10 +11307,47 @@ export function createBot({
       /* ignore */
     }
     syncFeedWatchSymbols();
+    primeStrategyIntelFeeds(state.symbol);
+    if (String(state.manualStrategy ?? "").toUpperCase() === "LIQ_CASCADE" && state.liqCascadeLiveTickEnabled === true) {
+      void import("../svc/liqCascadeLiveEngine.js").then(({ startLiqCascadeLiveEngine }) => {
+        startLiqCascadeLiveEngine({
+          getState: () => ({ ...state, tradingMode: runtimeTradingMode() }),
+          log,
+          onSignal: async (payload) => {
+            const side = payload.action === "BUY" ? "BUY" : "SELL";
+            wsHub?.broadcast?.("liq_cascade_signal", payload);
+            emitActivity(wsHub, {
+              level: "info",
+              msg: `LIQ_CASCADE tick ${side} ${payload.symbol} (${payload.reason})`,
+              category: "liq_cascade",
+              reason: payload.reason,
+              detail: payload,
+            });
+            if (runtimeTradingMode() === "BINANCE_LIVE" && process.env.LIQ_CASCADE_LIVE_ALLOW !== "1") {
+              return;
+            }
+            const res = await trySupertrendFuturesOrder({
+              side,
+              strategyKey: "LIQ_CASCADE",
+              wsHub,
+              dedupeKey: `liq_cascade:${payload.symbol}:${payload.eventTime}:${side}`,
+              tradeSymbol: payload.symbol,
+              adapterSignal: payload,
+            });
+            if (res?.action !== "placed") {
+              log?.info?.("liq_cascade_tick_order_skipped", { reason: res?.reason, side, symbol: payload.symbol });
+            }
+          },
+        });
+      });
+    }
   }
 
   function stop({ wsHub, reason = "user_request", source = "api", detail } = {}) {
     if (!state.running) return;
+    void import("../svc/liqCascadeLiveEngine.js").then(({ stopLiqCascadeLiveEngine }) => {
+      stopLiqCascadeLiveEngine();
+    });
     state.running = false;
     state.paused = false;
     // Stop real-time trailing poll when the bot stops
@@ -11377,6 +11549,7 @@ export function createBot({
         // ignore
         }
       }
+      primeStrategyIntelFeeds(patch.symbol);
     }
     if (patch.symbolMode) {
       const v = String(patch.symbolMode).toUpperCase();
@@ -11581,6 +11754,15 @@ export function createBot({
           if (patch[k] === undefined) state[k] = v;
         }
       }
+      if (String(patch.manualStrategy).toUpperCase() === "LIQ_CASCADE") {
+        primeStrategyIntelFeeds(state.symbol);
+      }
+      if (String(patch.manualStrategy).toUpperCase() === "MLCTS") {
+        primeStrategyIntelFeeds(state.symbol);
+      }
+    }
+    for (const [k, v] of Object.entries(patch)) {
+      if (k.startsWith("mlcts") && v !== undefined) state[k] = v;
     }
     if (patch.marketMode) {
       const v = String(patch.marketMode).toUpperCase();

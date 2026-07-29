@@ -30,7 +30,7 @@ export const STRATEGY_CATEGORIES: StrategyCategory[] = [
   {
     id: "intraday",
     label: "Intraday / ICT",
-    keys: ["SR_INTRADAY", "LIQUIDITY_MAP", "SITUATION_INTRADAY", "CRT_TBS", "SCALP_MR", "TOKYO_SESSION", "REGIME_ADAPTIVE"],
+    keys: ["SR_INTRADAY", "LIQUIDITY_MAP", "SITUATION_INTRADAY", "CRT_TBS", "LIQ_CASCADE", "MLCTS", "SCALP_MR", "TOKYO_SESSION", "REGIME_ADAPTIVE"],
   },
   {
     id: "baselines",

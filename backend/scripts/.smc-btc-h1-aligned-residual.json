@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-07-28T19:52:24.875Z",
+  "results": [
+    {
+      "id": "h1_soft",
+      "n": 42,
+      "tw": 0.57,
+      "td": 0.08,
+      "wr": 16.7,
+      "ret": -46.6,
+      "pf": 0.17,
+      "dd": 49.48,
+      "oosN": 26,
+      "oosRet": -20.69,
+      "neverGreen": 7,
+      "giveback": 13,
+      "sec": 92
+    },
+    {
+      "id": "h1_soft_mss",
+      "n": 49,
+      "tw": 0.66,
+      "td": 0.09,
+      "wr": 14.3,
+      "ret": -48.58,
+      "pf": 0.2,
+      "dd": 51.54,
+      "oosN": 33,
+      "oosRet": -21.62,
+      "neverGreen": 9,
+      "giveback": 16,
+      "sec": 250
+    },
+    {
+      "id": "h1_soft_hold16",
+      "n": 42,
+      "tw": 0.57,
+      "td": 0.08,
+      "wr": 28.6,
+      "ret": -40.14,
+      "pf": 0.22,
+      "dd": 43.25,
+      "oosN": 26,
+      "oosRet": -18.97,
+      "neverGreen": 8,
+      "giveback": 7,
+      "sec": 11
+    },
+    {
+      "id": "h1_soft_be",
+      "n": 42,
+      "tw": 0.57,
+      "td": 0.08,
+      "wr": 16.7,
+      "ret": -46.6,
+      "pf": 0.17,
+      "dd": 49.48,
+      "oosN": 26,
+      "oosRet": -20.69,
+      "neverGreen": 7,
+      "giveback": 13,
+      "sec": 12
+    }
+  ],
+  "verdict": "RESIDUAL_HELPS_STILL_RED"
+}

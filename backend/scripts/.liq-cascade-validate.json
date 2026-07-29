@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-07-28T22:48:26.995Z",
+  "symbol": "BNBUSDT",
+  "results": {
+    "IS": {
+      "label": "IS",
+      "n": 29,
+      "tw": 1.62,
+      "retPct": 1.21,
+      "ddPct": 7.81,
+      "meanR": 0.056,
+      "pfR": 1.078,
+      "calmar": 0.46
+    },
+    "OOS": {
+      "label": "OOS",
+      "n": 56,
+      "tw": 4.69,
+      "retPct": -27.82,
+      "ddPct": 31.23,
+      "meanR": -0.569,
+      "pfR": 0.431,
+      "calmar": -2.43
+    },
+    "FULL": {
+      "label": "FULL",
+      "n": 87,
+      "tw": 2.91,
+      "retPct": -28.45,
+      "ddPct": 34.25,
+      "meanR": -0.371,
+      "pfR": 0.594,
+      "calmar": -1.29
+    }
+  },
+  "walkForward": {
+    "folds": [
+      {
+        "fold": 1,
+        "trainN": 32,
+        "testN": 17,
+        "trainMeanR": -0.056,
+        "testMeanR": -0.624,
+        "degPct": 1014.3
+      },
+      {
+        "fold": 2,
+        "trainN": 49,
+        "testN": 17,
+        "trainMeanR": -0.167,
+        "testMeanR": -0.694,
+        "degPct": 316.4
+      },
+      {
+        "fold": 3,
+        "trainN": 66,
+        "testN": 19,
+        "trainMeanR": -0.343,
+        "testMeanR": -0.505,
+        "degPct": 47.1
+      }
+    ],
+    "avgDegPct": 459.3
+  },
+  "monteCarlo": {
+    "paths": 2000,
+    "p5ReturnPct": -39.210318786083356,
+    "p50ReturnPct": -28.112137798011048,
+    "p95ReturnPct": -11.865454201017023,
+    "meanReturnPct": -27.222719660523154,
+    "medianMaxDdPct": 30.212857758174106,
+    "p95MaxDdPct": 39.96745409210728,
+    "riskOfRuinPct": 0
+  },
+  "gates": {
+    "allPass": false,
+    "gates": {
+      "oosPositive": {
+        "pass": false,
+        "value": -27.82,
+        "threshold": "> 0"
+      },
+      "mcP5Positive": {
+        "pass": false,
+        "value": -39.210318786083356,
+        "threshold": "> 0"
+      },
+      "calmarOver1": {
+        "pass": false,
+        "value": -1.29,
+        "threshold": "> 1"
+      },
+      "wfDegradationOk": {
+        "pass": false,
+        "value": 459.2666666666666,
+        "threshold": "< 35%"
+      }
+    }
+  },
+  "freqOk": true,
+  "verdict": "REJECT"
+}

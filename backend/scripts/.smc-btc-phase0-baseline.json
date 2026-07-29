@@ -1,0 +1,37 @@
+{
+  "generatedAt": "2026-07-28T03:50:00.000Z",
+  "symbol": "BTCUSDT",
+  "tf": "15m",
+  "window": { "from": "2023-01-01", "to": "2026-05-31", "oosEnd": "2024-06-01" },
+  "status": "PARTIAL",
+  "note": "sweep_choch_on hung ~45min CPU on full history; strict ICT profiles deferred (INCLUDE_STRICT=1). BNB presets not BTC-native.",
+  "results": [
+    {
+      "id": "sweep_default",
+      "trades": 393,
+      "tw": 2.21,
+      "wr": 28.8,
+      "ret": -141.9,
+      "oosRet": -46.51,
+      "isRet": -95.39,
+      "calmar": -1,
+      "pf": 0.3,
+      "dd": 142.03,
+      "redYears": ["2022-23=-50.51%", "2023-24=-90.68%", "2024-25=-640.68%"]
+    },
+    {
+      "id": "sweep_kz_london_ny",
+      "trades": 173,
+      "tw": 0.97,
+      "wr": 24.3,
+      "ret": -107.47,
+      "oosRet": -45.28,
+      "isRet": -62.19,
+      "calmar": -1,
+      "pf": 0.25,
+      "dd": 107.62,
+      "redYears": ["2022-23=-20.85%", "2023-24=-52.23%", "2024-25=-80.16%", "2025-26=-199.56%"]
+    }
+  ],
+  "verdict": "REJECT_PHASE0_EDGE — frequency ok on sweep (~2.2/wk) but FULL and OOS deeply negative; killzone filter does not repair expectancy."
+}

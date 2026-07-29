@@ -1,0 +1,69 @@
+{
+  "generatedAt": "2026-07-28T19:45:31.233Z",
+  "window": {
+    "FROM": "2025-01-01",
+    "TO": "2026-06-01",
+    "OOS_END": "2025-10-01"
+  },
+  "results": [
+    {
+      "id": "baseline_practical",
+      "n": 90,
+      "tw": 1.22,
+      "td": 0.17,
+      "wr": 8.9,
+      "ret": -81.46,
+      "pf": 0.14,
+      "dd": 82.03,
+      "oosN": 46,
+      "oosRet": -19.86,
+      "sec": 1069
+    },
+    {
+      "id": "h1_aligned_soft",
+      "n": 42,
+      "tw": 0.57,
+      "td": 0.08,
+      "wr": 16.7,
+      "ret": -46.6,
+      "pf": 0.17,
+      "dd": 49.48,
+      "oosN": 26,
+      "oosRet": -20.69,
+      "sec": 11
+    },
+    {
+      "id": "h1_aligned_strict",
+      "n": 37,
+      "tw": 0.5,
+      "td": 0.07,
+      "wr": 16.2,
+      "ret": -43.87,
+      "pf": 0.15,
+      "dd": 46.84,
+      "oosN": 24,
+      "oosRet": -23.52,
+      "sec": 11
+    },
+    {
+      "id": "h1_aligned_strict_dr",
+      "n": 16,
+      "tw": 0.22,
+      "td": 0.03,
+      "wr": 12.5,
+      "ret": -18.11,
+      "pf": 0.18,
+      "dd": 20.76,
+      "oosN": 10,
+      "oosRet": -4.13,
+      "sec": 10
+    }
+  ],
+  "verdicts": {
+    "baseline_practical": "NO_EDGE",
+    "h1_aligned_soft": "HELPS_STILL_RED",
+    "h1_aligned_strict": "HELPS_STILL_RED",
+    "h1_aligned_strict_dr": "HELPS_STILL_RED"
+  },
+  "best": "h1_aligned_strict_dr"
+}

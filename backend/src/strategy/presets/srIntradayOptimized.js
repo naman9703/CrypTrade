@@ -1286,6 +1286,49 @@ export const INTRADAY_PRO_ICT_FULL_15M = {
   intradayLiqBreakevenAfterPartial: true,
 };
 
+/**
+ * BTC research: 1H narrative-aligned raid → 15m displacement FVG/OB retrace.
+ * 15m CHoCH off (1H is narrative); displacement leg + retrace on; multi entries/day.
+ * Not certified — run research-smc-btc-h1-aligned-ab.mjs before any promote claim.
+ */
+export const INTRADAY_PRO_ICT_H1_ALIGNED_15M = {
+  ...INTRADAY_PRO_ICT_15M,
+  symbol: "BTCUSDT",
+  timeframe: "15m",
+  intradaySmcIctProfile: "h1_aligned",
+  intradaySmcNarrativeAlignedRaid: true,
+  intradaySmcRequireHtfNarrative: true,
+  intradaySmcHtfNarrativeStrictness: "soft",
+  intradaySmcHtfPoiMode: "none",
+  intradaySmcRequireChoch: false,
+  intradaySmcRequireMss: false,
+  intradaySmcRequireBos: false,
+  intradaySmcRequireDisplacementLeg: true,
+  intradaySmcRequireRetrace: true,
+  intradaySmcRequireFvgRetrace: true,
+  intradaySmcDisplacementPdArray: true,
+  intradaySmcEntryZoneMode: "EITHER",
+  intradaySmcFvgEntryMode: "zone",
+  intradaySmcKillzoneMode: "ALL",
+  intradaySmcRequirePremiumDiscount: false,
+  intradaySmcPickMode: "per_signal",
+  intradaySmcOneTradePerDay: false,
+  intradayLiqOnePickPerDay: false,
+  srIntradayMaxTradesPerDay: 12,
+  intradaySmcLookbackBars: 48,
+  intradaySmcMaxBarsAfterReclaim: 20,
+  intradaySmcMinRr: 1.5,
+  intradaySmcSlMode: "pd_array",
+  intradaySmcMaxHoldBars: 16,
+  intradaySmcHtfBiasMode: "parallel",
+  intradaySmcHtfStrictness: "either",
+  intradaySmcRequireHtfBias: true,
+  intradaySmcEnforceInvalidation: false,
+  intradaySmcRequirePdAfterChoch: false,
+  intradayLiqMinSweepExtensionPct: 0.002,
+  intradaySmcMinScore: 6,
+};
+
 /** Higher-frequency fib + liquidity + session + flow (still capped at 3 trades/day). */
 export const INTRADAY_PRO_FIB_INTRADAY_15M = {
   ...INTRADAY_PRO_FIB_15M,

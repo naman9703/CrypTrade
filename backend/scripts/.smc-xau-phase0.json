@@ -1,0 +1,73 @@
+{
+  "generatedAt": "2026-07-28T14:22:28.897Z",
+  "symbol": "XAUUSDT",
+  "window": {
+    "from": "2025-12-15",
+    "to": "2026-07-20",
+    "oosEnd": "2026-04-01"
+  },
+  "historyNote": "XAUUSDT futures ~2025-12-11 onboard; multi-year cert impossible",
+  "verdict": "REJECT_PHASE0",
+  "results": [
+    {
+      "id": "guide_mss_kz",
+      "n": 5,
+      "tw": 0.16,
+      "wr": 40,
+      "ret": 6.1,
+      "pf": 16.81,
+      "dd": 0.22,
+      "oosN": 2,
+      "oosRet": 3.63,
+      "neverGreen": 0
+    },
+    {
+      "id": "sweep_default",
+      "n": 38,
+      "tw": 1.23,
+      "wr": 21.1,
+      "ret": -42.57,
+      "pf": 0.16,
+      "dd": 43.6,
+      "oosN": 21,
+      "oosRet": -21.4,
+      "neverGreen": 7
+    },
+    {
+      "id": "practical_inducement",
+      "n": 13,
+      "tw": 0.42,
+      "wr": 23.1,
+      "ret": -14.63,
+      "pf": 0.11,
+      "dd": 14.63,
+      "oosN": 5,
+      "oosRet": -2.03,
+      "neverGreen": 4
+    },
+    {
+      "id": "research_preset",
+      "n": 13,
+      "tw": 0.42,
+      "wr": 23.1,
+      "ret": -17.37,
+      "pf": 0.18,
+      "dd": 20.2,
+      "oosN": 6,
+      "oosRet": -2.54,
+      "neverGreen": 2
+    },
+    {
+      "id": "practical_ict",
+      "n": 27,
+      "tw": 0.87,
+      "wr": 22.2,
+      "ret": -34.19,
+      "pf": 0.16,
+      "dd": 37.32,
+      "oosN": 12,
+      "oosRet": -8.29,
+      "neverGreen": 6
+    }
+  ]
+}

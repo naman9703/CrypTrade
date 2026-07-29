@@ -1559,7 +1559,14 @@ export function createRouter({ appState }) {
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: "confirm_required" });
     const row = await getEngineForBotRequest(req, undefined);
-    if (row.exchange?.name !== "paper") return res.status(400).json({ ok: false, error: "not_paper_mode" });
+    const exName = String(row.exchange?.name || "").toLowerCase();
+    const mode = String(row.bot?.getPublicState?.()?.tradingMode || row.tradingMode || "").toUpperCase();
+    if (mode !== "PAPER" && exName !== "paper" && exName !== "hybrid") {
+      return res.status(400).json({ ok: false, error: "not_paper_mode" });
+    }
+    if (typeof row.exchange?.reset !== "function") {
+      return res.status(400).json({ ok: false, error: "reset_not_supported" });
+    }
     const out = await row.exchange.reset({ confirm: true });
     return res.json(out);
   });

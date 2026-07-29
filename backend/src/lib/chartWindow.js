@@ -18,3 +18,19 @@ export function maxBarsForHistory(timeframe, hours = 24) {
 
   return Math.min(3000, Math.max(30, bars));
 }
+
+/** Min intraday bars to compute local weekly H/L fallback (14d), capped at Binance REST page size. */
+export function mlctsMinKlineBars(timeframe, days = 14) {
+  const tf = String(timeframe || "15m").toLowerCase().trim();
+  const d = Math.max(7, Number(days) || 14);
+  const totalMinutes = d * 24 * 60;
+  const m = tf.match(/^(\d+)(m|h|d)$/);
+  if (!m) return Math.min(3000, 1500);
+  const n = Number(m[1]);
+  const u = m[2];
+  let minutesPerBar;
+  if (u === "m") minutesPerBar = n;
+  else if (u === "h") minutesPerBar = n * 60;
+  else minutesPerBar = n * 24 * 60;
+  return Math.min(3000, Math.max(672, Math.ceil(totalMinutes / minutesPerBar)));
+}

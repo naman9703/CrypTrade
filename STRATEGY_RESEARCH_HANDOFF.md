@@ -215,6 +215,34 @@ Code remains at `backend/src/strategy/fundingArb/` for future reopen only.
 
 ## Open next steps
 
+0. **BTC SR_INTRADAY SMC/ICT — practical path (2026-07-28).** Guide-full starves
+   (n≈6). Practical ICT (CHoCH+retrace, no MSS/premium): **n=114 / 1.55/wk** on
+   2025→2026 but PF **0.15**. `pd_array` SL = marginal only on n=6 — **not validated**.
+   Inducement opt-in A/B: n=55, ret −95→−59, PF still **0.19** → reject as edge.
+   Decisions: `2026-07-28-smc-ict-guide-month-autopsy.md`,
+   `2026-07-28-smc-btc-practical-inducement.md`. Do not paper-size.
+0a. **SMC prerequisite concepts shipped (2026-07-28).** Invalidation
+   (reclaimed CHoCH / blown OB / mitigated FVG / continuation) + PD-after-CHoCH +
+   frozen ruleset (`docs/SMC_ICT_FROZEN_RULESET.md`). A/B vs legacy practical:
+   −81%→−6% FULL but **n 90→9**, still red (PF 0.57) → `CONCEPT_HELPS_STILL_RED`.
+   Decision: `2026-07-28-smc-prerequisite-invalidation.md`. Correctness defaults
+   stay ON for CHoCH paths; not an edge claim.
+0b. **XAUUSDT SMC/ICT `REJECT_PHASE0` (2026-07-28).** Same profiles on ~7mo gold
+   futures (onboard 2025-12-11). Sweep **−43%/−21%** (n=38); practical ICT
+   **−34%/−8%** (n=27); guide MSS+KZ “green” only at **n=5 / oosN=2** → THIN.
+   Multi-year cert impossible. Decision: `2026-07-28-xau-smc-ict-phase0-reject.md`.
+   Script: `research-smc-xau-phase0.mjs`. Park with XAU VP — do not optimize on this window.
+0c. **BTC SMC 1H→15m reopen (2026-07-28).** Mandate: profitable **and** ≥1 trade/day;
+   do **not** green via N-crush (rule: `.cursor/rules/smc-robustness-not-ncrush.mdc`).
+   Premise: completed-1H narrative/POI as **context** (multi 15m entries while valid),
+   per-trade root-cause autopsy, one ICT concept fix at a time.
+   **Archive** then **H1-aligned raid contract** shipped (`h1_aligned` profile,
+   displacement leg, no mandatory 15m CHoCH). Best: soft+maxHold16 **−40% / PF 0.22 /
+   0.08/day** — still red, freq fail. Decision:
+   `2026-07-28-smc-btc-h1-aligned-still-red.md` (`REJECT_EDGE_H1_ALIGNED_STILL_RED`).
+   Preset: `INTRADAY_PRO_ICT_H1_ALIGNED_15M` research only.
+
+
 1. **BTC VP FREQ** — certified only as a **low-frequency research sleeve**, not a
    standalone stream. Next = either (a) a genuinely new BTC-native positive setup
    family / timeframe with its **own** prepared matrix, or (b) ETH breadth /
@@ -277,6 +305,22 @@ Code remains at `backend/src/strategy/fundingArb/` for future reopen only.
      `2026-07-26-aave-vp-freq-certification-reject.md`.
      Preset: `VOLUME_PROFILE_FREQ_AAVE_15M` (research checkpoint only — **not** a sleeve).
      Harness: `backtest-validate-vp-freq-aave.mjs`. Do not paper-size.
+   - **XAUUSDT VP FREQ `REJECT_PHASE0` (2026-07-27):** User-requested gold futures.
+     Only **~7mo history** (onboard 2025-12-11) — cert impossible. Phase 0: F3=**0 trades**,
+     F0=**−25%** (14n), F2 poc=+0.17% (2n). Full ladder (HTF loosen, no-HTF, minAtr,
+     sellExt, 5m/1h): **no positive variant with n≥3**. Root cause: **coin-strategy misfit**
+     (low-vol gold kills va_rejection with HTF; without HTF bleeds; val_breakdown worst).
+     Decision: `2026-07-27-xau-vp-freq-reject.md`. No preset. Do not paper-size.
+   - **ADA / TRX / LINK:** TRX/LINK remain Phase 0 reject. ADA **year-clean**
+     (2026-07-27): HTF **0.40%** + minAtr **0.8%** + buyBody **0.25** + deny
+     `BUY|bull_trend|tight` / `SELL|weak_bear|vacuum`. FULL **+121% / Calmar 1.15 /
+     OOS +108% / year-clean**. Cert: core 4 gates PASS (WF deg **−67%**, MC p5 +6.9%);
+     **OOS n=22 FAIL** + freq 0.10/wk FAIL → `REJECT_CERTIFICATION` (not sleeve —
+     DOGE/NEAR had OOS≥30). Preset: `VOLUME_PROFILE_FREQ_ADA_15M`.
+     Decisions: `2026-07-27-ada-vp-freq-regime-repair-checkpoint.md`,
+     `2026-07-27-ada-vp-freq-year-clean-sleeve.md`.
+     TRX/LINK: `2026-07-27-ada-trx-link-vp-freq-phase0-reject.md`. MATIC parked.
+     ICP autopsy best: minAtr_008 sticky 2025-26 red.
 6. **LIQ BNB BUYBD + compression + maxAdx50 (2026-07-25) — RESEARCH_SLEEVE, 4-gate PASS.**
    Compression 0.75 fixed regime-red halves; never-green SL autopsy → `intradayLiqMaxAdx: 50`
    clears Calmar 1.17 + MC p5 +8.5% + OOS +64%. FULL **+108% @ 1.7/wk**. Frequency still
@@ -297,3 +341,5 @@ Code remains at `backend/src/strategy/fundingArb/` for future reopen only.
   multiple long backtests at once; they contend for CPU and can't be killed.
 - Run heavy backtests on the small 2026 window first; full 49k-bar history is slow.
 - Some strategies (ENSEMBLE/CONFLUENCE/HTF aggregators) can be O(n²) and hang on 49k bars.
+- SMC `RequireChoch` on BTC multi-year (~120k bars) can burn 45min+ CPU — use
+  `INCLUDE_STRICT=1` only after a structure-scan perf fix.

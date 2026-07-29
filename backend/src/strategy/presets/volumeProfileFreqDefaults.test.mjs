@@ -218,6 +218,23 @@ test("fillVolumeProfileFreqDefaults — resolves AAVE F3 near-clean research sle
   assert.equal(out.vpNoveltyEnabled, false);
 });
 
+test("fillVolumeProfileFreqDefaults — resolves ADA F3 year-clean research sleeve", () => {
+  const out = fillVolumeProfileFreqDefaults({
+    ...VOLUME_PROFILE_FREQ_PORTFOLIO_15M,
+    symbol: "ADAUSDT",
+  });
+  assert.equal(out.vpPlaybook, "FREQ");
+  assert.deepEqual(out.vpAllowedSetups, ["va_rejection"]);
+  assert.equal(out.vpRequireHtfAlign, true);
+  assert.equal(out.vpMinHtfSepPct, 0.004);
+  assert.equal(out.vpMinAtrPct, 0.008);
+  assert.equal(out.vpBuyRejectionMinBody, 0.25);
+  assert.ok(Array.isArray(out.vpPreparedBlockCellKeys));
+  assert.ok(out.vpPreparedBlockCellKeys.includes("BUY|va_rejection|bull_trend|tight"));
+  assert.ok(out.vpPreparedBlockCellKeys.includes("SELL|va_rejection|weak_bear|vacuum"));
+  assert.equal(out.vpNoveltyEnabled, false);
+});
+
 test("volumeProfilePadFromMs — at least 60d for macroPrior60d", async () => {
   const { volumeProfilePadFromMs, volumeProfileHistoryBars } = await import("./volumeProfileOptimized.js");
   const from = Date.parse("2025-06-01T00:00:00.000Z");

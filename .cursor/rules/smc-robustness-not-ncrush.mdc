@@ -1,0 +1,30 @@
+---
+description: BTC SMC/ICT — robust edge without N-crush; ≥1 trade/day + profit
+alwaysApply: true
+---
+
+# SMC robustness (not N-crush)
+
+## Stream scope
+
+- Active SMC/ICT reopen is **BTC-only** until a named multi-coin premise.
+- Named premise: **1H narrative/POI → 15m entry** (context, not one-shot gate).
+
+## Goals (together)
+
+- **Profitable:** OOS > 0, PF ≥ 1, ≥30 OOS trades before promote language.
+- **High frequency:** target **≥1 trade/day** (~5–7/wk). Do not “solve” by starving.
+
+## Hard ban
+
+- **Cutting trades is not the solution.** Reject filters that only drop losers without a named market-structure cause, or that crush N without a clear expectancy lift.
+- Prefer additional SMC/ICT concepts that make the **same class** of setups survive regimes.
+- No filter stacks, calendar cherry-pick, or “green via starvation.”
+- Prerequisite invalidation = correctness infrastructure, **not** the primary return lever.
+
+## Required workflow
+
+1. Per-trade autopsy → accurate root cause
+2. One concept fix
+3. Full sim + holdout
+4. Keep frequency viable; if still deep red at ≥1/day after honest iteration → archive with reason

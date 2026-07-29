@@ -574,6 +574,34 @@ export const VOLUME_PROFILE_FREQ_AAVE_15M = {
   vpNoveltyEnabled: false,
 };
 
+/**
+ * ADA — F3 rej year-clean research sleeve (2026-07-27).
+ * HTF sep 0.40% + minAtr 0.8% + buyBody 0.25 + deny BUY bull_trend|tight and
+ * SELL weak_bear|vacuum. Year-clean FULL ~+121% / OOS ~+108% / Calmar ~1.28.
+ * Not deploy-certified (tw ~0.10, OOS n thin). See
+ * `2026-07-27-ada-vp-freq-year-clean-sleeve.md`.
+ */
+export const VOLUME_PROFILE_FREQ_ADA_15M = {
+  ...VOLUME_PROFILE_BASE,
+  ...VOLUME_PROFILE_FREQ_CORE,
+  symbol: "ADAUSDT",
+  timeframe: "15m",
+  vpAllowedSetups: ["va_rejection"],
+  vpRequireHtfAlign: true,
+  vpMinHtfSepPct: 0.004,
+  vpMinAtrPct: 0.008,
+  vpBuyRejectionMinBody: 0.25,
+  vpMinAdx: 0.0001,
+  vpMinScore: 7,
+  vpMinBarGap: 2,
+  vpMaxTradesPerDay: 2,
+  vpPreparedBlockCellKeys: [
+    "BUY|va_rejection|bull_trend|tight",
+    "SELL|va_rejection|weak_bear|vacuum",
+  ],
+  vpNoveltyEnabled: false,
+};
+
 export function resolveVolumeProfileFreqPreset(symbol) {
   const sym = String(symbol ?? "").toUpperCase();
   if (sym === "ETHUSDT") return VOLUME_PROFILE_FREQ_ETH_15M;
@@ -584,6 +612,7 @@ export function resolveVolumeProfileFreqPreset(symbol) {
   if (sym === "DOGEUSDT") return VOLUME_PROFILE_FREQ_DOGE_15M;
   if (sym === "NEARUSDT") return VOLUME_PROFILE_FREQ_NEAR_15M;
   if (sym === "AAVEUSDT") return VOLUME_PROFILE_FREQ_AAVE_15M;
+  if (sym === "ADAUSDT") return VOLUME_PROFILE_FREQ_ADA_15M;
   return VOLUME_PROFILE_FREQ_15M;
 }
 

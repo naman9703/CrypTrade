@@ -68,6 +68,7 @@ export const INTRADAY_PANEL_OVERRIDE_KEYS = [
   "intradaySmcHtfStrictness",
   "intradaySmcHtfBiasMode",
   "intradaySmcRequireHtfBias",
+  "intradaySmcDenyHtfDisagreement",
   "intradaySmcRequirePremiumDiscount",
   "intradaySmcPremiumDiscountOte",
   "intradaySmcDealingRangeLookback",
@@ -282,7 +283,12 @@ export function materializeSmcIctOpts(bot = {}) {
     })(),
     intradaySmcMinScore: Math.max(1, Math.min(20, Math.round(Number(bot.intradaySmcMinScore ?? 7)))),
     intradaySmcRequireHtfBias: bot.intradaySmcRequireHtfBias !== false,
-    intradaySmcSlMode: bot.intradaySmcSlMode === "structure" ? "structure" : "sweep",
+    intradaySmcDenyHtfDisagreement: bot.intradaySmcDenyHtfDisagreement === true,
+    intradaySmcSlMode: (() => {
+      const m = String(bot.intradaySmcSlMode ?? "sweep").toLowerCase();
+      if (m === "structure" || m === "pd_array" || m === "ob_edge") return m;
+      return "sweep";
+    })(),
     intradaySmcMaxTpRr: Math.max(0, Math.min(20, Number(bot.intradaySmcMaxTpRr ?? 5))),
     intradaySmcMaxHoldBars: Math.max(0, Math.min(2000, Math.round(Number(bot.intradaySmcMaxHoldBars ?? 48)))),
   };

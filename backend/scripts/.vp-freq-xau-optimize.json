@@ -1,0 +1,1143 @@
+{
+  "symbol": "XAUUSDT",
+  "window": {
+    "from": "2025-11-01",
+    "to": "2026-05-31"
+  },
+  "results": [
+    {
+      "id": "F0_open",
+      "over": {
+        "vpAllowedSetups": [
+          "lvn_vacuum",
+          "vah_breakout",
+          "val_breakdown",
+          "poc_bounce",
+          "va_rejection",
+          "naked_poc"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0015,
+        "vpMinScore": 7
+      },
+      "trades": 13,
+      "tw": 0.43,
+      "ret": -22,
+      "calmar": -1.65,
+      "dd": 22,
+      "pf": 0.23,
+      "oosN": 9,
+      "oosRet": -16.85,
+      "months": {
+        "2026-01": {
+          "n": 1,
+          "start": 100,
+          "end": 97.19324520833334,
+          "retPct": -2.81
+        },
+        "2026-02": {
+          "n": 3,
+          "start": 97.19324520833334,
+          "end": 94.85173304194824,
+          "retPct": -2.41
+        },
+        "2026-03": {
+          "n": 2,
+          "start": 94.85173304194824,
+          "end": 92.36505946804938,
+          "retPct": -2.62
+        },
+        "2026-04": {
+          "n": 4,
+          "start": 92.36505946804938,
+          "end": 81.11248557166824,
+          "retPct": -12.18
+        },
+        "2026-05": {
+          "n": 3,
+          "start": 81.11248557166824,
+          "end": 78.00075214445873,
+          "retPct": -3.84
+        }
+      },
+      "redMonths": [
+        "2026-01=-2.81%",
+        "2026-02=-2.41%",
+        "2026-03=-2.62%",
+        "2026-04=-12.18%",
+        "2026-05=-3.84%"
+      ],
+      "monthClean": false
+    },
+    {
+      "id": "F3_htf0015",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0015,
+        "vpMinScore": 7
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "F3_noHtf",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 7
+      },
+      "trades": 23,
+      "tw": 0.76,
+      "ret": -36.13,
+      "calmar": -1.38,
+      "dd": 40.54,
+      "pf": 0.36,
+      "oosN": 7,
+      "oosRet": -3.11,
+      "months": {
+        "2025-12": {
+          "n": 1,
+          "start": 100,
+          "end": 104.93024686455283,
+          "retPct": 4.93
+        },
+        "2026-01": {
+          "n": 7,
+          "start": 104.93024686455283,
+          "end": 80.43638962404245,
+          "retPct": -23.34
+        },
+        "2026-02": {
+          "n": 8,
+          "start": 80.43638962404245,
+          "end": 66.98206038929631,
+          "retPct": -16.73
+        },
+        "2026-03": {
+          "n": 4,
+          "start": 66.98206038929631,
+          "end": 67.60432510226804,
+          "retPct": 0.93
+        },
+        "2026-04": {
+          "n": 2,
+          "start": 67.60432510226804,
+          "end": 62.39669264355682,
+          "retPct": -7.7
+        },
+        "2026-05": {
+          "n": 1,
+          "start": 62.39669264355682,
+          "end": 63.87012501865949,
+          "retPct": 2.36
+        }
+      },
+      "redMonths": [
+        "2026-01=-23.34%",
+        "2026-02=-16.73%",
+        "2026-04=-7.7%"
+      ],
+      "monthClean": false
+    },
+    {
+      "id": "F3_htf0005",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 7
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "F3_htf0003",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0003,
+        "vpMinScore": 7
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "F3_score5",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 5
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "F3_score5_noHtf",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5
+      },
+      "trades": 23,
+      "tw": 0.76,
+      "ret": -36.13,
+      "calmar": -1.38,
+      "dd": 40.54,
+      "pf": 0.36,
+      "oosN": 7,
+      "oosRet": -3.11,
+      "months": {
+        "2025-12": {
+          "n": 1,
+          "start": 100,
+          "end": 104.93024686455283,
+          "retPct": 4.93
+        },
+        "2026-01": {
+          "n": 7,
+          "start": 104.93024686455283,
+          "end": 80.43638962404245,
+          "retPct": -23.34
+        },
+        "2026-02": {
+          "n": 8,
+          "start": 80.43638962404245,
+          "end": 66.98206038929631,
+          "retPct": -16.73
+        },
+        "2026-03": {
+          "n": 4,
+          "start": 66.98206038929631,
+          "end": 67.60432510226804,
+          "retPct": 0.93
+        },
+        "2026-04": {
+          "n": 2,
+          "start": 67.60432510226804,
+          "end": 62.39669264355682,
+          "retPct": -7.7
+        },
+        "2026-05": {
+          "n": 1,
+          "start": 62.39669264355682,
+          "end": 63.87012501865949,
+          "retPct": 2.36
+        }
+      },
+      "redMonths": [
+        "2026-01=-23.34%",
+        "2026-02=-16.73%",
+        "2026-04=-7.7%"
+      ],
+      "monthClean": false
+    },
+    {
+      "id": "F1_val_rej",
+      "over": {
+        "vpAllowedSetups": [
+          "val_breakdown",
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6
+      },
+      "trades": 8,
+      "tw": 0.27,
+      "ret": -17.14,
+      "calmar": -1.58,
+      "dd": 18.39,
+      "pf": 0.22,
+      "oosN": 6,
+      "oosRet": -11.28,
+      "months": {
+        "2026-01": {
+          "n": 1,
+          "start": 100,
+          "end": 96.87157063014273,
+          "retPct": -3.13
+        },
+        "2026-02": {
+          "n": 1,
+          "start": 96.87157063014273,
+          "end": 94.14458485751388,
+          "retPct": -2.82
+        },
+        "2026-03": {
+          "n": 1,
+          "start": 94.14458485751388,
+          "end": 91.1770822299993,
+          "retPct": -3.15
+        },
+        "2026-04": {
+          "n": 3,
+          "start": 91.1770822299993,
+          "end": 81.61478442404025,
+          "retPct": -10.49
+        },
+        "2026-05": {
+          "n": 2,
+          "start": 81.61478442404025,
+          "end": 82.86004504511871,
+          "retPct": 1.53
+        }
+      },
+      "redMonths": [
+        "2026-01=-3.13%",
+        "2026-02=-2.82%",
+        "2026-03=-3.15%",
+        "2026-04=-10.49%"
+      ],
+      "monthClean": false
+    },
+    {
+      "id": "poc_rej",
+      "over": {
+        "vpAllowedSetups": [
+          "poc_bounce",
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6
+      },
+      "trades": 2,
+      "tw": 0.07,
+      "ret": 0.17,
+      "calmar": 0.1,
+      "dd": 3.21,
+      "pf": 1.05,
+      "oosN": 2,
+      "oosRet": 0.17,
+      "months": {
+        "2026-05": {
+          "n": 2,
+          "start": 100,
+          "end": 100.17337158790718,
+          "retPct": 0.17
+        }
+      },
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "vac_rej",
+      "over": {
+        "vpAllowedSetups": [
+          "lvn_vacuum",
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "F3_minAtr002",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6,
+        "vpMinAtrPct": 0.002
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "F3_minAtr003",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6,
+        "vpMinAtrPct": 0.003
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "F3_sellExt",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6,
+        "vpRejectionSellBlockExtendedDown": true,
+        "vpRejectionExtendedPriorPct": 0.03
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "F3_buyBody15",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6,
+        "vpBuyRejectionMinBody": 0.15
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "F3_drop_vacuum",
+      "over": {
+        "vpAllowedSetups": [
+          "vah_breakout",
+          "val_breakdown",
+          "poc_bounce",
+          "va_rejection",
+          "naked_poc"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6
+      },
+      "trades": 16,
+      "tw": 0.53,
+      "ret": -22.35,
+      "calmar": -1.57,
+      "dd": 23.51,
+      "pf": 0.32,
+      "oosN": 11,
+      "oosRet": -14.23,
+      "months": {
+        "2026-01": {
+          "n": 2,
+          "start": 100,
+          "end": 94.15262317971847,
+          "retPct": -5.85
+        },
+        "2026-02": {
+          "n": 3,
+          "start": 94.15262317971847,
+          "end": 91.88436356764534,
+          "retPct": -2.41
+        },
+        "2026-03": {
+          "n": 2,
+          "start": 91.88436356764534,
+          "end": 89.47548382016481,
+          "retPct": -2.62
+        },
+        "2026-04": {
+          "n": 4,
+          "start": 89.47548382016481,
+          "end": 78.57537591730787,
+          "retPct": -12.18
+        },
+        "2026-05": {
+          "n": 5,
+          "start": 78.57537591730787,
+          "end": 77.6533341327121,
+          "retPct": -1.17
+        }
+      },
+      "redMonths": [
+        "2026-01=-5.85%",
+        "2026-02=-2.41%",
+        "2026-03=-2.62%",
+        "2026-04=-12.18%",
+        "2026-05=-1.17%"
+      ],
+      "monthClean": false
+    },
+    {
+      "id": "F3_htf0015_atr003",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0015,
+        "vpMinScore": 6,
+        "vpMinAtrPct": 0.003
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "F3_htf0015_sellExt",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0015,
+        "vpMinScore": 6,
+        "vpRejectionSellBlockExtendedDown": true,
+        "vpRejectionExtendedPriorPct": 0.03
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "F3_htf0015_dropBuy",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0015,
+        "vpMinScore": 6,
+        "vpAllowedSides": [
+          "SELL"
+        ]
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    },
+    {
+      "id": "F3_htf0015_dropSell",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0015,
+        "vpMinScore": 6,
+        "vpAllowedSides": [
+          "BUY"
+        ]
+      },
+      "trades": 0,
+      "tw": 0,
+      "ret": 0,
+      "calmar": 0,
+      "dd": 0,
+      "pf": 0,
+      "oosN": 0,
+      "oosRet": 0,
+      "months": {},
+      "redMonths": [],
+      "monthClean": true
+    }
+  ],
+  "ranked": [
+    {
+      "id": "F3_noHtf",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 7
+      },
+      "trades": 23,
+      "tw": 0.76,
+      "ret": -36.13,
+      "calmar": -1.38,
+      "dd": 40.54,
+      "pf": 0.36,
+      "oosN": 7,
+      "oosRet": -3.11,
+      "months": {
+        "2025-12": {
+          "n": 1,
+          "start": 100,
+          "end": 104.93024686455283,
+          "retPct": 4.93
+        },
+        "2026-01": {
+          "n": 7,
+          "start": 104.93024686455283,
+          "end": 80.43638962404245,
+          "retPct": -23.34
+        },
+        "2026-02": {
+          "n": 8,
+          "start": 80.43638962404245,
+          "end": 66.98206038929631,
+          "retPct": -16.73
+        },
+        "2026-03": {
+          "n": 4,
+          "start": 66.98206038929631,
+          "end": 67.60432510226804,
+          "retPct": 0.93
+        },
+        "2026-04": {
+          "n": 2,
+          "start": 67.60432510226804,
+          "end": 62.39669264355682,
+          "retPct": -7.7
+        },
+        "2026-05": {
+          "n": 1,
+          "start": 62.39669264355682,
+          "end": 63.87012501865949,
+          "retPct": 2.36
+        }
+      },
+      "redMonths": [
+        "2026-01=-23.34%",
+        "2026-02=-16.73%",
+        "2026-04=-7.7%"
+      ],
+      "monthClean": false
+    },
+    {
+      "id": "F3_score5_noHtf",
+      "over": {
+        "vpAllowedSetups": [
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": false,
+        "vpMinScore": 5
+      },
+      "trades": 23,
+      "tw": 0.76,
+      "ret": -36.13,
+      "calmar": -1.38,
+      "dd": 40.54,
+      "pf": 0.36,
+      "oosN": 7,
+      "oosRet": -3.11,
+      "months": {
+        "2025-12": {
+          "n": 1,
+          "start": 100,
+          "end": 104.93024686455283,
+          "retPct": 4.93
+        },
+        "2026-01": {
+          "n": 7,
+          "start": 104.93024686455283,
+          "end": 80.43638962404245,
+          "retPct": -23.34
+        },
+        "2026-02": {
+          "n": 8,
+          "start": 80.43638962404245,
+          "end": 66.98206038929631,
+          "retPct": -16.73
+        },
+        "2026-03": {
+          "n": 4,
+          "start": 66.98206038929631,
+          "end": 67.60432510226804,
+          "retPct": 0.93
+        },
+        "2026-04": {
+          "n": 2,
+          "start": 67.60432510226804,
+          "end": 62.39669264355682,
+          "retPct": -7.7
+        },
+        "2026-05": {
+          "n": 1,
+          "start": 62.39669264355682,
+          "end": 63.87012501865949,
+          "retPct": 2.36
+        }
+      },
+      "redMonths": [
+        "2026-01=-23.34%",
+        "2026-02=-16.73%",
+        "2026-04=-7.7%"
+      ],
+      "monthClean": false
+    },
+    {
+      "id": "F3_drop_vacuum",
+      "over": {
+        "vpAllowedSetups": [
+          "vah_breakout",
+          "val_breakdown",
+          "poc_bounce",
+          "va_rejection",
+          "naked_poc"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6
+      },
+      "trades": 16,
+      "tw": 0.53,
+      "ret": -22.35,
+      "calmar": -1.57,
+      "dd": 23.51,
+      "pf": 0.32,
+      "oosN": 11,
+      "oosRet": -14.23,
+      "months": {
+        "2026-01": {
+          "n": 2,
+          "start": 100,
+          "end": 94.15262317971847,
+          "retPct": -5.85
+        },
+        "2026-02": {
+          "n": 3,
+          "start": 94.15262317971847,
+          "end": 91.88436356764534,
+          "retPct": -2.41
+        },
+        "2026-03": {
+          "n": 2,
+          "start": 91.88436356764534,
+          "end": 89.47548382016481,
+          "retPct": -2.62
+        },
+        "2026-04": {
+          "n": 4,
+          "start": 89.47548382016481,
+          "end": 78.57537591730787,
+          "retPct": -12.18
+        },
+        "2026-05": {
+          "n": 5,
+          "start": 78.57537591730787,
+          "end": 77.6533341327121,
+          "retPct": -1.17
+        }
+      },
+      "redMonths": [
+        "2026-01=-5.85%",
+        "2026-02=-2.41%",
+        "2026-03=-2.62%",
+        "2026-04=-12.18%",
+        "2026-05=-1.17%"
+      ],
+      "monthClean": false
+    },
+    {
+      "id": "F1_val_rej",
+      "over": {
+        "vpAllowedSetups": [
+          "val_breakdown",
+          "va_rejection"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0005,
+        "vpMinScore": 6
+      },
+      "trades": 8,
+      "tw": 0.27,
+      "ret": -17.14,
+      "calmar": -1.58,
+      "dd": 18.39,
+      "pf": 0.22,
+      "oosN": 6,
+      "oosRet": -11.28,
+      "months": {
+        "2026-01": {
+          "n": 1,
+          "start": 100,
+          "end": 96.87157063014273,
+          "retPct": -3.13
+        },
+        "2026-02": {
+          "n": 1,
+          "start": 96.87157063014273,
+          "end": 94.14458485751388,
+          "retPct": -2.82
+        },
+        "2026-03": {
+          "n": 1,
+          "start": 94.14458485751388,
+          "end": 91.1770822299993,
+          "retPct": -3.15
+        },
+        "2026-04": {
+          "n": 3,
+          "start": 91.1770822299993,
+          "end": 81.61478442404025,
+          "retPct": -10.49
+        },
+        "2026-05": {
+          "n": 2,
+          "start": 81.61478442404025,
+          "end": 82.86004504511871,
+          "retPct": 1.53
+        }
+      },
+      "redMonths": [
+        "2026-01=-3.13%",
+        "2026-02=-2.82%",
+        "2026-03=-3.15%",
+        "2026-04=-10.49%"
+      ],
+      "monthClean": false
+    },
+    {
+      "id": "F0_open",
+      "over": {
+        "vpAllowedSetups": [
+          "lvn_vacuum",
+          "vah_breakout",
+          "val_breakdown",
+          "poc_bounce",
+          "va_rejection",
+          "naked_poc"
+        ],
+        "vpRequireHtfAlign": true,
+        "vpMinHtfSepPct": 0.0015,
+        "vpMinScore": 7
+      },
+      "trades": 13,
+      "tw": 0.43,
+      "ret": -22,
+      "calmar": -1.65,
+      "dd": 22,
+      "pf": 0.23,
+      "oosN": 9,
+      "oosRet": -16.85,
+      "months": {
+        "2026-01": {
+          "n": 1,
+          "start": 100,
+          "end": 97.19324520833334,
+          "retPct": -2.81
+        },
+        "2026-02": {
+          "n": 3,
+          "start": 97.19324520833334,
+          "end": 94.85173304194824,
+          "retPct": -2.41
+        },
+        "2026-03": {
+          "n": 2,
+          "start": 94.85173304194824,
+          "end": 92.36505946804938,
+          "retPct": -2.62
+        },
+        "2026-04": {
+          "n": 4,
+          "start": 92.36505946804938,
+          "end": 81.11248557166824,
+          "retPct": -12.18
+        },
+        "2026-05": {
+          "n": 3,
+          "start": 81.11248557166824,
+          "end": 78.00075214445873,
+          "retPct": -3.84
+        }
+      },
+      "redMonths": [
+        "2026-01=-2.81%",
+        "2026-02=-2.41%",
+        "2026-03=-2.62%",
+        "2026-04=-12.18%",
+        "2026-05=-3.84%"
+      ],
+      "monthClean": false
+    }
+  ],
+  "autopsyId": "F0_open",
+  "autopsy": {
+    "rows": 13,
+    "bySetup": {
+      "vah_breakout": [
+        {
+          "month": "2026-01",
+          "side": "BUY",
+          "setup": "vah_breakout",
+          "pnl": -2.806754791666665,
+          "win": false,
+          "cell": "BUY|vah_breakout|bull_chop|structured",
+          "macro": "bull_chop",
+          "isVacuum": false,
+          "htfSep": 0.0018599544157521138,
+          "atr": 0.001343233892084807,
+          "prior20d": 0.023002528415572633
+        },
+        {
+          "month": "2026-02",
+          "side": "BUY",
+          "setup": "vah_breakout",
+          "pnl": -2.7310801763300407,
+          "win": false,
+          "cell": "BUY|vah_breakout|bull_chop|vacuum",
+          "macro": "bull_chop",
+          "isVacuum": true,
+          "htfSep": 0.0045052215217571785,
+          "atr": 0.004593274814611757,
+          "prior20d": 0.0649821208531061
+        },
+        {
+          "month": "2026-02",
+          "side": "BUY",
+          "setup": "vah_breakout",
+          "pnl": 3.048727745028623,
+          "win": true,
+          "cell": "BUY|vah_breakout|bull_chop|vacuum",
+          "macro": "bull_chop",
+          "isVacuum": true,
+          "htfSep": 0.0051474949509089365,
+          "atr": 0.0006343169342353969,
+          "prior20d": 0.07926582949278736
+        },
+        {
+          "month": "2026-03",
+          "side": "BUY",
+          "setup": "vah_breakout",
+          "pnl": 0.5194936553897649,
+          "win": true,
+          "cell": "BUY|vah_breakout|bull_trend|structured",
+          "macro": "bull_trend",
+          "isVacuum": false,
+          "htfSep": 0.0036046188835090216,
+          "atr": 0.0010335107374171847,
+          "prior20d": 0.057994368084749996
+        },
+        {
+          "month": "2026-04",
+          "side": "BUY",
+          "setup": "vah_breakout",
+          "pnl": -1.6919300332746527,
+          "win": false,
+          "cell": "BUY|vah_breakout|bull_chop|structured",
+          "macro": "bull_chop",
+          "isVacuum": false,
+          "htfSep": 0.002848714786788436,
+          "atr": 0.0015937430738606928,
+          "prior20d": 0.05845975392150128
+        }
+      ],
+      "val_breakdown": [
+        {
+          "month": "2026-02",
+          "side": "SELL",
+          "setup": "val_breakdown",
+          "pnl": -2.6591597350836897,
+          "win": false,
+          "cell": "SELL|val_breakdown|bull_chop|vacuum",
+          "macro": "bull_chop",
+          "isVacuum": true,
+          "htfSep": 0.00875188087324985,
+          "atr": 0.006052003023431597,
+          "prior20d": 0.027517908169256654
+        },
+        {
+          "month": "2026-03",
+          "side": "SELL",
+          "setup": "val_breakdown",
+          "pnl": -3.0061672292886152,
+          "win": false,
+          "cell": "SELL|val_breakdown|bull_trend|vacuum",
+          "macro": "bull_trend",
+          "isVacuum": true,
+          "htfSep": 0.009521221903304795,
+          "atr": 0.0031484498970214695,
+          "prior20d": 0.01993320686111786
+        },
+        {
+          "month": "2026-04",
+          "side": "SELL",
+          "setup": "val_breakdown",
+          "pnl": -3.020381423315913,
+          "win": false,
+          "cell": "SELL|val_breakdown|bull_chop|structured",
+          "macro": "bull_chop",
+          "isVacuum": false,
+          "htfSep": 0.001955047881305834,
+          "atr": 0.00413118514591153,
+          "prior20d": -0.07620538409560718
+        },
+        {
+          "month": "2026-04",
+          "side": "SELL",
+          "setup": "val_breakdown",
+          "pnl": -3.5085209188584203,
+          "win": false,
+          "cell": "SELL|val_breakdown|bull_chop|structured",
+          "macro": "bull_chop",
+          "isVacuum": false,
+          "htfSep": 0.0015768784846700622,
+          "atr": 0.0026290034443272998,
+          "prior20d": 0.06970690975321339
+        },
+        {
+          "month": "2026-04",
+          "side": "SELL",
+          "setup": "val_breakdown",
+          "pnl": -3.0317415209321408,
+          "win": false,
+          "cell": "SELL|val_breakdown|bull_chop|structured",
+          "macro": "bull_chop",
+          "isVacuum": false,
+          "htfSep": 0.0027920786244569856,
+          "atr": 0.001376824966666915,
+          "prior20d": 0.03199239715719804
+        },
+        {
+          "month": "2026-05",
+          "side": "SELL",
+          "setup": "val_breakdown",
+          "pnl": -3.2523594314361075,
+          "win": false,
+          "cell": "SELL|val_breakdown|weak_bear|tight",
+          "macro": "weak_bear",
+          "isVacuum": false,
+          "htfSep": 0.003939009526078553,
+          "atr": 0.0017518748622651855,
+          "prior20d": -0.02920805879645334
+        }
+      ],
+      "poc_bounce": [
+        {
+          "month": "2026-05",
+          "side": "SELL",
+          "setup": "poc_bounce",
+          "pnl": 2.8395378691776605,
+          "win": true,
+          "cell": "SELL|poc_bounce|bull_chop|tight",
+          "macro": "bull_chop",
+          "isVacuum": false,
+          "htfSep": 0.0015906225524738556,
+          "atr": 0.0026413661391379998,
+          "prior20d": -0.010042504413598111
+        },
+        {
+          "month": "2026-05",
+          "side": "BUY",
+          "setup": "poc_bounce",
+          "pnl": -2.6989118649510666,
+          "win": false,
+          "cell": "BUY|poc_bounce|bull_chop|tight",
+          "macro": "bull_chop",
+          "isVacuum": false,
+          "htfSep": 0.001829703668607851,
+          "atr": 0.002330552405661905,
+          "prior20d": -0.0050346433916889114
+        }
+      ]
+    }
+  }
+}

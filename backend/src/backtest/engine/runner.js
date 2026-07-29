@@ -267,6 +267,12 @@ export async function runSimulation(args) {
   } else if (strategyKey === "CRT_TBS" && cfg && typeof cfg === "object") {
     const { resolveCrtTbsCfg } = await import("../../strategy/crtTbsIntraday.js");
     cfg = resolveCrtTbsCfg(cfg);
+  } else if (strategyKey === "LIQ_CASCADE" && cfg && typeof cfg === "object") {
+    const { resolveLiqCascadeCfg } = await import("../../strategy/liqCascadeIntraday.js");
+    cfg = resolveLiqCascadeCfg(cfg);
+  } else if (strategyKey === "MLCTS" && cfg && typeof cfg === "object") {
+    const { resolveMlctsCfg } = await import("../../strategy/mlctsIntraday.js");
+    cfg = resolveMlctsCfg(cfg);
   } else if (strategyKey === "SCALP_MR" && cfg && typeof cfg === "object") {
     const { resolveScalpMrCfg } = await import("../../strategy/scalpMr.js");
     cfg = resolveScalpMrCfg(cfg);
@@ -1813,8 +1819,16 @@ export async function runSimulation(args) {
               techniques: barSignal.techniques ?? null,
               tokyoMeta: barSignal.liqBrackets.tokyoMeta ?? null,
               dynamicExitPolicy: barSignal.liqBrackets.mapMeta?.dynamicExitPolicy ?? null,
+              mlcts: barSignal.mlctsContext ?? null,
+              mlctsLayers: barSignal.mlctsLayers ?? null,
             }
-          : null,
+          : barSignal?.mlctsContext
+            ? {
+                mlcts: barSignal.mlctsContext,
+                mlctsLayers: barSignal.mlctsLayers ?? null,
+                sweepWick: barSignal.liqBrackets?.sweepWick ?? null,
+              }
+            : null,
         partialTp: liqPartial,
         tp1: liqStructureTp1 ?? 0,
         partialFrac: liqPartialFrac,

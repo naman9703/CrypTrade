@@ -1,0 +1,119 @@
+{
+  "generatedAt": "2026-07-28T21:36:52.936Z",
+  "symbols": {
+    "BTCUSDT": {
+      "probes": [
+        {
+          "interval": "5min",
+          "rows": 0,
+          "firstTs": null,
+          "lastTs": null,
+          "coinalyzeSymbol": "BTCUSDT_PERP.A"
+        },
+        {
+          "interval": "1min",
+          "rows": 0,
+          "firstTs": null,
+          "lastTs": null,
+          "coinalyzeSymbol": "BTCUSDT_PERP.A"
+        },
+        {
+          "interval": "1hour",
+          "rows": 197,
+          "firstTs": 1779552000000,
+          "lastTs": 1780272000000,
+          "coinalyzeSymbol": "BTCUSDT_PERP.A"
+        }
+      ],
+      "ingest": {
+        "liquidations": {
+          "inserted": 197,
+          "rows": 197,
+          "coinalyzeSymbol": "BTCUSDT_PERP.A"
+        },
+        "oi": {
+          "inserted": 134,
+          "rows": 134,
+          "coinalyzeSymbol": "BTCUSDT_PERP.A"
+        }
+      },
+      "useInterval": "1hour"
+    },
+    "ETHUSDT": {
+      "probes": [
+        {
+          "interval": "5min",
+          "rows": 0,
+          "firstTs": null,
+          "lastTs": null,
+          "coinalyzeSymbol": "ETHUSDT_PERP.A"
+        },
+        {
+          "interval": "1min",
+          "rows": 0,
+          "firstTs": null,
+          "lastTs": null,
+          "coinalyzeSymbol": "ETHUSDT_PERP.A"
+        },
+        {
+          "interval": "1hour",
+          "rows": 177,
+          "firstTs": 1779634800000,
+          "lastTs": 1780272000000,
+          "coinalyzeSymbol": "ETHUSDT_PERP.A"
+        }
+      ],
+      "ingest": {
+        "liquidations": {
+          "inserted": 177,
+          "rows": 177,
+          "coinalyzeSymbol": "ETHUSDT_PERP.A"
+        },
+        "oi": {
+          "inserted": 134,
+          "rows": 134,
+          "coinalyzeSymbol": "ETHUSDT_PERP.A"
+        }
+      },
+      "useInterval": "1hour"
+    },
+    "BNBUSDT": {
+      "probes": [
+        {
+          "interval": "5min",
+          "rows": 0,
+          "firstTs": null,
+          "lastTs": null,
+          "coinalyzeSymbol": "BNBUSDT_PERP.A"
+        },
+        {
+          "interval": "1min",
+          "rows": 0,
+          "firstTs": null,
+          "lastTs": null,
+          "coinalyzeSymbol": "BNBUSDT_PERP.A"
+        },
+        {
+          "interval": "1hour",
+          "rows": 1098,
+          "firstTs": 1774292400000,
+          "lastTs": 1780272000000,
+          "coinalyzeSymbol": "BNBUSDT_PERP.A"
+        }
+      ],
+      "ingest": {
+        "liquidations": {
+          "inserted": 1098,
+          "rows": 1098,
+          "coinalyzeSymbol": "BNBUSDT_PERP.A"
+        },
+        "oi": {
+          "inserted": 134,
+          "rows": 134,
+          "coinalyzeSymbol": "BNBUSDT_PERP.A"
+        }
+      },
+      "useInterval": "1hour"
+    }
+  }
+}

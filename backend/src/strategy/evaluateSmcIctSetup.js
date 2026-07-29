@@ -6,9 +6,12 @@
  *   2. Liquidity sweep of PDH/PDL or session cluster + reclaim
  *   3. CHoCH — change of character after the sweep (optional / soft)
  *   4. MSS — displacement candle breaking structure (BOS + displacement)
- *   5. PD array — FVG or OB from the displacement leg only
+ *   5. PD array — FVG or OB (displacement-anchored on full/MSS; else after CHoCH)
  *   6. ENTRY on retrace into FVG/OB after MSS bar
- *   7. SL beyond swept wick / structure, TP at opposing liquidity (capped R)
+ *   7. Invalidation gates — reclaimed CHoCH / blown OB / mitigated FVG / continuation
+ *   8. SL beyond swept wick / structure, TP at opposing liquidity (capped R)
+ *
+ * Frozen rule definitions: docs/SMC_ICT_FROZEN_RULESET.md
  */
 
 import {
@@ -46,6 +49,22 @@ import {
 } from "./techniques/dealingRange.js";
 import { rankSmcCycle, reclaimBodyStrength } from "./smcCandidateRank.js";
 import { applyOrderFlowGate } from "./techniques/orderFlowPatterns.js";
+import {
+  pdArrayWasInduced,
+  resolveActivePdZone,
+  resolvePdFormedIdx,
+} from "./techniques/smcInducement.js";
+import {
+  checkSmcInvalidation,
+  resolveEnforceInvalidation,
+} from "./techniques/smcInvalidation.js";
+import { getTrendStructureAt } from "./techniques/trendStructure.js";
+import {
+  passesHtf1hNarrative,
+  resolveRequireHtfNarrative,
+  resolveHtfPoiMode,
+} from "./techniques/htf1hNarrative.js";
+import { findDisplacementLegInRange } from "./techniques/displacementLeg.js";
 
 /**
  * @param {object} [opts]
@@ -71,15 +90,60 @@ export function isSweepSmcIctProfile(opts = {}) {
   return p === "sweep" || p === "lite";
 }
 
+/** 1H narrative + raid → 15m displacement PD retrace (freq-preserving ICT). */
+export function isH1AlignedSmcIctProfile(opts = {}) {
+  const p = String(opts.intradaySmcIctProfile ?? "").toLowerCase();
+  return p === "h1_aligned" || p === "narrative_raid";
+}
+
+export function resolveNarrativeAlignedRaid(opts = {}) {
+  if (opts.intradaySmcNarrativeAlignedRaid === false) return false;
+  if (opts.intradaySmcNarrativeAlignedRaid === true) return true;
+  return isH1AlignedSmcIctProfile(opts);
+}
+
 function useDisplacementPdArray(opts) {
-  return isFullSmcIctProfile(opts) || isBalancedSmcIctProfile(opts) || opts.intradaySmcRequireMss === true;
+  if (opts.intradaySmcDisplacementPdArray === false) return false;
+  if (opts.intradaySmcDisplacementPdArray === true) return true;
+  return (
+    isFullSmcIctProfile(opts) ||
+    isBalancedSmcIctProfile(opts) ||
+    opts.intradaySmcRequireMss === true ||
+    resolveNarrativeAlignedRaid(opts)
+  );
+}
+
+/**
+ * Prerequisite sequence: PD array must form at/after CHoCH (no front-run OB/FVG).
+ * Default ON when CHoCH is required.
+ */
+export function resolveRequirePdAfterChoch(opts, requireChoch) {
+  if (opts.intradaySmcRequirePdAfterChoch === false) return false;
+  if (opts.intradaySmcRequirePdAfterChoch === true) return true;
+  return requireChoch === true;
 }
 
 export function resolveRequireChoch(opts) {
   if (opts.intradaySmcRequireChoch === false) return false;
   if (opts.intradaySmcRequireChoch === true) return true;
   if (isFullSmcIctProfile(opts)) return true;
+  // H1-aligned: 1H is the narrative — do not also demand 15m CHoCH by default.
+  if (resolveNarrativeAlignedRaid(opts)) return false;
   return false;
+}
+
+function resolveRequireMss(opts) {
+  if (opts.intradaySmcRequireMss === false) return false;
+  if (isFullSmcIctProfile(opts) || isBalancedSmcIctProfile(opts)) return true;
+  if (opts.intradaySmcRequireMss === true) return true;
+  return false;
+}
+
+/** When H1-aligned and MSS off: still require a displacement leg after the raid. */
+export function resolveRequireDisplacementLeg(opts) {
+  if (opts.intradaySmcRequireDisplacementLeg === false) return false;
+  if (opts.intradaySmcRequireDisplacementLeg === true) return true;
+  return resolveNarrativeAlignedRaid(opts) && !resolveRequireMss(opts);
 }
 
 function resolveChochStrict(opts) {
@@ -100,20 +164,16 @@ function chochEvalOpts(opts) {
   return { ...opts, intradaySmcChochRequireTrend: false };
 }
 
-function resolveRequireMss(opts) {
-  if (isFullSmcIctProfile(opts) || isBalancedSmcIctProfile(opts)) return true;
-  return opts.intradaySmcRequireMss === true;
-}
-
 function resolveRequireBos(opts) {
   if (isFullSmcIctProfile(opts)) return true;
   return opts.intradaySmcRequireBos === true;
 }
 
-/** FVG retrace: explicit false wins; balanced/full default on; else FvgRetrace flag. */
+/** FVG retrace: explicit false wins; balanced/full/h1_aligned default on; else FvgRetrace flag. */
 export function resolveRequireRetrace(opts) {
   if (opts.intradaySmcRequireRetrace === false) return false;
   if (isFullSmcIctProfile(opts) || isBalancedSmcIctProfile(opts)) return true;
+  if (resolveNarrativeAlignedRaid(opts)) return true;
   if (opts.intradaySmcRequireRetrace != null) return opts.intradaySmcRequireRetrace !== false;
   return opts.intradaySmcRequireFvgRetrace === true;
 }
@@ -176,9 +236,13 @@ function cycleLiqQuality(cycle) {
   return ext + bonus;
 }
 
-function resolvePdArrays(candles, mssIdx, sweepReclaimIdx, side, pre, opts, entryZoneMode) {
+function resolvePdArrays(candles, mssIdx, sweepReclaimIdx, side, pre, opts, entryZoneMode, chochIdx = null) {
   const anchored = useDisplacementPdArray(opts);
-  const minIdx = sweepReclaimIdx;
+  const requirePdAfterChoch = resolveRequirePdAfterChoch(opts, chochIdx != null);
+  let minIdx = sweepReclaimIdx;
+  if (requirePdAfterChoch && chochIdx != null) {
+    minIdx = Math.max(minIdx, chochIdx);
+  }
 
   let fvg = null;
   let ob = null;
@@ -186,12 +250,12 @@ function resolvePdArrays(candles, mssIdx, sweepReclaimIdx, side, pre, opts, entr
   if (entryZoneMode === "FVG" || entryZoneMode === "EITHER") {
     fvg = anchored
       ? findFvgFromDisplacement(candles, mssIdx, side, opts, minIdx)
-      : findActiveFvg(candles, mssIdx, side, opts);
+      : findActiveFvg(candles, mssIdx, side, opts, minIdx);
   }
   if (entryZoneMode === "OB" || (entryZoneMode === "EITHER" && !fvg)) {
     ob = anchored
       ? findObFromDisplacement(candles, mssIdx, side, pre, opts, minIdx)
-      : findOrderBlock(candles, mssIdx, side, pre, opts);
+      : findOrderBlock(candles, mssIdx, side, pre, opts, minIdx);
   }
   if (entryZoneMode === "EITHER" && !fvg && ob) {
     fvg = null;
@@ -200,9 +264,15 @@ function resolvePdArrays(candles, mssIdx, sweepReclaimIdx, side, pre, opts, entr
   return { fvg, ob };
 }
 
+function noteSmcAbstain(pre, reason, side, idx) {
+  if (!pre || !reason) return;
+  pre._smcLastAbstain = { reason, side, idx, ts: Date.now() };
+}
+
 function profileLabel(opts) {
   if (isFullSmcIctProfile(opts)) return "full";
   if (isBalancedSmcIctProfile(opts)) return "balanced";
+  if (isH1AlignedSmcIctProfile(opts)) return "h1_aligned";
   if (isSweepSmcIctProfile(opts)) return "sweep";
   return "custom";
 }
@@ -216,19 +286,45 @@ function profileLabel(opts) {
  */
 export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
   if (idx < 2 || !candles?.length) return null;
+  const allowed = String(opts.intradaySmcAllowedSides ?? "BOTH").toUpperCase();
+  if (allowed === "BUY" && side !== "BUY") return null;
+  if (allowed === "SELL" && side !== "SELL") return null;
   if (!pre._smcHtf) attachSmcHtfToPre(candles, pre, opts);
 
   if (opts.intradaySmcRequireHtfBias !== false && !passesSmcHtfBias(side, pre, idx, opts)) {
     return null;
   }
+  // Narrative-aligned raid: enable 1H context by default for this profile.
+  const narrativeRaid = resolveNarrativeAlignedRaid(opts);
+  const narrativeOpts = narrativeRaid
+    ? {
+        ...opts,
+        intradaySmcRequireHtfNarrative:
+          opts.intradaySmcRequireHtfNarrative === false ? false : true,
+      }
+    : opts;
+
   const bar = candles[idx];
   if (!inSmcKillzone(bar.ts, opts)) return null;
   if (!passesSmcVolatilityFilter(candles, idx, pre, opts)) return null;
   if (!passesSmcRegimeFilter(candles, idx, pre, opts)) return null;
 
+  // Early side filter vs 1H (price check deferred until entry).
+  if (
+    resolveRequireHtfNarrative(narrativeOpts) &&
+    !passesHtf1hNarrative(side, pre, idx, Number(bar.close), {
+      ...narrativeOpts,
+      intradaySmcHtfPoiMode: "none",
+    })
+  ) {
+    noteSmcAbstain(pre, "htf_1h_narrative", side, idx);
+    return null;
+  }
+
   const requireChoch = resolveRequireChoch(opts);
   const requireMss = resolveRequireMss(opts);
   const requireBos = resolveRequireBos(opts);
+  const requireDispLeg = resolveRequireDisplacementLeg(opts);
   const requireRetrace = resolveRequireRetrace(opts);
   const fvgEntryMode = resolveFvgEntryMode(opts);
   const fvgMidpointEntry = fvgEntryMode === "midpoint" && requireRetrace;
@@ -248,6 +344,7 @@ export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
 
   let best = null;
   let bestRank = -Infinity;
+  let lastFailReason = null;
 
   for (const cyc of cycles) {
     const sweepReclaimIdx = cyc.reclaimIdx;
@@ -259,10 +356,18 @@ export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
     let chochType = null;
     if (requireChoch) {
       const choch = detectChochInRange(candles, sweepReclaimIdx, idx, side, chochEvalOpts(opts));
-      if (!choch.ok) continue;
+      if (!choch.ok) {
+        lastFailReason = "no_choch";
+        continue;
+      }
       chochIdx = choch.chochIdx;
       chochLevel = choch.chochLevel;
       chochType = choch.type;
+      const minBarsAfterChoch = Math.max(0, Number(opts.intradaySmcMinBarsAfterChoch ?? 0));
+      if (minBarsAfterChoch > 0 && idx - chochIdx < minBarsAfterChoch) {
+        lastFailReason = "choch_too_fresh";
+        continue;
+      }
     }
 
     const structureFrom = chochIdx != null ? chochIdx : sweepReclaimIdx;
@@ -276,7 +381,10 @@ export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
 
     if (requireMss) {
       const mss = detectMssInRange(candles, structureFrom, idx, side, opts, pre);
-      if (!mss.ok) continue;
+      if (!mss.ok) {
+        lastFailReason = "no_mss";
+        continue;
+      }
       mssIdx = mss.mssIdx;
       mssLevel = mss.mssLevel;
       mssType = mss.type;
@@ -285,22 +393,55 @@ export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
       bosType = mssType;
     } else if (requireBos) {
       const bos = detectBosInRange(candles, structureFrom, idx, side, opts);
-      if (!bos.ok) continue;
+      if (!bos.ok) {
+        lastFailReason = "no_bos";
+        continue;
+      }
       bosIdx = bos.bosIdx;
       bosLevel = bos.bosLevel;
       bosType = bos.type;
       mssIdx = bosIdx;
       mssLevel = bosLevel;
+    } else if (requireDispLeg) {
+      const disp = findDisplacementLegInRange(candles, structureFrom, idx, side, opts, pre);
+      if (!disp.ok) {
+        lastFailReason = "no_displacement_leg";
+        continue;
+      }
+      mssIdx = disp.dispIdx;
+      mssType = side === "BUY" ? "bullish_disp" : "bearish_disp";
     }
 
-    if (chochIdx != null && mssIdx < chochIdx) continue;
+    if (chochIdx != null && mssIdx < chochIdx) {
+      lastFailReason = "mss_before_choch";
+      continue;
+    }
 
-    const { fvg, ob } = resolvePdArrays(candles, mssIdx, sweepReclaimIdx, side, pre, opts, entryZoneMode);
+    const { fvg, ob } = resolvePdArrays(
+      candles,
+      mssIdx,
+      sweepReclaimIdx,
+      side,
+      pre,
+      opts,
+      entryZoneMode,
+      chochIdx,
+    );
     if (fvgMidpointEntry) {
-      if (!fvg) continue;
-    } else if (entryZoneMode === "FVG" && !fvg) continue;
-    else if (entryZoneMode === "OB" && !ob) continue;
-    else if (entryZoneMode === "EITHER" && !fvg && !ob) continue;
+      if (!fvg) {
+        lastFailReason = "no_fvg";
+        continue;
+      }
+    } else if (entryZoneMode === "FVG" && !fvg) {
+      lastFailReason = "no_fvg";
+      continue;
+    } else if (entryZoneMode === "OB" && !ob) {
+      lastFailReason = "no_ob";
+      continue;
+    } else if (entryZoneMode === "EITHER" && !fvg && !ob) {
+      lastFailReason = "no_pd_array";
+      continue;
+    }
 
     let inZone = false;
     let entryZone = "reclaim";
@@ -316,25 +457,72 @@ export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
     }
 
     if (requireRetrace) {
-      if (!inZone) continue;
-      if (idx <= mssIdx) continue;
+      if (!inZone) {
+        lastFailReason = "not_in_pd_zone";
+        continue;
+      }
+      if (idx <= mssIdx) {
+        lastFailReason = "entry_on_mss_bar";
+        continue;
+      }
     } else if (!inZone && idx !== mssIdx) {
+      lastFailReason = "not_in_pd_zone";
       continue;
+    }
+
+    const inv = checkSmcInvalidation({
+      candles,
+      side,
+      entryIdx: idx,
+      cycle: cyc,
+      chochIdx,
+      chochLevel,
+      fvg,
+      ob,
+      opts,
+      requireChoch,
+    });
+    if (!inv.ok) {
+      lastFailReason = inv.reason;
+      continue;
+    }
+
+    // Opt-in: reject first-reactive PD arrays that were never induced (pierced)
+    // before entry — addresses never_green_inducement losses.
+    if (opts.intradaySmcRequirePdInducement === true && inZone && entryZone !== "reclaim") {
+      const zone = resolveActivePdZone(fvg, ob, entryZone);
+      const formedIdx = resolvePdFormedIdx(fvg, ob, entryZone);
+      if (!zone || formedIdx < 0 || !pdArrayWasInduced(candles, zone, side, formedIdx, idx)) {
+        lastFailReason = "pd_not_induced";
+        continue;
+      }
     }
 
     if (requireConfirm) {
       const prev = idx > 0 ? candles[idx - 1] : null;
-      if (!passesConfirmationCandle(bar, prev, side, opts)) continue;
+      if (!passesConfirmationCandle(bar, prev, side, opts)) {
+        lastFailReason = "no_confirm";
+        continue;
+      }
     }
 
     let entry = Number(bar.close);
     if (fvgMidpointEntry && fvg) {
       entry = Number(fvg.mid ?? (fvg.top + fvg.bottom) / 2);
     }
+
+    if (resolveRequireHtfNarrative(narrativeOpts) && !passesHtf1hNarrative(side, pre, idx, entry, narrativeOpts)) {
+      lastFailReason = "htf_1h_narrative";
+      continue;
+    }
+
     let dealingRangeMeta = null;
     if (requirePremiumDiscount) {
       const dr = findDealingRange(candles, idx, opts);
-      if (!dr || !passesPremiumDiscount(side, entry, dr, opts)) continue;
+      if (!dr || !passesPremiumDiscount(side, entry, dr, opts)) {
+        lastFailReason = "premium_discount";
+        continue;
+      }
       dealingRangeMeta = getDealingRangeMeta(dr);
     }
     const brackets = buildSmcBrackets(
@@ -345,24 +533,38 @@ export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
         opposing: cyc.opposing,
         opposingLevel: cyc.opposing,
         reclaimIdx: sweepReclaimIdx,
+        ob,
+        fvg,
       },
       candles,
       idx,
       opts,
     );
-    if (!brackets) continue;
+    if (!brackets) {
+      lastFailReason = "no_brackets";
+      continue;
+    }
 
     let smcOfTechniques = [];
     if (opts.intradaySmcUseOrderFlow === true) {
       const of = applyOrderFlowGate(candles, idx, side, pre, opts, {
         orderBookSnapshot: opts.orderBookSnapshot ?? opts._orderBookSnapshot,
       });
-      if (!of.ok) continue;
+      if (!of.ok) {
+        lastFailReason = "orderflow";
+        continue;
+      }
       smcOfTechniques = of.techniques;
     }
 
     const liqQuality = cycleLiqQuality(cyc);
     const reclaimBodyRatio = reclaimBodyStrength(candles, sweepReclaimIdx, side);
+    // Explicit SMC key only — do not inherit LIQ default 0.35 (would change BNB SMC).
+    const minReclaimBody = Number(opts.intradaySmcMinReclaimBodyRatio ?? 0);
+    if (minReclaimBody > 0 && reclaimBodyRatio + 1e-9 < minReclaimBody) {
+      lastFailReason = "reclaim_body_weak";
+      continue;
+    }
     const rank = rankSmcCycle(candles, side, cyc, {
       inZone,
       chochIdx,
@@ -376,10 +578,22 @@ export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
     if (chochIdx != null) techniques.push("smc_choch");
     if (requireMss) techniques.push("smc_mss");
     else if (requireBos) techniques.push("smc_bos");
+    else if (requireDispLeg) techniques.push("smc_disp_leg");
     if (fvg) techniques.push("smc_fvg");
     if (ob) techniques.push("smc_ob");
     if (requireRetrace) techniques.push("smc_retrace");
     if (requirePremiumDiscount) techniques.push("smc_premium_discount");
+    if (opts.intradaySmcRequirePdInducement === true) techniques.push("smc_pd_inducement");
+    if (resolveEnforceInvalidation(opts, requireChoch)) techniques.push("smc_invalidation");
+    if (resolveRequirePdAfterChoch(opts, requireChoch) && chochIdx != null) {
+      techniques.push("smc_pd_after_choch");
+    }
+    if (resolveRequireHtfNarrative(narrativeOpts)) {
+      techniques.push("smc_h1_narrative");
+      const poi = resolveHtfPoiMode(narrativeOpts);
+      if (poi !== "none") techniques.push(`smc_h1_poi_${poi}`);
+    }
+    if (narrativeRaid) techniques.push("smc_narrative_raid");
     techniques.push(...smcOfTechniques);
 
     const sweepStartIdx = cyc.sweepStartIdx ?? Math.max(0, sweepReclaimIdx - 8);
@@ -394,6 +608,7 @@ export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
       }
     }
 
+    const trendAtEntry = getTrendStructureAt(candles, idx - 1, opts);
     const opposingLevel = Number(brackets.opposingLevel ?? cyc.opposing ?? 0);
     const tp2Price = Number(brackets.tp2Price ?? brackets.tpPrice ?? 0);
     const smcMeta = {
@@ -447,6 +662,15 @@ export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
       entryZone,
       fvgEntryMode: fvgMidpointEntry ? "midpoint" : fvgEntryMode,
       fvgMid: fvg?.mid ?? null,
+      trendState: trendAtEntry?.state ?? null,
+      lastSwingHigh: trendAtEntry?.lastHigh ?? null,
+      lastSwingLow: trendAtEntry?.lastLow ?? null,
+      invalidationEnforced: resolveEnforceInvalidation(opts, requireChoch),
+      pdAfterChoch: resolveRequirePdAfterChoch(opts, requireChoch) && chochIdx != null,
+      htfNarrativeRequired: resolveRequireHtfNarrative(narrativeOpts),
+      htfPoiMode: resolveHtfPoiMode(narrativeOpts),
+      narrativeAlignedRaid: narrativeRaid,
+      failReason: null,
       ...(dealingRangeMeta ?? {}),
     };
 
@@ -497,6 +721,7 @@ export function evaluateSmcIctSetup(candles, idx, side, pre, opts = {}) {
     }
   }
 
+  if (!best && lastFailReason) noteSmcAbstain(pre, lastFailReason, side, idx);
   return best;
 }
 
@@ -572,7 +797,16 @@ export function countSmcFunnelStages(candles, idx, side, pre, opts = {}) {
       anyMss = true;
     }
 
-    const { fvg, ob } = resolvePdArrays(candles, mssIdx, sweepReclaimIdx, side, pre, opts, entryZoneMode);
+    const { fvg, ob } = resolvePdArrays(
+      candles,
+      mssIdx,
+      sweepReclaimIdx,
+      side,
+      pre,
+      opts,
+      entryZoneMode,
+      chochIdx,
+    );
     if (!fvg && !ob) continue;
     anyPd = true;
 

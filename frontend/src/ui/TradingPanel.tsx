@@ -46,6 +46,15 @@ import {
 } from "../lib/supertrendElitePresets";
 import { SAFE_INTRADAY_BNB_15M } from "../lib/safeIntradayPresets";
 import { CRT_TBS_BNB_15M } from "../lib/crtTbsPresets";
+import {
+  LIQ_CASCADE_BTC_1M,
+  LIQ_CASCADE_ETH_1M,
+  LIQ_CASCADE_BNB_1M,
+  LIQ_CASCADE_BTC_1M_LIVE_TICK,
+} from "../lib/liqCascadePresets";
+import { MLCTS_BTC_15M } from "../lib/mlctsPresets";
+import { LiqCascadeFeedStatusPanel } from "./LiqCascadeFeedStatus";
+import type { LiqCascadeFeedStatus } from "./LiqCascadeFeedStatus";
 import { SCALP_MR_BNB_5M, SCALP_MR_BNB_5M_OPTIMIZED, SCALP_MR_BNB_5M_LONG, SCALP_MR_BNB_5M_FREQ, SCALP_MR_BTC_5M, SCALP_MR_ETH_5M } from "../lib/scalpMrPresets";
 import {
   TREND_PULLBACK_BTC_5M_FAST_SCALP,
@@ -100,6 +109,7 @@ import {
   VOLUME_PROFILE_FREQ_DOGE_15M,
   VOLUME_PROFILE_FREQ_NEAR_15M,
   VOLUME_PROFILE_FREQ_AAVE_15M,
+  VOLUME_PROFILE_FREQ_ADA_15M,
   VOLUME_PROFILE_FREQ_PORTFOLIO_15M,
   VOLUME_PROFILE_BTC_15M,
   VOLUME_PROFILE_5M,
@@ -1321,6 +1331,16 @@ const NUMBERED_SIGNAL_SOURCES: { n: number; key: string; label: string }[] = [
     label: "CRT + TBS ★ 15m — 4H candle range + turtle body soup (ICT reversal)",
   },
   {
+    n: 26,
+    key: "LIQ_CASCADE",
+    label: "Liq Cascade ★ 1m — liquidation cascade fade (event-driven scalping)",
+  },
+  {
+    n: 27,
+    key: "MLCTS",
+    label: "MLCTS ★ 15m — multi-layer confluence (structure + liquidity + flow)",
+  },
+  {
     n: 24,
     key: "TOKYO_SESSION",
     label: "Tokyo Session ★ 15m — first-two-candle Asia bias + fixed R:R",
@@ -1401,6 +1421,11 @@ export function TradingPanel() {
     (Boolean(activeInstanceId) && Object.keys(bot).length === 0);
   const configSeq = useAppStore((s) => s.configViewSeqByMode[modeSlug] ?? 0);
   const pushLog = useAppStore((s) => s.pushLog);
+  const liqCascadeFeedStatus = useAppStore((s) =>
+    String(s.bot?.manualStrategy ?? "").toUpperCase() === "LIQ_CASCADE"
+      ? (s.bot?.liqCascadeFeedStatus as LiqCascadeFeedStatus | undefined)
+      : undefined,
+  );
   const syncActiveInstanceOperational = useCallback(
     async (patch: InstanceOperationalPatch) => {
       if (!activeInstanceId) return;
@@ -2687,6 +2712,40 @@ export function TradingPanel() {
           </div>
         </div>
         )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "LIQ_CASCADE") && (
+        <div className="mt-2 rounded-lg border border-orange-400 dark:border-orange-600 bg-orange-50 dark:bg-orange-950/30 px-3 py-2 text-[11px] text-orange-900 dark:text-orange-200 space-y-1.5">
+          <div className="font-semibold">Strategy presets · LIQ_CASCADE</div>
+          <LiqCascadeFeedStatusPanel status={liqCascadeFeedStatus} />
+          <p>
+            Liquidation cascade fade on <b>1m</b> bar-close (backtest) + optional live tick executor on Binance{" "}
+            <span className="font-mono">forceOrder</span>. Requires Coinalyze liq/OI ingest for backtests.
+          </p>
+          <p className="text-amber-800 dark:text-amber-300">
+            Live tick mode is <b>paper/testnet</b> unless <span className="font-mono">LIQ_CASCADE_LIVE_ALLOW=1</span>.
+            Save strategy before backtest.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <TrendHtfStPresetButton label="★ BTC 1m cascade fade" highlight patch={LIQ_CASCADE_BTC_1M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="ETH 1m cascade fade" patch={LIQ_CASCADE_ETH_1M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 1m cascade fade" patch={LIQ_CASCADE_BNB_1M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BTC live tick (paper)" patch={LIQ_CASCADE_BTC_1M_LIVE_TICK} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+          </div>
+        </div>
+        )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "MLCTS") && (
+        <div className="mt-2 rounded-lg border border-violet-400 dark:border-violet-600 bg-violet-50 dark:bg-violet-950/30 px-3 py-2 text-[11px] text-violet-900 dark:text-violet-200 space-y-1.5">
+          <div className="font-semibold">Strategy presets · MLCTS (research)</div>
+          <p>
+            Multi-layer confluence on <b>15m</b> bar-close: trend → liquidity → sweep → BOS → order flow → OI/funding → volatility gate → composite score ≥75.
+          </p>
+          <p className="text-amber-800 dark:text-amber-300">
+            Research-only — not validated for live deploy. Layer panel updates live above the chart when this strategy is selected.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <TrendHtfStPresetButton label="★ BTC 15m MLCTS" highlight patch={MLCTS_BTC_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+          </div>
+        </div>
+        )}
         {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "TOKYO_SESSION") && (
         <div className="mt-2 rounded-lg border border-teal-400 dark:border-teal-600 bg-teal-50 dark:bg-teal-950/30 px-3 py-2 text-[11px] text-teal-900 dark:text-teal-200 space-y-1.5">
           <div className="font-semibold">Strategy presets · TOKYO_SESSION</div>
@@ -2715,6 +2774,7 @@ export function TradingPanel() {
               <TrendHtfStPresetButton label="★ AVAX FREQ (VAL+rej cells)" highlight patch={VOLUME_PROFILE_FREQ_AVAX_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="★ DOGE FREQ (low-freq sleeve)" highlight patch={VOLUME_PROFILE_FREQ_DOGE_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="★ NEAR FREQ (low-freq sleeve)" highlight patch={VOLUME_PROFILE_FREQ_NEAR_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+              <TrendHtfStPresetButton label="★ ADA FREQ (year-clean, thin-N)" highlight patch={VOLUME_PROFILE_FREQ_ADA_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="AAVE FREQ (cert REJECT)" patch={VOLUME_PROFILE_FREQ_AAVE_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="BTC FREQ (shorts)" patch={VOLUME_PROFILE_FREQ_BTC_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
               <TrendHtfStPresetButton label="FREQ portfolio (ETH+BNB+BTC)" patch={VOLUME_PROFILE_FREQ_PORTFOLIO_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />

@@ -1,0 +1,32 @@
+{
+  "generatedAt": "2026-07-28T13:58:13.783Z",
+  "window": {
+    "from": "2025-01-01",
+    "to": "2026-06-01"
+  },
+  "note": "Practical ICT = CHoCH+retrace, no MSS/premium, KZ ALL, pd_array SL. Not shippable.",
+  "results": [
+    {
+      "id": "baseline_practical",
+      "n": 114,
+      "tw": 1.55,
+      "wr": 9.6,
+      "ret": -95.32,
+      "pf": 0.15,
+      "dd": 95.32,
+      "neverGreen": 26,
+      "neverGreenPct": 22.8
+    },
+    {
+      "id": "inducement_on",
+      "n": 55,
+      "tw": 0.75,
+      "wr": 14.5,
+      "ret": -59.42,
+      "pf": 0.19,
+      "dd": 59.42,
+      "neverGreen": 15,
+      "neverGreenPct": 27.3
+    }
+  ]
+}

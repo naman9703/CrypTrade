@@ -205,6 +205,14 @@ async function execute({ runId }) {
       const { resolveCrtTbsCfg } = await import("../../strategy/crtTbsIntraday.js");
       cfg = resolveCrtTbsCfg(cfg);
       cfg._intradayEngineMaterialized = true;
+    } else if (stratEarly === "LIQ_CASCADE") {
+      const { resolveLiqCascadeCfg } = await import("../../strategy/liqCascadeIntraday.js");
+      cfg = resolveLiqCascadeCfg(cfg);
+      cfg._intradayEngineMaterialized = true;
+    } else if (stratEarly === "MLCTS") {
+      const { resolveMlctsCfg } = await import("../../strategy/mlctsIntraday.js");
+      cfg = resolveMlctsCfg(cfg);
+      cfg._intradayEngineMaterialized = true;
     } else if (stratEarly === "SCALP_MR") {
       const { resolveScalpMrCfg } = await import("../../strategy/scalpMr.js");
       cfg = resolveScalpMrCfg(cfg);
@@ -296,6 +304,12 @@ async function execute({ runId }) {
   if (strategyKey === "CRT_TBS") {
     const { crtTbsPadFromMs } = await import("../../strategy/crtTbsIntraday.js");
     candleFromMs = crtTbsPadFromMs(fromMs, tf);
+  } else if (strategyKey === "LIQ_CASCADE") {
+    const { liqCascadePadFromMs } = await import("../../strategy/liqCascadeIntraday.js");
+    candleFromMs = liqCascadePadFromMs(fromMs, tf);
+  } else if (strategyKey === "MLCTS") {
+    const { mlctsPadFromMs } = await import("../../strategy/mlctsIntraday.js");
+    candleFromMs = mlctsPadFromMs(fromMs, tf);
   } else if (strategyKey === "SCALP_MR") {
     const { scalpMrPadFromMs } = await import("../../strategy/scalpMr.js");
     candleFromMs = scalpMrPadFromMs(fromMs, tf);
@@ -374,6 +388,22 @@ async function execute({ runId }) {
 
   /** @type {Record<string, Function>} */
   let adapters = {};
+  if (strategyKey === "LIQ_CASCADE") {
+    try {
+      const { hydrateLiqCascadeCfg } = await import("../../strategy/liqCascadeIntraday.js");
+      cfg = await hydrateLiqCascadeCfg(cfg, symbol, fromMs, toMs);
+    } catch (err) {
+      console.warn("[backtest:worker] hydrateLiqCascadeCfg failed:", err?.message || err);
+    }
+  }
+  if (strategyKey === "MLCTS") {
+    try {
+      const { hydrateMlctsCfg } = await import("../../strategy/mlctsIntraday.js");
+      cfg = await hydrateMlctsCfg(cfg, symbol, fromMs, toMs);
+    } catch (err) {
+      console.warn("[backtest:worker] hydrateMlctsCfg failed:", err?.message || err);
+    }
+  }
   if (typeof buildBacktestAdapters === "function") {
     try {
       reportPrep(8);
@@ -520,6 +550,12 @@ async function executePortfolio({
   if (strategyKey === "CRT_TBS") {
     const { crtTbsPadFromMs } = await import("../../strategy/crtTbsIntraday.js");
     candleFromMs = crtTbsPadFromMs(fromMs, tf);
+  } else if (strategyKey === "LIQ_CASCADE") {
+    const { liqCascadePadFromMs } = await import("../../strategy/liqCascadeIntraday.js");
+    candleFromMs = liqCascadePadFromMs(fromMs, tf);
+  } else if (strategyKey === "MLCTS") {
+    const { mlctsPadFromMs } = await import("../../strategy/mlctsIntraday.js");
+    candleFromMs = mlctsPadFromMs(fromMs, tf);
   } else if (strategyKey === "SCALP_MR") {
     const { scalpMrPadFromMs } = await import("../../strategy/scalpMr.js");
     candleFromMs = scalpMrPadFromMs(fromMs, tf);
@@ -599,6 +635,14 @@ async function executePortfolio({
       backtestPositionSizing: unitSizingMode,
       portfolioPositionSizing: portfolioSizingMode,
     };
+    if (strategyKey === "LIQ_CASCADE") {
+      try {
+        const { hydrateLiqCascadeCfg } = await import("../../strategy/liqCascadeIntraday.js");
+        symCfg = await hydrateLiqCascadeCfg(symCfg, sym, fromMs, toMs);
+      } catch (err) {
+        console.warn(`[backtest:worker] hydrateLiqCascadeCfg ${sym} failed:`, err?.message || err);
+      }
+    }
     if (isFutures) symCfg = await applyBacktestBracketCap(symCfg, sym);
 
     const fundingRates = isFutures ? await readFundingRates(sym, fromMs, toMs).catch(() => []) : [];
