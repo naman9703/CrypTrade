@@ -11,6 +11,7 @@ export type LiqCascadeFeedRow = {
   recentTickCount?: number;
   messageCount?: number;
   window4hUsd?: number | null;
+  healthReason?: string | null;
   usdt?: number | null;
   change4hPct?: number | null;
   fetchedAt?: number | null;
@@ -61,10 +62,16 @@ function feedTitle(key: string, row: LiqCascadeFeedRow, symbol?: string): string
     if (row.running && row.connected === false) {
       return `Connecting to liquidation stream${row.lastError ? `: ${row.lastError}` : "…"}`;
     }
+    if (row.running && row.connected && row.healthReason === "stale") {
+      return `Stream connected but quiet (${fmtAge(row.lastMessageAt)}). Waiting for forceOrder events…`;
+    }
+    if (row.healthReason === "not_running") {
+      return `Liquidation stream not started — restart backend or select LIQ_CASCADE (auto-starts on status poll)`;
+    }
     if (row.running && row.connected && !row.ok) {
       return `Stream connected but no recent messages (${fmtAge(row.lastMessageAt)}). Waiting for forceOrder events…`;
     }
-    return `Liquidation stream unavailable${row.lastError ? `: ${row.lastError}` : ""}. Restart backend after update — needs /market/ws/!forceOrder@arr`;
+    return `Liquidation stream unavailable${row.lastError ? `: ${row.lastError}` : ""}. Needs /market/ws/!forceOrder@arr`;
   }
   if (key === "openInterest") {
     if (row.ok) {
@@ -80,6 +87,20 @@ function feedTitle(key: string, row: LiqCascadeFeedRow, symbol?: string): string
       : "Tick executor not active — start bot with live-tick preset";
   }
   return row.label;
+}
+
+function feedStatusHint(key: string, row: LiqCascadeFeedRow): string {
+  if (row.ok) return "OK";
+  if (key === "openInterest" && row.pending) return "loading…";
+  if (key === "liquidations") {
+    if (row.healthReason === "connecting" || (row.running && !row.connected)) return "connecting…";
+    if (row.healthReason === "starting" || row.healthReason === "not_running") return "starting…";
+    if (row.healthReason === "connected" || row.healthReason === "stream_active") return "live";
+    if (row.healthReason === "stale") return "quiet";
+    if (row.lastError) return "error";
+  }
+  if (row.running && !row.connected) return "connecting…";
+  return "missing";
 }
 
 export function LiqCascadeFeedStatusPanel({
@@ -143,22 +164,19 @@ export function LiqCascadeFeedStatusPanel({
           >
             <FeedDot ok={row.ok} required={row.required !== false} />
             <span className="font-medium">{row.label}</span>
-            {!compact && (
-              <span className="text-slate-500 dark:text-slate-400">
-                {row.required === false
-                  ? "(optional)"
-                  : row.ok
-                    ? "OK"
-                    : key === "openInterest" && row.pending
-                      ? "loading…"
-                      : row.running && !row.connected
-                        ? "connecting…"
-                        : "missing"}
-              </span>
-            )}
+            <span className="text-slate-500 dark:text-slate-400">
+              {row.required === false ? "(optional)" : feedStatusHint(key, row)}
+            </span>
           </div>
         ))}
       </div>
+      {!compact && !status.allOk && status.feeds.liquidations.ok === false ? (
+        <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-300">
+          Liquidations WS: {status.feeds.liquidations.healthReason ?? "unknown"}
+          {status.feeds.liquidations.lastError ? ` — ${status.feeds.liquidations.lastError}` : ""}
+          {status.feeds.liquidations.streamUrl ? ` · ${status.feeds.liquidations.streamUrl}` : ""}
+        </p>
+      ) : null}
       {!compact && (
         <p className="mt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
           Green = live data flowing. Red = required feed missing — strategy will not fire reliably.

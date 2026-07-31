@@ -35,6 +35,10 @@ export type MlctsLayerStatus = {
   score: number;
   direction?: string | null;
   allRequiredGreen?: boolean;
+  signalOk?: boolean;
+  layersAllPass?: boolean;
+  hardVetoesOk?: boolean;
+  scoreOk?: boolean;
   scoreThreshold?: number;
   layers: Record<string, MlctsLayerRow>;
   featureVector?: Record<string, unknown>;
@@ -140,6 +144,12 @@ function layerMetrics(key: string, d: Record<string, unknown>): MetricRow[] {
     case "trend":
       return [
         { label: "Bias", value: d.bias != null ? String(d.bias) : "—", ok: d.bias === "BULL" || d.bias === "BEAR" ? true : d.bias === "RANGE" ? false : null },
+        ...(d.structureBias != null ? [{ label: "Swing structure", value: String(d.structureBias) }] : []),
+        ...(d.emaBias != null ? [{ label: "EMA bias", value: String(d.emaBias) }] : []),
+        ...(d.biasReason != null ? [{ label: "Bias reason", value: String(d.biasReason) }] : []),
+        ...(d.structureInvalidated != null
+          ? [{ label: "Structure invalidated", value: String(d.structureInvalidated) }]
+          : []),
         { label: "HH / HL / LH / LL", value: `${fmtBool(d.hh)} / ${fmtBool(d.hl)} / ${fmtBool(d.lh)} / ${fmtBool(d.ll)}` },
         { label: "Swing high", value: fmtPrice(d.swingHigh) },
         { label: "Swing low", value: fmtPrice(d.swingLow) },
@@ -274,6 +284,7 @@ function layerMetrics(key: string, d: Record<string, unknown>): MetricRow[] {
     case "orderflow":
       return [
         ...(d.awaitingBias ? [{ label: "Preview side", value: "L1 bias RANGE — preview only" }] : []),
+        ...(d.thinData === true ? [{ label: "Data quality", value: "thin / placeholder — auto fail" }] : []),
         { label: "Delta", value: d.delta != null ? fmtNum(d.delta, 0) : "—" },
         { label: "Buy vol", value: d.buyVol != null ? fmtNum(d.buyVol, 0) : "—" },
         { label: "Sell vol", value: d.sellVol != null ? fmtNum(d.sellVol, 0) : "—" },
@@ -289,10 +300,19 @@ function layerMetrics(key: string, d: Record<string, unknown>): MetricRow[] {
               ? `${fmtNum(d.bookImbalance, 2)} (bull ≥${fmtNum(d.bookBullMin ?? 1.5, 1)} / bear ≤${fmtNum(d.bookBearMax ?? 0.67, 2)})`
               : "—",
         },
+        ...(d.deltaScore != null
+          ? [
+              {
+                label: "Score parts",
+                value: `Δ ${d.deltaScore} · div ${d.divScore ?? 0} · abs ${d.absScore ?? 0} · book ${d.bookScore ?? 0}`,
+              },
+            ]
+          : []),
       ];
     case "positioning":
       return [
         ...(d.awaitingBias ? [{ label: "Preview side", value: "L1 bias RANGE — preview only" }] : []),
+        ...(d.side != null ? [{ label: "Side", value: String(d.side) }] : []),
         ...(d.optional ? [{ label: "Data", value: "optional — missing OI/funding" }] : []),
         { label: "Price Δ", value: d.priceChangePct != null ? fmtPct(Number(d.priceChangePct), 2) : "—" },
         { label: "OI Δ", feedKey: "openInterest", value: d.oiChangePct != null ? fmtPct(Number(d.oiChangePct), 2) : "—" },
@@ -324,12 +344,34 @@ function layerMetrics(key: string, d: Record<string, unknown>): MetricRow[] {
           ok: Number(d.atrExpansion) >= Number(d.atrGateMin ?? 1) ? true : Number.isFinite(Number(d.atrExpansion)) ? false : null,
         },
         { label: "Vol avg20", value: d.volAvg20 != null ? fmtNum(d.volAvg20, 0) : "—" },
+        ...(d.volAvgBars != null ? [{ label: "Vol avg bars", value: `${String(d.volAvgBars)} / 19` }] : []),
+        ...(d.volDataOk === false ? [{ label: "Vol feed", value: "sparse — RVOL unavailable" }] : []),
         { label: "Cur vol", value: d.curVol != null ? fmtNum(d.curVol, 0) : "—" },
         {
           label: "RVOL",
-          value: d.rvol != null ? `${fmtNum(d.rvol, 2)}× (min ${fmtNum(d.rvolGateMin ?? 1.5, 1)}×)` : "—",
-          ok: Number(d.rvol) >= Number(d.rvolGateMin ?? 1.5) ? true : Number.isFinite(Number(d.rvol)) ? false : null,
+          value:
+            d.rvolUnavailable === true
+              ? "— (no baseline)"
+              : d.rvol != null
+                ? `${fmtNum(d.rvol, 2)}× (min ${fmtNum(d.rvolGateMin ?? 1.5, 1)}×)`
+                : "—",
+          ok:
+            d.rvolUnavailable === true
+              ? false
+              : Number(d.rvol) >= Number(d.rvolGateMin ?? 1.5)
+                ? true
+                : Number.isFinite(Number(d.rvol))
+                  ? false
+                  : null,
         },
+        ...(d.expansionScore != null
+          ? [
+              {
+                label: "Score parts",
+                value: `exp ${fmtNum(d.expansionScore, 1)} + rvol ${fmtNum(d.rvolScore ?? 0, 1)}`,
+              },
+            ]
+          : []),
         { label: "ATR %", value: d.atrPct != null ? fmtPct(Number(d.atrPct) * 100, 2) : "—" },
       ];
     default:
@@ -418,13 +460,14 @@ export function MlctsLayersPanel({ status }: { status: MlctsLayerStatus | null |
 
   const threshold = status.scoreThreshold ?? 75;
   const rows = LAYER_ORDER.map((k) => status.layers[k]).filter(Boolean) as MlctsLayerRow[];
-  const layersCleared = rows.length > 0 && rows.every((r) => r.cleared ?? (r.active && r.pass));
-  const compositeCleared = layersCleared && status.score >= threshold;
+  const layersAllPass = status.layersAllPass ?? (rows.length > 0 && rows.every((r) => r.pass));
+  const signalReady = status.signalOk ?? (status.allRequiredGreen === true);
+  const scoreMet = status.scoreOk ?? status.score >= threshold;
 
   return (
     <div
       className={`rounded-xl border px-3 py-2.5 ${
-        compositeCleared
+        signalReady
           ? "border-emerald-400/70 bg-emerald-50/80 dark:border-emerald-800 dark:bg-emerald-950/25"
           : "border-violet-400/70 bg-violet-50/80 dark:border-violet-800 dark:bg-violet-950/30"
       }`}
@@ -435,10 +478,10 @@ export function MlctsLayersPanel({ status }: { status: MlctsLayerStatus | null |
         </span>
         <span
           className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-            compositeCleared ? "bg-emerald-600 text-white" : "bg-violet-700 text-white"
+            signalReady ? "bg-emerald-600 text-white" : "bg-violet-700 text-white"
           }`}
         >
-          {compositeCleared ? "READY" : "BUILDING"}
+          {signalReady ? "READY" : "BUILDING"}
         </span>
         {status.direction ? (
           <span className="font-mono text-[10px] text-slate-600 dark:text-slate-400">{status.direction}</span>
@@ -455,7 +498,11 @@ export function MlctsLayersPanel({ status }: { status: MlctsLayerStatus | null |
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {rows.map((row) => {
           const metrics = layerMetrics(row.key, row.detail ?? {});
-          const minLabel = row.isGate ? "gate" : row.minScore != null ? String(row.minScore) : "—";
+          const minLabel = row.isGate
+            ? "gate"
+            : row.minScore != null
+              ? `100 · pass ≥${row.minScore}`
+              : "100";
           const statusLabel = row.cleared ? "✓" : row.blocked ? "wait" : row.failed ? "—" : row.pass ? "✓" : "—";
           return (
             <div key={row.key} className={`rounded-md border px-2.5 py-2 transition-colors ${layerCardClass(row)}`}>
@@ -505,34 +552,36 @@ export function MlctsLayersPanel({ status }: { status: MlctsLayerStatus | null |
 
       <div
         className={`mt-2.5 rounded-md border px-2.5 py-2 transition-colors ${
-          compositeCleared
+          signalReady
             ? "border-emerald-500/80 bg-emerald-100/90 dark:border-emerald-600 dark:bg-emerald-950/50"
-            : layersCleared
+            : scoreMet && status.hardVetoesOk
               ? "border-violet-400/60 bg-violet-50/80 dark:border-violet-800 dark:bg-violet-950/30"
               : "border-slate-300/50 bg-white/50 dark:border-slate-700 dark:bg-slate-900/30"
         }`}
       >
         <div className="mb-1 flex items-center justify-between text-[10px]">
-          <span className={compositeCleared ? "font-semibold text-emerald-900 dark:text-emerald-100" : "text-slate-600 dark:text-slate-400"}>
+          <span className={signalReady ? "font-semibold text-emerald-900 dark:text-emerald-100" : "text-slate-600 dark:text-slate-400"}>
             L8 Composite score
           </span>
-          <span className={`font-mono font-semibold ${compositeCleared ? "text-emerald-800 dark:text-emerald-200" : ""}`}>
+          <span className={`font-mono font-semibold ${signalReady ? "text-emerald-800 dark:text-emerald-200" : ""}`}>
             {status.score} / {threshold}
-            {compositeCleared ? " ✓" : layersCleared ? " (layers ✓)" : ""}
+            {signalReady ? " ✓ signal" : scoreMet ? " (score ✓)" : ""}
           </span>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
           <div
-            className={`h-full transition-all ${compositeCleared ? "bg-emerald-500" : "bg-violet-500"}`}
+            className={`h-full transition-all ${signalReady ? "bg-emerald-500" : "bg-violet-500"}`}
             style={{ width: `${Math.min(100, (status.score / threshold) * 100)}%` }}
           />
         </div>
         <p className="mt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
-          {compositeCleared
-            ? "All layers green + composite threshold met — trade fires on bar close when bot is running."
-            : layersCleared
-              ? "L1–L7 cleared — composite score still below threshold."
-              : "Layers unlock in order (L1→L7). Each section turns green when its threshold clears and all prior layers are green."}
+          {signalReady
+            ? "Direction + L7 vol gate + composite threshold + valid brackets — trade fires on bar close."
+            : scoreMet && status.hardVetoesOk
+              ? `Composite ≥ ${threshold} but brackets or hard veto blocked signal.`
+              : layersAllPass
+                ? "All L1–L7 pass flags green (diagnostic) — composite or hard veto still blocking signal."
+                : "Per-layer pass flags are diagnostic. Entry uses direction + L7 gate + composite only."}
         </p>
       </div>
     </div>

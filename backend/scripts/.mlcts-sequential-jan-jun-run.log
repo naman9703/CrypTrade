@@ -1,0 +1,287 @@
+
+=== MLCTS sequential L1234 gate BTCUSDT 2026-01-01 → 2026-07-01T00:00:00.000Z ===
+Data: REST + Vision memory (no DB)
+Fetching 15m klines…
+  klines: 17618 bars
+  funding: 551 events
+Downloading Binance Vision OI + book (this may take several minutes)…
+  metrics 2025-12-29 (1/185)
+  metrics 2025-12-30 (2/185)
+  metrics 2025-12-31 (3/185)
+  metrics 2026-01-01 (4/185)
+  metrics 2026-01-02 (5/185)
+  metrics 2026-01-03 (6/185)
+  metrics 2026-01-04 (7/185)
+  metrics 2026-01-05 (8/185)
+  metrics 2026-01-06 (9/185)
+  metrics 2026-01-07 (10/185)
+  metrics 2026-01-08 (11/185)
+  metrics 2026-01-09 (12/185)
+  metrics 2026-01-10 (13/185)
+  metrics 2026-01-11 (14/185)
+  metrics 2026-01-12 (15/185)
+  metrics 2026-01-13 (16/185)
+  metrics 2026-01-14 (17/185)
+  metrics 2026-01-15 (18/185)
+  metrics 2026-01-16 (19/185)
+  metrics 2026-01-17 (20/185)
+  metrics 2026-01-18 (21/185)
+  metrics 2026-01-19 (22/185)
+  metrics 2026-01-20 (23/185)
+  metrics 2026-01-21 (24/185)
+  metrics 2026-01-22 (25/185)
+  metrics 2026-01-23 (26/185)
+  metrics 2026-01-24 (27/185)
+  metrics 2026-01-25 (28/185)
+  metrics 2026-01-26 (29/185)
+  metrics 2026-01-27 (30/185)
+  metrics 2026-01-28 (31/185)
+  metrics 2026-01-29 (32/185)
+  metrics 2026-01-30 (33/185)
+  metrics 2026-01-31 (34/185)
+  metrics 2026-02-01 (35/185)
+  metrics 2026-02-02 (36/185)
+  metrics 2026-02-03 (37/185)
+  metrics 2026-02-04 (38/185)
+  metrics 2026-02-05 (39/185)
+  metrics 2026-02-06 (40/185)
+  metrics 2026-02-07 (41/185)
+  metrics 2026-02-08 (42/185)
+  metrics 2026-02-09 (43/185)
+  metrics 2026-02-10 (44/185)
+  metrics 2026-02-11 (45/185)
+  metrics 2026-02-12 (46/185)
+  metrics 2026-02-13 (47/185)
+  metrics 2026-02-14 (48/185)
+  metrics 2026-02-15 (49/185)
+  metrics 2026-02-16 (50/185)
+  metrics 2026-02-17 (51/185)
+  metrics 2026-02-18 (52/185)
+  metrics 2026-02-19 (53/185)
+  metrics 2026-02-20 (54/185)
+  metrics 2026-02-21 (55/185)
+  metrics 2026-02-22 (56/185)
+  metrics 2026-02-23 (57/185)
+  metrics 2026-02-24 (58/185)
+  metrics 2026-02-25 (59/185)
+  metrics 2026-02-26 (60/185)
+  metrics 2026-02-27 (61/185)
+  metrics 2026-02-28 (62/185)
+  metrics 2026-03-01 (63/185)
+  metrics 2026-03-02 (64/185)
+  metrics 2026-03-03 (65/185)
+  metrics 2026-03-04 (66/185)
+  metrics 2026-03-05 (67/185)
+  metrics 2026-03-06 (68/185)
+  metrics 2026-03-07 (69/185)
+  metrics 2026-03-08 (70/185)
+  metrics 2026-03-09 (71/185)
+  metrics 2026-03-10 (72/185)
+  metrics 2026-03-11 (73/185)
+  metrics 2026-03-12 (74/185)
+  metrics 2026-03-13 (75/185)
+  metrics 2026-03-14 (76/185)
+  metrics 2026-03-15 (77/185)
+  metrics 2026-03-16 (78/185)
+  metrics 2026-03-17 (79/185)
+  metrics 2026-03-18 (80/185)
+  metrics 2026-03-19 (81/185)
+  metrics 2026-03-20 (82/185)
+  metrics 2026-03-21 (83/185)
+  metrics 2026-03-22 (84/185)
+  metrics 2026-03-23 (85/185)
+  metrics 2026-03-24 (86/185)
+  metrics 2026-03-25 (87/185)
+  metrics 2026-03-26 (88/185)
+  metrics 2026-03-27 (89/185)
+  metrics 2026-03-28 (90/185)
+  metrics 2026-03-29 (91/185)
+  metrics 2026-03-30 (92/185)
+  metrics 2026-03-31 (93/185)
+  metrics 2026-04-01 (94/185)
+  metrics 2026-04-02 (95/185)
+  metrics 2026-04-03 (96/185)
+  metrics 2026-04-04 (97/185)
+  metrics 2026-04-05 (98/185)
+  metrics 2026-04-06 (99/185)
+  metrics 2026-04-07 (100/185)
+  metrics 2026-04-08 (101/185)
+  metrics 2026-04-09 (102/185)
+  metrics 2026-04-10 (103/185)
+  metrics 2026-04-11 (104/185)
+  metrics 2026-04-12 (105/185)
+  metrics 2026-04-13 (106/185)
+  metrics 2026-04-14 (107/185)
+  metrics 2026-04-15 (108/185)
+  metrics 2026-04-16 (109/185)
+  metrics 2026-04-17 (110/185)
+  metrics 2026-04-18 (111/185)
+  metrics 2026-04-19 (112/185)
+  metrics 2026-04-20 (113/185)
+  metrics 2026-04-21 (114/185)
+  metrics 2026-04-22 (115/185)
+  metrics 2026-04-23 (116/185)
+  metrics 2026-04-24 (117/185)
+  metrics 2026-04-25 (118/185)
+  metrics 2026-04-26 (119/185)
+  metrics 2026-04-27 (120/185)
+  metrics 2026-04-28 (121/185)
+  metrics 2026-04-29 (122/185)
+  metrics 2026-04-30 (123/185)
+  metrics 2026-05-01 (124/185)
+  metrics 2026-05-02 (125/185)
+  metrics 2026-05-03 (126/185)
+  metrics 2026-05-04 (127/185)
+  metrics 2026-05-05 (128/185)
+  metrics 2026-05-06 (129/185)
+  metrics 2026-05-07 (130/185)
+  metrics 2026-05-08 (131/185)
+  metrics 2026-05-09 (132/185)
+  metrics 2026-05-10 (133/185)
+  metrics 2026-05-11 (134/185)
+  metrics 2026-05-12 (135/185)
+  metrics 2026-05-13 (136/185)
+  metrics 2026-05-14 (137/185)
+  metrics 2026-05-15 (138/185)
+  metrics 2026-05-16 (139/185)
+  metrics 2026-05-17 (140/185)
+  metrics 2026-05-18 (141/185)
+  metrics 2026-05-19 (142/185)
+  metrics 2026-05-20 (143/185)
+  metrics 2026-05-21 (144/185)
+  metrics 2026-05-22 (145/185)
+  metrics 2026-05-23 (146/185)
+  metrics 2026-05-24 (147/185)
+  metrics 2026-05-25 (148/185)
+  metrics 2026-05-26 (149/185)
+  metrics 2026-05-27 (150/185)
+  metrics 2026-05-28 (151/185)
+  metrics 2026-05-29 (152/185)
+  metrics 2026-05-30 (153/185)
+  metrics 2026-05-31 (154/185)
+  metrics 2026-06-01 (155/185)
+  metrics 2026-06-02 (156/185)
+  metrics 2026-06-03 (157/185)
+  metrics 2026-06-04 (158/185)
+  metrics 2026-06-05 (159/185)
+  metrics 2026-06-06 (160/185)
+  metrics 2026-06-07 (161/185)
+  metrics 2026-06-08 (162/185)
+  metrics 2026-06-09 (163/185)
+  metrics 2026-06-10 (164/185)
+  metrics 2026-06-11 (165/185)
+  metrics 2026-06-12 (166/185)
+  metrics 2026-06-13 (167/185)
+  metrics 2026-06-14 (168/185)
+  metrics 2026-06-15 (169/185)
+  metrics 2026-06-16 (170/185)
+  metrics 2026-06-17 (171/185)
+  metrics 2026-06-18 (172/185)
+  metrics 2026-06-19 (173/185)
+  metrics 2026-06-20 (174/185)
+  metrics 2026-06-21 (175/185)
+  metrics 2026-06-22 (176/185)
+  metrics 2026-06-23 (177/185)
+  metrics 2026-06-24 (178/185)
+  metrics 2026-06-25 (179/185)
+  metrics 2026-06-26 (180/185)
+  metrics 2026-06-27 (181/185)
+  metrics 2026-06-28 (182/185)
+  metrics 2026-06-29 (183/185)
+  metrics 2026-06-30 (184/185)
+  metrics 2026-07-01 (185/185)
+  vision OI: 52853 book: 498514
+Precomputing layer evaluations…
+  cached 17498 bar evaluations
+{
+  "outPath": "/Users/namanpaliwal/Desktop/trading/backend/scripts/.mlcts-sequential-gate-BTCUSDT.json",
+  "sequentialFormations": 499,
+  "formationsPerDay": 2.76,
+  "confidence": {
+    "min": 33,
+    "p50": 56,
+    "max": 78
+  },
+  "thresholdSummary": [
+    {
+      "threshold": 40,
+      "signals": 488,
+      "trades": 247,
+      "returnPct": -46.57,
+      "pf": 0.668,
+      "winRate": 38.9,
+      "meanR": -0.245,
+      "maxDd": 50.33
+    },
+    {
+      "threshold": 45,
+      "signals": 461,
+      "trades": 231,
+      "returnPct": -33.94,
+      "pf": 0.755,
+      "winRate": 41.1,
+      "meanR": -0.171,
+      "maxDd": 38.58
+    },
+    {
+      "threshold": 50,
+      "signals": 398,
+      "trades": 210,
+      "returnPct": -32.86,
+      "pf": 0.745,
+      "winRate": 40,
+      "meanR": -0.181,
+      "maxDd": 38.58
+    },
+    {
+      "threshold": 55,
+      "signals": 340,
+      "trades": 180,
+      "returnPct": -25.63,
+      "pf": 0.774,
+      "winRate": 40.6,
+      "meanR": -0.156,
+      "maxDd": 32.42
+    },
+    {
+      "threshold": 60,
+      "signals": 215,
+      "trades": 117,
+      "returnPct": -9.13,
+      "pf": 0.877,
+      "winRate": 43.6,
+      "meanR": -0.073,
+      "maxDd": 19.15
+    },
+    {
+      "threshold": 65,
+      "signals": 126,
+      "trades": 79,
+      "returnPct": 3.99,
+      "pf": 1.081,
+      "winRate": 46.8,
+      "meanR": 0.058,
+      "maxDd": 12.16
+    },
+    {
+      "threshold": 70,
+      "signals": 14,
+      "trades": 7,
+      "returnPct": 8.04,
+      "pf": 8.013,
+      "winRate": 85.7,
+      "meanR": 1.116,
+      "maxDd": 1.11
+    },
+    {
+      "threshold": 75,
+      "signals": 2,
+      "trades": 2,
+      "returnPct": 0.52,
+      "pf": 1.463,
+      "winRate": 50,
+      "meanR": 0.271,
+      "maxDd": 1.11
+    }
+  ]
+}

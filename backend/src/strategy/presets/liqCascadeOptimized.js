@@ -2,7 +2,40 @@
  * LIQ_CASCADE presets — event-driven liquidation cascade scalping (1m bar-close).
  */
 
+/** Applied when selecting LIQ_CASCADE — clears ST/intel/VP overlays from prior strategies. */
+export const LIQ_CASCADE_ACTIVATION_PATCH = {
+  supertrendSpotAuto: false,
+  supertrendFuturesAuto: false,
+  trailingStopLossAuto: false,
+  /** ST breakout-confirm deferral applies to all bar-close paths — must stay off for LIQ_CASCADE. */
+  supertrendBreakoutConfirm: false,
+  intelligenceGateEnabled: false,
+  intelligenceGateManualStrategies: false,
+  intelligenceGateStrict: false,
+  supertrendFuturesAiConfidenceFilter: false,
+  signalStrengthGatesTrades: false,
+  supertrendMoveQualityGate: false,
+  supertrendBigMoveGateEnabled: false,
+  supertrendHtf4hEnabled: false,
+  supertrendConfirmationGateEnabled: false,
+  volumeProfileEnabled: false,
+  volumeProfileGatesEnabled: false,
+  volumeProfileSoftGates: false,
+  intradayVpBrackets: false,
+  intradayGateLiquidity: false,
+  intradayGateSession: false,
+  intradayGateFib: false,
+  intradayGateVp: false,
+  intradayGateOrderFlow: false,
+  intradayGateHtfRegime: false,
+  intradayGateInstitutionalSr: false,
+  intradayGateSmcIct: false,
+  intradaySmcIctMode: false,
+  marketDecision: { enabled: false },
+};
+
 export const LIQ_CASCADE_BTC_1M = {
+  ...LIQ_CASCADE_ACTIVATION_PATCH,
   symbol: "BTCUSDT",
   timeframe: "1m",
   manualStrategy: "LIQ_CASCADE",
@@ -17,8 +50,15 @@ export const LIQ_CASCADE_BTC_1M = {
   liqCascadeLookbackBars: 48,
   liqCascadeWindowBars: 3,
   liqCascadeMinDispAtr: 1.0,
+  liqCascadeStrongDispAtr: 2.0,
   liqCascadeMinOiDropPct: 0.12,
+  liqCascadeOiGateMode: "window",
+  liqCascadeOiWindowBars: 3,
+  liqCascadeConfirmMode: "ladder",
+  liqCascadeConfirmLiqBars: 2,
+  liqCascadeExhaustionDecay: 0.55,
   liqCascadeDirectionMode: "fade",
+  liqCascadeLiqSource: "force_orders",
   liqCascadeMaxTradesPerDay: 8,
   liqCascadeMinBarGap: 2,
   liqCascadeMaxHoldBars: 24,
@@ -42,7 +82,60 @@ export const LIQ_CASCADE_BNB_1M = {
   liqCascadeMinLiqUsdBar: 30_000,
 };
 
+/** Multi-coin — equal budget split across BTC / ETH / BNB (shared cascade params). */
 export const LIQ_CASCADE_PORTFOLIO_1M = {
   ...LIQ_CASCADE_BTC_1M,
-  symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
+  symbol: "BTCUSDT",
+  universeCustomSymbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
+  universeCoinBase: "CUSTOM",
+  universeCoinSelectMode: "MULTIPLE",
+  multiBudgetSplitMode: "EQUAL",
+  multiCoinCapitalSizingActive: true,
+  backtestApplyLiveMultiCoinSplit: true,
+};
+
+/** Portfolio + live tick executor — paper/testnet unless LIQ_CASCADE_LIVE_ALLOW=1. */
+export const LIQ_CASCADE_PORTFOLIO_1M_LIVE_TICK = {
+  ...LIQ_CASCADE_PORTFOLIO_1M,
+  liqCascadeLiveTickEnabled: true,
+};
+
+/**
+ * Paper smoke-test knobs — liq $ + forced-side dom + z-score ONLY.
+ * OI off, displacement off, confirm ladder bypassed (Tier A @ 0 ATR = bar-close entry).
+ * NOT for live capital — verify signal → Activity → order path in paper mode.
+ */
+export const LIQ_CASCADE_SMOKE_TEST_PATCH = {
+  liqCascadeOiGateMode: "off",
+  liqCascadeMinOiDropPct: 0,
+  liqCascadeMinDispAtr: 0,
+  liqCascadeStrongDispAtr: 0,
+  liqCascadeConfirmMode: "ladder",
+  liqCascadeConfirmLiqBars: 1,
+  liqCascadeMinAtrPct: 0.001,
+  liqCascadeMinRr: 0.5,
+  liqCascadeZScoreMin: 1.5,
+  liqCascadeMinLiqUsdBar: 25_000,
+  liqCascadeMinBarGap: 1,
+  liqCascadeMaxTradesPerDay: 12,
+  liqCascadeLiveTickEnabled: false,
+};
+
+export const LIQ_CASCADE_BTC_1M_SMOKE_TEST = {
+  ...LIQ_CASCADE_BTC_1M,
+  ...LIQ_CASCADE_SMOKE_TEST_PATCH,
+  symbol: "BTCUSDT",
+};
+
+export const LIQ_CASCADE_ETH_1M_SMOKE_TEST = {
+  ...LIQ_CASCADE_ETH_1M,
+  ...LIQ_CASCADE_SMOKE_TEST_PATCH,
+  symbol: "ETHUSDT",
+};
+
+/** BTC+ETH+BNB paper smoke — same relaxed gates, multi-coin split. */
+export const LIQ_CASCADE_PORTFOLIO_1M_SMOKE_TEST = {
+  ...LIQ_CASCADE_PORTFOLIO_1M,
+  ...LIQ_CASCADE_SMOKE_TEST_PATCH,
+  symbol: "BTCUSDT",
 };

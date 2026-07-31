@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
+import { atr as atrFn } from "../indicators.js";
 import {
   LIQ_CASCADE_WARMUP,
   buildLiqCascadeSeries,
+  computeInBarDisplacement,
   createCascadeTickTracker,
   evaluateCascadeTickSignal,
+  liqExhaustionConfirm,
   liqIntervalToMs,
+  oiWindowDropPct,
   prepareLiqBars,
   prepareOiBars,
+  resolveOiGate,
   updateCascadeFromTick,
 } from "./liqCascade.js";
 
@@ -81,6 +86,9 @@ const opts = {
   liqInterval: "5min",
   liqZScoreMin: 1.5,
   minOiDropPct: 0.5,
+  oiGateMode: "same_bar",
+  confirmMode: "stall_reclaim",
+  confirmLiqBars: 1,
   minDispAtrMult: 0.5,
   minLiqUsdBar: 100_000,
   minAtrPct: 0.001,
@@ -131,5 +139,162 @@ for (let i = 0; i < 3; i++) {
 }
 const sig = evaluateCascadeTickSignal(tracker, 98.2);
 assert.ok(sig?.action === "BUY" || sig === null);
+
+// --- oiWindowDropPct: cascade unwind over N bars, not same-bar noise ---
+const oiBarsSimple = [
+  { ts: 1000, oi: 1_000_000, dropPct: null },
+  { ts: 2000, oi: 1_000_000, dropPct: 0 },
+  { ts: 3000, oi: 1_000_000, dropPct: 0 },
+  { ts: 4000, oi: 1_000_000, dropPct: 0 },
+  { ts: 5000, oi: 990_000, dropPct: 1 },
+];
+const windowDrop = oiWindowDropPct(oiBarsSimple, 5000, 3);
+assert.ok(windowDrop != null && windowDrop >= 0.99, `window OI drop expected ~1%, got ${windowDrop}`);
+const oiGateWindow = resolveOiGate(oiBarsSimple, 5000, {
+  oiGateMode: "window",
+  oiWindowBars: 3,
+  minOiDropPct: 0.5,
+});
+assert.equal(oiGateWindow.ok, true, "window OI gate should pass on gradual unwind");
+
+// --- confirm either: exhaustion on post-spike quiet liq bar ---
+const liqWithDecay = [];
+for (let ts = START; ts < START + N * tfMs; ts += intervalMs) {
+  if (ts === spikeBarOpenTs) {
+    liqWithDecay.push({ ts, liqLongUsd: 900_000, liqShortUsd: 40_000 });
+  } else if (ts === spikeBarOpenTs + intervalMs) {
+    liqWithDecay.push({ ts, liqLongUsd: 25_000, liqShortUsd: 20_000 });
+  } else {
+    liqWithDecay.push({ ts, liqLongUsd: 20_000, liqShortUsd: 18_000 });
+  }
+}
+const decayBars = prepareLiqBars(liqWithDecay, { intervalMs, lookbackBars: 48 });
+const postSpikeBar = decayBars.find((b) => b.tsOpen === spikeBarOpenTs + intervalMs);
+assert.ok(
+  postSpikeBar?.decayFromPeak != null && postSpikeBar.decayFromPeak <= 0.55,
+  "post-spike bar should show exhaustion decay",
+);
+const cascadeStub = { liqBarTs: spikeBarOpenTs + intervalMs, dom: "longs" };
+assert.ok(
+  liqExhaustionConfirm(decayBars, postSpikeBar.ts, cascadeStub, { exhaustionDecayRatio: 0.55 }),
+  "exhaustion confirm on post-spike decay bar",
+);
+
+// --- one-shot detection: no late chase when post-close move inflates displacement ---
+const chaseStart = LIQ_CASCADE_WARMUP + 50;
+assert.equal((chaseStart * tfMs) % intervalMs, 0, "chase spike must open on liq boundary");
+const chaseBarOpenTs = START + chaseStart * tfMs;
+const chaseCandles = [];
+let chasePx = 100;
+for (let i = 0; i < N; i++) {
+  const ts = START + i * tfMs;
+  const o = chasePx;
+  let shock = Math.sin(i / 7) * 0.25;
+  // Flat through liq bar close (in-bar disp ~0)
+  if (i >= chaseStart && i <= chaseStart + 5) shock = 0;
+  // Large continuation after bar close — old logic would chase here
+  if (i >= chaseStart + 6 && i < chaseStart + 9) shock = -1.5;
+  const c = chasePx + shock;
+  chasePx = c;
+  chaseCandles.push({
+    ts,
+    open: o,
+    high: Math.max(o, c) + 0.6,
+    low: Math.min(o, c) - 0.6,
+    close: c,
+    volume: 1000 + i,
+  });
+}
+const chaseLiq = [];
+for (let ts = START; ts < START + N * tfMs; ts += intervalMs) {
+  if (ts === chaseBarOpenTs) {
+    chaseLiq.push({ ts, liqLongUsd: 900_000, liqShortUsd: 40_000 });
+  } else {
+    chaseLiq.push({ ts, liqLongUsd: 20_000, liqShortUsd: 18_000 });
+  }
+}
+const chaseOi = [];
+for (let ts = START; ts < START + N * tfMs; ts += intervalMs) {
+  chaseOi.push({ ts, oiCloseUsd: ts >= chaseBarOpenTs ? 980_000_000 : 1_000_000_000 });
+}
+const chaseBars = prepareLiqBars(chaseLiq, { intervalMs, lookbackBars: 48 });
+const chaseSpike = chaseBars.find((b) => b.tsOpen === chaseBarOpenTs);
+const chaseAtr = atrFn(chaseCandles, 14);
+const inBar = computeInBarDisplacement(chaseCandles, chaseAtr, chaseSpike);
+assert.ok(
+  inBar.disp != null && inBar.disp < 1.0,
+  `in-bar disp should stay below threshold, got ${inBar.disp}`,
+);
+// Post-close displacement would exceed threshold if re-checked on later candles.
+const postCloseIdx = chaseStart + 8;
+const postCloseDisp =
+  chaseAtr[postCloseIdx] > 0
+    ? Math.abs(chaseCandles[postCloseIdx].close - chaseCandles[chaseStart].close) /
+      chaseAtr[postCloseIdx]
+    : 0;
+assert.ok(postCloseDisp >= 1.0, `post-close disp should exceed threshold, got ${postCloseDisp}`);
+const { series: chaseSeries } = buildLiqCascadeSeries(chaseCandles, {
+  liqSeries: chaseLiq,
+  oiSeries: chaseOi,
+  opts: {
+    ...opts,
+    oiGateMode: "same_bar",
+    confirmMode: "ladder",
+    minDispAtrMult: 1.0,
+    strongDispAtrMult: 2.0,
+  },
+});
+const chaseHits = chaseSeries.map((s, i) => (s ? i : null)).filter((i) => i != null);
+assert.equal(chaseHits.length, 0, "must not chase post-close displacement inflation");
+
+// --- Tier A: strong in-bar disp enters on bar close or +1 ---
+const tierStart = LIQ_CASCADE_WARMUP + 70;
+assert.equal((tierStart * tfMs) % intervalMs, 0);
+const tierBarOpenTs = START + tierStart * tfMs;
+const tierCandles = [];
+let tierPx = 100;
+for (let i = 0; i < N; i++) {
+  const ts = START + i * tfMs;
+  const o = tierPx;
+  let shock = Math.sin(i / 7) * 0.25;
+  if (i >= tierStart && i < tierStart + 5) shock = -2.5;
+  const c = tierPx + shock;
+  tierPx = c;
+  tierCandles.push({
+    ts,
+    open: o,
+    high: Math.max(o, c) + 0.6,
+    low: Math.min(o, c) - 0.6,
+    close: c,
+    volume: 1000 + i,
+  });
+}
+const tierLiq = [];
+for (let ts = START; ts < START + N * tfMs; ts += intervalMs) {
+  if (ts === tierBarOpenTs) {
+    tierLiq.push({ ts, liqLongUsd: 900_000, liqShortUsd: 40_000 });
+  } else {
+    tierLiq.push({ ts, liqLongUsd: 20_000, liqShortUsd: 18_000 });
+  }
+}
+const tierOi = [];
+for (let ts = START; ts < START + N * tfMs; ts += intervalMs) {
+  tierOi.push({ ts, oiCloseUsd: ts >= tierBarOpenTs ? 980_000_000 : 1_000_000_000 });
+}
+const { series: tierSeries } = buildLiqCascadeSeries(tierCandles, {
+  liqSeries: tierLiq,
+  oiSeries: tierOi,
+  opts: {
+    ...opts,
+    oiGateMode: "same_bar",
+    confirmMode: "ladder",
+    minDispAtrMult: 1.0,
+    strongDispAtrMult: 2.0,
+  },
+});
+const tierHit = tierSeries.findIndex(Boolean);
+const tierCloseIdx = tierStart + 5;
+assert.ok(tierHit >= tierCloseIdx && tierHit <= tierCloseIdx + 1, "Tier A entry at bar close or +1");
+assert.equal(tierSeries[tierHit].confirmTier, "A");
 
 console.log("liqCascade.test.mjs OK", { hits: hitIdxs.length, firstHit, barCloseIdx });

@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-07-29T09:25:22.840Z",
+  "from": "2025-12-20",
+  "to": "2026-07-01",
+  "symbols": {
+    "BTCUSDT": {
+      "symbol": "BTCUSDT",
+      "days": 194,
+      "metrics": {
+        "inserted": 55585,
+        "cached": 55583
+      },
+      "book": {
+        "inserted": 524561,
+        "cached": 524561
+      }
+    }
+  }
+}

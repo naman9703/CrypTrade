@@ -17,6 +17,13 @@ import { precomputeIntraday } from "./intradayPro.js";
 import { MLCTS_BTC_15M } from "./presets/mlctsOptimized.js";
 import { ensureOpenInterest, readOpenInterest } from "../backtest/data/openInterestIngest.js";
 import { ensureFunding, readFundingRates } from "../backtest/data/fundingIngest.js";
+import {
+  ensureMlctsVisionData,
+  mergeMlctsOiSeries,
+  normalizeVisionMetricsOiSeries,
+  readBookImbalanceSeries,
+  readVisionMetrics,
+} from "../backtest/data/mlctsVisionIngest.js";
 
 const MLCTS_USER_KEYS = [
   "symbol",
@@ -137,26 +144,46 @@ function normalizeFundingSeries(rows) {
   }));
 }
 
-export async function hydrateMlctsCfg(cfg, symbol, fromMs, toMs) {
+export async function hydrateMlctsCfg(cfg, symbol, fromMs, toMs, opts = {}) {
   const c = resolveMlctsCfg(cfg);
   const padFrom = mlctsPadFromMs(fromMs, c.timeframe ?? "15m");
-  const hydrated = await hydrateMlctsMarketSeries(symbol, padFrom, toMs);
+  const hydrated = await hydrateMlctsMarketSeries(symbol, padFrom, toMs, opts);
   return {
     ...c,
     _mlctsOiSeries: hydrated.oiSeries,
     _mlctsFundingSeries: hydrated.fundingSeries,
+    _mlctsBookImbalanceSeries: hydrated.bookImbalanceSeries,
+    _mlctsFeedCoverage: hydrated.feedCoverage,
   };
 }
 
-async function hydrateMlctsMarketSeries(symbol, fromMs, toMs) {
+export async function hydrateMlctsMarketSeries(symbol, fromMs, toMs, opts = {}) {
   const sym = String(symbol || "BTCUSDT").toUpperCase();
+  if (opts.ensureVision !== false) {
+    await ensureMlctsVisionData(sym, fromMs, toMs, { force: opts.forceVision === true }).catch(() => {});
+  }
   await ensureOpenInterest(sym, { from: fromMs, to: toMs, period: "1h" }).catch(() => {});
   await ensureFunding(sym, { from: fromMs, to: toMs }).catch(() => {});
+
+  const visionRaw = await readVisionMetrics(sym, fromMs, toMs).catch(() => []);
+  const visionOi = normalizeVisionMetricsOiSeries(visionRaw);
   const oiRaw = await readOpenInterest(sym, fromMs, toMs).catch(() => []);
+  const restOi = normalizeOiSeries(oiRaw);
+  const oiSeries = visionOi.length ? mergeMlctsOiSeries(visionOi, restOi) : restOi;
+
+  const bookImbalanceSeries = await readBookImbalanceSeries(sym, fromMs, toMs).catch(() => []);
   const fundRaw = await readFundingRates(sym, fromMs, toMs).catch(() => []);
+
   return {
-    oiSeries: normalizeOiSeries(oiRaw),
+    oiSeries,
     fundingSeries: normalizeFundingSeries(fundRaw),
+    bookImbalanceSeries,
+    feedCoverage: {
+      visionMetricsPoints: visionRaw.length,
+      bookImbalanceSnapshots: bookImbalanceSeries.length,
+      oiSeriesPoints: oiSeries.length,
+      fundingPoints: fundRaw.length,
+    },
   };
 }
 
@@ -189,6 +216,10 @@ export function buildMlctsLayerSnapshot(candles, cfg = {}, extras = {}) {
     direction: ev.direction,
     displayDirection: ev.displayDirection ?? null,
     allRequiredGreen: ev.allRequiredGreen,
+    signalOk: ev.signalOk,
+    layersAllPass: ev.layersAllPass,
+    hardVetoesOk: ev.hardVetoesOk,
+    scoreOk: ev.scoreOk,
     scoreThreshold: opts.scoreThreshold,
     minLayerScore: opts.minLayerScore,
     layers: serializeLayersForUi(ev.layers, opts),
@@ -228,6 +259,7 @@ function serializeLayersForUi(layers = {}, opts = {}) {
       blocked,
       failed,
       active: prevPass,
+      scoreMax: key === "volatility" ? 100 : 100,
       minScore:
         key === "volatility" ? null : key === "positioning" ? minPositioningScore : minLayerScore,
       required: key !== "positioning" || true,
@@ -244,6 +276,7 @@ export function buildMlctsBacktestAdapter(candles, cfg = {}, _tf = "15m", market
   const extras = {
     oiSeries: marketCtx.oiSeries ?? [],
     fundingSeries: marketCtx.fundingSeries ?? [],
+    bookImbalanceSeries: marketCtx.bookImbalanceSeries ?? [],
   };
   const { series } = buildMlctsSeries(candles, opts, extras);
   let lastSignalIdx = -Infinity;
@@ -334,7 +367,7 @@ export function signal({ candles, cfg, oiSeries, fundingSeries, orderBookImbalan
     orderBookImbalance,
     pre,
   });
-  if (!ev.allRequiredGreen || !ev.direction) {
+  if (!ev.signalOk || !ev.direction) {
     return {
       action: "HOLD",
       reason: `mlcts_incomplete_score_${ev.score}`,

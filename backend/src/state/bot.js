@@ -86,11 +86,16 @@ import {
   evaluateHtf4hFilter,
 } from "../strategy/supertrendHtf4hFilter.js";
 import { ELITE_ST_ACTIVATION_PATCH } from "../strategy/supertrendElite.js";
+import { LIQ_CASCADE_ACTIVATION_PATCH } from "../strategy/presets/liqCascadeOptimized.js";
+import { pickSignalBrainBot } from "../lib/strategySignalBrain.js";
+import { INSTANCE_FIELD_KEYS } from "../lib/strategyInstanceSplit.js";
 import {
   applyVolumeProfilePatchToState,
   volumeProfilePublicSnapshot,
 } from "../strategy/volumeProfileConfigKeys.js";
 import { buildLiqCascadeFeedStatus } from "../strategy/liqCascadeFeedStatus.js";
+import { buildLiqCascadeRadarStatus, refreshLiqCascadeRadarTickCache } from "../strategy/liqCascadeRadarStatus.js";
+import { getLiqCascadeTickTrackerSnapshots, resolveLiqCascadeWatchSymbols } from "../svc/liqCascadeLiveEngine.js";
 import { buildMlctsLiveSnapshotFromBot } from "../strategy/mlctsIntraday.js";
 import { ensureWeeklyLiquidityForSymbol } from "../strategy/weeklyLiquidityCache.js";
 import {
@@ -461,6 +466,8 @@ function normalizeCapitalBudgetFields(s, SYM_RE) {
   const pti = String(s.perTradeBudgetInputMode || "USDT").toUpperCase();
   s.perTradeBudgetInputMode = pti === "PCT_OF_USABLE" ? "PCT_OF_USABLE" : "USDT";
 }
+
+const INSTANCE_FIELD_SET = new Set(INSTANCE_FIELD_KEYS);
 
 export function createBot({
   log,
@@ -2526,6 +2533,7 @@ export function createBot({
         trendHtfStRegimeTpMixed: Number(state.trendHtfStRegimeTpMixed) || 0.035,
         trendHtfStRegimeTpChop: Number(state.trendHtfStRegimeTpChop) || 0.04,
         backtestBreakevenAtMfePct: Number(state.backtestBreakevenAtMfePct) || 0,
+        ...pickSignalBrainBot(state),
       },
       tradingFormDefaults: { ...state.tradingFormDefaults },
     };
@@ -2923,6 +2931,8 @@ export function createBot({
   let feed;
   /** Set before market feed connects so kline `onCandleClose` never hits TDZ. */
   let wsHubRef = null;
+  let liqRadarForceOrderHooked = false;
+  let liqRadarBroadcastAt = 0;
   /** Phase 3E: exchange OPEN leg id (order / position) → DB `trades.id` (open rows). */
   const dbTradeIdByExchangeOpenRef = new Map();
   function rememberDbTradeRef(exchangeRef, dbTradeUuid) {
@@ -3147,6 +3157,47 @@ export function createBot({
       symbol: actSymbol,
       detail: { kind, strategyKey: sk, venue: ven || undefined, side: sd, action: ac, ...p },
     });
+  }
+
+  /** LIQ_CASCADE — log gate / confirm / bracket skips to Activity (bar-close mode). */
+  async function maybeAuditLiqCascadeBarClose(hub, closedRaw, symU, cTs) {
+    if (String(state.manualStrategy ?? "").toUpperCase() !== "LIQ_CASCADE") return;
+    if (state.liqCascadeLiveTickEnabled === true) return;
+    if (!hub?.broadcast) return;
+    const sym = String(symU || state.symbol || "").trim().toUpperCase();
+    if (!sym) return;
+    const clean = sanitizeCandlesForSt(closedRaw, sym);
+    const barIdx = clean.findIndex((c) => Number(c.ts) === cTs);
+    if (barIdx < 0) return;
+    try {
+      const { auditLiqCascadeBarCloseForActivity } = await import("../strategy/liqCascadeIntraday.js");
+      const events = await auditLiqCascadeBarCloseForActivity(state, { candles: clean, barIdx, symU: sym });
+      for (const ev of events) {
+        emitSignalActionActivity(hub, {
+          kind: "strategy",
+          strategyKey: "LIQ_CASCADE",
+          symbol: sym,
+          side: ev.fadeAction ?? "—",
+          action: "skipped",
+          reason: ev.reason,
+          liqUsd: ev.liqUsd,
+          confirmTier: ev.confirmTier,
+          detail: {
+            skipType: ev.type,
+            reasonCode: ev.reasonCode,
+            failedGate: ev.failedGate ?? undefined,
+            gates: ev.gates ?? undefined,
+            dom: ev.dom,
+            z: ev.z,
+            dispAtr: ev.dispAtr,
+            oiDropPct: ev.oiDropPct,
+            liqBarTs: ev.liqBarTs,
+          },
+        });
+      }
+    } catch (e) {
+      log?.warn?.("liq_cascade_activity_audit_failed", { error: String(e?.message || e), symbol: sym });
+    }
   }
 
   /** Demo/paper futures ids like `fut_ADAUSDT` — use for Activity when `tradeSymbol` was omitted on feedback payload. */
@@ -6441,6 +6492,9 @@ export function createBot({
     const strictChartAlign = String(process.env.SUPERTREND_STRICT_CHART_ALIGN ?? "true").toLowerCase() !== "false";
 
     const evBar = await evaluateSupertrendLastClosedBar(rawCandles, state.symbol, cTs);
+    if (manualStrategyKey(state) === "LIQ_CASCADE" && wsHubRef) {
+      await maybeAuditLiqCascadeBarClose(wsHubRef, rawCandles, state.symbol, cTs);
+    }
     if (!evBar) return;
 
     const clean = sanitizeCandlesForSt(rawCandles, state.symbol);
@@ -7085,7 +7139,9 @@ export function createBot({
 
     state.supertrendStHandledCloseKey = barCloseKey;
 
-    if (!state.supertrendBreakoutConfirm) {
+    const manualBarCloseAdapter =
+      manualStrategyUsesLiveBarClose(state) && manualStrategyKey(state) !== "SUPERTREND";
+    if (!state.supertrendBreakoutConfirm || manualBarCloseAdapter) {
       state.pendingSupertrendBreakout = null;
     } else if (allowBuy || allowSell) {
       state.pendingSupertrendBreakout = {
@@ -7712,6 +7768,9 @@ export function createBot({
     if (strat === "MLCTS") {
       void ensureWeeklyLiquidityForSymbol(sym, effectiveMarketFeedKind()).catch(() => {});
     }
+    if (strat === "LIQ_CASCADE") {
+      primeLiqCascadeRadarTickCache();
+    }
   }
 
   /** @deprecated use primeStrategyIntelFeeds */
@@ -7778,6 +7837,9 @@ export function createBot({
         return;
       }
       const closedRaw = rows.length >= 2 ? rows.slice(0, -1) : rows;
+      if (manualStrategyKey(state) === "LIQ_CASCADE" && wsHubRef) {
+        await maybeAuditLiqCascadeBarClose(wsHubRef, closedRaw, symU, Number(candle.ts));
+      }
       const ev = await evaluateSupertrendLastClosedBar(closedRaw, symU, Number(candle.ts));
       if (!ev) return;
       if (!state.running) return;
@@ -7785,6 +7847,9 @@ export function createBot({
       const gatesOut = await processAutoMultiFromEval(symU, wsHubRef, ev, ctx);
       await persistMultiSymbolSnapshot(symU, ev, "kline_ws", gatesOut);
       return;
+    }
+    if (manualStrategyKey(state) === "LIQ_CASCADE" && wsHubRef) {
+      await maybeAuditLiqCascadeBarClose(wsHubRef, rows, symU, Number(candle.ts));
     }
     const ev = await evaluateSupertrendLastClosedBar(rows, symU, Number(candle.ts));
     if (!ev) return;
@@ -8681,6 +8746,24 @@ export function createBot({
     return getChartSnapshotFromFeedBuffer(symU, hours);
   }
 
+  function buildLiqCascadeRadarForBot() {
+    return buildLiqCascadeRadarStatus({
+      state,
+      feed,
+      feedStatus: feed.getStatus?.() ?? null,
+      marketFeedLive: marketFeedUsesLiveBinance(),
+      tickSnapshots: getLiqCascadeTickTrackerSnapshots(),
+      getTradingMode: () => runtimeTradingMode(),
+    });
+  }
+
+  function primeLiqCascadeRadarTickCache() {
+    if (String(state.manualStrategy ?? "").toUpperCase() !== "LIQ_CASCADE") return;
+    const syms = resolveLiqCascadeWatchSymbols(state);
+    const watch = syms.length ? syms : [String(state.symbol || "BTCUSDT").toUpperCase()];
+    void refreshLiqCascadeRadarTickCache(watch).catch(() => {});
+  }
+
   function getPublicState() {
     return {
       running: state.running,
@@ -9088,7 +9171,9 @@ export function createBot({
               marketFeedLive: marketFeedUsesLiveBinance(),
               liqCascadeLiveTickEnabled: state.liqCascadeLiveTickEnabled === true,
               botRunning: state.running,
+              getTradingMode: () => runtimeTradingMode(),
             }),
+            liqCascadeRadarStatus: buildLiqCascadeRadarForBot(),
           }
         : {}),
       ...(String(state.manualStrategy ?? "").toUpperCase() === "MLCTS"
@@ -9812,6 +9897,11 @@ export function createBot({
               void ensureWeeklyLiquidityForSymbol(symU, effectiveMarketFeedKind()).catch(() => {});
               return buildMlctsLiveSnapshotFromBot(state, feed, intelligenceCache);
             })(),
+          }
+        : {}),
+      ...(String(state.manualStrategy ?? "").toUpperCase() === "LIQ_CASCADE"
+        ? {
+            liqCascadeRadarStatus: buildLiqCascadeRadarForBot(),
           }
         : {}),
     });
@@ -11244,6 +11334,27 @@ export function createBot({
   function start({ wsHub, reason = "user_request", source = "api", detail } = {}) {
     if (state.running) return;
     wsHubRef = wsHub;
+    if (!liqRadarForceOrderHooked) {
+      liqRadarForceOrderHooked = true;
+      void import("../intelligence/collectors/liquidationCollector.js").then(({ liquidationEvents }) => {
+        liquidationEvents.on("forceOrder", () => {
+          if (String(state.manualStrategy ?? "").toUpperCase() !== "LIQ_CASCADE") return;
+          if (!state.running) return;
+          primeLiqCascadeRadarTickCache();
+          const now = Date.now();
+          if (now - liqRadarBroadcastAt < 750) return;
+          liqRadarBroadcastAt = now;
+          try {
+            wsHubRef?.broadcast?.("state", {
+              mode: runtimeTradingMode(),
+              ...getPublicState(),
+            });
+          } catch {
+            /* ignore */
+          }
+        });
+      });
+    }
     state.lastStopReason = null;
     state.paused = false;
     state.running = true;
@@ -11755,14 +11866,17 @@ export function createBot({
         }
       }
       if (String(patch.manualStrategy).toUpperCase() === "LIQ_CASCADE") {
+        for (const [k, v] of Object.entries(LIQ_CASCADE_ACTIVATION_PATCH)) {
+          if (patch[k] === undefined) state[k] = v;
+        }
+        if (patch.marketDecision === undefined) {
+          state.marketDecision = { ...(state.marketDecision || {}), enabled: false };
+        }
         primeStrategyIntelFeeds(state.symbol);
       }
       if (String(patch.manualStrategy).toUpperCase() === "MLCTS") {
         primeStrategyIntelFeeds(state.symbol);
       }
-    }
-    for (const [k, v] of Object.entries(patch)) {
-      if (k.startsWith("mlcts") && v !== undefined) state[k] = v;
     }
     if (patch.marketMode) {
       const v = String(patch.marketMode).toUpperCase();
@@ -12491,6 +12605,12 @@ export function createBot({
       resetCapitalCycleFromAllowedBase();
     }
     }
+    /** Signal-brain keys (liqCascade*, mlcts*, vp*, …) — apply after explicit handlers. */
+    for (const [k, v] of Object.entries(pickSignalBrainBot(patch))) {
+      if (INSTANCE_FIELD_SET.has(k)) continue;
+      if (v !== undefined) state[k] = v;
+    }
+
     if (!focusOnlyPatch) persistTradingConfigToDisk();
 
     if (!fromPersisted && (patch.symbol || patch.timeframe) && wsHubRef) {

@@ -4,6 +4,7 @@ import { deferTask } from "../lib/deferTask";
 import { useAppStore } from "../ws/store";
 import { LiqCascadeFeedHeaderStrip } from "./LiqCascadeFeedStatus";
 import type { LiqCascadeFeedStatus } from "./LiqCascadeFeedStatus";
+import type { LiqCascadeRadarStatus } from "./LiqCascadeRadarPanel";
 
 function StripDot({ ok }: { ok: boolean }) {
   return (
@@ -44,6 +45,18 @@ export function HeaderSignalsStrip() {
       ? (s.bot?.liqCascadeFeedStatus as LiqCascadeFeedStatus | undefined)
       : undefined,
   );
+  const liqCascadeRadarStatus = useAppStore((s) =>
+    String(s.bot?.manualStrategy ?? "").toUpperCase() === "LIQ_CASCADE"
+      ? (s.bot?.liqCascadeRadarStatus as LiqCascadeRadarStatus | undefined)
+      : undefined,
+  );
+  const liqRadarHeadline = useMemo(() => {
+    const coins = liqCascadeRadarStatus?.coins ?? [];
+    if (!coins.length) return null;
+    const hot = coins.find((c) => c.phase !== "SCANNING" && c.phase !== "COOLDOWN");
+    if (hot) return `${hot.symbol} ${hot.phase}`;
+    return `scan ${coins.length}`;
+  }, [liqCascadeRadarStatus?.coins]);
   const pendingSt = useAppStore((s) => s.bot?.pendingSupertrendAction) as
     | { side?: string; venue?: string }
     | undefined;
@@ -238,6 +251,17 @@ export function HeaderSignalsStrip() {
           <>
             <Sep />
             <LiqCascadeFeedHeaderStrip status={liqCascadeFeedStatus} />
+            {liqRadarHeadline ? (
+              <>
+                <Sep />
+                <span
+                  className="inline-flex shrink-0 items-center font-mono text-[10px] text-cyan-800 dark:text-cyan-300"
+                  title="LIQ_CASCADE cascade radar phase"
+                >
+                  Radar {liqRadarHeadline}
+                </span>
+              </>
+            ) : null}
           </>
         ) : null}
         <Sep />

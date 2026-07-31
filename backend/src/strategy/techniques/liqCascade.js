@@ -21,8 +21,18 @@ export const LIQ_CASCADE_DEFAULTS = Object.freeze({
   liqZScoreMin: 2.0,
   liqLookbackBars: 48,
   cascadeWindowBars: 3,
+  /** In-bar displacement (open→close of liq bar) required for detection. */
   minDispAtrMult: 1.0,
+  /** Tier A: in-bar disp ≥ this → enter on bar close (+1 bar max). Tier B: stall/exhaustion confirm. */
+  strongDispAtrMult: 2.0,
   minOiDropPct: 0.12,
+  /** `off` | `same_bar` | `window` — window measures OI drop over N bars (cascade unwind). */
+  oiGateMode: "window",
+  oiWindowBars: 3,
+  /** `ladder` (default) | `stall_reclaim` | `exhaustion_decay` | `either` — ladder = A immediate + B either. */
+  confirmMode: "ladder",
+  /** Confirm window length in liq intervals (× intervalMs / candle tf). */
+  confirmLiqBars: 2,
   exhaustionDecayRatio: 0.55,
   directionMode: "fade",
   minAtrPct: 0.035,
@@ -88,7 +98,32 @@ function candleIdxAtOrBefore(candles, ts) {
   return best;
 }
 
-/** Sum liq long/short USD in (fromTs, toTs] from raw interval rows (open-stamped). */
+function candleIdxAtOrAfter(candles, ts) {
+  let lo = 0;
+  let hi = candles.length - 1;
+  let best = null;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (Number(candles[mid].ts) >= ts) {
+      best = mid;
+      hi = mid - 1;
+    } else lo = mid + 1;
+  }
+  return best;
+}
+
+/** Displacement strictly inside the liq bar span (open → close candle). */
+export function computeInBarDisplacement(candles, atrArr, lb) {
+  if (!lb || !candles?.length) return { disp: null, barCloseIdx: null, startIdx: null };
+  const startIdx = candleIdxAtOrBefore(candles, lb.tsOpen);
+  const barCloseIdx = candleIdxAtOrBefore(candles, lb.ts);
+  if (startIdx == null || barCloseIdx == null) return { disp: null, barCloseIdx, startIdx };
+  const atrVal = atrArr[barCloseIdx];
+  const c0 = Number(candles[startIdx].close);
+  const c1 = Number(candles[barCloseIdx].close);
+  if (!(atrVal > 0) || !(c0 > 0)) return { disp: null, barCloseIdx, startIdx };
+  return { disp: Math.abs(c1 - c0) / atrVal, barCloseIdx, startIdx };
+}
 export function sumLiqInWindow(liqSeries, fromTs, toTs) {
   let longUsd = 0;
   let shortUsd = 0;
@@ -163,6 +198,41 @@ export function prepareOiBars(oiSeries, intervalMs = 300_000) {
   return bars;
 }
 
+/** OI drop from N bars ago to ts (percent scale, e.g. 0.12 = 0.12%). */
+export function oiWindowDropPct(oiBars, ts, windowBars = 3) {
+  if (!oiBars?.length || windowBars < 1) return null;
+  let idx = -1;
+  for (let i = 0; i < oiBars.length; i++) {
+    if (oiBars[i].ts <= ts) idx = i;
+    else break;
+  }
+  if (idx < windowBars) return null;
+  const start = oiBars[idx - windowBars];
+  const curr = oiBars[idx];
+  if (!(start.oi > 0)) return null;
+  return ((start.oi - curr.oi) / start.oi) * 100;
+}
+
+/**
+ * Resolve OI gate for bar-close path.
+ * @returns {{ dropPct: number|null, ok: boolean, mode: string }}
+ */
+export function resolveOiGate(oiBars, ts, opts = {}) {
+  const mode = String(opts.oiGateMode ?? LIQ_CASCADE_DEFAULTS.oiGateMode).toLowerCase();
+  const minDrop = num(opts.minOiDropPct, LIQ_CASCADE_DEFAULTS.minOiDropPct);
+  if (mode === "off" || minDrop <= 0) {
+    return { dropPct: null, ok: true, mode: "off" };
+  }
+  const ob = lookupAtOrBefore(ts, oiBars);
+  if (!ob) return { dropPct: null, ok: false, mode };
+  let dropPct = ob.dropPct;
+  if (mode === "window") {
+    dropPct = oiWindowDropPct(oiBars, ts, num(opts.oiWindowBars, LIQ_CASCADE_DEFAULTS.oiWindowBars));
+  }
+  const ok = dropPct != null && dropPct >= minDrop;
+  return { dropPct, ok, mode };
+}
+
 function stallReclaimBar(candles, idx, dom) {
   const c = candles[idx];
   const p = candles[idx - 1];
@@ -180,6 +250,33 @@ function stallReclaimBar(candles, idx, dom) {
   return smallBody;
 }
 
+/** Liq exhaustion after spike bar — decayFromPeak on a completed bar after cascade.liqBarTs. */
+export function liqExhaustionConfirm(liqBars, candleTs, cascade, opts = {}) {
+  if (!cascade?.liqBarTs || !liqBars?.length) return false;
+  const decayMax = num(opts.exhaustionDecayRatio, LIQ_CASCADE_DEFAULTS.exhaustionDecayRatio);
+  for (const lb of liqBars) {
+    if (lb.ts <= cascade.liqBarTs) continue;
+    if (lb.ts > candleTs) break;
+    if (lb.decayFromPeak != null && lb.decayFromPeak <= decayMax) return true;
+  }
+  return false;
+}
+
+/** Entry confirm: Tier A (strong in-bar disp) immediate; Tier B stall/exhaustion per confirmMode. */
+export function confirmCascadeBar(candles, idx, cascade, liqBars, opts = {}) {
+  if (!cascade) return false;
+  if (cascade.confirmTier === "A") {
+    return idx >= cascade.detectIdx && idx <= cascade.detectIdx + 1;
+  }
+  const mode = String(opts.confirmMode ?? LIQ_CASCADE_DEFAULTS.confirmMode).toLowerCase();
+  const stall = stallReclaimBar(candles, idx, cascade.dom);
+  const exhaustion = liqExhaustionConfirm(liqBars, Number(candles[idx].ts), cascade, opts);
+  if (mode === "stall_reclaim") return stall;
+  if (mode === "exhaustion_decay") return exhaustion;
+  if (mode === "either" || mode === "ladder") return stall || exhaustion;
+  return stall || exhaustion;
+}
+
 function resolveAction(dom, directionMode) {
   const mode = String(directionMode || "fade").toLowerCase();
   if (dom === "longs") return mode === "continuation" ? "SELL" : "BUY";
@@ -187,7 +284,7 @@ function resolveAction(dom, directionMode) {
   return null;
 }
 
-function buildBrackets(candles, startIdx, idx, action, atrArr, closes, opts) {
+export function buildBrackets(candles, startIdx, idx, action, atrArr, closes, opts) {
   const close = closes[idx];
   const atrVal = atrArr[idx];
   if (!(close > 0) || !(atrVal > 0)) return null;
@@ -234,47 +331,56 @@ export function buildLiqCascadeSeries(candles, ctx = {}) {
   const closes = candles.map((c) => Number(c.close));
   const atr = atrFn(candles, 14);
   const tfMs = Number(candles[1].ts) - Number(candles[0].ts) || 60_000;
-  const confirmBars = Math.max(3, Math.round(intervalMs / tfMs));
+  const confirmLiqBars = num(opts.confirmLiqBars, LIQ_CASCADE_DEFAULTS.confirmLiqBars);
+  const confirmMode = String(opts.confirmMode ?? LIQ_CASCADE_DEFAULTS.confirmMode).toLowerCase();
+  const confirmSpan =
+    confirmMode === "stall_reclaim" ? 1 : Math.max(1, confirmLiqBars);
+  const confirmBars = Math.max(3, Math.round((confirmSpan * intervalMs) / tfMs));
+  const strongDisp = num(opts.strongDispAtrMult, LIQ_CASCADE_DEFAULTS.strongDispAtrMult);
   const sides = String(opts.tradeSides || "BOTH").toUpperCase();
 
   const signaledBars = new Set();
+  const detectionAttempted = new Set();
   let cascade = null;
 
   for (let i = LIQ_CASCADE_WARMUP + 1; i < n; i++) {
     const ts = Number(candles[i].ts);
-    const atrVal = atr[i];
-    const atrPct = closes[i] > 0 && atrVal > 0 ? (atrVal / closes[i]) * 100 : 0;
 
-    // Latest COMPLETED liq bar (bars keyed at close time — no look-ahead).
+    // One-shot cascade detection at liq bar close only (in-bar displacement).
     const lb = lookupAtOrBefore(ts, liqBars);
-    if (lb && !signaledBars.has(lb.ts) && (!cascade || cascade.liqBarTs !== lb.ts)) {
-      const ob = lookupAtOrBefore(ts, oiBars);
-      const oiDrop = ob?.dropPct ?? null;
-      const oiOk =
-        num(opts.minOiDropPct, 0) <= 0 ? true : oiDrop != null && oiDrop >= opts.minOiDropPct;
-      const startIdx = candleIdxAtOrBefore(candles, lb.tsOpen);
-      const disp =
-        atrVal > 0 && startIdx != null ? Math.abs(closes[i] - closes[startIdx]) / atrVal : null;
-      if (
-        lb.z != null &&
-        lb.z >= opts.liqZScoreMin &&
-        (lb.dom === "longs" || lb.dom === "shorts") &&
-        lb.totalUsd >= opts.minLiqUsdBar &&
-        disp != null &&
-        disp >= opts.minDispAtrMult &&
-        oiOk &&
-        atrPct >= opts.minAtrPct
-      ) {
-        cascade = {
-          dom: lb.dom,
-          liqBarTs: lb.ts,
-          startIdx: startIdx ?? i,
-          expiresIdx: i + confirmBars,
-          z: lb.z,
-          liqUsd: lb.totalUsd,
-          oiDrop,
-          disp,
-        };
+    if (lb && !detectionAttempted.has(lb.ts) && !signaledBars.has(lb.ts) && !cascade) {
+      const { disp, barCloseIdx, startIdx } = computeInBarDisplacement(candles, atr, lb);
+      if (barCloseIdx != null && i === barCloseIdx) {
+        detectionAttempted.add(lb.ts);
+        const atrVal = atr[barCloseIdx];
+        const atrPct =
+          closes[barCloseIdx] > 0 && atrVal > 0 ? (atrVal / closes[barCloseIdx]) * 100 : 0;
+        const oiGate = resolveOiGate(oiBars, lb.ts, opts);
+        const oiDrop = oiGate.dropPct;
+        if (
+          lb.z != null &&
+          lb.z >= opts.liqZScoreMin &&
+          (lb.dom === "longs" || lb.dom === "shorts") &&
+          lb.totalUsd >= opts.minLiqUsdBar &&
+          disp != null &&
+          disp >= opts.minDispAtrMult &&
+          oiGate.ok &&
+          atrPct >= opts.minAtrPct
+        ) {
+          cascade = {
+            dom: lb.dom,
+            liqBarTs: lb.ts,
+            startIdx: startIdx ?? barCloseIdx,
+            detectIdx: barCloseIdx,
+            confirmTier: disp >= strongDisp ? "A" : "B",
+            expiresIdx: barCloseIdx + confirmBars,
+            z: lb.z,
+            liqUsd: lb.totalUsd,
+            oiDrop,
+            oiGateMode: oiGate.mode,
+            disp,
+          };
+        }
       }
     }
 
@@ -283,7 +389,8 @@ export function buildLiqCascadeSeries(candles, ctx = {}) {
       cascade = null;
       continue;
     }
-    if (!stallReclaimBar(candles, i, cascade.dom)) continue;
+    if (i < cascade.detectIdx) continue;
+    if (!confirmCascadeBar(candles, i, cascade, liqBars, opts)) continue;
 
     const action = resolveAction(cascade.dom, opts.directionMode);
     if (!action) {
@@ -311,6 +418,7 @@ export function buildLiqCascadeSeries(candles, ctx = {}) {
       liqUsd: cascade.liqUsd,
       oiDropPct: cascade.oiDrop,
       dispAtr: cascade.disp,
+      confirmTier: cascade.confirmTier,
       liqBrackets,
     };
     signaledBars.add(cascade.liqBarTs);

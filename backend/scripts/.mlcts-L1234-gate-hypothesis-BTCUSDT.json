@@ -1,0 +1,248 @@
+{
+  "generatedAt": "2026-07-29T18:03:37.005Z",
+  "hypothesis": "L1+L2+L3+L4 mandatory pass; L5+L6+L7 weighted confidence score vs threshold (weights: OF 15, book 10, OI 10, fund 5, vol 15)",
+  "symbol": "BTCUSDT",
+  "timeframe": "15m",
+  "window": {
+    "from": "2026-07-19",
+    "to": "2026-07-29T18:03:29.173Z"
+  },
+  "dataQuality": {
+    "analysisBars": 1033,
+    "orderFlowTier": "taker",
+    "feedCoverage": {
+      "source": "rest_fallback",
+      "oiSeriesPoints": 319,
+      "fundingPoints": 40
+    }
+  },
+  "mandatoryGateStats": {
+    "L1234_pass_bars": 2,
+    "L1_only": 250,
+    "L2_only": 89,
+    "L3_only": 49,
+    "L4_only": 28
+  },
+  "confidenceInWindow": {
+    "min": 22,
+    "p50": 40,
+    "p95": 54,
+    "max": 62
+  },
+  "thresholdResults": [
+    {
+      "threshold": 40,
+      "mandatoryGateBars": 2,
+      "signalBars": 2,
+      "simTrades": 2,
+      "metrics": {
+        "returnPct": -2.46,
+        "pf": 0,
+        "winRate": 0,
+        "meanR": -1.235,
+        "maxDd": 2.46
+      },
+      "signals": [
+        {
+          "iso": "2026-07-20T00:00:00.000Z",
+          "ist": "20/7/2026, 5:30:00 am",
+          "side": "BUY",
+          "confidence": 54,
+          "L1": 52,
+          "L2": 57,
+          "L3": 98,
+          "L4": 91,
+          "L5": 21,
+          "L6": 70,
+          "L7": 100
+        },
+        {
+          "iso": "2026-07-23T17:45:00.000Z",
+          "ist": "23/7/2026, 11:15:00 pm",
+          "side": "SELL",
+          "confidence": 40,
+          "L1": 56,
+          "L2": 93,
+          "L3": 85,
+          "L4": 100,
+          "L5": 21,
+          "L6": 70,
+          "L7": 52
+        }
+      ],
+      "trades": [
+        {
+          "entryIso": "2026-07-20T00:00:00.000Z",
+          "entryIst": "20/7/2026, 5:30:00 am",
+          "exitIso": "2026-07-20T00:45:00.000Z",
+          "entry": 65019.993749999994,
+          "exit": 64460.98909642857,
+          "netPnl": -116.56,
+          "exitReason": "sl"
+        },
+        {
+          "entryIso": "2026-07-23T17:45:00.000Z",
+          "entryIst": "23/7/2026, 11:15:00 pm",
+          "exitIso": "2026-07-23T18:45:00.000Z",
+          "entry": 64622.0728,
+          "exit": 64930.70091160714,
+          "netPnl": -128.99,
+          "exitReason": "sl"
+        }
+      ]
+    },
+    {
+      "threshold": 45,
+      "mandatoryGateBars": 2,
+      "signalBars": 1,
+      "simTrades": 1,
+      "metrics": {
+        "returnPct": -1.17,
+        "pf": 0,
+        "winRate": 0,
+        "meanR": -1.166,
+        "maxDd": 1.17
+      },
+      "signals": [
+        {
+          "iso": "2026-07-20T00:00:00.000Z",
+          "ist": "20/7/2026, 5:30:00 am",
+          "side": "BUY",
+          "confidence": 54,
+          "L1": 52,
+          "L2": 57,
+          "L3": 98,
+          "L4": 91,
+          "L5": 21,
+          "L6": 70,
+          "L7": 100
+        }
+      ],
+      "trades": [
+        {
+          "entryIso": "2026-07-20T00:00:00.000Z",
+          "entryIst": "20/7/2026, 5:30:00 am",
+          "exitIso": "2026-07-20T00:45:00.000Z",
+          "entry": 65019.993749999994,
+          "exit": 64460.98909642857,
+          "netPnl": -116.56,
+          "exitReason": "sl"
+        }
+      ]
+    },
+    {
+      "threshold": 50,
+      "mandatoryGateBars": 2,
+      "signalBars": 1,
+      "simTrades": 1,
+      "metrics": {
+        "returnPct": -1.17,
+        "pf": 0,
+        "winRate": 0,
+        "meanR": -1.166,
+        "maxDd": 1.17
+      },
+      "signals": [
+        {
+          "iso": "2026-07-20T00:00:00.000Z",
+          "ist": "20/7/2026, 5:30:00 am",
+          "side": "BUY",
+          "confidence": 54,
+          "L1": 52,
+          "L2": 57,
+          "L3": 98,
+          "L4": 91,
+          "L5": 21,
+          "L6": 70,
+          "L7": 100
+        }
+      ],
+      "trades": [
+        {
+          "entryIso": "2026-07-20T00:00:00.000Z",
+          "entryIst": "20/7/2026, 5:30:00 am",
+          "exitIso": "2026-07-20T00:45:00.000Z",
+          "entry": 65019.993749999994,
+          "exit": 64460.98909642857,
+          "netPnl": -116.56,
+          "exitReason": "sl"
+        }
+      ]
+    },
+    {
+      "threshold": 55,
+      "mandatoryGateBars": 2,
+      "signalBars": 0,
+      "simTrades": 0,
+      "metrics": {
+        "returnPct": 0,
+        "pf": 0,
+        "winRate": 0,
+        "meanR": 0,
+        "maxDd": 0
+      },
+      "signals": [],
+      "trades": []
+    },
+    {
+      "threshold": 60,
+      "mandatoryGateBars": 2,
+      "signalBars": 0,
+      "simTrades": 0,
+      "metrics": {
+        "returnPct": 0,
+        "pf": 0,
+        "winRate": 0,
+        "meanR": 0,
+        "maxDd": 0
+      },
+      "signals": [],
+      "trades": []
+    },
+    {
+      "threshold": 65,
+      "mandatoryGateBars": 2,
+      "signalBars": 0,
+      "simTrades": 0,
+      "metrics": {
+        "returnPct": 0,
+        "pf": 0,
+        "winRate": 0,
+        "meanR": 0,
+        "maxDd": 0
+      },
+      "signals": [],
+      "trades": []
+    },
+    {
+      "threshold": 70,
+      "mandatoryGateBars": 2,
+      "signalBars": 0,
+      "simTrades": 0,
+      "metrics": {
+        "returnPct": 0,
+        "pf": 0,
+        "winRate": 0,
+        "meanR": 0,
+        "maxDd": 0
+      },
+      "signals": [],
+      "trades": []
+    },
+    {
+      "threshold": 75,
+      "mandatoryGateBars": 2,
+      "signalBars": 0,
+      "simTrades": 0,
+      "metrics": {
+        "returnPct": 0,
+        "pf": 0,
+        "winRate": 0,
+        "meanR": 0,
+        "maxDd": 0
+      },
+      "signals": [],
+      "trades": []
+    }
+  ]
+}

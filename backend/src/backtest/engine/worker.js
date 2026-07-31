@@ -20,6 +20,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, "../../../.env"), override: false });
 
+const { pickStrategyKeyFromCfg } = await import("./pickStrategyKey.js");
 const { initPool, closePool } = await import("../../db/pool.js");
 const { query } = await import("../../db/query.js");
 const { readCandles, ensureKlines } = await import("../data/klineIngest.js");
@@ -260,7 +261,7 @@ async function execute({ runId }) {
     gateModeFromDb === "approx" || cfg?.intelligenceGateEnabled === true ? "approx" : "off";
   const isFutures = String(cfg?.marketMode || cfg?.market || "").toUpperCase() === "FUTURES";
   const market = isFutures ? "futures" : "spot";
-  const strategyKey = pickStrategyKey(cfg, run.engine_type);
+  const strategyKey = pickStrategyKeyFromCfg(cfg, run.engine_type);
 
   const reportPrep = (pct) => {
     parentPort?.postMessage({ type: "progress", runId, pct });
@@ -799,34 +800,3 @@ function pickBotCfg(snapshot, fallback) {
   return root;
 }
 
-/**
- * Compute the simulation strategy key from the saved config.
- * Priority mirrors the live bot exactly so backtest = live simulation:
- *   1. supertrendAuto flag on → "SUPERTREND"
- *   2. strategyMode MANUAL    → manualStrategy (or "SUPERTREND" if unset)
- *   3. strategyMode AUTO      → "AUTO"  (per-bar regime rotation via AUTO adapter)
- *   4. fallback               → "SUPERTREND"
- */
-/** Must match `pickEngineType` in backtestRoutes.js so UI engine label = simulation. */
-function pickStrategyKey(cfg, engineType) {
-  const mmUp = String(cfg?.marketMode || cfg?.market || "").toUpperCase();
-  const stSpot = Boolean(cfg?.supertrendSpotAuto);
-  const stFut = Boolean(cfg?.supertrendFuturesAuto);
-  const supertrendAutoOn =
-    (mmUp === "SPOT" && stSpot) ||
-    (mmUp === "FUTURES" && stFut) ||
-    (mmUp === "AUTO" && (stSpot || stFut));
-  if (supertrendAutoOn) return "SUPERTREND";
-
-  const stratMode = String(cfg?.strategyMode ?? "").toUpperCase();
-  if (stratMode === "MANUAL") {
-    const m = String(cfg?.manualStrategy ?? "").toUpperCase();
-    if (m && m !== "MANUAL" && m !== "AUTO") return m;
-    return "SUPERTREND";
-  }
-  if (stratMode === "AUTO") return "AUTO";
-
-  const et = String(engineType ?? "").toUpperCase();
-  if (et && et !== "AUTO" && et !== "MANUAL") return et;
-  return "SUPERTREND";
-}

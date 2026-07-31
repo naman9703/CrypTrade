@@ -1,0 +1,326 @@
+
+=== MLCTS microstructure edge (no L1–L4) BTCUSDT 2026-01-01 → 2026-07-01 ===
+klines: 17618
+Vision OI + book…
+  vision 2025-12-29 (1/185)
+  vision 2025-12-30 (2/185)
+  vision 2026-01-23 (26/185)
+  vision 2026-02-17 (51/185)
+  vision 2026-03-14 (76/185)
+  vision 2026-04-08 (101/185)
+  vision 2026-05-03 (126/185)
+  vision 2026-05-28 (151/185)
+  vision 2026-06-22 (176/185)
+Scoring L5–L7 both sides per bar…
+  sim delta @ 60…
+  sim delta @ 65…
+  sim delta @ 70…
+  sim cvd_div @ 60…
+  sim cvd_div @ 65…
+  sim cvd_div @ 70…
+  sim absorption @ 60…
+  sim absorption @ 65…
+  sim absorption @ 70…
+  sim book @ 60…
+  sim book @ 65…
+  sim book @ 70…
+  sim orderflow_core @ 60…
+  sim orderflow_core @ 65…
+  sim orderflow_core @ 70…
+  sim orderflow_l5 @ 60…
+  sim orderflow_l5 @ 65…
+  sim orderflow_l5 @ 70…
+  sim oi @ 60…
+  sim oi @ 65…
+  sim oi @ 70…
+  sim funding @ 60…
+  sim funding @ 65…
+  sim funding @ 70…
+  sim positioning_l6 @ 60…
+  sim positioning_l6 @ 65…
+  sim positioning_l6 @ 70…
+  sim volatility_l7 @ 60…
+  sim volatility_l7 @ 65…
+  sim volatility_l7 @ 70…
+  sim oi_plus_funding @ 60…
+  sim oi_plus_funding @ 65…
+  sim oi_plus_funding @ 70…
+  sim delta_plus_book @ 60…
+  sim delta_plus_book @ 65…
+  sim delta_plus_book @ 70…
+  sim positioning_plus_orderflow @ 60…
+  sim positioning_plus_orderflow @ 65…
+  sim positioning_plus_orderflow @ 70…
+  sim l567_confidence @ 60…
+  sim l567_confidence @ 65…
+  sim l567_confidence @ 70…
+{
+  "outPath": "/Users/namanpaliwal/Desktop/trading/backend/scripts/.mlcts-microstructure-edge-BTCUSDT.json",
+  "window": {
+    "from": "2026-01-01",
+    "to": "2026-07-01T00:00:00.000Z"
+  },
+  "passingPfGte1_min30Trades": [],
+  "bestPerHypothesis": [
+    {
+      "id": "delta",
+      "thresh": 60,
+      "trades": 842,
+      "perWeek": 32.56,
+      "returnPct": -99.75,
+      "pf": 0.228,
+      "meanR": -0.705
+    },
+    {
+      "id": "cvd_div",
+      "thresh": 60,
+      "trades": 944,
+      "perWeek": 36.51,
+      "returnPct": -99.84,
+      "pf": 0.226,
+      "meanR": -0.68
+    },
+    {
+      "id": "absorption",
+      "thresh": 60,
+      "trades": 146,
+      "perWeek": 5.65,
+      "returnPct": -62.89,
+      "pf": 0.3,
+      "meanR": -0.686
+    },
+    {
+      "id": "book",
+      "thresh": 60,
+      "trades": 680,
+      "perWeek": 26.3,
+      "returnPct": -99.21,
+      "pf": 0.268,
+      "meanR": -0.71
+    },
+    {
+      "id": "orderflow_core",
+      "thresh": 60,
+      "trades": 5,
+      "perWeek": 0.19,
+      "returnPct": -3.75,
+      "pf": 0.201,
+      "meanR": -0.756
+    },
+    {
+      "id": "orderflow_l5",
+      "thresh": 65,
+      "trades": 97,
+      "perWeek": 3.75,
+      "returnPct": -37.11,
+      "pf": 0.446,
+      "meanR": -0.472
+    },
+    {
+      "id": "oi",
+      "thresh": 60,
+      "trades": 717,
+      "perWeek": 27.73,
+      "returnPct": -99.66,
+      "pf": 0.24,
+      "meanR": -0.789
+    },
+    {
+      "id": "funding",
+      "thresh": 60,
+      "trades": 60,
+      "perWeek": 2.32,
+      "returnPct": -28.31,
+      "pf": 0.397,
+      "meanR": -0.551
+    },
+    {
+      "id": "positioning_l6",
+      "thresh": 70,
+      "trades": 752,
+      "perWeek": 29.08,
+      "returnPct": -99.7,
+      "pf": 0.273,
+      "meanR": -0.767
+    },
+    {
+      "id": "volatility_l7",
+      "thresh": 60,
+      "trades": 0,
+      "perWeek": 0,
+      "returnPct": 0,
+      "pf": 0,
+      "meanR": 0
+    },
+    {
+      "id": "oi_plus_funding",
+      "thresh": 70,
+      "trades": 45,
+      "perWeek": 1.74,
+      "returnPct": -10.95,
+      "pf": 0.67,
+      "meanR": -0.248
+    },
+    {
+      "id": "delta_plus_book",
+      "thresh": 65,
+      "trades": 639,
+      "perWeek": 24.71,
+      "returnPct": -97.6,
+      "pf": 0.401,
+      "meanR": -0.577
+    },
+    {
+      "id": "positioning_plus_orderflow",
+      "thresh": 65,
+      "trades": 68,
+      "perWeek": 2.63,
+      "returnPct": -33.31,
+      "pf": 0.383,
+      "meanR": -0.586
+    },
+    {
+      "id": "l567_confidence",
+      "thresh": 65,
+      "trades": 436,
+      "perWeek": 16.86,
+      "returnPct": -76.27,
+      "pf": 0.636,
+      "meanR": -0.321
+    }
+  ],
+  "top5Overall": [
+    {
+      "hypothesis": "oi_plus_funding",
+      "label": "OI + funding average",
+      "scoreThreshold": 70,
+      "trades": 45,
+      "tradesPerWeek": 1.74,
+      "returnPct": -10.95,
+      "pf": 0.67,
+      "winRate": 46.7,
+      "meanR": -0.248,
+      "maxDd": 19.99,
+      "expectancyR": -0.248
+    },
+    {
+      "hypothesis": "l567_confidence",
+      "label": "L5+L6+L7 weighted confidence",
+      "scoreThreshold": 65,
+      "trades": 436,
+      "tradesPerWeek": 16.86,
+      "returnPct": -76.27,
+      "pf": 0.636,
+      "winRate": 36.9,
+      "meanR": -0.321,
+      "maxDd": 78.16,
+      "expectancyR": -0.321
+    },
+    {
+      "hypothesis": "l567_confidence",
+      "label": "L5+L6+L7 weighted confidence",
+      "scoreThreshold": 70,
+      "trades": 137,
+      "tradesPerWeek": 5.3,
+      "returnPct": -41.75,
+      "pf": 0.526,
+      "winRate": 34.3,
+      "meanR": -0.385,
+      "maxDd": 43.92,
+      "expectancyR": -0.385
+    },
+    {
+      "hypothesis": "l567_confidence",
+      "label": "L5+L6+L7 weighted confidence",
+      "scoreThreshold": 60,
+      "trades": 614,
+      "tradesPerWeek": 23.75,
+      "returnPct": -94.94,
+      "pf": 0.492,
+      "winRate": 35,
+      "meanR": -0.479,
+      "maxDd": 95.06,
+      "expectancyR": -0.479
+    },
+    {
+      "hypothesis": "orderflow_l5",
+      "label": "L5 full (+ book in blend)",
+      "scoreThreshold": 65,
+      "trades": 97,
+      "tradesPerWeek": 3.75,
+      "returnPct": -37.11,
+      "pf": 0.446,
+      "winRate": 36.1,
+      "meanR": -0.472,
+      "maxDd": 38.09,
+      "expectancyR": -0.472
+    }
+  ],
+  "bottom5Overall": [
+    {
+      "hypothesis": "orderflow_l5",
+      "label": "L5 full (+ book in blend)",
+      "scoreThreshold": 70,
+      "trades": 0,
+      "tradesPerWeek": 0,
+      "returnPct": 0,
+      "pf": 0,
+      "winRate": 0,
+      "meanR": 0,
+      "maxDd": 0,
+      "expectancyR": 0
+    },
+    {
+      "hypothesis": "volatility_l7",
+      "label": "L7 volatility score only",
+      "scoreThreshold": 60,
+      "trades": 0,
+      "tradesPerWeek": 0,
+      "returnPct": 0,
+      "pf": 0,
+      "winRate": 0,
+      "meanR": 0,
+      "maxDd": 0,
+      "expectancyR": 0
+    },
+    {
+      "hypothesis": "volatility_l7",
+      "label": "L7 volatility score only",
+      "scoreThreshold": 65,
+      "trades": 0,
+      "tradesPerWeek": 0,
+      "returnPct": 0,
+      "pf": 0,
+      "winRate": 0,
+      "meanR": 0,
+      "maxDd": 0,
+      "expectancyR": 0
+    },
+    {
+      "hypothesis": "volatility_l7",
+      "label": "L7 volatility score only",
+      "scoreThreshold": 70,
+      "trades": 0,
+      "tradesPerWeek": 0,
+      "returnPct": 0,
+      "pf": 0,
+      "winRate": 0,
+      "meanR": 0,
+      "maxDd": 0,
+      "expectancyR": 0
+    },
+    {
+      "hypothesis": "positioning_plus_orderflow",
+      "label": "L6 + L5 average",
+      "scoreThreshold": 70,
+      "trades": 1,
+      "tradesPerWeek": 0.04,
+      "returnPct": -1.4,
+      "pf": 0,
+      "winRate": 0,
+      "meanR": -1.401,
+      "maxDd": 1.4,
+      "expectancyR": -1.401
+    }
+  ]
+}

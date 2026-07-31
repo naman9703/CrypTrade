@@ -14,6 +14,7 @@ import {
   resolveBacktestStrategyVersion,
 } from "../../lib/backtestInstanceConfig";
 import { useAppStore } from "../../ws/store";
+import { effectiveBacktestEngineKey, manualStrategyFromCfgRaw } from "../../lib/backtestEngineKey";
 import { MultiCoinSelector } from "./MultiCoinSelector";
 
 const TIMEFRAMES = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"];
@@ -234,7 +235,8 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
       ),
     [configSource, selectedInstance, selectedVersion?.cfgRaw, symbol, timeframe],
   );
-  const backtestEngineBadge = useMemo(() => effectiveEngineKey(effectiveCfgRaw), [effectiveCfgRaw]);
+  const backtestEngineBadge = useMemo(() => effectiveBacktestEngineKey(effectiveCfgRaw), [effectiveCfgRaw]);
+  const manualStrategySaved = useMemo(() => manualStrategyFromCfgRaw(effectiveCfgRaw), [effectiveCfgRaw]);
   const trailingBacktestEnabled = useMemo(() => trailingEnabledInCfg(effectiveCfgRaw), [effectiveCfgRaw]);
   const trailMicroTfOptions = useMemo(
     () => allowedTrailMicroTfs(timeframe),
@@ -579,24 +581,26 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
             <span className="font-medium">{intelligenceGateEnabledInCfgRaw(effectiveCfgRaw) ? "Approx replay — on" : "Off"}</span>
             ); server stores gate mode from the merged snapshot only.
           </p>
-          {manualStrategyInCfg(effectiveCfgRaw) &&
-          manualStrategyInCfg(effectiveCfgRaw) !== "SUPERTREND" &&
+          {manualStrategySaved &&
+          manualStrategySaved !== "SUPERTREND" &&
           backtestEngineBadge === "SUPERTREND" ? (
             <p className="text-[10px] text-amber-800 dark:text-amber-300">
               <b>Note:</b> <span className="font-mono">manualStrategy</span> is{" "}
-              <span className="font-mono">{manualStrategyInCfg(effectiveCfgRaw)}</span> but{" "}
-              <span className="font-mono">supertrendFuturesAuto</span> /{" "}
-              <span className="font-mono">supertrendSpotAuto</span> is on — backtest runs <b>SUPERTREND</b>, not the selected manual strategy.
+              <span className="font-mono">{manualStrategySaved}</span> but engine resolves to{" "}
+              <b>SUPERTREND</b> — turn off <span className="font-mono">supertrendFuturesAuto</span> /{" "}
+              <span className="font-mono">supertrendSpotAuto</span> or re-apply the strategy preset and Save strategy.
             </p>
           ) : null}
-          {manualStrategyInCfg(effectiveCfgRaw) === "TREND_HTF_ST" &&
+          {manualStrategySaved === "TREND_HTF_ST" &&
           backtestEngineBadge === "TREND_HTF_ST" &&
           !intelligenceGateEnabledInCfgRaw(effectiveCfgRaw) ? (
             <p className="text-[10px] text-amber-800 dark:text-amber-300">
               Saved config is <b>TREND_HTF_ST</b> without intelligence gate / trailing — not the Supertrend+Intel stack. High risk (e.g. 20% @ 50×) can show ~-99% on 1yr BTC.
             </p>
           ) : null}
-          {backtestEngineBadge === "SUPERTREND" && intelligenceGateEnabledInCfgRaw(effectiveCfgRaw) ? (
+          {backtestEngineBadge === "SUPERTREND" &&
+          (manualStrategySaved === "SUPERTREND" || !manualStrategySaved) &&
+          intelligenceGateEnabledInCfgRaw(effectiveCfgRaw) ? (
             <p className="text-[10px] text-emerald-800 dark:text-emerald-300">
               <b>ST + Intel 80% WR preset:</b> <span className="font-mono">MANUAL</span> + <span className="font-mono">SUPERTREND</span>, gate on,{" "}
               <span className="font-mono">SL 1.5% / TP 0.7%</span>, trail off, flip exit off, risk 5% @ 10×. Validated{" "}
@@ -994,51 +998,6 @@ export function NewBacktestForm({ onCreated, onSymbolChange, onTfChange }: Props
   );
 }
 
-/**
- * Compute the effective backtest engine key from a strategy version's cfgRaw.
- * Mirrors the live bot's strategy-selection priority exactly:
- *   1. supertrendSpotAuto / supertrendFuturesAuto → "SUPERTREND"
- *   2. strategyMode === "MANUAL" → manualStrategy (or "SUPERTREND" if unset)
- *   3. strategyMode === "AUTO"   → "AUTO" (per-bar regime rotation)
- *   4. fallback                 → "SUPERTREND"
- */
-function effectiveEngineKey(cfgRaw: unknown): string {
-  if (!cfgRaw || typeof cfgRaw !== "object") return "SUPERTREND";
-  const r = cfgRaw as Record<string, unknown>;
-  const bot = r.bot;
-  const b = bot && typeof bot === "object" ? (bot as Record<string, unknown>) : r;
-
-  const mmUp = String(b.marketMode || b.market || "").toUpperCase();
-  const stSpot = Boolean(b.supertrendSpotAuto);
-  const stFut = Boolean(b.supertrendFuturesAuto);
-  const supertrendAutoOn =
-    (mmUp === "SPOT" && stSpot) ||
-    (mmUp === "FUTURES" && stFut) ||
-    (mmUp === "AUTO" && (stSpot || stFut));
-  if (supertrendAutoOn) return "SUPERTREND";
-
-  const stratMode = String(b.strategyMode ?? "").toUpperCase();
-  if (stratMode === "MANUAL") {
-    const m = String(b.manualStrategy ?? "").toUpperCase();
-    return m && m !== "MANUAL" && m !== "AUTO" ? m : "SUPERTREND";
-  }
-  if (stratMode === "AUTO") return "AUTO";
-
-  return "SUPERTREND";
-}
-
-function intelligenceGateEnabledInCfgRaw(cfgRaw: unknown): boolean {
-  return boolFromCfg(cfgRaw, "intelligenceGateEnabled");
-}
-
-function manualStrategyInCfg(cfgRaw: unknown): string {
-  if (!cfgRaw || typeof cfgRaw !== "object") return "";
-  const r = cfgRaw as Record<string, unknown>;
-  const bot = r.bot;
-  const b = bot && typeof bot === "object" ? (bot as Record<string, unknown>) : r;
-  return String(b.manualStrategy ?? "").toUpperCase();
-}
-
 /** Warnings for saved SUPERTREND_ELITE configs that still carry Supertrend-only settings. */
 function eliteStConfigIssues(cfgRaw: unknown): string[] {
   if (!cfgRaw || typeof cfgRaw !== "object") return [];
@@ -1073,6 +1032,10 @@ function eliteStConfigIssues(cfgRaw: unknown): string[] {
     issues.push(`trail buffer ${(Number(b.trailBufferRate) * 100).toFixed(2)}% (Elite uses 0.05% — auto-fixed on run)`);
   }
   return issues;
+}
+
+function intelligenceGateEnabledInCfgRaw(cfgRaw: unknown): boolean {
+  return boolFromCfg(cfgRaw, "intelligenceGateEnabled");
 }
 
 function boolFromCfg(cfgRaw: unknown, key: string): boolean {

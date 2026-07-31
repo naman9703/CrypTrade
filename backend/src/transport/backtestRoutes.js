@@ -37,6 +37,7 @@ import { fillSmcSoloPresetDefaults, materializeIntradayEngineCfgSync } from "../
 import { mergeInstanceIntoCfgRaw, ensureBacktestMarketMode, stripInstanceFieldsFromCfgRaw, uiOperationalPatchToInstColumns, applyInstanceOperationalToConfigSnapshot, applyInstanceOperationalToBot, INSTANCE_FIELD_KEYS } from "../lib/strategyInstanceSplit.js";
 import { sanitizeSignalBrainCfgRaw, sanitizeBacktestConfigSnapshot, BACKTEST_SNAPSHOT_META_KEYS } from "../lib/strategySignalBrain.js";
 import { enforceLiqGateCoherence } from "../lib/strategyConfigSlices.js";
+import { pickStrategyKeyFromCfg } from "../backtest/engine/pickStrategyKey.js";
 import { resolveSituationRouterCfg } from "../strategy/situationIntraday.js";
 import { resolveCrtTbsCfg } from "../strategy/crtTbsIntraday.js";
 import { resolveLiqCascadeCfg } from "../strategy/liqCascadeIntraday.js";
@@ -1188,26 +1189,7 @@ function thresholdCheck(run) {
  *   4. fallback            → "SUPERTREND"
  */
 function pickEngineType(cfg) {
-  const root = cfg && typeof cfg === "object" ? cfg : {};
-  const b = root.bot && typeof root.bot === "object" ? root.bot : root;
-
-  const mmUp = String(b.marketMode || b.market || "").toUpperCase();
-  const stSpot = Boolean(b.supertrendSpotAuto);
-  const stFut = Boolean(b.supertrendFuturesAuto);
-  const supertrendAutoOn =
-    (mmUp === "SPOT" && stSpot) ||
-    (mmUp === "FUTURES" && stFut) ||
-    (mmUp === "AUTO" && (stSpot || stFut));
-  if (supertrendAutoOn) return "SUPERTREND";
-
-  const stratMode = String(b.strategyMode ?? "").toUpperCase();
-  if (stratMode === "MANUAL") {
-    const m = String(b.manualStrategy ?? "").toUpperCase();
-    return m && m !== "MANUAL" && m !== "AUTO" ? m : "SUPERTREND";
-  }
-  if (stratMode === "AUTO") return "AUTO";
-
-  return "SUPERTREND";
+  return pickStrategyKeyFromCfg(cfg);
 }
 
 /** Deep-clone saved strategy cfg for the run — no per-run overrides; backtest = that snapshot. */

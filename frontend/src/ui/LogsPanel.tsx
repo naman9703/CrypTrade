@@ -1,5 +1,12 @@
 import { useMemo } from "react";
 import { normalizeSym } from "../lib/symbolPriceSanity";
+import { tradingModeToApiModeSlug } from "../lib/tradingModeSlug";
+import {
+  activeInstanceIdForMode,
+  findInstanceInState,
+  resolveStrategyVersionForInstance,
+} from "../lib/instanceConfigView";
+import { effectiveInstanceSymbol } from "../lib/backtestInstanceConfig";
 import { useAppStore, type LogPayload } from "../ws/store";
 
 /** Activity timestamps match chart crosshair preference: IST (UTC+5:30). */
@@ -22,12 +29,6 @@ function logClock(iso: unknown): string {
   });
 }
 
-function activityLogPrioritySymbol(chartDisplaySymbol: string | null, botSymbol: string | undefined): string {
-  const a = normalizeSym(chartDisplaySymbol ?? "");
-  if (a) return a;
-  return normalizeSym(botSymbol ?? "");
-}
-
 function logTouchesSymbol(l: LogPayload, symU: string): boolean {
   if (!symU) return false;
   const top = (l as Record<string, unknown>).symbol;
@@ -40,13 +41,85 @@ function logTouchesSymbol(l: LogPayload, symU: string): boolean {
   return false;
 }
 
+function logStrategyKey(l: LogPayload): string {
+  const d = l.detail;
+  if (d && typeof d === "object" && !Array.isArray(d)) {
+    const sk = (d as Record<string, unknown>).strategyKey;
+    if (typeof sk === "string" && sk.trim()) return sk.trim().toUpperCase();
+  }
+  return "";
+}
+
+function logIsGlobalBotLine(l: LogPayload): boolean {
+  const cat = String(l.category ?? "").toLowerCase();
+  if (cat === "backtest" || cat === "system") return true;
+  const msg = String(l.msg ?? "").toLowerCase();
+  return msg.includes("bot ") && (msg.includes("start") || msg.includes("stop"));
+}
+
 export function LogsPanel() {
   const logs = useAppStore((s) => s.logs);
+  const mainView = useAppStore((s) => s.mainView);
+  const mode = useAppStore((s) => s.mode);
+  const modeSlug = tradingModeToApiModeSlug(mode);
   const chartDisplaySymbol = useAppStore((s) => s.chartDisplaySymbol);
   const botSymbol = useAppStore((s) => s.bot?.symbol as string | undefined);
+  const instancesByMode = useAppStore((s) => s.instancesByMode);
+  const strategiesByMode = useAppStore((s) => s.strategiesByMode);
+  const versionsByStrategyId = useAppStore((s) => s.versionsByStrategyId);
+
+  const activeInstanceByMode = useAppStore((s) => s.activeInstanceByMode);
+  const selectedInstanceId = useAppStore((s) => s.selectedInstanceId);
+  const instanceConfigLoadingId = useAppStore((s) => s.instanceConfigLoadingId);
+
+  const instanceFilter = useMemo(() => {
+    if (mainView !== "instance") return null;
+    const instanceId = activeInstanceIdForMode(
+      { activeInstanceByMode, selectedInstanceId, instanceConfigLoadingId, mainView },
+      modeSlug,
+    );
+    if (!instanceId) return null;
+    const instance = findInstanceInState(
+      { instancesByMode, strategiesByMode, versionsByStrategyId, activeInstanceByMode },
+      modeSlug,
+      instanceId,
+    );
+    if (!instance) return null;
+    const version = resolveStrategyVersionForInstance(
+      { instancesByMode, strategiesByMode, versionsByStrategyId, activeInstanceByMode },
+      modeSlug,
+      instance,
+    );
+    const symbol = normalizeSym(effectiveInstanceSymbol(instance, version) || String(instance.operational?.symbol ?? ""));
+    const cfgRaw = version?.cfgRaw as { bot?: { manualStrategy?: string }; manualStrategy?: string } | undefined;
+    const manualStrategy = String(cfgRaw?.bot?.manualStrategy ?? cfgRaw?.manualStrategy ?? "").toUpperCase();
+    return { instanceId, symbol, manualStrategy, label: instance.label || instanceId.slice(0, 8) };
+  }, [
+    mainView,
+    modeSlug,
+    activeInstanceByMode,
+    selectedInstanceId,
+    instanceConfigLoadingId,
+    instancesByMode,
+    strategiesByMode,
+    versionsByStrategyId,
+  ]);
 
   const sortedLogs = useMemo(() => {
-    const pri = activityLogPrioritySymbol(chartDisplaySymbol, botSymbol);
+    if (instanceFilter?.symbol) {
+      const { symbol, manualStrategy } = instanceFilter;
+      return logs.filter((row) => {
+        if (logIsGlobalBotLine(row)) return true;
+        if (logTouchesSymbol(row, symbol)) {
+          if (!manualStrategy) return true;
+          const sk = logStrategyKey(row);
+          return !sk || sk === manualStrategy || sk === "SUPERTREND";
+        }
+        return false;
+      });
+    }
+
+    const pri = normalizeSym(chartDisplaySymbol ?? "") || normalizeSym(botSymbol ?? "");
     if (!pri) return logs;
     const a: LogPayload[] = [];
     const b: LogPayload[] = [];
@@ -55,20 +128,26 @@ export function LogsPanel() {
       else b.push(row);
     }
     return [...a, ...b];
-  }, [logs, chartDisplaySymbol, botSymbol]);
+  }, [logs, chartDisplaySymbol, botSymbol, instanceFilter]);
 
   return (
     <div className="p-4">
       <div className="mb-2 flex items-center justify-between">
         <div>
           <div className="text-sm font-semibold">Activity</div>
-          <div className="text-xs text-slate-600 dark:text-slate-400">Realtime decisions + execution logs</div>
+          <div className="text-xs text-slate-600 dark:text-slate-400">
+            {instanceFilter
+              ? `Filtered to instance · ${instanceFilter.label} · ${instanceFilter.symbol || "—"}`
+              : "Realtime decisions + execution logs"}
+          </div>
         </div>
       </div>
 
       <div className="max-h-[520px] overflow-auto rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950/40 p-2">
         {sortedLogs.length === 0 ? (
-          <div className="px-2 py-3 text-xs text-slate-600 dark:text-slate-500">No logs yet</div>
+          <div className="px-2 py-3 text-xs text-slate-600 dark:text-slate-500">
+            {instanceFilter ? "No activity for this instance yet" : "No logs yet"}
+          </div>
         ) : (
           <div className="space-y-1 font-mono text-[11px]">
             {sortedLogs.map((l, idx) => {
@@ -130,4 +209,3 @@ export function LogsPanel() {
     </div>
   );
 }
-

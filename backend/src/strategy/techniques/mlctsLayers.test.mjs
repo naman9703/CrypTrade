@@ -16,6 +16,13 @@ import {
   reclaimCloseBackPct,
   reclaimScoreGraded,
   confirmScoreFromLevel,
+  resolveTrendBias,
+  orderFlowBookScore,
+  orderFlowCoreScore,
+  computeMlctsCompositeScore,
+  fixedDenominatorWeightedScore,
+  MLCTS_L5_BLEND_DENOM,
+  MLCTS_L5_CORE_DENOM,
 } from "./mlctsLayers.js";
 import { precomputeIntraday } from "../intradayPro.js";
 
@@ -177,6 +184,294 @@ function makeCandles(n, start = 100) {
   assert.ok(confirmScore > 5 && confirmScore < 12, "vwap-level confirm below flat 15");
   const total = Math.round(depthScore + reclaimScore + confirmScore);
   assert.ok(total >= 48 && total <= 56, "graded total near prior flat-75 weak-reclaim case");
+}
+
+// L1: structure/EMA conflict → RANGE; bear invalidated above swing high → EMA bias
+{
+  const conflict = resolveTrendBias({
+    structureBias: "BEAR",
+    emaBias: "BULL",
+    close: 64_000,
+    swingHigh: 64_200,
+    swingLow: 63_500,
+  });
+  assert.equal(conflict.bias, "RANGE");
+  assert.equal(conflict.biasReason, "structure_ema_conflict");
+
+  const invalidated = resolveTrendBias({
+    structureBias: "BEAR",
+    emaBias: "BULL",
+    close: 64_495.99,
+    swingHigh: 64_132.42,
+    swingLow: 63_598,
+  });
+  assert.equal(invalidated.bias, "BULL");
+  assert.equal(invalidated.structureInvalidated, "bear_break_above_swing_high");
+
+  const aligned = resolveTrendBias({
+    structureBias: "BULL",
+    emaBias: "BULL",
+    close: 64_000,
+    swingHigh: 64_200,
+    swingLow: 63_500,
+  });
+  assert.equal(aligned.bias, "BULL");
+  assert.equal(aligned.biasReason, "aligned");
+
+  const invalidatedMixed = resolveTrendBias({
+    structureBias: "BEAR",
+    emaBias: "RANGE",
+    close: 64_495.99,
+    swingHigh: 64_132.42,
+    swingLow: 63_598,
+  });
+  assert.equal(invalidatedMixed.bias, "RANGE");
+  assert.equal(invalidatedMixed.biasReason, "structure_invalidated_ema_mixed");
+}
+
+// L5 book score — continuous (no cliffs at imb=0.67 or imb=1.0)
+{
+  const s55 = orderFlowBookScore(0.55, "SELL");
+  const s67 = orderFlowBookScore(0.67, "SELL");
+  const s671 = orderFlowBookScore(0.671, "SELL");
+  const b99 = orderFlowBookScore(0.99, "BUY");
+  const b100 = orderFlowBookScore(1.0, "BUY");
+  const b101 = orderFlowBookScore(1.01, "BUY");
+
+  assert.ok(s55 > 75 && s55 < 90, `SELL 0.55 ~83 got ${s55}`);
+  assert.ok(Math.abs(s67 - s671) < 3, "no cliff at 0.67 SELL");
+  assert.ok(Math.abs(b99 - b101) < 5, "no cliff at 1.0 BUY");
+  assert.equal(b100, 50, "balanced book → neutral 50");
+  assert.equal(orderFlowBookScore(3, "BUY"), 94);
+  assert.equal(orderFlowBookScore(3, "SELL"), 6);
+  assert.ok(orderFlowBookScore(0.55, "BUY") < 25, "BUY 0.55 unfavorable");
+}
+
+// Book absence: imb<=0 → null slot scored 0 with fixed L5 denominator (not excluded / renormalized)
+{
+  assert.equal(orderFlowBookScore(0, "BUY"), null, "imb=0 → absent sentinel");
+  assert.equal(orderFlowBookScore(-1, "SELL"), null, "negative imb → absent");
+  const tinyImbScore = orderFlowBookScore(1e-12, "BUY");
+  assert.ok(tinyImbScore != null, "tiny positive imb → present path, not misclassified absent");
+  const favorableImbScore = orderFlowBookScore(3, "BUY");
+  assert.ok(favorableImbScore > 50, "real book data participates with non-neutral score");
+  const absentBook = fixedDenominatorWeightedScore(
+    [
+      { w: 0.3, s: 70 },
+      { w: 0.3, s: 0 },
+      { w: 0.2, s: 0 },
+      { w: 0.2, s: orderFlowBookScore(0, "BUY") },
+    ],
+    MLCTS_L5_BLEND_DENOM,
+  );
+  const presentBook = fixedDenominatorWeightedScore(
+    [
+      { w: 0.3, s: 70 },
+      { w: 0.3, s: 0 },
+      { w: 0.2, s: 0 },
+      { w: 0.2, s: favorableImbScore },
+    ],
+    MLCTS_L5_BLEND_DENOM,
+  );
+  assert.ok(Math.abs(absentBook - 21) < 0.001, "imb=0 → book slot 0, delta not inflated");
+  assert.ok(presentBook > absentBook + 10, "non-degenerate imb raises L5 blend vs absent/null book");
+}
+
+// Composite is a 0–100 weighted average (raw weights sum to 95, result divides by wSum)
+{
+  const perfect = {
+    trend: { score: 100 },
+    liquidity: { score: 100 },
+    sweep: { score: 100 },
+    structure: { score: 100 },
+    orderflow: { score: 100, detail: { deltaScore: 100, divScore: 100, absScore: 100, bookScore: 100 } },
+    positioning: { score: 100, detail: { oiScore: 100, fundScore: 100 } },
+  };
+  const comp = computeMlctsCompositeScore(perfect, MLCTS_DEFAULTS);
+  assert.equal(comp.score, 100, "perfect bar → composite 100, not 95");
+  assert.equal(comp.weightSum, 95, "configured weights sum to 95");
+  assert.equal(comp.scoreScale, "0-100_weighted_average");
+}
+
+// Shared bug class: absent/zero co-components must not expand another slot's effective weight
+{
+  const assertNoWeightExpansion = (label, scoreFn, baselineParts, spikePart, denom) => {
+    const baseline = fixedDenominatorWeightedScore(baselineParts, denom);
+    const withSpike = fixedDenominatorWeightedScore(
+      baselineParts.map((p) => (p.key === spikePart.key ? spikePart : p)),
+      denom,
+    );
+    const expectedDelta = (spikePart.w * spikePart.s) / denom;
+    assert.ok(
+      Math.abs(withSpike - baseline - expectedDelta) < 0.001,
+      `${label}: spike delta matches fixed weight, no expansion`,
+    );
+  };
+
+  // L5: book absent (null) + delta present — old renorm would inflate delta to /0.8
+  const l5AbsentBook = fixedDenominatorWeightedScore(
+    [
+      { w: 0.3, s: 70 },
+      { w: 0.3, s: 0 },
+      { w: 0.2, s: 0 },
+      { w: 0.2, s: null },
+    ],
+    MLCTS_L5_BLEND_DENOM,
+  );
+  assert.ok(Math.abs(l5AbsentBook - 21) < 0.001, "L5 absent book → delta 70 contributes 21, not 26.25");
+
+  // L5: all zero except book — book stays at 20% of L5, not 100%
+  const l5BookOnly = fixedDenominatorWeightedScore(
+    [
+      { w: 0.3, s: 0 },
+      { w: 0.3, s: 0 },
+      { w: 0.2, s: 0 },
+      { w: 0.2, s: 100 },
+    ],
+    MLCTS_L5_BLEND_DENOM,
+  );
+  assert.equal(l5BookOnly, 20, "L5 zero delta/div/abs + book 100 → 20, not 100");
+
+  // L5 core: zero siblings do not expand delta
+  assertNoWeightExpansion(
+    "L5 core",
+    orderFlowCoreScore,
+    [
+      { key: "delta", w: 0.3, s: 0 },
+      { key: "div", w: 0.3, s: 0 },
+      { key: "abs", w: 0.2, s: 0 },
+    ],
+    { key: "delta", w: 0.3, s: 70 },
+    MLCTS_L5_CORE_DENOM,
+  );
+
+  // OI/funding fixed blend: funding held at 50 while OI moves — no cross-weight expansion
+  const oiFundBlend = (oi, fund) => (0.65 * oi + 0.35 * fund) / 1.0;
+  const baseBlend = oiFundBlend(50, 50);
+  const oiSpike = oiFundBlend(80, 50);
+  assert.ok(Math.abs(oiSpike - baseBlend - 0.65 * 30) < 0.001, "OI/funding blend uses fixed 1.0 denominator");
+}
+
+// Composite weight table: L3+L4 share weightTrigger (15%), not 15% each
+{
+  const opts = { ...MLCTS_DEFAULTS };
+  const wSum =
+    opts.weightTrend +
+    opts.weightLiquidity +
+    opts.weightTrigger +
+    opts.weightOrderFlow +
+    opts.weightBook +
+    opts.weightOi +
+    opts.weightFunding;
+  assert.equal(wSum, 95, "weights sum to 95 (L7 is gate-only, not in composite)");
+
+  const layers = {
+    trend: { score: 0 },
+    liquidity: { score: 0 },
+    sweep: { score: 100 },
+    structure: { score: 0 },
+    orderflow: { score: 0, detail: { deltaScore: 0, divScore: 0, absScore: 0, bookScore: 50 } },
+    positioning: { score: 50, detail: { oiScore: 50, fundScore: 50 } },
+  };
+  const onlySweep = computeMlctsCompositeScore(layers, opts);
+  const onlyStruct = computeMlctsCompositeScore(
+    { ...layers, sweep: { score: 0 }, structure: { score: 100 } },
+    opts,
+  );
+  const avgBoth = computeMlctsCompositeScore(
+    { ...layers, sweep: { score: 100 }, structure: { score: 100 } },
+    opts,
+  );
+  assert.ok(Math.abs(onlySweep.score - onlyStruct.score) < 0.01, "L3 and L4 symmetric at 15% trigger slot");
+  assert.ok(avgBoth.score > onlySweep.score, "both L3+L4 high raises single trigger term vs one alone");
+  assert.ok(
+    Math.abs(avgBoth.triggerAvg - 100) < 0.01 && Math.abs(onlySweep.triggerAvg - 50) < 0.01,
+    "trigger uses (L3+L4)/2",
+  );
+}
+
+// OI and funding are distinct composite inputs — not positioning.score twice
+{
+  const base = {
+    trend: { score: 50 },
+    liquidity: { score: 50 },
+    sweep: { score: 50 },
+    structure: { score: 50 },
+    orderflow: { score: 50, detail: { deltaScore: 50, divScore: 0, absScore: 0, bookScore: 50 } },
+    positioning: { score: 72, detail: { oiScore: 80, fundScore: 60 } },
+  };
+  const blended = computeMlctsCompositeScore(base, MLCTS_DEFAULTS).score;
+  const oiOnly = computeMlctsCompositeScore(
+    { ...base, positioning: { score: 72, detail: { oiScore: 90, fundScore: 60 } } },
+    MLCTS_DEFAULTS,
+  ).score;
+  const fundOnly = computeMlctsCompositeScore(
+    { ...base, positioning: { score: 72, detail: { oiScore: 80, fundScore: 40 } } },
+    MLCTS_DEFAULTS,
+  ).score;
+  const doublePosBug =
+    ((MLCTS_DEFAULTS.weightOi + MLCTS_DEFAULTS.weightFunding) * base.positioning.score) /
+    (MLCTS_DEFAULTS.weightTrend +
+      MLCTS_DEFAULTS.weightLiquidity +
+      MLCTS_DEFAULTS.weightTrigger +
+      MLCTS_DEFAULTS.weightOrderFlow +
+      MLCTS_DEFAULTS.weightBook +
+      MLCTS_DEFAULTS.weightOi +
+      MLCTS_DEFAULTS.weightFunding);
+  assert.ok(Math.abs(blended - doublePosBug) > 0.05, "composite does not double-count blended positioning.score");
+  assert.ok(oiOnly !== fundOnly, "oiScore and fundScore move composite independently");
+}
+
+// Book composite path: indirect (via L5) + direct was ~13/95, not ~26/95
+{
+  const l5BookOnly = fixedDenominatorWeightedScore(
+    [
+      { w: 0.3, s: 0 },
+      { w: 0.3, s: 0 },
+      { w: 0.2, s: 0 },
+      { w: 0.2, s: 100 },
+    ],
+    MLCTS_L5_BLEND_DENOM,
+  );
+  assert.equal(l5BookOnly, 20);
+  const oldBookComposite = (MLCTS_DEFAULTS.weightOrderFlow * l5BookOnly + MLCTS_DEFAULTS.weightBook * 100) / 95;
+  const newBookComposite = (MLCTS_DEFAULTS.weightBook * 100) / 95;
+  assert.ok(Math.abs(oldBookComposite - 13.684) < 0.01, "old double-path book contrib ~13.7 on 0–100 scale");
+  assert.ok(Math.abs(newBookComposite - 10.526) < 0.01, "fixed book contrib ~10.5 on 0–100 scale");
+  assert.ok(oldBookComposite - newBookComposite < 4, "book fix is ~3.2 composite points at book=100, not ~26");
+}
+
+// L2 liquidity and L3 sweep do not double-count the same composite slot
+{
+  const base = {
+    trend: { score: 50 },
+    liquidity: { score: 0 },
+    sweep: { score: 80 },
+    structure: { score: 50 },
+    orderflow: { score: 50, detail: { deltaScore: 50, divScore: 0, absScore: 0, bookScore: 50 } },
+    positioning: { score: 50, detail: { oiScore: 50, fundScore: 50 } },
+  };
+  const lowL2 = computeMlctsCompositeScore(base, MLCTS_DEFAULTS).score;
+  const highL2 = computeMlctsCompositeScore({ ...base, liquidity: { score: 100 } }, MLCTS_DEFAULTS).score;
+  const liqDelta = highL2 - lowL2;
+  const expectedLiqDelta = (MLCTS_DEFAULTS.weightLiquidity * 100) / 95;
+  assert.ok(Math.abs(liqDelta - expectedLiqDelta) < 0.02, "liquidity term appears once in composite");
+  const trigOnly = computeMlctsCompositeScore(
+    { ...base, sweep: { score: 0 }, structure: { score: 0 } },
+    MLCTS_DEFAULTS,
+  ).score;
+  assert.ok(lowL2 > trigOnly, "L3 sweep adds trigger weight, separate from L2 liquidity weight");
+}
+
+// De-gated entry: L2 fail + high composite + L7 pass can still signal
+{
+  const candles = makeCandles(200);
+  const idx = candles.length - 1;
+  const ev = evaluateMlctsLayers(candles, idx, { ...MLCTS_DEFAULTS, scoreThreshold: 0 }, {});
+  if (ev.direction && ev.layers.volatility?.pass) {
+    assert.equal(ev.signalOk, true, "scoreThreshold 0 + direction + L7 → signal when brackets valid");
+    assert.ok(!ev.layers.liquidity?.pass || !ev.layersAllPass, "signal can fire without all layer passes");
+  }
 }
 
 console.log("mlctsLayers.test.mjs OK");

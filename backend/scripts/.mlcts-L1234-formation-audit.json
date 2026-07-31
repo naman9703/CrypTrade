@@ -1,0 +1,114 @@
+{
+  "generatedAt": "2026-07-29T18:09:45.097Z",
+  "window": {
+    "from": "2026-07-19",
+    "to": "2026-07-29T18:09:28.122Z",
+    "analysisBars": 1033
+  },
+  "finding": "ICT formation is sequential (trend → approach level → sweep bar → BOS bar). Current mandatory gate requires all 4 .pass on ONE 15m bar — that is NOT the same as the theory.",
+  "sameBarImplementation": {
+    "strict_L1234_all_pass": 2,
+    "ratePct": 0.19,
+    "L3_and_L4_pass_same_bar": 13,
+    "of_L3L4_blocked_by_L1": 5,
+    "of_L3L4_blocked_by_L2": 2,
+    "of_L3L4_blocked_by_both": 4,
+    "L3_pass_but_L2_fail": 31
+  },
+  "sequentialImplementation": {
+    "within_8_bars_2h": 96,
+    "within_32_bars_8h": 193,
+    "ratePct_32bar": 18.68
+  },
+  "L1_gateBreakdown": {
+    "range_bias": 493,
+    "adx_below_20": 53,
+    "score_below_50": 233
+  },
+  "hasDirectionBars": 540,
+  "dailyBreakdown": {
+    "2026-07-19": {
+      "bars": 96,
+      "L3_sweep_events": 5,
+      "L4_bos_events": 7,
+      "strict_L1234": 0,
+      "seq32": 7
+    },
+    "2026-07-20": {
+      "bars": 96,
+      "L3_sweep_events": 13,
+      "L4_bos_events": 15,
+      "strict_L1234": 1,
+      "seq32": 31
+    },
+    "2026-07-21": {
+      "bars": 96,
+      "L3_sweep_events": 8,
+      "L4_bos_events": 27,
+      "strict_L1234": 0,
+      "seq32": 31
+    },
+    "2026-07-22": {
+      "bars": 96,
+      "L3_sweep_events": 14,
+      "L4_bos_events": 17,
+      "strict_L1234": 0,
+      "seq32": 1
+    },
+    "2026-07-23": {
+      "bars": 96,
+      "L3_sweep_events": 7,
+      "L4_bos_events": 26,
+      "strict_L1234": 1,
+      "seq32": 47
+    },
+    "2026-07-24": {
+      "bars": 96,
+      "L3_sweep_events": 8,
+      "L4_bos_events": 22,
+      "strict_L1234": 0,
+      "seq32": 27
+    },
+    "2026-07-25": {
+      "bars": 96,
+      "L3_sweep_events": 4,
+      "L4_bos_events": 6,
+      "strict_L1234": 0,
+      "seq32": 18
+    },
+    "2026-07-26": {
+      "bars": 96,
+      "L3_sweep_events": 7,
+      "L4_bos_events": 38,
+      "strict_L1234": 0,
+      "seq32": 11
+    },
+    "2026-07-27": {
+      "bars": 96,
+      "L3_sweep_events": 11,
+      "L4_bos_events": 13,
+      "strict_L1234": 0,
+      "seq32": 7
+    },
+    "2026-07-28": {
+      "bars": 96,
+      "L3_sweep_events": 9,
+      "L4_bos_events": 13,
+      "strict_L1234": 0,
+      "seq32": 13
+    },
+    "2026-07-29": {
+      "bars": 73,
+      "L3_sweep_events": 11,
+      "L4_bos_events": 20,
+      "strict_L1234": 0,
+      "seq32": 0
+    }
+  },
+  "passConditionsReminder": {
+    "L1_pass": "bias !== RANGE AND ADX >= 20 AND trend score >= 50",
+    "L2_pass": "price within ~3 ATR of nearest liquidity level AND score >= 50",
+    "L3_pass": "sweep poke + reclaim on L2 level SAME bar AND score >= 50",
+    "L4_pass": "BOS on SAME bar AND body >= 70% AND score >= 50"
+  }
+}

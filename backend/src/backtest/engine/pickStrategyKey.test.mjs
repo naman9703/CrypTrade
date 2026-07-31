@@ -1,43 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { pickStrategyKeyFromCfg } from "./pickStrategyKey.js";
 
-/** Mirror of worker pickStrategyKey — keep in sync. */
-function pickStrategyKey(cfg, engineType) {
-  const mmUp = String(cfg?.marketMode || cfg?.market || "").toUpperCase();
-  const stSpot = Boolean(cfg?.supertrendSpotAuto);
-  const stFut = Boolean(cfg?.supertrendFuturesAuto);
-  const supertrendAutoOn =
-    (mmUp === "SPOT" && stSpot) ||
-    (mmUp === "FUTURES" && stFut) ||
-    (mmUp === "AUTO" && (stSpot || stFut));
-  if (supertrendAutoOn) return "SUPERTREND";
-  const stratMode = String(cfg?.strategyMode ?? "").toUpperCase();
-  if (stratMode === "MANUAL") {
-    const m = String(cfg?.manualStrategy ?? "").toUpperCase();
-    if (m && m !== "MANUAL" && m !== "AUTO") return m;
-    return "SUPERTREND";
-  }
-  if (stratMode === "AUTO") return "AUTO";
-  const et = String(engineType ?? "").toUpperCase();
-  if (et && et !== "AUTO" && et !== "MANUAL") return et;
-  return "SUPERTREND";
-}
-
-test("supertrendFuturesAuto runs SUPERTREND (matches UI engine label)", () => {
+test("MANUAL LIQ_CASCADE wins over supertrendFuturesAuto (live parity)", () => {
   assert.equal(
-    pickStrategyKey({
+    pickStrategyKeyFromCfg({
+      strategyMode: "MANUAL",
+      manualStrategy: "LIQ_CASCADE",
+      supertrendFuturesAuto: true,
+      marketMode: "FUTURES",
+    }),
+    "LIQ_CASCADE",
+  );
+});
+
+test("MANUAL TREND_HTF_ST wins over supertrendFuturesAuto", () => {
+  assert.equal(
+    pickStrategyKeyFromCfg({
       strategyMode: "MANUAL",
       manualStrategy: "TREND_HTF_ST",
       supertrendFuturesAuto: true,
       marketMode: "FUTURES",
     }),
-    "SUPERTREND",
+    "TREND_HTF_ST",
   );
 });
 
 test("manual TREND_HTF_ST without stAuto runs TREND_HTF_ST", () => {
   assert.equal(
-    pickStrategyKey({
+    pickStrategyKeyFromCfg({
       strategyMode: "MANUAL",
       manualStrategy: "TREND_HTF_ST",
       supertrendFuturesAuto: false,
@@ -47,12 +38,24 @@ test("manual TREND_HTF_ST without stAuto runs TREND_HTF_ST", () => {
   );
 });
 
-test("manual SUPERTREND uses SUPERTREND", () => {
+test("manual SUPERTREND + st auto uses SUPERTREND", () => {
   assert.equal(
-    pickStrategyKey({
+    pickStrategyKeyFromCfg({
       strategyMode: "MANUAL",
       manualStrategy: "SUPERTREND",
-      supertrendFuturesAuto: false,
+      supertrendFuturesAuto: true,
+      marketMode: "FUTURES",
+    }),
+    "SUPERTREND",
+  );
+});
+
+test("st auto without explicit manual panel strategy uses SUPERTREND", () => {
+  assert.equal(
+    pickStrategyKeyFromCfg({
+      strategyMode: "MANUAL",
+      manualStrategy: "SUPERTREND",
+      supertrendFuturesAuto: true,
       marketMode: "FUTURES",
     }),
     "SUPERTREND",

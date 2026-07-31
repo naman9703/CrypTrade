@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-07-29T10:16:55.103Z",
+  "window": {
+    "calFrom": "2026-01-01",
+    "calTo": "2026-05-01",
+    "entryThreshold": 50
+  },
+  "tradeSample": {
+    "trades": 124,
+    "withVisionBook": 124,
+    "rSummary": {
+      "meanR": -0.104,
+      "rStd": 1.382,
+      "rSe": 0.124
+    },
+    "bookScoreVsR": {
+      "pearsonR": 0.1317,
+      "n": 124,
+      "bookScore": {
+        "n": 124,
+        "mean": 16.661290322580644,
+        "std": 4.809075923531823
+      },
+      "visionImb": {
+        "n": 124,
+        "mean": 0.5224167177419354,
+        "std": 0.07447551499595195
+      },
+      "winRateHighBook": {
+        "medianSplitAt": 16.661290322580644,
+        "highBookWinRate": 0.43548387096774194,
+        "lowBookWinRate": 0.3548387096774194,
+        "highN": 62,
+        "lowN": 62
+      }
+    }
+  },
+  "barLevelBookScore": {
+    "n": 6733,
+    "mean": 47.54730432199614,
+    "std": 34.83212201590614
+  },
+  "interpretation": [
+    "Pearson r near 0 + overlapping win rates → Vision book adds little isolated predictive signal on cal.",
+    "Tight bar-level bookScore distribution → limited composite leverage regardless of live correlation.",
+    "Does not replace live-vs-Vision contemporaneous correlation check."
+  ]
+}

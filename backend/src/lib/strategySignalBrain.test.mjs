@@ -118,3 +118,24 @@ test("isRuntimePollutionKey identifies WS-only fields", () => {
   assert.equal(isRuntimePollutionKey("feed"), true);
   assert.equal(isRuntimePollutionKey("eliteStMinAdx"), false);
 });
+
+test("sanitizeSignalBrainCfgRaw preserves LIQ_CASCADE smoke knobs on save", () => {
+  const raw = sanitizeSignalBrainCfgRaw({
+    v: 1,
+    bot: {
+      manualStrategy: "LIQ_CASCADE",
+      liqCascadeOiGateMode: "off",
+      liqCascadeMinDispAtr: 0,
+      liqCascadeMinRr: 0.5,
+      liqCascadeZScoreMin: 1.5,
+      liqCascadeMinLiqUsdBar: 25_000,
+      supertrendBreakoutConfirm: false,
+    },
+  });
+  const b = raw.bot;
+  assert.equal(b.liqCascadeOiGateMode, "off");
+  assert.equal(b.liqCascadeMinDispAtr, 0);
+  assert.equal(b.liqCascadeMinRr, 0.5);
+  assert.equal(b.liqCascadeZScoreMin, 1.5);
+  assert.equal(b.liqCascadeMinLiqUsdBar, 25_000);
+});

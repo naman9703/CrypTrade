@@ -1,0 +1,75 @@
+---
+description: LIQ_CASCADE — fix-forward until profitable/reliable live; data quality in every verdict
+alwaysApply: true
+---
+
+# LIQ_CASCADE — profitable & reliable (fix-forward)
+
+## Mandate
+
+**Do not declare the setup a failure.** LIQ_CASCADE is an active engineering stream: find accurate root causes, apply one fix at a time, re-measure until the setup is **profitable after costs**, **reliable across regimes**, and **ready for live** with honest frequency.
+
+Every verdict must separate:
+1. **Strategy logic** (gates, confirm, brackets)
+2. **Data quality** (force_orders coverage, zero-fill %, effective days vs requested window)
+
+Thin data → "edge confirmation pending on coverage" — **not** "strategy doesn't work."
+
+## Mission targets (together)
+
+- OOS return > 0, PF ≥ 1, ≥ 30 OOS trades before live-capital language
+- Honest frequency when edge exists (~≥2 trades/week per active coin)
+- `force_orders` 5min bars — not Coinalyze 1hour for cascade validation
+- Full sim with realistic fees + slippage + WF + MC + 4-gate harness
+
+## Data prerequisites (always report)
+
+- **Source:** Binance `force_orders` → DB (migration 036) + live WS
+- **Coverage gate:** ≥8 weeks ticks/coin + ≥500 ticks for full-window claims (`computeLiqCascadeDataQuality`)
+- **Candles:** `binance_futures` 1m
+- **Replay script:** `research-liq-cascade-last10h-signals.mjs` — always include `dataQuality` block
+
+## Gate design (implemented — do not revert without A/B)
+
+| Gate | Preset | Rationale |
+|------|--------|-----------|
+| OI | `liqCascadeOiGateMode: window`, 3 bars | Same-bar OI often rises on peak liq; window measures cascade unwind |
+| Confirm | `liqCascadeConfirmMode: either`, 2 liq bars | Stall/reclaim OR liq exhaustion decay — fixes ETH near-misses |
+| Liq | force_orders 5min | Tick-accurate z-score vs Coinalyze 1h |
+
+Config keys: `liqCascadeOiGateMode`, `liqCascadeOiWindowBars`, `liqCascadeConfirmMode`, `liqCascadeConfirmLiqBars`, `liqCascadeExhaustionDecay`.
+
+## Required workflow
+
+1. Autopsy → named root cause (gate vs data vs brackets)
+2. **One** change per experiment
+3. Full sim + holdout
+4. Log in `backend/scripts/.research-decisions/`
+5. If blocked on data → fix ingestion/persistence first, then re-run same harness
+
+## Hard bans
+
+- "REJECT / not deployable / setup failed" without next concrete fix
+- Multi-filter stacks without isolated tests
+- Threshold tweaks on partial tick coverage presented as validated
+- N-crush to green a curve
+- Coinalyze 1hour cascade validation as substitute for force_orders 5min
+- Live capital without validation bar + `LIQ_CASCADE_LIVE_ALLOW=1`
+
+## Live readiness bar
+
+All required before live-capital language:
+
+- Data quality `verdict: sufficient`
+- OOS PF ≥ 1, OOS return > 0, ≥ 30 OOS trades
+- WF + MC pass; correct trailing/exits in harness
+- Phase0 fade edge > round-trip cost (~0.13%) at 5min granularity
+
+## Scripts
+
+- Replay: `research-liq-cascade-last10h-signals.mjs` (`DAYS=30` or `HOURS=720`)
+- Coverage: `research-liq-cascade-force-orders-coverage.mjs`
+- Phase0: `research-liq-cascade-phase0.mjs`
+- Validate: `backtest-validate-liq-cascade.mjs`
+
+Latest decision log: `backend/scripts/.research-decisions/2026-07-31-liq-cascade-gate-fix-forward.md`

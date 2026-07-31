@@ -1,0 +1,146 @@
+{
+  "generatedAt": "2026-07-29T10:08:32.575Z",
+  "methodology": "Threshold selected on cal window only via pre-registered rule; holdout run once unmodified.",
+  "minCalTrades": 20,
+  "minCalPf": 1,
+  "thresholdsScanned": [
+    50,
+    55,
+    60,
+    65,
+    70,
+    75
+  ],
+  "results": [
+    {
+      "symbol": "BTCUSDT",
+      "split": {
+        "cal": {
+          "from": "2026-01-01",
+          "to": "2026-05-01"
+        },
+        "holdout": {
+          "from": "2026-05-01",
+          "to": "2026-07-01"
+        }
+      },
+      "selectionRule": {
+        "threshold": null,
+        "rule": "none_met_cal_gates(trades>=20,pf>=1)",
+        "qualifying": []
+      },
+      "calibrationSweep": [
+        {
+          "threshold": 50,
+          "trades": 124,
+          "perWeek": 7.23,
+          "returnPct": -13.17,
+          "pf": 0.854,
+          "winRate": 39.5,
+          "meanR": -0.104,
+          "rStd": 1.382,
+          "rSe": 0.124,
+          "meanRCi95": [
+            -0.348,
+            0.139
+          ],
+          "expectancyR": -0.104,
+          "maxDd": 21.85
+        },
+        {
+          "threshold": 55,
+          "trades": 81,
+          "perWeek": 4.73,
+          "returnPct": -5.54,
+          "pf": 0.901,
+          "winRate": 39.5,
+          "meanR": -0.061,
+          "rStd": 1.392,
+          "rSe": 0.155,
+          "meanRCi95": [
+            -0.364,
+            0.242
+          ],
+          "expectancyR": -0.061,
+          "maxDd": 17.47
+        },
+        {
+          "threshold": 60,
+          "trades": 46,
+          "perWeek": 2.68,
+          "returnPct": -8.78,
+          "pf": 0.731,
+          "winRate": 34.8,
+          "meanR": -0.191,
+          "rStd": 1.348,
+          "rSe": 0.199,
+          "meanRCi95": [
+            -0.58,
+            0.199
+          ],
+          "expectancyR": -0.191,
+          "maxDd": 14.58
+        },
+        {
+          "threshold": 65,
+          "trades": 15,
+          "perWeek": 0.88,
+          "returnPct": -0.22,
+          "pf": 0.978,
+          "winRate": 40,
+          "meanR": -0.005,
+          "rStd": 1.433,
+          "rSe": 0.37,
+          "meanRCi95": [
+            -0.731,
+            0.72
+          ],
+          "expectancyR": -0.005,
+          "maxDd": 5.14
+        },
+        {
+          "threshold": 70,
+          "trades": 3,
+          "perWeek": 0.18,
+          "returnPct": -0.6,
+          "pf": 0.725,
+          "winRate": 33.3,
+          "meanR": -0.192,
+          "rStd": 1.569,
+          "rSe": 0.906,
+          "meanRCi95": [
+            -1.968,
+            1.583
+          ],
+          "expectancyR": -0.192,
+          "maxDd": 2.18
+        },
+        {
+          "threshold": 75,
+          "trades": 0,
+          "perWeek": 0,
+          "returnPct": 0,
+          "pf": 0,
+          "winRate": 0,
+          "meanR": 0,
+          "rStd": 0,
+          "rSe": null,
+          "meanRCi95": null,
+          "expectancyR": 0,
+          "maxDd": 0
+        }
+      ],
+      "holdoutValidation": {
+        "threshold": null,
+        "preRegistered": false,
+        "note": "No cal threshold met gates — holdout not run (no post-hoc threshold pick)."
+      },
+      "feedCoverage": {
+        "visionMetricsPoints": 53568,
+        "bookImbalanceSnapshots": 505351,
+        "oiSeriesPoints": 53569,
+        "fundingPoints": 559
+      }
+    }
+  ]
+}

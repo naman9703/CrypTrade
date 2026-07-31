@@ -176,6 +176,12 @@ export async function evaluateLiveStrategyAdapterBar({ state, candles, idx, symU
     const { resolveLiquidityMapRunCfg } = await import("./liquidityMapStrategy.js");
     cfg = resolveLiquidityMapRunCfg(state, candles);
   }
+  if (key === "LIQ_CASCADE") {
+    const { loadLiqCascadeBarCloseLiqSeries } = await import("./liqCascadeIntraday.js");
+    const barTs = Number(candles[idx]?.ts);
+    const { liqSeries } = await loadLiqCascadeBarCloseLiqSeries(symU, barTs, state);
+    cfg = { ...state, _liqCascadeLiqSeries: liqSeries, _liqCascadeOiSeries: [] };
+  }
   const adapters = await buildBacktestAdapters({
     strategyKey: key,
     cfg,

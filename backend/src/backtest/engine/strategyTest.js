@@ -26,6 +26,7 @@ import { monteCarloBootstrap, purgedWalkForwardSplits, acceptanceGates } from ".
 import { portfolioSliceReplay, tradesToTimelineEvents } from "./portfolioReplay.js";
 import { SYNTHETIC_SCENARIOS, REAL_CRASH_WINDOWS } from "./stressScenarios.js";
 import { BACKTEST_ENGINE_VERSION } from "./version.js";
+import { pickStrategyKeyFromCfg } from "./pickStrategyKey.js";
 
 /* ────────────────────────── persistence helpers ────────────────────────── */
 
@@ -98,28 +99,6 @@ function pickBotCfg(snapshot, fallback) {
         : {};
   if (root && typeof root.bot === "object" && root.bot) return root.bot;
   return root;
-}
-
-/** Mirror of worker.js pickStrategyKey — keep in sync. */
-function pickStrategyKey(cfg, engineType) {
-  const mmUp = String(cfg?.marketMode || cfg?.market || "").toUpperCase();
-  const stSpot = Boolean(cfg?.supertrendSpotAuto);
-  const stFut = Boolean(cfg?.supertrendFuturesAuto);
-  const supertrendAutoOn =
-    (mmUp === "SPOT" && stSpot) ||
-    (mmUp === "FUTURES" && stFut) ||
-    (mmUp === "AUTO" && (stSpot || stFut));
-  if (supertrendAutoOn) return "SUPERTREND";
-  const stratMode = String(cfg?.strategyMode ?? "").toUpperCase();
-  if (stratMode === "MANUAL") {
-    const m = String(cfg?.manualStrategy ?? "").toUpperCase();
-    if (m && m !== "MANUAL" && m !== "AUTO") return m;
-    return "SUPERTREND";
-  }
-  if (stratMode === "AUTO") return "AUTO";
-  const et = String(engineType ?? "").toUpperCase();
-  if (et && et !== "AUTO" && et !== "MANUAL") return et;
-  return "SUPERTREND";
 }
 
 /** Mirror of worker.js cfg materialization — same engine resolution as a normal run. */
@@ -691,7 +670,7 @@ export async function executeStrategyTest({ testId, onProgress, shouldCancel }) 
   report(0.5, "loading");
 
   const cfg = await materializeCfg(run);
-  const strategyKey = pickStrategyKey(cfg, run.engine_type);
+  const strategyKey = pickStrategyKeyFromCfg(cfg, run.engine_type);
   const tf = String(run.timeframe);
   const isFutures = String(cfg?.marketMode || cfg?.market || "").toUpperCase() === "FUTURES";
   const market = isFutures ? "futures" : "spot";

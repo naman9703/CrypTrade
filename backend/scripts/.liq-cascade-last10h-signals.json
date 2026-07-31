@@ -1,0 +1,308 @@
+{
+  "window": {
+    "hours": 10,
+    "from": "2026-07-30T10:40:20.034Z",
+    "to": "2026-07-30T20:40:20.034Z"
+  },
+  "mode": "bar_close_1m",
+  "liqSource": "force_orders",
+  "liqInterval": "5min",
+  "note": "rawSignals = full buildLiqCascadeSeries gates; adapterSignals = after maxTradesPerDay(8) + minBarGap(2). Live tick mode not included.",
+  "coins": [
+    {
+      "symbol": "BTCUSDT",
+      "preset": {
+        "zMin": 2,
+        "minLiqUsdBar": 50000,
+        "minOiDropPct": 0.12,
+        "minDispAtr": 1
+      },
+      "data": {
+        "liqSource": "force_orders",
+        "tickCount": 68,
+        "liqBarsInWindow": 120,
+        "liqBarsNonZero": 18,
+        "bars50kPlus": 6,
+        "bars50kZPass": 3,
+        "candleCount": 591,
+        "oiBars": 214,
+        "liqCoverageFrom": "2026-07-30T02:45:00.000Z",
+        "liqCoverageTo": "2026-07-30T20:45:00.000Z"
+      },
+      "rawSignalCount": 0,
+      "adapterSignalCount": 0,
+      "rawSignals": [],
+      "adapterSignals": [],
+      "nearMisses": [
+        {
+          "barClose": "2026-07-30T13:40:00.000Z",
+          "totalUsd": 2482485,
+          "z": 99,
+          "dom": "shorts",
+          "zPass": true,
+          "oiDropPct": -0.07,
+          "oiPass": false,
+          "dispAtr": 0.29,
+          "dispPass": false,
+          "atrPct": 0.063,
+          "atrPass": true,
+          "cascadeEligible": false
+        },
+        {
+          "barClose": "2026-07-30T13:45:00.000Z",
+          "totalUsd": 8227654,
+          "z": 23.06,
+          "dom": "shorts",
+          "zPass": true,
+          "oiDropPct": -0.48,
+          "oiPass": false,
+          "dispAtr": 4.38,
+          "dispPass": true,
+          "atrPct": 0.099,
+          "atrPass": true,
+          "cascadeEligible": false
+        },
+        {
+          "barClose": "2026-07-30T13:50:00.000Z",
+          "totalUsd": 1393517,
+          "z": 0.96,
+          "dom": "shorts",
+          "zPass": false,
+          "oiDropPct": -0.12,
+          "oiPass": false,
+          "dispAtr": 1.43,
+          "dispPass": true,
+          "atrPct": 0.113,
+          "atrPass": true,
+          "cascadeEligible": false
+        },
+        {
+          "barClose": "2026-07-30T13:55:00.000Z",
+          "totalUsd": 250965,
+          "z": 0,
+          "dom": "shorts",
+          "zPass": false,
+          "oiDropPct": 0.34,
+          "oiPass": true,
+          "dispAtr": 0.8,
+          "dispPass": false,
+          "atrPct": 0.115,
+          "atrPass": true,
+          "cascadeEligible": false
+        },
+        {
+          "barClose": "2026-07-30T17:45:00.000Z",
+          "totalUsd": 95088,
+          "z": -0.09,
+          "dom": "shorts",
+          "zPass": false,
+          "oiDropPct": -0.13,
+          "oiPass": false,
+          "dispAtr": 1.77,
+          "dispPass": true,
+          "atrPct": 0.05,
+          "atrPass": true,
+          "cascadeEligible": false
+        },
+        {
+          "barClose": "2026-07-30T18:20:00.000Z",
+          "totalUsd": 244436,
+          "z": 17.53,
+          "dom": "longs",
+          "zPass": true,
+          "oiDropPct": 0.08,
+          "oiPass": false,
+          "dispAtr": 0.25,
+          "dispPass": false,
+          "atrPct": 0.027,
+          "atrPass": false,
+          "cascadeEligible": false
+        }
+      ]
+    },
+    {
+      "symbol": "ETHUSDT",
+      "preset": {
+        "zMin": 2,
+        "minLiqUsdBar": 50000,
+        "minOiDropPct": 0.12,
+        "minDispAtr": 1
+      },
+      "data": {
+        "liqSource": "force_orders",
+        "tickCount": 53,
+        "liqBarsInWindow": 120,
+        "liqBarsNonZero": 17,
+        "bars50kPlus": 5,
+        "bars50kZPass": 3,
+        "candleCount": 591,
+        "oiBars": 214,
+        "liqCoverageFrom": "2026-07-30T02:45:00.000Z",
+        "liqCoverageTo": "2026-07-30T20:45:00.000Z"
+      },
+      "rawSignalCount": 0,
+      "adapterSignalCount": 0,
+      "rawSignals": [],
+      "adapterSignals": [],
+      "nearMisses": [
+        {
+          "barClose": "2026-07-30T13:40:00.000Z",
+          "totalUsd": 395115,
+          "z": 99,
+          "dom": "shorts",
+          "zPass": true,
+          "oiDropPct": 0.1,
+          "oiPass": false,
+          "dispAtr": 0.22,
+          "dispPass": false,
+          "atrPct": 0.107,
+          "atrPass": true,
+          "cascadeEligible": false
+        },
+        {
+          "barClose": "2026-07-30T13:45:00.000Z",
+          "totalUsd": 1849958,
+          "z": 32.64,
+          "dom": "shorts",
+          "zPass": true,
+          "oiDropPct": -0.49,
+          "oiPass": false,
+          "dispAtr": 4.39,
+          "dispPass": true,
+          "atrPct": 0.143,
+          "atrPass": true,
+          "cascadeEligible": false
+        },
+        {
+          "barClose": "2026-07-30T13:50:00.000Z",
+          "totalUsd": 3251572,
+          "z": 11.91,
+          "dom": "shorts",
+          "zPass": true,
+          "oiDropPct": -0.23,
+          "oiPass": false,
+          "dispAtr": 1.27,
+          "dispPass": true,
+          "atrPct": 0.155,
+          "atrPass": true,
+          "cascadeEligible": false
+        },
+        {
+          "barClose": "2026-07-30T13:55:00.000Z",
+          "totalUsd": 962110,
+          "z": 1.6,
+          "dom": "shorts",
+          "zPass": false,
+          "oiDropPct": 0.13,
+          "oiPass": true,
+          "dispAtr": 1.06,
+          "dispPass": true,
+          "atrPct": 0.165,
+          "atrPass": true,
+          "cascadeEligible": false
+        },
+        {
+          "barClose": "2026-07-30T17:45:00.000Z",
+          "totalUsd": 129611,
+          "z": 0,
+          "dom": "shorts",
+          "zPass": false,
+          "oiDropPct": -0.17,
+          "oiPass": false,
+          "dispAtr": 1.93,
+          "dispPass": true,
+          "atrPct": 0.064,
+          "atrPass": true,
+          "cascadeEligible": false
+        }
+      ]
+    },
+    {
+      "symbol": "BNBUSDT",
+      "preset": {
+        "zMin": 1.8,
+        "minLiqUsdBar": 30000,
+        "minOiDropPct": 0.12,
+        "minDispAtr": 1
+      },
+      "data": {
+        "liqSource": "force_orders",
+        "tickCount": 25,
+        "liqBarsInWindow": 120,
+        "liqBarsNonZero": 7,
+        "bars50kPlus": 4,
+        "bars50kZPass": 3,
+        "candleCount": 591,
+        "oiBars": 214,
+        "liqCoverageFrom": "2026-07-30T02:45:00.000Z",
+        "liqCoverageTo": "2026-07-30T20:45:00.000Z"
+      },
+      "rawSignalCount": 0,
+      "adapterSignalCount": 0,
+      "rawSignals": [],
+      "adapterSignals": [],
+      "nearMisses": [
+        {
+          "barClose": "2026-07-30T13:40:00.000Z",
+          "totalUsd": 172654,
+          "z": 99,
+          "dom": "shorts",
+          "zPass": true,
+          "oiDropPct": -0.01,
+          "oiPass": false,
+          "dispAtr": 1.28,
+          "dispPass": true,
+          "atrPct": 0.061,
+          "atrPass": true,
+          "cascadeEligible": false
+        },
+        {
+          "barClose": "2026-07-30T13:45:00.000Z",
+          "totalUsd": 59806,
+          "z": 2.28,
+          "dom": "longs",
+          "zPass": true,
+          "oiDropPct": -0.25,
+          "oiPass": false,
+          "dispAtr": 4.28,
+          "dispPass": true,
+          "atrPct": 0.08,
+          "atrPass": true,
+          "cascadeEligible": false
+        },
+        {
+          "barClose": "2026-07-30T13:50:00.000Z",
+          "totalUsd": 37591,
+          "z": 1.26,
+          "dom": "shorts",
+          "zPass": false,
+          "oiDropPct": -0.23,
+          "oiPass": false,
+          "dispAtr": 2.23,
+          "dispPass": true,
+          "atrPct": 0.085,
+          "atrPass": true,
+          "cascadeEligible": false
+        },
+        {
+          "barClose": "2026-07-30T17:50:00.000Z",
+          "totalUsd": 159163,
+          "z": 23.7,
+          "dom": "shorts",
+          "zPass": true,
+          "oiDropPct": -0.05,
+          "oiPass": false,
+          "dispAtr": 0.04,
+          "dispPass": false,
+          "atrPct": 0.093,
+          "atrPass": true,
+          "cascadeEligible": false
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "rawSignals": 0,
+    "adapterSignals": 0
+  }
+}

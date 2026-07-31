@@ -1011,8 +1011,12 @@ function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial
     supertrendSignals: stSig,
   };
   const nextBot =
-    p.mlctsLayerStatus != null && s.bot && typeof s.bot === "object"
-      ? { ...s.bot, mlctsLayerStatus: p.mlctsLayerStatus }
+    s.bot && typeof s.bot === "object" && (p.mlctsLayerStatus != null || p.liqCascadeRadarStatus != null)
+      ? {
+          ...s.bot,
+          ...(p.mlctsLayerStatus != null ? { mlctsLayerStatus: p.mlctsLayerStatus } : {}),
+          ...(p.liqCascadeRadarStatus != null ? { liqCascadeRadarStatus: p.liqCascadeRadarStatus } : {}),
+        }
       : s.bot;
   return { market: marketMerged, candles: next, bot: nextBot };
 }
@@ -1624,6 +1628,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => {
       const instanceId = activeInstanceIdForMode(s, modeSlug);
       const draftBotPatchByInstanceId = { ...(s.draftBotPatchByInstanceId ?? {}) };
+      const draftBotPatchByMode = { ...s.draftBotPatchByMode, [modeSlug]: { ...patch } };
       if (instanceId) {
         draftBotPatchByInstanceId[instanceId] = { ...patch };
       }
@@ -1633,10 +1638,14 @@ export const useAppStore = create<AppState>((set, get) => ({
           : s.bot && typeof s.bot === "object" && !Array.isArray(s.bot)
             ? (s.bot as Record<string, unknown>)
             : {};
-      const draftCtx = draftByModeWithInstanceContext({ ...s, draftBotPatchByInstanceId }, modeSlug);
+      const draftCtx = draftByModeWithInstanceContext(
+        { ...s, draftBotPatchByInstanceId, draftBotPatchByMode },
+        modeSlug,
+      );
       const view = normalizeIntradayGatesOnBot(deriveViewBot(s.mode, live, draftCtx));
       return {
         draftBotPatchByInstanceId,
+        draftBotPatchByMode,
         strategyConfigDirtyByMode: { ...s.strategyConfigDirtyByMode, [modeSlug]: true },
         ...buildStrategyConfigViewSlice(s.mode, modeSlug, view, s, instanceId),
       };

@@ -31,11 +31,12 @@ let resolveTradingMode = null;
 /** @type {ReturnType<typeof setInterval> | null} */
 let pruneTimer = null;
 
-/** @type {{ running: boolean, connected: boolean, connectedAt: number | null, lastMessageAt: number | null, lastError: string | null, messageCount: number }} */
+/** @type {{ running: boolean, connected: boolean, connectedAt: number | null, startedAt: number | null, lastMessageAt: number | null, lastError: string | null, messageCount: number, streamUrl: string | null }} */
 const streamMeta = {
   running: false,
   connected: false,
   connectedAt: null,
+  startedAt: null,
   lastMessageAt: null,
   lastError: null,
   messageCount: 0,
@@ -57,13 +58,39 @@ export function getLiquidationStreamStatus() {
     running: streamMeta.running,
     connected: streamMeta.connected,
     ok,
+    live: streamMeta.running && streamMeta.connected,
     streamUrl: streamMeta.streamUrl,
     connectedAt: streamMeta.connectedAt,
+    startedAt: streamMeta.startedAt,
     lastMessageAt: streamMeta.lastMessageAt,
     lastError: streamMeta.lastError,
     messageCount: streamMeta.messageCount,
     staleMs: LIQ_STALE_MS,
   };
+}
+
+/** Start if needed; restart if stuck disconnected. Safe to call from LIQ_CASCADE status polls. */
+export function ensureLiquidationStreamRunning(opts = {}) {
+  const now = Date.now();
+  const st = getLiquidationStreamStatus();
+  if (!st.running) {
+    startLiquidationStream(opts);
+    return getLiquidationStreamStatus();
+  }
+  const startedAt = streamMeta.startedAt ?? now;
+  const disconnectedFor = !st.connected ? now - startedAt : 0;
+  const staleDisconnect = !st.connected && disconnectedFor > 25_000;
+  const errorStuck = !st.connected && Boolean(st.lastError);
+  if (staleDisconnect || errorStuck) {
+    console.warn("[liquidations] Restarting stuck forceOrder stream", {
+      disconnectedFor,
+      lastError: st.lastError,
+      streamUrl: st.streamUrl,
+    });
+    stopLiquidationStream();
+    startLiquidationStream(opts);
+  }
+  return getLiquidationStreamStatus();
 }
 
 function currentStreamUrl() {
@@ -77,6 +104,7 @@ export function startLiquidationStream(opts = {}) {
   resolveTradingMode = typeof opts.getTradingMode === "function" ? opts.getTradingMode : null;
   running = true;
   streamMeta.running = true;
+  streamMeta.startedAt = Date.now();
   streamMeta.streamUrl = currentStreamUrl();
   connect();
   pruneTimer = setInterval(pruneBuffer, 5 * 60 * 1000);
@@ -89,6 +117,7 @@ export function stopLiquidationStream() {
   streamMeta.running = false;
   streamMeta.connected = false;
   streamMeta.connectedAt = null;
+  streamMeta.startedAt = null;
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;

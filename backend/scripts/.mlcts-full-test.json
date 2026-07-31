@@ -1,0 +1,108 @@
+{
+  "generatedAt": "2026-07-29T09:52:19.610Z",
+  "results": [
+    {
+      "symbol": "BTCUSDT",
+      "window": {
+        "from": "2026-01-01",
+        "to": "2026-07-01",
+        "tf": "15m"
+      },
+      "candles": 17616,
+      "feedCoverage": {
+        "visionMetricsPoints": 52848,
+        "bookImbalanceSnapshots": 498484,
+        "oiSeriesPoints": 52849,
+        "fundingPoints": 551
+      },
+      "signalsInWindowDefaultThreshold": 0,
+      "defaultThreshold": 75,
+      "simByThreshold": [
+        {
+          "threshold": 50,
+          "signalsBuilt": 0,
+          "trades": 215,
+          "perWeek": 8.31,
+          "returnPct": -31.94,
+          "cagr": -53.49,
+          "maxDd": 41.58,
+          "pf": 0.779,
+          "sharpe": -2.565,
+          "winRate": 39.1,
+          "meanR": -0.17,
+          "expectancyR": -0.17
+        },
+        {
+          "threshold": 55,
+          "signalsBuilt": 0,
+          "trades": 139,
+          "perWeek": 5.38,
+          "returnPct": -14.73,
+          "cagr": -27.16,
+          "maxDd": 22.36,
+          "pf": 0.845,
+          "sharpe": -1.301,
+          "winRate": 39.6,
+          "meanR": -0.106,
+          "expectancyR": -0.106
+        },
+        {
+          "threshold": 60,
+          "signalsBuilt": 0,
+          "trades": 70,
+          "perWeek": 2.71,
+          "returnPct": -0.69,
+          "cagr": -1.37,
+          "maxDd": 14.58,
+          "pf": 0.984,
+          "sharpe": -0.006,
+          "winRate": 42.9,
+          "meanR": -0.001,
+          "expectancyR": -0.001
+        },
+        {
+          "threshold": 65,
+          "signalsBuilt": 0,
+          "trades": 25,
+          "perWeek": 0.97,
+          "returnPct": 7.38,
+          "cagr": 15.21,
+          "maxDd": 5.14,
+          "pf": 1.536,
+          "sharpe": 1.473,
+          "winRate": 52,
+          "meanR": 0.295,
+          "expectancyR": 0.295
+        },
+        {
+          "threshold": 70,
+          "signalsBuilt": 0,
+          "trades": 4,
+          "perWeek": 0.15,
+          "returnPct": 0.98,
+          "cagr": 1.96,
+          "maxDd": 2.18,
+          "pf": 1.449,
+          "sharpe": 0.52,
+          "winRate": 50,
+          "meanR": 0.253,
+          "expectancyR": 0.253
+        },
+        {
+          "threshold": 75,
+          "signalsBuilt": 0,
+          "trades": 0,
+          "perWeek": 0,
+          "returnPct": 0,
+          "cagr": 0,
+          "maxDd": 0,
+          "pf": 0,
+          "sharpe": 0,
+          "winRate": 0,
+          "meanR": 0,
+          "expectancyR": 0
+        }
+      ]
+    }
+  ]
+}

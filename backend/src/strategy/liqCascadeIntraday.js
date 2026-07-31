@@ -9,7 +9,14 @@ import {
   LIQ_CASCADE_DEFAULTS,
   LIQ_CASCADE_PAD_BARS,
   LIQ_CASCADE_WARMUP,
+  liqIntervalToMs,
 } from "./techniques/liqCascade.js";
+import {
+  collectLiqCascadeBarCloseAuditEvents,
+  formatLiqCascadeSkipReason,
+  initLiqCascadeActivityPersisted,
+  liqCascadeAdapterSkipReason,
+} from "./liqCascadeActivityAudit.js";
 import { LIQ_CASCADE_BTC_1M } from "./presets/liqCascadeOptimized.js";
 import { readCoinalyzeLiquidations, readCoinalyzeOi } from "../backtest/data/coinalyzeIngest.js";
 
@@ -29,7 +36,12 @@ const LIQ_CASCADE_USER_KEYS = [
   "liqCascadeLookbackBars",
   "liqCascadeWindowBars",
   "liqCascadeMinDispAtr",
+  "liqCascadeStrongDispAtr",
   "liqCascadeMinOiDropPct",
+  "liqCascadeOiGateMode",
+  "liqCascadeOiWindowBars",
+  "liqCascadeConfirmMode",
+  "liqCascadeConfirmLiqBars",
   "liqCascadeExhaustionDecay",
   "liqCascadeDirectionMode",
   "liqCascadeMinAtrPct",
@@ -42,6 +54,7 @@ const LIQ_CASCADE_USER_KEYS = [
   "liqCascadeTradeSides",
   "liqCascadeMinLiqUsdBar",
   "liqCascadeLiveTickEnabled",
+  "liqCascadeLiqSource",
   "intradayLiqPartialTp",
   "intradayLiqTp1Enabled",
   "intradayLiqTp2Enabled",
@@ -73,7 +86,12 @@ export function optsFromLiqCascadeCfg(cfg = {}) {
     liqLookbackBars: num(c.liqCascadeLookbackBars, LIQ_CASCADE_DEFAULTS.liqLookbackBars),
     cascadeWindowBars: num(c.liqCascadeWindowBars, LIQ_CASCADE_DEFAULTS.cascadeWindowBars),
     minDispAtrMult: num(c.liqCascadeMinDispAtr, LIQ_CASCADE_DEFAULTS.minDispAtrMult),
+    strongDispAtrMult: num(c.liqCascadeStrongDispAtr, LIQ_CASCADE_DEFAULTS.strongDispAtrMult),
     minOiDropPct: num(c.liqCascadeMinOiDropPct, LIQ_CASCADE_DEFAULTS.minOiDropPct),
+    oiGateMode: String(c.liqCascadeOiGateMode ?? LIQ_CASCADE_DEFAULTS.oiGateMode).toLowerCase(),
+    oiWindowBars: num(c.liqCascadeOiWindowBars, LIQ_CASCADE_DEFAULTS.oiWindowBars),
+    confirmMode: String(c.liqCascadeConfirmMode ?? LIQ_CASCADE_DEFAULTS.confirmMode).toLowerCase(),
+    confirmLiqBars: num(c.liqCascadeConfirmLiqBars, LIQ_CASCADE_DEFAULTS.confirmLiqBars),
     exhaustionDecayRatio: num(c.liqCascadeExhaustionDecay, LIQ_CASCADE_DEFAULTS.exhaustionDecayRatio),
     directionMode: String(c.liqCascadeDirectionMode ?? LIQ_CASCADE_DEFAULTS.directionMode),
     minAtrPct: num(c.liqCascadeMinAtrPct, LIQ_CASCADE_DEFAULTS.minAtrPct),
@@ -105,9 +123,71 @@ export function attachLiqCascadeSeries(candles, cfg, ctx = {}) {
   return built;
 }
 
+/** @typedef {"coinalyze" | "force_orders" | "auto"} LiqCascadeLiqSource */
+
+export function resolveLiqCascadeLiqSource(cfg = {}) {
+  const raw = String(
+    cfg.liqCascadeLiqSource ?? process.env.LIQ_SOURCE ?? process.env.LIQ_CASCADE_LIQ_SOURCE ?? "coinalyze",
+  )
+    .trim()
+    .toLowerCase();
+  if (raw === "force_orders" || raw === "ticks" || raw === "tick") return "force_orders";
+  if (raw === "auto") return "auto";
+  return "coinalyze";
+}
+
+/**
+ * Aggregate persisted Binance forceOrder ticks into Coinalyze-style liq bars.
+ * Zero-liq intervals are filled when fromMs/toMs are set (z-score baseline parity).
+ */
+export async function loadLiqCascadeForceOrderSeries(symbol, fromMs, toMs, cfg = {}) {
+  const c = resolveLiqCascadeCfg(cfg);
+  const interval = String(c.liqCascadeInterval ?? "5min");
+  const intervalMs = liqIntervalToMs(interval);
+  const { readRecentForceOrders } = await import("../intelligence/collectors/forceOrderPersist.js");
+  const ticks = await readRecentForceOrders(symbol, fromMs, toMs);
+  const liqSeries = aggregateTicksToLiqSeries(ticks, intervalMs, fromMs, toMs);
+  return {
+    liqSeries,
+    oiSeries: [],
+    interval,
+    source: "force_orders",
+    tickCount: ticks.length,
+    liqBarCount: liqSeries.length,
+  };
+}
+
 export async function loadLiqCascadeMarketSeries(symbol, fromMs, toMs, cfg = {}) {
   const c = resolveLiqCascadeCfg(cfg);
   const interval = String(c.liqCascadeInterval ?? "5min");
+  const source = resolveLiqCascadeLiqSource(c);
+
+  if (source === "force_orders") {
+    const tickSeries = await loadLiqCascadeForceOrderSeries(symbol, fromMs, toMs, c);
+    const { ensureCoinalyzeOi, readCoinalyzeOi } = await import("../backtest/data/coinalyzeIngest.js");
+    await ensureCoinalyzeOi(symbol, { from: fromMs, to: toMs, interval }).catch(() => {});
+    const oiSeries = await readCoinalyzeOi(symbol, fromMs, toMs, { interval });
+    return { ...tickSeries, oiSeries };
+  }
+
+  if (source === "auto") {
+    const tickProbe = await loadLiqCascadeForceOrderSeries(symbol, fromMs, toMs, c);
+    const minTicks = Number(process.env.LIQ_FORCE_MIN_TICKS || 500);
+    const minWeeks = Number(process.env.LIQ_FORCE_MIN_WEEKS || 1);
+    const weeks =
+      tickProbe.liqBarCount > 1
+        ? (tickProbe.liqSeries[tickProbe.liqSeries.length - 1].ts -
+            tickProbe.liqSeries[0].ts) /
+          (7 * 864e5)
+        : 0;
+    if (tickProbe.tickCount >= minTicks && weeks >= minWeeks) {
+      const { ensureCoinalyzeOi, readCoinalyzeOi } = await import("../backtest/data/coinalyzeIngest.js");
+      await ensureCoinalyzeOi(symbol, { from: fromMs, to: toMs, interval }).catch(() => {});
+      const oiSeries = await readCoinalyzeOi(symbol, fromMs, toMs, { interval });
+      return { ...tickProbe, oiSeries };
+    }
+  }
+
   const { ensureCoinalyzeLiquidations, ensureCoinalyzeOi } = await import(
     "../backtest/data/coinalyzeIngest.js"
   );
@@ -117,33 +197,48 @@ export async function loadLiqCascadeMarketSeries(symbol, fromMs, toMs, cfg = {})
     readCoinalyzeLiquidations(symbol, fromMs, toMs, { interval }),
     readCoinalyzeOi(symbol, fromMs, toMs, { interval }),
   ]);
-  return { liqSeries, oiSeries, interval };
+  return { liqSeries, oiSeries, interval, source: "coinalyze" };
 }
 
 /** Load Coinalyze liq/OI into cfg for backtest adapter wiring. */
 export async function hydrateLiqCascadeCfg(cfg, symbol, fromMs, toMs) {
   const c = resolveLiqCascadeCfg(cfg);
   const padFrom = liqCascadePadFromMs(fromMs, c.timeframe ?? "1m");
-  const { liqSeries, oiSeries, interval } = await loadLiqCascadeMarketSeries(symbol, padFrom, toMs, c);
+  const loaded = await loadLiqCascadeMarketSeries(symbol, padFrom, toMs, c);
   return {
     ...c,
-    _liqCascadeLiqSeries: liqSeries,
-    _liqCascadeOiSeries: oiSeries,
-    _liqCascadeInterval: interval,
+    _liqCascadeLiqSeries: loaded.liqSeries,
+    _liqCascadeOiSeries: loaded.oiSeries,
+    _liqCascadeInterval: loaded.interval,
+    _liqCascadeLiqSource: loaded.source ?? resolveLiqCascadeLiqSource(c),
+    _liqCascadeTickCount: loaded.tickCount ?? null,
   };
 }
 
-/** Aggregate in-memory forceOrder ticks into Coinalyze-style liq bars (live). */
-export function aggregateTicksToLiqSeries(ticks, intervalMs = 300_000) {
-  if (!ticks?.length) return [];
+/**
+ * Aggregate forceOrder ticks into Coinalyze-style liq bars (interval start ts).
+ * @param {{ time: number, side: string, notionalUsd: number }[]} ticks
+ * @param {number} [intervalMs]
+ * @param {number|null} [fromMs] — when set with toMs, emit zero-liq bars for full grid
+ * @param {number|null} [toMs]
+ */
+export function aggregateTicksToLiqSeries(ticks, intervalMs = 300_000, fromMs = null, toMs = null) {
   const buckets = new Map();
-  for (const t of ticks) {
-    const bucket = Math.floor(t.time / intervalMs) * intervalMs;
+  for (const t of ticks ?? []) {
+    const bucket = Math.floor(Number(t.time) / intervalMs) * intervalMs;
     if (!buckets.has(bucket)) buckets.set(bucket, { ts: bucket, liqLongUsd: 0, liqShortUsd: 0 });
     const row = buckets.get(bucket);
-    if (t.side === "SELL") row.liqLongUsd += t.notionalUsd;
-    else row.liqShortUsd += t.notionalUsd;
+    if (t.side === "SELL") row.liqLongUsd += Number(t.notionalUsd) || 0;
+    else row.liqShortUsd += Number(t.notionalUsd) || 0;
   }
+  if (fromMs != null && toMs != null && Number.isFinite(fromMs) && Number.isFinite(toMs) && toMs > fromMs) {
+    const start = Math.floor(fromMs / intervalMs) * intervalMs;
+    const end = Math.floor(toMs / intervalMs) * intervalMs;
+    for (let ts = start; ts <= end; ts += intervalMs) {
+      if (!buckets.has(ts)) buckets.set(ts, { ts, liqLongUsd: 0, liqShortUsd: 0 });
+    }
+  }
+  if (!buckets.size) return [];
   return [...buckets.values()].sort((a, b) => a.ts - b.ts);
 }
 
@@ -218,3 +313,112 @@ export const LIQ_CASCADE = {
   name: "LIQ CASCADE — liquidation event scalping (fade forced flow)",
   signal,
 };
+
+export function liqCascadeActivityPersistedFor(state, symU) {
+  const sym = String(symU || "").toUpperCase();
+  if (!state._liqCascadeActivityPersisted) state._liqCascadeActivityPersisted = Object.create(null);
+  if (!state._liqCascadeActivityPersisted[sym]) {
+    state._liqCascadeActivityPersisted[sym] = initLiqCascadeActivityPersisted();
+  }
+  return state._liqCascadeActivityPersisted[sym];
+}
+
+function readLiqCascadeAdapterPersisted(state, symU) {
+  const sym = String(symU || "").toUpperCase();
+  return state._liveStrategyPersisted?.[sym]?.LIQ_CASCADE ?? null;
+}
+
+/**
+ * Bar-close liq series: merge WS memory ticks with DB archive so z-score baseline
+ * works immediately after bot start (not only ticks since WS connected).
+ */
+export async function loadLiqCascadeBarCloseLiqSeries(symU, barTs, cfg = {}) {
+  const opts = optsFromLiqCascadeCfg(cfg);
+  const intervalMs = liqIntervalToMs(opts.liqInterval ?? LIQ_CASCADE_DEFAULTS.liqInterval);
+  const lookbackBars = num(opts.liqLookbackBars, LIQ_CASCADE_DEFAULTS.liqLookbackBars);
+  const ts = Number(barTs);
+  if (!Number.isFinite(ts)) {
+    return { liqSeries: [], intervalMs, opts, fromMs: 0, toMs: 0, tickCount: 0 };
+  }
+  const padMs = (lookbackBars + 10) * intervalMs;
+  const fromMs = ts - padMs;
+  const toMs = ts + intervalMs;
+
+  const { getRecentLiquidations } = await import("../intelligence/collectors/liquidationCollector.js");
+  const memTicks = getRecentLiquidations(symU, padMs + intervalMs * 5);
+
+  let dbTicks = [];
+  try {
+    const { readRecentForceOrders } = await import("../intelligence/collectors/forceOrderPersist.js");
+    dbTicks = await readRecentForceOrders(symU, fromMs, toMs);
+  } catch {
+    /* DB optional — fall back to memory ticks only */
+  }
+
+  const merged = new Map();
+  for (const t of [...dbTicks, ...memTicks]) {
+    const key = `${t.time}|${t.side}|${t.price ?? ""}|${t.notionalUsd ?? ""}`;
+    merged.set(key, t);
+  }
+  const ticks = [...merged.values()].sort((a, b) => a.time - b.time);
+  const liqSeries = aggregateTicksToLiqSeries(ticks, intervalMs, fromMs, toMs);
+  return { liqSeries, intervalMs, opts, fromMs, toMs, tickCount: ticks.length };
+}
+
+/**
+ * Evaluate gate / confirm / bracket / adapter skips for Activity on bar close.
+ * @returns {Promise<object[]>}
+ */
+export async function auditLiqCascadeBarCloseForActivity(state, { candles, barIdx, symU }) {
+  if (barIdx < LIQ_CASCADE_WARMUP) return [];
+  const barTs = Number(candles[barIdx]?.ts);
+  if (!Number.isFinite(barTs)) return [];
+
+  const { liqSeries, opts, fromMs, intervalMs } = await loadLiqCascadeBarCloseLiqSeries(symU, barTs, state);
+
+  let oiSeries = [];
+  try {
+    const { ensureCoinalyzeOi, readCoinalyzeOi } = await import("../backtest/data/coinalyzeIngest.js");
+    await ensureCoinalyzeOi(symU, { from: fromMs, to: barTs + intervalMs, interval: opts.liqInterval }).catch(
+      () => {},
+    );
+    oiSeries = await readCoinalyzeOi(symU, fromMs, barTs + intervalMs, { interval: opts.liqInterval });
+  } catch {
+    /* OI optional — gate will fail with no data */
+  }
+
+  const persisted = liqCascadeActivityPersistedFor(state, symU);
+  const events = collectLiqCascadeBarCloseAuditEvents(persisted, candles, barIdx, {
+    liqSeries,
+    oiSeries,
+    opts,
+  });
+
+  const { series } = buildLiqCascadeSeries(candles, { liqSeries, oiSeries, opts });
+  const sig = series[barIdx];
+  if (sig) {
+    const adapterReason = liqCascadeAdapterSkipReason(readLiqCascadeAdapterPersisted(state, symU), barIdx, opts);
+    if (adapterReason) {
+      const dedupeKey = `adapter_skip:${barTs}:${adapterReason}`;
+      if (!persisted.emittedKeys[dedupeKey]) {
+        persisted.emittedKeys[dedupeKey] = true;
+        events.push({
+          type: "adapter_skip",
+          reasonCode: adapterReason,
+          liqBarTs: barTs,
+          fadeAction: sig.action,
+          liqUsd: sig.liqUsd,
+          confirmTier: sig.confirmTier,
+          z: sig.liqZ,
+          dispAtr: sig.dispAtr,
+          oiDropPct: sig.oiDropPct,
+        });
+      }
+    }
+  }
+
+  for (const ev of events) {
+    ev.reason = formatLiqCascadeSkipReason(ev);
+  }
+  return events;
+}

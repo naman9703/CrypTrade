@@ -1,0 +1,99 @@
+{
+  "generatedAt": "2026-07-29T10:03:47.866Z",
+  "symbol": "BTCUSDT",
+  "formulas": {
+    "live": "imbalanceRatio = sum(top20 bid qty) / (sum(top20 bid qty) + sum(top20 ask qty))",
+    "visionFullBands": "imbalanceRatio = sum(notional where percentage<0) / (bid_notional + ask_notional) over all bands",
+    "visionNearBands": "same but |percentage|<=2 only — sensitivity variant, NOT used in production ingest"
+  },
+  "liveSnapshotNow": {
+    "ts": 1785319422128,
+    "imbalanceRatio": 0.7979456052293684,
+    "bidLevels": 20,
+    "askLevels": 20
+  },
+  "visionDbWindow": {
+    "from": "2026-01-01",
+    "to": "2026-07-01",
+    "snapshots": 491638,
+    "distribution": {
+      "n": 491638,
+      "mean": 0.4997,
+      "std": 0.0694,
+      "p10": 0.4075,
+      "p50": 0.5017,
+      "p90": 0.5875
+    }
+  },
+  "sampleDayComparisons": [
+    {
+      "day": "2026-01-15",
+      "snapshots": 2851,
+      "fullBand": {
+        "n": 2851,
+        "mean": 0.4901,
+        "std": 0.0341,
+        "p10": 0.4483,
+        "p50": 0.4852,
+        "p90": 0.5382
+      },
+      "nearBandPm2": {
+        "n": 2851,
+        "mean": 0.5383,
+        "std": 0.0602,
+        "p10": 0.4635,
+        "p50": 0.538,
+        "p90": 0.6185
+      },
+      "meanDeltaFullVsNear": -0.0482
+    },
+    {
+      "day": "2026-03-01",
+      "snapshots": 2757,
+      "fullBand": {
+        "n": 2757,
+        "mean": 0.4908,
+        "std": 0.0549,
+        "p10": 0.4249,
+        "p50": 0.486,
+        "p90": 0.5627
+      },
+      "nearBandPm2": {
+        "n": 2757,
+        "mean": 0.518,
+        "std": 0.0589,
+        "p10": 0.4455,
+        "p50": 0.5165,
+        "p90": 0.5957
+      },
+      "meanDeltaFullVsNear": -0.0272
+    },
+    {
+      "day": "2026-05-15",
+      "snapshots": 2611,
+      "fullBand": {
+        "n": 2611,
+        "mean": 0.517,
+        "std": 0.0467,
+        "p10": 0.4515,
+        "p50": 0.5126,
+        "p90": 0.5686
+      },
+      "nearBandPm2": {
+        "n": 2611,
+        "mean": 0.5538,
+        "std": 0.0582,
+        "p10": 0.4659,
+        "p50": 0.5663,
+        "p90": 0.6078
+      },
+      "meanDeltaFullVsNear": -0.0368
+    }
+  ],
+  "validityNotes": [
+    "Live uses top-20 level QTY; Vision uses NOTIONAL summed across % bands.",
+    "Vision includes deeper bands which can bias imbalance vs touch-only live metric.",
+    "Contemporaneous live-vs-vision correlation is not yet established from this audit alone.",
+    "Production ingest uses visionFullBands."
+  ]
+}

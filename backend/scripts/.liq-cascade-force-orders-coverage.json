@@ -1,0 +1,54 @@
+{
+  "generatedAt": "2026-07-31T01:28:42.488Z",
+  "liqSource": "force_orders",
+  "liqInterval": "5min",
+  "intervalMs": 300000,
+  "minWeeksAccurate": 8,
+  "anyAccurateReplayReady": false,
+  "symbols": [
+    {
+      "symbol": "BTCUSDT",
+      "tickCount": 203,
+      "totalUsd": 34282227,
+      "activeDays": 3,
+      "firstTs": "2026-07-29T02:20:03.699Z",
+      "lastTs": "2026-07-31T01:12:33.626Z",
+      "weeks": 0.28,
+      "liqInterval": "5min",
+      "liqBarCount": 563,
+      "nonzeroLiqBars": 69,
+      "accurateReplayReady": false
+    },
+    {
+      "symbol": "ETHUSDT",
+      "tickCount": 182,
+      "totalUsd": 23298655,
+      "activeDays": 3,
+      "firstTs": "2026-07-29T03:16:32.473Z",
+      "lastTs": "2026-07-31T01:12:33.957Z",
+      "weeks": 0.27,
+      "liqInterval": "5min",
+      "liqBarCount": 552,
+      "nonzeroLiqBars": 64,
+      "accurateReplayReady": false
+    },
+    {
+      "symbol": "BNBUSDT",
+      "tickCount": 38,
+      "totalUsd": 543982,
+      "activeDays": 3,
+      "firstTs": "2026-07-29T05:38:55.974Z",
+      "lastTs": "2026-07-31T01:12:33.957Z",
+      "weeks": 0.26,
+      "liqInterval": "5min",
+      "liqBarCount": 524,
+      "nonzeroLiqBars": 17,
+      "accurateReplayReady": false
+    }
+  ],
+  "nextSteps": [
+    "Keep bot running with Binance forceOrder WS + migration 036 applied.",
+    "Re-run when any symbol has ≥8 weeks of ticks.",
+    "Do not treat Coinalyze 1hour bars as accurate — edge is below cost floor at that granularity."
+  ]
+}

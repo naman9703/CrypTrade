@@ -1,0 +1,16 @@
+{
+  "from": "2026-01-01",
+  "to": "2026-07-01",
+  "tf": "15m",
+  "results": [
+    {
+      "symbol": "BTCUSDT",
+      "candles": 17616,
+      "signals": 0,
+      "perWeek": 0,
+      "buys": 0,
+      "sells": 0,
+      "sample": []
+    }
+  ]
+}

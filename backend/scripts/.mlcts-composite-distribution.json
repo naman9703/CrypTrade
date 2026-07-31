@@ -1,0 +1,214 @@
+{
+  "generatedAt": "2026-07-29T09:33:30.754Z",
+  "from": "2026-01-01",
+  "to": "2026-07-01",
+  "tf": "15m",
+  "results": [
+    {
+      "symbol": "BTCUSDT",
+      "window": {
+        "from": "2026-01-01",
+        "to": "2026-07-01",
+        "tf": "15m",
+        "days": 181
+      },
+      "barsEvaluated": 17616,
+      "directionalBars": 10498,
+      "signalsAtCurrentThreshold": 0,
+      "scoreThreshold": 75,
+      "feedCoverage": {
+        "visionMetricsPoints": 52848,
+        "bookImbalanceSnapshots": 498484,
+        "oiSeriesPoints": 52849,
+        "fundingPoints": 551
+      },
+      "barFeedAttribution": {
+        "directionalBars": 10498,
+        "barsWithBookImbalance": 17376,
+        "barsWithOi": 17376,
+        "bookPct": 165.51724137931035,
+        "oiPct": 165.51724137931035
+      },
+      "distribution": {
+        "n": 10498,
+        "min": 17,
+        "p50": 41,
+        "p75": 46,
+        "p90": 52,
+        "p95": 55,
+        "max": 72,
+        "mean": 40.898171080205756
+      },
+      "p75p95Band": {
+        "range": [
+          46,
+          55
+        ],
+        "n": 2390,
+        "capByLowestLayerScore": [
+          {
+            "label": "L3 sweep",
+            "count": 1501,
+            "pct": 62.80334728033473
+          },
+          {
+            "label": "L5 book",
+            "count": 877,
+            "pct": 36.69456066945607
+          },
+          {
+            "label": "L2 liquidity",
+            "count": 10,
+            "pct": 0.41841004184100417
+          },
+          {
+            "label": "L4 structure",
+            "count": 2,
+            "pct": 0.08368200836820083
+          }
+        ],
+        "capByLargestWeightedHeadroom": [
+          {
+            "label": "L2 liquidity",
+            "count": 1211,
+            "pct": 50.66945606694561
+          },
+          {
+            "label": "L5 orderflow core",
+            "count": 840,
+            "pct": 35.14644351464435
+          },
+          {
+            "label": "L1 trend",
+            "count": 313,
+            "pct": 13.096234309623432
+          },
+          {
+            "label": "L5 book",
+            "count": 26,
+            "pct": 1.0878661087866108
+          }
+        ]
+      },
+      "thresholdHints": [
+        {
+          "threshold": 50,
+          "signals": 431,
+          "perWeek": 16.668508287292816
+        },
+        {
+          "threshold": 55,
+          "signals": 236,
+          "perWeek": 9.12707182320442
+        },
+        {
+          "threshold": 60,
+          "signals": 92,
+          "perWeek": 3.5580110497237567
+        },
+        {
+          "threshold": 65,
+          "signals": 34,
+          "perWeek": 1.3149171270718232
+        },
+        {
+          "threshold": 70,
+          "signals": 6,
+          "perWeek": 0.23204419889502761
+        },
+        {
+          "threshold": 75,
+          "signals": 0,
+          "perWeek": 0
+        }
+      ],
+      "topCompositeBars": [
+        {
+          "ts": 1770225300000,
+          "score": 72,
+          "vector": {
+            "trend": 84,
+            "liquidity": 70,
+            "sweep": 97,
+            "structure": 100,
+            "orderflowCore": 26.25,
+            "book": 83,
+            "oi": 80,
+            "funding": 50,
+            "volatility": 100,
+            "volatilityPass": true
+          },
+          "signalOk": false
+        },
+        {
+          "ts": 1780059600000,
+          "score": 71,
+          "vector": {
+            "trend": 66,
+            "liquidity": 83,
+            "sweep": 98,
+            "structure": 100,
+            "orderflowCore": 26.25,
+            "book": 82,
+            "oi": 80,
+            "funding": 50,
+            "volatility": 77,
+            "volatilityPass": false
+          },
+          "signalOk": false
+        },
+        {
+          "ts": 1780377300000,
+          "score": 71,
+          "vector": {
+            "trend": 75,
+            "liquidity": 77,
+            "sweep": 84,
+            "structure": 85,
+            "orderflowCore": 26.25,
+            "book": 84,
+            "oi": 80,
+            "funding": 75,
+            "volatility": 56,
+            "volatilityPass": false
+          },
+          "signalOk": false
+        },
+        {
+          "ts": 1768573800000,
+          "score": 70,
+          "vector": {
+            "trend": 33,
+            "liquidity": 90,
+            "sweep": 87,
+            "structure": 100,
+            "orderflowCore": 58.125,
+            "book": 85,
+            "oi": 80,
+            "funding": 50,
+            "volatility": 100,
+            "volatilityPass": true
+          },
+          "signalOk": false
+        },
+        {
+          "ts": 1769869800000,
+          "score": 70,
+          "vector": {
+            "trend": 75,
+            "liquidity": 80,
+            "sweep": 78,
+            "structure": 100,
+            "orderflowCore": 26.25,
+            "book": 78,
+            "oi": 80,
+            "funding": 50,
+            "volatility": 100,
+            "volatilityPass": true
+          },
+          "signalOk": false
+        }
+      ]
+    }
+  ]
+}

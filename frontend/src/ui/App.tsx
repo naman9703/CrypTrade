@@ -11,6 +11,8 @@ import { InsightsPanel } from "./InsightsPanel";
 import { PortfolioPanel } from "./PortfolioPanel";
 import { MlctsLayersPanel } from "./MlctsLayersPanel";
 import type { MlctsLayerStatus } from "./MlctsLayersPanel";
+import { LiqCascadeRadarPanel } from "./LiqCascadeRadarPanel";
+import type { LiqCascadeRadarStatus } from "./LiqCascadeRadarPanel";
 import { LogsPanel } from "./LogsPanel";
 import { ThemeToggle } from "./ThemeToggle";
 import { TradingModeBadge } from "./TradingModeBadge";
@@ -35,6 +37,20 @@ function MlctsLayersSection() {
   return (
     <div className="lg:col-span-2">
       <MlctsLayersPanel status={fromMarket ?? fromBot} />
+    </div>
+  );
+}
+
+function LiqCascadeRadarSection() {
+  const manualStrategy = useAppStore((s) => String(s.bot?.manualStrategy ?? "").toUpperCase());
+  const fromBot = useAppStore((s) => s.bot?.liqCascadeRadarStatus as LiqCascadeRadarStatus | undefined);
+  const fromMarket = useAppStore(
+    (s) => (s.market as { liqCascadeRadarStatus?: LiqCascadeRadarStatus } | undefined)?.liqCascadeRadarStatus,
+  );
+  if (manualStrategy !== "LIQ_CASCADE") return null;
+  return (
+    <div className="lg:col-span-2">
+      <LiqCascadeRadarPanel status={fromMarket ?? fromBot} />
     </div>
   );
 }
@@ -123,6 +139,8 @@ export function App() {
               </div>
 
               <MlctsLayersSection />
+
+              <LiqCascadeRadarSection />
 
               <div className="space-y-3">
                 <div className="rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">

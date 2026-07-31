@@ -6,6 +6,7 @@ import { optionsCollector }      from './collectors/optionsCollector.js';
 import { onChainCollector }      from './collectors/onChainCollector.js';
 import {
   startLiquidationStream,
+  ensureLiquidationStreamRunning,
   getLiquidationPayloadForSymbol,
 } from './collectors/liquidationCollector.js';
 import { pollWhaleAlertTransactions } from './collectors/whaleAlertPoller.js';
@@ -269,6 +270,13 @@ export function startIntelligenceEngine(wsHub, appState = null) {
   void refreshMarketIntelApisFromStore().catch(() => {});
 
   startLiquidationStream({
+    getTradingMode: () =>
+      intelligenceAppStateRef?.bot?.getPublicState?.()?.tradingMode ||
+      process.env.TRADING_MODE ||
+      "PAPER",
+  });
+  // Kick once so first LIQ_CASCADE poll does not wait on a stuck socket.
+  ensureLiquidationStreamRunning({
     getTradingMode: () =>
       intelligenceAppStateRef?.bot?.getPublicState?.()?.tradingMode ||
       process.env.TRADING_MODE ||

@@ -30,6 +30,47 @@ let cooldownSweep = null;
 
 const lastFireBySymbol = new Map();
 const COOLDOWN_MS = 60_000;
+const SYM_RE = /^[A-Z0-9]+USDT$/;
+
+export function resolveLiqCascadeWatchSymbols(state) {
+  const norm = (s) => String(s || "").trim().toUpperCase();
+  const isMultiple = String(state?.universeCoinSelectMode || "").toUpperCase() === "MULTIPLE";
+  const custom = Array.isArray(state?.universeCustomSymbols)
+    ? [...new Set(state.universeCustomSymbols.map(norm).filter((s) => SYM_RE.test(s)))]
+    : [];
+  if (isMultiple && custom.length > 0) return custom;
+  const legacy = Array.isArray(state?.symbols)
+    ? [...new Set(state.symbols.map(norm).filter((s) => SYM_RE.test(s)))]
+    : [];
+  if (legacy.length > 0) return legacy;
+  const primary = norm(state?.symbol ?? "");
+  return SYM_RE.test(primary) ? [primary] : [];
+}
+
+/** Read-only tick tracker snapshots for radar UI (does not affect signal path). */
+export function getLiqCascadeTickTrackerSnapshots() {
+  const out = {};
+  for (const [sym, tracker] of trackers.entries()) {
+    const recent = tracker.ticks.filter((t) => t.time >= Date.now() - 15 * 60_000);
+    let longUsd = 0;
+    let shortUsd = 0;
+    for (const t of recent) {
+      if (t.side === "SELL") longUsd += t.notionalUsd;
+      else shortUsd += t.notionalUsd;
+    }
+    out[sym] = {
+      cascadeActive: tracker.cascadeActive === true,
+      cascadeDom: tracker.cascadeDom ?? null,
+      peakLiqRate: tracker.peakLiqRate ?? 0,
+      lastSignalMs: tracker.lastSignalMs ?? 0,
+      recentTickCount: recent.length,
+      windowLongUsd: longUsd,
+      windowShortUsd: shortUsd,
+      prePrice: tracker.prePrice ?? null,
+    };
+  }
+  return out;
+}
 
 function paperAllowed(state) {
   if (state?.liqCascadeLiveTickEnabled !== true) return false;
@@ -53,9 +94,8 @@ async function handleForceOrder(event) {
   if (!paperAllowed(state)) return;
 
   const sym = String(event.symbol ?? "").toUpperCase();
-  const watch = String(state.symbol ?? "").toUpperCase();
-  const watchList = Array.isArray(state.symbols) ? state.symbols.map((s) => String(s).toUpperCase()) : [];
-  if (sym !== watch && !watchList.includes(sym)) return;
+  const watchSet = new Set(resolveLiqCascadeWatchSymbols(state));
+  if (!watchSet.has(sym)) return;
 
   const cfg = resolveLiqCascadeCfg(state);
   const tracker = trackerFor(sym, cfg);

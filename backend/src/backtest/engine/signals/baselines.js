@@ -236,6 +236,7 @@ export async function buildBacktestAdapters({ strategyKey, cfg, symbol, tf, cand
     adapters.MLCTS = buildMlctsBacktestAdapter(candles, mcCfg, tf, {
       oiSeries: cfg._mlctsOiSeries ?? [],
       fundingSeries: cfg._mlctsFundingSeries ?? [],
+      bookImbalanceSeries: cfg._mlctsBookImbalanceSeries ?? [],
     });
   }
 

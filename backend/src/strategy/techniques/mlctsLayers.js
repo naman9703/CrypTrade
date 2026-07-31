@@ -58,6 +58,38 @@ function clamp01(x) {
   return Math.max(0, Math.min(1, x));
 }
 
+/** L5 internal blend slots — sum is the fixed denominator (never shrink when a slot is absent). */
+export const MLCTS_L5_BLEND_WEIGHTS = Object.freeze({
+  delta: 0.3,
+  div: 0.3,
+  abs: 0.2,
+  book: 0.2,
+});
+export const MLCTS_L5_BLEND_DENOM =
+  MLCTS_L5_BLEND_WEIGHTS.delta +
+  MLCTS_L5_BLEND_WEIGHTS.div +
+  MLCTS_L5_BLEND_WEIGHTS.abs +
+  MLCTS_L5_BLEND_WEIGHTS.book;
+export const MLCTS_L5_CORE_DENOM =
+  MLCTS_L5_BLEND_WEIGHTS.delta + MLCTS_L5_BLEND_WEIGHTS.div + MLCTS_L5_BLEND_WEIGHTS.abs;
+
+/**
+ * Weighted blend with a fixed denominator.
+ * null/undefined → slot counts as scored 0 (still in denominator).
+ * Numeric 0 → scored 0 (same). Prevents co-component weight expansion when a slot is sparse/absent.
+ */
+export function fixedDenominatorWeightedScore(parts, totalDenominator) {
+  const denom = num(totalDenominator, 0);
+  if (!(denom > 0)) return 0;
+  let numerator = 0;
+  for (const p of parts) {
+    const w = num(p.w, 0);
+    const s = p.s == null ? 0 : num(p.s, 0);
+    numerator += w * s;
+  }
+  return numerator / denom;
+}
+
 function layerResult(score, pass, detail = {}) {
   return { score: Math.round(Math.max(0, Math.min(100, score))), pass: Boolean(pass), detail };
 }
@@ -81,6 +113,76 @@ function lookupSeriesAt(series, ts) {
   return best;
 }
 
+function swingStructureBias(lastH, prevH, lastL, prevL) {
+  if (!(lastH && prevH && lastL && prevL)) return "RANGE";
+  const hh = lastH.price > prevH.price;
+  const hl = lastL.price > prevL.price;
+  const lh = lastH.price < prevH.price;
+  const ll = lastL.price < prevL.price;
+  if (hh && hl) return "BULL";
+  if (lh && ll) return "BEAR";
+  return "RANGE";
+}
+
+function emaTrendBias(e20, e50, e200, close) {
+  const emaBull = e20 > e50 && e50 > e200;
+  const emaBear = e20 < e50 && e50 < e200;
+  if (emaBull && close > e200) return "BULL";
+  if (emaBear && close < e200) return "BEAR";
+  return "RANGE";
+}
+
+/**
+ * Require swing structure and EMA stack to agree; RANGE on conflict.
+ * Invalidates bear structure when close breaks above swing high (and bull mirror).
+ */
+export function resolveTrendBias({
+  structureBias,
+  emaBias,
+  close,
+  swingHigh = null,
+  swingLow = null,
+}) {
+  let struct = structureBias;
+  let structureInvalidated = null;
+
+  if (struct === "BEAR" && swingHigh != null && close > swingHigh) {
+    structureInvalidated = "bear_break_above_swing_high";
+    struct = "RANGE";
+  }
+  if (struct === "BULL" && swingLow != null && close < swingLow) {
+    structureInvalidated = "bull_break_below_swing_low";
+    struct = "RANGE";
+  }
+
+  if (struct === "BULL" || struct === "BEAR") {
+    if (emaBias === "RANGE") {
+      return { bias: "RANGE", structureBias, emaBias, structureInvalidated, biasReason: "ema_mixed" };
+    }
+    if (struct === emaBias) {
+      return { bias: struct, structureBias, emaBias, structureInvalidated, biasReason: "aligned" };
+    }
+    return { bias: "RANGE", structureBias, emaBias, structureInvalidated, biasReason: "structure_ema_conflict" };
+  }
+
+  if (structureInvalidated) {
+    if (emaBias === "RANGE") {
+      return {
+        bias: "RANGE",
+        structureBias,
+        emaBias,
+        structureInvalidated,
+        biasReason: "structure_invalidated_ema_mixed",
+      };
+    }
+    return { bias: emaBias, structureBias, emaBias, structureInvalidated, biasReason: structureInvalidated };
+  }
+  if (emaBias !== "RANGE") {
+    return { bias: emaBias, structureBias, emaBias, structureInvalidated, biasReason: "ema_only" };
+  }
+  return { bias: "RANGE", structureBias, emaBias, structureInvalidated, biasReason: "no_signal" };
+}
+
 /** @param {object[]} candles @param {number} idx */
 function evaluateTrendLayer(candles, idx, opts, pre) {
   const swingOpts = swingOptsFromMlcts(opts);
@@ -97,22 +199,18 @@ function evaluateTrendLayer(candles, idx, opts, pre) {
   const lastL = lastSwingLowBefore(candles, idx, swingOpts);
   const prevL = prevSwingLowBefore(candles, idx, swingOpts);
 
-  let bias = "RANGE";
-  if (lastH && prevH && lastL && prevL) {
-    const hh = lastH.price > prevH.price;
-    const hl = lastL.price > prevL.price;
-    const lh = lastH.price < prevH.price;
-    const ll = lastL.price < prevL.price;
-    if (hh && hl) bias = "BULL";
-    else if (lh && ll) bias = "BEAR";
-  }
-
+  const structureBias = swingStructureBias(lastH, prevH, lastL, prevL);
   const emaBull = e20[i] > e50[i] && e50[i] > e200[i];
   const emaBear = e20[i] < e50[i] && e50[i] < e200[i];
-  if (bias === "RANGE") {
-    if (emaBull && close > e200[i]) bias = "BULL";
-    else if (emaBear && close < e200[i]) bias = "BEAR";
-  }
+  const emaBias = emaTrendBias(e20[i], e50[i], e200[i], close);
+  const resolved = resolveTrendBias({
+    structureBias,
+    emaBias,
+    close,
+    swingHigh: lastH?.price ?? null,
+    swingLow: lastL?.price ?? null,
+  });
+  const bias = resolved.bias;
 
   const adxStrength = clamp01(adxVal / 50);
   const emaSpread = e200[i] > 0 ? Math.abs(e20[i] - e200[i]) / e200[i] : 0;
@@ -122,6 +220,10 @@ function evaluateTrendLayer(candles, idx, opts, pre) {
 
   return layerResult(score, pass, {
     bias,
+    structureBias,
+    emaBias,
+    biasReason: resolved.biasReason,
+    structureInvalidated: resolved.structureInvalidated,
     adx: adxVal,
     minAdx: num(opts.minAdx, 20),
     strongAdx: num(opts.strongAdx, 25),
@@ -677,6 +779,40 @@ function evaluateStructureLayer(candles, idx, opts, pre, side) {
 // Full order-flow opts (divergence lookback, absorption vol/range gates) — a bare
 // `{ allowProxy: true }` leaves those thresholds undefined and silently breaks the detectors.
 const MLCTS_OF_OPTS = buildOrderFlowOpts({ intradayOfAllowProxy: true, timeframe: "15m" });
+/** Below this bar volume (buy+sell), treat aggTrade delta as placeholder / non-informative. */
+const MLCTS_OF_THIN_VOL = 10;
+
+function isThinOrderFlowBar(delta) {
+  const total = num(delta.buy) + num(delta.sell);
+  if (delta.tier === "none") return true;
+  if (delta.tier === "aggtrade" && total <= MLCTS_OF_THIN_VOL) return true;
+  return false;
+}
+
+/**
+ * Book imbalance score 0–100 (continuous, no step cliffs).
+ * imb = bidVolume / askVolume; imb=1 is balanced → score 50 for either side.
+ *
+ * score = 50 + 50 × tanh(dir × ln(imb) × k)
+ *   dir = +1 BUY (favors imb>1), −1 SELL (favors imb<1)
+ *   k = 1.25 (steepness; tuned so strong imbalance → ~100, inverse → ~0–15)
+ *
+ * Examples (SELL): 0.55→~83, 0.67→~78, 0.671→~78, 1.0→50, 3.0→~6
+ * Examples (BUY):  0.55→~17, 0.99→~48, 1.0→50, 1.01→~52, 1.5→100, 3.0→~94
+ */
+export function orderFlowBookScore(imb, side) {
+  if (!(imb > 0)) return null;
+  const logI = Math.log(imb);
+  const dir = side === "BUY" ? 1 : -1;
+  const score = 50 + 50 * Math.tanh(dir * logI * 1.25);
+  return Math.round(Math.max(0, Math.min(100, score)));
+}
+
+function orderFlowDeltaScore(deltaVal, side) {
+  if (deltaVal === 0) return 0;
+  const favorable = side === "BUY" ? deltaVal > 0 : deltaVal < 0;
+  return favorable ? 70 : 30;
+}
 
 function evaluateOrderFlowLayer(candles, idx, pre, side, extras = {}) {
   const ofOpts = MLCTS_OF_OPTS;
@@ -684,20 +820,22 @@ function evaluateOrderFlowLayer(candles, idx, pre, side, extras = {}) {
   const cvdDiv = detectCvdDivergence(candles, idx, side, pre, ofOpts);
   const absorption = detectAbsorption(candles, idx, side, pre, ofOpts);
   const cvd = num(pre?.cvd?.[idx], NaN);
-
-  let bookScore = 50;
+  const thinData = isThinOrderFlowBar(delta);
   const imb = num(extras.orderBookImbalance, 0);
-  if (imb > 0) {
-    if (side === "BUY") bookScore = imb >= 1.5 ? 100 : imb >= 1 ? 70 : 30;
-    else bookScore = imb <= 0.67 ? 100 : imb <= 1 ? 70 : 30;
-  }
 
-  const deltaSign = side === "BUY" ? delta.delta > 0 : delta.delta < 0;
-  const deltaScore = deltaSign ? 70 : 30;
-  const divScore = cvdDiv ? 85 : 40;
-  const absScore = absorption ? 75 : 45;
-  const score = 0.3 * deltaScore + 0.3 * divScore + 0.2 * absScore + 0.2 * bookScore;
-  const pass = score >= 50;
+  const bookScore = orderFlowBookScore(imb, side);
+  const deltaScore = thinData ? 0 : orderFlowDeltaScore(delta.delta, side);
+  const divScore = cvdDiv ? 85 : 0;
+  const absScore = absorption ? 75 : 0;
+
+  const parts = [
+    { w: MLCTS_L5_BLEND_WEIGHTS.delta, s: deltaScore, key: "delta" },
+    { w: MLCTS_L5_BLEND_WEIGHTS.div, s: divScore, key: "div" },
+    { w: MLCTS_L5_BLEND_WEIGHTS.abs, s: absScore, key: "abs" },
+    { w: MLCTS_L5_BLEND_WEIGHTS.book, s: bookScore, key: "book" },
+  ];
+  const score = fixedDenominatorWeightedScore(parts, MLCTS_L5_BLEND_DENOM);
+  const pass = !thinData && score >= 50;
 
   return layerResult(score, pass, {
     side,
@@ -705,11 +843,15 @@ function evaluateOrderFlowLayer(candles, idx, pre, side, extras = {}) {
     buyVol: delta.buy,
     sellVol: delta.sell,
     deltaTier: delta.tier,
+    thinData,
     cvd: Number.isFinite(cvd) ? cvd : null,
     cvdDivergence: cvdDiv,
     absorption,
     bookImbalance: imb > 0 ? imb : null,
-    bookScore,
+    bookScore: bookScore ?? 0,
+    deltaScore,
+    divScore,
+    absScore,
     bookBullMin: 1.5,
     bookBearMax: 0.67,
   });
@@ -775,6 +917,7 @@ function evaluatePositioningLayer(candles, idx, side, extras = {}, opts = {}) {
   const pass = score >= num(opts.minPositioningScore, MLCTS_DEFAULTS.minPositioningScore);
   return layerResult(score, pass, {
     optional: !Number.isFinite(oiChg) && !Number.isFinite(funding),
+    side,
     priceChangePct: priceChg * 100,
     oiChangePct: Number.isFinite(oiChg) ? oiChg : null,
     oiClass,
@@ -784,6 +927,26 @@ function evaluatePositioningLayer(candles, idx, side, extras = {}, opts = {}) {
     fundScore,
     minPositioningScore: num(opts.minPositioningScore, MLCTS_DEFAULTS.minPositioningScore),
   });
+}
+
+function barVolumeAt(candles, pre, j) {
+  const fromPre = num(pre?.volumes?.[j], NaN);
+  if (Number.isFinite(fromPre) && fromPre > 0) return fromPre;
+  return num(candles[j]?.volume, 0);
+}
+
+function rollingVolumeAvg(candles, pre, idx, look) {
+  let sum = 0;
+  let n = 0;
+  const start = Math.max(0, idx - look + 1);
+  for (let j = start; j < idx; j++) {
+    const v = barVolumeAt(candles, pre, j);
+    if (v > 0) {
+      sum += v;
+      n++;
+    }
+  }
+  return { avg: n > 0 ? sum / n : 0, n, windowBars: idx - start };
 }
 
 function evaluateVolatilityGate(candles, idx, pre, opts) {
@@ -802,14 +965,19 @@ function evaluateVolatilityGate(candles, idx, pre, opts) {
   const atrAvg = n ? atrSum / n : atrVal;
   const atrExpansion = atrAvg > 0 ? atrVal / atrAvg : 0;
 
-  const volSlice = pre?.volumes?.slice(Math.max(0, idx - look), idx) ?? [];
-  const volAvg = volSlice.length ? volSlice.reduce((a, b) => a + b, 0) / volSlice.length : 0;
-  const curVol = num(pre?.volumes?.[idx], num(candles[idx]?.volume));
-  const rvol = volAvg > 0 ? curVol / volAvg : 0;
+  const volRoll = rollingVolumeAvg(candles, pre, idx, look);
+  const volAvg = volRoll.avg;
+  const curVol = barVolumeAt(candles, pre, idx);
+  const volDataOk = volRoll.n >= Math.min(10, Math.max(1, volRoll.windowBars - 1));
+  const rvol = volDataOk && volAvg > 0 ? curVol / volAvg : null;
 
   const gatePassed =
-    atrExpansion >= num(opts.volGateAtrMult, 1) && rvol >= num(opts.volGateRvol, 1.5);
-  const score = gatePassed ? 100 : Math.round(clamp01((atrExpansion + rvol / 2) / 2) * 100);
+    atrExpansion >= num(opts.volGateAtrMult, 1) &&
+    rvol != null &&
+    rvol >= num(opts.volGateRvol, 1.5);
+  const expansionScore = Math.min(60, atrExpansion * 40);
+  const rvolScore = rvol != null ? Math.min(40, (rvol / num(opts.volGateRvol, 1.5)) * 40) : 0;
+  const score = gatePassed ? 100 : Math.round(expansionScore + rvolScore);
 
   return layerResult(score, gatePassed, {
     gate: true,
@@ -818,37 +986,285 @@ function evaluateVolatilityGate(candles, idx, pre, opts) {
     atrAvg20: atrAvg,
     atrExpansion,
     atrGateMin: num(opts.volGateAtrMult, 1),
-    rvol,
+    rvol: rvol ?? 0,
+    rvolUnavailable: rvol == null,
     rvolGateMin: num(opts.volGateRvol, 1.5),
     volAvg20: volAvg,
+    volAvgBars: volRoll.n,
+    volDataOk,
     curVol,
+    expansionScore: Math.round(expansionScore * 10) / 10,
+    rvolScore: Math.round(rvolScore * 10) / 10,
     atrPct: close > 0 ? atrVal / close : 0,
   });
 }
 
-function compositeScore(layers, opts) {
+/** L5 delta/CVD/abs only — book is a separate composite term (weightBook). */
+export function orderFlowCoreScore(orderflow) {
+  const d = orderflow?.detail ?? {};
+  return fixedDenominatorWeightedScore(
+    [
+      { w: MLCTS_L5_BLEND_WEIGHTS.delta, s: d.deltaScore },
+      { w: MLCTS_L5_BLEND_WEIGHTS.div, s: d.divScore },
+      { w: MLCTS_L5_BLEND_WEIGHTS.abs, s: d.absScore },
+    ],
+    MLCTS_L5_CORE_DENOM,
+  );
+}
+
+/**
+ * Weighted composite — one term per configured weight key.
+ * L3+L4 share weightTrigger (averaged); L6 OI and funding are separate sub-scores.
+ * Returns a 0–100 weighted average: sum(weight × componentScore) / sum(weights).
+ * Weights sum to 95 (L7 is gate-only); a perfect 100/100/… bar yields composite 100, not 95.
+ */
+export function computeMlctsCompositeScore(layers, opts = {}) {
+  const o = { ...MLCTS_DEFAULTS, ...opts };
   const trigger = (num(layers.sweep?.score) + num(layers.structure?.score)) / 2;
-  const wTrend = num(opts.weightTrend, 20);
-  const wLiq = num(opts.weightLiquidity, 20);
-  const wTrig = num(opts.weightTrigger, 15);
-  const wOf = num(opts.weightOrderFlow, 15);
-  const wBook = num(opts.weightBook, 10);
-  const wOi = num(opts.weightOi, 10);
-  const wFund = num(opts.weightFunding, 5);
+  const wTrend = num(o.weightTrend, 20);
+  const wLiq = num(o.weightLiquidity, 20);
+  const wTrig = num(o.weightTrigger, 15);
+  const wOf = num(o.weightOrderFlow, 15);
+  const wBook = num(o.weightBook, 10);
+  const wOi = num(o.weightOi, 10);
+  const wFund = num(o.weightFunding, 5);
   const wSum = wTrend + wLiq + wTrig + wOf + wBook + wOi + wFund;
 
+  const posDetail = layers.positioning?.detail ?? {};
+  const posFallback = num(layers.positioning?.score, 50);
   const bookScore = num(layers.orderflow?.detail?.bookScore, 50);
+  const oiScore = num(posDetail.oiScore, posFallback);
+  const fundScore = num(posDetail.fundScore, posFallback);
+  const coreOf = orderFlowCoreScore(layers.orderflow);
 
-  const raw =
-    wTrend * num(layers.trend?.score) +
-    wLiq * num(layers.liquidity?.score) +
-    wTrig * trigger +
-    wOf * num(layers.orderflow?.score) +
-    wBook * bookScore +
-    wOi * num(layers.positioning?.score) +
-    wFund * num(layers.positioning?.score);
+  const breakdown = {
+    trend: wTrend * num(layers.trend?.score),
+    liquidity: wLiq * num(layers.liquidity?.score),
+    trigger: wTrig * trigger,
+    orderFlow: wOf * coreOf,
+    book: wBook * bookScore,
+    oi: wOi * oiScore,
+    funding: wFund * fundScore,
+  };
+  const raw = Object.values(breakdown).reduce((a, b) => a + b, 0);
+  const score = wSum > 0 ? raw / wSum : 0;
 
-  return wSum > 0 ? raw / wSum : 0;
+  return {
+    score,
+    breakdown,
+    triggerAvg: trigger,
+    orderFlowCore: coreOf,
+    bookScore,
+    oiScore,
+    fundScore,
+    weightSum: wSum,
+    /** True 0–100 ceiling when every component scores 100 (divide-by-wSum normalization). */
+    scoreScale: "0-100_weighted_average",
+  };
+}
+
+function compositeScore(layers, opts) {
+  return computeMlctsCompositeScore(layers, opts).score;
+}
+
+/** L5–L7 confidence composite (L1–L4 excluded — use with mandatory layer gates). */
+export function computeMlctsConfidenceScore(layers, opts = {}) {
+  const o = { ...MLCTS_DEFAULTS, ...opts };
+  const wOf = num(o.weightOrderFlow, 15);
+  const wBook = num(o.weightBook, 10);
+  const wOi = num(o.weightOi, 10);
+  const wFund = num(o.weightFunding, 5);
+  const wVol = num(o.weightVolatility, 15);
+  const wSum = wOf + wBook + wOi + wFund + wVol;
+
+  const posDetail = layers.positioning?.detail ?? {};
+  const posFallback = num(layers.positioning?.score, 50);
+  const bookScore = num(layers.orderflow?.detail?.bookScore, 50);
+  const oiScore = num(posDetail.oiScore, posFallback);
+  const fundScore = num(posDetail.fundScore, posFallback);
+  const coreOf = orderFlowCoreScore(layers.orderflow);
+  const volScore = num(layers.volatility?.score, 0);
+
+  const breakdown = {
+    orderFlow: wOf * coreOf,
+    book: wBook * bookScore,
+    oi: wOi * oiScore,
+    funding: wFund * fundScore,
+    volatility: wVol * volScore,
+  };
+  const raw = Object.values(breakdown).reduce((a, b) => a + b, 0);
+  const score = wSum > 0 ? raw / wSum : 0;
+
+  return {
+    score,
+    breakdown,
+    orderFlowCore: coreOf,
+    bookScore,
+    oiScore,
+    fundScore,
+    volScore,
+    weightSum: wSum,
+    scoreScale: "L567_confidence_0-100",
+  };
+}
+
+/** Side-specific L5–L7 scores (no L1–L4). For microstructure-only research. */
+export function evaluateMlctsMicroScores(candles, idx, opts = {}, extras = {}) {
+  const o = { ...MLCTS_DEFAULTS, ...opts };
+  if (!candles?.length || idx < MLCTS_WARMUP || idx >= candles.length) {
+    return null;
+  }
+  const pre = extras.pre ?? precomputeIntraday(candles.slice(0, idx + 1));
+  const barTs = num(candles[idx]?.ts);
+  const oiRow = lookupSeriesAt(extras.oiSeries, barTs);
+  const fundRow = lookupSeriesAt(extras.fundingSeries, barTs);
+  const oiExtras = {
+    oiChangePct: oiRow?.changePct ?? oiRow?.change4hPct ?? null,
+    fundingRate: fundRow?.rate ?? fundRow?.current ?? null,
+    orderBookImbalance: extras.orderBookImbalance ?? null,
+  };
+
+  const sides = {};
+  for (const side of ["BUY", "SELL"]) {
+    const orderflow = evaluateOrderFlowLayer(candles, idx, pre, side, oiExtras);
+    const positioning = evaluatePositioningLayer(candles, idx, side, oiExtras, o);
+    const volatility = evaluateVolatilityGate(candles, idx, pre, o);
+    const layers = { orderflow, positioning, volatility };
+    const conf = computeMlctsConfidenceScore(layers, o);
+    const d = orderflow.detail ?? {};
+    const p = positioning.detail ?? {};
+    sides[side] = {
+      layers,
+      confidence: conf.score,
+      deltaScore: d.deltaScore ?? 0,
+      divScore: d.divScore ?? 0,
+      absScore: d.absScore ?? 0,
+      bookScore: d.bookScore ?? 0,
+      orderflowScore: orderflow.score,
+      orderflowCore: orderFlowCoreScore(orderflow),
+      oiScore: p.oiScore ?? 50,
+      fundScore: p.fundScore ?? 50,
+      positioningScore: positioning.score,
+      volatilityScore: volatility.score,
+      oiClass: p.oiClass ?? null,
+      fundingRate: p.fundingRate ?? null,
+    };
+  }
+  return { idx, ts: barTs, sides };
+}
+
+/** L1–L4 must pass on same bar (strict). For sequential ICT use detectSequentialL1234Formation. */
+export function mandatoryLayersPass(layers, direction) {
+  return (
+    Boolean(direction) &&
+    layers.trend?.pass === true &&
+    layers.liquidity?.pass === true &&
+    layers.sweep?.pass === true &&
+    layers.structure?.pass === true
+  );
+}
+
+/**
+ * Sequential ICT formation completing on `entryIdx` (typically the BOS bar).
+ * L1: directional bias (BULL/BEAR) in window before sweep — ADX not required on entry bar.
+ * L2: liquidity proximity at sweep bar (score >= minL2Score).
+ * L3: sweep + reclaim at sweep bar.
+ * L4: BOS on entryIdx within maxBosLag bars after sweep (first BOS after sweep only).
+ *
+ * @returns {null | { entryIdx, sweepIdx, bosIdx, side, layersAtEntry, sweepLevel, levelType }}
+ */
+export function detectSequentialL1234Formation(candles, entryIdx, opts = {}, extras = {}, cfg = {}) {
+  const o = { ...MLCTS_DEFAULTS, ...opts };
+  const lookback = num(cfg.lookbackBars, 32);
+  const maxBosLag = num(cfg.maxBosLagBars, 8);
+  const biasLookback = num(cfg.biasLookbackBars, 16);
+  const minL2 = num(cfg.minL2Score, 40);
+  const minL3 = num(cfg.minL3Score, 50);
+  const minL4 = num(cfg.minL4Score, 50);
+
+  if (!candles?.length || entryIdx < MLCTS_WARMUP || entryIdx >= candles.length) return null;
+
+  const pre = extras.pre ?? precomputeIntraday(candles.slice(0, entryIdx + 1));
+  const baseExtras = { ...extras, pre };
+  const evalAt =
+    extras.evalAt ??
+    ((i) =>
+      evaluateMlctsLayers(candles, i, o, {
+        ...baseExtras,
+        pre,
+        orderBookImbalance:
+          lookupSeriesAt(extras.bookImbalanceSeries, num(candles[i]?.ts)) ??
+          extras.orderBookImbalance ??
+          null,
+      }));
+
+  const start = Math.max(MLCTS_WARMUP, entryIdx - lookback);
+  const evEntry = evalAt(entryIdx);
+  const Lentry = evEntry.layers ?? {};
+  if (!Lentry.structure?.detail?.bos) return null;
+  if (!Lentry.structure?.pass && num(Lentry.structure?.score, 0) < minL4) return null;
+
+  const side =
+    evEntry.direction ??
+    (Lentry.trend?.detail?.bias === "BULL"
+      ? "BUY"
+      : Lentry.trend?.detail?.bias === "BEAR"
+        ? "SELL"
+        : null);
+  if (!side) return null;
+
+  for (let sweepIdx = entryIdx; sweepIdx >= Math.max(start, entryIdx - maxBosLag); sweepIdx--) {
+    const evS = evalAt(sweepIdx);
+    const Ls = evS.layers ?? {};
+    const dS = Ls.sweep?.detail ?? {};
+    if (!dS.swept || !dS.reclaim) continue;
+    if (!Ls.sweep?.pass && num(Ls.sweep?.score, 0) < minL3) continue;
+
+    const sweepSide =
+      evS.direction ??
+      (Ls.trend?.detail?.bias === "BULL"
+        ? "BUY"
+        : Ls.trend?.detail?.bias === "BEAR"
+          ? "SELL"
+          : null);
+    if (sweepSide !== side) continue;
+
+    if (!Ls.liquidity?.pass && num(Ls.liquidity?.score, 0) < minL2) continue;
+
+    let alignedBias = false;
+    for (let j = Math.max(start, sweepIdx - biasLookback); j <= entryIdx; j++) {
+      const bias = evalAt(j).layers?.trend?.detail?.bias;
+      if (side === "BUY" && bias === "BULL") alignedBias = true;
+      if (side === "SELL" && bias === "BEAR") alignedBias = true;
+    }
+    if (!alignedBias) continue;
+
+    let earlierBos = false;
+    for (let k = sweepIdx + 1; k < entryIdx; k++) {
+      if (evalAt(k).layers?.structure?.detail?.bos) {
+        earlierBos = true;
+        break;
+      }
+    }
+    if (earlierBos) continue;
+
+    return {
+      entryIdx,
+      sweepIdx,
+      bosIdx: entryIdx,
+      side,
+      layersAtEntry: Lentry,
+      sweepLevel: dS.level ?? null,
+      levelType: dS.levelType ?? null,
+      biasAtEntry: Lentry.trend?.detail?.bias ?? null,
+    };
+  }
+
+  return null;
+}
+
+export function buildMlctsBrackets(candles, idx, side, layers, opts, pre) {
+  return buildBrackets(candles, idx, side, layers, opts, pre);
 }
 
 function buildBrackets(candles, idx, side, layers, opts, pre) {
@@ -986,7 +1402,7 @@ export function evaluateMlctsLayers(candles, idx, opts = {}, extras = {}) {
   const layers = { trend, liquidity, sweep, structure, orderflow, positioning, volatility };
   const score = compositeScore(layers, o);
 
-  const hierarchicalOk =
+  const layersAllPass =
     tradeReady &&
     tradeSide &&
     trend.pass &&
@@ -997,10 +1413,13 @@ export function evaluateMlctsLayers(candles, idx, opts = {}, extras = {}) {
     positioning.pass &&
     volatility.pass;
 
+  const hardVetoesOk = tradeReady && tradeSide != null && volatility.pass;
   const scoreOk = score >= num(o.scoreThreshold, 75);
-  const allRequiredGreen = hierarchicalOk && scoreOk && tradeSide != null;
-
-  const brackets = allRequiredGreen && tradeSide ? buildBrackets(candles, idx, tradeSide, layers, o, pre) : null;
+  const bracketsCandidate =
+    hardVetoesOk && scoreOk && tradeSide ? buildBrackets(candles, idx, tradeSide, layers, o, pre) : null;
+  const signalOk = hardVetoesOk && scoreOk && bracketsCandidate != null;
+  /** @deprecated alias — entry gate is signalOk; layersAllPass is diagnostic only */
+  const allRequiredGreen = signalOk;
 
   const featureVector = {
     trendBias: bias,
@@ -1035,10 +1454,14 @@ export function evaluateMlctsLayers(candles, idx, opts = {}, extras = {}) {
     score: Math.round(score),
     direction: tradeSide,
     displayDirection: displaySide,
+    signalOk,
+    layersAllPass,
+    hardVetoesOk,
+    scoreOk,
     allRequiredGreen,
     ready: tradeReady,
     warmingUp: !tradeReady,
-    brackets,
+    brackets: bracketsCandidate,
     featureVector,
   };
 }
@@ -1048,8 +1471,16 @@ export function buildMlctsSeries(candles, opts = {}, extras = {}) {
   const series = new Array(candles.length).fill(null);
   const pre = precomputeIntraday(candles);
   for (let idx = MLCTS_WARMUP; idx < candles.length; idx++) {
-    const ev = evaluateMlctsLayers(candles, idx, opts, { ...extras, pre });
-    if (!ev.allRequiredGreen || !ev.direction) continue;
+    const barTs = num(candles[idx]?.ts);
+    const bookRow = lookupSeriesAt(extras.bookImbalanceSeries, barTs);
+    const orderBookImbalance =
+      bookRow?.imbalanceRatio ?? extras.orderBookImbalance ?? null;
+    const ev = evaluateMlctsLayers(candles, idx, opts, {
+      ...extras,
+      pre,
+      orderBookImbalance,
+    });
+    if (!ev.signalOk || !ev.direction) continue;
     const action = ev.direction;
     series[idx] = {
       action,

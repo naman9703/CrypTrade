@@ -50,7 +50,12 @@ import {
   LIQ_CASCADE_BTC_1M,
   LIQ_CASCADE_ETH_1M,
   LIQ_CASCADE_BNB_1M,
+  LIQ_CASCADE_PORTFOLIO_1M,
+  LIQ_CASCADE_PORTFOLIO_1M_LIVE_TICK,
   LIQ_CASCADE_BTC_1M_LIVE_TICK,
+  LIQ_CASCADE_BTC_1M_SMOKE_TEST,
+  LIQ_CASCADE_ETH_1M_SMOKE_TEST,
+  LIQ_CASCADE_PORTFOLIO_1M_SMOKE_TEST,
 } from "../lib/liqCascadePresets";
 import { MLCTS_BTC_15M } from "../lib/mlctsPresets";
 import { LiqCascadeFeedStatusPanel } from "./LiqCascadeFeedStatus";
@@ -122,6 +127,7 @@ import {
   clearStagedStrategyBotPatch,
   applyStrategyPresetPatch,
   buildStrategySavePayloadForMode,
+  flushStagedStrategyBotPatch,
   stageStrategyBotPatch,
 } from "../lib/stagedStrategyBotPatch";
 import { useGuardedCheckbox } from "./useGuardedCheckbox";
@@ -1469,6 +1475,11 @@ export function TradingPanel() {
   const skipManualFormPersistRef = useRef(true);
   const saveGatedBotConfig = useCallback(async (patch: Record<string, unknown>) => {
     applyStrategyPresetPatch(patch);
+    try {
+      await flushStagedStrategyBotPatch(patch);
+    } catch {
+      /* draft still staged — Save strategy persists */
+    }
     return { ok: true };
   }, []);
 
@@ -2721,15 +2732,32 @@ export function TradingPanel() {
             <span className="font-mono">forceOrder</span>. Requires Coinalyze liq/OI ingest for backtests.
           </p>
           <p className="text-amber-800 dark:text-amber-300">
+            Preset clears ST/intel/VP overlays from prior strategies. Intraday gate checkboxes default <b>on</b> unless explicitly set <b>off</b> — re-apply preset then <b>Save strategy</b>.
+          </p>
+          <p className="text-amber-800 dark:text-amber-300">
             Live tick mode is <b>paper/testnet</b> unless <span className="font-mono">LIQ_CASCADE_LIVE_ALLOW=1</span>.
-            Save strategy before backtest.
+          </p>
+          <p className="text-[10px] text-slate-600 dark:text-slate-400">
+            <b>Paper smoke test</b> presets: gates = liq $ + dom + z only (OI/disp/confirm off) — for verifying Activity + orders, not production.
           </p>
           <div className="flex flex-wrap gap-2">
             <TrendHtfStPresetButton label="★ BTC 1m cascade fade" highlight patch={LIQ_CASCADE_BTC_1M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             <TrendHtfStPresetButton label="ETH 1m cascade fade" patch={LIQ_CASCADE_ETH_1M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             <TrendHtfStPresetButton label="BNB 1m cascade fade" patch={LIQ_CASCADE_BNB_1M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BTC+ETH+BNB portfolio" patch={LIQ_CASCADE_PORTFOLIO_1M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BTC+ETH+BNB live tick (paper)" patch={LIQ_CASCADE_PORTFOLIO_1M_LIVE_TICK} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
             <TrendHtfStPresetButton label="BTC live tick (paper)" patch={LIQ_CASCADE_BTC_1M_LIVE_TICK} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
           </div>
+          <div className="flex flex-wrap gap-2 border-t border-orange-300/50 pt-2 dark:border-orange-700/50">
+            <TrendHtfStPresetButton label="⚠ BTC paper smoke (liq+z only)" highlight patch={LIQ_CASCADE_BTC_1M_SMOKE_TEST} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="⚠ ETH paper smoke" patch={LIQ_CASCADE_ETH_1M_SMOKE_TEST} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="⚠ BTC+ETH+BNB paper smoke" patch={LIQ_CASCADE_PORTFOLIO_1M_SMOKE_TEST} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+          </div>
+          {cfg.supertrendFuturesAuto === true || cfg.supertrendSpotAuto === true ? (
+            <p className="text-[10px] text-amber-800 dark:text-amber-300">
+              Turn off <b>supertrendFuturesAuto</b> / <b>supertrendSpotAuto</b> (preset sets both off) — leftover ST flags do not change live LIQ_CASCADE bar-close, but confuse backtest labels until you Save strategy.
+            </p>
+          ) : null}
         </div>
         )}
         {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "MLCTS") && (

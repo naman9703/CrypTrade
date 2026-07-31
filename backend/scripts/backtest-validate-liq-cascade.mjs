@@ -16,6 +16,7 @@ const SYMBOL = process.env.SYMBOL || "BTCUSDT";
 const TF = process.env.TF || "1m";
 const RISK = Number(process.env.RISK || 1);
 const LIQ_INTERVAL = process.env.LIQ_INTERVAL || "5min";
+const LIQ_SOURCE = process.env.LIQ_SOURCE || "coinalyze";
 const DIRECTION = process.env.DIRECTION || null; // "fade" | "continuation"
 const MIN_OI_DROP = process.env.MIN_OI_DROP != null ? Number(process.env.MIN_OI_DROP) : null;
 
@@ -79,7 +80,13 @@ async function runWindow(label, from, to, candlesAll, fundingAll) {
   const padFrom = liqCascadePadFromMs(from, TF);
   const slice = candlesAll.filter((c) => Number(c.ts) >= padFrom && Number(c.ts) < to);
   const funding = fundingAll.filter((f) => Number(f.ts ?? f.time) >= padFrom && Number(f.ts ?? f.time) < to);
-  const overrides = { ...LIQ_CASCADE_BTC_1M, symbol: SYMBOL, riskPerTrade: RISK, liqCascadeInterval: LIQ_INTERVAL };
+  const overrides = {
+    ...LIQ_CASCADE_BTC_1M,
+    symbol: SYMBOL,
+    riskPerTrade: RISK,
+    liqCascadeInterval: LIQ_INTERVAL,
+    liqCascadeLiqSource: LIQ_SOURCE,
+  };
   if (DIRECTION) overrides.liqCascadeDirectionMode = DIRECTION;
   if (MIN_OI_DROP != null) overrides.liqCascadeMinOiDropPct = MIN_OI_DROP;
   if (process.env.OVERRIDES) Object.assign(overrides, JSON.parse(process.env.OVERRIDES));
@@ -133,7 +140,7 @@ async function runWindow(label, from, to, candlesAll, fundingAll) {
   return row;
 }
 
-console.log(`=== LIQ_CASCADE validate ${SYMBOL} ${TF} @ ${RISK}% ===`);
+console.log(`=== LIQ_CASCADE validate ${SYMBOL} ${TF} @ ${RISK}% source=${LIQ_SOURCE} interval=${LIQ_INTERVAL} ===`);
 const fullFrom = liqCascadePadFromMs(WINDOWS.FULL[0], TF);
 const fullTo = WINDOWS.FULL[1];
 const candlesAll = await readCandles(SYMBOL, TF, fullFrom, fullTo, { market: "futures" });

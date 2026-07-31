@@ -6,7 +6,9 @@
  * forward returns start at the first candle at/after bar close, and frequency is
  * computed over the actual liq data coverage span (not the requested window).
  *
- * Usage (backend/): SKIP_ENSURE=1 node scripts/research-liq-cascade-phase0.mjs
+ * Usage (backend/):
+ *   SKIP_ENSURE=1 node scripts/research-liq-cascade-phase0.mjs
+ *   LIQ_SOURCE=force_orders FROM=2026-05-01 TO=2026-07-29 LIQ_INTERVAL=1min node scripts/research-liq-cascade-phase0.mjs
  */
 import dotenv from "dotenv";
 import path from "path";
@@ -24,7 +26,10 @@ const HORIZONS = [5, 15, 60];
 
 const LIQ_Z = Number(process.env.LIQ_Z || 1.8);
 const MIN_LIQ_USD = Number(process.env.MIN_LIQ_USD || 30_000);
-const MIN_OI_DROP = Number(process.env.MIN_OI_DROP || 0.05);
+const MIN_OI_DROP = Number(process.env.MIN_OI_DROP || 0.12);
+const OI_GATE_MODE = process.env.OI_GATE_MODE || "window";
+const OI_WINDOW_BARS = Number(process.env.OI_WINDOW_BARS || 3);
+const LIQ_SOURCE = process.env.LIQ_SOURCE || "coinalyze";
 
 const fromMs = Date.parse(FROM);
 const toMs = Date.parse(TO);
@@ -33,7 +38,7 @@ const { initPool, closePool, getPool } = await import("../src/db/pool.js");
 if (!getPool?.()) await initPool({ info: () => {}, warn: () => {}, error: console.error });
 
 const { readCandles } = await import("../src/backtest/data/klineIngest.js");
-const { prepareLiqBars, prepareOiBars, lookupAtOrBefore, liqIntervalToMs } = await import(
+const { prepareLiqBars, prepareOiBars, lookupAtOrBefore, liqIntervalToMs, resolveOiGate } = await import(
   "../src/strategy/techniques/liqCascade.js"
 );
 const { loadLiqCascadeMarketSeries, liqCascadePadFromMs } = await import(
@@ -66,9 +71,15 @@ function forwardRet(candles, idx, horizon) {
 async function harvestSymbol(symbol) {
   const padFrom = liqCascadePadFromMs(fromMs, TF);
   const candles = await readCandles(symbol, TF, padFrom, toMs, { market: "futures" });
-  const { liqSeries, oiSeries, interval } = await loadLiqCascadeMarketSeries(symbol, padFrom, toMs, {
-    liqCascadeInterval: process.env.LIQ_INTERVAL || "5min",
-  });
+  const { liqSeries, oiSeries, interval, source, tickCount } = await loadLiqCascadeMarketSeries(
+    symbol,
+    padFrom,
+    toMs,
+    {
+      liqCascadeInterval: process.env.LIQ_INTERVAL || "5min",
+      liqCascadeLiqSource: LIQ_SOURCE,
+    },
+  );
   const intervalMs = liqIntervalToMs(interval);
   const liqBars = prepareLiqBars(liqSeries, { intervalMs, lookbackBars: 48 });
   const oiBars = prepareOiBars(oiSeries, intervalMs);
@@ -79,8 +90,12 @@ async function harvestSymbol(symbol) {
     if (bar.z == null || bar.z < LIQ_Z) continue;
     if (bar.totalUsd < MIN_LIQ_USD) continue;
     if (bar.dom !== "longs" && bar.dom !== "shorts") continue;
-    const oiBar = lookupAtOrBefore(bar.ts, oiBars);
-    const oiDrop = oiBar?.dropPct ?? null;
+    const oiGate = resolveOiGate(oiBars, bar.ts, {
+      oiGateMode: OI_GATE_MODE,
+      oiWindowBars: OI_WINDOW_BARS,
+      minOiDropPct: MIN_OI_DROP,
+    });
+    const oiDrop = oiGate.dropPct;
     const idx = candleIdxAtOrAfter(candles, bar.ts); // first candle after bar closes
     const ev = {
       ts: bar.ts,
@@ -88,7 +103,8 @@ async function harvestSymbol(symbol) {
       z: +bar.z.toFixed(2),
       liqUsd: Math.round(bar.totalUsd),
       oiDrop: oiDrop != null ? +oiDrop.toFixed(3) : null,
-      oiPass: MIN_OI_DROP <= 0 ? true : oiDrop != null && oiDrop >= MIN_OI_DROP,
+      oiGateMode: oiGate.mode,
+      oiPass: oiGate.ok,
       fadeRet: {},
       contRet: {},
     };
@@ -115,6 +131,8 @@ async function harvestSymbol(symbol) {
   return {
     symbol,
     interval,
+    liqSource: source ?? LIQ_SOURCE,
+    tickCount: tickCount ?? null,
     candleBars: candles.length,
     liqBars: liqSeries.length,
     coverage: { from: new Date(covFrom).toISOString(), to: new Date(covTo).toISOString(), weeks: +weeks.toFixed(2) },
@@ -131,7 +149,7 @@ async function harvestSymbol(symbol) {
   };
 }
 
-console.log(`\n=== LIQ_CASCADE Phase 0 (causal) ${FROM} → ${TO} ${TF} z>=${LIQ_Z} ===\n`);
+console.log(`\n=== LIQ_CASCADE Phase 0 (causal) ${FROM} → ${TO} ${TF} z>=${LIQ_Z} source=${LIQ_SOURCE} ===\n`);
 const results = [];
 for (const symbol of SYMBOLS) {
   const row = await harvestSymbol(symbol);
@@ -154,6 +172,6 @@ console.log(`\nTotal events=${totalEvents} avg=${avgTw.toFixed(2)}/wk/symbol →
 
 fs.writeFileSync(
   path.join(__dirname, ".liq-cascade-phase0.json"),
-  JSON.stringify({ generatedAt: new Date().toISOString(), params: { LIQ_Z, MIN_LIQ_USD, MIN_OI_DROP }, results, totalEvents, avgTw, verdict }, null, 2),
+  JSON.stringify({ generatedAt: new Date().toISOString(), params: { LIQ_Z, MIN_LIQ_USD, MIN_OI_DROP, LIQ_SOURCE }, results, totalEvents, avgTw, verdict }, null, 2),
 );
 await closePool?.();
