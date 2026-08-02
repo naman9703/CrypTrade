@@ -330,12 +330,14 @@ export const api = {
     return json<any>(await apiFetch(`${HTTP}/api/symbol/constraints${qs ? `?${qs}` : ""}`));
   },
   /** OHLCV + supertrend line from server. Omit symbol = bot’s active pair; pass symbol for multi-chart tiles. */
-  async marketCandles(opts?: { hours?: number; symbol?: string } | number) {
+  async marketCandles(opts?: { hours?: number; symbol?: string; timeframe?: string } | number) {
     const hours = typeof opts === "number" ? opts : opts?.hours ?? 24;
     const symbol = typeof opts === "number" ? undefined : opts?.symbol;
+    const timeframe = typeof opts === "number" ? undefined : opts?.timeframe;
     const q = new URLSearchParams();
     q.set("hours", String(hours));
     if (symbol) q.set("symbol", String(symbol).toUpperCase());
+    if (timeframe) q.set("timeframe", String(timeframe).trim().toLowerCase());
     return json<any>(await apiFetch(`${HTTP}/api/market/candles?${q}`));
   },
   /** @param refresh When true, bypasses last cached snapshot and runs a fresh Binance scan. */
@@ -489,7 +491,7 @@ export const api = {
         return {
           liveBot: botNext,
           draftBotPatchByInstanceId,
-          ...refreshStrategyConfigViewSlice(s, modeSlug, viewBot),
+          ...refreshStrategyConfigViewSlice(s, modeSlug, viewBot, instanceId),
         };
       });
     } else {
@@ -1211,6 +1213,37 @@ export const api = {
     return json<{ ok?: boolean; trades?: unknown[] }>(
       await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}/trades?${q.toString()}`),
     );
+  },
+
+  /** Download full trade CSV (table columns + TA/ML features) for a completed backtest run. */
+  async downloadBacktestTradesCsv(runId: string, filename?: string) {
+    const res = await apiFetch(
+      `${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}/trades/export.csv`,
+    );
+    if (!res.ok) {
+      let msg = `export_failed_${res.status}`;
+      try {
+        const err = (await res.json()) as { error?: string };
+        if (err?.error) msg = String(err.error);
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const label = filename ?? `backtest-${runId.slice(0, 8)}-trades.csv`;
+    const url = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = label;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
   },
 
   async getBacktestEquity(runId: string) {

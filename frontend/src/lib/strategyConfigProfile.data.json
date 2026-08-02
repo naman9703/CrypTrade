@@ -91,6 +91,16 @@
       "usesIntradayMaxHold": true,
       "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
     },
+    "LIQ_CASCADE": {
+      "label": "Liq Cascade",
+      "category": "intraday",
+      "nativePrefixes": ["liqCascade", "intraday"],
+      "overlays": ["intelligence", "marketDecision"],
+      "prepare": "none",
+      "chartMarkup": "none",
+      "usesIntradayMaxHold": true,
+      "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
+    },
     "MLCTS": {
       "label": "MLCTS",
       "category": "intraday",
@@ -98,6 +108,16 @@
       "overlays": ["intelligence", "marketDecision"],
       "prepare": "none",
       "chartMarkup": "smc_ict",
+      "usesIntradayMaxHold": true,
+      "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
+    },
+    "MICRO_EVENT": {
+      "label": "Micro Event",
+      "category": "intraday",
+      "nativePrefixes": ["microEvent", "intraday"],
+      "overlays": ["intelligence", "marketDecision"],
+      "prepare": "none",
+      "chartMarkup": "none",
       "usesIntradayMaxHold": true,
       "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
     },

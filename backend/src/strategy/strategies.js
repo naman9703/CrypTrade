@@ -15,6 +15,7 @@ import { SITUATION_INTRADAY } from "./situationIntraday.js";
 import { CRT_TBS } from "./crtTbsIntraday.js";
 import { LIQ_CASCADE } from "./liqCascadeIntraday.js";
 import { MLCTS } from "./mlctsIntraday.js";
+import { MICRO_EVENT } from "./microEventIntraday.js";
 import { SCALP_MR } from "./scalpMr.js";
 import { TOKYO_SESSION } from "./tokyoSessionIntraday.js";
 import { UNIFIED_ELITE } from "./unifiedElite.js";
@@ -272,6 +273,7 @@ export const strategies = {
   CRT_TBS,
   LIQ_CASCADE,
   MLCTS,
+  MICRO_EVENT,
   SCALP_MR,
   TOKYO_SESSION,
   UNIFIED_ELITE,

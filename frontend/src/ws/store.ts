@@ -35,6 +35,7 @@ import {
   extractProfileSliceFromBot,
 } from "../lib/strategyConfigSlices.ts";
 import { isPlausibleCandleClose, normalizeSym } from "../lib/symbolPriceSanity";
+import { binanceIntervalMs } from "../lib/supertrend";
 import { isIncomeLedgerClose, playProfitCloseSound } from "../lib/uiSounds";
 import {
   activeInstanceIdForMode,
@@ -705,11 +706,27 @@ function buildStrategyConfigViewSlice(
 
 /** Refresh isolated config view after live bot + draft merge (e.g. botConfig HTTP ack). */
 export function refreshStrategyConfigViewSlice(
-  prev: Pick<AppState, "mode" | "configViewByMode" | "configViewSeqByMode" | "strategySavePayloadByMode">,
+  prev: Pick<
+    AppState,
+    | "mode"
+    | "configViewByMode"
+    | "configViewSeqByMode"
+    | "strategySavePayloadByMode"
+    | "configViewByInstanceId"
+    | "activeInstanceByMode"
+    | "selectedInstanceId"
+    | "instanceConfigLoadingId"
+    | "mainView"
+  >,
   modeSlug: ApiTradingModeSlug,
   view: Record<string, unknown>,
-): Pick<AppState, "configViewByMode" | "configViewSeqByMode" | "strategySavePayloadByMode" | "bot"> {
-  return buildStrategyConfigViewSlice(prev.mode, modeSlug, view, prev);
+  instanceId?: string | null,
+): Pick<
+  AppState,
+  "configViewByMode" | "configViewSeqByMode" | "strategySavePayloadByMode" | "bot" | "configViewByInstanceId"
+> {
+  const iid = instanceId ?? activeInstanceIdForMode(prev, modeSlug);
+  return buildStrategyConfigViewSlice(prev.mode, modeSlug, view, prev, iid);
 }
 
 /** Merge engine bot snapshot into store + isolated config view (hello, instance switch, version activate). */
@@ -943,6 +960,27 @@ function normWsSym(x: string | undefined) {
   return String(x ?? "").trim().toUpperCase();
 }
 
+function normChartTf(x: string | undefined) {
+  return String(x ?? "").trim().toLowerCase();
+}
+
+/** Instance/config chart TF — may differ from live engine `bot.timeframe` (multi-instance UI). */
+function chartViewTimeframeForState(s: AppState): string {
+  const modeSlug = tradingModeToApiModeSlug(s.mode);
+  const iid = activeInstanceIdForMode(s, modeSlug);
+  if (iid) {
+    const instView = s.configViewByInstanceId?.[iid];
+    if (instView && typeof instView.timeframe === "string" && String(instView.timeframe).trim()) {
+      return normChartTf(String(instView.timeframe));
+    }
+  }
+  const modeView = s.configViewByMode?.[modeSlug];
+  if (modeView && typeof modeView.timeframe === "string" && String(modeView.timeframe).trim()) {
+    return normChartTf(String(modeView.timeframe));
+  }
+  return normChartTf(String(s.bot?.timeframe ?? ""));
+}
+
 function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial<AppState> {
   const c = p.candle;
   const o = Number(c?.open);
@@ -985,10 +1023,65 @@ function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial
   ) {
     return s;
   }
+
+  const botPatch =
+    s.bot &&
+    typeof s.bot === "object" &&
+    (p.mlctsLayerStatus != null || p.liqCascadeRadarStatus != null || p.microEventRadarStatus != null)
+      ? {
+          ...s.bot,
+          ...(p.mlctsLayerStatus != null ? { mlctsLayerStatus: p.mlctsLayerStatus } : {}),
+          ...(p.liqCascadeRadarStatus != null ? { liqCascadeRadarStatus: p.liqCascadeRadarStatus } : {}),
+          ...(p.microEventRadarStatus != null ? { microEventRadarStatus: p.microEventRadarStatus } : {}),
+        }
+      : s.bot;
+
+  const mergeMarketHudOnly = (): Partial<AppState> => {
+    const prevMarketHud =
+      s.market && typeof s.market === "object" && !Array.isArray(s.market)
+        ? { ...(s.market as MarketPayload) }
+        : {};
+    return {
+      market: {
+        ...prevMarketHud,
+        ...p,
+        supertrendLine:
+          Array.isArray(p.supertrendLine) && p.supertrendLine.length > 0
+            ? p.supertrendLine
+            : (s.market?.supertrendLine ?? []),
+        supertrendSignals:
+          Array.isArray(p.supertrendSignals) && p.supertrendSignals.length > 0
+            ? p.supertrendSignals
+            : (s.market?.supertrendSignals ?? []),
+      },
+      ...(botPatch !== s.bot ? { bot: botPatch } : {}),
+    };
+  };
+
+  const chartViewTf = chartViewTimeframeForState(s);
+  const marketTf = normChartTf(p.timeframe);
+  /** Engine WS klines (e.g. 15m) must not append into a 1m chart store — primary BTC looked fine until the splice. */
+  if (chartViewTf && marketTf && chartViewTf !== marketTf) {
+    return mergeMarketHudOnly();
+  }
+
   let next: Candle[];
   if (prev.length && Number(prev[prev.length - 1]?.ts) === Number(c?.ts)) {
     next = [...prev.slice(0, -1), { ...prev[prev.length - 1], ...c }];
   } else {
+    const lastTs = lastPrev != null ? Number(lastPrev.ts) : NaN;
+    const cTs = Number(c?.ts);
+    const tfMs = chartViewTf ? binanceIntervalMs(chartViewTf) : 0;
+    if (
+      prev.length &&
+      Number.isFinite(lastTs) &&
+      Number.isFinite(cTs) &&
+      cTs > lastTs &&
+      tfMs > 0 &&
+      cTs - lastTs > tfMs * 1.8
+    ) {
+      return mergeMarketHudOnly();
+    }
     next = [...prev, c];
   }
   next = next.slice(-CHART_CANDLE_MAX);
@@ -1010,15 +1103,7 @@ function mergeMarketIntoState(s: AppState, p: MarketPayload): AppState | Partial
     supertrendLine: stLine,
     supertrendSignals: stSig,
   };
-  const nextBot =
-    s.bot && typeof s.bot === "object" && (p.mlctsLayerStatus != null || p.liqCascadeRadarStatus != null)
-      ? {
-          ...s.bot,
-          ...(p.mlctsLayerStatus != null ? { mlctsLayerStatus: p.mlctsLayerStatus } : {}),
-          ...(p.liqCascadeRadarStatus != null ? { liqCascadeRadarStatus: p.liqCascadeRadarStatus } : {}),
-        }
-      : s.bot;
-  return { market: marketMerged, candles: next, bot: nextBot };
+  return { market: marketMerged, candles: next, ...(botPatch !== s.bot ? { bot: botPatch } : {}) };
 }
 
 function mergeHybridAccountSnapshot(prevAccount: unknown, nextAccount: unknown): unknown {
@@ -1539,9 +1624,35 @@ export const useAppStore = create<AppState>((set, get) => ({
                 const prev = s.trades[idx] as Record<string, unknown>;
                 const prevType = String(prev?.type ?? "").toUpperCase();
                 const nextType = String((p as Record<string, unknown>)?.type ?? "").toUpperCase();
-                // Paper futures (and similar) reuse the position id for OPEN and CLOSE. Merging by id
-                // would drop the open leg until the next full trades_snapshot, breaking the table and
-                // open↔close resolution for net PnL.
+                const prevStatus = String(prev?.status ?? prevType).toUpperCase();
+                // Paper futures reuse position id for OPEN→CLOSE — merge into one mutable row.
+                if (
+                  prevType &&
+                  nextType &&
+                  prevType === "OPEN" &&
+                  nextType === "CLOSE"
+                ) {
+                  const closeRow = p as Record<string, unknown>;
+                  const openPrice = prev.price ?? prev.entryPrice ?? (prev.meta as Record<string, unknown>)?.entryPx;
+                  const merged = {
+                    ...prev,
+                    ...closeRow,
+                    type: "OPEN",
+                    status: "CLOSED",
+                    entryPrice: openPrice ?? closeRow.entryPrice,
+                    exitPrice: closeRow.price ?? closeRow.exitPrice,
+                    price: openPrice ?? prev.price,
+                    meta: {
+                      ...((prev.meta as Record<string, unknown>) || {}),
+                      ...(closeRow.meta || {}),
+                      entryPrice: openPrice ?? (prev.meta as Record<string, unknown>)?.entryPrice,
+                      exitPrice: closeRow.price ?? (closeRow.meta as Record<string, unknown>)?.exitPrice,
+                    },
+                  } as TradePayload & { status?: string; exitPrice?: number };
+                  const next = s.trades.slice();
+                  next[idx] = merged;
+                  return { trades: next.slice(0, TRADE_HISTORY_UI_MAX) };
+                }
                 if (
                   prevType &&
                   nextType &&
@@ -1554,6 +1665,9 @@ export const useAppStore = create<AppState>((set, get) => ({
                 const merged = {
                   ...prev,
                   ...p,
+                  status:
+                    (p as Record<string, unknown>)?.status ??
+                    (nextType === "CLOSE" ? "CLOSED" : prevStatus === "CLOSED" ? "CLOSED" : "OPEN"),
                   meta: {
                     ...((prev.meta as Record<string, unknown>) || {}),
                     ...((p as Record<string, unknown>).meta || {}),

@@ -275,11 +275,14 @@ export function createRouter({ appState }) {
       const bot = row.bot;
       const hours = Math.max(0.25, Math.min(168, Number(req.query.hours ?? 24)));
       const symQ = String(req.query.symbol || "").trim().toUpperCase();
-      const botSym = String(bot.getPublicState().symbol || "").toUpperCase();
-      if (symQ && symQ !== botSym && typeof bot.getChartSnapshotForSymbol === "function") {
-        let snap = await bot.getChartSnapshotForSymbol(symQ, { hours });
+      const tfQ = String(req.query.timeframe || "").trim().toLowerCase();
+      const chartOpts = { hours, forceRest: true, ...(tfQ ? { timeframe: tfQ } : {}) };
+      /** Explicit `?symbol=` (including primary BTC) uses per-symbol REST repair — not the primary buffer shortcut. */
+      if (symQ && typeof bot.getChartSnapshotForSymbol === "function") {
+        /** Chart history must come from Binance REST — never the in-memory WS buffer (can hold wrong-interval / gappy primary data). */
+        let snap = await bot.getChartSnapshotForSymbol(symQ, chartOpts);
         if (!snap?.candles?.length) {
-          snap = await bot.getChartSnapshotForSymbol(symQ, { hours, forceRest: true });
+          snap = await bot.getChartSnapshotForSymbol(symQ, chartOpts);
         }
         if (!snap?.candles?.length) {
           return res.status(503).json({ ok: false, error: "no_candles", symbol: symQ });
@@ -1257,21 +1260,55 @@ export function createRouter({ appState }) {
       liqCascadeMinOiDropPct: z.number().min(0).max(1).optional(),
       liqCascadeOiGateMode: z.enum(["off", "window", "same_bar", "backtest_off"]).optional(),
       liqCascadeOiWindowBars: z.number().int().min(1).max(24).optional(),
-      liqCascadeConfirmMode: z.enum(["ladder", "stall_reclaim", "exhaustion", "either"]).optional(),
+      liqCascadeConfirmMode: z.enum(["ladder", "stall_reclaim", "exhaustion", "exhaustion_decay", "either"]).optional(),
       liqCascadeConfirmLiqBars: z.number().int().min(1).max(12).optional(),
       liqCascadeExhaustionDecay: z.number().min(0).max(1).optional(),
-      liqCascadeDirectionMode: z.enum(["fade", "follow"]).optional(),
+      liqCascadeDirectionMode: z.enum(["fade", "follow", "continuation"]).optional(),
       liqCascadeMinAtrPct: z.number().min(0).max(0.05).optional(),
       liqCascadeSlBufferPct: z.number().min(0).max(0.05).optional(),
       liqCascadeTpAtrMult: z.number().min(0).max(20).optional(),
+      liqCascadeTpRr: z.number().min(0).max(20).optional(),
       liqCascadeMinRr: z.number().min(0).max(10).optional(),
       liqCascadeMaxHoldBars: z.number().int().min(0).max(500).optional(),
       liqCascadeMaxTradesPerDay: z.number().int().min(1).max(50).optional(),
       liqCascadeMinBarGap: z.number().int().min(0).max(100).optional(),
+      liqCascadeEventCooldownLiqBars: z.number().int().min(0).max(48).optional(),
       liqCascadeTradeSides: z.enum(["BOTH", "LONG", "SHORT"]).optional(),
       liqCascadeMinLiqUsdBar: z.number().min(0).max(50_000_000).optional(),
       liqCascadeLiveTickEnabled: z.boolean().optional(),
       liqCascadeLiqSource: z.enum(["force_orders", "coinalyze"]).optional(),
+      liqCascadeOiSource: z.enum(["binance", "coinalyze"]).optional(),
+      /** MICRO_EVENT — microstructure event scalper knobs. */
+      microEventDirectionMode: z.enum(["continuation", "fade"]).optional(),
+      microEventTypesEnabled: z.array(z.string()).optional(),
+      microEventMinConfluenceScore: z.number().min(0).max(100).optional(),
+      microEventMinConfirmLayers: z.number().int().min(0).max(6).optional(),
+      microEventLiqWindowSec: z.number().min(10).max(600).optional(),
+      microEventLiqZMin: z.number().min(0).max(20).optional(),
+      microEventLiqMinUsd: z.number().min(0).max(50_000_000).optional(),
+      microEventLiqDomRatio: z.number().min(1).max(5).optional(),
+      microEventLiqRequired: z.boolean().optional(),
+      microEventOiGateEnabled: z.boolean().optional(),
+      microEventOiMinDropPct1m: z.number().min(0).max(50).optional(),
+      microEventOiMinDropPct5m: z.number().min(0).max(50).optional(),
+      microEventBookGateEnabled: z.boolean().optional(),
+      microEventMinImbalance: z.number().min(0.5).max(1).optional(),
+      microEventMaxOppositeWallUsd: z.number().min(0).max(50_000_000).optional(),
+      microEventCvdGateEnabled: z.boolean().optional(),
+      microEventMinAggressiveUsd: z.number().min(0).max(50_000_000).optional(),
+      microEventMinCvdSlope: z.number().min(0).max(1_000_000).optional(),
+      microEventFundingGateEnabled: z.boolean().optional(),
+      microEventMinFundingZ: z.number().min(0).max(10).optional(),
+      microEventCrowdedSideFilter: z.enum(["any", "long", "short", "long_crowded", "short_crowded"]).optional(),
+      microEventMacroGateEnabled: z.boolean().optional(),
+      microEventMacroScoreBoost: z.number().min(0).max(50).optional(),
+      microEventSlBufferPct: z.number().min(0).max(0.05).optional(),
+      microEventTpRr: z.number().min(0).max(10).optional(),
+      microEventMaxHoldSec: z.number().int().min(30).max(3600).optional(),
+      microEventMaxTradesPerHour: z.number().int().min(1).max(60).optional(),
+      microEventCooldownSec: z.number().int().min(0).max(600).optional(),
+      microEventLiveTickEnabled: z.boolean().optional(),
+      microEventTradeSides: z.enum(["BOTH", "LONG", "SHORT"]).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });

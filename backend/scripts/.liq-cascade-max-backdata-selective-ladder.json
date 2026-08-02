@@ -1,0 +1,138 @@
+{
+  "generatedAt": "2026-07-31T05:29:30.044Z",
+  "window": {
+    "from": "2026-07-29T02:20:03.699Z",
+    "to": "2026-07-31T05:28:43.796Z",
+    "hours": 51.14
+  },
+  "costs": {
+    "slippagePct": 0.0005,
+    "feePerSide": 0.0004
+  },
+  "startingUsdt": 100,
+  "base": "LIQ_CASCADE_PORTFOLIO_1M_SMOKE_1MIN_SELECTIVE",
+  "results": {
+    "selective_base": {
+      "label": "selective_base",
+      "patch": {},
+      "portfolio": {
+        "trades": 26,
+        "tradesPerDay": 12.2,
+        "netPnlUsdt": -2.599,
+        "returnPct": -2.599,
+        "finalEquity": 97.401,
+        "winRate": 0.5,
+        "profitFactor": 0.7764,
+        "maxDrawdownPct": 6.6957,
+        "pnlByExit": {
+          "tp": 9.0252,
+          "sl": -10.734,
+          "flip": -0.8062
+        }
+      },
+      "perCoin": [
+        {
+          "symbol": "BTCUSDT",
+          "trades": 10,
+          "netPnl": -0.8914
+        },
+        {
+          "symbol": "ETHUSDT",
+          "trades": 12,
+          "netPnl": -1.2792
+        },
+        {
+          "symbol": "BNBUSDT",
+          "trades": 4,
+          "netPnl": -0.6462
+        }
+      ]
+    },
+    "selective_minRr_0_8": {
+      "label": "selective + minRr 0.8",
+      "patch": {
+        "liqCascadeMinRr": 0.8
+      },
+      "portfolio": {
+        "trades": 26,
+        "tradesPerDay": 12.2,
+        "netPnlUsdt": -2.599,
+        "returnPct": -2.599,
+        "finalEquity": 97.401,
+        "winRate": 0.5,
+        "profitFactor": 0.7764,
+        "maxDrawdownPct": 6.6957,
+        "pnlByExit": {
+          "tp": 9.0252,
+          "sl": -10.734,
+          "flip": -0.8062
+        }
+      },
+      "perCoin": [
+        {
+          "symbol": "BTCUSDT",
+          "trades": 10,
+          "netPnl": -0.8914
+        },
+        {
+          "symbol": "ETHUSDT",
+          "trades": 12,
+          "netPnl": -1.2792
+        },
+        {
+          "symbol": "BNBUSDT",
+          "trades": 4,
+          "netPnl": -0.6462
+        }
+      ]
+    },
+    "selective_z_1_5": {
+      "label": "selective + z 1.5",
+      "patch": {
+        "liqCascadeZScoreMin": 1.5
+      },
+      "portfolio": {
+        "trades": 24,
+        "tradesPerDay": 11.26,
+        "netPnlUsdt": 1.1809,
+        "returnPct": 1.1809,
+        "finalEquity": 101.1809,
+        "winRate": 0.5833,
+        "profitFactor": 1.132,
+        "maxDrawdownPct": 3.0748,
+        "pnlByExit": {
+          "tp": 10.1294,
+          "sl": -8.3806,
+          "flip": -0.4807
+        }
+      },
+      "perCoin": [
+        {
+          "symbol": "BTCUSDT",
+          "trades": 10,
+          "netPnl": -0.8914
+        },
+        {
+          "symbol": "ETHUSDT",
+          "trades": 11,
+          "netPnl": -0.2074
+        },
+        {
+          "symbol": "BNBUSDT",
+          "trades": 3,
+          "netPnl": 2.1531
+        }
+      ]
+    }
+  },
+  "vsSelectiveBase": {
+    "minRr_0_8": {
+      "deltaNetPnl": 0,
+      "deltaTrades": 0
+    },
+    "z_1_5": {
+      "deltaNetPnl": 3.7799,
+      "deltaTrades": -2
+    }
+  }
+}

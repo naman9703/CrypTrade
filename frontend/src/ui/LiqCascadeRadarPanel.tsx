@@ -56,6 +56,7 @@ export type LiqCascadeRadarStatus = {
   lastForceOrderMs?: number | null;
   focusSymbol?: string;
   effectiveConfig?: {
+    liqCascadeInterval?: string;
     liqCascadeZScoreMin?: number;
     liqCascadeMinLiqUsdBar?: number;
     liqCascadeMinDispAtr?: number;
@@ -109,7 +110,8 @@ function fmtUsd(v: number | null | undefined): string {
   if (!Number.isFinite(n)) return "—";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1000) return `$${Math.round(n).toLocaleString()}`;
-  return `$${n.toFixed(0)}`;
+  if (n >= 100) return `$${Math.round(n)}`;
+  return `$${n.toFixed(2)}`;
 }
 
 function ZGauge({ z, threshold }: { z: number | null | undefined; threshold: number }) {
@@ -135,14 +137,24 @@ function ZGauge({ z, threshold }: { z: number | null | undefined; threshold: num
   );
 }
 
+function fmtLiqBarLabel(interval?: string | null): string {
+  const s = String(interval ?? "5min").toLowerCase();
+  if (s === "1min") return "1m";
+  if (s === "5min") return "5m";
+  if (s === "15min") return "15m";
+  return s.replace(/min$/i, "m");
+}
+
 function CoinCard({
   coin,
+  liqBarLabel,
   expanded,
   onToggle,
   onFocus,
   isFocus,
 }: {
   coin: LiqCascadeCoinRadar;
+  liqBarLabel: string;
   expanded: boolean;
   onToggle: () => void;
   onFocus: () => void;
@@ -200,7 +212,7 @@ function CoinCard({
         <div className="text-right font-mono tabular-nums">{coin.recentTickCount15m ?? 0}</div>
         <div className="text-slate-500 dark:text-slate-400">Last forceOrder</div>
         <div className="text-right font-mono tabular-nums">{fmtAge(coin.lastForceOrderMs)}</div>
-        <div className="text-slate-500 dark:text-slate-400">5m bar closes</div>
+        <div className="text-slate-500 dark:text-slate-400">{liqBarLabel} liq bar closes</div>
         <div className="text-right font-mono tabular-nums">{fmtCountdown(coin.msToBarClose)}</div>
       </div>
 
@@ -279,6 +291,8 @@ export function LiqCascadeRadarPanel({ status }: { status: LiqCascadeRadarStatus
     );
   }
 
+  const liqBarLabel = fmtLiqBarLabel(status.effectiveConfig?.liqCascadeInterval);
+
   return (
     <div className="rounded-xl border border-cyan-400/70 bg-gradient-to-br from-cyan-50/90 to-slate-50/80 px-3 py-2.5 dark:border-cyan-800 dark:from-cyan-950/30 dark:to-slate-950/40">
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -298,7 +312,8 @@ export function LiqCascadeRadarPanel({ status }: { status: LiqCascadeRadarStatus
         <span className="text-[10px] text-slate-600 dark:text-slate-400">{headline}</span>
         {status.effectiveConfig ? (
           <span className="rounded bg-slate-200/80 px-1.5 py-0.5 font-mono text-[9px] tabular-nums text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-            z≥{status.effectiveConfig.liqCascadeZScoreMin ?? "?"} · $
+            {status.effectiveConfig.liqCascadeInterval ?? "5min"} liq · z≥
+            {status.effectiveConfig.liqCascadeZScoreMin ?? "?"} · $
             {Math.round(Number(status.effectiveConfig.liqCascadeMinLiqUsdBar ?? 0)).toLocaleString()}
           </span>
         ) : null}
@@ -318,6 +333,7 @@ export function LiqCascadeRadarPanel({ status }: { status: LiqCascadeRadarStatus
           <CoinCard
             key={coin.symbol}
             coin={coin}
+            liqBarLabel={liqBarLabel}
             expanded={expandedSym === coin.symbol}
             isFocus={coin.symbol === focusSymbol}
             onToggle={() => setExpandedSym((s) => (s === coin.symbol ? null : coin.symbol))}

@@ -83,7 +83,15 @@ export function applyInstanceOperationalToBot(
   if (op.timeframe != null && String(op.timeframe).trim()) out.timeframe = String(op.timeframe);
   if (op.marketMode != null) out.marketMode = op.marketMode;
   if (op.symbolMode != null) out.symbolMode = op.symbolMode;
-  if (op.universe != null) out.universe = op.universe;
+  if (op.universe != null && typeof op.universe === "object" && !Array.isArray(op.universe)) {
+    out.universe = op.universe;
+    const u = op.universe as Record<string, unknown>;
+    if (u.mode != null) out.universeCoinSelectMode = u.mode;
+    if (u.pinnedSymbols != null) out.universePinnedSymbols = u.pinnedSymbols;
+    if (u.coinBase != null) out.universeCoinBase = u.coinBase;
+    if (u.customSymbols != null) out.universeCustomSymbols = u.customSymbols;
+    if (u.autoCoinPick != null) out.universeAutoCoinPick = u.autoCoinPick;
+  }
   if (op.riskPerTrade != null) out.riskPerTrade = op.riskPerTrade;
   if (op.riskUnit != null) out.riskPerTradeUnit = op.riskUnit;
   if (op.maxDailyLoss != null) out.maxDailyLoss = op.maxDailyLoss;

@@ -971,6 +971,29 @@ function fmtPnlPct(pct: number | null | undefined): string {
   return `${pct.toFixed(2)}%`;
 }
 
+function tradeRowStatus(t: any): "OPEN" | "CLOSED" {
+  const st = String(t?.status ?? "").toUpperCase();
+  if (st === "CLOSED") return "CLOSED";
+  return String(t?.type ?? "").toUpperCase() === "CLOSE" ? "CLOSED" : "OPEN";
+}
+
+/** Entry slippage % (adverse = positive). Uses stored bps or signal vs fill. */
+function positionEntrySlipPct(p: any): number | null {
+  const meta = (p?.meta ?? {}) as Record<string, unknown>;
+  const bps = numFinite(meta.adverseBps);
+  if (bps != null) return bps / 100;
+  const signalPx = numFinite(meta.signalBarClose ?? meta.signalBarCloseForEntry);
+  const fillPx = numFinite(p?.entryPrice ?? p?.price);
+  if (signalPx == null || fillPx == null || signalPx <= 0) return null;
+  const isLong = positionIsLong(p?.side, p?.qty ?? p?.positionAmt);
+  return isLong ? ((fillPx - signalPx) / signalPx) * 100 : ((signalPx - fillPx) / signalPx) * 100;
+}
+
+function fmtSlipPct(pct: number | null | undefined): string {
+  if (pct == null || !Number.isFinite(pct)) return "—";
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(3)}%`;
+}
+
 /** Initial margin at open (USDT) for futures-style rows with leverage. */
 function tradeInitialMarginUsd(t: any, openRef: any | undefined, disp: { price?: number; qty?: number; lev?: number }): string {
   const n = tradeInitialMarginUsdNumber(t, openRef, disp);
@@ -2497,18 +2520,18 @@ export function PortfolioPanel() {
   }, [positions]);
 
   const openTrades = useMemo(() => {
-    const rows = (portfolioTrades || []).filter((t: any) => t?.type === "OPEN");
+    const rows = (portfolioTrades || []).filter((t: any) => tradeRowStatus(t) === "OPEN");
     return rows.filter((t: any) => openPositionIdTokens.has(String(t?.id ?? "")));
   }, [portfolioTrades, openPositionIdTokens]);
 
   const closedTrades = useMemo(() => {
-    return (portfolioTrades || []).filter((t: any) => t?.type === "CLOSE");
+    return (portfolioTrades || []).filter((t: any) => tradeRowStatus(t) === "CLOSED");
   }, [portfolioTrades]);
 
   const displayedTrades = useMemo(() => {
     const rows = portfolioTrades || [];
     const keepClose = (t: any) => {
-      if (t?.type !== "CLOSE") return false;
+      if (tradeRowStatus(t) !== "CLOSED") return false;
       const led = isLedgerClose(t);
       if (closeSourceFilter === "APP" && led) return false;
       if (closeSourceFilter === "LEDGER" && !led) return false;
@@ -2518,7 +2541,7 @@ export function PortfolioPanel() {
     if (tradeHistoryView === "OPEN_ONLY") out = openTrades;
     else if (tradeHistoryView === "CLOSED_ONLY") out = closedTrades.filter(keepClose);
     else if (closeSourceFilter === "ALL") out = rows;
-    else out = rows.filter((t: any) => (t?.type === "OPEN" ? true : keepClose(t)));
+    else out = rows.filter((t: any) => (tradeRowStatus(t) === "OPEN" ? true : keepClose(t)));
     const filtered = out.filter((t) => tradeMatchesHistoryTime(t, historyRangeFilter));
     return sortTradeHistoryRows(filtered, tradeHistorySort, rows, openTradeById, bot);
   }, [
@@ -2538,14 +2561,14 @@ export function PortfolioPanel() {
     if (!tradeHistoryRoundTrip || tradeHistoryView === "OPEN_ONLY") return null;
     const rows = portfolioTrades || [];
     const keepClose = (t: any) => {
-      if (t?.type !== "CLOSE") return false;
+      if (tradeRowStatus(t) !== "CLOSED") return false;
       const led = isLedgerClose(t);
       if (closeSourceFilter === "APP" && led) return false;
       if (closeSourceFilter === "LEDGER" && !led) return false;
       return true;
     };
     const closes = rows.filter(
-      (t: any) => t?.type === "CLOSE" && keepClose(t) && tradeMatchesHistoryTime(t, historyRangeFilter),
+      (t: any) => tradeRowStatus(t) === "CLOSED" && keepClose(t) && tradeMatchesHistoryTime(t, historyRangeFilter),
     );
     const sorted = sortTradeHistoryRows(closes, tradeHistorySort, rows, openTradeById, bot);
     return sorted.map((close) => ({
@@ -3289,6 +3312,12 @@ export function PortfolioPanel() {
                   <th className="px-3 py-2">Side</th>
                   <th className="px-3 py-2">Lev</th>
                   <th className="px-3 py-2">Entry</th>
+                  <th
+                    className="px-3 py-2"
+                    title="Entry fill vs signal price (adverse slippage positive)"
+                  >
+                    Slip
+                  </th>
                   <th className="px-3 py-2">Qty</th>
                   <th className="px-3 py-2">Margin</th>
                   <th className="px-3 py-2">SL</th>
@@ -3309,7 +3338,7 @@ export function PortfolioPanel() {
               <tbody>
                 {positions.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={16}>
+                    <td className="px-3 py-3 text-slate-600 dark:text-slate-500" colSpan={17}>
                       No open positions
                     </td>
                   </tr>
@@ -3351,6 +3380,12 @@ export function PortfolioPanel() {
                         {p.leverage != null && Number(p.leverage) > 0 ? `${Number(p.leverage)}x` : "—"}
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{fmtInstrumentPx(p.entryPrice)}</td>
+                      <td
+                        className="px-3 py-2 text-slate-600 dark:text-slate-400 tabular-nums"
+                        title="Fill vs signal at entry (LONG: fill above signal = adverse)"
+                      >
+                        {fmtSlipPct(positionEntrySlipPct(p))}
+                      </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{Number(p.qty).toFixed(6)}</td>
                       <td className="px-3 py-2 text-slate-700 dark:text-slate-300" title="Initial margin ≈ notional / leverage (USD-M)">
                         {positionInitialMarginUsd(p)}
@@ -3797,8 +3832,9 @@ export function PortfolioPanel() {
                   </tr>
                 ) : (
                   displayedTrades.map((t: any, idx) => {
+                    const rowStatus = tradeRowStatus(t);
                     const openRef =
-                      t?.type === "CLOSE"
+                      rowStatus === "CLOSED" && String(t?.type ?? "").toUpperCase() === "CLOSE"
                         ? resolveOpenRefForClose(t, portfolioTrades || [], openTradeById)
                         : undefined;
                     const { lev, price, qty, sl, tp } = tradeHistoryDisplayFields(t, openRef, bot);
@@ -3808,7 +3844,10 @@ export function PortfolioPanel() {
                       ) ?? null;
                     const rowTyp = String(t?.type ?? "").toUpperCase();
                     const openInView =
-                      rowTyp === "CLOSE" && openRef?.id != null && displayedOpenRowIds.has(String(openRef.id));
+                      rowStatus === "CLOSED" &&
+                      String(t?.type ?? "").toUpperCase() === "CLOSE" &&
+                      openRef?.id != null &&
+                      displayedOpenRowIds.has(String(openRef.id));
                     const openR = openRef ? tradeHistoryOpenFeeRateForRow(bot, openRef) : tradeHistoryOpenFeeRateForRow(bot, t);
                     const closeR = tradeHistoryCloseFeeRateForRow(bot, t);
 
@@ -3816,41 +3855,45 @@ export function PortfolioPanel() {
                     let gross: number | null = null;
                     let net: number | null = null;
                     const pairedCloseForOpen =
-                      rowTyp === "OPEN"
+                      rowStatus === "OPEN"
                         ? findPairedCloseForOpen(t, portfolioTrades || [], openTradeById)
                         : undefined;
-                    if (rowTyp === "OPEN") {
+                    const exitPx =
+                      rowStatus === "CLOSED"
+                        ? numFinite(t?.exitPrice ?? t?.meta?.exitPrice ?? (rowTyp === "CLOSE" ? price : undefined))
+                        : null;
+                    if (rowStatus === "OPEN") {
                       fee = tradeOpenLegFeeUsd(t, qty, price ?? entryPx, openR, pairedCloseForOpen);
                       gross = null;
                       net = fee != null ? -fee : null;
-                    } else if (rowTyp === "CLOSE") {
-                      fee = tradeCloseLegFeeUsd(t, openRef, qty, price, openR, closeR);
+                    } else {
+                      const closeQty = qty;
+                      const closePx = exitPx ?? price;
+                      fee = tradeCloseLegFeeUsd(t, openRef ?? t, closeQty, closePx, openR, closeR);
                       const storedCloseNet = tradeNetPnlClose(t);
-                      const openFeeAmt =
-                        openRef != null
-                          ? tradeOpenLegFeeUsd(
-                              openRef,
-                              numFinite(openRef.qty ?? qty),
-                              numFinite(openRef.price ?? openRef.meta?.entryPx ?? entryPx),
-                              tradeHistoryOpenFeeRateForRow(bot, openRef),
-                              t,
-                            )
-                          : null;
+                      const openFeeAmt = tradeOpenLegFeeUsd(
+                        openRef ?? t,
+                        numFinite((openRef ?? t)?.qty ?? closeQty),
+                        numFinite((openRef ?? t)?.price ?? entryPx),
+                        tradeHistoryOpenFeeRateForRow(bot, openRef ?? t),
+                        t,
+                      );
                       if (storedCloseNet != null && Number.isFinite(storedCloseNet)) {
                         net = closeDisplayedNetFromStored(
                           t,
                           storedCloseNet,
-                          openRef,
+                          openRef ?? t,
                           openFeeAmt,
                           Boolean(openInView),
                           fee,
                         );
                       } else {
-                        const g0 = tradeGrossPnlClose(t, qty, price, openRef, bot);
+                        const g0 = tradeGrossPnlClose(t, closeQty, closePx, openRef ?? t, bot);
                         net = g0 != null && fee != null ? g0 - fee : tradeNetPnlClose(t);
                       }
                       gross =
-                        net != null && fee != null ? net + fee : tradeGrossPnlClose(t, qty, price, openRef, bot);
+                        numFinite(t?.meta?.grossPnl) ??
+                        (net != null && fee != null ? net + fee : tradeGrossPnlClose(t, closeQty, closePx, openRef ?? t, bot));
                     }
                     const sideDisp =
                       t?.type === "CLOSE"
@@ -3916,7 +3959,7 @@ export function PortfolioPanel() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
-                            {rowTyp === "OPEN" ? (
+                            {rowStatus === "OPEN" ? (
                               <span className="inline-flex flex-wrap items-center gap-1.5">
                                 OPEN
                                 {findLivePositionForTradeId(positions, t?.id) ? (
@@ -3930,7 +3973,7 @@ export function PortfolioPanel() {
                                 ) : null}
                               </span>
                             ) : (
-                              (t?.type ?? "—")
+                              "CLOSED"
                             )}
                           </td>
                           <td

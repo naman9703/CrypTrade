@@ -47,14 +47,17 @@ const LIQ_CASCADE_USER_KEYS = [
   "liqCascadeMinAtrPct",
   "liqCascadeSlBufferPct",
   "liqCascadeTpAtrMult",
+  "liqCascadeTpRr",
   "liqCascadeMinRr",
   "liqCascadeMaxHoldBars",
   "liqCascadeMaxTradesPerDay",
   "liqCascadeMinBarGap",
+  "liqCascadeEventCooldownLiqBars",
   "liqCascadeTradeSides",
   "liqCascadeMinLiqUsdBar",
   "liqCascadeLiveTickEnabled",
   "liqCascadeLiqSource",
+  "liqCascadeOiSource",
   "intradayLiqPartialTp",
   "intradayLiqTp1Enabled",
   "intradayLiqTp2Enabled",
@@ -97,10 +100,12 @@ export function optsFromLiqCascadeCfg(cfg = {}) {
     minAtrPct: num(c.liqCascadeMinAtrPct, LIQ_CASCADE_DEFAULTS.minAtrPct),
     slBufferPct: num(c.liqCascadeSlBufferPct, LIQ_CASCADE_DEFAULTS.slBufferPct),
     tpAtrMult: num(c.liqCascadeTpAtrMult, LIQ_CASCADE_DEFAULTS.tpAtrMult),
+    tpRr: num(c.liqCascadeTpRr, LIQ_CASCADE_DEFAULTS.tpRr),
     minRr: num(c.liqCascadeMinRr, LIQ_CASCADE_DEFAULTS.minRr),
     maxHoldBars: num(c.liqCascadeMaxHoldBars, LIQ_CASCADE_DEFAULTS.maxHoldBars),
     maxTradesPerDay: num(c.liqCascadeMaxTradesPerDay, LIQ_CASCADE_DEFAULTS.maxTradesPerDay),
     minBarGap: num(c.liqCascadeMinBarGap, LIQ_CASCADE_DEFAULTS.minBarGap),
+    eventCooldownLiqBars: num(c.liqCascadeEventCooldownLiqBars, LIQ_CASCADE_DEFAULTS.eventCooldownLiqBars),
     tradeSides: String(c.liqCascadeTradeSides ?? LIQ_CASCADE_DEFAULTS.tradeSides).toUpperCase(),
     minLiqUsdBar: num(c.liqCascadeMinLiqUsdBar, LIQ_CASCADE_DEFAULTS.minLiqUsdBar),
   };
@@ -116,9 +121,10 @@ export function liqCascadePadFromMs(fromMs, tf = "1m") {
 export function attachLiqCascadeSeries(candles, cfg, ctx = {}) {
   if (ctx._liqCascadeBuilt) return ctx._liqCascadeBuilt;
   const opts = optsFromLiqCascadeCfg(cfg);
-  const liqSeries = ctx.liqSeries ?? [];
-  const oiSeries = ctx.oiSeries ?? [];
-  const built = buildLiqCascadeSeries(candles, { liqSeries, oiSeries, opts });
+  const liqSeries = ctx.liqSeries ?? cfg._liqCascadeLiqSeries ?? [];
+  const oiSeries = ctx.oiSeries ?? cfg._liqCascadeOiSeries ?? [];
+  const oiIntervalMs = ctx.oiIntervalMs ?? cfg._liqCascadeOiIntervalMs ?? undefined;
+  const built = buildLiqCascadeSeries(candles, { liqSeries, oiSeries, oiIntervalMs, opts });
   ctx._liqCascadeBuilt = built;
   return built;
 }
@@ -134,6 +140,38 @@ export function resolveLiqCascadeLiqSource(cfg = {}) {
   if (raw === "force_orders" || raw === "ticks" || raw === "tick") return "force_orders";
   if (raw === "auto") return "auto";
   return "coinalyze";
+}
+
+/** @typedef {"coinalyze" | "binance"} LiqCascadeOiSource */
+export function resolveLiqCascadeOiSource(cfg = {}) {
+  const raw = String(
+    cfg.liqCascadeOiSource ?? process.env.LIQ_CASCADE_OI_SOURCE ?? "binance",
+  )
+    .trim()
+    .toLowerCase();
+  if (raw === "coinalyze" || raw === "cz") return "coinalyze";
+  return "binance";
+}
+
+async function loadLiqCascadeOiSeries(symbol, fromMs, toMs, cfg = {}) {
+  const c = resolveLiqCascadeCfg(cfg);
+  const liqInterval = String(c.liqCascadeInterval ?? "5min");
+  const oiSource = resolveLiqCascadeOiSource(c);
+
+  if (oiSource === "coinalyze") {
+    const { ensureCoinalyzeOi, readCoinalyzeOi } = await import("../backtest/data/coinalyzeIngest.js");
+    await ensureCoinalyzeOi(symbol, { from: fromMs, to: toMs, interval: liqInterval }).catch(() => {});
+    const oiSeries = await readCoinalyzeOi(symbol, fromMs, toMs, { interval: liqInterval });
+    return {
+      oiSeries,
+      oiIntervalMs: liqIntervalToMs(liqInterval),
+      oiSource: "coinalyze",
+    };
+  }
+
+  const { loadCascadeOiFromBinance } = await import("../backtest/data/openInterestIngest.js");
+  const loaded = await loadCascadeOiFromBinance(symbol, fromMs, toMs, liqInterval);
+  return { ...loaded, oiSource: "binance" };
 }
 
 /**
@@ -164,10 +202,8 @@ export async function loadLiqCascadeMarketSeries(symbol, fromMs, toMs, cfg = {})
 
   if (source === "force_orders") {
     const tickSeries = await loadLiqCascadeForceOrderSeries(symbol, fromMs, toMs, c);
-    const { ensureCoinalyzeOi, readCoinalyzeOi } = await import("../backtest/data/coinalyzeIngest.js");
-    await ensureCoinalyzeOi(symbol, { from: fromMs, to: toMs, interval }).catch(() => {});
-    const oiSeries = await readCoinalyzeOi(symbol, fromMs, toMs, { interval });
-    return { ...tickSeries, oiSeries };
+    const oi = await loadLiqCascadeOiSeries(symbol, fromMs, toMs, c);
+    return { ...tickSeries, ...oi };
   }
 
   if (source === "auto") {
@@ -181,23 +217,16 @@ export async function loadLiqCascadeMarketSeries(symbol, fromMs, toMs, cfg = {})
           (7 * 864e5)
         : 0;
     if (tickProbe.tickCount >= minTicks && weeks >= minWeeks) {
-      const { ensureCoinalyzeOi, readCoinalyzeOi } = await import("../backtest/data/coinalyzeIngest.js");
-      await ensureCoinalyzeOi(symbol, { from: fromMs, to: toMs, interval }).catch(() => {});
-      const oiSeries = await readCoinalyzeOi(symbol, fromMs, toMs, { interval });
-      return { ...tickProbe, oiSeries };
+      const oi = await loadLiqCascadeOiSeries(symbol, fromMs, toMs, c);
+      return { ...tickProbe, ...oi };
     }
   }
 
-  const { ensureCoinalyzeLiquidations, ensureCoinalyzeOi } = await import(
-    "../backtest/data/coinalyzeIngest.js"
-  );
+  const { ensureCoinalyzeLiquidations } = await import("../backtest/data/coinalyzeIngest.js");
   await ensureCoinalyzeLiquidations(symbol, { from: fromMs, to: toMs, interval }).catch(() => {});
-  await ensureCoinalyzeOi(symbol, { from: fromMs, to: toMs, interval }).catch(() => {});
-  const [liqSeries, oiSeries] = await Promise.all([
-    readCoinalyzeLiquidations(symbol, fromMs, toMs, { interval }),
-    readCoinalyzeOi(symbol, fromMs, toMs, { interval }),
-  ]);
-  return { liqSeries, oiSeries, interval, source: "coinalyze" };
+  const liqSeries = await readCoinalyzeLiquidations(symbol, fromMs, toMs, { interval });
+  const oi = await loadLiqCascadeOiSeries(symbol, fromMs, toMs, c);
+  return { liqSeries, ...oi, interval, source: "coinalyze" };
 }
 
 /** Load Coinalyze liq/OI into cfg for backtest adapter wiring. */
@@ -209,6 +238,8 @@ export async function hydrateLiqCascadeCfg(cfg, symbol, fromMs, toMs) {
     ...c,
     _liqCascadeLiqSeries: loaded.liqSeries,
     _liqCascadeOiSeries: loaded.oiSeries,
+    _liqCascadeOiIntervalMs: loaded.oiIntervalMs ?? null,
+    _liqCascadeOiSource: loaded.oiSource ?? resolveLiqCascadeOiSource(c),
     _liqCascadeInterval: loaded.interval,
     _liqCascadeLiqSource: loaded.source ?? resolveLiqCascadeLiqSource(c),
     _liqCascadeTickCount: loaded.tickCount ?? null,
@@ -246,7 +277,8 @@ export function buildLiqCascadeBacktestAdapter(candles, cfg = {}, _tf = "1m", ma
   const opts = optsFromLiqCascadeCfg(cfg);
   const liqSeries = marketCtx.liqSeries ?? [];
   const oiSeries = marketCtx.oiSeries ?? [];
-  const { series } = buildLiqCascadeSeries(candles, { liqSeries, oiSeries, opts });
+  const oiIntervalMs = marketCtx.oiIntervalMs ?? cfg._liqCascadeOiIntervalMs ?? undefined;
+  const { series } = buildLiqCascadeSeries(candles, { liqSeries, oiSeries, oiIntervalMs, opts });
   let lastSignalIdx = -Infinity;
   let tradesToday = 0;
   let curDay = null;
@@ -377,12 +409,11 @@ export async function auditLiqCascadeBarCloseForActivity(state, { candles, barId
   const { liqSeries, opts, fromMs, intervalMs } = await loadLiqCascadeBarCloseLiqSeries(symU, barTs, state);
 
   let oiSeries = [];
+  let oiIntervalMs;
   try {
-    const { ensureCoinalyzeOi, readCoinalyzeOi } = await import("../backtest/data/coinalyzeIngest.js");
-    await ensureCoinalyzeOi(symU, { from: fromMs, to: barTs + intervalMs, interval: opts.liqInterval }).catch(
-      () => {},
-    );
-    oiSeries = await readCoinalyzeOi(symU, fromMs, barTs + intervalMs, { interval: opts.liqInterval });
+    const oi = await loadLiqCascadeOiSeries(symU, fromMs, barTs + intervalMs, state);
+    oiSeries = oi.oiSeries ?? [];
+    oiIntervalMs = oi.oiIntervalMs;
   } catch {
     /* OI optional — gate will fail with no data */
   }
@@ -391,10 +422,11 @@ export async function auditLiqCascadeBarCloseForActivity(state, { candles, barId
   const events = collectLiqCascadeBarCloseAuditEvents(persisted, candles, barIdx, {
     liqSeries,
     oiSeries,
+    oiIntervalMs,
     opts,
   });
 
-  const { series } = buildLiqCascadeSeries(candles, { liqSeries, oiSeries, opts });
+  const { series } = buildLiqCascadeSeries(candles, { liqSeries, oiSeries, oiIntervalMs, opts });
   const sig = series[barIdx];
   if (sig) {
     const adapterReason = liqCascadeAdapterSkipReason(readLiqCascadeAdapterPersisted(state, symU), barIdx, opts);

@@ -1,0 +1,289 @@
+{
+  "generatedAt": "2026-07-31T14:11:30.888Z",
+  "coverage": {
+    "symbol": "BTCUSDT",
+    "coinalyzeSymbol": "BTCUSDT_PERP.A",
+    "period": "5m",
+    "coinalyzeInterval": "5min",
+    "window": {
+      "from": "2026-07-17T14:11:18.752Z",
+      "to": "2026-07-31T14:11:18.752Z"
+    },
+    "binanceLivePoints": 4032,
+    "coinalyzeLivePoints": 1672,
+    "binanceDbPoints": 336,
+    "coinalyzeDbPoints": 1960,
+    "alignedPoints": 1672
+  },
+  "levelComparison": {
+    "verdict": "MATCH_GOOD",
+    "absDiffPctStats": {
+      "n": 1672,
+      "mean": 0.0786,
+      "median": 0.053,
+      "p95": 0.2357,
+      "maxAbs": 1.0162
+    },
+    "note": "diffPct = (coinalyze - binance) / binance × 100 at same interval-start ts",
+    "sampleWorst": [
+      {
+        "ts": 1785192000000,
+        "iso": "2026-07-27T22:40:00.000Z",
+        "binanceOiUsd": 6757189090,
+        "coinalyzeOiUsd": 6688521072,
+        "diffPct": -1.0162,
+        "ratio": 0.989838
+      },
+      {
+        "ts": 1785454800000,
+        "iso": "2026-07-30T23:40:00.000Z",
+        "binanceOiUsd": 6941894951,
+        "coinalyzeOiUsd": 6877352824,
+        "diffPct": -0.9297,
+        "ratio": 0.990703
+      },
+      {
+        "ts": 1785245700000,
+        "iso": "2026-07-28T13:35:00.000Z",
+        "binanceOiUsd": 6696938776,
+        "coinalyzeOiUsd": 6641155286,
+        "diffPct": -0.833,
+        "ratio": 0.99167
+      },
+      {
+        "ts": 1785200700000,
+        "iso": "2026-07-28T01:05:00.000Z",
+        "binanceOiUsd": 6712660555,
+        "coinalyzeOiUsd": 6664725398,
+        "diffPct": -0.7141,
+        "ratio": 0.992859
+      },
+      {
+        "ts": 1785506700000,
+        "iso": "2026-07-31T14:05:00.000Z",
+        "binanceOiUsd": 6731807519,
+        "coinalyzeOiUsd": 6685366344,
+        "diffPct": -0.6899,
+        "ratio": 0.993101
+      },
+      {
+        "ts": 1785462300000,
+        "iso": "2026-07-31T01:45:00.000Z",
+        "binanceOiUsd": 6849308138,
+        "coinalyzeOiUsd": 6807227045,
+        "diffPct": -0.6144,
+        "ratio": 0.993856
+      },
+      {
+        "ts": 1785412200000,
+        "iso": "2026-07-30T11:50:00.000Z",
+        "binanceOiUsd": 6858974122,
+        "coinalyzeOiUsd": 6900521005,
+        "diffPct": 0.6057,
+        "ratio": 1.006057
+      },
+      {
+        "ts": 1785348000000,
+        "iso": "2026-07-29T18:00:00.000Z",
+        "binanceOiUsd": 6602876186,
+        "coinalyzeOiUsd": 6642640195,
+        "diffPct": 0.6022,
+        "ratio": 1.006022
+      }
+    ],
+    "sampleRecent": [
+      {
+        "ts": 1785504900000,
+        "iso": "2026-07-31T13:35:00.000Z",
+        "binanceOiUsd": 6738849121,
+        "coinalyzeOiUsd": 6730824312,
+        "diffPct": -0.1191,
+        "ratio": 0.998809
+      },
+      {
+        "ts": 1785505200000,
+        "iso": "2026-07-31T13:40:00.000Z",
+        "binanceOiUsd": 6730541653,
+        "coinalyzeOiUsd": 6723811818,
+        "diffPct": -0.1,
+        "ratio": 0.999
+      },
+      {
+        "ts": 1785505500000,
+        "iso": "2026-07-31T13:45:00.000Z",
+        "binanceOiUsd": 6723303079,
+        "coinalyzeOiUsd": 6718244055,
+        "diffPct": -0.0752,
+        "ratio": 0.999248
+      },
+      {
+        "ts": 1785505800000,
+        "iso": "2026-07-31T13:50:00.000Z",
+        "binanceOiUsd": 6719195111,
+        "coinalyzeOiUsd": 6709355246,
+        "diffPct": -0.1464,
+        "ratio": 0.998536
+      },
+      {
+        "ts": 1785506100000,
+        "iso": "2026-07-31T13:55:00.000Z",
+        "binanceOiUsd": 6708136117,
+        "coinalyzeOiUsd": 6711715894,
+        "diffPct": 0.0534,
+        "ratio": 1.000534
+      },
+      {
+        "ts": 1785506400000,
+        "iso": "2026-07-31T14:00:00.000Z",
+        "binanceOiUsd": 6711117492,
+        "coinalyzeOiUsd": 6732262391,
+        "diffPct": 0.3151,
+        "ratio": 1.003151
+      },
+      {
+        "ts": 1785506700000,
+        "iso": "2026-07-31T14:05:00.000Z",
+        "binanceOiUsd": 6731807519,
+        "coinalyzeOiUsd": 6685366344,
+        "diffPct": -0.6899,
+        "ratio": 0.993101
+      },
+      {
+        "ts": 1785507000000,
+        "iso": "2026-07-31T14:10:00.000Z",
+        "binanceOiUsd": 6684097438,
+        "coinalyzeOiUsd": 6674264788,
+        "diffPct": -0.1471,
+        "ratio": 0.998529
+      }
+    ]
+  },
+  "dropPctGateComparison": {
+    "bars": 1671,
+    "gateThresholdPct": 0.12,
+    "gateMismatches": 230,
+    "gateMismatchRate": 0.1376,
+    "dropDeltaAbsStats": {
+      "n": 1671,
+      "mean": 0.1107,
+      "median": 0.0748,
+      "p95": 0.3258,
+      "maxAbs": 1.0868
+    },
+    "mismatchExamples": [
+      {
+        "barClose": "2026-07-26T03:50:00.000Z",
+        "binDropPct": 0.1206,
+        "czDropPct": 0.0119,
+        "dropDelta": -0.1087,
+        "gatePassBinance": true,
+        "gatePassCoinalyze": false,
+        "gateMismatch": true
+      },
+      {
+        "barClose": "2026-07-26T05:35:00.000Z",
+        "binDropPct": 0.0421,
+        "czDropPct": 0.1668,
+        "dropDelta": 0.1248,
+        "gatePassBinance": false,
+        "gatePassCoinalyze": true,
+        "gateMismatch": true
+      },
+      {
+        "barClose": "2026-07-26T05:40:00.000Z",
+        "binDropPct": 0.1577,
+        "czDropPct": -0.0076,
+        "dropDelta": -0.1653,
+        "gatePassBinance": true,
+        "gatePassCoinalyze": false,
+        "gateMismatch": true
+      },
+      {
+        "barClose": "2026-07-26T14:10:00.000Z",
+        "binDropPct": -0.1766,
+        "czDropPct": 0.1325,
+        "dropDelta": 0.3091,
+        "gatePassBinance": false,
+        "gatePassCoinalyze": true,
+        "gateMismatch": true
+      },
+      {
+        "barClose": "2026-07-26T14:15:00.000Z",
+        "binDropPct": 0.1278,
+        "czDropPct": -0.0888,
+        "dropDelta": -0.2165,
+        "gatePassBinance": true,
+        "gatePassCoinalyze": false,
+        "gateMismatch": true
+      },
+      {
+        "barClose": "2026-07-26T16:50:00.000Z",
+        "binDropPct": -0.0294,
+        "czDropPct": 0.1356,
+        "dropDelta": 0.165,
+        "gatePassBinance": false,
+        "gatePassCoinalyze": true,
+        "gateMismatch": true
+      },
+      {
+        "barClose": "2026-07-26T16:55:00.000Z",
+        "binDropPct": 0.141,
+        "czDropPct": 0.1021,
+        "dropDelta": -0.0389,
+        "gatePassBinance": true,
+        "gatePassCoinalyze": false,
+        "gateMismatch": true
+      },
+      {
+        "barClose": "2026-07-26T22:15:00.000Z",
+        "binDropPct": 0.1253,
+        "czDropPct": 0.0055,
+        "dropDelta": -0.1198,
+        "gatePassBinance": true,
+        "gatePassCoinalyze": false,
+        "gateMismatch": true
+      },
+      {
+        "barClose": "2026-07-26T22:35:00.000Z",
+        "binDropPct": 0.0277,
+        "czDropPct": 0.3447,
+        "dropDelta": 0.317,
+        "gatePassBinance": false,
+        "gatePassCoinalyze": true,
+        "gateMismatch": true
+      },
+      {
+        "barClose": "2026-07-26T22:45:00.000Z",
+        "binDropPct": 0.2235,
+        "czDropPct": 0.031,
+        "dropDelta": -0.1926,
+        "gatePassBinance": true,
+        "gatePassCoinalyze": false,
+        "gateMismatch": true
+      },
+      {
+        "barClose": "2026-07-26T23:15:00.000Z",
+        "binDropPct": 0.091,
+        "czDropPct": 0.4314,
+        "dropDelta": 0.3404,
+        "gatePassBinance": false,
+        "gatePassCoinalyze": true,
+        "gateMismatch": true
+      },
+      {
+        "barClose": "2026-07-26T23:25:00.000Z",
+        "binDropPct": 0.1873,
+        "czDropPct": 0.031,
+        "dropDelta": -0.1563,
+        "gatePassBinance": true,
+        "gatePassCoinalyze": false,
+        "gateMismatch": true
+      }
+    ]
+  },
+  "implications": {
+    "liqCascadeUses": "Coinalyze OI only (_liqCascadeOiSeries from readCoinalyzeOi)",
+    "binanceIngestUsedBy": "MLCTS / intelligence (historical_open_interest), NOT liq cascade",
+    "timestampNote": "Both compared at interval-start ts; LIQ_CASCADE prepareOiBars keys OI at ts+intervalMs (bar close)"
+  }
+}

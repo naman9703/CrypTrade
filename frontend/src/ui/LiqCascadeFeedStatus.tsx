@@ -6,12 +6,15 @@ export type LiqCascadeFeedRow = {
   error?: string | null;
   connected?: boolean;
   running?: boolean;
+  buffer?: number | null;
   lastMessageAt?: number | null;
+  lastAcceptedAt?: number | null;
   lastError?: string | null;
   recentTickCount?: number;
   messageCount?: number;
   window4hUsd?: number | null;
   healthReason?: string | null;
+  streamUrl?: string | null;
   usdt?: number | null;
   change4hPct?: number | null;
   fetchedAt?: number | null;
@@ -51,9 +54,27 @@ function FeedDot({ ok, required = true }: { ok: boolean; required?: boolean }) {
 
 function feedTitle(key: string, row: LiqCascadeFeedRow, symbol?: string): string {
   if (key === "klines") {
-    return row.ok
-      ? `Live OHLC klines (${row.source ?? "Binance"}) — chart + bar-close signals`
-      : `Klines unavailable${row.error ? `: ${row.error}` : ""}. Set PAPER_MARKET_FEED=BINANCE_FUTURES`;
+    if (row.ok) {
+      const src = row.source ?? "Binance";
+      const buf = row.buffer != null ? `${row.buffer} bars` : "buffer ok";
+      return `Live OHLC klines (${src}) · ${buf} · last WS ${fmtAge(row.lastMessageAt)}`;
+    }
+    if (row.healthReason === "synth_feed") {
+      return `Synthetic klines only${row.error ? ` — ${row.error}` : ""}`;
+    }
+    if (row.source && row.source !== "BINANCE_FUTURES" && String(row.error || "").includes("handshake")) {
+      return `Spot kline WS (${row.source}) timed out — LIQ_CASCADE needs USD-M futures OHLC. Set PAPER_MARKET_FEED=BINANCE_FUTURES or MARKET_FEED=BINANCE_FUTURES and restart backend.`;
+    }
+    if (row.healthReason === "ws_reconnect" || row.healthReason === "data_fresh") {
+      return `Kline WS reconnecting — using recent buffered candles (last ${fmtAge(row.lastAcceptedAt ?? row.lastMessageAt)})`;
+    }
+    if (row.healthReason === "connecting") {
+      return `Connecting Binance kline WS${row.buffer ? ` (${row.buffer} backfill bars loaded)` : "…"}`;
+    }
+    if (row.healthReason === "stale") {
+      return `Kline data stale (last ${fmtAge(row.lastAcceptedAt ?? row.lastMessageAt)}) — check MARKET_FEED / PAPER_MARKET_FEED=BINANCE_FUTURES`;
+    }
+    return `Klines unavailable${row.error ? `: ${row.error}` : ""}. Set PAPER_MARKET_FEED=BINANCE_FUTURES`;
   }
   if (key === "liquidations") {
     if (row.ok) {
@@ -82,15 +103,36 @@ function feedTitle(key: string, row: LiqCascadeFeedRow, symbol?: string): string
   }
   if (key === "tickEngine") {
     if (!row.required) return "Live tick executor off — bar-close path only";
-    return row.ok
-      ? "Tick executor running — bot started + liquidation WS active"
-      : "Tick executor not active — start bot with live-tick preset";
+    if (row.ok) return "Tick executor running — bot started + liquidation WS active";
+    if (row.healthReason === "bot_stopped" || row.botRunning === false) {
+      return "Live tick enabled — press Start on the bot to arm the tick executor";
+    }
+    if (row.healthReason === "starting" || (row.botRunning && !row.running)) {
+      return "Bot running — tick executor starting…";
+    }
+    return "Tick executor not active — start bot with live-tick preset";
   }
   return row.label;
 }
 
 function feedStatusHint(key: string, row: LiqCascadeFeedRow): string {
   if (row.ok) return "OK";
+  if (key === "klines") {
+    if (row.healthReason === "synth_feed") return "SYNTH";
+    if (row.healthReason === "ws_reconnect") return "reconnecting";
+    if (row.healthReason === "data_fresh") return "buffer ok";
+    if (row.healthReason === "connecting") return "connecting…";
+    if (row.healthReason === "stale") return "stale";
+    if (row.healthReason === "ws_down") return "WS down";
+    if (row.error) return "error";
+  }
+  if (key === "tickEngine") {
+    if (!row.required) return "off";
+    if (row.healthReason === "bot_stopped" || row.botRunning === false) return "start bot";
+    if (row.healthReason === "starting") return "starting…";
+    if (row.running) return "live";
+    return "not armed";
+  }
   if (key === "openInterest" && row.pending) return "loading…";
   if (key === "liquidations") {
     if (row.healthReason === "connecting" || (row.running && !row.connected)) return "connecting…";
@@ -125,7 +167,9 @@ export function LiqCascadeFeedStatusPanel({
     { key: "tickEngine", row: status.feeds.tickEngine },
   ];
 
-  const visible = compact ? rows.filter((r) => r.row.required !== false) : rows;
+  const visible = (compact ? rows.filter((r) => r.row.required !== false) : rows).filter(
+    (r) => r.key !== "tickEngine" || r.row.required !== false,
+  );
 
   return (
     <div
@@ -170,6 +214,22 @@ export function LiqCascadeFeedStatusPanel({
           </div>
         ))}
       </div>
+      {!compact && !status.allOk && !status.feeds.klines.ok ? (
+        <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-300">
+          {status.feeds.klines.healthReason === "synth_feed"
+            ? "Chart is on synthetic klines — LIQ_CASCADE bar-close needs live Binance futures OHLC. Set PAPER_MARKET_FEED=BINANCE_FUTURES in backend .env and restart."
+            : status.feeds.klines.healthReason === "connecting"
+              ? "Kline WebSocket still connecting — if this persists, check backend logs for binance_ws_error and confirm MARKET_FEED=BINANCE_FUTURES."
+              : `Klines: ${status.feeds.klines.healthReason ?? "unavailable"}${status.feeds.klines.error ? ` — ${status.feeds.klines.error}` : ""}`}
+        </p>
+      ) : null}
+      {!compact && !status.allOk && status.feeds.tickEngine.required && !status.feeds.tickEngine.ok ? (
+        <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-300">
+          {status.feeds.tickEngine.botRunning === false
+            ? "Live tick is on but the bot is stopped — use bar-close only (uncheck Live tick) or press Start to arm the executor."
+            : "Live tick is on — waiting for tick executor to connect to the liquidation stream."}
+        </p>
+      ) : null}
       {!compact && !status.allOk && status.feeds.liquidations.ok === false ? (
         <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-300">
           Liquidations WS: {status.feeds.liquidations.healthReason ?? "unknown"}

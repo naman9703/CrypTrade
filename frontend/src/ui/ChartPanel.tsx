@@ -48,9 +48,13 @@ import {
   fetchChartOverlayDeduped,
   shouldSkipRestCandleReconcile,
   restCandleResponseExpandsStore,
+  minStoreBarsForChartWindow,
+  chartBufferSpacingLooksWrong,
+  chartBufferCoverageInsufficient,
   type ChartOverlayData,
 } from "../lib/chartOverlayFetch";
 import { useThemeStore } from "../themeStore";
+import { useBotConfigView } from "../lib/useBotConfigView";
 import {
   CHART_BACKFILL_EDGE_BARS,
   CHART_BACKFILL_HOURS_STEP,
@@ -75,8 +79,10 @@ const CHART_MARKER_DISPLAY_CAP = 40;
 type ChartMarketSlice = {
   symbol?: string;
   timeframe?: string;
-  /** Candle open ts only — OHLC churn must not re-render ChartPanel. */
   candleTs?: number;
+  candleClose?: number;
+  candleHigh?: number;
+  candleLow?: number;
   indicators?: unknown;
   regime?: unknown;
   supertrend?: unknown;
@@ -92,12 +98,18 @@ function selectChartMarketSlice(state: {
   const m = state.market;
   if (!m || !viewSym) return null;
   if (normalizeSym(String(m.symbol ?? "")) !== viewSym) return null;
-  const c = m.candle as { ts?: unknown } | undefined;
+  const c = m.candle as { ts?: unknown; close?: unknown; high?: unknown; low?: unknown } | undefined;
   const candleTs = c?.ts != null ? Number(c.ts) : undefined;
+  const candleClose = c?.close != null ? Number(c.close) : undefined;
+  const candleHigh = c?.high != null ? Number(c.high) : undefined;
+  const candleLow = c?.low != null ? Number(c.low) : undefined;
   return {
     symbol: m.symbol as string | undefined,
     timeframe: m.timeframe as string | undefined,
     candleTs: Number.isFinite(candleTs) ? candleTs : undefined,
+    candleClose: Number.isFinite(candleClose) ? candleClose : undefined,
+    candleHigh: Number.isFinite(candleHigh) ? candleHigh : undefined,
+    candleLow: Number.isFinite(candleLow) ? candleLow : undefined,
     indicators: m.indicators,
     regime: m.regime,
     supertrend: m.supertrend,
@@ -126,6 +138,9 @@ function chartMarketSliceEqual(a: ChartMarketSlice | null, b: ChartMarketSlice |
     a.symbol === b.symbol &&
     a.timeframe === b.timeframe &&
     a.candleTs === b.candleTs &&
+    a.candleClose === b.candleClose &&
+    a.candleHigh === b.candleHigh &&
+    a.candleLow === b.candleLow &&
     a.regime === b.regime &&
     a.supertrend === b.supertrend &&
     a.feedExecutionPause === b.feedExecutionPause &&
@@ -222,49 +237,60 @@ function snapOverlayToCandles(eventSec: number, candleTimes: Set<number>, tfSec:
 /** Max rows in the “signals” list under the chart (newest first). */
 const SUPERTREND_SIGNAL_LIST_MAX = 50;
 
-/**
- * Multi-coin alt tab: REST gives deep history; WS `candles` give the live tail. Merge so the chart is not
- * stuck painting **only** `altCandles` until an arbitrary bar count — that made non-primary pairs look frozen.
- */
-function mergeAltRestWithLiveWs(alt: any[], live: any[]): any[] {
-  if (!live.length) return alt.length ? alt.slice(-CHART_STORE_MAX) : [];
-  if (!alt.length) return live.slice(-CHART_STORE_MAX);
-  const byTs = new Map<number, any>();
-  for (const c of alt) {
-    const t = Number(c?.ts);
-    if (!Number.isFinite(t)) continue;
-    byTs.set(t, c);
-  }
-  for (const c of live) {
-    const t = Number(c?.ts);
-    if (!Number.isFinite(t)) continue;
-    byTs.set(t, c);
-  }
-  return [...byTs.values()].sort((a, b) => Number(a.ts) - Number(b.ts)).slice(-CHART_STORE_MAX);
-}
-
 /** When WS `market.candle` advances within the open bar, patch store tail so OHLC + price line stay live. */
-function patchCandlesWithMarketTail(candles: any[], market: Record<string, unknown> | undefined, symNorm: string): any[] {
+function patchCandlesWithMarketTail(
+  candles: any[],
+  market: Record<string, unknown> | undefined,
+  symNorm: string,
+  chartTf?: string,
+): any[] {
   if (!candles.length || !market || !symNorm) return candles;
   if (normalizeSym(String(market.symbol ?? "")) !== symNorm) return candles;
   const mc = market.candle as Record<string, unknown> | undefined;
   if (!mc) return candles;
   const ts = Number(mc.ts);
   if (!Number.isFinite(ts)) return candles;
-  const last = candles[candles.length - 1];
-  if (!last || Number(last.ts) !== ts) return candles;
+  const chartTfNorm = normalizeSymTf(chartTf);
+  const marketTfNorm = normalizeSymTf(String(market.timeframe ?? ""));
+  if (chartTfNorm && marketTfNorm && marketTfNorm !== chartTfNorm) return candles;
   const close = Number(mc.close);
-  const high = Number(mc.high);
-  const low = Number(mc.low);
   if (!Number.isFinite(close) || close <= 0) return candles;
-  if (
-    Number(last.close) === close &&
-    Number(last.high) === high &&
-    Number(last.low) === low
-  ) {
-    return candles;
+  let open = Number(mc.open);
+  let high = Number(mc.high);
+  let low = Number(mc.low);
+  if (!Number.isFinite(open) || open <= 0) open = close;
+  if (!Number.isFinite(high) || high <= 0) high = Math.max(open, close);
+  if (!Number.isFinite(low) || low <= 0) low = Math.min(open, close);
+  high = Math.max(high, open, close);
+  low = Math.min(low, open, close);
+
+  const last = candles[candles.length - 1];
+  if (!last) {
+    return [{ ...mc, ts, open, high, low, close }].slice(-CHART_STORE_MAX);
   }
-  return [...candles.slice(0, -1), { ...last, ...mc, ts, close, high, low }];
+  const lastTs = Number(last.ts);
+  if (Number.isFinite(lastTs) && lastTs === ts) {
+    const prevOpen = Number(last.open);
+    const mergedOpen = Number.isFinite(prevOpen) && prevOpen > 0 ? prevOpen : open;
+    const mergedHigh = Math.max(Number(last.high), high, mergedOpen, close);
+    const mergedLow = Math.min(Number(last.low), low, mergedOpen, close);
+    if (
+      Number(last.close) === close &&
+      Number(last.high) === mergedHigh &&
+      Number(last.low) === mergedLow
+    ) {
+      return candles;
+    }
+    return [...candles.slice(0, -1), { ...last, ...mc, ts, open: mergedOpen, close, high: mergedHigh, low: mergedLow }];
+  }
+  /** Live tick jumped to a new bar before REST/WS store merged — append so chart tail is not orphaned. */
+  if (Number.isFinite(lastTs) && ts > lastTs) {
+    const tfMs = chartTfNorm ? binanceIntervalMs(chartTfNorm) : 0;
+    const gap = ts - lastTs;
+    if (tfMs > 0 && gap > tfMs * 1.8) return candles;
+    return [...candles, { ...mc, ts, open, high, low, close }].slice(-CHART_STORE_MAX);
+  }
+  return candles;
 }
 
 /**
@@ -291,8 +317,9 @@ function canonicalChartSymbol(s: string | undefined | null): string {
 }
 
 /** Per-mode chart OHLC cache key — module scope avoids hook-order / HMR ReferenceError. */
-function chartViewCacheKey(modeSlug: string | undefined, sym: string): string {
-  return `${String(modeSlug || "").toUpperCase()}|${canonicalChartSymbol(sym)}`;
+function chartViewCacheKey(modeSlug: string | undefined, sym: string, tf?: string): string {
+  const t = normalizeSymTf(tf) || "—";
+  return `${String(modeSlug || "").toUpperCase()}|${canonicalChartSymbol(sym)}|${t}`;
 }
 
 /**
@@ -2594,10 +2621,18 @@ export function ChartPanel() {
   /** After trading-mode switch, force REST reload even if stale WS tail looks fresh. */
   const forceChartReloadAfterModeRef = useRef(false);
   const prevTradingModeRef = useRef<string | undefined>(undefined);
+  const prevChartFeedKeyRef = useRef<string | undefined>(undefined);
   /** Per-view OHLC cache so tab switches repaint immediately without waiting for REST/WS. */
   const chartViewCacheRef = useRef<
     Map<string, { candles: any[]; altCandles: any[]; market: Record<string, unknown> }>
   >(new Map());
+  /** Bumped when REST backbone updates so LWC always full-replaces series (not incremental tail-only). */
+  const chartRestBackboneSeqRef = useRef(0);
+  const chartRestBackboneAppliedRef = useRef(0);
+  /** Authoritative REST OHLC for the chart canvas (React `altCandles` is cache/hydrate only). */
+  const chartRestBackboneRef = useRef<{ sym: string; candles: any[] }>({ sym: "", candles: [] });
+  const pendingFullChartPaintRafRef = useRef(0);
+  const paintChartFromBackboneRef = useRef<(force?: boolean) => boolean>(() => false);
   const chartOhlcAppliedSymRef = useRef<string | null>(null);
   /** Tier line specs (label + price) for left-side overlay labels; updated when chartTrailingPreview changes. */
   const tierLinePricesRef = useRef<{ label: string; px: number }[]>([]);
@@ -2608,7 +2643,15 @@ export function ChartPanel() {
   const candles = useAppStore((s) => s.candles, candlesStructuralEqual);
   const market = useAppStore(selectChartMarketSlice, chartMarketSliceEqual);
   const bot = useAppStore((s) => pickChartBot(s.bot), shallow);
+  const configBot = useBotConfigView();
+  const chartTf = useMemo(
+    () => normalizeSymTf(String(configBot.timeframe ?? bot?.timeframe ?? "")),
+    [configBot.timeframe, bot?.timeframe],
+  );
+  const chartTfRef = useRef(chartTf);
+  chartTfRef.current = chartTf;
   const mode = useAppStore((s) => s.mode);
+  const selectedInstanceId = useAppStore((s) => s.selectedInstanceId);
   const chartDisplaySymbol = useAppStore((s) => s.chartDisplaySymbol);
   const setChartDisplaySymbol = useAppStore((s) => s.setChartDisplaySymbol);
   const showMarketIntelligencePanel = useAppStore((s) => s.showMarketIntelligencePanel);
@@ -2638,7 +2681,7 @@ export function ChartPanel() {
     backfillHoursRef.current = 24;
     backfillInFlightRef.current = false;
     backfillRequestedRef.current = false;
-  }, [effectiveSym, bot?.timeframe]);
+  }, [effectiveSym, chartTf]);
 
   /** Mode switch: drop per-symbol cache + remount chart canvas so prior venue OHLC cannot linger. */
   useEffect(() => {
@@ -2649,6 +2692,8 @@ export function ChartPanel() {
     setBackfillCandles([]);
     setAltCandles([]);
     setAltCandlesSym(null);
+    chartRestBackboneRef.current = { sym: "", candles: [] };
+    chartRestBackboneSeqRef.current += 1;
     chartOhlcAppliedRef.current = null;
     chartOhlcAppliedSymRef.current = null;
     lastRestReconcileAtRef.current = 0;
@@ -2657,6 +2702,32 @@ export function ChartPanel() {
     pendingAutoFitRef.current = true;
     setChartInstanceKey((k) => k + 1);
   }, [mode]);
+
+  /** Strategy or timeframe change (e.g. MICRO_EVENT 1m preset): drop stale OHLC and force REST backfill. */
+  useEffect(() => {
+    const sym = canonicalChartSymbol(bot?.symbol);
+    const tf = chartTf;
+    const strat = String(configBot.manualStrategy ?? bot?.manualStrategy ?? "").toUpperCase();
+    const inst = String(selectedInstanceId ?? "").trim();
+    const key = `${sym}|${tf}|${strat}|${inst}`;
+    const prev = prevChartFeedKeyRef.current;
+    prevChartFeedKeyRef.current = key;
+    if (prev === undefined || prev === key) return;
+    chartViewCacheRef.current.clear();
+    setBackfillCandles([]);
+    setAltCandles([]);
+    setAltCandlesSym(null);
+    chartRestBackboneRef.current = { sym: "", candles: [] };
+    chartRestBackboneSeqRef.current += 1;
+    chartOhlcAppliedRef.current = null;
+    chartOhlcAppliedSymRef.current = null;
+    lastRestReconcileAtRef.current = 0;
+    forceChartReloadAfterModeRef.current = true;
+    chartLoadSeqRef.current += 1;
+    pendingAutoFitRef.current = true;
+    useAppStore.setState({ candles: [], market: undefined });
+    setChartInstanceKey((k) => k + 1);
+  }, [bot?.symbol, chartTf, configBot.manualStrategy, bot?.manualStrategy, selectedInstanceId]);
 
   const isAltChartView = useMemo(() => {
     const b = canonicalChartSymbol(bot?.symbol);
@@ -2708,16 +2779,15 @@ export function ChartPanel() {
    */
   const chartSymNorm = useMemo(() => normalizeSym(effectiveSym), [effectiveSym]);
   const marketSymNorm = useMemo(() => normalizeSym(market?.symbol ?? ""), [market?.symbol]);
-  const wsStoreAligned = Boolean(chartSymNorm && candles.length && marketSymNorm === chartSymNorm);
 
-  const altCandlesForView = useMemo(() => {
+  const restCandlesForView = useMemo(() => {
     if (!altCandles.length || !altCandlesSym || altCandlesSym !== chartSymNorm) return [];
     return altCandles;
   }, [altCandles, altCandlesSym, chartSymNorm]);
 
   const liveTailCandles = useMemo(
-    () => patchCandlesWithMarketTail(candles, market ?? undefined, chartSymNorm),
-    [candles, market, chartSymNorm],
+    () => patchCandlesWithMarketTail(candles, market ?? undefined, chartSymNorm, chartTf),
+    [candles, market, chartSymNorm, chartTf],
   );
 
   const mergeBackfillCandles = useCallback((primary: any[]) => {
@@ -2736,44 +2806,45 @@ export function ChartPanel() {
 
   const baseCandles = useMemo(() => {
     let core: any[];
-    if (isAltChartView) {
-      if (liveTailCandles.length > 0 && marketSymNorm === chartSymNorm) {
-        core = mergeAltRestWithLiveWs(altCandlesForView, liveTailCandles);
-      } else if (altCandlesForView.length) {
-        core = altCandlesForView;
-      } else if (liveTailCandles.length > 0 && marketSymNorm === chartSymNorm) {
-        core = liveTailCandles;
-      } else {
-        core = [];
-      }
-    } else if (wsStoreAligned) {
+    const tf = chartTf;
+    const marketTfNorm = normalizeSymTf(String(market?.timeframe ?? ""));
+    const tfMatchesMarket = !tf || !marketTfNorm || marketTfNorm === tf;
+    if (restCandlesForView.length > 0) {
+      /** REST is the history source of truth — patch only the open bar from WS `market`, not the WS store buffer. */
+      core =
+        tfMatchesMarket && marketSymNorm === chartSymNorm
+          ? patchCandlesWithMarketTail(restCandlesForView, market ?? undefined, chartSymNorm, chartTf)
+          : restCandlesForView;
+    } else if (
+      tfMatchesMarket &&
+      liveTailCandles.length > 0 &&
+      marketSymNorm === chartSymNorm &&
+      !chartBufferCoverageInsufficient(liveTailCandles, tf, 24) &&
+      !chartBufferSpacingLooksWrong(liveTailCandles, tf)
+    ) {
       core = liveTailCandles;
     } else if (chartSymNorm && marketSymNorm && marketSymNorm !== chartSymNorm) {
-      const cached = chartViewCacheRef.current.get(chartViewCacheKey(mode, chartSymNorm));
-      core = cached?.candles?.length ? cached.candles : [];
+      const cached = chartViewCacheRef.current.get(chartViewCacheKey(mode, chartSymNorm, chartTf));
+      core = cached?.altCandles?.length ? cached.altCandles : cached?.candles?.length ? cached.candles : [];
     } else {
-      core = liveTailCandles;
+      core = [];
     }
     return mergeBackfillCandles(core);
-  }, [isAltChartView, wsStoreAligned, liveTailCandles, altCandlesForView, chartSymNorm, marketSymNorm, mergeBackfillCandles, mode]);
+  }, [restCandlesForView, liveTailCandles, chartSymNorm, marketSymNorm, market, mergeBackfillCandles, mode, chartTf]);
 
   const baseCandlesSig = useMemo(() => {
-    if (!baseCandles.length) return `${effectiveSym}|0`;
+    if (!baseCandles.length) return `${effectiveSym}|0|rest:${restCandlesForView.length}`;
     const first = baseCandles[0];
     const last = baseCandles[baseCandles.length - 1];
-    /** Structure only — intra-bar OHLC must not rebuild React OHLC (live path updates LWC imperatively). */
-    return `${effectiveSym}|${baseCandles.length}|${first?.ts}|${last?.ts}`;
-  }, [baseCandles, effectiveSym]);
+    const mid = baseCandles[Math.floor(baseCandles.length / 2)];
+    /** Must change when REST backbone replaces WS store (same length/window, different bodies). */
+    return `${effectiveSym}|${baseCandles.length}|${first?.ts}|${last?.ts}|${mid?.ts}|${mid?.close}|rest:${restCandlesForView.length}`;
+  }, [baseCandles, effectiveSym, restCandlesForView.length]);
 
-  const ohlcStableRef = useRef<{ sig: string; bars: OhlcBar[] }>({ sig: "", bars: [] });
-  const ohlc = useMemo(() => {
-    if (ohlcStableRef.current.sig === baseCandlesSig && ohlcStableRef.current.bars.length) {
-      return ohlcStableRef.current.bars;
-    }
-    const built = buildOhlc(baseCandles, { symbol: effectiveSym || undefined });
-    ohlcStableRef.current = { sig: baseCandlesSig, bars: built };
-    return built;
-  }, [baseCandlesSig, baseCandles, effectiveSym]);
+  const ohlc = useMemo(
+    () => buildOhlc(baseCandles, { symbol: effectiveSym || undefined }),
+    [baseCandlesSig, baseCandles, effectiveSym],
+  );
 
   /** Render window — last N bars only (full history kept for backfill merge). */
   const displayOhlc = useMemo(
@@ -2815,8 +2886,8 @@ export function ChartPanel() {
   const ohlcSpanKey = useMemo(() => {
     if (!ohlcFirstTime || !ohlcLastTime || !effectiveSym) return "";
     if (!chartOverlaySpanReady(ohlcFirstTime, ohlcLastTime, ohlc.length)) return "";
-    return `${effectiveSym}|${ohlcFirstTime}|${ohlcLastTime}|${normalizeSymTf(bot?.timeframe)}`;
-  }, [ohlcFirstTime, ohlcLastTime, ohlc.length, effectiveSym, bot?.timeframe]);
+    return `${effectiveSym}|${ohlcFirstTime}|${ohlcLastTime}|${chartTf}`;
+  }, [ohlcFirstTime, ohlcLastTime, ohlc.length, effectiveSym, chartTf]);
 
   /**
    * Latest ohlc bounds for the overlay fetch, read via ref so the effect can depend
@@ -2883,8 +2954,8 @@ export function ChartPanel() {
     msCandles: ReturnType<typeof ohlcBarsToMsCandles>;
   }>({ key: "", msCandles: [] });
   const supertrendSourceKey = useMemo(
-    () => `${effectiveSym}|${normalizeSymTf(bot?.timeframe)}|${ohlc.length}|${ohlcFirstTime}|${ohlcLastTime}`,
-    [effectiveSym, bot?.timeframe, ohlc.length, ohlcFirstTime, ohlcLastTime],
+    () => `${effectiveSym}|${chartTf}|${ohlc.length}|${ohlcFirstTime}|${ohlcLastTime}`,
+    [effectiveSym, chartTf, ohlc.length, ohlcFirstTime, ohlcLastTime],
   );
   const supertrendMsCandles = useMemo(() => {
     if (supertrendSourceRef.current.key === supertrendSourceKey) {
@@ -2903,7 +2974,7 @@ export function ChartPanel() {
       period,
       multiplier,
       wilderAtr,
-      timeframe: bot?.timeframe != null ? String(bot.timeframe) : "1m",
+      timeframe: chartTf || "1m",
       symbol: effectiveSym || undefined,
     });
   }, [
@@ -2912,7 +2983,7 @@ export function ChartPanel() {
     bot?.supertrendPeriod,
     bot?.supertrendMultiplier,
     bot?.supertrendWilderAtr,
-    bot?.timeframe,
+    chartTf,
   ]);
 
   /** Latest k.x may be a no-flip bar; keep showing the last chart-aligned flip that autotrade could use (matches Activity). */
@@ -2995,7 +3066,7 @@ export function ChartPanel() {
       : [];
     const symChart = canonicalChartSymbol(effectiveSym);
     if (!symChart) return [];
-    const tfBot = normalizeSymTf(bot?.timeframe ?? "").trim();
+    const tfBot = chartTf.trim();
     const byKey = new Map<string, SupertrendSignalHistRow>();
     for (const h of raw) {
       const sym = canonicalChartSymbol(String(h.symbol ?? ""));
@@ -3006,7 +3077,7 @@ export function ChartPanel() {
       byKey.set(`${h.ts}|${h.side}|${sym}|${tf}`, h);
     }
     return [...byKey.values()].sort((a, b) => Number(a.ts) - Number(b.ts));
-  }, [bot?.supertrendSignalHistory, bot?.timeframe, effectiveSym]);
+  }, [bot?.supertrendSignalHistory, chartTf, effectiveSym]);
 
   const supertrendSignalHistoryNewestFirst = useMemo(
     () => [...supertrendSignalHistoryRecent].reverse(),
@@ -3100,7 +3171,7 @@ export function ChartPanel() {
       };
     });
 
-    const tfRaw = normalizeSymTf(bot?.timeframe) || "15m";
+    const tfRaw = chartTf || "15m";
     const tfMs = binanceIntervalMs(tfRaw);
     const tfSec = Math.max(60, Math.floor(tfMs / 1000));
 
@@ -3156,14 +3227,14 @@ export function ChartPanel() {
     candleTimes,
     isMultiCoinMode,
     chartOverlay,
-    bot?.timeframe,
+    chartTf,
     effectiveSym,
   ]);
 
   const supertrendSoundCtx = useMemo(
     () =>
-      `${normalizeSymTf(effectiveSym)}|${normalizeSymTf(bot?.timeframe)}|${Number(bot?.supertrendPeriod ?? 10)}|${Number(bot?.supertrendMultiplier ?? 3)}|${bot?.supertrendWilderAtr !== false}`,
-    [effectiveSym, bot?.timeframe, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr],
+      `${normalizeSymTf(effectiveSym)}|${chartTf}|${Number(bot?.supertrendPeriod ?? 10)}|${Number(bot?.supertrendMultiplier ?? 3)}|${bot?.supertrendWilderAtr !== false}`,
+    [effectiveSym, chartTf, bot?.supertrendPeriod, bot?.supertrendMultiplier, bot?.supertrendWilderAtr],
   );
   const stSigSoundBootRef = useRef(true);
   const stSigSoundPrevKeyRef = useRef<string | null>(null);
@@ -3188,7 +3259,7 @@ export function ChartPanel() {
     if (last.side === "buy") playSupertrendBuySound();
     else playSupertrendSellSound();
     const symCh = normalizeSymTf(effectiveSym) || "";
-    const tfCh = normalizeSymTf(bot?.timeframe) || "";
+    const tfCh = chartTf || "";
     const detail: ClientSupertrendChimeDetail = {
       side: last.side,
       barTimeSec: Number(last.time),
@@ -3196,7 +3267,7 @@ export function ChartPanel() {
       timeframe: tfCh,
     };
     window.dispatchEvent(new CustomEvent(CLIENT_SUPERTREND_CHIME_EVENT, { detail }));
-  }, [safeMarkers, supertrendSoundCtx, effectiveSym, bot?.timeframe]);
+  }, [safeMarkers, supertrendSoundCtx, effectiveSym, chartTf]);
 
   const alignedStLine = useMemo((): { time: UTCTimestamp; value: number }[] => {
     return chartSupertrend.linePoints.map((p) => ({
@@ -3217,7 +3288,7 @@ export function ChartPanel() {
     const mSym = normalizeSymTf(market?.symbol);
     const coherent = Boolean(bSym && mSym && bSym === mSym);
     const symbol = bSym || mSym || "—";
-    const tf = normalizeSymTf(bot?.timeframe) || normalizeSymTf(market?.timeframe) || "—";
+    const tf = chartTf || normalizeSymTf(market?.timeframe) || "—";
     const lastBar = ohlc.length ? ohlc[ohlc.length - 1] : null;
     const price = lastBar && Number.isFinite(lastBar.close) ? lastBar.close : null;
     const regimeType = coherent ? ((market?.regime as { type?: string } | undefined)?.type ?? "—") : "—";
@@ -3236,7 +3307,7 @@ export function ChartPanel() {
           ? "Feed: stale (autotrade paused)"
           : null;
     return { symbol, tf, price, regimeType, stTrend, feedPauseLabel };
-  }, [effectiveSym, bot?.timeframe, market, ohlc, chartSupertrend.lastTrend]);
+  }, [effectiveSym, chartTf, market, ohlc, chartSupertrend.lastTrend]);
 
   const ohlcRef = useRef(displayOhlc);
   ohlcRef.current = displayOhlc;
@@ -3437,7 +3508,7 @@ export function ChartPanel() {
           return;
         }
         void api
-          .marketCandles({ hours: nextHours, symbol: sym })
+          .marketCandles({ hours: nextHours, symbol: sym, timeframe: chartTfRef.current || undefined })
           .then((r) => {
             backfillInFlightRef.current = false;
             if (!r?.ok) return;
@@ -3481,7 +3552,7 @@ export function ChartPanel() {
           chartOhlcAppliedRef.current = filtered.slice();
           const lastSec =
             filtered.length > 0 ? Number(filtered[filtered.length - 1]!.time) : undefined;
-          const tfInit = normalizeSymTf(useAppStore.getState().bot?.timeframe);
+          const tfInit = chartTfRef.current;
           tryApplyAutoFit(
             chart,
             filtered.length,
@@ -3495,9 +3566,15 @@ export function ChartPanel() {
       } catch {
         /* ignore */
       }
+    } else {
+      queueMicrotask(() => paintChartFromBackboneRef.current(true));
     }
 
     return () => {
+      if (pendingFullChartPaintRafRef.current) {
+        cancelAnimationFrame(pendingFullChartPaintRafRef.current);
+        pendingFullChartPaintRafRef.current = 0;
+      }
       chartOhlcAppliedRef.current = null;
       chartOkRef.current = false;
       if (bulkFitFallbackTimerRef.current) {
@@ -3610,6 +3687,10 @@ export function ChartPanel() {
 
   useEffect(() => {
     if (!displayOhlc.length) {
+      if (chartRestBackboneRef.current.candles.length) {
+        paintChartFromBackboneRef.current(true);
+        return;
+      }
       chartOhlcAppliedRef.current = null;
       chartOhlcAppliedSymRef.current = null;
       syncPreserveViewRef.current = false;
@@ -3625,6 +3706,35 @@ export function ChartPanel() {
     }
     if (!chartOkRef.current || !seriesRef.current || !chartRef.current) {
       syncPreserveViewRef.current = false;
+      return;
+    }
+    const symCanon = canonicalChartSymbol(effectiveSym);
+    const backbone = chartRestBackboneRef.current;
+    const minBars = minStoreBarsForChartWindow(chartTf, 24);
+    /** REST backbone is authoritative for primary BTC — React `displayOhlc` must not overwrite with WS store tail. */
+    if (
+      backbone.candles.length >= minBars &&
+      normalizeSym(backbone.sym) === normalizeSym(symCanon)
+    ) {
+      if (chartRestBackboneSeqRef.current !== chartRestBackboneAppliedRef.current) {
+        paintChartFromBackboneRef.current(true);
+      }
+      return;
+    }
+    const backboneBars = backbone.candles.length;
+    if (
+      backboneBars > 0 &&
+      displayOhlc.length > 0 &&
+      displayOhlc.length < backboneBars * 0.85 &&
+      normalizeSym(backbone.sym) === normalizeSym(symCanon)
+    ) {
+      paintChartFromBackboneRef.current(true);
+      return;
+    }
+    if (
+      chartRestBackboneSeqRef.current !== chartRestBackboneAppliedRef.current &&
+      paintChartFromBackboneRef.current(true)
+    ) {
       return;
     }
     if (chartInteractingRef.current) return;
@@ -3656,7 +3766,8 @@ export function ChartPanel() {
       prev.length === 0 ||
       displayOhlc.length < prev.length ||
       first.time !== prev[0].time ||
-      displayOhlc.length > prev.length + 1;
+      displayOhlc.length > prev.length + 1 ||
+      chartRestBackboneSeqRef.current !== chartRestBackboneAppliedRef.current;
 
     const pLast = prev?.length ? prev[prev.length - 1]! : null;
     if (!full && pLast != null && displayOhlc.length === prev!.length + 1 && Number(last.time) <= Number(pLast.time)) {
@@ -3681,6 +3792,7 @@ export function ChartPanel() {
         series.setData(sanitized);
         chartOhlcAppliedRef.current = sanitized.slice();
         chartOhlcAppliedSymRef.current = sym;
+        chartRestBackboneAppliedRef.current = chartRestBackboneSeqRef.current;
       } else {
         const pLastInner = prev![prev!.length - 1]!;
         if (last.time === pLastInner.time || Number(last.time) > Number(pLastInner.time)) {
@@ -3719,7 +3831,7 @@ export function ChartPanel() {
         fitAfterRestSnapshotRef,
         skipFitUntilBulkRef,
         Number.isFinite(lastBarSec) ? lastBarSec : undefined,
-        normalizeSymTf(bot?.timeframe) || null,
+        chartTf || null,
       );
       if (logicalRangeRestore) {
         const r = logicalRangeRestore;
@@ -3745,7 +3857,7 @@ export function ChartPanel() {
         /* ignore */
       }
     }
-  }, [displayOhlc, effectiveSym, bot?.timeframe, chartInstanceKey]);
+  }, [displayOhlc, effectiveSym, chartTf, chartInstanceKey]);
 
   /**
    * Live last-bar: store.subscribe + series.update only (no React re-render).
@@ -3759,17 +3871,49 @@ export function ChartPanel() {
     if (!sym) return;
     const m = live.market as Record<string, unknown> | undefined;
     if (!m || normalizeSym(String(m.symbol ?? "")) !== normalizeSym(sym)) return;
+    const chartTfLive = chartTfRef.current;
+    const marketTf = normalizeSymTf(String(m.timeframe ?? ""));
+    if (chartTfLive && marketTf && marketTf !== chartTfLive) return;
     const mc = m.candle as Record<string, unknown> | undefined;
     if (!mc) return;
     const ts = Math.floor(Number(mc.ts) / 1000) as UTCTimestamp;
     if (!Number.isFinite(ts)) return;
     const applied = chartOhlcAppliedRef.current;
     const pLast = applied?.length ? applied[applied.length - 1]! : null;
-    if (!pLast || Number(pLast.time) !== Number(ts)) return;
     const close = Number(mc.close);
-    const high = Math.max(Number(pLast.high), Number(mc.high), close, Number(pLast.open));
-    const low = Math.min(Number(pLast.low), Number(mc.low), close, Number(pLast.open));
     if (!Number.isFinite(close) || close <= 0) return;
+    let open = Number(mc.open);
+    let high = Number(mc.high);
+    let low = Number(mc.low);
+    if (!Number.isFinite(open) || open <= 0) open = close;
+    if (!Number.isFinite(high) || high <= 0) high = Math.max(open, close);
+    if (!Number.isFinite(low) || low <= 0) low = Math.min(open, close);
+    high = Math.max(high, open, close);
+    low = Math.min(low, open, close);
+
+    if (!pLast) return;
+
+    if (Number(ts) > Number(pLast.time)) {
+      const tfMs = chartTfLive ? binanceIntervalMs(chartTfLive) : 0;
+      const gapMs = Number(mc.ts) - Number(pLast.time) * 1000;
+      if (tfMs > 0 && Number.isFinite(gapMs) && gapMs > tfMs * 1.8) return;
+      const newBar: OhlcBar = { time: ts, open, high, low, close };
+      if (!isOhlcBarRenderable(newBar, pLast, sym)) return;
+      try {
+        seriesRef.current.update(newBar);
+        chartOhlcAppliedRef.current = [...applied!, newBar];
+        ohlcLastCloseRef.current = close;
+        const priceEl = chartLivePriceElRef.current;
+        if (priceEl) priceEl.textContent = close.toFixed(2);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+
+    if (Number(pLast.time) !== Number(ts)) return;
+    high = Math.max(Number(pLast.high), high, close, Number(pLast.open));
+    low = Math.min(Number(pLast.low), low, close, Number(pLast.open));
     if (pLast.close === close && pLast.high === high && pLast.low === low) return;
     const updated: OhlcBar = { time: ts, open: pLast.open, high, low, close };
     if (!isOhlcBarRenderable(updated, pLast, sym)) return;
@@ -3793,7 +3937,23 @@ export function ChartPanel() {
       });
     };
     const unsub = useAppStore.subscribe((s, prev) => {
-      if (s.market === prev.market && s.candles === prev.candles) return;
+      if (s.candles !== prev.candles) {
+        schedule();
+        return;
+      }
+      const ca = s.market?.candle as Record<string, unknown> | undefined;
+      const cb = prev.market?.candle as Record<string, unknown> | undefined;
+      if (ca === cb) return;
+      if (
+        ca &&
+        cb &&
+        Number(ca.ts) === Number(cb.ts) &&
+        Number(ca.close) === Number(cb.close) &&
+        Number(ca.high) === Number(cb.high) &&
+        Number(ca.low) === Number(cb.low)
+      ) {
+        return;
+      }
       schedule();
     });
     return () => {
@@ -3807,7 +3967,7 @@ export function ChartPanel() {
 
   useEffect(() => {
     const sym = effectiveSym;
-    const tf = bot?.timeframe as string | undefined;
+    const tf = chartTf || undefined;
     if (!sym || !tf) return;
     const hadPrev = prevChartSymbolRef.current !== undefined;
     const changed =
@@ -3847,16 +4007,67 @@ export function ChartPanel() {
         );
       }
     }, 2800);
-  }, [effectiveSym, bot?.timeframe]);
+  }, [effectiveSym, chartTf]);
+
+  paintChartFromBackboneRef.current = (force = false) => {
+    if (!chartOkRef.current || !seriesRef.current || !chartRef.current) return false;
+    const sym = canonicalChartSymbol(effectiveSymRef.current);
+    if (!sym) return false;
+    const backbone = chartRestBackboneRef.current;
+    if (!backbone.candles.length || normalizeSym(backbone.sym) !== normalizeSym(sym)) return false;
+    const needsFull =
+      force ||
+      chartRestBackboneSeqRef.current !== chartRestBackboneAppliedRef.current ||
+      chartOhlcAppliedSymRef.current !== sym;
+    if (!needsFull) return true;
+    if (chartInteractingRef.current && !force) {
+      if (!pendingFullChartPaintRafRef.current) {
+        pendingFullChartPaintRafRef.current = requestAnimationFrame(() => {
+          pendingFullChartPaintRafRef.current = 0;
+          paintChartFromBackboneRef.current(true);
+        });
+      }
+      return false;
+    }
+    const m = useAppStore.getState().market as Record<string, unknown> | undefined;
+    const chartTfPaint = chartTfRef.current;
+    const patched = patchCandlesWithMarketTail(backbone.candles, m, normalizeSym(sym), chartTfPaint);
+    let bars = buildOhlc(patched, { symbol: sym });
+    if (bars.length > CHART_DISPLAY_MAX) bars = bars.slice(-CHART_DISPLAY_MAX);
+    const sanitized = bars.filter((bar, i) =>
+      isOhlcBarRenderable(bar, i > 0 ? bars[i - 1]! : null, sym),
+    );
+    if (!sanitized.length) return false;
+    try {
+      seriesRef.current.setData(sanitized);
+      chartOhlcAppliedRef.current = sanitized.slice();
+      chartOhlcAppliedSymRef.current = sym;
+      chartRestBackboneAppliedRef.current = chartRestBackboneSeqRef.current;
+      const tfPaint = chartTfRef.current;
+      const lastSec = sanitized.length ? Number(sanitized[sanitized.length - 1]!.time) : undefined;
+      tryApplyAutoFit(
+        chartRef.current,
+        sanitized.length,
+        pendingAutoFitRef,
+        fitAfterRestSnapshotRef,
+        skipFitUntilBulkRef,
+        Number.isFinite(lastSec) ? lastSec : undefined,
+        tfPaint || null,
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const applyChartViewCandles = useCallback((r: any, sym: string, tf: string, opts?: { preserveView?: boolean }): boolean => {
     if (!r?.ok || !Array.isArray(r.candles) || !r.candles.length) return false;
     const symCanon = canonicalChartSymbol(sym);
     const rSym = canonicalChartSymbol(r.symbol ?? sym);
     const rTf = normalizeSymTf(r.timeframe);
-    if (!symCanon || rSym !== symCanon || rTf !== tf) return false;
+    const reqTf = normalizeSymTf(tf);
+    if (!symCanon || rSym !== symCanon || !reqTf || rTf !== reqTf) return false;
     const live = useAppStore.getState();
-    if (normalizeSymTf(live.bot?.timeframe) !== tf) return false;
     const isAlt = symCanon !== canonicalChartSymbol(live.bot?.symbol);
     const preserveView = Boolean(opts?.preserveView);
     if (preserveView) {
@@ -3873,8 +4084,9 @@ export function ChartPanel() {
       chartOhlcAppliedSymRef.current = null;
     }
     const cc0Raw = r.candles.slice(-CHART_STORE_MAX);
-    const parsedPrimary = parseCandlesFromMarketApi(r, symCanon);
-    const cc0 = (parsedPrimary.length ? parsedPrimary : cc0Raw).slice(-CHART_STORE_MAX);
+    const parsedRest = parseCandlesFromMarketApi(r, symCanon);
+    const cc0 = (parsedRest.length ? parsedRest : cc0Raw).slice(-CHART_STORE_MAX);
+    const restNext = cc0;
     const last = cc0[cc0.length - 1];
     const viewSym = normalizeSym(symCanon);
     const storeMarketSym = normalizeSym(live.market?.symbol ?? "");
@@ -3885,6 +4097,16 @@ export function ChartPanel() {
       (!isAlt && storeViewSym === viewSym && storeMarketSym === viewSym);
     const storeLastTs = Number(live.candles.at(-1)?.ts);
     const restLastTs = Number(last?.ts);
+    const commitChartRestBackbone = (bars: any[]) => {
+      if (!bars.length) return;
+      chartRestBackboneRef.current = { sym: symCanon, candles: bars };
+      chartRestBackboneSeqRef.current += 1;
+      chartOhlcAppliedRef.current = null;
+      chartOhlcAppliedSymRef.current = null;
+      setAltCandles(bars);
+      setAltCandlesSym(viewSym);
+      queueMicrotask(() => paintChartFromBackboneRef.current(true));
+    };
     /** REST must not rewind on background sync when WS buffer is full and tail is current. */
     if (
       shouldSkipRestCandleReconcile({
@@ -3893,25 +4115,18 @@ export function ChartPanel() {
         storeMatchesView,
         storeLastTs,
         restLastTs,
+        timeframe: tf,
+        hours: 24,
+        storeCandles: live.candles,
       }) &&
       !restCandleResponseExpandsStore(live.candles.length, cc0.length)
     ) {
-      if (isAlt) {
-        const parsedAlt = parseCandlesFromMarketApi(r, symCanon);
-        const altNext = parsedAlt.length ? parsedAlt : cc0;
-        if (altNext.length) {
-          setAltCandles(altNext);
-          setAltCandlesSym(symCanon);
-          chartViewCacheRef.current.set(chartViewCacheKey(mode, symCanon), {
-            candles: live.candles,
-            altCandles: altNext,
-            market: (live.market as Record<string, unknown>) ?? {},
-          });
-        }
-      } else if (live.candles.length) {
-        chartViewCacheRef.current.set(chartViewCacheKey(mode, symCanon), {
+      /** Always refresh REST backbone — primary charts previously skipped this and stayed gappy. */
+      if (restNext.length) {
+        commitChartRestBackbone(restNext);
+        chartViewCacheRef.current.set(chartViewCacheKey(mode, symCanon, tf), {
           candles: live.candles,
-          altCandles: [],
+          altCandles: restNext,
           market: (live.market as Record<string, unknown>) ?? {},
         });
       }
@@ -3920,14 +4135,7 @@ export function ChartPanel() {
     const stLine = Array.isArray(r.supertrendLine) ? r.supertrendLine : [];
     const stSigs = Array.isArray(r.supertrendSignals) ? r.supertrendSignals : [];
     const stMeta = r.supertrend ?? null;
-    const parsedAlt = isAlt ? parseCandlesFromMarketApi(r, symCanon) : [];
-    if (isAlt) {
-      setAltCandles(parsedAlt.length ? parsedAlt : cc0);
-      setAltCandlesSym(symCanon);
-    } else {
-      setAltCandles([]);
-      setAltCandlesSym(null);
-    }
+    commitChartRestBackbone(restNext);
     const marketNext = {
       symbol: String(r.symbol ?? symCanon),
       timeframe: String(r.timeframe ?? tf),
@@ -3939,9 +4147,9 @@ export function ChartPanel() {
       supertrend: stMeta,
     };
     useAppStore.setState({ candles: cc0, market: marketNext });
-    chartViewCacheRef.current.set(chartViewCacheKey(mode, symCanon), {
+    chartViewCacheRef.current.set(chartViewCacheKey(mode, symCanon, tf), {
       candles: cc0,
-      altCandles: isAlt ? (parsedAlt.length ? parsedAlt : cc0) : [],
+      altCandles: restNext,
       market: marketNext,
     });
     return true;
@@ -3950,12 +4158,12 @@ export function ChartPanel() {
   const [chartRefreshBusy, setChartRefreshBusy] = useState(false);
   const handleRefreshChart = useCallback(async () => {
     const sym = canonicalChartSymbol(effectiveSym);
-    const tf = normalizeSymTf(bot?.timeframe);
+    const tf = chartTf;
     if (!sym || !tf) return;
     setChartRefreshBusy(true);
     try {
       const pushLog = useAppStore.getState().pushLog;
-      const r = await api.marketCandles({ hours: 24, symbol: sym });
+      const r = await api.marketCandles({ hours: 24, symbol: sym, timeframe: tf });
       const ok = applyChartViewCandles(r, sym, tf);
       if (ok) {
         chartOhlcAppliedRef.current = null;
@@ -3973,23 +4181,37 @@ export function ChartPanel() {
     } finally {
       setChartRefreshBusy(false);
     }
-  }, [effectiveSym, bot?.timeframe, applyChartViewCandles]);
+  }, [effectiveSym, chartTf, applyChartViewCandles]);
 
   /** Hydrate store from per-mode+symbol cache immediately on tab switch (REST follows in parallel). */
   useEffect(() => {
     const sym = canonicalChartSymbol(effectiveSym);
     if (!sym) return;
-    const cached = chartViewCacheRef.current.get(chartViewCacheKey(mode, sym));
+    const cached = chartViewCacheRef.current.get(chartViewCacheKey(mode, sym, chartTf));
     chartOhlcAppliedRef.current = null;
     chartOhlcAppliedSymRef.current = null;
-    if (cached?.candles?.length) {
-      setAltCandles(cached.altCandles ?? []);
-      setAltCandlesSym(cached.altCandles?.length ? sym : null);
-      useAppStore.setState({ candles: cached.candles, market: cached.market as any });
+    if (cached?.candles?.length || cached?.altCandles?.length) {
+      const backbone = cached.altCandles ?? cached.candles ?? [];
+      chartRestBackboneRef.current = { sym, candles: backbone };
+      chartRestBackboneSeqRef.current += 1;
+      chartOhlcAppliedRef.current = null;
+      chartOhlcAppliedSymRef.current = null;
+      setAltCandles(backbone);
+      setAltCandlesSym(normalizeSym(sym));
+      queueMicrotask(() => paintChartFromBackboneRef.current(true));
+      useAppStore.setState({
+        ...(cached.candles?.length ? { candles: cached.candles } : {}),
+        ...(cached.market ? { market: cached.market as any } : {}),
+      });
       return;
     }
-    setAltCandles([]);
-    setAltCandlesSym(null);
+    const symNorm = normalizeSym(sym);
+    if (chartRestBackboneRef.current.sym && normalizeSym(chartRestBackboneRef.current.sym) !== symNorm) {
+      setAltCandles([]);
+      setAltCandlesSym(null);
+      chartRestBackboneRef.current = { sym: "", candles: [] };
+      chartRestBackboneSeqRef.current += 1;
+    }
     /** Keep prior bars until REST/WS for this view arrives — wiping to [] caused blank charts on tab switch. */
     const live = useAppStore.getState();
     const curMarket = normalizeSym(live.market?.symbol ?? "");
@@ -3997,12 +4219,28 @@ export function ChartPanel() {
     if (curMarket && curView && curMarket !== curView) {
       useAppStore.setState({ candles: [], market: undefined });
     }
-  }, [effectiveSym, mode]);
+  }, [effectiveSym, mode, chartTf]);
+
+  /** WS hello can seed a clean REST snapshot into the store before ChartPanel's REST poll — mirror into backbone. */
+  useEffect(() => {
+    if (restCandlesForView.length) return;
+    const tf = chartTf;
+    if (!tf || !chartSymNorm || marketSymNorm !== chartSymNorm) return;
+    if (!candles.length || chartBufferSpacingLooksWrong(candles, tf) || chartBufferCoverageInsufficient(candles, tf, 24)) return;
+    const backbone = candles.slice(-CHART_STORE_MAX);
+    chartRestBackboneRef.current = { sym: effectiveSym, candles: backbone };
+    chartRestBackboneSeqRef.current += 1;
+    chartOhlcAppliedRef.current = null;
+    chartOhlcAppliedSymRef.current = null;
+    setAltCandles(backbone);
+    setAltCandlesSym(chartSymNorm);
+    queueMicrotask(() => paintChartFromBackboneRef.current(true));
+  }, [restCandlesForView.length, candles, chartSymNorm, marketSymNorm, chartTf]);
 
   /** Load ~24h OHLC for the active chart view (primary or multi-coin tab) and keep REST+WS in sync. */
   useEffect(() => {
     const sym = canonicalChartSymbol(effectiveSym);
-    const tf = normalizeSymTf(bot?.timeframe);
+    const tf = chartTf;
     if (!sym || !tf) return;
     const seq = ++chartLoadSeqRef.current;
     let cancelled = false;
@@ -4014,8 +4252,14 @@ export function ChartPanel() {
         const liveCandle = liveMarket?.candle as Record<string, unknown> | undefined;
         const liveTs = Number(liveCandle?.ts);
         const tfMs = binanceIntervalMs(tf);
+        const minBars = minStoreBarsForChartWindow(tf, 24);
+        const storeCandles = useAppStore.getState().candles;
+        const storeThin = storeCandles.length < minBars;
+        const spacingWrong = chartBufferCoverageInsufficient(storeCandles, tf, 24);
         const liveTailFresh =
           !forceReload &&
+          !storeThin &&
+          !spacingWrong &&
           liveSym === normalizeSym(sym) &&
           Number.isFinite(liveTs) &&
           Number.isFinite(tfMs) &&
@@ -4032,7 +4276,7 @@ export function ChartPanel() {
         restReconcileInFlightRef.current = true;
       }
       try {
-        const r = await api.marketCandles({ hours: 24, symbol: sym });
+        const r = await api.marketCandles({ hours: 24, symbol: sym, timeframe: tf });
         if (cancelled || seq !== chartLoadSeqRef.current) return;
         applyChartViewCandles(r, sym, tf, { preserveView });
         if (preserveView) lastRestReconcileAtRef.current = Date.now();
@@ -4055,7 +4299,42 @@ export function ChartPanel() {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [effectiveSym, bot?.timeframe, mode, applyChartViewCandles]);
+  }, [effectiveSym, chartTf, mode, selectedInstanceId, applyChartViewCandles]);
+
+  /** Detect time gaps / thin buffers — force REST when live tick outran WS candle store. */
+  useEffect(() => {
+    const sym = canonicalChartSymbol(effectiveSym);
+    const tf = chartTf;
+    if (!sym || !tf || !candles.length) return;
+    const mcTs = Number(market?.candleTs);
+    const lastTs = Number(candles[candles.length - 1]?.ts);
+    const tfMs = binanceIntervalMs(tf);
+    if (!Number.isFinite(mcTs) || !Number.isFinite(lastTs) || !Number.isFinite(tfMs) || tfMs <= 0) return;
+    const minBars = minStoreBarsForChartWindow(tf, 24);
+    const gapBars = Math.floor((mcTs - lastTs) / tfMs);
+    const spacingWrong = chartBufferCoverageInsufficient(candles, tf, 24);
+    const needsBackfill = candles.length < minBars || spacingWrong || gapBars > 2;
+    if (!needsBackfill) return;
+    if (restReconcileInFlightRef.current) return;
+    const now = Date.now();
+    if (now - lastRestReconcileAtRef.current < 3000) return;
+    restReconcileInFlightRef.current = true;
+    lastRestReconcileAtRef.current = now;
+    void api
+      .marketCandles({ hours: 24, symbol: sym, timeframe: tf })
+      .then((r) => applyChartViewCandles(r, sym, tf, { preserveView: true }))
+      .catch(() => {})
+      .finally(() => {
+        restReconcileInFlightRef.current = false;
+      });
+  }, [
+    effectiveSym,
+    chartTf,
+    candles.length,
+    candles[candles.length - 1]?.ts,
+    market?.candleTs,
+    applyChartViewCandles,
+  ]);
 
   useEffect(() => {
     if (stLineFlushRafRef.current) cancelAnimationFrame(stLineFlushRafRef.current);
@@ -4166,7 +4445,7 @@ export function ChartPanel() {
           <button
             type="button"
             onClick={() => void handleRefreshChart()}
-            disabled={chartRefreshBusy || !normalizeSymTf(effectiveSym) || !normalizeSymTf(bot?.timeframe)}
+            disabled={chartRefreshBusy || !normalizeSymTf(effectiveSym) || !chartTf}
             className="shrink-0 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             title="Fetch latest ~24h OHLC and rebuild the chart canvas (fixes stuck rendering)"
             aria-label="Reload chart from server"
@@ -4329,7 +4608,7 @@ export function ChartPanel() {
                   h.signalBarCloseTs != null && Number.isFinite(Number(h.signalBarCloseTs)) && Number(h.signalBarCloseTs) > 0
                     ? Number(h.signalBarCloseTs)
                     : Number(h.ts) +
-                      binanceIntervalMs(String(h.timeframe || bot?.timeframe || "1m"));
+                      binanceIntervalMs(String(h.timeframe || chartTf || "1m"));
                 const fromServer =
                   h.signalBarClose != null &&
                   Number.isFinite(Number(h.signalBarClose)) &&

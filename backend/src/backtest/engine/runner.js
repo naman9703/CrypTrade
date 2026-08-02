@@ -273,6 +273,9 @@ export async function runSimulation(args) {
   } else if (strategyKey === "MLCTS" && cfg && typeof cfg === "object") {
     const { resolveMlctsCfg } = await import("../../strategy/mlctsIntraday.js");
     cfg = resolveMlctsCfg(cfg);
+  } else if (strategyKey === "MICRO_EVENT" && cfg && typeof cfg === "object") {
+    const { resolveMicroEventCfg } = await import("../../strategy/microEventIntraday.js");
+    cfg = resolveMicroEventCfg(cfg);
   } else if (strategyKey === "SCALP_MR" && cfg && typeof cfg === "object") {
     const { resolveScalpMrCfg } = await import("../../strategy/scalpMr.js");
     cfg = resolveScalpMrCfg(cfg);

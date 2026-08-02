@@ -50,6 +50,7 @@ export const LIQ_CASCADE_1M_BASE = {
   liqCascadeStrongDispAtr: 2.0,
   liqCascadeMinOiDropPct: 0.12,
   liqCascadeOiGateMode: "window",
+  liqCascadeOiSource: "binance",
   liqCascadeOiWindowBars: 3,
   liqCascadeConfirmMode: "ladder",
   liqCascadeConfirmLiqBars: 2,
@@ -59,6 +60,10 @@ export const LIQ_CASCADE_1M_BASE = {
   liqCascadeMaxTradesPerDay: 8,
   liqCascadeMinBarGap: 2,
   liqCascadeMaxHoldBars: 24,
+  liqCascadeEventCooldownLiqBars: 12,
+  liqCascadeMinRr: 0,
+  liqCascadeTpRr: 0,
+  liqCascadeTpAtrMult: 5,
   liqCascadeLiveTickEnabled: false,
   intradayLiqPartialTp: false,
   intradayLiqTp1Enabled: false,
@@ -120,7 +125,10 @@ export const LIQ_CASCADE_SMOKE_TEST_PATCH = {
   liqCascadeConfirmMode: "ladder",
   liqCascadeConfirmLiqBars: 1,
   liqCascadeMinAtrPct: 0.001,
-  liqCascadeMinRr: 0.5,
+  /** Paper only — disable R:R gate so wide sweep stops still fire orders. */
+  liqCascadeMinRr: 0,
+  /** Wider TP — must clear ~0.18% round-trip (0.04% fee + 0.05% slip ×2) on typical ATR; 3× was losing on TP hits. */
+  liqCascadeTpAtrMult: 5,
   liqCascadeZScoreMin: 1.5,
   liqCascadeMinLiqUsdBar: 25_000,
   liqCascadeMinBarGap: 1,
@@ -143,5 +151,132 @@ export const LIQ_CASCADE_ETH_1M_SMOKE_TEST = {
 export const LIQ_CASCADE_PORTFOLIO_1M_SMOKE_TEST = {
   ...LIQ_CASCADE_PORTFOLIO_1M,
   ...LIQ_CASCADE_SMOKE_TEST_PATCH,
+  symbol: "BTCUSDT",
+};
+
+/** 1-minute liq bars — ~5× bar-close frequency vs 5m liq aggregation. */
+export const LIQ_CASCADE_LIQ_1MIN_CORE = {
+  liqCascadeInterval: "1min",
+  liqCascadeLookbackBars: 60,
+  liqCascadeWindowBars: 15,
+  liqCascadeConfirmLiqBars: 5,
+  liqCascadeOiWindowBars: 15,
+  liqCascadeMinLiqUsdBar: 10_000,
+  liqCascadeZScoreMin: 1.8,
+  liqCascadeMinBarGap: 3,
+  liqCascadeMaxTradesPerDay: 20,
+  liqCascadeMaxHoldBars: 30,
+};
+
+export const LIQ_CASCADE_FREQ_1MIN_PATCH = {
+  ...LIQ_CASCADE_LIQ_1MIN_CORE,
+  liqCascadeMinDispAtr: 0.8,
+  liqCascadeStrongDispAtr: 1.6,
+};
+
+export const LIQ_CASCADE_BTC_1M_LIQ_1MIN = {
+  ...LIQ_CASCADE_BTC_1M,
+  ...LIQ_CASCADE_FREQ_1MIN_PATCH,
+  symbol: "BTCUSDT",
+};
+
+export const LIQ_CASCADE_ETH_1M_LIQ_1MIN = {
+  ...LIQ_CASCADE_ETH_1M,
+  ...LIQ_CASCADE_FREQ_1MIN_PATCH,
+  symbol: "ETHUSDT",
+  liqCascadeMinLiqUsdBar: 8_000,
+};
+
+export const LIQ_CASCADE_BNB_1M_LIQ_1MIN = {
+  ...LIQ_CASCADE_BNB_1M,
+  ...LIQ_CASCADE_FREQ_1MIN_PATCH,
+  symbol: "BNBUSDT",
+  liqCascadeZScoreMin: 1.6,
+  liqCascadeMinLiqUsdBar: 6_000,
+};
+
+export const LIQ_CASCADE_PORTFOLIO_1M_LIQ_1MIN = {
+  ...LIQ_CASCADE_PORTFOLIO_1M,
+  ...LIQ_CASCADE_FREQ_1MIN_PATCH,
+  symbol: "BTCUSDT",
+};
+
+export const LIQ_CASCADE_SMOKE_1MIN_PATCH = {
+  ...LIQ_CASCADE_LIQ_1MIN_CORE,
+  liqCascadeOiGateMode: "off",
+  liqCascadeMinOiDropPct: 0,
+  liqCascadeMinDispAtr: 0,
+  liqCascadeStrongDispAtr: 0,
+  liqCascadeConfirmMode: "ladder",
+  liqCascadeConfirmLiqBars: 2,
+  liqCascadeMinAtrPct: 0.001,
+  liqCascadeMinRr: 0,
+  liqCascadeTpAtrMult: 5,
+  liqCascadeZScoreMin: 1.2,
+  liqCascadeMinLiqUsdBar: 5_000,
+  liqCascadeMinBarGap: 2,
+  liqCascadeMaxTradesPerDay: 24,
+  liqCascadeLiveTickEnabled: false,
+};
+
+export const LIQ_CASCADE_BTC_1M_SMOKE_1MIN = {
+  ...LIQ_CASCADE_BTC_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_PATCH,
+  symbol: "BTCUSDT",
+};
+
+export const LIQ_CASCADE_ETH_1M_SMOKE_1MIN = {
+  ...LIQ_CASCADE_ETH_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_PATCH,
+  symbol: "ETHUSDT",
+};
+
+export const LIQ_CASCADE_PORTFOLIO_1M_SMOKE_1MIN = {
+  ...LIQ_CASCADE_PORTFOLIO_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_PATCH,
+  symbol: "BTCUSDT",
+};
+
+export const LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_PATCH = {
+  ...LIQ_CASCADE_SMOKE_1MIN_PATCH,
+  liqCascadeMinDispAtr: 0.8,
+  liqCascadeStrongDispAtr: 1.6,
+  liqCascadeMinLiqUsdBar: 15_000,
+};
+
+export const LIQ_CASCADE_BTC_1M_SMOKE_1MIN_SELECTIVE = {
+  ...LIQ_CASCADE_BTC_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_PATCH,
+  symbol: "BTCUSDT",
+};
+
+export const LIQ_CASCADE_ETH_1M_SMOKE_1MIN_SELECTIVE = {
+  ...LIQ_CASCADE_ETH_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_PATCH,
+  symbol: "ETHUSDT",
+  liqCascadeMinLiqUsdBar: 12_000,
+};
+
+export const LIQ_CASCADE_BNB_1M_SMOKE_1MIN_SELECTIVE = {
+  ...LIQ_CASCADE_BNB_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_PATCH,
+  symbol: "BNBUSDT",
+  liqCascadeMinLiqUsdBar: 8_000,
+};
+
+export const LIQ_CASCADE_PORTFOLIO_1M_SMOKE_1MIN_SELECTIVE = {
+  ...LIQ_CASCADE_PORTFOLIO_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_PATCH,
+  symbol: "BTCUSDT",
+};
+
+export const LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_Z15_PATCH = {
+  ...LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_PATCH,
+  liqCascadeZScoreMin: 1.5,
+};
+
+export const LIQ_CASCADE_PORTFOLIO_1M_SMOKE_1MIN_SELECTIVE_Z15 = {
+  ...LIQ_CASCADE_PORTFOLIO_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_Z15_PATCH,
   symbol: "BTCUSDT",
 };

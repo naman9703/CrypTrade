@@ -1,0 +1,185 @@
+{
+  "generatedAt": "2026-07-31T12:08:56.690Z",
+  "window": {
+    "from": "2026-07-29T02:20:03.699Z",
+    "to": "2026-07-31T12:06:06.423Z",
+    "hours": 57.77,
+    "days": 2.41
+  },
+  "tickCoverage": [
+    {
+      "symbol": "BNBUSDT",
+      "ticks": 39,
+      "first": "2026-07-29T05:38:55.974Z",
+      "last": "2026-07-31T02:29:54.650Z"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "ticks": 329,
+      "first": "2026-07-29T02:20:03.699Z",
+      "last": "2026-07-31T12:05:55.614Z"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "ticks": 209,
+      "first": "2026-07-29T03:16:32.473Z",
+      "last": "2026-07-31T12:06:06.423Z"
+    }
+  ],
+  "costs": {
+    "slippagePct": 0.0005,
+    "feePerSide": 0.0004,
+    "leverage": 10
+  },
+  "results": {
+    "production_5m": {
+      "label": "production_5m_liq",
+      "presetSummary": {
+        "liqInterval": "5min",
+        "zMin": 2,
+        "minLiqUsdBar": 50000,
+        "minDispAtr": 1,
+        "oiGateMode": "window",
+        "minRr": 0.8,
+        "tpAtrMult": 1.25
+      },
+      "portfolio": {
+        "startingUsdt": 100,
+        "finalEquityUsdt": 100,
+        "netPnlUsdt": 0,
+        "returnPct": 0,
+        "trades": 0,
+        "tradesPerDay": 0,
+        "winRate": 0,
+        "profitFactor": 0,
+        "maxDrawdownPct": 0,
+        "pnlByExit": {
+          "tp": 0,
+          "sl": 0,
+          "flip": 0,
+          "other": 0
+        },
+        "tradesDetail": []
+      },
+      "perCoin": [
+        {
+          "symbol": "BTCUSDT",
+          "trades": 0,
+          "netPnlUsdt": 0,
+          "wins": 0,
+          "preset": {
+            "liqInterval": "5min",
+            "zMin": 2,
+            "minLiqUsdBar": 50000,
+            "minDispAtr": 1,
+            "oiGateMode": "window",
+            "minRr": 0.8
+          }
+        },
+        {
+          "symbol": "ETHUSDT",
+          "trades": 0,
+          "netPnlUsdt": 0,
+          "wins": 0,
+          "preset": {
+            "liqInterval": "5min",
+            "zMin": 2,
+            "minLiqUsdBar": 50000,
+            "minDispAtr": 1,
+            "oiGateMode": "window",
+            "minRr": 0.8
+          }
+        },
+        {
+          "symbol": "BNBUSDT",
+          "trades": 0,
+          "netPnlUsdt": 0,
+          "wins": 0,
+          "preset": {
+            "liqInterval": "5min",
+            "zMin": 1.8,
+            "minLiqUsdBar": 30000,
+            "minDispAtr": 1,
+            "oiGateMode": "window",
+            "minRr": 0.8
+          }
+        }
+      ]
+    },
+    "production_1m": {
+      "label": "production_1m_liq",
+      "presetSummary": {
+        "liqInterval": "1min",
+        "zMin": 1.8,
+        "minLiqUsdBar": 10000,
+        "minDispAtr": 0.8,
+        "oiGateMode": "window",
+        "minRr": 0.8,
+        "tpAtrMult": 1.25
+      },
+      "portfolio": {
+        "startingUsdt": 100,
+        "finalEquityUsdt": 100,
+        "netPnlUsdt": 0,
+        "returnPct": 0,
+        "trades": 0,
+        "tradesPerDay": 0,
+        "winRate": 0,
+        "profitFactor": 0,
+        "maxDrawdownPct": 0,
+        "pnlByExit": {
+          "tp": 0,
+          "sl": 0,
+          "flip": 0,
+          "other": 0
+        },
+        "tradesDetail": []
+      },
+      "perCoin": [
+        {
+          "symbol": "BTCUSDT",
+          "trades": 0,
+          "netPnlUsdt": 0,
+          "wins": 0,
+          "preset": {
+            "liqInterval": "1min",
+            "zMin": 1.8,
+            "minLiqUsdBar": 10000,
+            "minDispAtr": 0.8,
+            "oiGateMode": "window",
+            "minRr": 0.8
+          }
+        },
+        {
+          "symbol": "ETHUSDT",
+          "trades": 0,
+          "netPnlUsdt": 0,
+          "wins": 0,
+          "preset": {
+            "liqInterval": "1min",
+            "zMin": 1.8,
+            "minLiqUsdBar": 8000,
+            "minDispAtr": 0.8,
+            "oiGateMode": "window",
+            "minRr": 0.8
+          }
+        },
+        {
+          "symbol": "BNBUSDT",
+          "trades": 0,
+          "netPnlUsdt": 0,
+          "wins": 0,
+          "preset": {
+            "liqInterval": "1min",
+            "zMin": 1.6,
+            "minLiqUsdBar": 6000,
+            "minDispAtr": 0.8,
+            "oiGateMode": "window",
+            "minRr": 0.8
+          }
+        }
+      ]
+    }
+  },
+  "caveat": "Production presets use OI window gate + full disp/minRr. Max force_orders archive ~2.1d only."
+}

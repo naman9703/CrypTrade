@@ -56,10 +56,30 @@ import {
   LIQ_CASCADE_BTC_1M_SMOKE_TEST,
   LIQ_CASCADE_ETH_1M_SMOKE_TEST,
   LIQ_CASCADE_PORTFOLIO_1M_SMOKE_TEST,
+  LIQ_CASCADE_BTC_1M_LIQ_1MIN,
+  LIQ_CASCADE_ETH_1M_LIQ_1MIN,
+  LIQ_CASCADE_BNB_1M_LIQ_1MIN,
+  LIQ_CASCADE_PORTFOLIO_1M_LIQ_1MIN,
+  LIQ_CASCADE_BTC_1M_SMOKE_1MIN,
+  LIQ_CASCADE_ETH_1M_SMOKE_1MIN,
+  LIQ_CASCADE_PORTFOLIO_1M_SMOKE_1MIN,
 } from "../lib/liqCascadePresets";
 import { MLCTS_BTC_15M } from "../lib/mlctsPresets";
+import {
+  MICRO_EVENT_BTC_1M,
+  MICRO_EVENT_ETH_1M,
+  MICRO_EVENT_BNB_1M,
+  MICRO_EVENT_PORTFOLIO_1M,
+  MICRO_EVENT_BTC_1M_LIQ_ONLY,
+} from "../lib/microEventPresets";
 import { LiqCascadeFeedStatusPanel } from "./LiqCascadeFeedStatus";
 import type { LiqCascadeFeedStatus } from "./LiqCascadeFeedStatus";
+import { LiqCascadeConfigPanel } from "./LiqCascadeConfigPanel";
+import { liqCascadeCfgFromBot } from "../lib/liqCascadeConfigUi";
+import { MicroEventFeedStatusPanel } from "./MicroEventFeedStatus";
+import type { MicroEventFeedStatus } from "./MicroEventFeedStatus";
+import { MicroEventConfigPanel } from "./MicroEventConfigPanel";
+import { microEventCfgFromBot } from "../lib/microEventConfigUi";
 import { SCALP_MR_BNB_5M, SCALP_MR_BNB_5M_OPTIMIZED, SCALP_MR_BNB_5M_LONG, SCALP_MR_BNB_5M_FREQ, SCALP_MR_BTC_5M, SCALP_MR_ETH_5M } from "../lib/scalpMrPresets";
 import {
   TREND_PULLBACK_BTC_5M_FAST_SCALP,
@@ -1347,6 +1367,11 @@ const NUMBERED_SIGNAL_SOURCES: { n: number; key: string; label: string }[] = [
     label: "MLCTS ★ 15m — multi-layer confluence (structure + liquidity + flow)",
   },
   {
+    n: 28,
+    key: "MICRO_EVENT",
+    label: "Micro Event ★ 1m — tick-first microstructure event scalper (continuation)",
+  },
+  {
     n: 24,
     key: "TOKYO_SESSION",
     label: "Tokyo Session ★ 15m — first-two-candle Asia bias + fixed R:R",
@@ -1432,6 +1457,11 @@ export function TradingPanel() {
       ? (s.bot?.liqCascadeFeedStatus as LiqCascadeFeedStatus | undefined)
       : undefined,
   );
+  const microEventFeedStatus = useAppStore((s) =>
+    String(s.bot?.manualStrategy ?? "").toUpperCase() === "MICRO_EVENT"
+      ? (s.bot?.microEventFeedStatus as MicroEventFeedStatus | undefined)
+      : undefined,
+  );
   const syncActiveInstanceOperational = useCallback(
     async (patch: InstanceOperationalPatch) => {
       if (!activeInstanceId) return;
@@ -1473,8 +1503,20 @@ export function TradingPanel() {
   const [strategySaveBusy, setStrategySaveBusy] = useState(false);
   const manualFormHydratedRef = useRef(false);
   const skipManualFormPersistRef = useRef(true);
-  const saveGatedBotConfig = useCallback(async (patch: Record<string, unknown>) => {
+  /** Preset buttons — replace draft wholesale (do not accumulate stale keys). */
+  const applyStrategyPresetToBot = useCallback(async (patch: Record<string, unknown>) => {
     applyStrategyPresetPatch(patch);
+    try {
+      await flushStagedStrategyBotPatch(patch);
+    } catch {
+      /* draft still staged — Save strategy persists */
+    }
+    return { ok: true };
+  }, []);
+
+  /** Incremental UI edits — merge into draft; survives alongside other staged fields until Save. */
+  const saveGatedBotConfig = useCallback(async (patch: Record<string, unknown>) => {
+    stageStrategyBotPatch(patch);
     try {
       await flushStagedStrategyBotPatch(patch);
     } catch {
@@ -1779,8 +1821,43 @@ export function TradingPanel() {
       capitalCyclePoolAnchorUsdt: Math.max(0, Number(bot?.capitalCyclePoolAnchorUsdt ?? 0)),
       capitalCycleRealizedPnlUsdt: Number(bot?.capitalCycleRealizedPnlUsdt ?? 0),
       capitalCycleSymbols: Array.isArray(bot?.capitalCycleSymbols) ? [...bot.capitalCycleSymbols] : [],
+      ...liqCascadeCfgFromBot(bot as Record<string, unknown> | null | undefined),
+      ...microEventCfgFromBot(bot as Record<string, unknown> | null | undefined),
     };
   }, [bot, configSeq]);
+
+  /** Instance-owned universe — live engine + instance DB (not strategy version). */
+  const saveUniverseOperationalConfig = useCallback(
+    async (patch: {
+      universeCoinBase?: "ALL" | "CUSTOM";
+      universeCustomSymbols?: string[];
+    }) => {
+      const coinBase = patch.universeCoinBase ?? cfg.universeCoinBase;
+      const symbols =
+        patch.universeCustomSymbols ??
+        (coinBase === "CUSTOM" ? cfg.universeCustomSymbols : []);
+      const tf = String(bot?.timeframe || cfg.timeframe || "1h");
+      const botPatch: Record<string, unknown> = { universeCoinBase: coinBase };
+      if (coinBase === "CUSTOM" && symbols.length > 0) {
+        botPatch.universeCustomSymbols = symbols;
+        botPatch.universe = buildCustomUniverseSnapshot(symbols, tf);
+      }
+      await api.botConfig(botPatch);
+      await syncActiveInstanceOperational({
+        universe: {
+          mode: cfg.universeCoinSelectMode,
+          coinBase,
+          customSymbols: coinBase === "CUSTOM" ? symbols : null,
+          pinnedSymbols:
+            Array.isArray(bot?.universePinnedSymbols) && bot.universePinnedSymbols.length > 0
+              ? bot.universePinnedSymbols
+              : null,
+          autoCoinPick: cfg.universeAutoCoinPick ?? null,
+        },
+      });
+    },
+    [bot, cfg, syncActiveInstanceOperational],
+  );
 
   const slPctServer = Number((cfg.supertrendFuturesFixedSlPct * 100).toFixed(8));
   const tpPctServer = Number((cfg.supertrendFuturesFixedTpPct * 100).toFixed(8));
@@ -2392,57 +2469,57 @@ export function TradingPanel() {
               label="★ Optimized 1H (1% SL / 1% trail)"
               highlight
               patch={SUPERTREND_ELITE_OPTIMIZED_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="BTC Optimized 1H"
               patch={SUPERTREND_ELITE_OPTIMIZED_BTC_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="Elite Auto 1H (any coin)"
               patch={SUPERTREND_ELITE_AUTO_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="ADX sep only"
               patch={SUPERTREND_ELITE_ADX_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="Percentile sep"
               patch={SUPERTREND_ELITE_PERCENTILE_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="ATR sep"
               patch={SUPERTREND_ELITE_ATR_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="Calibrated sep"
               patch={SUPERTREND_ELITE_CALIBRATED_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="BNB 1H FIXED"
               patch={SUPERTREND_ELITE_BNB_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="BTC 1H FIXED (0.08%)"
               patch={SUPERTREND_ELITE_BTC_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="BTC 1H + ADX20"
               patch={SUPERTREND_ELITE_BTC_1H_ADX}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="LINK 1H Auto"
               patch={SUPERTREND_ELITE_LINK_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
           </div>
           {cfg.supertrendFuturesAuto === true ? (
@@ -2464,17 +2541,17 @@ export function TradingPanel() {
               label="★ Any coin — Unified ADX sep"
               highlight
               patch={UNIFIED_ELITE_ADX_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="BNB 1H Unified"
               patch={UNIFIED_ELITE_BNB_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="BTC 1H Unified"
               patch={UNIFIED_ELITE_BTC_1H}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
           </div>
         </div>
@@ -2492,7 +2569,7 @@ export function TradingPanel() {
               label="★ Safe Intraday 15m"
               highlight
               patch={SAFE_INTRADAY_BNB_15M}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
           </div>
         </div>
@@ -2512,7 +2589,7 @@ export function TradingPanel() {
               highlight
               patch={buildBtcLiqPresetApplyPatch()}
               pushLog={pushLog}
-              applyPatch={saveGatedBotConfig}
+              applyPatch={applyStrategyPresetToBot}
               matchBot={bot}
               signatureKeys={INTRADAY_PRO_LIQ_BTC_15M_SIGNATURE_KEYS}
             />
@@ -2527,15 +2604,15 @@ export function TradingPanel() {
             <b>15m</b>. Autopsy: <span className="font-mono">npm run backtest:intraday-autopsy</span>
           </p>
           <div className="flex flex-wrap gap-2">
-            <TrendHtfStPresetButton label="★ BNB 15m Pro" highlight patch={INTRADAY_PRO_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BNB 15m Fib" patch={INTRADAY_PRO_FIB_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BNB 15m Inst. A+" patch={INTRADAY_PRO_SR_APLUS_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="★ BNB 15m Pro" highlight patch={INTRADAY_PRO_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BNB 15m Fib" patch={INTRADAY_PRO_FIB_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BNB 15m Inst. A+" patch={INTRADAY_PRO_SR_APLUS_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
             <TrendHtfStPresetButton
               label="★ LIQ_CORE (rebuild)"
               highlight
               patch={INTRADAY_PRO_LIQ_CORE_PORTFOLIO_15M}
               pushLog={pushLog}
-              applyPatch={saveGatedBotConfig}
+              applyPatch={applyStrategyPresetToBot}
               matchBot={bot}
               signatureKeys={INTRADAY_PRO_LIQ_CORE_SIGNATURE_KEYS}
             />
@@ -2543,7 +2620,7 @@ export function TradingPanel() {
               label="BNB LIQ AST+vol15 (research sleeve)"
               patch={INTRADAY_PRO_LIQ_BNB_AST_VOL15_15M}
               pushLog={pushLog}
-              applyPatch={saveGatedBotConfig}
+              applyPatch={applyStrategyPresetToBot}
               matchBot={bot}
               signatureKeys={[
                 "intradayLiqSessionNarratives",
@@ -2559,7 +2636,7 @@ export function TradingPanel() {
               label="BNB LIQ prepared-mit (research ~1.5/wk)"
               patch={INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_15M}
               pushLog={pushLog}
-              applyPatch={saveGatedBotConfig}
+              applyPatch={applyStrategyPresetToBot}
               matchBot={bot}
               signatureKeys={[
                 "intradayLiqRequireDisplacementV2",
@@ -2573,7 +2650,7 @@ export function TradingPanel() {
               label="BNB LIQ prepared-mit H020 (return-max research)"
               patch={INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_H020_15M}
               pushLog={pushLog}
-              applyPatch={saveGatedBotConfig}
+              applyPatch={applyStrategyPresetToBot}
               matchBot={bot}
               signatureKeys={[
                 "intradayLiqRequireDisplacementV2",
@@ -2590,7 +2667,7 @@ export function TradingPanel() {
               highlight
               patch={INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_BUYBD_15M}
               pushLog={pushLog}
-              applyPatch={saveGatedBotConfig}
+              applyPatch={applyStrategyPresetToBot}
               matchBot={bot}
               signatureKeys={[
                 "intradayLiqRequireDisplacementV2",
@@ -2609,7 +2686,7 @@ export function TradingPanel() {
               label="BNB LIQ sellBO disp11 (return-max research)"
               patch={INTRADAY_PRO_LIQ_BNB_PREPARED_MIT_SELLBO_15M}
               pushLog={pushLog}
-              applyPatch={saveGatedBotConfig}
+              applyPatch={applyStrategyPresetToBot}
               matchBot={bot}
               signatureKeys={[
                 "intradayLiqRequireDisplacementV2",
@@ -2624,18 +2701,18 @@ export function TradingPanel() {
                 "intradayLiqMaxAdx",
               ]}
             />
-            <TrendHtfStPresetButton label="BNB 15m LIQ Solo (legacy)" patch={INTRADAY_PRO_LIQ_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 15m LIQ Solo (legacy)" patch={INTRADAY_PRO_LIQ_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
             <TrendHtfStPresetButton
               label="BNB+BTC LIQ Portfolio (legacy)"
               patch={INTRADAY_PRO_LIQ_PORTFOLIO_15M}
               pushLog={pushLog}
-              applyPatch={saveGatedBotConfig}
+              applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="BNB+ETH FREQ_EDGE (research)"
               patch={buildLiqFreqEdgePortfolioPatch()}
               pushLog={pushLog}
-              applyPatch={saveGatedBotConfig}
+              applyPatch={applyStrategyPresetToBot}
               matchBot={bot}
               signatureKeys={INTRADAY_PRO_LIQ_FREQ_EDGE_SIGNATURE_KEYS}
             />
@@ -2643,31 +2720,31 @@ export function TradingPanel() {
               label="BNB+ETH LIQ+VP Proximity (research)"
               patch={buildLiqVpProximityPortfolioPatch()}
               pushLog={pushLog}
-              applyPatch={saveGatedBotConfig}
+              applyPatch={applyStrategyPresetToBot}
               matchBot={bot}
               signatureKeys={INTRADAY_PRO_LIQ_VP_PROXIMITY_SIGNATURE_KEYS}
             />
-            <TrendHtfStPresetButton label="BNB 15m LIQ Daily" patch={INTRADAY_PRO_LIQ_DAILY_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 15m LIQ Daily" patch={INTRADAY_PRO_LIQ_DAILY_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
             <TrendHtfStPresetButton
               label="★ ETH 15m LIQ"
               highlight
               patch={buildEthLiqPresetApplyPatch()}
               pushLog={pushLog}
-              applyPatch={saveGatedBotConfig}
+              applyPatch={applyStrategyPresetToBot}
               matchBot={bot}
               signatureKeys={INTRADAY_PRO_LIQ_ETH_15M_SIGNATURE_KEYS}
             />
-            <TrendHtfStPresetButton label="BNB 15m SMC Sweep" patch={INTRADAY_PRO_ICT_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 15m SMC Sweep" patch={INTRADAY_PRO_ICT_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
             <TrendHtfStPresetButton
               label="BNB 15m SMC Research (frozen)"
               patch={INTRADAY_PRO_ICT_RESEARCH_15M}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
-            <TrendHtfStPresetButton label="BNB 1H SMC Research (frozen)" patch={INTRADAY_PRO_ICT_RESEARCH_1H} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BNB 15m SMC ICT Full" patch={INTRADAY_PRO_ICT_FULL_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BNB 15m Big Move" patch={INTRADAY_PRO_BIGMOVE_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BNB 5m" patch={INTRADAY_PRO_5M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BTC 15m" patch={SR_INTRADAY_BTC_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 1H SMC Research (frozen)" patch={INTRADAY_PRO_ICT_RESEARCH_1H} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BNB 15m SMC ICT Full" patch={INTRADAY_PRO_ICT_FULL_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BNB 15m Big Move" patch={INTRADAY_PRO_BIGMOVE_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BNB 5m" patch={INTRADAY_PRO_5M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BTC 15m" patch={SR_INTRADAY_BTC_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
           </div>
           <p className="text-[10px] text-teal-800/90 dark:text-teal-200/80">
             Per-technique toggles are in <b>Universal gates & indicators</b> → Intraday gates (when this path is selected).
@@ -2683,7 +2760,7 @@ export function TradingPanel() {
               label="★ BNB 15m Situation Router"
               highlight
               patch={BNB_SITUATION_ROUTER_15M}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
           </div>
         </div>
@@ -2693,12 +2770,12 @@ export function TradingPanel() {
           <div className="font-semibold">Strategy presets · SCALP_MR</div>
           <p>5m mean-reversion scalper — BB pierce + RSI reclaim, filtered by ADX/ATR/volume. Use <b>5m</b> chart. Fees dominate if gates are too loose.</p>
           <div className="flex flex-wrap gap-2">
-            <TrendHtfStPresetButton label="BNB 5m research" highlight patch={SCALP_MR_BNB_5M_OPTIMIZED} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BNB 5m long-only" patch={SCALP_MR_BNB_5M_LONG} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BNB 5m selective" patch={SCALP_MR_BNB_5M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BNB 5m higher freq" patch={SCALP_MR_BNB_5M_FREQ} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BTC 5m" patch={SCALP_MR_BTC_5M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="ETH 5m" patch={SCALP_MR_ETH_5M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="BNB 5m research" highlight patch={SCALP_MR_BNB_5M_OPTIMIZED} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BNB 5m long-only" patch={SCALP_MR_BNB_5M_LONG} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BNB 5m selective" patch={SCALP_MR_BNB_5M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BNB 5m higher freq" patch={SCALP_MR_BNB_5M_FREQ} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BTC 5m" patch={SCALP_MR_BTC_5M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="ETH 5m" patch={SCALP_MR_ETH_5M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
           </div>
         </div>
         )}
@@ -2709,8 +2786,8 @@ export function TradingPanel() {
             5m HTF-trend RSI bounce scalper. Research (Jan–May 2026): <b>BTC-only</b> fast-scalp was net positive; multi-coin portfolio still negative after fees. Use <b>5m</b> chart.
           </p>
           <div className="flex flex-wrap gap-2">
-            <TrendHtfStPresetButton label="★ BTC 5m fast scalp" highlight patch={TREND_PULLBACK_BTC_5M_FAST_SCALP} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="Multi-coin 5m (research)" patch={TREND_PULLBACK_MULTI_5M_FAST_SCALP} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="★ BTC 5m fast scalp" highlight patch={TREND_PULLBACK_BTC_5M_FAST_SCALP} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="Multi-coin 5m (research)" patch={TREND_PULLBACK_MULTI_5M_FAST_SCALP} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
           </div>
         </div>
         )}
@@ -2719,7 +2796,7 @@ export function TradingPanel() {
           <div className="font-semibold">Strategy presets · CRT_TBS</div>
           <p>4H candle range + turtle body soup (ICT reversal). Use <b>15m</b>.</p>
           <div className="flex flex-wrap gap-2">
-            <TrendHtfStPresetButton label="★ BNB 15m CRT + TBS" highlight patch={CRT_TBS_BNB_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="★ BNB 15m CRT + TBS" highlight patch={CRT_TBS_BNB_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
           </div>
         </div>
         )}
@@ -2728,8 +2805,9 @@ export function TradingPanel() {
           <div className="font-semibold">Strategy presets · LIQ_CASCADE</div>
           <LiqCascadeFeedStatusPanel status={liqCascadeFeedStatus} />
           <p>
-            Liquidation cascade fade on <b>1m</b> bar-close (backtest) + optional live tick executor on Binance{" "}
-            <span className="font-mono">forceOrder</span>. Requires Coinalyze liq/OI ingest for backtests.
+            Liquidation cascade fade on <b>1m</b> chart bar-close (backtest) + optional live tick executor on Binance{" "}
+            <span className="font-mono">forceOrder</span>. Liq from <span className="font-mono">force_orders</span> archive;
+            OI gate uses Binance OI ingest (5m) by default.
           </p>
           <p className="text-amber-800 dark:text-amber-300">
             Preset clears ST/intel/VP overlays from prior strategies. Intraday gate checkboxes default <b>on</b> unless explicitly set <b>off</b> — re-apply preset then <b>Save strategy</b>.
@@ -2739,25 +2817,58 @@ export function TradingPanel() {
           </p>
           <p className="text-[10px] text-slate-600 dark:text-slate-400">
             <b>Paper smoke test</b> presets: gates = liq $ + dom + z only (OI/disp/confirm off) — for verifying Activity + orders, not production.
+            <b> 1m liq</b> presets aggregate force-order ticks into 1-minute liq bars (~5× bar-close frequency vs default 5m liq); thresholds scaled (~⅕ per-bar $, shorter z lookback).
           </p>
           <div className="flex flex-wrap gap-2">
-            <TrendHtfStPresetButton label="★ BTC 1m cascade fade" highlight patch={LIQ_CASCADE_BTC_1M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="ETH 1m cascade fade" patch={LIQ_CASCADE_ETH_1M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BNB 1m cascade fade" patch={LIQ_CASCADE_BNB_1M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BTC+ETH+BNB portfolio" patch={LIQ_CASCADE_PORTFOLIO_1M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BTC+ETH+BNB live tick (paper)" patch={LIQ_CASCADE_PORTFOLIO_1M_LIVE_TICK} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="BTC live tick (paper)" patch={LIQ_CASCADE_BTC_1M_LIVE_TICK} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="★ BTC 1m cascade fade (5m liq)" highlight patch={LIQ_CASCADE_BTC_1M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="ETH 1m cascade fade (5m liq)" patch={LIQ_CASCADE_ETH_1M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BNB 1m cascade fade (5m liq)" patch={LIQ_CASCADE_BNB_1M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BTC+ETH+BNB portfolio (5m liq)" patch={LIQ_CASCADE_PORTFOLIO_1M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BTC+ETH+BNB live tick (paper)" patch={LIQ_CASCADE_PORTFOLIO_1M_LIVE_TICK} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BTC live tick (paper)" patch={LIQ_CASCADE_BTC_1M_LIVE_TICK} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
           </div>
           <div className="flex flex-wrap gap-2 border-t border-orange-300/50 pt-2 dark:border-orange-700/50">
-            <TrendHtfStPresetButton label="⚠ BTC paper smoke (liq+z only)" highlight patch={LIQ_CASCADE_BTC_1M_SMOKE_TEST} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="⚠ ETH paper smoke" patch={LIQ_CASCADE_ETH_1M_SMOKE_TEST} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-            <TrendHtfStPresetButton label="⚠ BTC+ETH+BNB paper smoke" patch={LIQ_CASCADE_PORTFOLIO_1M_SMOKE_TEST} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="★ BTC 1m liq bars (high freq)" highlight patch={LIQ_CASCADE_BTC_1M_LIQ_1MIN} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="ETH 1m liq bars" patch={LIQ_CASCADE_ETH_1M_LIQ_1MIN} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BNB 1m liq bars" patch={LIQ_CASCADE_BNB_1M_LIQ_1MIN} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BTC+ETH+BNB 1m liq portfolio" patch={LIQ_CASCADE_PORTFOLIO_1M_LIQ_1MIN} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+          </div>
+          <div className="flex flex-wrap gap-2 border-t border-orange-300/50 pt-2 dark:border-orange-700/50">
+            <TrendHtfStPresetButton label="⚠ BTC paper smoke (5m liq)" highlight patch={LIQ_CASCADE_BTC_1M_SMOKE_TEST} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="⚠ ETH paper smoke (5m liq)" patch={LIQ_CASCADE_ETH_1M_SMOKE_TEST} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="⚠ BTC+ETH+BNB paper smoke (5m liq)" patch={LIQ_CASCADE_PORTFOLIO_1M_SMOKE_TEST} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="⚠ BTC paper smoke (1m liq)" highlight patch={LIQ_CASCADE_BTC_1M_SMOKE_1MIN} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="⚠ ETH paper smoke (1m liq)" patch={LIQ_CASCADE_ETH_1M_SMOKE_1MIN} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="⚠ BTC+ETH+BNB paper smoke (1m liq)" patch={LIQ_CASCADE_PORTFOLIO_1M_SMOKE_1MIN} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
           </div>
           {cfg.supertrendFuturesAuto === true || cfg.supertrendSpotAuto === true ? (
             <p className="text-[10px] text-amber-800 dark:text-amber-300">
               Turn off <b>supertrendFuturesAuto</b> / <b>supertrendSpotAuto</b> (preset sets both off) — leftover ST flags do not change live LIQ_CASCADE bar-close, but confuse backtest labels until you Save strategy.
             </p>
           ) : null}
+          <LiqCascadeConfigPanel cfg={cfg} onPatch={stageStrategyBotPatch} />
+        </div>
+        )}
+        {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "MICRO_EVENT") && (
+        <div className="mt-2 rounded-lg border border-violet-400 dark:border-violet-600 bg-violet-50 dark:bg-violet-950/30 px-3 py-2 text-[11px] text-violet-900 dark:text-violet-200 space-y-1.5">
+          <div className="font-semibold">Strategy presets · MICRO_EVENT</div>
+          <MicroEventFeedStatusPanel status={microEventFeedStatus} />
+          <p>
+            Tick-first microstructure scalper on <b>1m</b> — liq spike + N-of-M confluence (OI, book, CVD, funding).
+            Default <b>continuation</b> (ride forced flow). Live tick executor on Binance{" "}
+            <span className="font-mono">forceOrder</span> + aggTrade + multi-symbol depth.
+          </p>
+          <p className="text-amber-800 dark:text-amber-300">
+            Paper/testnet unless <span className="font-mono">MICRO_EVENT_LIVE_ALLOW=1</span>. Not certified — run tick-replay validation before deploy claims.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <TrendHtfStPresetButton label="★ BTC 1m continuation" highlight patch={MICRO_EVENT_BTC_1M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="ETH 1m continuation" patch={MICRO_EVENT_ETH_1M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BNB 1m continuation" patch={MICRO_EVENT_BNB_1M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="BTC+ETH+BNB portfolio" patch={MICRO_EVENT_PORTFOLIO_1M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+            <TrendHtfStPresetButton label="⚠ BTC liq-only ablation" patch={MICRO_EVENT_BTC_1M_LIQ_ONLY} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+          </div>
+          <MicroEventConfigPanel cfg={cfg} onPatch={stageStrategyBotPatch} />
         </div>
         )}
         {showStrategyPresetStrip(cfg.strategyMode, cfg.manualStrategy, "MLCTS") && (
@@ -2770,7 +2881,7 @@ export function TradingPanel() {
             Research-only — not validated for live deploy. Layer panel updates live above the chart when this strategy is selected.
           </p>
           <div className="flex flex-wrap gap-2">
-            <TrendHtfStPresetButton label="★ BTC 15m MLCTS" highlight patch={MLCTS_BTC_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="★ BTC 15m MLCTS" highlight patch={MLCTS_BTC_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
           </div>
         </div>
         )}
@@ -2779,7 +2890,7 @@ export function TradingPanel() {
           <div className="font-semibold">Strategy presets · TOKYO_SESSION</div>
           <p>Asia session sweep preset for BNB 15m.</p>
           <div className="flex flex-wrap gap-2">
-            <TrendHtfStPresetButton label="★ BNB 15m Tokyo Session" highlight patch={TOKYO_SESSION_BNB_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+            <TrendHtfStPresetButton label="★ BNB 15m Tokyo Session" highlight patch={TOKYO_SESSION_BNB_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
           </div>
         </div>
         )}
@@ -2796,26 +2907,26 @@ export function TradingPanel() {
               FREQ research (auto coin-resolve when vpPlaybook=FREQ)
             </div>
             <div className="flex flex-wrap gap-2">
-              <TrendHtfStPresetButton label="★ ETH FREQ" highlight patch={VOLUME_PROFILE_FREQ_ETH_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="★ BNB FREQ (VAL lock)" highlight patch={VOLUME_PROFILE_FREQ_BNB_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="★ SOL FREQ (VAL+rej wick40)" highlight patch={VOLUME_PROFILE_FREQ_SOL_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="★ AVAX FREQ (VAL+rej cells)" highlight patch={VOLUME_PROFILE_FREQ_AVAX_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="★ DOGE FREQ (low-freq sleeve)" highlight patch={VOLUME_PROFILE_FREQ_DOGE_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="★ NEAR FREQ (low-freq sleeve)" highlight patch={VOLUME_PROFILE_FREQ_NEAR_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="★ ADA FREQ (year-clean, thin-N)" highlight patch={VOLUME_PROFILE_FREQ_ADA_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="AAVE FREQ (cert REJECT)" patch={VOLUME_PROFILE_FREQ_AAVE_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="BTC FREQ (shorts)" patch={VOLUME_PROFILE_FREQ_BTC_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="FREQ portfolio (ETH+BNB+BTC)" patch={VOLUME_PROFILE_FREQ_PORTFOLIO_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+              <TrendHtfStPresetButton label="★ ETH FREQ" highlight patch={VOLUME_PROFILE_FREQ_ETH_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="★ BNB FREQ (VAL lock)" highlight patch={VOLUME_PROFILE_FREQ_BNB_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="★ SOL FREQ (VAL+rej wick40)" highlight patch={VOLUME_PROFILE_FREQ_SOL_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="★ AVAX FREQ (VAL+rej cells)" highlight patch={VOLUME_PROFILE_FREQ_AVAX_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="★ DOGE FREQ (low-freq sleeve)" highlight patch={VOLUME_PROFILE_FREQ_DOGE_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="★ NEAR FREQ (low-freq sleeve)" highlight patch={VOLUME_PROFILE_FREQ_NEAR_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="★ ADA FREQ (year-clean, thin-N)" highlight patch={VOLUME_PROFILE_FREQ_ADA_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="AAVE FREQ (cert REJECT)" patch={VOLUME_PROFILE_FREQ_AAVE_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="BTC FREQ (shorts)" patch={VOLUME_PROFILE_FREQ_BTC_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="FREQ portfolio (ETH+BNB+BTC)" patch={VOLUME_PROFILE_FREQ_PORTFOLIO_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
             </div>
             <div className="text-[10px] font-semibold uppercase tracking-wide text-fuchsia-800/80 dark:text-fuchsia-300/80 pt-1">
               Older / Tier-A presets
             </div>
             <div className="flex flex-wrap gap-2">
-              <TrendHtfStPresetButton label="BNB 15m VP (Tier-A)" patch={VOLUME_PROFILE_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="BNB Tier-A (same)" patch={VOLUME_PROFILE_TIER_A_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="BNB balanced" patch={VOLUME_PROFILE_BALANCED_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="BTC 15m VP (Tier-A)" patch={VOLUME_PROFILE_BTC_15M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
-              <TrendHtfStPresetButton label="BNB 5m VP" patch={VOLUME_PROFILE_5M} pushLog={pushLog} applyPatch={saveGatedBotConfig} />
+              <TrendHtfStPresetButton label="BNB 15m VP (Tier-A)" patch={VOLUME_PROFILE_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="BNB Tier-A (same)" patch={VOLUME_PROFILE_TIER_A_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="BNB balanced" patch={VOLUME_PROFILE_BALANCED_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="BTC 15m VP (Tier-A)" patch={VOLUME_PROFILE_BTC_15M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
+              <TrendHtfStPresetButton label="BNB 5m VP" patch={VOLUME_PROFILE_5M} pushLog={pushLog} applyPatch={applyStrategyPresetToBot} />
             </div>
           </div>
         )}
@@ -2836,27 +2947,27 @@ export function TradingPanel() {
               label="★ BNB Optimal 10%"
               highlight
               patch={TREND_HTF_ST_OPTIMAL_BNB}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="BTC Optimal 10%"
               patch={TREND_HTF_ST_OPTIMAL_BTC}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="BNB High-WR 50%"
               patch={TREND_HTF_ST_BNB_HIGH_WR}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="BNB max return 10%"
               patch={TREND_HTF_ST_BNB_MAX_RETURN}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
             <TrendHtfStPresetButton
               label="BNB surgical 10%"
               patch={TREND_HTF_ST_BNB_SURGICAL}
-              pushLog={pushLog} applyPatch={saveGatedBotConfig}
+              pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
             />
           </div>
           <p className="text-[10px] text-amber-800 dark:text-amber-300">
@@ -3384,8 +3495,11 @@ export function TradingPanel() {
                         deferTask(() => {
                           void (async () => {
                             try {
-                              await api.botConfig({ universeCoinBase: v });
-                              pushLog({ level: "info", msg: v === "CUSTOM" ? "Coin base: custom watchlist" : "Coin base: all Binance universe" });
+                              await saveUniverseOperationalConfig({ universeCoinBase: v });
+                              pushLog({
+                                level: "info",
+                                msg: v === "CUSTOM" ? "Coin base: custom watchlist" : "Coin base: all Binance universe",
+                              });
                             } catch {
                               pushLog({ level: "error", msg: "Failed to set coin base" });
                             }
@@ -4932,12 +5046,12 @@ export function TradingPanel() {
                           label="★ ST + Intel 80% WR"
                           highlight
                           patch={SUPERTREND_INTEL_80WR}
-                          pushLog={pushLog} applyPatch={saveGatedBotConfig}
+                          pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
                         />
                         <TrendHtfStPresetButton
                           label="ST + Intel + Trail"
                           patch={SUPERTREND_INTEL_TRAIL}
-                          pushLog={pushLog} applyPatch={saveGatedBotConfig}
+                          pushLog={pushLog} applyPatch={applyStrategyPresetToBot}
                         />
                       </div>
                       <p className="mt-1 text-[10px] text-amber-800 dark:text-amber-300">
@@ -6247,28 +6361,15 @@ export function TradingPanel() {
         initialSymbols={cfg.universeCustomSymbols}
         onClose={() => setCustomUniverseOpen(false)}
         onSave={async (symbols) => {
-          const tf = String(bot?.timeframe || cfg.timeframe || "1h");
-          await api.botConfig({ universeCustomSymbols: symbols, universeCoinBase: "CUSTOM" });
-          const snap = buildCustomUniverseSnapshot(symbols, tf);
-          const { useAppStore, deriveViewBot, draftByModeWithInstanceContext } = await import("../ws/store");
-          useAppStore.setState((s) => {
-            const prevLive =
-              s.liveBot && typeof s.liveBot === "object" && !Array.isArray(s.liveBot)
-                ? (s.liveBot as Record<string, unknown>)
-                : {};
-            const liveBot = {
-              ...prevLive,
-              universe: snap,
-              universeCustomSymbols: symbols,
+          try {
+            await saveUniverseOperationalConfig({
               universeCoinBase: "CUSTOM",
-            };
-            const slug = tradingModeToApiModeSlug(s.mode);
-            return {
-              liveBot,
-              bot: deriveViewBot(s.mode, liveBot, draftByModeWithInstanceContext(s, slug)),
-            };
-          });
-          pushLog({ level: "info", msg: "Custom coin base saved", detail: { count: symbols.length } });
+              universeCustomSymbols: symbols,
+            });
+            pushLog({ level: "info", msg: "Custom coin base saved", detail: { count: symbols.length } });
+          } catch {
+            pushLog({ level: "error", msg: "Failed to save custom coin list" });
+          }
         }}
       />
 

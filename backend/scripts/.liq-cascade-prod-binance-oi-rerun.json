@@ -1,0 +1,225 @@
+{
+  "generatedAt": "2026-07-31T14:19:21.137Z",
+  "window": {
+    "from": "2026-07-29T02:20:03.699Z",
+    "to": "2026-07-31T14:17:25.781Z",
+    "hours": 59.96
+  },
+  "oiData": "Binance historical_open_interest (5m for 1m+5m liq intervals)",
+  "comparePrior": {
+    "coinalyzeOiOff": {
+      "trades": 17,
+      "netPnlUsdt": -2.4,
+      "note": "prior rerun with OI off"
+    }
+  },
+  "results": {
+    "production_5m": {
+      "presetSummary": {
+        "liqInterval": "5min",
+        "oiSource": "binance",
+        "oiGateMode": "window",
+        "minOiDropPct": 0.12,
+        "oiWindowBars": 3,
+        "eventCooldownLiqBars": 12,
+        "tpAtrMult": 5
+      },
+      "oiMeta": {
+        "BTCUSDT": {
+          "oiSource": "binance",
+          "oiPoints": 767,
+          "oiIntervalMs": 300000
+        },
+        "ETHUSDT": {
+          "oiSource": "binance",
+          "oiPoints": 767,
+          "oiIntervalMs": 300000
+        },
+        "BNBUSDT": {
+          "oiSource": "binance",
+          "oiPoints": 767,
+          "oiIntervalMs": 300000
+        }
+      },
+      "perCoin": [
+        {
+          "symbol": "BTCUSDT",
+          "trades": 1,
+          "netPnlUsdt": -1.0489,
+          "wins": 0
+        },
+        {
+          "symbol": "ETHUSDT",
+          "trades": 6,
+          "netPnlUsdt": -2.755,
+          "wins": 2
+        },
+        {
+          "symbol": "BNBUSDT",
+          "trades": 1,
+          "netPnlUsdt": 0.1271,
+          "wins": 1
+        }
+      ],
+      "portfolio": {
+        "netPnlUsdt": -3.6464,
+        "returnPct": -3.6464,
+        "trades": 8,
+        "tradesPerDay": 3.2,
+        "winRate": 0.375,
+        "profitFactor": 0.3895,
+        "tradesDetail": [
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-29T03:30:00.000Z",
+            "exit": "2026-07-29T04:04:00.000Z",
+            "netPnl": 1.2599,
+            "exitReason": "tp"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-30T00:45:00.000Z",
+            "exit": "2026-07-30T00:53:00.000Z",
+            "netPnl": -1.1629,
+            "exitReason": "sl"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-30T13:45:00.000Z",
+            "exit": "2026-07-30T13:49:00.000Z",
+            "netPnl": -1.2917,
+            "exitReason": "sl"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-31T01:50:00.000Z",
+            "exit": "2026-07-31T02:16:00.000Z",
+            "netPnl": -1.2351,
+            "exitReason": "sl"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-31T12:16:00.000Z",
+            "exit": "2026-07-31T13:04:00.000Z",
+            "netPnl": 0.9438,
+            "exitReason": "tp"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-31T13:50:00.000Z",
+            "exit": "2026-07-31T13:52:00.000Z",
+            "netPnl": -1.2625,
+            "exitReason": "sl"
+          },
+          {
+            "symbol": "BTCUSDT",
+            "entry": "2026-07-31T13:50:00.000Z",
+            "exit": "2026-07-31T14:02:00.000Z",
+            "netPnl": -1.0201,
+            "exitReason": "sl"
+          },
+          {
+            "symbol": "BNBUSDT",
+            "entry": "2026-07-31T14:10:00.000Z",
+            "exit": "2026-07-31T14:17:00.000Z",
+            "netPnl": 0.1223,
+            "exitReason": "session_end"
+          }
+        ]
+      }
+    },
+    "production_1m": {
+      "presetSummary": {
+        "liqInterval": "1min",
+        "oiSource": "binance",
+        "oiGateMode": "window",
+        "minOiDropPct": 0.12,
+        "oiWindowBars": 15,
+        "eventCooldownLiqBars": 12,
+        "tpAtrMult": 5
+      },
+      "oiMeta": {
+        "BTCUSDT": {
+          "oiSource": "binance",
+          "oiPoints": 767,
+          "oiIntervalMs": 300000
+        },
+        "ETHUSDT": {
+          "oiSource": "binance",
+          "oiPoints": 767,
+          "oiIntervalMs": 300000
+        },
+        "BNBUSDT": {
+          "oiSource": "binance",
+          "oiPoints": 767,
+          "oiIntervalMs": 300000
+        }
+      },
+      "perCoin": [
+        {
+          "symbol": "BTCUSDT",
+          "trades": 0,
+          "netPnlUsdt": 0,
+          "wins": 0
+        },
+        {
+          "symbol": "ETHUSDT",
+          "trades": 4,
+          "netPnlUsdt": -0.7632,
+          "wins": 2
+        },
+        {
+          "symbol": "BNBUSDT",
+          "trades": 1,
+          "netPnlUsdt": -1.3803,
+          "wins": 0
+        }
+      ],
+      "portfolio": {
+        "netPnlUsdt": -2.1047,
+        "returnPct": -2.1047,
+        "trades": 5,
+        "tradesPerDay": 2,
+        "winRate": 0.4,
+        "profitFactor": 0.4065,
+        "tradesDetail": [
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-29T04:04:00.000Z",
+            "exit": "2026-07-29T04:06:00.000Z",
+            "netPnl": -1.1231,
+            "exitReason": "sl"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-30T22:01:00.000Z",
+            "exit": "2026-07-30T22:09:00.000Z",
+            "netPnl": 0.6395,
+            "exitReason": "tp"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-31T12:10:00.000Z",
+            "exit": "2026-07-31T13:04:00.000Z",
+            "netPnl": 0.802,
+            "exitReason": "tp"
+          },
+          {
+            "symbol": "BNBUSDT",
+            "entry": "2026-07-31T14:07:00.000Z",
+            "exit": "2026-07-31T14:09:00.000Z",
+            "netPnl": -1.3847,
+            "exitReason": "sl"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-31T14:06:00.000Z",
+            "exit": "2026-07-31T14:10:00.000Z",
+            "netPnl": -1.0384,
+            "exitReason": "sl"
+          }
+        ]
+      }
+    }
+  }
+}

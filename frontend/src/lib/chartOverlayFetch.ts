@@ -1,5 +1,19 @@
 /** Cached economic-calendar + whale overlay payloads for the chart (dedupe + TTL). */
 
+function chartIntervalMs(interval: string): number {
+  const s = String(interval ?? "1m").trim().toLowerCase();
+  const m = /^(\d+)(m|h|d|w)$/i.exec(s);
+  if (!m) return 60_000;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n <= 0) return 60_000;
+  const u = m[2].toLowerCase();
+  if (u === "m") return n * 60_000;
+  if (u === "h") return n * 3_600_000;
+  if (u === "d") return n * 86_400_000;
+  if (u === "w") return n * 7 * 86_400_000;
+  return 60_000;
+}
+
 export type ChartOverlayEvent = {
   id: string;
   title: string;
@@ -91,9 +105,79 @@ export function resetChartOverlayFetchCacheForTests(): void {
 /** Min bars in WS store before background REST reconcile may skip replacing the buffer. */
 const MIN_STORE_BARS_FOR_REST_TAIL_SKIP = 30;
 
+function maxBarsForHistoryLocal(timeframe: string, hours = 24): number {
+  const tf = String(timeframe || "1m").toLowerCase().trim();
+  const h = Math.max(0.25, Number(hours) || 24);
+  const totalMinutes = h * 60;
+  const m = /^(\d+)(m|h|d)$/.exec(tf);
+  if (!m) return Math.min(3000, Math.ceil(totalMinutes));
+  const n = Number(m[1]);
+  const u = m[2];
+  let bars: number;
+  if (u === "m") bars = Math.ceil(totalMinutes / n);
+  else if (u === "h") bars = Math.ceil(h / n);
+  else bars = Math.ceil(h / (24 * n));
+  return Math.min(3000, Math.max(30, bars));
+}
+
+function minStoreBarsForChartWindow(timeframe?: string, hours = 24): number {
+  if (!timeframe?.trim()) return MIN_STORE_BARS_FOR_REST_TAIL_SKIP;
+  const windowBars = maxBarsForHistoryLocal(timeframe, hours);
+  return Math.max(MIN_STORE_BARS_FOR_REST_TAIL_SKIP, Math.floor(windowBars * 0.85));
+}
+
+export { minStoreBarsForChartWindow };
+
 /**
- * Background REST reconcile may skip when WS tail is already current. Initial hydrate and thin
- * buffers (e.g. one WS tick before REST returns) must always apply REST history.
+ * True when bar open times are spaced wider than the chart interval (e.g. 15m bars on a 1m chart).
+ * WS primary buffers can retain wrong-interval klines briefly after a timeframe switch.
+ */
+export function chartBufferSpacingLooksWrong(
+  candles: Array<{ ts?: unknown }> | undefined,
+  timeframe?: string,
+): boolean {
+  const tf = String(timeframe || "").trim();
+  if (!tf || !Array.isArray(candles) || candles.length < 8) return false;
+  const tfMs = chartIntervalMs(tf);
+  if (!Number.isFinite(tfMs) || tfMs <= 0) return false;
+  const deltas: number[] = [];
+  const start = Math.max(1, candles.length - 40);
+  for (let i = start; i < candles.length; i++) {
+    const d = Number(candles[i]?.ts) - Number(candles[i - 1]?.ts);
+    if (Number.isFinite(d) && d > 0) deltas.push(d);
+  }
+  if (deltas.length < 4) return false;
+  deltas.sort((a, b) => a - b);
+  const med = deltas[Math.floor(deltas.length / 2)]!;
+  return med > tfMs * 1.8;
+}
+
+/**
+ * True when the buffer cannot paint a full chart window (thin count, internal gaps, or wrong interval).
+ * 1m/24h needs ~1224 bars; ~96 WS bars pass spacing checks but still look like sparse dashes.
+ */
+export function chartBufferCoverageInsufficient(
+  candles: Array<{ ts?: unknown }> | undefined,
+  timeframe?: string,
+  hours = 24,
+): boolean {
+  if (!Array.isArray(candles) || candles.length === 0) return true;
+  const tf = String(timeframe || "").trim();
+  if (chartBufferSpacingLooksWrong(candles, tf)) return true;
+  const minBars = minStoreBarsForChartWindow(timeframe, hours);
+  if (candles.length < minBars) return true;
+  const tfMs = chartIntervalMs(tf);
+  if (!Number.isFinite(tfMs) || tfMs <= 0) return false;
+  const first = Number(candles[0]?.ts);
+  const last = Number(candles[candles.length - 1]?.ts);
+  if (!Number.isFinite(first) || !Number.isFinite(last) || last <= first) return true;
+  const spanSlots = Math.floor((last - first) / tfMs) + 1;
+  return spanSlots > candles.length * 1.08;
+}
+
+/**
+ * Background REST reconcile may skip replacing the WS store when tail is current. Initial hydrate,
+ * thin buffers, and wrong-interval spacing must always apply REST history.
  */
 export function shouldSkipRestCandleReconcile(opts: {
   preserveView: boolean;
@@ -101,11 +185,23 @@ export function shouldSkipRestCandleReconcile(opts: {
   storeMatchesView: boolean;
   storeLastTs: number;
   restLastTs: number;
+  timeframe?: string;
+  hours?: number;
+  storeCandles?: Array<{ ts?: unknown }>;
 }): boolean {
   if (!opts.preserveView) return false;
-  if (opts.storeBarCount < MIN_STORE_BARS_FOR_REST_TAIL_SKIP) return false;
+  const minBars = minStoreBarsForChartWindow(opts.timeframe, opts.hours ?? 24);
+  if (opts.storeBarCount < minBars) return false;
   if (!opts.storeMatchesView || opts.storeBarCount <= 0) return false;
   if (!Number.isFinite(opts.storeLastTs) || !Number.isFinite(opts.restLastTs)) return false;
+  if (chartBufferSpacingLooksWrong(opts.storeCandles, opts.timeframe)) return false;
+  if (
+    Array.isArray(opts.storeCandles) &&
+    opts.storeCandles.length > 0 &&
+    chartBufferCoverageInsufficient(opts.storeCandles, opts.timeframe, opts.hours ?? 24)
+  ) {
+    return false;
+  }
   return opts.restLastTs <= opts.storeLastTs;
 }
 

@@ -13,6 +13,28 @@ import { uiAuthEnabled } from "../auth/uiGate.js";
 import { normalizeTradingMode } from "../state/appState.js";
 import { resolveWalletSnapshotAccountId, scheduleWalletSnapshotWrite } from "../db/services/walletService.js";
 
+/** Hello chart seed: always Binance REST for primary symbol — WS buffer can be gappy/wrong-interval after TF switch. */
+async function helloChartSnapshotForBot(bot) {
+  if (!bot) return null;
+  const sym = String(bot.getPublicState?.()?.symbol || "").trim().toUpperCase();
+  if (sym && typeof bot.getChartSnapshotForSymbol === "function") {
+    try {
+      const snap = await bot.getChartSnapshotForSymbol(sym, { hours: 24, forceRest: true });
+      if (snap?.candles?.length) return snap;
+    } catch {
+      /* fall through */
+    }
+  }
+  try {
+    if (typeof bot.getChartSnapshotOrRestRepair === "function") {
+      return await bot.getChartSnapshotOrRestRepair({ hours: 24 });
+    }
+    return bot.getChartSnapshot?.({ hours: 24 }) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** @type {((payload: unknown) => void) | null} */
 let telegramTradeHook = null;
 
@@ -48,10 +70,7 @@ async function snapshotHelloForView(appState, viewMode, extraHelloFields = {}) {
   }
   let chart = null;
   try {
-    chart =
-      typeof bot.getChartSnapshotOrRestRepair === "function"
-        ? await bot.getChartSnapshotOrRestRepair({ hours: 24 })
-        : bot.getChartSnapshot({ hours: 24 });
+    chart = await helloChartSnapshotForBot(bot);
   } catch {
     chart = null;
   }
@@ -294,10 +313,7 @@ export function attachWs({ wss, appState }) {
           if (uiAuthEnabled() && request?.session?.uiAuthOk) extra.perSessionTradingMode = true;
           let chart = null;
           try {
-            chart =
-              typeof bot?.getChartSnapshotOrRestRepair === "function"
-                ? await bot.getChartSnapshotOrRestRepair({ hours: 24 })
-                : bot?.getChartSnapshot?.({ hours: 24 }) ?? null;
+            chart = await helloChartSnapshotForBot(bot);
           } catch {
             chart = null;
           }

@@ -75,6 +75,9 @@ export function createBinanceDeltaAggregator({
 
     onDelta?.({ openTime, buy_volume: cur.buy, sell_volume: cur.sell, delta: cur.buy - cur.sell });
     flushOld(ts);
+    void import("../intelligence/collectors/aggTradeRolling.js")
+      .then(({ ingestAggTradeMessage }) => ingestAggTradeMessage(symbol, msg))
+      .catch(() => {});
   }
 
   function connect() {

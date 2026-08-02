@@ -95,3 +95,22 @@ test("applyInstanceOperationalToBot only overrides present operational keys", ()
   assert.equal(out.riskPerTrade, 2);
   assert.equal(out.manualStrategy, "X");
 });
+
+test("applyInstanceOperationalToBot flattens universe.customSymbols onto bot fields", () => {
+  const out = applyInstanceOperationalToBot(
+    { manualStrategy: "MICRO_EVENT", universeCoinBase: "ALL" },
+    {
+      id: "x",
+      operational: {
+        universe: {
+          mode: "MULTIPLE",
+          coinBase: "CUSTOM",
+          customSymbols: ["BTCUSDT", "SOLUSDT", "XRPUSDT"],
+        },
+      },
+    },
+  );
+  assert.equal(out.universeCoinBase, "CUSTOM");
+  assert.deepEqual(out.universeCustomSymbols, ["BTCUSDT", "SOLUSDT", "XRPUSDT"]);
+  assert.equal(out.universeCoinSelectMode, "MULTIPLE");
+});

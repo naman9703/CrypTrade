@@ -50,6 +50,18 @@ export async function refreshLiqCascadeRadarTickCache(symbols, windowMs = 6 * 60
   }
 }
 
+function tickDedupeKey(t) {
+  const time = Math.round(Number(t.time));
+  const side = String(t.side ?? "");
+  const price = Number(t.price);
+  const qty = Number(t.qty);
+  if (Number.isFinite(price) && Number.isFinite(qty) && qty > 0) {
+    return `${time}|${side}|${price.toFixed(2)}|${qty.toFixed(8)}`;
+  }
+  const usd = Number(t.notionalUsd);
+  return `${time}|${side}|${Number.isFinite(usd) ? usd.toFixed(2) : ""}`;
+}
+
 function mergeRadarTicks(sym, windowMs) {
   const cutoff = Date.now() - windowMs;
   const mem = getRecentLiquidations(sym, windowMs);
@@ -59,7 +71,7 @@ function mergeRadarTicks(sym, windowMs) {
   const merged = new Map();
   for (const t of [...db, ...mem]) {
     if (t.time < cutoff) continue;
-    merged.set(`${t.time}|${t.side}|${t.price ?? ""}|${t.notionalUsd ?? ""}`, t);
+    merged.set(tickDedupeKey(t), t);
   }
   return [...merged.values()].sort((a, b) => a.time - b.time);
 }
@@ -417,9 +429,12 @@ export function buildLiqCascadeRadarStatus(ctx = {}) {
   const primarySym = String(state.symbol || watch[0] || "BTCUSDT").toUpperCase();
   const feedStatus = buildLiqCascadeFeedStatus({
     symbol: primarySym,
+    timeframe: state.timeframe,
     feedStatus: ctx.feedStatus ?? null,
     marketFeedLive: ctx.marketFeedLive !== false,
     liqCascadeLiveTickEnabled: tickEnabled,
+    liqCascadeOiGateMode: state.liqCascadeOiGateMode,
+    liqCascadeMinOiDropPct: state.liqCascadeMinOiDropPct,
     botRunning: state.running === true,
     getTradingMode: ctx.getTradingMode,
   });
@@ -433,12 +448,14 @@ export function buildLiqCascadeRadarStatus(ctx = {}) {
     lastForceOrderMs: tape[0]?.time ?? liqStream.lastMessageAt ?? null,
     focusSymbol: primarySym,
     effectiveConfig: {
+      liqCascadeInterval: optsEcho.liqInterval ?? LIQ_CASCADE_DEFAULTS.liqInterval,
       liqCascadeZScoreMin: optsEcho.liqZScoreMin,
       liqCascadeMinLiqUsdBar: optsEcho.minLiqUsdBar,
       liqCascadeMinDispAtr: optsEcho.minDispAtrMult,
       liqCascadeOiGateMode: optsEcho.oiGateMode,
       liqCascadeMinRr: optsEcho.minRr,
       onState: {
+        liqCascadeInterval: state.liqCascadeInterval ?? null,
         liqCascadeZScoreMin: state.liqCascadeZScoreMin ?? null,
         liqCascadeMinLiqUsdBar: state.liqCascadeMinLiqUsdBar ?? null,
         liqCascadeMinDispAtr: state.liqCascadeMinDispAtr ?? null,

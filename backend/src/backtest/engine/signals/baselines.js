@@ -44,6 +44,10 @@ import {
   resolveLiqCascadeCfg,
 } from "../../../strategy/liqCascadeIntraday.js";
 import {
+  buildMicroEventBacktestAdapter,
+  resolveMicroEventCfg,
+} from "../../../strategy/microEventIntraday.js";
+import {
   buildMlctsBacktestAdapter,
   resolveMlctsCfg,
 } from "../../../strategy/mlctsIntraday.js";
@@ -89,6 +93,7 @@ export function buildBaselineAdapters() {
     CRT_TBS: makeAdapter("CRT_TBS"),
     LIQ_CASCADE: makeAdapter("LIQ_CASCADE"),
     MLCTS: makeAdapter("MLCTS"),
+    MICRO_EVENT: makeAdapter("MICRO_EVENT"),
     SCALP_MR: makeAdapter("SCALP_MR"),
     TOKYO_SESSION: makeAdapter("TOKYO_SESSION"),
     LIQUIDITY_MAP: makeAdapter("LIQUIDITY_MAP"),
@@ -228,6 +233,7 @@ export async function buildBacktestAdapters({ strategyKey, cfg, symbol, tf, cand
     adapters.LIQ_CASCADE = buildLiqCascadeBacktestAdapter(candles, lcCfg, tf, {
       liqSeries: cfg._liqCascadeLiqSeries ?? [],
       oiSeries: cfg._liqCascadeOiSeries ?? [],
+      oiIntervalMs: cfg._liqCascadeOiIntervalMs ?? undefined,
     });
   }
 
@@ -237,6 +243,14 @@ export async function buildBacktestAdapters({ strategyKey, cfg, symbol, tf, cand
       oiSeries: cfg._mlctsOiSeries ?? [],
       fundingSeries: cfg._mlctsFundingSeries ?? [],
       bookImbalanceSeries: cfg._mlctsBookImbalanceSeries ?? [],
+    });
+  }
+
+  if (strategyKey === "MICRO_EVENT" && typeof buildMicroEventBacktestAdapter === "function") {
+    const meCfg = resolveMicroEventCfg(cfg);
+    adapters.MICRO_EVENT = buildMicroEventBacktestAdapter(candles, meCfg, tf, {
+      liqSeries: cfg._microEventLiqSeries ?? [],
+      backtestCtx: cfg._microEventBacktestCtx ?? null,
     });
   }
 

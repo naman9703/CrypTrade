@@ -1,0 +1,97 @@
+{
+  "setup": "LIQ_CASCADE_PORTFOLIO_1M_SMOKE_1MIN",
+  "preset": {
+    "liqInterval": "1min",
+    "tpAtrMult": 5,
+    "zMin": 1.2,
+    "minLiqUsdBar": 5000,
+    "minRr": 0
+  },
+  "costs": {
+    "slippagePct": 0.0005,
+    "feePerSide": 0.0004,
+    "leverage": 10
+  },
+  "dataCoverage": {
+    "from": "2026-07-29T02:20:03.699Z",
+    "to": "2026-07-31T05:23:37.644Z",
+    "hours": 51.06,
+    "days": 2.13,
+    "symbols": [
+      {
+        "symbol": "BNBUSDT",
+        "ticks": 39,
+        "firstMs": 1785303535974,
+        "lastMs": 1785464994650,
+        "totalUsd": 543988
+      },
+      {
+        "symbol": "BTCUSDT",
+        "ticks": 310,
+        "firstMs": 1785291603699,
+        "lastMs": 1785475417644,
+        "totalUsd": 38499258
+      },
+      {
+        "symbol": "ETHUSDT",
+        "ticks": 203,
+        "firstMs": 1785294992473,
+        "lastMs": 1785471615250,
+        "totalUsd": 28010109
+      }
+    ]
+  },
+  "portfolio": {
+    "startingUsdt": 100,
+    "finalEquity": 76.3048,
+    "netPnlUsdt": -23.6952,
+    "returnPct": -23.6952,
+    "trades": 81,
+    "winRate": 0.37037037037037035,
+    "profitFactor": 0.43286165599326054,
+    "maxDrawdownPct": 25.13987185298469,
+    "pnlByExit": {
+      "tp": 17.5791,
+      "sl": -39.8537,
+      "flip": -1.3929
+    },
+    "tradesPerDay": 38.07
+  },
+  "perCoinUnit": [
+    {
+      "symbol": "BTCUSDT",
+      "trades": 34,
+      "netPnl": -9.341500173068846,
+      "wins": 15,
+      "exitReasons": {
+        "tp": 13,
+        "flip": 5,
+        "sl": 16
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "trades": 40,
+      "netPnl": -12.32267560908978,
+      "wins": 11,
+      "exitReasons": {
+        "tp": 11,
+        "sl": 23,
+        "flip": 5,
+        "session_end": 1
+      }
+    },
+    {
+      "symbol": "BNBUSDT",
+      "trades": 7,
+      "netPnl": -1.448054158615396,
+      "wins": 4,
+      "exitReasons": {
+        "sl": 3,
+        "flip": 1,
+        "tp": 3
+      }
+    }
+  ],
+  "caveat": "Max force_orders archive only (~0.3wk). Not OOS-validated edge."
+}

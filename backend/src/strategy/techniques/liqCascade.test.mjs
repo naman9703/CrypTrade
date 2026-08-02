@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { atr as atrFn } from "../indicators.js";
 import {
   LIQ_CASCADE_WARMUP,
+  buildBrackets,
   buildLiqCascadeSeries,
   computeInBarDisplacement,
   createCascadeTickTracker,
@@ -296,5 +297,47 @@ const tierHit = tierSeries.findIndex(Boolean);
 const tierCloseIdx = tierStart + 5;
 assert.ok(tierHit >= tierCloseIdx && tierHit <= tierCloseIdx + 1, "Tier A entry at bar close or +1");
 assert.equal(tierSeries[tierHit].confirmTier, "A");
+
+// --- buildBrackets: tpRr=1 sets TP distance equal to SL distance ---
+const brAtr = atrFn(candles, 14);
+const brCloses = candles.map((c) => Number(c.close));
+const brIdx = spikeStart + 6;
+const brAtrOnly = buildBrackets(candles, spikeStart, brIdx, "BUY", brAtr, brCloses, {
+  slBufferPct: 0.0015,
+  tpAtrMult: 1.25,
+  tpRr: 0,
+  minRr: 0.8,
+});
+const br1R = buildBrackets(candles, spikeStart, brIdx, "BUY", brAtr, brCloses, {
+  slBufferPct: 0.0015,
+  tpRr: 1,
+  minRr: 0,
+});
+assert.ok(brAtrOnly, "ATR TP brackets expected");
+assert.ok(br1R, "1R TP brackets expected");
+assert.ok(Math.abs(br1R.tpPct - br1R.slPct) < 1e-9, "tpRr=1 must equal SL distance");
+assert.ok(br1R.tpPct / br1R.slPct >= 0.99, "1R RR ~1");
+
+// --- eventCooldownLiqBars: second cascade within cooldown is suppressed ---
+const cdLiq = [];
+for (let ts = START; ts < START + N * tfMs; ts += intervalMs) {
+  if (ts === spikeBarOpenTs || ts === spikeBarOpenTs + intervalMs) {
+    cdLiq.push({ ts, liqLongUsd: 900_000, liqShortUsd: 40_000 });
+  } else {
+    cdLiq.push({ ts, liqLongUsd: 20_000, liqShortUsd: 18_000 });
+  }
+}
+const { series: cdSeries } = buildLiqCascadeSeries(candles, {
+  liqSeries: cdLiq,
+  oiSeries,
+  opts: {
+    ...opts,
+    oiGateMode: "same_bar",
+    minDispAtrMult: 1.0,
+    eventCooldownLiqBars: 6,
+  },
+});
+const cdHits = cdSeries.map((s, i) => (s ? i : null)).filter((i) => i != null);
+assert.equal(cdHits.length, 1, "cooldown should allow only one cascade trade per cluster window");
 
 console.log("liqCascade.test.mjs OK", { hits: hitIdxs.length, firstHit, barCloseIdx });

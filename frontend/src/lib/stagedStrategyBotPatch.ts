@@ -1,7 +1,6 @@
 import { api } from "../api/client";
 import type { ApiTradingModeSlug } from "./tradingModeSlug";
 import { tradingModeToApiModeSlug } from "./tradingModeSlug";
-import { activeInstanceIdForMode } from "./instanceConfigView";
 import {
   canonicalCfgRawFromUiBot,
   instanceOperationalFromUiBot,
@@ -36,7 +35,6 @@ export function buildStrategySavePayloadForMode(modeSlug: ApiTradingModeSlug): {
   instanceOperational: Record<string, unknown>;
 } {
   const st = useAppStore.getState();
-  const instanceId = activeInstanceIdForMode(st, modeSlug);
   const live =
     st.liveBot && typeof st.liveBot === "object" && !Array.isArray(st.liveBot)
       ? (st.liveBot as Record<string, unknown>)
@@ -44,13 +42,7 @@ export function buildStrategySavePayloadForMode(modeSlug: ApiTradingModeSlug): {
         ? (st.bot as Record<string, unknown>)
         : {};
   const draftCtx = draftByModeWithInstanceContext(st, modeSlug);
-  const hasDraft = st.hasDraftBotPatch(modeSlug);
-  const instView = instanceId ? st.configViewByInstanceId[instanceId] : undefined;
-  const view = hasDraft
-    ? deriveViewBot(st.mode, live, draftCtx)
-    : ((instView as Record<string, unknown> | undefined) ??
-      (st.configViewByMode[modeSlug] as Record<string, unknown> | undefined) ??
-      deriveViewBot(st.mode, live, draftCtx));
+  const view = deriveViewBot(st.mode, live, draftCtx);
   return {
     cfgRaw: canonicalCfgRawFromUiBot(view),
     instanceOperational: instanceOperationalFromUiBot(view),

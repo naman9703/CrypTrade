@@ -38,12 +38,16 @@ export const LIQ_CASCADE_DEFAULTS = Object.freeze({
   minAtrPct: 0.035,
   slBufferPct: 0.0015,
   tpAtrMult: 1.25,
+  /** When > 0, TP distance = slPct × tpRr (1 = 1R). Otherwise TP = tpAtrMult × ATR / close. */
+  tpRr: 0,
   minRr: 0.8,
   maxHoldBars: 24,
   maxTradesPerDay: 8,
   minBarGap: 2,
   tradeSides: "BOTH",
   minLiqUsdBar: 50_000,
+  /** After one cascade trade, ignore new cascade detection for N liq bars (0 = off). */
+  eventCooldownLiqBars: 0,
 });
 
 const DOM_RATIO = 1.2;
@@ -290,6 +294,7 @@ export function buildBrackets(candles, startIdx, idx, action, atrArr, closes, op
   if (!(close > 0) || !(atrVal > 0)) return null;
   const buf = num(opts.slBufferPct, LIQ_CASCADE_DEFAULTS.slBufferPct);
   const tpMult = num(opts.tpAtrMult, LIQ_CASCADE_DEFAULTS.tpAtrMult);
+  const tpRr = num(opts.tpRr, LIQ_CASCADE_DEFAULTS.tpRr);
   const from = Math.max(0, Math.min(startIdx, idx), idx - MAX_BRACKET_SCAN_BARS);
   let extreme = action === "BUY" ? Infinity : -Infinity;
   for (let k = from; k <= idx; k++) {
@@ -300,8 +305,9 @@ export function buildBrackets(candles, startIdx, idx, action, atrArr, closes, op
   }
   const slPx = action === "BUY" ? extreme * (1 - buf) : extreme * (1 + buf);
   const slPct = Math.abs(close - slPx) / close;
-  const tpPct = (atrVal * tpMult) / close;
-  if (slPct <= 0 || tpPct / slPct < num(opts.minRr, LIQ_CASCADE_DEFAULTS.minRr)) return null;
+  const tpPct = tpRr > 0 ? slPct * tpRr : (atrVal * tpMult) / close;
+  const minRr = num(opts.minRr, LIQ_CASCADE_DEFAULTS.minRr);
+  if (slPct <= 0 || (minRr > 0 && tpPct / slPct < minRr)) return null;
   return {
     slPct,
     tpPct,
@@ -311,9 +317,22 @@ export function buildBrackets(candles, startIdx, idx, action, atrArr, closes, op
   };
 }
 
+/** Scale OI window bars when OI interval is coarser than liq interval (preserve wall-clock window). */
+export function effectiveOiWindowBars(opts, oiIntervalMs, liqIntervalMs) {
+  const configured = num(opts.oiWindowBars, LIQ_CASCADE_DEFAULTS.oiWindowBars);
+  if (!(oiIntervalMs > liqIntervalMs)) return configured;
+  const wallMs = configured * liqIntervalMs;
+  return Math.max(1, Math.round(wallMs / oiIntervalMs));
+}
+
+function oiOptsForInterval(opts, oiIntervalMs, liqIntervalMs) {
+  if (!(oiIntervalMs > liqIntervalMs)) return opts;
+  return { ...opts, oiWindowBars: effectiveOiWindowBars(opts, oiIntervalMs, liqIntervalMs) };
+}
+
 /**
  * @param {object[]} candles
- * @param {{ liqSeries?: object[], oiSeries?: object[], opts?: object }} ctx
+ * @param {{ liqSeries?: object[], oiSeries?: object[], oiIntervalMs?: number, opts?: object }} ctx
  */
 export function buildLiqCascadeSeries(candles, ctx = {}) {
   const opts = { ...LIQ_CASCADE_DEFAULTS, ...ctx.opts };
@@ -322,11 +341,13 @@ export function buildLiqCascadeSeries(candles, ctx = {}) {
   if (n < LIQ_CASCADE_WARMUP + 2) return { series, feat: null };
 
   const intervalMs = liqIntervalToMs(opts.liqInterval);
+  const oiIntervalMs = ctx.oiIntervalMs ?? intervalMs;
+  const gateOpts = oiOptsForInterval(opts, oiIntervalMs, intervalMs);
   const liqBars = prepareLiqBars(ctx.liqSeries, {
     intervalMs,
     lookbackBars: num(opts.liqLookbackBars, LIQ_CASCADE_DEFAULTS.liqLookbackBars),
   });
-  const oiBars = prepareOiBars(ctx.oiSeries, intervalMs);
+  const oiBars = prepareOiBars(ctx.oiSeries, oiIntervalMs);
 
   const closes = candles.map((c) => Number(c.close));
   const atr = atrFn(candles, 14);
@@ -342,6 +363,8 @@ export function buildLiqCascadeSeries(candles, ctx = {}) {
   const signaledBars = new Set();
   const detectionAttempted = new Set();
   let cascade = null;
+  let cooldownUntilLiqTs = 0;
+  const eventCooldownLiqBars = num(opts.eventCooldownLiqBars, LIQ_CASCADE_DEFAULTS.eventCooldownLiqBars);
 
   for (let i = LIQ_CASCADE_WARMUP + 1; i < n; i++) {
     const ts = Number(candles[i].ts);
@@ -352,34 +375,38 @@ export function buildLiqCascadeSeries(candles, ctx = {}) {
       const { disp, barCloseIdx, startIdx } = computeInBarDisplacement(candles, atr, lb);
       if (barCloseIdx != null && i === barCloseIdx) {
         detectionAttempted.add(lb.ts);
-        const atrVal = atr[barCloseIdx];
-        const atrPct =
-          closes[barCloseIdx] > 0 && atrVal > 0 ? (atrVal / closes[barCloseIdx]) * 100 : 0;
-        const oiGate = resolveOiGate(oiBars, lb.ts, opts);
-        const oiDrop = oiGate.dropPct;
-        if (
-          lb.z != null &&
-          lb.z >= opts.liqZScoreMin &&
-          (lb.dom === "longs" || lb.dom === "shorts") &&
-          lb.totalUsd >= opts.minLiqUsdBar &&
-          disp != null &&
-          disp >= opts.minDispAtrMult &&
-          oiGate.ok &&
-          atrPct >= opts.minAtrPct
-        ) {
-          cascade = {
-            dom: lb.dom,
-            liqBarTs: lb.ts,
-            startIdx: startIdx ?? barCloseIdx,
-            detectIdx: barCloseIdx,
-            confirmTier: disp >= strongDisp ? "A" : "B",
-            expiresIdx: barCloseIdx + confirmBars,
-            z: lb.z,
-            liqUsd: lb.totalUsd,
-            oiDrop,
-            oiGateMode: oiGate.mode,
-            disp,
-          };
+        const inEventCooldown =
+          eventCooldownLiqBars > 0 && lb.ts < cooldownUntilLiqTs;
+        if (!inEventCooldown) {
+          const atrVal = atr[barCloseIdx];
+          const atrPct =
+            closes[barCloseIdx] > 0 && atrVal > 0 ? (atrVal / closes[barCloseIdx]) * 100 : 0;
+          const oiGate = resolveOiGate(oiBars, lb.ts, gateOpts);
+          const oiDrop = oiGate.dropPct;
+          if (
+            lb.z != null &&
+            lb.z >= opts.liqZScoreMin &&
+            (lb.dom === "longs" || lb.dom === "shorts") &&
+            lb.totalUsd >= opts.minLiqUsdBar &&
+            disp != null &&
+            disp >= opts.minDispAtrMult &&
+            oiGate.ok &&
+            atrPct >= opts.minAtrPct
+          ) {
+            cascade = {
+              dom: lb.dom,
+              liqBarTs: lb.ts,
+              startIdx: startIdx ?? barCloseIdx,
+              detectIdx: barCloseIdx,
+              confirmTier: disp >= strongDisp ? "A" : "B",
+              expiresIdx: barCloseIdx + confirmBars,
+              z: lb.z,
+              liqUsd: lb.totalUsd,
+              oiDrop,
+              oiGateMode: oiGate.mode,
+              disp,
+            };
+          }
         }
       }
     }
@@ -422,6 +449,9 @@ export function buildLiqCascadeSeries(candles, ctx = {}) {
       liqBrackets,
     };
     signaledBars.add(cascade.liqBarTs);
+    if (eventCooldownLiqBars > 0) {
+      cooldownUntilLiqTs = cascade.liqBarTs + eventCooldownLiqBars * intervalMs;
+    }
     cascade = null;
   }
   return { series, feat: { liqBars, oiBars, atr, closes, tfMs, intervalMs } };
@@ -507,7 +537,9 @@ export function evaluateCascadeTickSignal(tracker, lastPrice) {
 
   const slPx = action === "BUY" ? lastPrice * (1 - buf * 3) : lastPrice * (1 + buf * 3);
   const slPct = Math.abs(lastPrice - slPx) / lastPrice;
-  const tpPct = slPct * tracker.opts.minRr;
+  const tpRr = num(tracker.opts.tpRr, LIQ_CASCADE_DEFAULTS.tpRr);
+  const tpPct =
+    tpRr > 0 ? slPct * tpRr : slPct * Math.max(num(tracker.opts.minRr, LIQ_CASCADE_DEFAULTS.minRr), 1);
   tracker.cascadeActive = false;
   tracker.lastSignalMs = Date.now();
   return {

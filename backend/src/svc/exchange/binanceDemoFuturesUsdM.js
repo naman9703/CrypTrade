@@ -538,6 +538,8 @@ export function createBinanceDemoFuturesUsdMExchange({ log, apiKey: apiKeyOverri
     recentLocalCloses: [],
     /** Per-symbol trailing SL state when `meta.autoTradeTrailing` on open */
     trailingBySymbol: {},
+    /** Strategy entry meta (MICRO_EVENT time-stop, etc.) — survives getPositions() rebuild. */
+    entryMetaByPosition: {},
     prevFuturesQtyBySymbol: {},
     /** Last positions snapshot from /fapi/v2/account — used to reconstruct trailing state on restart. */
     lastPositionSnapshot: [],
@@ -562,6 +564,26 @@ export function createBinanceDemoFuturesUsdMExchange({ log, apiKey: apiKeyOverri
     for (const k of Object.keys(mem.placedBracketTargets)) {
       if (String(k).toUpperCase() === u) delete mem.placedBracketTargets[k];
     }
+    for (const k of Object.keys(mem.entryMetaByPosition || {})) {
+      if (k === u || k.startsWith(`${u}:`)) delete mem.entryMetaByPosition[k];
+    }
+  }
+
+  function positionEntryMetaKey(symU, posSideKey) {
+    const s = String(symU || "").toUpperCase();
+    const ps = String(posSideKey || "BOTH").toUpperCase();
+    return ps !== "BOTH" ? `${s}:${ps}` : s;
+  }
+
+  function rememberEntrySlipMeta(symbol, _side, { signalBarClose, adverseBps } = {}) {
+    const symU = String(symbol || "").toUpperCase();
+    const key = positionEntryMetaKey(symU, "BOTH");
+    const prev = mem.entryMetaByPosition[key] ?? {};
+    mem.entryMetaByPosition[key] = {
+      ...prev,
+      ...(signalBarClose != null && Number(signalBarClose) > 0 ? { signalBarClose: Number(signalBarClose) } : {}),
+      ...(adverseBps != null && Number.isFinite(Number(adverseBps)) ? { adverseBps: Number(adverseBps) } : {}),
+    };
   }
 
   async function futuresPositionQtyAbs(symU) {
@@ -2125,9 +2147,30 @@ export function createBinanceDemoFuturesUsdMExchange({ log, apiKey: apiKeyOverri
                   ...(entryEx.clientOrderId ? { binanceClientOrderId: entryEx.clientOrderId } : {}),
                 }
               : {};
+          const storedEntry = mem.entryMetaByPosition?.[positionEntryMetaKey(symU, posSideKey)] ?? null;
+          const mergedEntryMeta =
+            storedEntry && typeof storedEntry === "object"
+              ? {
+                  ...entryMeta,
+                  ...(storedEntry.strategyKey ? { strategyKey: storedEntry.strategyKey } : {}),
+                  ...(storedEntry.maxHoldSec != null && Number(storedEntry.maxHoldSec) > 0
+                    ? { maxHoldSec: Number(storedEntry.maxHoldSec) }
+                    : {}),
+                  ...(storedEntry.entryTime != null ? { entryTime: storedEntry.entryTime } : {}),
+                  ...(storedEntry.confluenceScore != null
+                    ? { confluenceScore: storedEntry.confluenceScore }
+                    : {}),
+                  ...(storedEntry.signalBarClose != null && Number(storedEntry.signalBarClose) > 0
+                    ? { signalBarClose: Number(storedEntry.signalBarClose) }
+                    : {}),
+                  ...(storedEntry.adverseBps != null && Number.isFinite(Number(storedEntry.adverseBps))
+                    ? { adverseBps: Number(storedEntry.adverseBps) }
+                    : {}),
+                }
+              : entryMeta;
           if (trail) {
             row.meta = {
-              ...entryMeta,
+              ...mergedEntryMeta,
               autoTradeTrailing: true,
               trailStep: Number(trail.trailStep) || 0,
               confirmedTrailStep: Math.max(0, Math.floor(Number(trail.confirmedTrailStep) || 0)),
@@ -2139,8 +2182,8 @@ export function createBinanceDemoFuturesUsdMExchange({ log, apiKey: apiKeyOverri
               ...(trail.slTrailConfirm ? { trailSlConfirm: { ...trail.slTrailConfirm } } : {}),
             };
             row.trailTierLabel = trail.trailTierLabel ?? null;
-          } else if (Object.keys(entryMeta).length) {
-            row.meta = entryMeta;
+          } else if (Object.keys(mergedEntryMeta).length) {
+            row.meta = mergedEntryMeta;
           }
           out.push(row);
         }
@@ -2459,6 +2502,32 @@ export function createBinanceDemoFuturesUsdMExchange({ log, apiKey: apiKeyOverri
         },
       });
       if (mem.trades.length > MAX_MEM_TRADES) mem.trades = mem.trades.slice(-MAX_MEM_TRADES);
+
+      const posSideRawOpen = String(hedgeExtras?.positionSide ?? "BOTH").trim().toUpperCase();
+      const posSideKeyOpen =
+        posSideRawOpen === "LONG" || posSideRawOpen === "SHORT" ? posSideRawOpen : "BOTH";
+      if (
+        meta?.strategyKey ||
+        (meta?.maxHoldSec != null && Number(meta.maxHoldSec) > 0) ||
+        (meta?.signalBarCloseForEntry != null && Number(meta.signalBarCloseForEntry) > 0)
+      ) {
+        mem.entryMetaByPosition[positionEntryMetaKey(symNorm, posSideKeyOpen)] = {
+          strategyKey: meta.strategyKey != null ? String(meta.strategyKey) : null,
+          maxHoldSec:
+            meta.maxHoldSec != null && Number(meta.maxHoldSec) > 0 ? Number(meta.maxHoldSec) : null,
+          entryTime: meta.entryTime != null ? Number(meta.entryTime) : Date.now(),
+          confluenceScore:
+            meta.confluenceScore != null && Number.isFinite(Number(meta.confluenceScore))
+              ? Number(meta.confluenceScore)
+              : null,
+          ...(meta.signalBarCloseForEntry != null && Number(meta.signalBarCloseForEntry) > 0
+            ? { signalBarClose: Number(meta.signalBarCloseForEntry) }
+            : {}),
+          ...(meta.adverseBps != null && Number.isFinite(Number(meta.adverseBps))
+            ? { adverseBps: Number(meta.adverseBps) }
+            : {}),
+        };
+      }
 
       /** Don't await userTrades before SL/TP — extra REST hop would delay bracket protection.
        *  `avgFillPriceFromUsdMNewOrder` uses the POST response `avgPrice`, which is often "0.00"
@@ -3061,6 +3130,7 @@ export function createBinanceDemoFuturesUsdMExchange({ log, apiKey: apiKeyOverri
         _realtimeTrailingTimer = null;
       }
     },
+    rememberEntrySlipMeta,
     dispose() {
       usdMUserStream?.stop();
       if (_realtimeTrailingTimer != null) {

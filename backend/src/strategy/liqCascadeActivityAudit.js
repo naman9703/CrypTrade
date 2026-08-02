@@ -9,6 +9,7 @@ import {
   buildBrackets,
   computeInBarDisplacement,
   confirmCascadeBar,
+  effectiveOiWindowBars,
   liqIntervalToMs,
   lookupAtOrBefore,
   prepareLiqBars,
@@ -109,6 +110,7 @@ export function initLiqCascadeActivityPersisted() {
     signaledLiqBarTs: Object.create(null),
     emittedKeys: Object.create(null),
     cascade: null,
+    cooldownUntilLiqTs: 0,
   };
 }
 
@@ -156,11 +158,14 @@ export function stepLiqCascadeActivityAudit(persisted, candles, barIdx, ctx) {
     const { disp, barCloseIdx } = computeInBarDisplacement(candles, atr, lb);
     if (barCloseIdx != null && i === barCloseIdx) {
       persisted.detectionAttempted[lb.ts] = true;
-      if (isSpikeHint(lb, opts)) {
+      const eventCooldownLiqBars = num(opts.eventCooldownLiqBars, LIQ_CASCADE_DEFAULTS.eventCooldownLiqBars);
+      const inEventCooldown =
+        eventCooldownLiqBars > 0 && lb.ts < Number(persisted.cooldownUntilLiqTs ?? 0);
+      if (isSpikeHint(lb, opts) && !inEventCooldown) {
         const atrVal = atr[barCloseIdx];
         const atrPct =
           closes[barCloseIdx] > 0 && atrVal > 0 ? (atrVal / closes[barCloseIdx]) * 100 : null;
-        const oiGate = resolveOiGate(oiBars, lb.ts, opts);
+        const oiGate = resolveOiGate(oiBars, lb.ts, gateOpts);
         const gates = buildLiqCascadeGateRows(lb, { disp, atrPct, oiGate, opts });
         const failed = gates.find((g) => !g.pass);
         const fadeAction = resolveFadeAction(lb.dom, opts.directionMode);
@@ -265,6 +270,10 @@ export function stepLiqCascadeActivityAudit(persisted, candles, barIdx, ctx) {
     }
 
     persisted.signaledLiqBarTs[cascade.liqBarTs] = true;
+    const eventCooldownLiqBars = num(opts.eventCooldownLiqBars, LIQ_CASCADE_DEFAULTS.eventCooldownLiqBars);
+    if (eventCooldownLiqBars > 0) {
+      persisted.cooldownUntilLiqTs = cascade.liqBarTs + eventCooldownLiqBars * intervalMs;
+    }
     persisted.cascade = null;
   }
 
@@ -287,18 +296,22 @@ export function liqCascadeAdapterSkipReason(adapterPersisted, barIdx, opts) {
  * Prepare liq/OI bars + run audit step; dedupe emitted keys on persisted.
  * @returns {object[]} fresh events for this bar
  */
-export function collectLiqCascadeBarCloseAuditEvents(persisted, candles, barIdx, { liqSeries, oiSeries, opts }) {
+export function collectLiqCascadeBarCloseAuditEvents(persisted, candles, barIdx, { liqSeries, oiSeries, oiIntervalMs, opts }) {
   const intervalMs = liqIntervalToMs(opts.liqInterval ?? LIQ_CASCADE_DEFAULTS.liqInterval);
+  const oiMs = oiIntervalMs ?? intervalMs;
   const lookbackBars = num(opts.liqLookbackBars, LIQ_CASCADE_DEFAULTS.liqLookbackBars);
   const liqBars = prepareLiqBars(liqSeries ?? [], { intervalMs, lookbackBars });
-  const oiBars = prepareOiBars(oiSeries ?? [], intervalMs);
+  const oiBars = prepareOiBars(oiSeries ?? [], oiMs);
+  const gateOpts = oiMs > intervalMs
+    ? { ...opts, oiWindowBars: effectiveOiWindowBars(opts, oiMs, intervalMs) }
+    : opts;
   const atr = atrFn(candles, 14);
   const closes = candles.map((c) => Number(c.close));
   const tfMs =
     candles.length > 1 ? Number(candles[1].ts) - Number(candles[0].ts) || 60_000 : 60_000;
 
   const raw = stepLiqCascadeActivityAudit(persisted, candles, barIdx, {
-    opts,
+    opts: gateOpts,
     liqBars,
     oiBars,
     atr,

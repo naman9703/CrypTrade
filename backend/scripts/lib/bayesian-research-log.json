@@ -2,8 +2,8 @@
   "propositions": {
     "liq_continuation_ohlcv": {
       "prior": 0.7,
-      "alpha": 11.89999999999999,
-      "beta": 51.69999999999999,
+      "alpha": 11.98999999999999,
+      "beta": 52.80999999999999,
       "proposition": "Liquidity continuation after reclaim is predictable from OHLCV (L0–L1)",
       "informationLevels": [
         "L0",
@@ -13,11 +13,11 @@
         "Family A",
         "LIQ_MAP"
       ],
-      "posterior": 0.1871,
+      "posterior": 0.185,
       "lastEvent": {
-        "type": "uoa_unexplained_variance",
-        "detail": "Identical L1 features, divergent outcomes — L0–L1 may be exhausted for this formulation",
-        "weight": 2
+        "type": "validation_batch",
+        "detail": "3 experiments at L0–L1: 100% disproven",
+        "weight": 1.2000000000000002
       }
     },
     "regime_conditional_continuation": {
@@ -50,12 +50,7 @@
         "execution",
         "microstructure hypotheses"
       ],
-      "posterior": 0.5762,
-      "lastEvent": {
-        "type": "uoa_missing_information",
-        "detail": "Unexplained variance suggests L2+ information may be required — proposition untestable until ingested",
-        "weight": 1
-      }
+      "posterior": 0.5762
     },
     "oi_liquidations_improve_liq": {
       "prior": 0.45,
@@ -392,7 +387,17 @@
           "note": "L2 may be needed"
         }
       ]
+    },
+    {
+      "at": "2026-08-01T23:24:27.178Z",
+      "events": [
+        {
+          "proposition": "liq_continuation_ohlcv",
+          "strength": 0.075,
+          "posterior": 0.185
+        }
+      ]
     }
   ],
-  "updatedAt": "2026-07-11T02:08:51.188Z"
+  "updatedAt": "2026-08-01T23:24:27.183Z"
 }

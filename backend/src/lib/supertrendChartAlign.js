@@ -57,17 +57,35 @@ export function sanitizeCandlesForSt(candles, symbol) {
   const out = [];
   const lookback = 50;
   const mult = 18;
-  for (const bar of dedup) {
+  for (let i = 0; i < dedup.length; i++) {
+    const bar = dedup[i];
     const r = Number(bar.high) - Number(bar.low);
     if (!Number.isFinite(r) || r <= 0) continue;
-    const recent = out.slice(Math.max(0, out.length - lookback));
-    const recentRanges = recent
+    /**
+     * Median must come from the raw (pre-filter) window, not `out`. Using `out` let a quiet
+     * stretch (tiny ranges) permanently collapse the median — every normal-range bar afterward
+     * then looked like an 18x "spike" and got rejected too, cascading into large real gaps
+     * (e.g. 598/1440 BTC 1m bars dropped in a 24h window during a low-vol → normal-vol transition).
+     */
+    const recentRanges = dedup
+      .slice(Math.max(0, i - lookback), i)
       .map((x) => Number(x.high) - Number(x.low))
       .filter((x) => Number.isFinite(x) && x > 0);
     const med = median(recentRanges);
-    if (med != null && med > 0 && r > med * mult) continue;
+    /**
+     * Require the range to also be a meaningful fraction of price before treating it as a
+     * "spike" — a rolling median from a quiet patch (e.g. 0.1-point BTC ranges) made *any*
+     * ordinary bar (even a totally normal ~0.08%-of-price move) look like an 18x outlier and
+     * get rejected. Real corrupt/garbage ticks (cross-symbol mixing, bad wicks) blow past this
+     * floor easily; genuine minute-to-minute noise never should.
+     */
+    const refPx = Math.max(1e-12, (Number(bar.open) + Number(bar.close)) / 2);
+    const rangeIsMeaningful = r / refPx > 0.002;
+    if (med != null && med > 0 && rangeIsMeaningful && r > med * mult) continue;
     if (sym) {
-      const prevClose = out.length ? Number(out[out.length - 1].close) : null;
+      /** Compare against the immediately preceding raw bar, not the last *kept* bar — same reasoning as above. */
+      const prevBar = i > 0 ? dedup[i - 1] : null;
+      const prevClose = prevBar != null ? Number(prevBar.close) : null;
       if (prevClose != null && prevClose > 0) {
         const cl = Number(bar.close);
         const lo = Number(bar.low);

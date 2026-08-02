@@ -9,7 +9,8 @@ import {
 } from "../intelligence/index.js";
 import { tradeCloseFeeUsdtFromNotional, tradeCloseFeeRate } from "../lib/tradeCloseFee.js";
 import { maxBarsForHistory } from "../lib/chartWindow.js";
-import { chartSnapshotNeedsRestRepair } from "../lib/chartSnapshotRepair.js";
+import { chartMinBarsForWindow, chartSnapshotNeedsRestRepair } from "../lib/chartSnapshotRepair.js";
+import { SUPPORTED_TIMEFRAMES } from "../backtest/data/timeframe.js";
 import { computeIndicators } from "../strategy/indicators.js";
 import { computeDecisionSnapshot } from "../strategy/decisionEngine.js";
 import { detectRegime } from "../strategy/regime.js";
@@ -87,6 +88,8 @@ import {
 } from "../strategy/supertrendHtf4hFilter.js";
 import { ELITE_ST_ACTIVATION_PATCH } from "../strategy/supertrendElite.js";
 import { LIQ_CASCADE_ACTIVATION_PATCH } from "../strategy/presets/liqCascadeOptimized.js";
+import { MICRO_EVENT_ACTIVATION_PATCH } from "../strategy/presets/microEventOptimized.js";
+import { createMultiBinanceOrderBook } from "./orderBookMultiBinance.js";
 import { pickSignalBrainBot } from "../lib/strategySignalBrain.js";
 import { INSTANCE_FIELD_KEYS } from "../lib/strategyInstanceSplit.js";
 import {
@@ -94,8 +97,12 @@ import {
   volumeProfilePublicSnapshot,
 } from "../strategy/volumeProfileConfigKeys.js";
 import { buildLiqCascadeFeedStatus } from "../strategy/liqCascadeFeedStatus.js";
+import { buildMicroEventFeedStatus } from "../strategy/microEventFeedStatus.js";
 import { buildLiqCascadeRadarStatus, refreshLiqCascadeRadarTickCache } from "../strategy/liqCascadeRadarStatus.js";
+import { buildMicroEventRadarStatus } from "../strategy/microEventRadarStatus.js";
 import { getLiqCascadeTickTrackerSnapshots, resolveLiqCascadeWatchSymbols } from "../svc/liqCascadeLiveEngine.js";
+import { resolveMicroEventWatchSymbols, checkMicroEventFrequencyGate } from "../svc/microEventLiveEngine.js";
+import { getCachedMicrostructureSnapshot } from "../strategy/data/microstructureSnapshot.js";
 import { buildMlctsLiveSnapshotFromBot } from "../strategy/mlctsIntraday.js";
 import { ensureWeeklyLiquidityForSymbol } from "../strategy/weeklyLiquidityCache.js";
 import {
@@ -278,6 +285,13 @@ function enrichCloseTradeForHistory(t) {
     next.meta = m;
   }
   const pnlN = Number(next.pnl);
+  const feeN = Number(next.fee);
+  if (Number.isFinite(pnlN)) {
+    if (Number.isFinite(feeN) && feeN > 0) {
+      m.grossPnl = Math.round((pnlN + feeN) * 1e8) / 1e8;
+      next.meta = m;
+    }
+  }
   const entryPx = Number(next.entryPrice ?? m.entryPrice);
   const qn = Number(next.qty);
   if (Number.isFinite(pnlN) && Number.isFinite(entryPx) && entryPx > 0 && Number.isFinite(qn) && qn > 0) {
@@ -346,6 +360,46 @@ function positionMarginUsedUsdt(p) {
     return notional / lev;
   }
   return notional;
+}
+
+/** Mark + uPnL for WS portfolio rows (paper + non-exchange sync). Avoids foreign-symbol mark stomp. */
+function computePositionMtmForWs(p, { primarySym, primaryMark, feed }) {
+  if (p.venue === "FUTURES" && p.syncSource === "fapi_v2_account") {
+    const apiUpnl = Number(p.unrealizedPnl ?? p.unrealizedProfit ?? 0);
+    const rowSym = String(p?.symbol || "").toUpperCase();
+    const chartMark =
+      Number.isFinite(primaryMark) && primaryMark > 0 && rowSym === primarySym ? primaryMark : null;
+    const entryPx = Number(p.entryPrice) > 0 ? Number(p.entryPrice) : null;
+    const rowMark = chartMark ?? entryPx;
+    return { ...p, markPrice: rowMark, unrealizedPnl: Number.isFinite(apiUpnl) ? apiUpnl : null };
+  }
+  const isLong = p.side === "BUY";
+  const rowSym = String(p?.symbol || "").toUpperCase();
+  let rowMark =
+    rowSym === primarySym && Number.isFinite(primaryMark) && primaryMark > 0 ? primaryMark : null;
+  if (!(Number.isFinite(rowMark) && rowMark > 0) && typeof feed?.getCandlesForSymbol === "function") {
+    const pbars = feed.getCandlesForSymbol(rowSym);
+    const px = pbars?.length ? Number(pbars[pbars.length - 1].close) : NaN;
+    if (Number.isFinite(px) && px > 0) rowMark = px;
+  }
+  if (!(Number.isFinite(rowMark) && rowMark > 0)) {
+    const snap = getCachedMicrostructureSnapshot(rowSym);
+    const lp = Number(snap?.lastPrice);
+    if (Number.isFinite(lp) && lp > 0) rowMark = lp;
+  }
+  if (!(Number.isFinite(rowMark) && rowMark > 0)) {
+    const existingMp = Number(p.markPrice);
+    const existingUp = Number(p.unrealizedPnl);
+    return {
+      ...p,
+      ...(Number.isFinite(existingMp) && existingMp > 0 ? { markPrice: existingMp } : {}),
+      ...(Number.isFinite(existingUp) ? { unrealizedPnl: existingUp } : {}),
+    };
+  }
+  const uPnl = isLong
+    ? (rowMark - Number(p.entryPrice)) * Number(p.qty)
+    : (Number(p.entryPrice) - rowMark) * Number(p.qty);
+  return { ...p, markPrice: rowMark, unrealizedPnl: uPnl };
 }
 
 function sumOpenMarginUsedUsdt(positions, marketMode) {
@@ -1417,6 +1471,40 @@ export function createBot({
    * Demo/testnet/live: explicit `MARKET_FEED=BINANCE|BINANCE_FUTURES` overrides; if unset or SYNTH, default
    * matches paper (SPOT → BINANCE, else BINANCE_FUTURES). Paper opt-out: `PAPER_MARKET_FEED=SYNTH`.
    */
+  function resolveAmbiguousBinanceMarketFeedKind(tradingMode) {
+    const tm = String(tradingMode || runtimeTradingMode() || "PAPER").toUpperCase();
+    const mm = String(state.marketMode || "AUTO").toUpperCase();
+    const futOn = Boolean(state.supertrendFuturesAuto);
+    const spotOn = Boolean(state.supertrendSpotAuto);
+    const strat = String(state.manualStrategy ?? "").toUpperCase();
+    let wantsFutures =
+      mm === "FUTURES" ||
+      (mm === "AUTO" && futOn && !spotOn) ||
+      strat === "LIQ_CASCADE" ||
+      strat === "MLCTS" ||
+      strat === "MICRO_EVENT";
+    if (
+      !wantsFutures &&
+      mm === "AUTO" &&
+      !futOn &&
+      !spotOn &&
+      (tm === "BINANCE_LIVE" ||
+        tm === "BINANCE_DEMO_API" ||
+        tm === "BINANCE_TESTNET" ||
+        tm === "PAPER")
+    ) {
+      wantsFutures = true;
+    }
+    return wantsFutures ? "BINANCE_FUTURES" : "BINANCE";
+  }
+
+  function feedSourceTagToKind(source) {
+    const s = String(source || "").toUpperCase();
+    if (s === "BINANCE_FUTURES") return "BINANCE_FUTURES";
+    if (s === "BINANCE") return "BINANCE";
+    return "SYNTH";
+  }
+
   function effectiveMarketFeedKind() {
     const tm = runtimeTradingMode();
     const g = String(process.env.MARKET_FEED || "SYNTH").toUpperCase();
@@ -1425,28 +1513,7 @@ export function createBot({
       // but the bot is trading futures (marketMode FUTURES/AUTO with futures), prefer the futures feed.
       if (g === "BINANCE_FUTURES") return "BINANCE_FUTURES";
       if (g === "BINANCE") {
-        const mm = String(state.marketMode || "AUTO").toUpperCase();
-        const futOn = Boolean(state.supertrendFuturesAuto);
-        const spotOn = Boolean(state.supertrendSpotAuto);
-        let wantsFutures = mm === "FUTURES" || (mm === "AUTO" && futOn && !spotOn);
-        /**
-         * `MARKET_FEED=BINANCE` is ambiguous: many deployments (and Binance geo rules) block **spot**
-         * `api.binance.com` / `stream.binance.com` while **USD-M** `fapi` / `fstream` still works — live then
-         * looks "stuck" / Feed: stale while demo (demo-fapi + fstream.binancefuture.com) is fine.
-         * If Market is AUTO and neither Supertrend leg is chosen yet, default strict exchange modes to **futures**
-         * OHLCV so the chart matches the usual USD-M venue. Use Market **SPOT** or `MARKET_FEED=BINANCE_FUTURES`
-         * / `BINANCE` + futures toggles to force a venue explicitly.
-         */
-        if (
-          !wantsFutures &&
-          mm === "AUTO" &&
-          !futOn &&
-          !spotOn &&
-          (tm === "BINANCE_LIVE" || tm === "BINANCE_DEMO_API" || tm === "BINANCE_TESTNET")
-        ) {
-          wantsFutures = true;
-        }
-        return wantsFutures ? "BINANCE_FUTURES" : "BINANCE";
+        return resolveAmbiguousBinanceMarketFeedKind(tm);
       }
       // Paper defaults to public Binance when MARKET_FEED is SYNTH; demo/testnet/live used to fall through
       // to SYNTH here — charts then had no real klines unless MARKET_FEED was set explicitly.
@@ -1463,7 +1530,8 @@ export function createBot({
     if (paperExplicit === "SYNTH" || paperExplicit === "BINANCE" || paperExplicit === "BINANCE_FUTURES") {
       return paperExplicit;
     }
-    if (g === "BINANCE" || g === "BINANCE_FUTURES") return g;
+    if (g === "BINANCE_FUTURES") return "BINANCE_FUTURES";
+    if (g === "BINANCE") return resolveAmbiguousBinanceMarketFeedKind(tm);
     const mm = String(state.marketMode || "AUTO").toUpperCase();
     return mm === "SPOT" ? "BINANCE" : "BINANCE_FUTURES";
   }
@@ -4051,6 +4119,12 @@ export function createBot({
     }
 
     const orderSymbol = String(tradeSymbol || state.symbol).toUpperCase();
+    if (String(strategyKey ?? "").toUpperCase() === "MICRO_EVENT") {
+      const freq = checkMicroEventFrequencyGate(orderSymbol, state);
+      if (!freq.ok) {
+        return { venue: "FUTURES", side, action: "skipped", reason: `micro_event_${freq.reason}` };
+      }
+    }
     const primarySymbol = String(state.symbol || "").toUpperCase();
     const _hasCandlesOverride = Array.isArray(candlesOverride) && candlesOverride.length > 0;
     let candles = _hasCandlesOverride ? candlesOverride : feed.getCandles();
@@ -4071,6 +4145,14 @@ export function createBot({
       tickEntryPx > 0 &&
       last &&
       orderSymbol !== primarySymbol
+    ) {
+      last = { ...last, close: tickEntryPx };
+    }
+    if (
+      strategyKey === "MICRO_EVENT" &&
+      Number.isFinite(tickEntryPx) &&
+      tickEntryPx > 0 &&
+      last
     ) {
       last = { ...last, close: tickEntryPx };
     }
@@ -5000,8 +5082,11 @@ export function createBot({
       async function loadEntryMicrostructure() {
         const mode = runtimeTradingMode();
         const needBook = slipFrac > 0 || openStyle === "LIMIT_IOC" || requireBook;
-        const b = needBook ? await fetchUsdMBookTicker(orderSymbol, mode) : null;
-        const mk = slipFrac > 0 || requireMark ? await fetchUsdMPremiumMark(orderSymbol, mode) : null;
+        const needMark = slipFrac > 0 || requireMark;
+        const [b, mk] = await Promise.all([
+          needBook ? fetchUsdMBookTicker(orderSymbol, mode) : Promise.resolve(null),
+          needMark ? fetchUsdMPremiumMark(orderSymbol, mode) : Promise.resolve(null),
+        ]);
         const markPx = mk?.markPrice != null ? Number(mk.markPrice) : null;
         let midPx = null;
         if (b && Number.isFinite(Number(b.bidPrice)) && Number.isFinite(Number(b.askPrice))) {
@@ -5230,6 +5315,17 @@ export function createBot({
         ...(mqAtEntryFutures ? { mqAtEntry: mqAtEntryFutures } : {}),
         skipStopLoss: state.supertrendFuturesUseFixedSl === false,
         skipTakeProfit: state.supertrendFuturesUseFixedTp === false,
+        ...(strategyKey === "MICRO_EVENT"
+          ? {
+              strategyKey: "MICRO_EVENT",
+              entryTime: Date.now(),
+              maxHoldSec: Math.max(
+                0,
+                Number(adapterSignal?.maxHoldSec ?? adapterSignal?.liqBrackets?.maxHoldSec ?? 0),
+              ) || undefined,
+              confluenceScore: adapterSignal?.confluenceScore,
+            }
+          : {}),
         ...entryMetaExtra,
       };
 
@@ -5316,10 +5412,11 @@ export function createBot({
         leverage: lev,
         strategyKey,
       });
-      const signalBarClose = Number(last.close);
+      const signalBarClose = Number(slipSignalRef);
       const fillPx = Number(order.filledPrice);
+      let entryAdverseBps;
       if (Number.isFinite(signalBarClose) && signalBarClose > 0 && Number.isFinite(fillPx) && fillPx > 0) {
-        const adverseBps =
+        entryAdverseBps =
           openingSide === "BUY"
             ? ((fillPx - signalBarClose) / signalBarClose) * 10000
             : ((signalBarClose - fillPx) / signalBarClose) * 10000;
@@ -5328,16 +5425,28 @@ export function createBot({
           category: "trading",
           reason: "futures_entry_fill_vs_signal",
           symbol: orderSymbol,
-          msg: `${orderSymbol} · entry vs signal bar close · ${signalBarClose.toFixed(6)} → fill ${fillPx.toFixed(6)} · ${adverseBps >= 0 ? "+" : ""}${adverseBps.toFixed(1)} bps adverse · ${entryStyleUsed}`,
+          msg: `${orderSymbol} · entry vs signal bar close · ${signalBarClose.toFixed(6)} → fill ${fillPx.toFixed(6)} · ${entryAdverseBps >= 0 ? "+" : ""}${entryAdverseBps.toFixed(1)} bps adverse · ${entryStyleUsed}`,
           detail: {
             signalBarClose,
             fillPx,
-            adverseBps,
+            adverseBps: entryAdverseBps,
             entryStyle: entryStyleUsed,
             slipPctConfigured: slipPctRaw,
           },
         });
+        if (typeof futuresEx.rememberEntrySlipMeta === "function") {
+          futuresEx.rememberEntrySlipMeta(orderSymbol, openingSide, {
+            signalBarClose,
+            adverseBps: entryAdverseBps,
+          });
+        }
       }
+      const tickToOrderLagMs =
+        String(strategyKey ?? "").toUpperCase() === "MICRO_EVENT" &&
+        Number.isFinite(Number(adapterSignal?.triggerEventTimeMs)) &&
+        Number(adapterSignal.triggerEventTimeMs) > 0
+          ? Date.now() - Number(adapterSignal.triggerEventTimeMs)
+          : undefined;
       broadcastTrade(wsHub, {
         type: "OPEN",
         id: order.id,
@@ -5370,7 +5479,13 @@ export function createBot({
           /** Closed-bar close used for sizing / SL-TP anchor (matches chart signal list “@” when WS is aligned). */
           signalBarClose: Number.isFinite(signalBarClose) && signalBarClose > 0 ? signalBarClose : undefined,
           avgFillPrice: Number.isFinite(fillPx) && fillPx > 0 ? fillPx : undefined,
+          ...(entryAdverseBps != null && Number.isFinite(entryAdverseBps)
+            ? { adverseBps: entryAdverseBps }
+            : {}),
           signalLagMs: Number.isFinite(signalLagMs) ? signalLagMs : undefined,
+          ...(tickToOrderLagMs != null && Number.isFinite(tickToOrderLagMs)
+            ? { tickToOrderLagMs, evalMs: adapterSignal?.evalMs }
+            : {}),
           entryBookBestBid: bookTicker?.bidPrice,
           entryBookBestAsk: bookTicker?.askPrice,
           entryBookMidPx: Number.isFinite(midPxEntry) ? midPxEntry : undefined,
@@ -7559,78 +7674,97 @@ export function createBot({
 
   let maybeAutoMultiBarClose = async () => {};
 
-  feed = createMarketFeed({
-    log,
-    symbol: state.symbol,
-    timeframe: state.timeframe,
-    feedKind: effectiveMarketFeedKind(),
-    tradingMode: runtimeTradingMode(),
-    onCandleClose: async (c) => {
-      try {
-        if (marketFeedUsesLiveBinance() && getPool()) {
-          const symArc = String(c.symbol || state.symbol || "")
-            .replace(/[^A-Za-z0-9]/g, "")
-            .toUpperCase();
-          const tfArc = String(state.timeframe || "15m").trim();
-          if (symArc && tfArc) {
-            scheduleArchiveLiveOhlcvCandle({
-              symbol: symArc,
-              timeframe: tfArc,
-              feedKind: effectiveMarketFeedKind(),
-              candle: {
-                ts: Number(c.ts),
-                open: Number(c.open),
-                high: Number(c.high),
-                low: Number(c.low),
-                close: Number(c.close),
-                volume: c.volume != null ? Number(c.volume) : 0,
-              },
-            });
-          }
-        }
-      } catch {
-        /* never block trading on OHLC archive */
-      }
-      const intelligenceTimer = setTimeout(() => {
-        void (async () => {
-          try {
-            const sym = String(c.symbol || state.symbol || "").toUpperCase();
-            const tf = String(state.timeframe || "15m");
-            const allCandles =
-              typeof feed.getCandlesForSymbol === "function"
-                ? feed.getCandlesForSymbol(sym)
-                : feed.getCandles();
-            if (sym && allCandles.length) {
-              updateIntelligenceCandles(sym, tf, allCandles);
-              await computeAndBroadcastIntelligenceSnapshot(sym, wsHubRef).catch(() => {});
+  function createBotMarketFeed() {
+    return createMarketFeed({
+      log,
+      symbol: state.symbol,
+      timeframe: state.timeframe,
+      feedKind: effectiveMarketFeedKind(),
+      tradingMode: runtimeTradingMode(),
+      onCandleClose: async (c) => {
+        try {
+          if (marketFeedUsesLiveBinance() && getPool()) {
+            const symArc = String(c.symbol || state.symbol || "")
+              .replace(/[^A-Za-z0-9]/g, "")
+              .toUpperCase();
+            const tfArc = String(state.timeframe || "15m").trim();
+            if (symArc && tfArc) {
+              scheduleArchiveLiveOhlcvCandle({
+                symbol: symArc,
+                timeframe: tfArc,
+                feedKind: effectiveMarketFeedKind(),
+                candle: {
+                  ts: Number(c.ts),
+                  open: Number(c.open),
+                  high: Number(c.high),
+                  low: Number(c.low),
+                  close: Number(c.close),
+                  volume: c.volume != null ? Number(c.volume) : 0,
+                },
+              });
             }
-          } catch {
-            /* never block on intelligence */
           }
-        })();
-      }, 0);
-      intelligenceTimer.unref?.();
-      void processBarCloseTrading(c);
-      void maybeAutoMultiBarClose(c);
-    },
-    /** Chart/UI: push last bar on each Binance kline WS (throttled); full `market` from `tick()` still ~BOT_TICK_MS. */
-    onPrimaryCandleLive: (payload) => {
-      const hub = wsHubRef;
-      if (!hub || typeof hub.broadcast !== "function") return;
-      if (typeof hub.clientCount === "function" && hub.clientCount() === 0) return;
-      const payloadSym = String(payload?.symbol || "").trim().toUpperCase();
-      const selectedChartSym = String(state.uiChartFocusSymbol || state.symbol || "").trim().toUpperCase();
-      if (payloadSym && selectedChartSym && payloadSym !== selectedChartSym) return;
-      try {
-        hub.broadcast("market", {
-          ...payload,
-          feedExecutionPause: state.feedExecutionPause,
-          originTradingMode: runtimeTradingMode(),
-        });
-      } catch {
-        /* ignore */
-      }
-    },
+        } catch {
+          /* never block trading on OHLC archive */
+        }
+        const intelligenceTimer = setTimeout(() => {
+          void (async () => {
+            try {
+              const sym = String(c.symbol || state.symbol || "").toUpperCase();
+              const tf = String(state.timeframe || "15m");
+              const allCandles =
+                typeof feed.getCandlesForSymbol === "function"
+                  ? feed.getCandlesForSymbol(sym)
+                  : feed.getCandles();
+              if (sym && allCandles.length) {
+                updateIntelligenceCandles(sym, tf, allCandles);
+                await computeAndBroadcastIntelligenceSnapshot(sym, wsHubRef).catch(() => {});
+              }
+            } catch {
+              /* never block on intelligence */
+            }
+          })();
+        }, 0);
+        intelligenceTimer.unref?.();
+        void processBarCloseTrading(c);
+        void maybeAutoMultiBarClose(c);
+      },
+      /** Chart/UI: push last bar on each Binance kline WS (throttled); full `market` from `tick()` still ~BOT_TICK_MS. */
+      onPrimaryCandleLive: (payload) => {
+        const hub = wsHubRef;
+        if (!hub || typeof hub.broadcast !== "function") return;
+        if (typeof hub.clientCount === "function" && hub.clientCount() === 0) return;
+        const payloadSym = String(payload?.symbol || "").trim().toUpperCase();
+        const selectedChartSym = String(state.uiChartFocusSymbol || state.symbol || "").trim().toUpperCase();
+        if (payloadSym && selectedChartSym && payloadSym !== selectedChartSym) return;
+        try {
+          hub.broadcast("market", {
+            ...payload,
+            feedExecutionPause: state.feedExecutionPause,
+            originTradingMode: runtimeTradingMode(),
+          });
+        } catch {
+          /* ignore */
+        }
+      },
+    });
+  }
+
+  function recreateMarketFeedIfKindMismatch(reason) {
+    const want = effectiveMarketFeedKind();
+    const have = feedSourceTagToKind(feed?.getStatus?.()?.source);
+    if (want === have) return false;
+    if (want !== "BINANCE" && want !== "BINANCE_FUTURES") return false;
+    log.warn("market_feed_recreating_for_kind", { want, have, reason: String(reason || "unspecified") });
+    feed = createBotMarketFeed();
+    syncFeedWatchSymbols();
+    syncMarketFeedFromState();
+    return true;
+  }
+
+  feed = createBotMarketFeed();
+  queueMicrotask(() => {
+    recreateMarketFeedIfKindMismatch("bot_init");
   });
 
   let watchSigBroadcastTimer = null;
@@ -7761,7 +7895,7 @@ export function createBot({
 
   function primeStrategyIntelFeeds(symbol) {
     const strat = String(state.manualStrategy ?? "").toUpperCase();
-    if (strat !== "LIQ_CASCADE" && strat !== "MLCTS") return;
+    if (strat !== "LIQ_CASCADE" && strat !== "MLCTS" && strat !== "MICRO_EVENT") return;
     const sym = String(symbol || state.symbol || "BTCUSDT").trim().toUpperCase();
     if (!sym) return;
     void ensureOpenInterestForSymbols([sym]).catch(() => {});
@@ -7770,6 +7904,9 @@ export function createBot({
     }
     if (strat === "LIQ_CASCADE") {
       primeLiqCascadeRadarTickCache();
+    }
+    if (strat === "MICRO_EVENT") {
+      syncMicroEventDepthWatch();
     }
   }
 
@@ -7865,6 +8002,23 @@ export function createBot({
     ? createBinanceOrderBook({ log, symbol: state.symbol, wsBase: binanceDepthWsBase() })
     : null;
 
+  const multiDepth = marketFeedUsesLiveBinance()
+    ? createMultiBinanceOrderBook({ log, wsBase: binanceDepthWsBase() })
+    : null;
+
+  function syncMicroEventDepthWatch() {
+    if (!multiDepth) return;
+    const strat = String(state.manualStrategy ?? "").toUpperCase();
+    if (strat !== "MICRO_EVENT") {
+      multiDepth.syncSymbols([]);
+      return;
+    }
+    const watch = resolveMicroEventWatchSymbols(state);
+    multiDepth.syncSymbols(
+      watch.length ? watch : [String(state.symbol || "BTCUSDT").trim().toUpperCase()],
+    );
+  }
+
   /** Apply persisted symbol/timeframe to live feed after hydrate/reload (feed not wired during fromPersisted). */
   function syncMarketFeedFromState() {
     if (!feed) return;
@@ -7880,6 +8034,7 @@ export function createBot({
             : sym;
         if (depthSym) depth.setSymbol(depthSym);
       }
+      syncMicroEventDepthWatch();
     } catch (e) {
       log?.warn?.("sync_market_feed_from_state_failed", { error: String(e?.message || e) });
     }
@@ -7980,31 +8135,9 @@ export function createBot({
         tick: state.metrics?.tickCount,
       });
     }
-    const positionsMtM = positions.map((p) => {
-      if (p.venue === "FUTURES" && p.syncSource === "fapi_v2_account") {
-        const apiUpnl = Number(p.unrealizedPnl ?? p.unrealizedProfit ?? 0);
-        const rowSym = String(p?.symbol || "").toUpperCase();
-        const chartMark = Number.isFinite(markPrice) && markPrice > 0 && rowSym === symU ? markPrice : null;
-        const entryPx = Number(p.entryPrice) > 0 ? Number(p.entryPrice) : null;
-        const rowMark = chartMark ?? entryPx;
-        return { ...p, markPrice: rowMark, unrealizedPnl: Number.isFinite(apiUpnl) ? apiUpnl : null };
-      }
-      const isLong = p.side === "BUY";
-      const rowSym = String(p?.symbol || "").toUpperCase();
-      let rowMark = rowSym === symU ? markPrice : null;
-      if (!(Number.isFinite(rowMark) && rowMark > 0) && typeof feed.getCandlesForSymbol === "function") {
-        const pbars = feed.getCandlesForSymbol(rowSym);
-        const px = pbars?.length ? Number(pbars[pbars.length - 1].close) : NaN;
-        if (Number.isFinite(px) && px > 0) rowMark = px;
-      }
-      if (!(Number.isFinite(rowMark) && rowMark > 0)) {
-        return { ...p, markPrice: markPrice, unrealizedPnl: null };
-      }
-      const uPnl = isLong
-        ? (rowMark - Number(p.entryPrice)) * Number(p.qty)
-        : (Number(p.entryPrice) - rowMark) * Number(p.qty);
-      return { ...p, markPrice: rowMark, unrealizedPnl: uPnl };
-    });
+    const positionsMtM = positions.map((p) =>
+      computePositionMtmForWs(p, { primarySym: symU, primaryMark: markPrice, feed }),
+    );
     const unrealizedPnl = positionsMtM.reduce((a, p) => a + Number(p.unrealizedPnl || 0), 0);
     const wBaseTick = walletBaseFromAccount(account);
     const equityWithUnrealizedTick = wBaseTick != null ? wBaseTick + unrealizedPnl : null;
@@ -8215,6 +8348,17 @@ export function createBot({
         updateIntelligenceOrderBook(String(b.symbol).trim().toUpperCase(), b.bids, b.asks);
       } catch {
         /* optional intelligence feed — never block depth */
+      }
+    }
+    if (multiDepth) {
+      const books = multiDepth.getBooks();
+      for (const [sym, book] of Object.entries(books)) {
+        if (!book?.bids || !book?.asks) continue;
+        try {
+          updateIntelligenceOrderBook(sym, book.bids, book.asks);
+        } catch {
+          /* optional */
+        }
       }
     }
     if (!wsHubRef) return;
@@ -8628,10 +8772,13 @@ export function createBot({
         : "";
     const primaryU = String(state.symbol || "").toUpperCase();
     const stPeriod = Number(state.supertrendPeriod ?? 10);
+    const hoursRepair = Math.max(0.25, Number(opts.hours ?? 24));
     const needsRepair = (candles) =>
       chartSnapshotNeedsRestRepair(candles, {
         supertrendPeriod: stPeriod,
         tailStale: feedChartTailLooksStale(candles),
+        timeframe: state.timeframe,
+        hours: hoursRepair,
       });
     if (focusU && focusU !== primaryU) {
       const snapF = getChartSnapshotFromFeedSymbol(focusU, opts);
@@ -8656,13 +8803,19 @@ export function createBot({
     return repaired?.candles?.length ? repaired : snap;
   }
 
-  function buildChartSnapshotFromRawCandles(symU, rawCandles, hours) {
+  function resolveChartSnapshotTimeframe(tf) {
+    const t = String(tf ?? "").trim().toLowerCase();
+    return SUPPORTED_TIMEFRAMES.includes(t) ? t : null;
+  }
+
+  function buildChartSnapshotFromRawCandles(symU, rawCandles, hours, chartTimeframe) {
+    const tf = resolveChartSnapshotTimeframe(chartTimeframe) ?? state.timeframe;
     const candles = sanitizeCandlesForSt(rawCandles, symU);
     if (!candles.length) return null;
         const st = computeSupertrendChartModel(candles, { symbol: symU });
         return {
           symbol: symU,
-          timeframe: state.timeframe,
+          timeframe: tf,
           hours,
           candles,
           supertrendLine: st.line,
@@ -8679,38 +8832,66 @@ export function createBot({
         };
       }
 
-  function getChartSnapshotFromFeedBuffer(symU, hours) {
+  function getChartSnapshotFromFeedBuffer(symU, hours, chartTimeframe) {
+    const tf = resolveChartSnapshotTimeframe(chartTimeframe) ?? state.timeframe;
+    if (tf !== state.timeframe) return null;
     if (!marketFeedUsesLiveBinance() || typeof feed.getCandlesForSymbol !== "function") return null;
     const buf = feed.getCandlesForSymbol(symU);
     if (!Array.isArray(buf) || !buf.length) return null;
-    const n = maxBarsForHistory(state.timeframe, hours);
+    const n = maxBarsForHistory(tf, hours);
     const raw = buf.length <= n ? buf.slice() : buf.slice(-n);
-    return buildChartSnapshotFromRawCandles(symU, raw, hours);
+    return buildChartSnapshotFromRawCandles(symU, raw, hours, tf);
   }
 
   async function getChartSnapshotForSymbol(sym, opts = {}) {
     const forceRest = Boolean(opts.forceRest);
     const hours = Math.max(0.25, Math.min(168, Number(opts.hours ?? 24)));
+    const chartTf = resolveChartSnapshotTimeframe(opts.timeframe) ?? state.timeframe;
     const symU = String(sym || "").trim().toUpperCase();
     if (!SYM_RE.test(symU)) return null;
     noteUiChartWatchSymbol(symU);
-    const n = maxBarsForHistory(state.timeframe, hours);
-    const minBars = Math.max(30, state.supertrendPeriod + 2);
+    const n = maxBarsForHistory(chartTf, hours);
+    const minBars = chartMinBarsForWindow(chartTf, hours, state.supertrendPeriod);
     if (!forceRest) {
-      const fromFeed = getChartSnapshotFromFeedBuffer(symU, hours);
-      if (fromFeed?.candles?.length >= minBars) return fromFeed;
+      const fromFeed = getChartSnapshotFromFeedBuffer(symU, hours, chartTf);
+      const feedCandles = fromFeed?.candles;
+      if (
+        Array.isArray(feedCandles) &&
+        feedCandles.length &&
+        !chartSnapshotNeedsRestRepair(feedCandles, {
+          supertrendPeriod: state.supertrendPeriod,
+          tailStale: feedChartTailLooksStale(feedCandles),
+          timeframe: chartTf,
+          hours,
+        })
+      ) {
+        return fromFeed;
+      }
     }
     const limit = Math.min(1000, Math.max(50, n + 20));
     let rows = [];
     try {
-      rows = await fetchBinanceKlinesRows({
-        symbol: symU,
-        interval: state.timeframe,
-        limit,
-        feedKind: effectiveMarketFeedKind(),
-        tradingMode: runtimeTradingMode(),
-        chartPublic: true,
-      });
+      if (n > 1000) {
+        const endTime = Date.now();
+        const startTime = endTime - hours * 3_600_000;
+        rows = await fetchBinanceKlinesRange({
+          symbol: symU,
+          interval: chartTf,
+          startTime,
+          endTime,
+          maxRows: n + 20,
+          feedKind: effectiveMarketFeedKind(),
+        });
+      } else {
+        rows = await fetchBinanceKlinesRows({
+          symbol: symU,
+          interval: chartTf,
+          limit,
+          feedKind: effectiveMarketFeedKind(),
+          tradingMode: runtimeTradingMode(),
+          chartPublic: true,
+        });
+      }
     } catch {
       rows = [];
     }
@@ -8723,19 +8904,25 @@ export function createBot({
       close: r.close,
       volume: r.volume,
     }));
-      const fromRest = buildChartSnapshotFromRawCandles(symU, raw, hours);
+      const fromRest = buildChartSnapshotFromRawCandles(symU, raw, hours, chartTf);
       if (fromRest?.candles?.length) {
-        if (typeof feed.seedCandlesForSymbol === "function") {
+        if (typeof feed.seedCandlesForSymbol === "function" && chartTf === state.timeframe) {
           try {
             const buf =
               typeof feed.getCandlesForSymbol === "function" ? feed.getCandlesForSymbol(symU) : [];
             const lastTs = Array.isArray(buf) && buf.length ? Number(buf[buf.length - 1]?.ts) : NaN;
+            const windowMin = chartMinBarsForWindow(chartTf, hours, state.supertrendPeriod);
             const tailStale =
               !Array.isArray(buf) ||
               !buf.length ||
+              buf.length < windowMin ||
               !Number.isFinite(lastTs) ||
               Date.now() - lastTs > 120_000;
-            if (tailStale) feed.seedCandlesForSymbol(symU, fromRest.candles);
+            if (tailStale) {
+              feed.seedCandlesForSymbol(symU, fromRest.candles, {
+                minBars: windowMin,
+              });
+            }
           } catch {
             /* ignore */
           }
@@ -8743,7 +8930,7 @@ export function createBot({
         return fromRest;
       }
     }
-    return getChartSnapshotFromFeedBuffer(symU, hours);
+    return getChartSnapshotFromFeedBuffer(symU, hours, chartTf);
   }
 
   function buildLiqCascadeRadarForBot() {
@@ -8755,6 +8942,25 @@ export function createBot({
       tickSnapshots: getLiqCascadeTickTrackerSnapshots(),
       getTradingMode: () => runtimeTradingMode(),
     });
+  }
+
+  function buildMicroEventRadarForBotSync(positions = []) {
+    return buildMicroEventRadarStatus({
+      state,
+      depthStatusBySymbol: multiDepth?.getStatus?.() ?? {},
+      positions,
+      getTradingMode: () => runtimeTradingMode(),
+    });
+  }
+
+  async function buildMicroEventRadarForBot() {
+    let positions = [];
+    try {
+      positions = (await exch.getPositions?.()) ?? [];
+    } catch {
+      positions = [];
+    }
+    return buildMicroEventRadarForBotSync(positions);
   }
 
   function primeLiqCascadeRadarTickCache() {
@@ -9167,9 +9373,12 @@ export function createBot({
             liqCascadeLiveTickEnabled: state.liqCascadeLiveTickEnabled === true,
             liqCascadeFeedStatus: buildLiqCascadeFeedStatus({
               symbol: state.symbol,
+              timeframe: state.timeframe,
               feedStatus: feed.getStatus?.() ?? null,
               marketFeedLive: marketFeedUsesLiveBinance(),
               liqCascadeLiveTickEnabled: state.liqCascadeLiveTickEnabled === true,
+              liqCascadeOiGateMode: state.liqCascadeOiGateMode,
+              liqCascadeMinOiDropPct: state.liqCascadeMinOiDropPct,
               botRunning: state.running,
               getTradingMode: () => runtimeTradingMode(),
             }),
@@ -9183,6 +9392,18 @@ export function createBot({
               void ensureWeeklyLiquidityForSymbol(symU, effectiveMarketFeedKind()).catch(() => {});
               return buildMlctsLiveSnapshotFromBot(state, feed, intelligenceCache);
             })(),
+          }
+        : {}),
+      ...(String(state.manualStrategy ?? "").toUpperCase() === "MICRO_EVENT"
+        ? {
+            microEventLiveTickEnabled: state.microEventLiveTickEnabled !== false,
+            microEventFeedStatus: buildMicroEventFeedStatus({
+              symbol: state.symbol,
+              watchSymbols: resolveMicroEventWatchSymbols(state),
+              depthStatusBySymbol: multiDepth?.getStatus?.() ?? {},
+              microEventLiveTickEnabled: state.microEventLiveTickEnabled !== false,
+            }),
+            microEventRadarStatus: buildMicroEventRadarForBotSync(),
           }
         : {}),
     };
@@ -9550,18 +9771,26 @@ export function createBot({
 
       // Do not overwrite exchange-reported `markPrice` with the last kline close — they are different concepts.
       // The UI compares to Binance "Mark" for futures; overwriting it here makes the chart/portfolio disagree.
+      const lastCandle = Array.isArray(candles) && candles.length ? candles[candles.length - 1] : null;
+      const symU = String(state.symbol || "").toUpperCase();
+      const primaryMark =
+        lastCandle && Number.isFinite(Number(lastCandle.close)) && Number(lastCandle.close) > 0
+          ? Number(lastCandle.close)
+          : null;
       const positionsMtM = _cachedPositions.map((p) => {
         if (String(p?.venue || "").toUpperCase() !== "FUTURES") return p;
-        const mp = Number(p?.markPrice ?? p?.markPx ?? NaN);
-        const up = Number(p?.unrealizedPnl ?? p?.unrealizedProfit ?? NaN);
-        const hasUp = Number.isFinite(up);
-        const hasMp = Number.isFinite(mp) && mp > 0;
-        // Keep markPrice from exchange snapshot; keep uPnL if provided.
-        return {
-          ...p,
-          ...(hasMp ? { markPrice: mp } : {}),
-          ...(hasUp ? { unrealizedPnl: up } : {}),
-        };
+        if (p.syncSource === "fapi_v2_account") {
+          const mp = Number(p?.markPrice ?? p?.markPx ?? NaN);
+          const up = Number(p?.unrealizedPnl ?? p?.unrealizedProfit ?? NaN);
+          const hasUp = Number.isFinite(up);
+          const hasMp = Number.isFinite(mp) && mp > 0;
+          return {
+            ...p,
+            ...(hasMp ? { markPrice: mp } : {}),
+            ...(hasUp ? { unrealizedPnl: up } : {}),
+          };
+        }
+        return computePositionMtmForWs(p, { primarySym: symU, primaryMark, feed });
       });
       const unrealizedPnl = positionsMtM.reduce((a, p) => a + Number(p.unrealizedPnl || 0), 0);
       const wBase = walletBaseFromAccount(account);
@@ -9902,6 +10131,11 @@ export function createBot({
       ...(String(state.manualStrategy ?? "").toUpperCase() === "LIQ_CASCADE"
         ? {
             liqCascadeRadarStatus: buildLiqCascadeRadarForBot(),
+          }
+        : {}),
+      ...(String(state.manualStrategy ?? "").toUpperCase() === "MICRO_EVENT"
+        ? {
+            microEventRadarStatus: await buildMicroEventRadarForBot(),
           }
         : {}),
     });
@@ -10318,6 +10552,37 @@ export function createBot({
       }
     }
 
+    // MICRO_EVENT per-trade max hold (seconds) — stored on position meta at entry
+    if (Array.isArray(positions) && positions.length > 0 && !state.feedExecutionPause && last) {
+      for (const p of positions) {
+        const maxHoldSec = Number(p.meta?.maxHoldSec ?? 0);
+        if (!(maxHoldSec > 0)) continue;
+        const sk = String(p.meta?.strategyKey ?? p.strategy ?? "").toUpperCase();
+        if (sk !== "MICRO_EVENT") continue;
+        const openedRaw = p.meta?.entryTime ?? p.openedAt ?? p.meta?.openedAt;
+        if (openedRaw == null) continue;
+        const openedMs = typeof openedRaw === "number" ? openedRaw : new Date(openedRaw).getTime();
+        if (!Number.isFinite(openedMs)) continue;
+        const ageMs = Date.now() - openedMs;
+        if (ageMs > maxHoldSec * 1000) {
+          try {
+            const px = Number(last.close);
+            await exch.closePosition?.({ id: p.id, price: px, reason: "time_stop" });
+            emitActivity(wsHub, {
+              level: "info",
+              msg: `MICRO_EVENT time stop · ${String(p.symbol)} (${Math.round(ageMs / 1000)}s)`,
+              category: "position",
+              reason: "time_stop",
+              symbol: p.symbol,
+              detail: { positionId: p.id, ageMs, maxHoldSec },
+            });
+          } catch {
+            /* retry next tick */
+          }
+        }
+      }
+    }
+
     const pfTick = portfolioMtmForWs(last, candles, positions, account, accountError);
     const {
       positionsMtM,
@@ -10394,6 +10659,7 @@ export function createBot({
       strategyKey === "CRT_TBS" ||
       strategyKey === "LIQ_CASCADE" ||
       strategyKey === "MLCTS" ||
+      strategyKey === "MICRO_EVENT" ||
       strategyKey === "SCALP_MR" ||
       strategyKey === "TOKYO_SESSION"
     ) {
@@ -10423,6 +10689,13 @@ export function createBot({
           oiSeries: [],
           timeframe: state.timeframe,
         });
+      } else if (strategyKey === "MICRO_EVENT") {
+        const { getRecentLiquidations } = await import("../intelligence/collectors/liquidationCollector.js");
+        const { aggregateTicksToLiqSeries } = await import("../strategy/liqCascadeIntraday.js");
+        const intervalMs = 60_000;
+        const ticks = getRecentLiquidations(state.symbol, intervalMs * 120);
+        const liqSeries = aggregateTicksToLiqSeries(ticks, intervalMs);
+        signal = strat.signal({ candles, cfg: cfgWithBook, liqSeries, timeframe: state.timeframe });
       } else if (strategyKey === "MLCTS") {
         const symKey = String(state.symbol || "")
           .replace(/[^A-Za-z0-9]/g, "")
@@ -11331,6 +11604,140 @@ export function createBot({
   }
 
   let interval = null;
+
+  /** Start/stop live tick executor when MICRO_EVENT + microEventLiveTickEnabled + bot running. */
+  let microEventSkipHooked = false;
+  function syncMicroEventLiveEngine(wsHub) {
+    const hub = wsHub ?? wsHubRef;
+    const strat = String(state.manualStrategy ?? "").toUpperCase();
+    const tickOn = state.microEventLiveTickEnabled !== false;
+    const shouldRun = state.running === true && strat === "MICRO_EVENT" && tickOn;
+
+    void import("../svc/microEventLiveEngine.js").then(
+      ({ startMicroEventLiveEngine, stopMicroEventLiveEngine, isMicroEventLiveEngineRunning, microEventLiveEvents }) => {
+        if (!shouldRun) {
+          if (isMicroEventLiveEngineRunning()) stopMicroEventLiveEngine();
+          return;
+        }
+        syncMicroEventDepthWatch();
+        if (!microEventSkipHooked) {
+          microEventSkipHooked = true;
+          microEventLiveEvents.on("skip", ({ symbol, audit, source }) => {
+            if (String(state.manualStrategy ?? "").toUpperCase() !== "MICRO_EVENT") return;
+            void import("../strategy/microEventIntraday.js").then(({ auditMicroEventTickSkipForActivity }) => {
+              const ev = auditMicroEventTickSkipForActivity({ audit, source });
+              if (!ev) return;
+              emitSignalActionActivity(hub, {
+                kind: "strategy",
+                strategyKey: "MICRO_EVENT",
+                symbol,
+                side: "—",
+                action: "skipped",
+                reason: ev.reason,
+                detail: {
+                  skipType: ev.type,
+                  failedGate: ev.failedGate,
+                  score: ev.score,
+                  layers: ev.layers,
+                  hits: ev.hits,
+                  source: ev.source,
+                },
+              });
+            });
+          });
+        }
+        if (isMicroEventLiveEngineRunning()) return;
+        startMicroEventLiveEngine({
+          getState: () => ({ ...state, tradingMode: runtimeTradingMode() }),
+          log,
+          onSignal: async (payload) => {
+            const side = payload.action === "BUY" ? "BUY" : "SELL";
+            hub?.broadcast?.("micro_event_signal", payload);
+            emitActivity(hub, {
+              level: "info",
+              msg: `MICRO_EVENT tick ${side} ${payload.symbol} (score=${payload.confluenceScore})`,
+              category: "micro_event",
+              reason: payload.reason,
+              detail: payload,
+            });
+            if (runtimeTradingMode() === "BINANCE_LIVE" && process.env.MICRO_EVENT_LIVE_ALLOW !== "1") {
+              return { action: "skipped", reason: "live_not_allowed" };
+            }
+            const res = await trySupertrendFuturesOrder({
+              side,
+              strategyKey: "MICRO_EVENT",
+              wsHub: hub,
+              dedupeKey: `micro_event:${payload.symbol}:${payload.triggerEventTimeMs ?? payload.eventTime}:${side}`,
+              tradeSymbol: payload.symbol,
+              adapterSignal: {
+                ...payload,
+                liqBrackets: payload.liqBrackets,
+                maxHoldSec: payload.liqBrackets?.maxHoldSec,
+              },
+            });
+            if (res?.action !== "placed") {
+              log?.info?.("micro_event_tick_order_skipped", {
+                reason: res?.reason,
+                side,
+                symbol: payload.symbol,
+                evalMs: payload.evalMs,
+                triggerEventTimeMs: payload.triggerEventTimeMs,
+              });
+            }
+            return res;
+          },
+        });
+      },
+    );
+  }
+
+  /** Start/stop live tick executor when LIQ_CASCADE + liqCascadeLiveTickEnabled + bot running. */
+  function syncLiqCascadeLiveEngine(wsHub) {
+    const hub = wsHub ?? wsHubRef;
+    const strat = String(state.manualStrategy ?? "").toUpperCase();
+    const tickOn = state.liqCascadeLiveTickEnabled === true;
+    const shouldRun = state.running === true && strat === "LIQ_CASCADE" && tickOn;
+
+    void import("../svc/liqCascadeLiveEngine.js").then(
+      ({ startLiqCascadeLiveEngine, stopLiqCascadeLiveEngine, isLiqCascadeLiveEngineRunning }) => {
+        if (!shouldRun) {
+          if (isLiqCascadeLiveEngineRunning()) stopLiqCascadeLiveEngine();
+          return;
+        }
+        if (isLiqCascadeLiveEngineRunning()) return;
+        startLiqCascadeLiveEngine({
+          getState: () => ({ ...state, tradingMode: runtimeTradingMode() }),
+          log,
+          onSignal: async (payload) => {
+            const side = payload.action === "BUY" ? "BUY" : "SELL";
+            hub?.broadcast?.("liq_cascade_signal", payload);
+            emitActivity(hub, {
+              level: "info",
+              msg: `LIQ_CASCADE tick ${side} ${payload.symbol} (${payload.reason})`,
+              category: "liq_cascade",
+              reason: payload.reason,
+              detail: payload,
+            });
+            if (runtimeTradingMode() === "BINANCE_LIVE" && process.env.LIQ_CASCADE_LIVE_ALLOW !== "1") {
+              return;
+            }
+            const res = await trySupertrendFuturesOrder({
+              side,
+              strategyKey: "LIQ_CASCADE",
+              wsHub: hub,
+              dedupeKey: `liq_cascade:${payload.symbol}:${payload.eventTime}:${side}`,
+              tradeSymbol: payload.symbol,
+              adapterSignal: payload,
+            });
+            if (res?.action !== "placed") {
+              log?.info?.("liq_cascade_tick_order_skipped", { reason: res?.reason, side, symbol: payload.symbol });
+            }
+          },
+        });
+      },
+    );
+  }
+
   function start({ wsHub, reason = "user_request", source = "api", detail } = {}) {
     if (state.running) return;
     wsHubRef = wsHub;
@@ -11419,48 +11826,16 @@ export function createBot({
     }
     syncFeedWatchSymbols();
     primeStrategyIntelFeeds(state.symbol);
-    if (String(state.manualStrategy ?? "").toUpperCase() === "LIQ_CASCADE" && state.liqCascadeLiveTickEnabled === true) {
-      void import("../svc/liqCascadeLiveEngine.js").then(({ startLiqCascadeLiveEngine }) => {
-        startLiqCascadeLiveEngine({
-          getState: () => ({ ...state, tradingMode: runtimeTradingMode() }),
-          log,
-          onSignal: async (payload) => {
-            const side = payload.action === "BUY" ? "BUY" : "SELL";
-            wsHub?.broadcast?.("liq_cascade_signal", payload);
-            emitActivity(wsHub, {
-              level: "info",
-              msg: `LIQ_CASCADE tick ${side} ${payload.symbol} (${payload.reason})`,
-              category: "liq_cascade",
-              reason: payload.reason,
-              detail: payload,
-            });
-            if (runtimeTradingMode() === "BINANCE_LIVE" && process.env.LIQ_CASCADE_LIVE_ALLOW !== "1") {
-              return;
-            }
-            const res = await trySupertrendFuturesOrder({
-              side,
-              strategyKey: "LIQ_CASCADE",
-              wsHub,
-              dedupeKey: `liq_cascade:${payload.symbol}:${payload.eventTime}:${side}`,
-              tradeSymbol: payload.symbol,
-              adapterSignal: payload,
-            });
-            if (res?.action !== "placed") {
-              log?.info?.("liq_cascade_tick_order_skipped", { reason: res?.reason, side, symbol: payload.symbol });
-            }
-          },
-        });
-      });
-    }
+    syncLiqCascadeLiveEngine(wsHub);
+    syncMicroEventLiveEngine(wsHub);
   }
 
   function stop({ wsHub, reason = "user_request", source = "api", detail } = {}) {
     if (!state.running) return;
-    void import("../svc/liqCascadeLiveEngine.js").then(({ stopLiqCascadeLiveEngine }) => {
-      stopLiqCascadeLiveEngine();
-    });
     state.running = false;
     state.paused = false;
+    syncLiqCascadeLiveEngine(wsHub);
+    syncMicroEventLiveEngine(wsHub);
     // Stop real-time trailing poll when the bot stops
     if (_realtimeTrailingPollStarted && typeof exch?.stopRealtimeTrailingPoll === "function") {
       exch.stopRealtimeTrailingPoll();
@@ -11876,6 +12251,16 @@ export function createBot({
       }
       if (String(patch.manualStrategy).toUpperCase() === "MLCTS") {
         primeStrategyIntelFeeds(state.symbol);
+      }
+      if (String(patch.manualStrategy).toUpperCase() === "MICRO_EVENT") {
+        for (const [k, v] of Object.entries(MICRO_EVENT_ACTIVATION_PATCH)) {
+          if (patch[k] === undefined) state[k] = v;
+        }
+        if (patch.marketDecision === undefined) {
+          state.marketDecision = { ...(state.marketDecision || {}), enabled: false };
+        }
+        primeStrategyIntelFeeds(state.symbol);
+        syncMicroEventDepthWatch();
       }
     }
     if (patch.marketMode) {
@@ -12606,9 +12991,48 @@ export function createBot({
     }
     }
     /** Signal-brain keys (liqCascade*, mlcts*, vp*, …) — apply after explicit handlers. */
-    for (const [k, v] of Object.entries(pickSignalBrainBot(patch))) {
+    const brainPatch = pickSignalBrainBot(patch);
+    for (const [k, v] of Object.entries(brainPatch)) {
       if (INSTANCE_FIELD_SET.has(k)) continue;
       if (v !== undefined) state[k] = v;
+    }
+
+    if (!fromPersisted) {
+      const feedKindTouched =
+        patch.manualStrategy !== undefined ||
+        patch.marketMode !== undefined ||
+        patch.supertrendFuturesAuto !== undefined ||
+        patch.supertrendSpotAuto !== undefined ||
+        Object.keys(brainPatch).some((k) =>
+          ["manualStrategy", "marketMode", "supertrendFuturesAuto", "supertrendSpotAuto"].includes(k),
+        );
+      if (feedKindTouched) {
+        recreateMarketFeedIfKindMismatch("config_patch");
+      }
+      const liqCascadeSyncTouched =
+        patch.manualStrategy !== undefined ||
+        patch.liqCascadeLiveTickEnabled !== undefined ||
+        Object.keys(brainPatch).some(
+          (k) => k === "liqCascadeLiveTickEnabled" || k === "manualStrategy",
+        );
+      if (liqCascadeSyncTouched) {
+        syncLiqCascadeLiveEngine(wsHubRef);
+      }
+      const microEventSyncTouched =
+        patch.manualStrategy !== undefined ||
+        patch.microEventLiveTickEnabled !== undefined ||
+        patch.universeCoinSelectMode !== undefined ||
+        patch.universeCustomSymbols !== undefined ||
+        Object.keys(brainPatch).some(
+          (k) =>
+            k === "microEventLiveTickEnabled" ||
+            k === "manualStrategy" ||
+            k.startsWith("microEvent"),
+        );
+      if (microEventSyncTouched) {
+        syncMicroEventLiveEngine(wsHubRef);
+        syncMicroEventDepthWatch();
+      }
     }
 
     if (!focusOnlyPatch) persistTradingConfigToDisk();

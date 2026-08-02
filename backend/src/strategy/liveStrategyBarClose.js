@@ -32,6 +32,7 @@ export const PANEL_MANUAL_STRATEGY_KEYS = new Set([
   "CRT_TBS",
   "LIQ_CASCADE",
   "MLCTS",
+  "MICRO_EVENT",
   "SCALP_MR",
   "TOKYO_SESSION",
   "UNIFIED_ELITE",
@@ -58,6 +59,7 @@ export function manualStrategyBarCloseActive(state, mmUp) {
   if (!manualStrategyUsesLiveBarClose(state)) return false;
   // Tick executor owns LIQ_CASCADE when live-tick mode is on — avoid duplicate bar-close orders.
   if (manualStrategyKey(state) === "LIQ_CASCADE" && state?.liqCascadeLiveTickEnabled === true) return false;
+  if (manualStrategyKey(state) === "MICRO_EVENT" && state?.microEventLiveTickEnabled !== false) return false;
   const mm = String(mmUp ?? state?.marketMode ?? "AUTO").toUpperCase();
   return mm === "SPOT" || mm === "FUTURES" || mm === "AUTO";
 }
@@ -181,6 +183,13 @@ export async function evaluateLiveStrategyAdapterBar({ state, candles, idx, symU
     const barTs = Number(candles[idx]?.ts);
     const { liqSeries } = await loadLiqCascadeBarCloseLiqSeries(symU, barTs, state);
     cfg = { ...state, _liqCascadeLiqSeries: liqSeries, _liqCascadeOiSeries: [] };
+  }
+  if (key === "MICRO_EVENT") {
+    const { hydrateMicroEventBacktestData } = await import("./microEventIntraday.js");
+    const barTs = Number(candles[idx]?.ts);
+    const fromMs = barTs - 3 * 60 * 60_000;
+    const { liqSeries } = await hydrateMicroEventBacktestData(symU, fromMs, barTs, state);
+    cfg = { ...state, _microEventLiqSeries: liqSeries };
   }
   const adapters = await buildBacktestAdapters({
     strategyKey: key,

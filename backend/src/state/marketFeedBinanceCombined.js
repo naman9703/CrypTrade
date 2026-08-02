@@ -602,6 +602,10 @@ export function createBinanceCombinedMarketFeed({
 
       const k = inner?.k;
       if (!k) return;
+      /** After `setTimeframe`, debounced resync can leave the old `@kline_*` socket live briefly — drop mismatched intervals (15m bars on a 1m chart). */
+      const wantIntv = normalizeInterval(tf);
+      const gotIntv = String(k?.i ?? "").trim();
+      if (gotIntv && gotIntv !== wantIntv) return;
       /** Binance kline `k.x === true` means the interval is final; Supertrend / bar-close logic must not run on partial bars. */
       const closed = Boolean(k.x);
       const candleRaw = {
@@ -762,6 +766,15 @@ export function createBinanceCombinedMarketFeed({
       if (prevSym !== symbol) {
         status.lastPrimaryBufferPushAt = null;
         status.lastPrimaryKlineExchangeEventMs = null;
+        if (resubTimer) {
+          try {
+            clearTimeout(resubTimer);
+          } catch {
+            /* ignore */
+          }
+          resubTimer = null;
+        }
+        terminateWs();
       }
       extraWatch = extraWatch.filter((s) => s !== symbol);
       resetBuffers(subscriptionList());
@@ -770,7 +783,19 @@ export function createBinanceCombinedMarketFeed({
       log.info("feed_symbol_set", { symbol });
     },
     setTimeframe(next) {
+      const prevTf = tf;
       tf = normalizeInterval(next);
+      if (prevTf !== tf) {
+        if (resubTimer) {
+          try {
+            clearTimeout(resubTimer);
+          } catch {
+            /* ignore */
+          }
+          resubTimer = null;
+        }
+        terminateWs();
+      }
       buffers.clear();
       status.lastPrimaryBufferPushAt = null;
       status.lastPrimaryKlineExchangeEventMs = null;
@@ -807,14 +832,15 @@ export function createBinanceCombinedMarketFeed({
       return bufFor(s).toArray();
     },
     /** Push REST OHLC into the multiplex buffer when WS tail is empty/stale — never wipe a live buffer. */
-    seedCandlesForSymbol(symU, candles) {
+    seedCandlesForSymbol(symU, candles, opts = {}) {
       const s = normalizeSymbol(symU);
       if (!s || !Array.isArray(candles) || !candles.length) return;
+      const minKeep = Math.max(30, Number(opts.minBars ?? 30));
       const buf = bufFor(s);
       const existing = typeof buf.toArray === "function" ? buf.toArray() : [];
       const beforeLen = existing.length;
       const lastTs = beforeLen ? Number(existing[beforeLen - 1]?.ts) : NaN;
-      if (beforeLen >= 30 && Number.isFinite(lastTs) && Date.now() - lastTs < 120_000) {
+      if (beforeLen >= minKeep && Number.isFinite(lastTs) && Date.now() - lastTs < 120_000) {
         return;
       }
       try {

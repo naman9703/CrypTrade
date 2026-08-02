@@ -1,0 +1,198 @@
+{
+  "generatedAt": "2026-07-31T13:20:21.039Z",
+  "window": {
+    "from": "2026-07-29T02:20:03.699Z",
+    "to": "2026-07-31T13:15:39.433Z",
+    "hours": 58.93,
+    "days": 2.46
+  },
+  "costs": {
+    "slippagePct": 0.0005,
+    "feePerSide": 0.0004,
+    "leverage": 10
+  },
+  "bracketChange": "minRr=0, tpRr=1 (TP distance = SL distance)",
+  "results": {
+    "production_5m": {
+      "label": "production_5m_liq",
+      "presetSummary": {
+        "liqInterval": "5min",
+        "zMin": 2,
+        "minLiqUsdBar": 50000,
+        "minDispAtr": 1,
+        "oiGateMode": "window",
+        "minRr": 0,
+        "tpRr": 1,
+        "tpAtrMult": 1.25,
+        "confirmLiqBars": 2
+      },
+      "perCoin": [
+        {
+          "symbol": "BTCUSDT",
+          "trades": 0,
+          "netPnlUsdt": 0,
+          "wins": 0
+        },
+        {
+          "symbol": "ETHUSDT",
+          "trades": 8,
+          "netPnlUsdt": -4.7962,
+          "wins": 2
+        },
+        {
+          "symbol": "BNBUSDT",
+          "trades": 0,
+          "netPnlUsdt": 0,
+          "wins": 0
+        }
+      ],
+      "portfolio": {
+        "startingUsdt": 100,
+        "finalEquityUsdt": 95.024,
+        "netPnlUsdt": -4.976,
+        "returnPct": -4.976,
+        "trades": 8,
+        "tradesPerDay": 3.26,
+        "winRate": 0.25,
+        "profitFactor": 0.1489,
+        "pnlByExit": {
+          "tp": 1,
+          "sl": 5,
+          "flip": 1,
+          "other": 1
+        },
+        "tradesDetail": [
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-29T03:21:00.000Z",
+            "exit": "2026-07-29T03:30:00.000Z",
+            "netPnl": 0.83,
+            "exitReason": "tp"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-29T03:30:00.000Z",
+            "exit": "2026-07-29T03:50:00.000Z",
+            "netPnl": 0.0405,
+            "exitReason": "flip"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-29T03:50:00.000Z",
+            "exit": "2026-07-29T03:55:00.000Z",
+            "netPnl": -1.1234,
+            "exitReason": "sl"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-29T03:55:00.000Z",
+            "exit": "2026-07-29T04:02:00.000Z",
+            "netPnl": -1.0831,
+            "exitReason": "sl"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-29T04:05:00.000Z",
+            "exit": "2026-07-29T04:06:00.000Z",
+            "netPnl": -1.0786,
+            "exitReason": "sl"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-30T00:45:00.000Z",
+            "exit": "2026-07-30T00:53:00.000Z",
+            "netPnl": -1.1207,
+            "exitReason": "sl"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-31T01:50:00.000Z",
+            "exit": "2026-07-31T02:16:00.000Z",
+            "netPnl": -1.2059,
+            "exitReason": "sl"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-31T12:16:00.000Z",
+            "exit": "2026-07-31T12:27:00.000Z",
+            "netPnl": -0.2349,
+            "exitReason": "session_end"
+          }
+        ]
+      }
+    },
+    "production_1m": {
+      "label": "production_1m_liq",
+      "presetSummary": {
+        "liqInterval": "1min",
+        "zMin": 1.8,
+        "minLiqUsdBar": 10000,
+        "minDispAtr": 0.8,
+        "oiGateMode": "window",
+        "minRr": 0,
+        "tpRr": 1,
+        "tpAtrMult": 1.25,
+        "confirmLiqBars": 5
+      },
+      "perCoin": [
+        {
+          "symbol": "BTCUSDT",
+          "trades": 1,
+          "netPnlUsdt": 0.3458,
+          "wins": 1
+        },
+        {
+          "symbol": "ETHUSDT",
+          "trades": 2,
+          "netPnlUsdt": 0.1819,
+          "wins": 1
+        },
+        {
+          "symbol": "BNBUSDT",
+          "trades": 0,
+          "netPnlUsdt": 0,
+          "wins": 0
+        }
+      ],
+      "portfolio": {
+        "startingUsdt": 100,
+        "finalEquityUsdt": 100.532,
+        "netPnlUsdt": 0.532,
+        "returnPct": 0.532,
+        "trades": 3,
+        "tradesPerDay": 1.22,
+        "winRate": 0.6667,
+        "profitFactor": 2.5319,
+        "pnlByExit": {
+          "tp": 2,
+          "sl": 0,
+          "flip": 0,
+          "other": 1
+        },
+        "tradesDetail": [
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-31T03:14:00.000Z",
+            "exit": "2026-07-31T03:21:00.000Z",
+            "netPnl": 0.5316,
+            "exitReason": "tp"
+          },
+          {
+            "symbol": "BTCUSDT",
+            "entry": "2026-07-31T02:43:00.000Z",
+            "exit": "2026-07-31T04:04:00.000Z",
+            "netPnl": 0.3477,
+            "exitReason": "tp"
+          },
+          {
+            "symbol": "ETHUSDT",
+            "entry": "2026-07-31T12:10:00.000Z",
+            "exit": "2026-07-31T12:27:00.000Z",
+            "netPnl": -0.3473,
+            "exitReason": "session_end"
+          }
+        ]
+      }
+    }
+  }
+}

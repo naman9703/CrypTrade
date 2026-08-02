@@ -7,6 +7,7 @@
  *   GET    /api/backtest/runs                     list (current user)
  *   GET    /api/backtest/runs/:id                 detail (run + metrics)
  *   GET    /api/backtest/runs/:id/trades          paginated trade list
+ *   GET    /api/backtest/runs/:id/trades/export.csv  full trade CSV + TA features
  *   GET    /api/backtest/runs/:id/equity-curve    downsampled curve
  *   GET    /api/backtest/runs/:id/trail-tick-audit/estimate
  *   POST   /api/backtest/runs/:id/trail-tick-audit
@@ -42,6 +43,7 @@ import { resolveSituationRouterCfg } from "../strategy/situationIntraday.js";
 import { resolveCrtTbsCfg } from "../strategy/crtTbsIntraday.js";
 import { resolveLiqCascadeCfg } from "../strategy/liqCascadeIntraday.js";
 import { resolveMlctsCfg } from "../strategy/mlctsIntraday.js";
+import { resolveMicroEventCfg } from "../strategy/microEventIntraday.js";
 import { resolveTokyoSessionCfg } from "../strategy/tokyoSessionIntraday.js";
 import { InsufficientCapitalError } from "../db/services/capitalAllotmentService.js";
 import {
@@ -57,6 +59,7 @@ import { ensureFunding } from "../backtest/data/fundingIngest.js";
 import { ensureFearGreed } from "../backtest/data/fearGreedIngest.js";
 import { ensureOpenInterest } from "../backtest/data/openInterestIngest.js";
 import { getCoverage, getMonthlyCoverage } from "../backtest/data/dataCoverage.js";
+import { buildTradesCsv } from "../backtest/reporting/tradeCsvBuilder.js";
 import {
   createDataSyncJob,
   getDataSyncJob,
@@ -381,6 +384,36 @@ export function createBacktestRouter({ appState }) {
         [String(req.params.id), limit, offset],
       );
       res.json({ ok: true, trades: r2.rows.map(mapTradeRow) });
+    } catch (e) {
+      res.status(notFoundFor(e)).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/runs/:id/trades/export.csv", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const userId = uid(req);
+    if (!userId) return res.status(403).json({ ok: false, error: "db_user_required" });
+    const runId = String(req.params.id);
+    try {
+      await assertRunOwned(runId, userId);
+      const runRow = await query(`SELECT * FROM backtest_runs WHERE id = $1 AND user_id = $2`, [runId, userId]);
+      const row = runRow.rows[0];
+      if (!row) return res.status(404).json({ ok: false, error: "run_not_found" });
+
+      const tradesRes = await query(
+        `SELECT *
+           FROM backtest_trades
+          WHERE backtest_run_id = $1
+          ORDER BY trade_number ASC`,
+        [runId],
+      );
+      const trades = tradesRes.rows.map(mapTradeRow);
+      const run = mapRunRow(row);
+      const csv = await buildTradesCsv(run, trades);
+      const label = run.label ? String(run.label).replace(/[^\w.-]+/g, "_").slice(0, 40) : run.id.slice(0, 8);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="backtest-${label}-trades.csv"`);
+      res.send(csv);
     } catch (e) {
       res.status(notFoundFor(e)).json({ ok: false, error: String(e?.message || e) });
     }
@@ -1421,6 +1454,8 @@ function materializeBacktestEngineSnapshot(cfgRaw) {
     engine = { ...resolveLiqCascadeCfg(b), ...preserved };
   } else if (strat === "MLCTS") {
     engine = { ...resolveMlctsCfg(b), ...preserved };
+  } else if (strat === "MICRO_EVENT") {
+    engine = { ...resolveMicroEventCfg(b), ...preserved };
   } else if (strat === "TOKYO_SESSION") {
     engine = { ...resolveTokyoSessionCfg(b), ...preserved };
   } else if (strat === "SUPERTREND_ELITE" || strat === "UNIFIED_ELITE") {
@@ -1441,6 +1476,7 @@ function materializeBacktestEngineSnapshot(cfgRaw) {
     strat === "CRT_TBS" ||
     strat === "LIQ_CASCADE" ||
     strat === "MLCTS" ||
+    strat === "MICRO_EVENT" ||
     strat === "TOKYO_SESSION" ||
     didIntradayMaterialize;
   if (replaceBotRoot) {

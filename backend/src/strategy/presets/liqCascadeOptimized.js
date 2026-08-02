@@ -53,6 +53,7 @@ export const LIQ_CASCADE_BTC_1M = {
   liqCascadeStrongDispAtr: 2.0,
   liqCascadeMinOiDropPct: 0.12,
   liqCascadeOiGateMode: "window",
+  liqCascadeOiSource: "binance",
   liqCascadeOiWindowBars: 3,
   liqCascadeConfirmMode: "ladder",
   liqCascadeConfirmLiqBars: 2,
@@ -62,6 +63,12 @@ export const LIQ_CASCADE_BTC_1M = {
   liqCascadeMaxTradesPerDay: 8,
   liqCascadeMinBarGap: 2,
   liqCascadeMaxHoldBars: 24,
+  /** One trade per cascade cluster — no flip/re-entry churn on same unwind (12×5m = 1h). */
+  liqCascadeEventCooldownLiqBars: 12,
+  /** Bracket: no R:R floor; TP = 5× ATR (clears ~0.18% round-trip friction). */
+  liqCascadeMinRr: 0,
+  liqCascadeTpRr: 0,
+  liqCascadeTpAtrMult: 5,
   liqCascadeLiveTickEnabled: false,
   intradayLiqPartialTp: false,
   intradayLiqTp1Enabled: false,
@@ -113,7 +120,10 @@ export const LIQ_CASCADE_SMOKE_TEST_PATCH = {
   liqCascadeConfirmMode: "ladder",
   liqCascadeConfirmLiqBars: 1,
   liqCascadeMinAtrPct: 0.001,
-  liqCascadeMinRr: 0.5,
+  /** Paper only — disable R:R gate so wide sweep stops still fire orders. */
+  liqCascadeMinRr: 0,
+  /** Wider TP — must clear ~0.18% round-trip (0.04% fee + 0.05% slip ×2) on typical ATR; 3× was losing on TP hits. */
+  liqCascadeTpAtrMult: 5,
   liqCascadeZScoreMin: 1.5,
   liqCascadeMinLiqUsdBar: 25_000,
   liqCascadeMinBarGap: 1,
@@ -137,5 +147,158 @@ export const LIQ_CASCADE_ETH_1M_SMOKE_TEST = {
 export const LIQ_CASCADE_PORTFOLIO_1M_SMOKE_TEST = {
   ...LIQ_CASCADE_PORTFOLIO_1M,
   ...LIQ_CASCADE_SMOKE_TEST_PATCH,
+  symbol: "BTCUSDT",
+};
+
+/**
+ * 1-minute liquidation bars (force_orders ticks aggregated to 1m).
+ * Entry chart stays 1m; liq z-score / dom gates fire every 1m bar close (~5× vs 5m liq).
+ * Wall-clock windows preserved: 15m cascade, ~5m confirm, 1h z lookback.
+ */
+export const LIQ_CASCADE_LIQ_1MIN_CORE = {
+  liqCascadeInterval: "1min",
+  liqCascadeLookbackBars: 60,
+  liqCascadeWindowBars: 15,
+  liqCascadeConfirmLiqBars: 5,
+  liqCascadeOiWindowBars: 15,
+  liqCascadeMinLiqUsdBar: 10_000,
+  liqCascadeZScoreMin: 1.8,
+  liqCascadeMinBarGap: 3,
+  liqCascadeMaxTradesPerDay: 20,
+  liqCascadeMaxHoldBars: 30,
+};
+
+/** Research / higher-frequency path — 1m liq bars, production-style gates (not certified). */
+export const LIQ_CASCADE_FREQ_1MIN_PATCH = {
+  ...LIQ_CASCADE_LIQ_1MIN_CORE,
+  liqCascadeMinDispAtr: 0.8,
+  liqCascadeStrongDispAtr: 1.6,
+};
+
+export const LIQ_CASCADE_BTC_1M_LIQ_1MIN = {
+  ...LIQ_CASCADE_BTC_1M,
+  ...LIQ_CASCADE_FREQ_1MIN_PATCH,
+  symbol: "BTCUSDT",
+};
+
+export const LIQ_CASCADE_ETH_1M_LIQ_1MIN = {
+  ...LIQ_CASCADE_ETH_1M,
+  ...LIQ_CASCADE_FREQ_1MIN_PATCH,
+  symbol: "ETHUSDT",
+  liqCascadeMinLiqUsdBar: 8_000,
+};
+
+export const LIQ_CASCADE_BNB_1M_LIQ_1MIN = {
+  ...LIQ_CASCADE_BNB_1M,
+  ...LIQ_CASCADE_FREQ_1MIN_PATCH,
+  symbol: "BNBUSDT",
+  liqCascadeZScoreMin: 1.6,
+  liqCascadeMinLiqUsdBar: 6_000,
+};
+
+export const LIQ_CASCADE_PORTFOLIO_1M_LIQ_1MIN = {
+  ...LIQ_CASCADE_PORTFOLIO_1M,
+  ...LIQ_CASCADE_FREQ_1MIN_PATCH,
+  symbol: "BTCUSDT",
+};
+
+/** Paper smoke on 1m liq bars — path verify only; ~⅕ per-bar liq $ vs 5m smoke. */
+export const LIQ_CASCADE_SMOKE_1MIN_PATCH = {
+  ...LIQ_CASCADE_LIQ_1MIN_CORE,
+  liqCascadeOiGateMode: "off",
+  liqCascadeMinOiDropPct: 0,
+  liqCascadeMinDispAtr: 0,
+  liqCascadeStrongDispAtr: 0,
+  liqCascadeConfirmMode: "ladder",
+  liqCascadeConfirmLiqBars: 2,
+  liqCascadeMinAtrPct: 0.001,
+  liqCascadeMinRr: 0,
+  liqCascadeTpAtrMult: 5,
+  liqCascadeZScoreMin: 1.2,
+  liqCascadeMinLiqUsdBar: 5_000,
+  liqCascadeMinBarGap: 2,
+  liqCascadeMaxTradesPerDay: 24,
+  liqCascadeLiveTickEnabled: false,
+};
+
+export const LIQ_CASCADE_BTC_1M_SMOKE_1MIN = {
+  ...LIQ_CASCADE_BTC_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_PATCH,
+  symbol: "BTCUSDT",
+};
+
+export const LIQ_CASCADE_ETH_1M_SMOKE_1MIN = {
+  ...LIQ_CASCADE_ETH_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_PATCH,
+  symbol: "ETHUSDT",
+};
+
+export const LIQ_CASCADE_PORTFOLIO_1M_SMOKE_1MIN = {
+  ...LIQ_CASCADE_PORTFOLIO_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_PATCH,
+  symbol: "BTCUSDT",
+};
+
+/** One-change ablation: smoke 1m + cascade quality (min liq $ + displacement). Research only. */
+export const LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_PATCH = {
+  ...LIQ_CASCADE_SMOKE_1MIN_PATCH,
+  liqCascadeMinDispAtr: 0.8,
+  liqCascadeStrongDispAtr: 1.6,
+  liqCascadeMinLiqUsdBar: 15_000,
+};
+
+export const LIQ_CASCADE_BTC_1M_SMOKE_1MIN_SELECTIVE = {
+  ...LIQ_CASCADE_BTC_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_PATCH,
+  symbol: "BTCUSDT",
+};
+
+export const LIQ_CASCADE_ETH_1M_SMOKE_1MIN_SELECTIVE = {
+  ...LIQ_CASCADE_ETH_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_PATCH,
+  symbol: "ETHUSDT",
+  liqCascadeMinLiqUsdBar: 12_000,
+};
+
+export const LIQ_CASCADE_BNB_1M_SMOKE_1MIN_SELECTIVE = {
+  ...LIQ_CASCADE_BNB_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_PATCH,
+  symbol: "BNBUSDT",
+  liqCascadeMinLiqUsdBar: 8_000,
+};
+
+export const LIQ_CASCADE_PORTFOLIO_1M_SMOKE_1MIN_SELECTIVE = {
+  ...LIQ_CASCADE_PORTFOLIO_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_PATCH,
+  symbol: "BTCUSDT",
+};
+
+/** Selective + z≥1.5 — best max-backdata checkpoint (+1.2% / 51h); still sub-30 trades, not certified. */
+export const LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_Z15_PATCH = {
+  ...LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_PATCH,
+  liqCascadeZScoreMin: 1.5,
+};
+
+export const LIQ_CASCADE_PORTFOLIO_1M_SMOKE_1MIN_SELECTIVE_Z15 = {
+  ...LIQ_CASCADE_PORTFOLIO_1M,
+  ...LIQ_CASCADE_SMOKE_1MIN_SELECTIVE_Z15_PATCH,
+  symbol: "BTCUSDT",
+};
+
+/**
+ * Production 1m liq tuned from max-backdata autopsy (research only — NOT certified).
+ * Fixes 0-trade root cause: OI off, confirm 2 bars, minRr 0, tp 5× (bracket gate was blocking all confirms).
+ */
+export const LIQ_CASCADE_PROD_1M_TUNED_PATCH = {
+  liqCascadeOiGateMode: "off",
+  liqCascadeMinOiDropPct: 0,
+  liqCascadeConfirmLiqBars: 2,
+  liqCascadeMinRr: 0,
+  liqCascadeTpAtrMult: 5,
+};
+
+export const LIQ_CASCADE_PORTFOLIO_1M_PROD_TUNED = {
+  ...LIQ_CASCADE_PORTFOLIO_1M_LIQ_1MIN,
+  ...LIQ_CASCADE_PROD_1M_TUNED_PATCH,
   symbol: "BTCUSDT",
 };

@@ -13,6 +13,8 @@ import { MlctsLayersPanel } from "./MlctsLayersPanel";
 import type { MlctsLayerStatus } from "./MlctsLayersPanel";
 import { LiqCascadeRadarPanel } from "./LiqCascadeRadarPanel";
 import type { LiqCascadeRadarStatus } from "./LiqCascadeRadarPanel";
+import { MicroEventRadarPanel } from "./MicroEventRadarPanel";
+import type { MicroEventRadarStatus } from "./MicroEventRadarPanel";
 import { LogsPanel } from "./LogsPanel";
 import { ThemeToggle } from "./ThemeToggle";
 import { TradingModeBadge } from "./TradingModeBadge";
@@ -37,6 +39,20 @@ function MlctsLayersSection() {
   return (
     <div className="lg:col-span-2">
       <MlctsLayersPanel status={fromMarket ?? fromBot} />
+    </div>
+  );
+}
+
+function MicroEventRadarSection() {
+  const manualStrategy = useAppStore((s) => String(s.bot?.manualStrategy ?? "").toUpperCase());
+  const fromBot = useAppStore((s) => s.bot?.microEventRadarStatus as MicroEventRadarStatus | undefined);
+  const fromMarket = useAppStore(
+    (s) => (s.market as { microEventRadarStatus?: MicroEventRadarStatus } | undefined)?.microEventRadarStatus,
+  );
+  if (manualStrategy !== "MICRO_EVENT") return null;
+  return (
+    <div className="lg:col-span-2">
+      <MicroEventRadarPanel status={fromMarket ?? fromBot} />
     </div>
   );
 }
@@ -141,6 +157,8 @@ export function App() {
               <MlctsLayersSection />
 
               <LiqCascadeRadarSection />
+
+              <MicroEventRadarSection />
 
               <div className="space-y-3">
                 <div className="rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">

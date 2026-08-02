@@ -7,7 +7,7 @@ function normalizeSymbol(symbol) {
   return String(symbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 }
 
-async function fetchFundingHistory(symbol, fromMs, toMs) {
+export async function fetchFundingHistory(symbol, fromMs, toMs) {
   const out = [];
   let start = fromMs;
   let guard = 0;

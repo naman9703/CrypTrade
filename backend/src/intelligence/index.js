@@ -1,6 +1,7 @@
 import { fearGreedCollector }    from './collectors/fearGreedCollector.js';
 import { fundingCollector }      from './collectors/fundingCollector.js';
 import { openInterestCollector } from './collectors/openInterestCollector.js';
+import { recordOpenInterestSample } from '../strategy/data/openInterestHistory.js';
 import { orderBookCollector }    from './collectors/orderBookCollector.js';
 import { optionsCollector }      from './collectors/optionsCollector.js';
 import { onChainCollector }      from './collectors/onChainCollector.js';
@@ -142,9 +143,12 @@ export async function ensureOpenInterestForSymbols(symbols) {
   if (!syms.length) return intelligenceCache.openInterest;
 
   const fresh = await openInterestCollector.collect(syms);
+  const polledAt = Date.now();
   for (const [sym, row] of Object.entries(fresh)) {
     intelligenceCache.openInterest[sym] = row;
-    openInterestFetchedAt[sym] = Date.now();
+    openInterestFetchedAt[sym] = polledAt;
+    const oi = Number(row?.usdt ?? 0);
+    if (oi > 0) recordOpenInterestSample(sym, oi, polledAt);
   }
   return intelligenceCache.openInterest;
 }
@@ -326,6 +330,18 @@ export function startIntelligenceEngine(wsHub, appState = null) {
   setTimeout(() => runPoller('news_impact', async () => {
     await refreshNewsImpactCache(intelligenceCache);
   }, 12 * 60 * 1000), 15_500);
+
+  void import('./collectors/aggTradeRolling.js')
+    .then(({ startAggTradeRollingMaintenance }) => startAggTradeRollingMaintenance())
+    .catch(() => {});
+
+  setTimeout(() => runPoller('openInterest_micro_event_fast', async () => {
+    const botState = intelligenceAppStateRef?.bot?.getPublicState?.() ?? {};
+    if (String(botState.manualStrategy ?? '').toUpperCase() !== 'MICRO_EVENT') return;
+    const { resolveMicroEventWatchSymbols } = await import('../svc/microEventLiveEngine.js');
+    const syms = resolveMicroEventWatchSymbols(botState);
+    if (syms.length) await ensureOpenInterestForSymbols(syms);
+  }, 10_000), 4500);
 
   setTimeout(() => runPoller('composite', async () => {
     const syms = Object.keys(intelligenceCache.candles);

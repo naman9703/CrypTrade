@@ -214,6 +214,10 @@ async function execute({ runId }) {
       const { resolveMlctsCfg } = await import("../../strategy/mlctsIntraday.js");
       cfg = resolveMlctsCfg(cfg);
       cfg._intradayEngineMaterialized = true;
+    } else if (stratEarly === "MICRO_EVENT") {
+      const { resolveMicroEventCfg } = await import("../../strategy/microEventIntraday.js");
+      cfg = resolveMicroEventCfg(cfg);
+      cfg._intradayEngineMaterialized = true;
     } else if (stratEarly === "SCALP_MR") {
       const { resolveScalpMrCfg } = await import("../../strategy/scalpMr.js");
       cfg = resolveScalpMrCfg(cfg);
@@ -308,6 +312,9 @@ async function execute({ runId }) {
   } else if (strategyKey === "LIQ_CASCADE") {
     const { liqCascadePadFromMs } = await import("../../strategy/liqCascadeIntraday.js");
     candleFromMs = liqCascadePadFromMs(fromMs, tf);
+  } else if (strategyKey === "MICRO_EVENT") {
+    const { microEventPadFromMs } = await import("../../strategy/microEventIntraday.js");
+    candleFromMs = microEventPadFromMs(fromMs, tf);
   } else if (strategyKey === "MLCTS") {
     const { mlctsPadFromMs } = await import("../../strategy/mlctsIntraday.js");
     candleFromMs = mlctsPadFromMs(fromMs, tf);
@@ -403,6 +410,14 @@ async function execute({ runId }) {
       cfg = await hydrateMlctsCfg(cfg, symbol, fromMs, toMs);
     } catch (err) {
       console.warn("[backtest:worker] hydrateMlctsCfg failed:", err?.message || err);
+    }
+  }
+  if (strategyKey === "MICRO_EVENT") {
+    try {
+      const { hydrateMicroEventCfg } = await import("../../strategy/microEventIntraday.js");
+      cfg = await hydrateMicroEventCfg(cfg, symbol, fromMs, toMs);
+    } catch (err) {
+      console.warn("[backtest:worker] hydrateMicroEventCfg failed:", err?.message || err);
     }
   }
   if (typeof buildBacktestAdapters === "function") {
@@ -554,6 +569,9 @@ async function executePortfolio({
   } else if (strategyKey === "LIQ_CASCADE") {
     const { liqCascadePadFromMs } = await import("../../strategy/liqCascadeIntraday.js");
     candleFromMs = liqCascadePadFromMs(fromMs, tf);
+  } else if (strategyKey === "MICRO_EVENT") {
+    const { microEventPadFromMs } = await import("../../strategy/microEventIntraday.js");
+    candleFromMs = microEventPadFromMs(fromMs, tf);
   } else if (strategyKey === "MLCTS") {
     const { mlctsPadFromMs } = await import("../../strategy/mlctsIntraday.js");
     candleFromMs = mlctsPadFromMs(fromMs, tf);
@@ -642,6 +660,14 @@ async function executePortfolio({
         symCfg = await hydrateLiqCascadeCfg(symCfg, sym, fromMs, toMs);
       } catch (err) {
         console.warn(`[backtest:worker] hydrateLiqCascadeCfg ${sym} failed:`, err?.message || err);
+      }
+    }
+    if (strategyKey === "MICRO_EVENT") {
+      try {
+        const { hydrateMicroEventCfg } = await import("../../strategy/microEventIntraday.js");
+        symCfg = await hydrateMicroEventCfg(symCfg, sym, fromMs, toMs);
+      } catch (err) {
+        console.warn(`[backtest:worker] hydrateMicroEventCfg ${sym} failed:`, err?.message || err);
       }
     }
     if (isFutures) symCfg = await applyBacktestBracketCap(symCfg, sym);

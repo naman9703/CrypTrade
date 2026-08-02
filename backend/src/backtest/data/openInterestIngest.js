@@ -180,3 +180,42 @@ export async function readOpenInterest(symbol, fromMs, toMs) {
     longShortRatio: row.long_short_ratio != null ? Number(row.long_short_ratio) : undefined,
   }));
 }
+
+/** Binance `/futures/data/openInterestHist` period for a liq-cascade liq interval. */
+export function binanceOiPeriodForLiqInterval(liqInterval) {
+  const s = String(liqInterval || "5min").toLowerCase();
+  if (s === "1min") return "5m"; // Binance has no 1m OI — use 5m, aligned separately
+  if (s === "5min") return "5m";
+  if (s === "15min") return "15m";
+  if (s === "30min") return "30m";
+  if (s === "1hour" || s === "1h") return "1h";
+  return "5m";
+}
+
+export function binanceOiPeriodToMs(period) {
+  if (period === "5m") return 300_000;
+  if (period === "15m") return 900_000;
+  if (period === "30m") return 1_800_000;
+  if (period === "1h") return 3_600_000;
+  return 300_000;
+}
+
+function filterOiRowsToPeriod(rows, periodMs) {
+  if (!rows?.length || !(periodMs > 0)) return rows ?? [];
+  return rows.filter((r) => r.ts % periodMs === 0);
+}
+
+/**
+ * Load OI for LIQ_CASCADE in Coinalyze-compatible shape `{ ts, oiCloseUsd }`.
+ * Uses Binance futures OI hist (cached in historical_open_interest).
+ * @returns {Promise<{ oiSeries: object[], oiIntervalMs: number, binancePeriod: string }>}
+ */
+export async function loadCascadeOiFromBinance(symbol, fromMs, toMs, liqInterval = "5min") {
+  const binancePeriod = binanceOiPeriodForLiqInterval(liqInterval);
+  const oiIntervalMs = binanceOiPeriodToMs(binancePeriod);
+  await ensureOpenInterest(symbol, { from: fromMs, to: toMs, period: binancePeriod }).catch(() => {});
+  const raw = await readOpenInterest(symbol, fromMs, toMs);
+  const filtered = filterOiRowsToPeriod(raw, oiIntervalMs);
+  const oiSeries = filtered.map((r) => ({ ts: r.ts, oiCloseUsd: r.oiUsdt }));
+  return { oiSeries, oiIntervalMs, binancePeriod };
+}

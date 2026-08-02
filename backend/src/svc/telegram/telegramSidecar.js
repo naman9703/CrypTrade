@@ -13,6 +13,18 @@ function trimTelegramText(s, max = 3900) {
 }
 
 /**
+ * Activity "signal" lines (SKIPPED / PENDING / ERROR / PLACED) stay in the UI log only.
+ * Telegram trade alerts come from notifyTrade (OPEN/CLOSE) after a fill is recorded.
+ * @param {{ category?: string }} payload
+ */
+export function shouldForwardActivityToTelegram(payload) {
+  const cat = payload?.category;
+  if (cat === "bot_lifecycle" || cat === "manual_trade") return true;
+  if (cat === "signal") return false;
+  return false;
+}
+
+/**
  * Telegram integration that never blocks trading:
  * - Activity/trade hooks only enqueue strings (sync).
  * - sendMessage runs in a micro-task / async drain with pacing.
@@ -78,30 +90,16 @@ export function createTelegramSidecar({ log, appState }) {
     return String(id) === chatId || String(Number(id)) === chatId;
   }
 
-  /** Skip Telegram for noisy non-action signal lines (still in Activity / WS). */
-  function shouldSuppressSignalOnTelegram(payload) {
-    if (payload?.category !== "signal") return false;
-    const r = payload.reason != null ? String(payload.reason) : "";
-    const d = payload.detail;
-    const dr = d && typeof d === "object" && d.reason != null ? String(d.reason) : "";
-    return (
-      r === "bar_close_not_ready_buffer_mismatch" ||
-      dr === "bar_close_not_ready_buffer_mismatch" ||
-      r === "supertrend_autotrade_off_or_market_mode_mismatch" ||
-      dr === "supertrend_autotrade_off_or_market_mode_mismatch"
-    );
-  }
-
-  /** Categories forwarded from Activity (indicator signals, engine on/off). */
+  /**
+   * Activity "signal" lines (SKIPPED / PENDING / ERROR / PLACED) stay in the UI log only.
+   * Telegram trade alerts come from notifyTrade (OPEN/CLOSE) after a fill is recorded.
+   */
   function notifyActivity(payload) {
     if (!enabled) return;
-    const cat = payload?.category;
-    if (cat === "bot_lifecycle" || cat === "signal" || cat === "manual_trade") {
-      if (shouldSuppressSignalOnTelegram(payload)) return;
-      const ts = payload.ts ? String(payload.ts) : "";
-      const line = ts ? `[${ts}] ${payload.msg}` : String(payload.msg);
-      enqueue(line);
-    }
+    if (!shouldForwardActivityToTelegram(payload)) return;
+    const ts = payload.ts ? String(payload.ts) : "";
+    const line = ts ? `[${ts}] ${payload.msg}` : String(payload.msg);
+    enqueue(line);
   }
 
   function notifyTrade(trade) {
@@ -355,7 +353,7 @@ export function createTelegramSidecar({ log, appState }) {
           log.warn("telegram_get_me_failed", { error: telegramErrDetail(e) });
         }
         if (truthyEnv(process.env.TELEGRAM_STARTUP_PING)) {
-          enqueue("Trading bot — Telegram outbound OK. You'll get signal & trade alerts here.");
+          enqueue("Trading bot — Telegram outbound OK. You'll get trade fill alerts here.");
         }
         void pollLoop();
       })();

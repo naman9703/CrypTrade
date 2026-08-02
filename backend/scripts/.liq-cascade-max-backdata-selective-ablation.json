@@ -1,0 +1,123 @@
+{
+  "generatedAt": "2026-07-31T05:27:13.372Z",
+  "window": {
+    "from": "2026-07-29T02:20:03.699Z",
+    "to": "2026-07-31T05:26:39.539Z",
+    "hours": 51.11,
+    "days": 2.13
+  },
+  "costs": {
+    "slippagePct": 0.0005,
+    "feePerSide": 0.0004,
+    "leverage": 10
+  },
+  "startingUsdt": 100,
+  "ablation": "min liq $15k/12k/8k + disp ≥0.8 ATR vs smoke baseline",
+  "results": {
+    "smoke_1m": {
+      "label": "smoke_1m_baseline",
+      "preset": {
+        "minLiqUsdBar": 5000,
+        "minDispAtr": 0,
+        "zMin": 1.2,
+        "tpAtrMult": 5
+      },
+      "portfolio": {
+        "trades": 81,
+        "tradesPerDay": 38.04,
+        "netPnlUsdt": -23.8969,
+        "returnPct": -23.8969,
+        "finalEquity": 76.1031,
+        "winRate": 0.37037037037037035,
+        "profitFactor": 0.4307828496075212,
+        "maxDrawdownPct": 25.13987185298469,
+        "pnlByExit": {
+          "tp": 17.5791,
+          "sl": -39.8537,
+          "flip": -1.3929
+        }
+      },
+      "perCoin": [
+        {
+          "symbol": "BTCUSDT",
+          "trades": 34,
+          "netPnl": -9.341500173068846,
+          "wins": 15,
+          "minLiq": 5000,
+          "minDisp": 0
+        },
+        {
+          "symbol": "ETHUSDT",
+          "trades": 40,
+          "netPnl": -12.489344338249612,
+          "wins": 11,
+          "minLiq": 5000,
+          "minDisp": 0
+        },
+        {
+          "symbol": "BNBUSDT",
+          "trades": 7,
+          "netPnl": -1.448054158615396,
+          "wins": 4,
+          "minLiq": 5000,
+          "minDisp": 0
+        }
+      ]
+    },
+    "selective_1m": {
+      "label": "smoke_1m_selective_ablation",
+      "preset": {
+        "minLiqUsdBar": 15000,
+        "minDispAtr": 0.8,
+        "zMin": 1.2,
+        "tpAtrMult": 5
+      },
+      "portfolio": {
+        "trades": 26,
+        "tradesPerDay": 12.21,
+        "netPnlUsdt": -2.695,
+        "returnPct": -2.695,
+        "finalEquity": 97.305,
+        "winRate": 0.5,
+        "profitFactor": 0.7700564206808012,
+        "maxDrawdownPct": 6.695739260390397,
+        "pnlByExit": {
+          "tp": 9.0252,
+          "sl": -10.734,
+          "flip": -0.8062
+        }
+      },
+      "perCoin": [
+        {
+          "symbol": "BTCUSDT",
+          "trades": 10,
+          "netPnl": -0.9874992257686475,
+          "wins": 5,
+          "minLiq": 15000,
+          "minDisp": 0.8
+        },
+        {
+          "symbol": "ETHUSDT",
+          "trades": 12,
+          "netPnl": -1.2792431214827824,
+          "wins": 6,
+          "minLiq": 12000,
+          "minDisp": 0.8
+        },
+        {
+          "symbol": "BNBUSDT",
+          "trades": 4,
+          "netPnl": -0.646226058593092,
+          "wins": 2,
+          "minLiq": 8000,
+          "minDisp": 0.8
+        }
+      ]
+    }
+  },
+  "delta": {
+    "returnPct": 21.2019,
+    "netPnlUsdt": 21.2019,
+    "trades": -55
+  }
+}

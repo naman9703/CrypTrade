@@ -77,6 +77,8 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
   const [curve, setCurve] = useState<BacktestEquityPoint[] | null>(null);
   const [hydratedRun, setHydratedRun] = useState<BacktestRunSummary | null>(null);
   const [promoteOpen, setPromoteOpen] = useState<boolean>(false);
+  const [csvExporting, setCsvExporting] = useState(false);
+  const [csvExportError, setCsvExportError] = useState<string | null>(null);
   const isTerminalRest =
     run?.status === "done" || run?.status === "failed" || run?.status === "cancelled";
   const status = run && isTerminalRest ? run.status : (progress?.status ?? run?.status);
@@ -128,6 +130,7 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
     setCurve(null);
     setHydratedRun(null);
     setSelectedTrade(null);
+    setCsvExportError(null);
   }, [run?.id]);
 
   /**
@@ -274,6 +277,7 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
       <WalkForwardSummary run={displayRun} walkForward={walkForward} tradesLoaded={trades != null} />
 
       <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 text-xs dark:border-slate-800 dark:bg-slate-950/60">
+        <div className="flex flex-1 flex-wrap items-center gap-1">
         {(
           [
             ["kpis", "Summary"],
@@ -295,7 +299,36 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
             {label}
           </button>
         ))}
+        </div>
+        {displayRun.status === "done" && trades != null && trades.length > 0 ? (
+          <button
+            type="button"
+            disabled={csvExporting}
+            className="ml-auto shrink-0 rounded border border-slate-300 bg-white px-2.5 py-1 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            onClick={() => {
+              if (!displayRun?.id) return;
+              setCsvExportError(null);
+              setCsvExporting(true);
+              const label = displayRun.label
+                ? String(displayRun.label).replace(/[^\w.-]+/g, "_").slice(0, 40)
+                : displayRun.id.slice(0, 8);
+              void api
+                .downloadBacktestTradesCsv(displayRun.id, `backtest-${label}-trades.csv`)
+                .catch((e) => {
+                  setCsvExportError(String((e as Error)?.message || e));
+                })
+                .finally(() => setCsvExporting(false));
+            }}
+          >
+            {csvExporting ? "Exporting…" : "Download CSV"}
+          </button>
+        ) : null}
       </div>
+      {csvExportError ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/50 dark:text-rose-100">
+          CSV export failed: {csvExportError}
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/60">
         {tab === "kpis" && <SummaryBlock run={displayRun} trades={trades} />}

@@ -4,10 +4,12 @@
  *
  * Usage (backend/):
  *   HOURS=720 LIQ_SOURCE=force_orders node scripts/research-liq-cascade-last10h-signals.mjs
- *   DAYS=30 node scripts/research-liq-cascade-last10h-signals.mjs
+ *   SETUP=production_1m HOURS=72 node scripts/research-liq-cascade-last10h-signals.mjs
+ *   SETUP=smoke_1m HOURS=72 node scripts/research-liq-cascade-last10h-signals.mjs
  */
 import dotenv from "dotenv";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -17,13 +19,36 @@ const DAYS = Number(process.env.DAYS || 0);
 const HOURS = Number(process.env.HOURS || (DAYS > 0 ? DAYS * 24 : 10));
 const TF = process.env.TF || "1m";
 const LIQ_SOURCE = process.env.LIQ_SOURCE || "force_orders";
-const LIQ_INTERVAL = process.env.LIQ_INTERVAL || "5min";
+const SETUP = String(process.env.SETUP || "production_5m").toLowerCase();
+const OUT = process.env.OUT || "";
 
-const PRESETS = {
-  BTCUSDT: (await import("../src/strategy/presets/liqCascadeOptimized.js")).LIQ_CASCADE_BTC_1M,
-  ETHUSDT: (await import("../src/strategy/presets/liqCascadeOptimized.js")).LIQ_CASCADE_ETH_1M,
-  BNBUSDT: (await import("../src/strategy/presets/liqCascadeOptimized.js")).LIQ_CASCADE_BNB_1M,
+const presetMod = await import("../src/strategy/presets/liqCascadeOptimized.js");
+
+const PRESET_BY_SETUP = {
+  production_5m: {
+    BTCUSDT: presetMod.LIQ_CASCADE_BTC_1M,
+    ETHUSDT: presetMod.LIQ_CASCADE_ETH_1M,
+    BNBUSDT: presetMod.LIQ_CASCADE_BNB_1M,
+  },
+  smoke_5m: {
+    BTCUSDT: presetMod.LIQ_CASCADE_BTC_1M_SMOKE_TEST,
+    ETHUSDT: presetMod.LIQ_CASCADE_ETH_1M_SMOKE_TEST,
+    BNBUSDT: { ...presetMod.LIQ_CASCADE_BNB_1M, ...presetMod.LIQ_CASCADE_SMOKE_TEST_PATCH },
+  },
+  production_1m: {
+    BTCUSDT: presetMod.LIQ_CASCADE_BTC_1M_LIQ_1MIN,
+    ETHUSDT: presetMod.LIQ_CASCADE_ETH_1M_LIQ_1MIN,
+    BNBUSDT: presetMod.LIQ_CASCADE_BNB_1M_LIQ_1MIN,
+  },
+  smoke_1m: {
+    BTCUSDT: presetMod.LIQ_CASCADE_BTC_1M_SMOKE_1MIN,
+    ETHUSDT: presetMod.LIQ_CASCADE_ETH_1M_SMOKE_1MIN,
+    BNBUSDT: { ...presetMod.LIQ_CASCADE_BNB_1M, ...presetMod.LIQ_CASCADE_SMOKE_1MIN_PATCH },
+  },
 };
+
+const PRESETS = PRESET_BY_SETUP[SETUP] ?? PRESET_BY_SETUP.production_5m;
+const LIQ_INTERVAL = process.env.LIQ_INTERVAL || PRESETS.BTCUSDT?.liqCascadeInterval || "5min";
 
 const toMs = Date.now();
 const fromMs = toMs - HOURS * 60 * 60 * 1000;
@@ -135,9 +160,9 @@ async function replaySymbol(symbol) {
     });
   }
 
-  const bars50k = liqInWindow.filter((b) => b.totalUsd >= opts.minLiqUsdBar);
+  const barsMinLiq = liqInWindow.filter((b) => b.totalUsd >= opts.minLiqUsdBar);
   const nearMisses = [];
-  for (const lb of bars50k) {
+  for (const lb of barsMinLiq) {
     const idx = candleIdxAtOrBefore(candles, lb.ts);
     const ts = idx != null ? Number(candles[idx].ts) : null;
     const oiGate = ts != null ? resolveOiGate(oiBars, ts, opts) : { dropPct: null, ok: false, mode: opts.oiGateMode };
@@ -191,14 +216,49 @@ async function replaySymbol(symbol) {
       tickCount,
       liqBarsInWindow: liqInWindow.length,
       liqBarsNonZero: liqInWindow.filter((b) => b.totalUsd > 0).length,
-      bars50kPlus: bars50k.length,
+      barsMinLiqPlus: barsMinLiq.length,
       candleCount: candles.filter((c) => Number(c.ts) >= fromMs).length,
       oiBars: oiSeries.length,
     },
     rawSignals,
     adapterSignals,
     nearMisses,
+    funnel: {
+      liqBarsInWindow: liqInWindow.length,
+      liqBarsNonZero: liqInWindow.filter((b) => b.totalUsd > 0).length,
+      barsMinLiqPlus: barsMinLiq.length,
+      zPass: nearMisses.filter((x) => x.zPass).length,
+      domPass: nearMisses.filter((x) => x.dom === "longs" || x.dom === "shorts").length,
+      dispPass: nearMisses.filter((x) => x.dispPass).length,
+      oiPass: nearMisses.filter((x) => x.oiPass).length,
+      atrPass: nearMisses.filter((x) => x.atrPass).length,
+      cascadeEligible: nearMisses.filter((x) => x.cascadeEligible).length,
+      rawSignals: rawSignals.length,
+      adapterSignals: adapterSignals.length,
+    },
   };
+}
+
+function aggregateFunnel(results) {
+  const keys = [
+    "liqBarsInWindow",
+    "liqBarsNonZero",
+    "barsMinLiqPlus",
+    "zPass",
+    "domPass",
+    "dispPass",
+    "oiPass",
+    "atrPass",
+    "cascadeEligible",
+    "rawSignals",
+    "adapterSignals",
+  ];
+  const totals = Object.fromEntries(keys.map((k) => [k, 0]));
+  for (const r of results) {
+    if (!r.funnel) continue;
+    for (const k of keys) totals[k] += r.funnel[k] ?? 0;
+  }
+  return totals;
 }
 
 const results = [];
@@ -211,7 +271,10 @@ for (const sym of Object.keys(PRESETS)) {
 }
 
 const anySufficient = results.some((r) => r.dataQuality?.accurateReplayReady);
+const funnelTotals = aggregateFunnel(results);
+const samplePreset = results.find((r) => r.preset)?.preset ?? null;
 const summary = {
+  setup: SETUP,
   window: {
     hours: HOURS,
     days: +(HOURS / 24).toFixed(2),
@@ -221,13 +284,18 @@ const summary = {
   mode: "bar_close_1m",
   liqSource: LIQ_SOURCE,
   liqInterval: LIQ_INTERVAL,
-  gateConfig: {
-    oiGateMode: "window",
-    oiWindowBars: 3,
-    confirmMode: "ladder",
-    confirmLiqBars: 2,
-    strongDispAtrMult: 2.0,
-  },
+  presetSnapshot: samplePreset,
+  gateConfig: samplePreset
+    ? {
+        zMin: samplePreset.zMin,
+        minLiqUsdBar: samplePreset.minLiqUsdBar,
+        oiGateMode: samplePreset.oiGateMode,
+        oiWindowBars: samplePreset.oiWindowBars,
+        confirmMode: samplePreset.confirmMode,
+        confirmLiqBars: samplePreset.confirmLiqBars,
+        minDispAtr: samplePreset.minDispAtr,
+      }
+    : null,
   dataQualityVerdict: anySufficient
     ? "sufficient"
     : results[0]?.dataQuality?.verdict ?? "partial",
@@ -236,12 +304,14 @@ const summary = {
     : "Results reflect effective tick coverage only — keep force_orders WS running to reach ≥8 weeks.",
   note:
     "rawSignals = full gates; adapterSignals = after maxTradesPerDay + minBarGap. Edge confirmation requires sufficient tick coverage + phase0/sim.",
+  funnel: funnelTotals,
   coins: results.map((r) => ({
     symbol: r.symbol,
     error: r.error,
     preset: r.preset,
     dataQuality: r.dataQuality,
     data: r.data,
+    funnel: r.funnel,
     rawSignalCount: r.rawSignals?.length ?? 0,
     adapterSignalCount: r.adapterSignals?.length ?? 0,
     rawSignals: r.rawSignals,
@@ -249,14 +319,19 @@ const summary = {
     nearMisses: r.nearMisses,
   })),
   totals: {
-    rawSignals: results.reduce((s, r) => s + (r.rawSignals?.length ?? 0), 0),
-    adapterSignals: results.reduce((s, r) => s + (r.adapterSignals?.length ?? 0), 0),
-    cascadeEligible: results.reduce(
-      (s, r) => s + (r.nearMisses?.filter((x) => x.cascadeEligible)?.length ?? 0),
-      0,
-    ),
+    rawSignals: funnelTotals.rawSignals,
+    adapterSignals: funnelTotals.adapterSignals,
+    cascadeEligible: funnelTotals.cascadeEligible,
   },
 };
+
+const outPath = OUT || path.join(__dirname, `.liq-cascade-replay-${SETUP}.json`);
+try {
+  fs.writeFileSync(outPath, JSON.stringify(summary, null, 2));
+  summary.reportPath = outPath;
+} catch (err) {
+  summary.reportWriteError = String(err?.message || err);
+}
 
 console.log(JSON.stringify(summary, null, 2));
 

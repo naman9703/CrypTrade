@@ -111,6 +111,16 @@
       "usesIntradayMaxHold": true,
       "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
     },
+    "MICRO_EVENT": {
+      "label": "Micro Event",
+      "category": "intraday",
+      "nativePrefixes": ["microEvent", "intraday"],
+      "overlays": ["intelligence", "marketDecision"],
+      "prepare": "none",
+      "chartMarkup": "none",
+      "usesIntradayMaxHold": true,
+      "uiSections": ["routing", "entryGates", "marketDecision", "intradayGates", "exitTrailing", "leverageAi"]
+    },
     "TOKYO_SESSION": {
       "label": "Tokyo Session",
       "category": "intraday",
