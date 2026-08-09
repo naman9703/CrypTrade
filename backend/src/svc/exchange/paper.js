@@ -129,6 +129,7 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
         takeProfit: takeProfit ?? null,
         openedAt: new Date().toISOString(),
         strategy,
+        ...(meta?.instanceId ? { instanceId: String(meta.instanceId) } : {}),
         meta: { ...(meta || {}), feeBps, slippageBps, entryFee },
       };
       state.positions.push(position);
@@ -145,6 +146,7 @@ export function createPaperExchange({ log, name = "paper", baseDir } = {}) {
         stopLoss: stopLoss ?? null,
         takeProfit: takeProfit ?? null,
         fee: roundTo(entryFee, 6),
+        ...(meta?.instanceId ? { instanceId: String(meta.instanceId) } : {}),
         meta: { ...(meta || {}), feeBps, slippageBps, entryFee },
       };
       state.trades.push(tradeRow);

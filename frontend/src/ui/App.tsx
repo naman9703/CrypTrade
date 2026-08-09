@@ -16,6 +16,7 @@ import type { LiqCascadeRadarStatus } from "./LiqCascadeRadarPanel";
 import { MicroEventRadarPanel } from "./MicroEventRadarPanel";
 import type { MicroEventRadarStatus } from "./MicroEventRadarPanel";
 import { LogsPanel } from "./LogsPanel";
+import { InstanceSessionSummary } from "./instances/InstanceSessionSummary";
 import { ThemeToggle } from "./ThemeToggle";
 import { TradingModeBadge } from "./TradingModeBadge";
 import { StrategySidebar } from "./strategy/StrategySidebar";
@@ -175,6 +176,10 @@ export function App() {
                 <div className="rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
                   <InsightsPanel />
                 </div>
+              </div>
+
+              <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">
+                <InstanceSessionSummary />
               </div>
 
               <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-slate-100/95 shadow-glow-light dark:border-slate-800 dark:bg-slate-950/60 dark:shadow-glow">

@@ -1,2 +1,2 @@
-/** Bump when simulator semantics change (sizing, brackets, materialization). */
-export const BACKTEST_ENGINE_VERSION = "vp-eth-h5h6-voltarget-2026-07-19";
+/** Bump when simulator semantics change (sizing, brackets, materialization, persistence). */
+export const BACKTEST_ENGINE_VERSION = "persist-finalize-lock-2026-08-02";

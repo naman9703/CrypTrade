@@ -227,9 +227,14 @@ export async function getMarkMonthlyCoverage(symbol, fromMs, toMs) {
  * Backfill Binance mark-price klines into `ohlcv_candles`.
  * @param {object} [opts]
  * @param {string} [opts.interval] — Binance interval (`1m`, `5m`, `15m`, …); default `1m`.
- * @returns {Promise<{ inserted: number, gaps: number, interval: string }>}
+ * @param {"full"|"patch"} [opts.mode="full"]
+ * @param {Array<{ from: number, to: number }>} [opts.ranges]
+ * @returns {Promise<{ inserted: number, gaps: number, interval: string, mode: string, ranges: Array<{from:number,to:number}>, remainingMs: number }>}
  */
-export async function ensureMarkKlines(symbol, { from, to, interval = "1m", onProgress } = {}) {
+export async function ensureMarkKlines(
+  symbol,
+  { from, to, interval = "1m", mode = "full", ranges: explicitRanges, onProgress } = {},
+) {
   const pool = getPool();
   if (!pool) throw new Error("db_not_configured");
   const sym = normalizeSymbol(symbol);
@@ -241,11 +246,8 @@ export async function ensureMarkKlines(symbol, { from, to, interval = "1m", onPr
     throw new Error("invalid_mark_kline_range");
   }
 
-  let inserted = 0;
-  let fetchedTotal = 0;
   const stepMs = tfToMs(intv);
-  const expected = Math.max(0, Math.floor((toMs - fromMs) / stepMs));
-  const span = Math.max(1, toMs - fromMs);
+  const syncMode = String(mode || "full").toLowerCase() === "patch" ? "patch" : "full";
   const report =
     typeof onProgress === "function"
       ? (pct, phase) => {
@@ -257,28 +259,80 @@ export async function ensureMarkKlines(symbol, { from, to, interval = "1m", onPr
         }
       : null;
 
-  for (let cursor = fromMs; cursor < toMs; cursor += READ_CANDLES_SLICE_MS) {
-    const sliceTo = Math.min(toMs, cursor + READ_CANDLES_SLICE_MS);
-    const sliceSpan = Math.max(1, sliceTo - cursor);
-    const fetched = await fetchBinanceMarkPriceKlinesRange({
-      symbol: sym,
-      interval: intv,
-      startTime: cursor,
-      endTime: sliceTo,
-      onProgress: ({ pct }) => {
-        const local = Math.max(0, Math.min(100, Number(pct) || 0));
-        const globalPct = (((cursor - fromMs) + (local / 100) * sliceSpan) / span) * 100;
-        report?.(globalPct, "mark");
-      },
-    });
-    fetchedTotal += fetched.length;
-    if (fetched.length) {
-      inserted += await upsertOhlcvCandles(sym, dbTf, fetched, MARK_MICRO_SOURCE);
+  /** @type {Array<{ from: number, to: number }>} */
+  let workRanges;
+  if (syncMode === "patch") {
+    const { mergeTimeRanges, planPatchRangesFromCoverage } = await import("./coverageGaps.js");
+    if (Array.isArray(explicitRanges) && explicitRanges.length) {
+      workRanges = mergeTimeRanges(explicitRanges);
+    } else {
+      const cov = await getMarkCoverage(sym, { from: fromMs, to: toMs });
+      const monthly = await getMarkMonthlyCoverage(sym, fromMs, toMs);
+      workRanges = planPatchRangesFromCoverage({
+        from: fromMs,
+        to: toMs,
+        stepMs,
+        minTs: cov.minTs,
+        maxTs: cov.maxTs,
+        monthly,
+      }).ranges;
     }
-    report?.(((sliceTo - fromMs) / span) * 100, "mark");
+  } else {
+    workRanges = [{ from: fromMs, to: toMs }];
+  }
+
+  if (!workRanges.length) {
+    report?.(100, "mark");
+    return { inserted: 0, gaps: 0, interval: intv, mode: syncMode, ranges: [], remainingMs: 0 };
+  }
+
+  const totalSpan = Math.max(
+    1,
+    workRanges.reduce((acc, r) => acc + (r.to - r.from), 0),
+  );
+  const expected = Math.max(0, Math.floor(totalSpan / stepMs));
+
+  let inserted = 0;
+  let fetchedTotal = 0;
+  let completedSpan = 0;
+
+  for (const range of workRanges) {
+    const rangeFrom = range.from;
+    const rangeTo = range.to;
+    const rangeSpan = Math.max(1, rangeTo - rangeFrom);
+    for (let cursor = rangeFrom; cursor < rangeTo; cursor += READ_CANDLES_SLICE_MS) {
+      const sliceTo = Math.min(rangeTo, cursor + READ_CANDLES_SLICE_MS);
+      const sliceSpan = Math.max(1, sliceTo - cursor);
+      const fetched = await fetchBinanceMarkPriceKlinesRange({
+        symbol: sym,
+        interval: intv,
+        startTime: cursor,
+        endTime: sliceTo,
+        onProgress: ({ pct }) => {
+          const local = Math.max(0, Math.min(100, Number(pct) || 0));
+          const doneInRange = cursor - rangeFrom + (local / 100) * sliceSpan;
+          const globalPct = ((completedSpan + doneInRange) / totalSpan) * 100;
+          report?.(globalPct, "mark");
+        },
+      });
+      fetchedTotal += fetched.length;
+      if (fetched.length) {
+        inserted += await upsertOhlcvCandles(sym, dbTf, fetched, MARK_MICRO_SOURCE);
+      }
+      report?.(((completedSpan + (cursor - rangeFrom) + (sliceTo - cursor)) / totalSpan) * 100, "mark");
+    }
+    completedSpan += rangeSpan;
+    report?.((completedSpan / totalSpan) * 100, "mark");
   }
 
   report?.(100, "mark");
   const gaps = Math.max(0, expected - fetchedTotal);
-  return { inserted, gaps, interval: intv };
+  return {
+    inserted,
+    gaps,
+    interval: intv,
+    mode: syncMode,
+    ranges: workRanges,
+    remainingMs: totalSpan,
+  };
 }

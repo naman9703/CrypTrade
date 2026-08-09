@@ -14,6 +14,11 @@ export const MICRO_EVENT_DEFAULTS = Object.freeze({
   liqMinUsd: 25_000,
   liqDomRatio: 1.2,
   liqRequired: true,
+  /** Reject spikes that arrive while a cascade is already mature (exhaustion re-entry). */
+  cascadeFreshEnabled: false,
+  cascadeQuietSec: 900,
+  /** Max prior-window liq USD to count as "quiet"; null → 0.5 * liqMinUsd. */
+  cascadeQuietMaxUsd: null,
   oiGateEnabled: true,
   oiMinDropPct1m: 0.3,
   oiMinDropPct5m: 0.8,
@@ -34,6 +39,9 @@ export const MICRO_EVENT_DEFAULTS = Object.freeze({
   maxTradesPerHour: 12,
   cooldownSec: 45,
   tradeSides: "BOTH",
+  /** Signal bar must close in trade direction (continuation already printing). */
+  requireDisplacement: false,
+  minDisplacementPct: 0,
 });
 
 function num(v, d) {
@@ -57,12 +65,21 @@ export function optsFromMicroEventCfg(cfg = {}) {
       ? types.map((x) => String(x).toLowerCase())
       : [...MICRO_EVENT_DEFAULTS.eventTypesEnabled],
     minConfluenceScore: num(c.microEventMinConfluenceScore, MICRO_EVENT_DEFAULTS.minConfluenceScore),
-    minConfirmLayers: Math.max(1, Math.round(num(c.microEventMinConfirmLayers, MICRO_EVENT_DEFAULTS.minConfirmLayers))),
+    minConfirmLayers: Math.max(0, Math.round(num(c.microEventMinConfirmLayers, MICRO_EVENT_DEFAULTS.minConfirmLayers))),
     liqWindowSec: num(c.microEventLiqWindowSec, MICRO_EVENT_DEFAULTS.liqWindowSec),
     liqZMin: num(c.microEventLiqZMin, MICRO_EVENT_DEFAULTS.liqZMin),
     liqMinUsd: num(c.microEventLiqMinUsd, MICRO_EVENT_DEFAULTS.liqMinUsd),
     liqDomRatio: num(c.microEventLiqDomRatio, MICRO_EVENT_DEFAULTS.liqDomRatio),
     liqRequired: c.microEventLiqRequired !== false,
+    cascadeFreshEnabled: c.microEventCascadeFreshEnabled === true,
+    cascadeQuietSec: Math.max(
+      60,
+      Math.round(num(c.microEventCascadeQuietSec, MICRO_EVENT_DEFAULTS.cascadeQuietSec)),
+    ),
+    cascadeQuietMaxUsd:
+      c.microEventCascadeQuietMaxUsd != null && Number.isFinite(Number(c.microEventCascadeQuietMaxUsd))
+        ? Number(c.microEventCascadeQuietMaxUsd)
+        : null,
     oiGateEnabled: c.microEventOiGateEnabled !== false,
     oiMinDropPct1m: num(c.microEventOiMinDropPct1m, MICRO_EVENT_DEFAULTS.oiMinDropPct1m),
     oiMinDropPct5m: num(c.microEventOiMinDropPct5m, MICRO_EVENT_DEFAULTS.oiMinDropPct5m),
@@ -83,6 +100,8 @@ export function optsFromMicroEventCfg(cfg = {}) {
     maxTradesPerHour: Math.max(1, Math.round(num(c.microEventMaxTradesPerHour, MICRO_EVENT_DEFAULTS.maxTradesPerHour))),
     cooldownSec: Math.max(0, Math.round(num(c.microEventCooldownSec, MICRO_EVENT_DEFAULTS.cooldownSec))),
     tradeSides: str(c.microEventTradeSides, MICRO_EVENT_DEFAULTS.tradeSides).toUpperCase(),
+    requireDisplacement: c.microEventRequireDisplacement === true,
+    minDisplacementPct: Math.max(0, num(c.microEventMinDisplacementPct, MICRO_EVENT_DEFAULTS.minDisplacementPct)),
   };
 }
 
@@ -104,6 +123,18 @@ export function detectLiqSpike(snapshot, opts) {
   if (snapshot.liqDom !== "longs" && snapshot.liqDom !== "shorts") return null;
   if (snapshot.liqTotalUsd < opts.liqMinUsd) return null;
   if (snapshot.liqZLike < opts.liqZMin) return null;
+  if (opts.cascadeFreshEnabled) {
+    const quietMax =
+      opts.cascadeQuietMaxUsd != null && opts.cascadeQuietMaxUsd >= 0
+        ? opts.cascadeQuietMaxUsd
+        : opts.liqMinUsd;
+    // Prefer max prior 1m bucket (onset-friendly); fall back to sum for live stubs.
+    const prior =
+      snapshot.liqQuietPriorMaxBarUsd != null && Number.isFinite(snapshot.liqQuietPriorMaxBarUsd)
+        ? snapshot.liqQuietPriorMaxBarUsd
+        : snapshot.liqQuietPriorUsd;
+    if (prior != null && Number.isFinite(prior) && prior >= quietMax) return null;
+  }
   const action = resolveMicroEventAction(snapshot.liqDom, opts.directionMode);
   if (!action) return null;
   return {
@@ -115,6 +146,7 @@ export function detectLiqSpike(snapshot, opts) {
       liqTotalUsd: snapshot.liqTotalUsd,
       liqZLike: snapshot.liqZLike,
       liqDom: snapshot.liqDom,
+      liqQuietPriorUsd: snapshot.liqQuietPriorUsd ?? null,
     },
   };
 }
@@ -373,7 +405,41 @@ export function evaluateMicroEventFromSnapshot(snapshot, cfg, price) {
     return { action: null, audit: { skip: true, failedGate: "trade_sides", score: conf.score, hits } };
   }
 
-  const brackets = px > 0 ? buildMicroEventBrackets(px, conf.primarySide, opts, px) : null;
+  if (opts.requireDisplacement) {
+    const close = px > 0 ? px : num(snapshot.barClose ?? snapshot.close, 0);
+    const open = num(snapshot.barOpen ?? snapshot.open, 0);
+    const minPct = opts.minDisplacementPct;
+    let ok = false;
+    if (open > 0 && close > 0) {
+      const movePct = ((close - open) / open) * 100;
+      ok =
+        conf.primarySide === "BUY"
+          ? movePct >= minPct
+          : conf.primarySide === "SELL"
+            ? movePct <= -minPct
+            : false;
+    } else {
+      const extreme = num(snapshot.liqExtremePrice, 0);
+      if (extreme > 0 && close > 0) {
+        const movePct =
+          conf.primarySide === "BUY"
+            ? ((close - extreme) / extreme) * 100
+            : conf.primarySide === "SELL"
+              ? ((extreme - close) / extreme) * 100
+              : -Infinity;
+        ok = movePct >= minPct;
+      }
+    }
+    if (!ok) {
+      return { action: null, audit: { skip: true, failedGate: "displacement", score: conf.score, hits } };
+    }
+  }
+
+  const extreme =
+    snapshot.liqExtremePrice != null && Number(snapshot.liqExtremePrice) > 0
+      ? Number(snapshot.liqExtremePrice)
+      : px;
+  const brackets = px > 0 ? buildMicroEventBrackets(px, conf.primarySide, opts, extreme) : null;
   if (!brackets) {
     return { action: null, audit: { skip: true, failedGate: "brackets", score: conf.score, hits } };
   }

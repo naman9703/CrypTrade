@@ -504,6 +504,8 @@ async function execute({ runId }) {
     noGate: 0,
     avgIntelScore: null,
   };
+  if (sim.stXgbReplay) metrics.stXgbReplay = sim.stXgbReplay;
+  if (sim.stretchSkipReplay) metrics.stretchSkipReplay = sim.stretchSkipReplay;
 
   metrics = attachWalkForwardMetrics(metrics, {
     trades: sim.trades,

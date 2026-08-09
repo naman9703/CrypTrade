@@ -777,7 +777,7 @@ export async function runSimulation(args) {
         0,
         Number(cfg?.intradayLiqDeadTradeMaxLossR ?? cfg?.liqMapDeadTradeMaxLossR ?? 0.55),
       );
-      const deadTradeStrategies = new Set(["LIQUIDITY_MAP", "SR_INTRADAY", "INTRADAY_PRO"]);
+      const deadTradeStrategies = new Set(["LIQUIDITY_MAP", "SR_INTRADAY", "INTRADAY_PRO", "MICRO_EVENT"]);
       if (
         !exitReason &&
         deadTradeStrategies.has(strategyKey) &&

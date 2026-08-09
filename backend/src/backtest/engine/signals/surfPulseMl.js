@@ -27,7 +27,7 @@ export async function buildSurfPulseMlGateAdapter({ symbol, tf, candles, cfg, fr
   if (!candles?.length) throw new Error("surf_pulse_ml: no candles in window");
 
   const baseUrl = String(
-    process.env.AI_SERVICE_URL || cfg?.aiBaseUrl || "http://localhost:8001"
+    process.env.AI_SERVICE_URL || process.env.AI_BASE_URL || cfg?.aiBaseUrl || "http://localhost:8001"
   ).replace(/\/$/, "");
   const mlThreshold = Number(cfg?.surfPulseMlThreshold ?? DEFAULT_ML_THRESHOLD);
 

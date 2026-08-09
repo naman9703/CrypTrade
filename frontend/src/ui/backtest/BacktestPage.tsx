@@ -124,6 +124,10 @@ export function BacktestPage() {
               if (deletedId === selectedId) setSelectedId(null);
               await refreshRuns();
             }}
+            onAfterRerun={async (runId) => {
+              await refreshRuns();
+              setSelectedId(runId);
+            }}
           />
 
           <BacktestActivityPanel />

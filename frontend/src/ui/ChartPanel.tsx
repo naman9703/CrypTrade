@@ -63,6 +63,8 @@ import {
   CHART_STORE_MAX,
 } from "../lib/chartDisplayLimits";
 import { CHART_CANDLE_MAX, useAppStore } from "../ws/store";
+import { tradingModeToApiModeSlug } from "../lib/tradingModeSlug";
+import { filterPositionsForInstance } from "../lib/instancePortfolioScope";
 import { OrderBookPanel } from "./OrderBookPanel";
 import { IntelligencePanel } from "./intelligence/IntelligencePanel";
 import { MultiCoinSignalTabs } from "./MultiCoinSignalTabs";
@@ -1454,7 +1456,7 @@ const ChartPositionOverlay = memo(function ChartPositionOverlay(props: ChartPosi
   } = props;
   const ohlcLastClose = ohlcLastCloseRef.current;
 
-  const positions = useAppStore(
+  const positionsRaw = useAppStore(
     (s) => s.positions,
     (a, b) => {
       if (a === b) return true;
@@ -1487,6 +1489,31 @@ const ChartPositionOverlay = memo(function ChartPositionOverlay(props: ChartPosi
       return true;
     },
   );
+  const tradesForScope = useAppStore((s) => s.trades);
+  const mainView = useAppStore((s) => s.mainView);
+  const selectedInstanceId = useAppStore((s) => s.selectedInstanceId);
+  const chartMode = useAppStore((s) => s.mode);
+  const activeInstanceByMode = useAppStore((s) => s.activeInstanceByMode);
+  const positions = useMemo(() => {
+    const instanceScopeId =
+      mainView === "instance" && selectedInstanceId ? String(selectedInstanceId) : "";
+    if (!instanceScopeId) return Array.isArray(positionsRaw) ? positionsRaw : [];
+    const modeSlug = tradingModeToApiModeSlug(chartMode);
+    const isActive = String(activeInstanceByMode?.[modeSlug] ?? "") === instanceScopeId;
+    return filterPositionsForInstance(
+      positionsRaw || [],
+      tradesForScope || [],
+      instanceScopeId,
+      isActive,
+    );
+  }, [
+    positionsRaw,
+    tradesForScope,
+    mainView,
+    selectedInstanceId,
+    chartMode,
+    activeInstanceByMode,
+  ]);
   const [chartTrailedSessionBySymbol, setChartTrailedSessionBySymbol] = useState<Record<string, true>>({});
 
   const symKey = useMemo(() => canonicalChartSymbol(effectiveSym), [effectiveSym]);

@@ -14,9 +14,10 @@
  *   GET    /api/backtest/runs/:id/trail-tick-audit
  *   POST   /api/backtest/runs/:id/cancel          cooperative cancel
  *   DELETE /api/backtest/runs/:id                 cancel-or-delete
- *   GET    /api/backtest/data/coverage            (symbol, tf[, from, to])
- *   POST   /api/backtest/data/sync                start async OHLC backfill (returns jobId)
- *   POST   /api/backtest/data/sync-mark           start async mark backfill (returns jobId)
+ *   GET    /api/backtest/data/coverage            (symbol, tf[, from, to, market])
+ *   POST   /api/backtest/data/sync                start async OHLC backfill (patch by default)
+ *   POST   /api/backtest/data/sync-mark           start async mark backfill (patch by default)
+ *   GET    /api/backtest/data/sync-active         reconnect to in-flight sync job
  *   GET    /api/backtest/data/sync/:jobId         poll sync job progress
  *   POST   /api/backtest/optimize                 spawn parameter sweep
  *   GET    /api/backtest/optimize/:id             sweep summary + heatmap
@@ -65,7 +66,9 @@ import {
   getDataSyncJob,
   updateDataSyncJob,
   publicDataSyncJob,
+  findActiveDataSyncJob,
 } from "../backtest/data/dataSyncJobs.js";
+import { planOhlcPatchRanges, planPatchRangesFromCoverage } from "../backtest/data/coverageGaps.js";
 import { SUPPORTED_TIMEFRAMES, tfToMs } from "../backtest/data/timeframe.js";
 import { resolveTrailActivationOn } from "../backtest/engine/trailingSim.js";
 import { BACKTEST_ENGINE_VERSION } from "../backtest/engine/version.js";
@@ -376,10 +379,10 @@ export function createBacktestRouter({ appState }) {
     try {
       await assertRunOwned(req.params.id, userId);
       const r2 = await query(
-        `SELECT *
+        `SELECT DISTINCT ON (trade_number) *
            FROM backtest_trades
           WHERE backtest_run_id = $1
-          ORDER BY trade_number ASC
+          ORDER BY trade_number ASC, id ASC
           LIMIT $2 OFFSET $3`,
         [String(req.params.id), limit, offset],
       );
@@ -401,10 +404,10 @@ export function createBacktestRouter({ appState }) {
       if (!row) return res.status(404).json({ ok: false, error: "run_not_found" });
 
       const tradesRes = await query(
-        `SELECT *
+        `SELECT DISTINCT ON (trade_number) *
            FROM backtest_trades
           WHERE backtest_run_id = $1
-          ORDER BY trade_number ASC`,
+          ORDER BY trade_number ASC, id ASC`,
         [runId],
       );
       const trades = tradesRes.rows.map(mapTradeRow);
@@ -416,6 +419,226 @@ export function createBacktestRouter({ appState }) {
       res.send(csv);
     } catch (e) {
       res.status(notFoundFor(e)).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  /**
+   * Train Supertrend XGBoost from this run's entry-time trade features.
+   * POST /api/backtest/runs/:id/xgb/train
+   */
+  r.post("/runs/:id/xgb/train", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const userId = uid(req);
+    if (!userId) return res.status(403).json({ ok: false, error: "db_user_required" });
+    const runId = String(req.params.id);
+    try {
+      await assertRunOwned(runId, userId);
+      const runRow = await query(`SELECT * FROM backtest_runs WHERE id = $1 AND user_id = $2`, [runId, userId]);
+      const row = runRow.rows[0];
+      if (!row) return res.status(404).json({ ok: false, error: "run_not_found" });
+      if (String(row.status) !== "done") {
+        return res.status(400).json({ ok: false, error: "run_not_done" });
+      }
+      const run = mapRunRow(row);
+      const bot = pickBotFromConfigSnapshot(run.configSnapshot);
+      const strat = String(bot.manualStrategy ?? run.engineType ?? "").toUpperCase();
+      const { isSupertrendXgbStrategy, encodeSupertrendXgbFeatures, labelTradeRrPositive } =
+        await import("../strategy/supertrendXgbFeatures.js");
+      if (!isSupertrendXgbStrategy(strat) && !isSupertrendXgbStrategy(run.engineType)) {
+        return res.status(400).json({
+          ok: false,
+          error: "strategy_not_supertrend",
+          strategy: strat || run.engineType,
+        });
+      }
+
+      const tradesRes = await query(
+        `SELECT DISTINCT ON (trade_number) *
+           FROM backtest_trades
+          WHERE backtest_run_id = $1
+          ORDER BY trade_number ASC, id ASC`,
+        [runId],
+      );
+      const trades = tradesRes.rows.map(mapTradeRow);
+      if (trades.length < 40) {
+        return res.status(400).json({ ok: false, error: "need_at_least_40_trades", n: trades.length });
+      }
+
+      const { computeFeaturesForTrades } = await import("../backtest/reporting/tradeCsvFeatures.js");
+      const market =
+        String(bot.marketMode ?? "").toUpperCase() === "SPOT" ? "spot" : "futures";
+      const featMap = await computeFeaturesForTrades(trades, {
+        timeframe: run.timeframe || "15m",
+        market,
+        symbol: run.symbol,
+      });
+
+      const rows = [];
+      for (const t of trades) {
+        const f = featMap[t.tradeNumber];
+        if (!f) continue;
+        const label = labelTradeRrPositive({
+          ...t,
+          rr: (() => {
+            const risk = Number(t.initialRiskUsd);
+            const net = Number(t.netPnl);
+            if (Number.isFinite(risk) && risk > 0 && Number.isFinite(net)) return net / risk;
+            const entry = Number(t.entryPrice);
+            const sl = Number(t.initialSlPrice ?? t.slPrice);
+            const qty = Math.abs(Number(t.qty) || 0);
+            if (entry > 0 && sl > 0 && qty > 0 && Number.isFinite(net)) {
+              const r = Math.abs(entry - sl) * qty;
+              return r > 0 ? net / r : null;
+            }
+            return null;
+          })(),
+        });
+        if (label == null) continue;
+        const entryTs = t.entryTs != null ? new Date(t.entryTs).getTime() : NaN;
+        if (!Number.isFinite(entryTs)) continue;
+        const rr = (() => {
+          const risk = Number(t.initialRiskUsd);
+          const net = Number(t.netPnl);
+          if (Number.isFinite(risk) && risk > 0 && Number.isFinite(net)) return net / risk;
+          return label === 1 ? 1 : -1;
+        })();
+        rows.push({
+          entry_ts: entryTs,
+          features: encodeSupertrendXgbFeatures(f, t.direction),
+          label,
+          rr,
+        });
+      }
+      if (rows.length < 40) {
+        return res.status(400).json({ ok: false, error: "need_at_least_40_labeled_rows", n: rows.length });
+      }
+
+      const ai = appState.ai;
+      if (!ai?.trainSupertrendFromTrades) {
+        return res.status(503).json({ ok: false, error: "ai_client_unavailable" });
+      }
+      const trained = await ai.trainSupertrendFromTrades({
+        rows,
+        source_run_id: runId,
+        symbol: run.symbol,
+        timeframe: run.timeframe,
+      });
+      const meta = trained?.meta ?? trained;
+      res.json({
+        ok: true,
+        runId,
+        nRows: rows.length,
+        meta,
+        threshold: meta?.threshold ?? null,
+        canApply: meta?.freq_ok_val === true,
+      });
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      const msg = String(
+        (typeof detail === "string" ? detail : null) ||
+          (Array.isArray(detail) ? detail.map((d) => d?.msg || d).join("; ") : null) ||
+          (detail && typeof detail === "object" ? JSON.stringify(detail) : null) ||
+          e?.message ||
+          e,
+      );
+      const st = Number(e?.response?.status) || statusForError(e);
+      res.status(st >= 400 && st < 600 ? st : 500).json({ ok: false, error: msg });
+    }
+  });
+
+  /**
+   * Clone run with Supertrend XGB gate enabled + locked threshold; enqueue.
+   * POST /api/backtest/runs/:id/xgb/apply  body: { threshold?: number }
+   */
+  r.post("/runs/:id/xgb/apply", requireDbUserSession, async (req, res) => {
+    if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
+    const userId = uid(req);
+    if (!userId) return res.status(403).json({ ok: false, error: "db_user_required" });
+    const runId = String(req.params.id);
+    try {
+      await assertRunOwned(runId, userId);
+      const runRow = await query(`SELECT * FROM backtest_runs WHERE id = $1 AND user_id = $2`, [runId, userId]);
+      const row = runRow.rows[0];
+      if (!row) return res.status(404).json({ ok: false, error: "run_not_found" });
+      if (String(row.status) !== "done") {
+        return res.status(400).json({ ok: false, error: "run_not_done" });
+      }
+
+      let threshold = Number(req.body?.threshold);
+      if (!Number.isFinite(threshold)) {
+        try {
+          const h = await appState.ai?.health?.();
+          threshold = Number(h?.supertrend_xgb_meta?.threshold);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!Number.isFinite(threshold)) threshold = 0.55;
+
+      const snap = typeof row.config_snapshot === "string"
+        ? JSON.parse(row.config_snapshot)
+        : row.config_snapshot && typeof row.config_snapshot === "object"
+          ? structuredClone(row.config_snapshot)
+          : {};
+      const bot = pickBotFromConfigSnapshot(snap) || {};
+      const nextBot = {
+        ...bot,
+        supertrendXgbGateEnabled: true,
+        supertrendXgbThreshold: threshold,
+        supertrendXgbIgnoreTrainingCutoff: true,
+        /** Do not silently match baseline if AI is unreachable inside Docker. */
+        supertrendXgbFailClosed: true,
+      };
+      const nextSnap =
+        snap.bot && typeof snap.bot === "object"
+          ? { ...snap, bot: nextBot }
+          : { ...snap, ...nextBot, bot: nextBot };
+
+      const labelBase = row.label ? String(row.label).slice(0, 160) : `ST ${row.symbol}`;
+      const ins = await query(
+        `INSERT INTO backtest_runs (
+            strategy_version_id, user_id, label,
+            symbol, timeframe, start_date, end_date,
+            initial_capital, engine_type,
+            cost_model, gate_mode, config_snapshot, walk_forward_split,
+            bot_instance_id, instance_operational_snapshot, config_source,
+            symbols, is_portfolio,
+            status, progress_pct
+         ) VALUES (
+            $1,$2,$3, $4,$5,$6,$7, $8,$9, $10::jsonb,$11,$12::jsonb,$13::jsonb,
+            $14,$15::jsonb,$16, $17, $18, 'queued', 0
+         )
+         RETURNING id`,
+        [
+          row.strategy_version_id,
+          userId,
+          `${labelBase} · XGB@${threshold.toFixed(2)}`.slice(0, 200),
+          row.symbol,
+          row.timeframe,
+          row.start_date,
+          row.end_date,
+          row.initial_capital,
+          row.engine_type,
+          JSON.stringify(row.cost_model ?? {}),
+          row.gate_mode ?? "off",
+          JSON.stringify(nextSnap),
+          row.walk_forward_split ? JSON.stringify(row.walk_forward_split) : null,
+          row.bot_instance_id,
+          row.instance_operational_snapshot
+            ? JSON.stringify(row.instance_operational_snapshot)
+            : null,
+          row.config_source ?? "clone_xgb",
+          row.symbols ?? null,
+          row.is_portfolio === true,
+        ],
+      );
+      const newId = String(ins.rows[0].id);
+      enqueueRun(newId, { priority: "high" }).catch((e) => {
+        console.error("[backtest] xgb apply enqueue failed", newId, e?.message || e);
+      });
+      res.json({ ok: true, runId: newId, threshold, baselineRunId: runId });
+    } catch (e) {
+      res.status(statusForError(e)).json({ ok: false, error: String(e?.message || e) });
     }
   });
 
@@ -766,19 +989,67 @@ export function createBacktestRouter({ appState }) {
     if (!SUPPORTED_TIMEFRAMES.includes(tf)) return res.status(400).json({ ok: false, error: "invalid_timeframe" });
     const from = req.query.from != null ? toMs(req.query.from) : null;
     const to = req.query.to != null ? toMs(req.query.to) : null;
+    const marketQ = String(req.query.market ?? req.query.marketMode ?? "futures").toLowerCase();
+    const market = marketQ === "spot" ? "spot" : "futures";
     try {
-      const summary = await getCoverage(symbol, tf, { from: from ?? undefined, to: to ?? undefined });
+      const summary = await getCoverage(symbol, tf, {
+        from: from ?? undefined,
+        to: to ?? undefined,
+        market,
+      });
       let monthly = [];
+      let patch = null;
       if (from != null && to != null) {
-        monthly = await getMonthlyCoverage(symbol, tf, from, to);
+        monthly = await getMonthlyCoverage(symbol, tf, from, to, { market });
+        patch = await planOhlcPatchRanges(symbol, tf, from, to, { market, monthly });
+        summary.remainingMs = patch.remainingMs;
+        summary.remainingDays = patch.remainingDays;
+        summary.remainingBars = patch.remainingBars;
+        summary.patchFrom = patch.patchFrom;
+        summary.patchTo = patch.patchTo;
       }
       let markCoverage = null;
       let markMonthly = [];
       if (from != null && to != null) {
         markCoverage = await getMarkCoverage(symbol, { from, to });
         markMonthly = await getMarkMonthlyCoverage(symbol, from, to);
+        if (markCoverage) {
+          const markPatch = planPatchRangesFromCoverage({
+            from,
+            to,
+            stepMs: 60_000,
+            minTs: markCoverage.minTs,
+            maxTs: markCoverage.maxTs,
+            monthly: markMonthly,
+          });
+          markCoverage.remainingMs = markPatch.remainingMs;
+          markCoverage.remainingDays = markPatch.remainingDays;
+          markCoverage.remainingBars = markPatch.remainingBars;
+          markCoverage.patchFrom = markPatch.patchFrom;
+          markCoverage.patchTo = markPatch.patchTo;
+        }
       }
-      res.json({ ok: true, coverage: summary, monthly, markCoverage, markMonthly });
+      const activeOhlc = findActiveDataSyncJob({ kind: "ohlc", symbol, timeframe: tf, market });
+      const activeMark = findActiveDataSyncJob({ kind: "mark", symbol });
+      res.json({
+        ok: true,
+        coverage: summary,
+        monthly,
+        markCoverage,
+        markMonthly,
+        patch: patch
+          ? {
+              remainingMs: patch.remainingMs,
+              remainingDays: patch.remainingDays,
+              remainingBars: patch.remainingBars,
+              patchFrom: patch.patchFrom,
+              patchTo: patch.patchTo,
+              ranges: patch.ranges,
+            }
+          : null,
+        activeSync: activeOhlc ? publicDataSyncJob(activeOhlc) : null,
+        activeMarkSync: activeMark ? publicDataSyncJob(activeMark) : null,
+      });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
@@ -816,133 +1087,291 @@ export function createBacktestRouter({ appState }) {
 
   r.post("/data/sync-mark", requireDbUserSession, async (req, res) => {
     if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
-    const body = req.body && typeof req.body === "object" ? req.body : {};
-    const symbol = String(body.symbol ?? "").toUpperCase();
-    const from = body.from != null ? toMs(body.from) : null;
-    const to = body.to != null ? toMs(body.to) : Date.now();
-    if (!SYMBOL_RE.test(symbol)) return res.status(400).json({ ok: false, error: "invalid_symbol" });
-    if (from == null) return res.status(400).json({ ok: false, error: "from_required" });
-
-    const job = createDataSyncJob("mark");
-    const broadcast = (patch) => {
-      const j = updateDataSyncJob(job.id, patch);
-      if (!j) return;
-      appState.wsHub?.broadcast?.("data_sync_progress", publicDataSyncJob(j));
-    };
-    broadcast({ status: "running", progressPct: 0, phase: "mark" });
-    res.json({ ok: true, async: true, ...publicDataSyncJob(job) });
-
-    void (async () => {
+    try {
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      const symbol = String(body.symbol ?? "").toUpperCase();
+      let from;
+      let to;
       try {
-        const markKlines = await ensureMarkKlines(symbol, {
-          from,
-          to,
-          onProgress: ({ pct, phase }) => broadcast({ progressPct: pct, phase: phase ?? "mark" }),
-        });
-        broadcast({ status: "done", progressPct: 100, phase: "done", result: { markKlines } });
-      } catch (e) {
-        broadcast({
-          status: "failed",
-          phase: "failed",
-          error: String(e?.message || e),
+        from = body.from != null ? toMs(body.from) : null;
+        to = body.to != null ? toMs(body.to) : Date.now();
+      } catch {
+        return res.status(400).json({ ok: false, error: "invalid_date_params" });
+      }
+      if (!SYMBOL_RE.test(symbol)) return res.status(400).json({ ok: false, error: "invalid_symbol" });
+      if (from == null) return res.status(400).json({ ok: false, error: "from_required" });
+      const syncMode = String(body.mode || "patch").toLowerCase() === "full" ? "full" : "patch";
+
+      const existing = findActiveDataSyncJob({ kind: "mark", symbol });
+      if (existing) {
+        return res.json({ ok: true, async: true, resumed: true, ...publicDataSyncJob(existing) });
+      }
+
+      const markCov = await getMarkCoverage(symbol, { from, to }).catch(() => null);
+      const markMonthly = await getMarkMonthlyCoverage(symbol, from, to).catch(() => []);
+      const markPlan = planPatchRangesFromCoverage({
+        from,
+        to,
+        stepMs: 60_000,
+        minTs: markCov?.minTs ?? null,
+        maxTs: markCov?.maxTs ?? null,
+        monthly: Array.isArray(markMonthly) ? markMonthly : [],
+      });
+      const markRanges = Array.isArray(markPlan?.ranges) ? markPlan.ranges : [{ from, to }];
+      const markRemainingMs =
+        syncMode === "patch" ? Number(markPlan?.remainingMs) || 0 : Math.max(0, to - from);
+
+      if (syncMode === "patch" && (!markRanges.length || markRemainingMs <= 0)) {
+        return res.json({
+          ok: true,
+          async: false,
+          skipped: true,
+          mode: "patch",
+          remainingMs: 0,
+          remainingDays: 0,
+          status: "done",
+          progressPct: 100,
+          phase: "done",
+          result: { markKlines: { inserted: 0, gaps: 0, mode: "patch", ranges: [] } },
         });
       }
-    })();
+
+      const job = createDataSyncJob("mark", {
+        symbol,
+        timeframe: "1m_mark",
+        market: "futures",
+        mode: syncMode,
+        windowFrom: from,
+        windowTo: to,
+        remainingMs: markRemainingMs,
+        remainingDays: markRemainingMs / 86400000,
+      });
+      const broadcast = (patch) => {
+        try {
+          const j = updateDataSyncJob(job.id, patch);
+          if (!j) return;
+          appState.wsHub?.broadcast?.("data_sync_progress", publicDataSyncJob(j));
+        } catch {
+          /* never fail the HTTP response because of WS */
+        }
+      };
+      broadcast({ status: "running", progressPct: 0, phase: "mark" });
+      res.json({ ok: true, async: true, ...publicDataSyncJob(job) });
+
+      void (async () => {
+        try {
+          const markKlines = await ensureMarkKlines(symbol, {
+            from,
+            to,
+            mode: syncMode,
+            ranges: syncMode === "patch" ? markRanges : undefined,
+            onProgress: ({ pct, phase }) => broadcast({ progressPct: pct, phase: phase ?? "mark" }),
+          });
+          broadcast({ status: "done", progressPct: 100, phase: "done", result: { markKlines } });
+        } catch (e) {
+          broadcast({
+            status: "failed",
+            phase: "failed",
+            error: String(e?.message || e),
+          });
+        }
+      })();
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
   });
 
   r.post("/data/sync", requireDbUserSession, async (req, res) => {
     if (!getPool()) return res.status(503).json({ ok: false, error: "db_not_configured" });
-    const body = req.body && typeof req.body === "object" ? req.body : {};
-    const symbol = String(body.symbol ?? "").toUpperCase();
-    const tf = String(body.timeframe ?? body.tf ?? "");
-    const from = body.from != null ? toMs(body.from) : null;
-    const to = body.to != null ? toMs(body.to) : Date.now();
-    if (!SYMBOL_RE.test(symbol)) return res.status(400).json({ ok: false, error: "invalid_symbol" });
-    if (!SUPPORTED_TIMEFRAMES.includes(tf)) return res.status(400).json({ ok: false, error: "invalid_timeframe" });
-    if (from == null) return res.status(400).json({ ok: false, error: "from_required" });
-    const market = String(body.market || "futures").toLowerCase() === "spot" ? "spot" : "futures";
-
-    const job = createDataSyncJob("ohlc");
-    const broadcast = (patch) => {
-      const j = updateDataSyncJob(job.id, patch);
-      if (!j) return;
-      appState.wsHub?.broadcast?.("data_sync_progress", publicDataSyncJob(j));
-    };
-    broadcast({ status: "running", progressPct: 0, phase: "klines" });
-    // Return immediately — multi-year backfills exceed HTTP/proxy idle timeouts.
-    res.json({ ok: true, async: true, ...publicDataSyncJob(job) });
-
-    void (async () => {
+    try {
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      const symbol = String(body.symbol ?? "").toUpperCase();
+      const tf = String(body.timeframe ?? body.tf ?? "");
+      let from;
+      let to;
       try {
-        const mapPct = (local0to100, lo, hi) => {
-          const local = Math.max(0, Math.min(100, Number(local0to100) || 0));
-          return lo + (local / 100) * (hi - lo);
-        };
+        from = body.from != null ? toMs(body.from) : null;
+        to = body.to != null ? toMs(body.to) : Date.now();
+      } catch {
+        return res.status(400).json({ ok: false, error: "invalid_date_params" });
+      }
+      if (!SYMBOL_RE.test(symbol)) return res.status(400).json({ ok: false, error: "invalid_symbol" });
+      if (!SUPPORTED_TIMEFRAMES.includes(tf)) return res.status(400).json({ ok: false, error: "invalid_timeframe" });
+      if (from == null) return res.status(400).json({ ok: false, error: "from_required" });
+      const market = String(body.market || "futures").toLowerCase() === "spot" ? "spot" : "futures";
+      const syncMode = String(body.mode || "patch").toLowerCase() === "full" ? "full" : "patch";
 
-        const klines = await ensureKlines(symbol, tf, {
-          from,
-          to,
-          market,
-          onProgress: ({ pct }) => {
-            const mapped = mapPct(pct, 0, market === "futures" ? 70 : 90);
-            // Show at least 1% once OHLC work has started past the first tick.
-            const shown = pct > 0 ? Math.max(1, Math.round(mapped)) : Math.round(mapped);
-            broadcast({ progressPct: shown, phase: "klines" });
-          },
-        });
+      const existing = findActiveDataSyncJob({ kind: "ohlc", symbol, timeframe: tf, market });
+      if (existing) {
+        return res.json({ ok: true, async: true, resumed: true, ...publicDataSyncJob(existing) });
+      }
 
-        let markKlines = { inserted: 0, gaps: 0 };
-        if (market === "futures") {
-          markKlines = await ensureMarkKlines(symbol, {
-            from,
-            to,
-            onProgress: ({ pct }) => {
-              const mapped = mapPct(pct, 70, 85);
-              broadcast({ progressPct: Math.max(70, Math.round(mapped)), phase: "mark" });
-            },
-          }).catch(() => ({ inserted: 0, gaps: 0 }));
-          if (tf !== "1m") {
-            await ensureKlines(symbol, "1m", {
-              from,
-              to,
-              market: "futures",
-              onProgress: ({ pct }) => {
-                const mapped = mapPct(pct, 85, 92);
-                broadcast({ progressPct: Math.max(85, Math.round(mapped)), phase: "klines_1m" });
-              },
-            }).catch(() => ({ inserted: 0, gaps: 0 }));
-          } else {
-            broadcast({ progressPct: 92, phase: "klines_1m" });
-          }
-        }
+      const monthly = await getMonthlyCoverage(symbol, tf, from, to, { market }).catch(() => []);
+      const plan = await planOhlcPatchRanges(symbol, tf, from, to, {
+        market,
+        monthly: Array.isArray(monthly) ? monthly : [],
+      }).catch(() => null);
+      const fallbackRanges = [{ from, to }];
+      const workRanges =
+        syncMode === "patch"
+          ? Array.isArray(plan?.ranges) && plan.ranges.length
+            ? plan.ranges
+            : plan == null
+              ? fallbackRanges
+              : plan.ranges || []
+          : fallbackRanges;
+      const remainingMs =
+        syncMode === "patch"
+          ? plan != null && Number.isFinite(Number(plan.remainingMs))
+            ? Number(plan.remainingMs)
+            : workRanges.reduce((acc, r) => acc + Math.max(0, Number(r.to) - Number(r.from)), 0)
+          : Math.max(0, to - from);
+      const remainingDays = remainingMs / 86400000;
 
-        broadcast({ progressPct: 94, phase: "funding" });
-        let funding = { inserted: 0 };
-        if (market === "futures") {
-          funding = await ensureFunding(symbol, { from, to }).catch(() => ({ inserted: 0 }));
-        }
-        broadcast({ progressPct: 96, phase: "fear_greed" });
-        const fng = await ensureFearGreed({ limit: 0 }).catch(() => ({ inserted: 0 }));
-        broadcast({ progressPct: 98, phase: "open_interest" });
-        const oi =
-          market === "futures"
-            ? await ensureOpenInterest(symbol, { from, to, period: "1h" }).catch(() => ({ inserted: 0 }))
-            : { inserted: 0 };
-
-        broadcast({
+      // Nothing left to fetch in patch mode — finish immediately with accurate feedback.
+      if (syncMode === "patch" && (!workRanges.length || remainingMs <= 0)) {
+        return res.json({
+          ok: true,
+          async: false,
+          skipped: true,
+          mode: "patch",
+          remainingMs: 0,
+          remainingDays: 0,
           status: "done",
           progressPct: 100,
           phase: "done",
-          result: { klines, markKlines, funding, fearGreed: fng, openInterest: oi },
-        });
-      } catch (e) {
-        broadcast({
-          status: "failed",
-          phase: "failed",
-          error: String(e?.message || e),
+          result: { klines: { inserted: 0, gaps: 0, mode: "patch", ranges: [] } },
         });
       }
-    })();
+
+      const job = createDataSyncJob("ohlc", {
+        symbol,
+        timeframe: tf,
+        market,
+        mode: syncMode,
+        windowFrom: from,
+        windowTo: to,
+        remainingMs,
+        remainingDays,
+      });
+      const broadcast = (patch) => {
+        try {
+          const j = updateDataSyncJob(job.id, patch);
+          if (!j) return;
+          appState.wsHub?.broadcast?.("data_sync_progress", publicDataSyncJob(j));
+        } catch {
+          /* never fail the HTTP response because of WS */
+        }
+      };
+      broadcast({ status: "running", progressPct: 0, phase: "klines" });
+      // Return immediately — multi-year backfills exceed HTTP/proxy idle timeouts.
+      res.json({ ok: true, async: true, ...publicDataSyncJob(job) });
+
+      void (async () => {
+        try {
+          const mapPct = (local0to100, lo, hi) => {
+            const local = Math.max(0, Math.min(100, Number(local0to100) || 0));
+            return lo + (local / 100) * (hi - lo);
+          };
+
+          // Aux series (mark / 1m / funding) use the same patch tip window, not full years.
+          const auxFrom =
+            syncMode === "patch" && workRanges.length
+              ? Math.min(...workRanges.map((r) => Number(r.from)))
+              : from;
+          const auxTo =
+            syncMode === "patch" && workRanges.length
+              ? Math.max(...workRanges.map((r) => Number(r.to)))
+              : to;
+
+          const klines = await ensureKlines(symbol, tf, {
+            from,
+            to,
+            market,
+            mode: syncMode,
+            ranges: syncMode === "patch" ? workRanges : undefined,
+            onProgress: ({ pct }) => {
+              const mapped = mapPct(pct, 0, market === "futures" ? 70 : 90);
+              const shown = pct > 0 ? Math.max(1, Math.round(mapped)) : Math.round(mapped);
+              broadcast({ progressPct: shown, phase: "klines" });
+            },
+          });
+
+          let markKlines = { inserted: 0, gaps: 0 };
+          if (market === "futures") {
+            markKlines = await ensureMarkKlines(symbol, {
+              from: auxFrom,
+              to: auxTo,
+              mode: syncMode,
+              onProgress: ({ pct }) => {
+                const mapped = mapPct(pct, 70, 85);
+                broadcast({ progressPct: Math.max(70, Math.round(mapped)), phase: "mark" });
+              },
+            }).catch(() => ({ inserted: 0, gaps: 0 }));
+            if (tf !== "1m") {
+              await ensureKlines(symbol, "1m", {
+                from: auxFrom,
+                to: auxTo,
+                market: "futures",
+                mode: syncMode,
+                onProgress: ({ pct }) => {
+                  const mapped = mapPct(pct, 85, 92);
+                  broadcast({ progressPct: Math.max(85, Math.round(mapped)), phase: "klines_1m" });
+                },
+              }).catch(() => ({ inserted: 0, gaps: 0 }));
+            } else {
+              broadcast({ progressPct: 92, phase: "klines_1m" });
+            }
+          }
+
+          broadcast({ progressPct: 94, phase: "funding" });
+          let funding = { inserted: 0 };
+          if (market === "futures") {
+            funding = await ensureFunding(symbol, { from: auxFrom, to: auxTo }).catch(() => ({ inserted: 0 }));
+          }
+          broadcast({ progressPct: 96, phase: "fear_greed" });
+          const fng = await ensureFearGreed({ limit: 0 }).catch(() => ({ inserted: 0 }));
+          broadcast({ progressPct: 98, phase: "open_interest" });
+          const oi =
+            market === "futures"
+              ? await ensureOpenInterest(symbol, { from: auxFrom, to: auxTo, period: "1h" }).catch(() => ({
+                  inserted: 0,
+                }))
+              : { inserted: 0 };
+
+          broadcast({
+            status: "done",
+            progressPct: 100,
+            phase: "done",
+            result: { klines, markKlines, funding, fearGreed: fng, openInterest: oi },
+          });
+        } catch (e) {
+          broadcast({
+            status: "failed",
+            phase: "failed",
+            error: String(e?.message || e),
+          });
+        }
+      })();
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  });
+
+  r.get("/data/sync-active", requireDbUserSession, async (req, res) => {
+    const kind = String(req.query.kind || "ohlc");
+    const symbol = String(req.query.symbol || "").toUpperCase();
+    const timeframe = req.query.timeframe != null ? String(req.query.timeframe) : undefined;
+    const marketQ = String(req.query.market || "futures").toLowerCase();
+    const market = marketQ === "spot" ? "spot" : "futures";
+    if (!SYMBOL_RE.test(symbol)) return res.status(400).json({ ok: false, error: "invalid_symbol" });
+    const job = findActiveDataSyncJob({
+      kind,
+      symbol,
+      timeframe: kind === "ohlc" ? timeframe : undefined,
+      market: kind === "ohlc" ? market : undefined,
+    });
+    res.json({ ok: true, active: job ? publicDataSyncJob(job) : null });
   });
 
   r.get("/data/sync/:jobId", requireDbUserSession, async (req, res) => {

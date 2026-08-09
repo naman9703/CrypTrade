@@ -25,6 +25,7 @@ import { PromoteToInstanceModal } from "./PromoteToInstanceModal";
 import { BacktestTradeChart } from "./BacktestTradeChart";
 import { TrendHtfStChopSummary } from "./TrendHtfStChopSummary";
 import { SessionWeekdayHeatmap } from "./SessionWeekdayHeatmap";
+import { SupertrendXgbPanel } from "./SupertrendXgbPanel";
 
 type Tab = "kpis" | "equity" | "drawdown" | "monthly" | "trades" | "distributions" | "gate" | "tick";
 
@@ -275,6 +276,8 @@ export function BacktestResultPanel({ run, progress, onAfterPromote }: Props) {
       <KpiGrid run={displayRun} trades={trades} />
 
       <WalkForwardSummary run={displayRun} walkForward={walkForward} tradesLoaded={trades != null} />
+
+      <SupertrendXgbPanel run={displayRun} trades={trades} />
 
       <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 text-xs dark:border-slate-800 dark:bg-slate-950/60">
         <div className="flex flex-1 flex-wrap items-center gap-1">

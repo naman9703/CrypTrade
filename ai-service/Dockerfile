@@ -7,6 +7,8 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
+# Trainers imported by FastAPI endpoints (SurfPulse / Supertrend XGB, etc.)
+COPY scripts ./scripts
 RUN mkdir -p /app/data/model /app/data/feedback
 ENV AI_SERVICE_HOST=0.0.0.0
 ENV AI_SERVICE_PORT=8001

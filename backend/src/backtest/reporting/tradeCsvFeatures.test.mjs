@@ -43,6 +43,29 @@ test("computeRangeBeforeSl BUY tracks max high until SL touch", () => {
   assert.equal(r.barsToSlTouch, 3);
 });
 
+test("computeRangeBeforeSl ignores entry-bar wick for next-bar fills", () => {
+  const candles = [
+    { ts: 0, open: 100, high: 102, low: 94, close: 101, volume: 1 }, // entry wick through SL
+    { ts: 60_000, open: 101, high: 105, low: 100, close: 104, volume: 1 },
+    { ts: 120_000, open: 104, high: 106, low: 94.5, close: 95, volume: 1 }, // real SL
+  ];
+  const trade = { direction: "BUY", initialSlPrice: 95, entryPrice: 100, entrySameBar: false };
+  const r = computeRangeBeforeSl(candles, 0, 2, trade);
+  assert.equal(r.barsToSlTouch, 2);
+  assert.equal(r.rangeHighestPrice, 106);
+});
+
+test("computeRangeBeforeSl same-bar entry counts entry-bar SL touch", () => {
+  const candles = [
+    { ts: 0, open: 100, high: 102, low: 94, close: 101, volume: 1 },
+    { ts: 60_000, open: 101, high: 105, low: 100, close: 104, volume: 1 },
+  ];
+  const trade = { direction: "BUY", initialSlPrice: 95, entryPrice: 100, entrySameBar: true };
+  const r = computeRangeBeforeSl(candles, 0, 1, trade);
+  assert.equal(r.barsToSlTouch, 0);
+  assert.equal(r.rangeHighestPrice, 102);
+});
+
 test("computeRangeBeforeSl SELL tracks min low until SL touch", () => {
   const candles = [
     { ts: 0, open: 100, high: 101, low: 99, close: 100, volume: 1 },

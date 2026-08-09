@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api } from "../api/client";
 import { tradingModeToApiModeSlug, type ApiTradingModeSlug } from "../lib/tradingModeSlug";
+import { tradeRowInstanceId } from "../lib/instancePortfolioScope";
 import type { Account, CreateAccountDto, UpdateAccountDto } from "../types/accounts";
 import {
   enqueueServerUiPrefsPatch,
@@ -112,6 +113,29 @@ export const CHART_CANDLE_MAX = 3000;
 
 /** Must stay in line with backend TRADE_HISTORY_SNAPSHOT_MAX (default trade-ws log cap). */
 const TRADE_HISTORY_UI_MAX = 4000;
+
+function upsertTradesByInstanceMap(
+  prevMap: Record<string, Trade[]>,
+  row: unknown,
+): Record<string, Trade[]> | undefined {
+  const iid = tradeRowInstanceId(row);
+  if (!iid || !row || typeof row !== "object") return undefined;
+  const list = prevMap[iid] ?? [];
+  const id = (row as { id?: unknown }).id;
+  let nextList: Trade[];
+  if (id != null && id !== "") {
+    const idx = list.findIndex((t) => t?.id === id);
+    if (idx >= 0) {
+      nextList = list.slice();
+      nextList[idx] = { ...list[idx], ...(row as Trade) };
+    } else {
+      nextList = [row as Trade, ...list].slice(0, TRADE_HISTORY_UI_MAX);
+    }
+  } else {
+    nextList = [row as Trade, ...list].slice(0, TRADE_HISTORY_UI_MAX);
+  }
+  return { ...prevMap, [iid]: nextList };
+}
 
 type ChartSnapshotPayload = {
   symbol?: string;
@@ -1617,6 +1641,10 @@ export const useAppStore = create<AppState>((set, get) => ({
             playProfitCloseSound();
           }
           set((s) => {
+            const withInst = (trades: TradePayload[], row: unknown) => {
+              const byInst = upsertTradesByInstanceMap(s.tradesByInstance, row);
+              return byInst ? { trades, tradesByInstance: byInst } : { trades };
+            };
             const id = p?.id;
             if (id != null && id !== "") {
               const idx = s.trades.findIndex((t: any) => t?.id === id);
@@ -1642,6 +1670,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                     entryPrice: openPrice ?? closeRow.entryPrice,
                     exitPrice: closeRow.price ?? closeRow.exitPrice,
                     price: openPrice ?? prev.price,
+                    instanceId: closeRow.instanceId ?? prev.instanceId,
                     meta: {
                       ...((prev.meta as Record<string, unknown>) || {}),
                       ...(closeRow.meta || {}),
@@ -1651,7 +1680,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                   } as TradePayload & { status?: string; exitPrice?: number };
                   const next = s.trades.slice();
                   next[idx] = merged;
-                  return { trades: next.slice(0, TRADE_HISTORY_UI_MAX) };
+                  return withInst(next.slice(0, TRADE_HISTORY_UI_MAX), merged);
                 }
                 if (
                   prevType &&
@@ -1660,11 +1689,13 @@ export const useAppStore = create<AppState>((set, get) => ({
                   (prevType === "OPEN" || prevType === "CLOSE") &&
                   (nextType === "OPEN" || nextType === "CLOSE")
                 ) {
-                  return { trades: [p, ...s.trades].slice(0, TRADE_HISTORY_UI_MAX) };
+                  return withInst([p, ...s.trades].slice(0, TRADE_HISTORY_UI_MAX), p);
                 }
                 const merged = {
                   ...prev,
                   ...p,
+                  instanceId:
+                    (p as Record<string, unknown>)?.instanceId ?? prev.instanceId,
                   status:
                     (p as Record<string, unknown>)?.status ??
                     (nextType === "CLOSE" ? "CLOSED" : prevStatus === "CLOSED" ? "CLOSED" : "OPEN"),
@@ -1675,10 +1706,10 @@ export const useAppStore = create<AppState>((set, get) => ({
                 };
                 const next = s.trades.slice();
                 next[idx] = merged as TradePayload;
-                return { trades: next.slice(0, TRADE_HISTORY_UI_MAX) };
+                return withInst(next.slice(0, TRADE_HISTORY_UI_MAX), merged);
               }
             }
-            return { trades: [p, ...s.trades].slice(0, TRADE_HISTORY_UI_MAX) };
+            return withInst([p, ...s.trades].slice(0, TRADE_HISTORY_UI_MAX), p);
           });
           return;
         }

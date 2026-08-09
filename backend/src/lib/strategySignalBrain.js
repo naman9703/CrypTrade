@@ -94,6 +94,14 @@ export const BACKTEST_SNAPSHOT_META_KEYS = Object.freeze([
   "capitalAllotmentCompoundPnlUi",
   "futuresLeverage",
   "futuresLeverageMode",
+  "supertrendXgbGateEnabled",
+  "supertrendXgbThreshold",
+  "supertrendXgbIgnoreTrainingCutoff",
+  "supertrendXgbFailClosed",
+  "supertrendStretchSkipEnabled",
+  "supertrendStretchEma20Pct",
+  "supertrendStretchRsiHigh",
+  "supertrendStretchRsiLow",
 ]);
 
 const INSTANCE_FIELD_SET = new Set(INSTANCE_FIELD_KEYS);

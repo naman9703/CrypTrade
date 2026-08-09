@@ -1226,6 +1226,43 @@ def save_surfpulse_model(model: Any) -> None:
         _atomic_write_bytes(surfpulse_model_path(), joblib.dump, model)
 
 
+def supertrend_xgb_model_path() -> Path:
+    return get_model_dir() / "supertrend_xgb.pkl"
+
+
+def supertrend_xgb_meta_path() -> Path:
+    return get_model_dir() / "supertrend_xgb_meta.json"
+
+
+def load_supertrend_xgb_model() -> Any | None:
+    p = supertrend_xgb_model_path()
+    if not p.exists():
+        return None
+    with _model_lock:
+        try:
+            return joblib.load(p)
+        except Exception:
+            import pickle
+
+            with open(p, "rb") as f:
+                return pickle.load(f)
+
+
+def load_supertrend_xgb_meta() -> dict[str, Any] | None:
+    p = supertrend_xgb_meta_path()
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def save_supertrend_xgb_model(model: Any) -> None:
+    with _model_lock:
+        _atomic_write_bytes(supertrend_xgb_model_path(), joblib.dump, model)
+
+
 def load_short_calibrator() -> IsotonicRegression | None:
     p = short_calibrator_path()
     if not p.exists():
@@ -1402,6 +1439,78 @@ class SurfPulsePredictResponse(BaseModel):
     model_kind: str
 
 
+SUPERTREND_XGB_FEATURE_COLUMNS = [
+    "atr14_pct",
+    "atr_percentile",
+    "adx14",
+    "rsi14",
+    "dist_ema20_pct",
+    "dist_ema50_pct",
+    "dist_ema200_pct",
+    "ema_stack",
+    "vol_vs_avg20",
+    "body_pct",
+    "upper_wick_pct",
+    "lower_wick_pct",
+    "dist_swing_high_pct",
+    "dist_swing_low_pct",
+    "entry_hour_utc",
+    "entry_weekday",
+    "session",
+    "side",
+]
+
+
+class SupertrendXgbFeaturesIn(BaseModel):
+    atr14_pct: float = 0.0
+    atr_percentile: float = 0.0
+    adx14: float = 0.0
+    rsi14: float = 0.0
+    dist_ema20_pct: float = 0.0
+    dist_ema50_pct: float = 0.0
+    dist_ema200_pct: float = 0.0
+    ema_stack: float = 0.0
+    vol_vs_avg20: float = 0.0
+    body_pct: float = 0.0
+    upper_wick_pct: float = 0.0
+    lower_wick_pct: float = 0.0
+    dist_swing_high_pct: float = 0.0
+    dist_swing_low_pct: float = 0.0
+    entry_hour_utc: float = 0.0
+    entry_weekday: float = 0.0
+    session: float = 0.0
+    side: float = 1.0
+
+
+class SupertrendXgbPredictRequest(BaseModel):
+    features: SupertrendXgbFeaturesIn
+
+
+class SupertrendXgbPredictResponse(BaseModel):
+    probability: float
+    model_kind: str
+    threshold: float | None = None
+
+
+class SupertrendXgbTradeRow(BaseModel):
+    entry_ts: int
+    features: dict[str, float]
+    label: int
+    rr: float | None = None
+
+
+class SupertrendXgbTrainRequest(BaseModel):
+    rows: list[SupertrendXgbTradeRow] = Field(..., min_items=40)
+    source_run_id: str | None = None
+    symbol: str | None = None
+    timeframe: str | None = None
+
+
+class SupertrendXgbTrainResponse(BaseModel):
+    ok: bool = True
+    meta: dict[str, Any]
+
+
 class NewsImpactRequest(BaseModel):
     headlines: list[str] = Field(default_factory=list)
 
@@ -1477,6 +1586,8 @@ def health() -> dict[str, Any]:
     ensemble_size = len(m) if isinstance(m, list) else (1 if m else 0)
     short_m = load_short_model()
     surfpulse_m = load_surfpulse_model()
+    st_xgb = load_supertrend_xgb_model()
+    st_meta = load_supertrend_xgb_meta()
     return {
         "ok": True,
         "model_loaded": m is not None,
@@ -1487,6 +1598,9 @@ def health() -> dict[str, Any]:
         "short_model_loaded": short_m is not None,
         "surfpulse_model_loaded": surfpulse_m is not None,
         "surfpulse_model_path": str(surfpulse_model_path()),
+        "supertrend_xgb_loaded": st_xgb is not None,
+        "supertrend_xgb_path": str(supertrend_xgb_model_path()),
+        "supertrend_xgb_meta": st_meta,
         "xgboost_available": XGBOOST_AVAILABLE,
         **(
             {"xgboost_import_error": XGBOOST_IMPORT_ERROR}
@@ -1717,6 +1831,116 @@ def predict_surfpulse(req: SurfPulsePredictRequest) -> SurfPulsePredictResponse:
         )
     raw = float(model.predict_proba(x)[0, 1])
     return SurfPulsePredictResponse(probability=raw, model_kind=type(model).__name__)
+
+
+@app.post("/predict/supertrend", response_model=SupertrendXgbPredictResponse)
+def predict_supertrend(req: SupertrendXgbPredictRequest) -> SupertrendXgbPredictResponse:
+    """Entry-feature win classifier trained from Supertrend backtest trades."""
+    model = load_supertrend_xgb_model()
+    if model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Supertrend XGB model missing. Train from a backtest run in the Backtest panel.",
+        )
+    f = req.features.model_dump()
+    x = np.array([[float(f[k]) for k in SUPERTREND_XGB_FEATURE_COLUMNS]], dtype=np.float64)
+    n_exp = getattr(model, "n_features_in_", None)
+    if n_exp is not None and int(n_exp) != len(SUPERTREND_XGB_FEATURE_COLUMNS):
+        raise HTTPException(
+            status_code=503,
+            detail=f"Supertrend XGB expects {n_exp} features; config has {len(SUPERTREND_XGB_FEATURE_COLUMNS)}.",
+        )
+    raw = float(model.predict_proba(x)[0, 1])
+    meta = load_supertrend_xgb_meta() or {}
+    thr = meta.get("threshold")
+    return SupertrendXgbPredictResponse(
+        probability=raw,
+        model_kind=type(model).__name__,
+        threshold=float(thr) if thr is not None else None,
+    )
+
+
+class SupertrendXgbBatchPredictRequest(BaseModel):
+    features_list: list[SupertrendXgbFeaturesIn] = Field(..., min_items=1)
+
+
+class SupertrendXgbBatchPredictResponse(BaseModel):
+    probabilities: list[float]
+    model_kind: str
+    threshold: float | None = None
+
+
+@app.post("/predict/supertrend/batch", response_model=SupertrendXgbBatchPredictResponse)
+def predict_supertrend_batch(req: SupertrendXgbBatchPredictRequest) -> SupertrendXgbBatchPredictResponse:
+    """Batch entry-feature win probabilities for Supertrend XGB gate (backtest)."""
+    model = load_supertrend_xgb_model()
+    if model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Supertrend XGB model missing. Train from a backtest run in the Backtest panel.",
+        )
+    rows = []
+    for feat in req.features_list:
+        f = feat.model_dump()
+        rows.append([float(f[k]) for k in SUPERTREND_XGB_FEATURE_COLUMNS])
+    x = np.asarray(rows, dtype=np.float64)
+    n_exp = getattr(model, "n_features_in_", None)
+    if n_exp is not None and int(n_exp) != len(SUPERTREND_XGB_FEATURE_COLUMNS):
+        raise HTTPException(
+            status_code=503,
+            detail=f"Supertrend XGB expects {n_exp} features; config has {len(SUPERTREND_XGB_FEATURE_COLUMNS)}.",
+        )
+    probs = [float(p) for p in model.predict_proba(x)[:, 1]]
+    meta = load_supertrend_xgb_meta() or {}
+    thr = meta.get("threshold")
+    return SupertrendXgbBatchPredictResponse(
+        probabilities=probs,
+        model_kind=type(model).__name__,
+        threshold=float(thr) if thr is not None else None,
+    )
+
+
+def _load_train_supertrend_from_trades():
+    """Resolve trainer from package import or scripts/ path (Docker WORKDIR=/app)."""
+    try:
+        from scripts.train_supertrend_xgb import train_supertrend_from_trades as _train
+
+        return _train
+    except Exception:
+        pass
+    import importlib.util
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "train_supertrend_xgb.py"
+    if not script.is_file():
+        raise HTTPException(
+            status_code=500,
+            detail=f"train_supertrend_xgb.py missing at {script} (rebuild ai image with scripts/)",
+        )
+    spec = importlib.util.spec_from_file_location("train_supertrend_xgb", script)
+    if spec is None or spec.loader is None:
+        raise HTTPException(status_code=500, detail="train_supertrend_xgb_import_failed")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.train_supertrend_from_trades
+
+
+@app.post("/train/supertrend-from-trades", response_model=SupertrendXgbTrainResponse)
+def train_supertrend_from_trades_endpoint(req: SupertrendXgbTrainRequest) -> SupertrendXgbTrainResponse:
+    """Train Supertrend XGB from labeled entry-feature rows (time-ordered splits inside trainer)."""
+    _train = _load_train_supertrend_from_trades()
+    rows = [r.model_dump() for r in req.rows]
+    try:
+        meta = _train(
+            rows,
+            source_run_id=req.source_run_id,
+            symbol=req.symbol,
+            timeframe=req.timeframe,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"train_failed: {e}") from e
+    return SupertrendXgbTrainResponse(ok=True, meta=meta)
 
 
 @app.post("/train", response_model=TrainResponse)

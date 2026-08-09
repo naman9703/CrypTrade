@@ -1296,6 +1296,42 @@ export const api = {
     );
   },
 
+  /** Train Supertrend XGBoost from a completed ST backtest run's trade features. */
+  async trainSupertrendXgb(runId: string) {
+    return json<{
+      ok?: boolean;
+      error?: string;
+      runId?: string;
+      nRows?: number;
+      meta?: Record<string, unknown>;
+      threshold?: number | null;
+      canApply?: boolean;
+    }>(
+      await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}/xgb/train`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      }),
+    );
+  },
+
+  /** Clone run with Supertrend XGB gate + locked threshold and enqueue re-sim. */
+  async applySupertrendXgb(runId: string, body?: { threshold?: number }) {
+    return json<{
+      ok?: boolean;
+      error?: string;
+      runId?: string;
+      threshold?: number;
+      baselineRunId?: string;
+    }>(
+      await apiFetch(`${HTTP}/api/backtest/runs/${encodeURIComponent(runId)}/xgb/apply`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body ?? {}),
+      }),
+    );
+  },
+
   async startStrategyTest(seedRunId: string) {
     return json<{ ok?: boolean; testId?: string; error?: string }>(
       await apiFetch(`${HTTP}/api/backtest/strategy-tests`, {
@@ -1340,20 +1376,28 @@ export const api = {
     from: string | number | Date;
     to?: string | number | Date;
     market?: "spot" | "futures";
+    /** patch = remaining gaps from exact maxTs (default); full = re-fetch whole window */
+    mode?: "patch" | "full";
   }) {
     return json<{
       ok?: boolean;
       async?: boolean;
+      skipped?: boolean;
+      resumed?: boolean;
       jobId?: string;
       status?: string;
       progressPct?: number;
       phase?: string | null;
       error?: string | null;
+      mode?: string;
+      remainingMs?: number;
+      remainingDays?: number;
       klines?: { inserted?: number; gaps?: number };
       markKlines?: { inserted?: number; gaps?: number };
       funding?: { inserted?: number };
       fearGreed?: { inserted?: number };
       openInterest?: { inserted?: number };
+      result?: unknown;
     }>(
       await apiFetch(`${HTTP}/api/backtest/data/sync`, {
         method: "POST",
@@ -1367,10 +1411,12 @@ export const api = {
     symbol: string;
     from: string | number | Date;
     to?: string | number | Date;
+    mode?: "patch" | "full";
   }) {
     return json<{
       ok?: boolean;
       async?: boolean;
+      resumed?: boolean;
       jobId?: string;
       status?: string;
       progressPct?: number;
@@ -1395,8 +1441,39 @@ export const api = {
       progressPct?: number;
       phase?: string | null;
       error?: string | null;
+      mode?: string | null;
+      remainingMs?: number | null;
+      remainingDays?: number | null;
       result?: unknown;
     }>(await apiFetch(`${HTTP}/api/backtest/data/sync/${encodeURIComponent(jobId)}`));
+  },
+
+  async getActiveDataSyncJob(opts: {
+    kind?: "ohlc" | "mark";
+    symbol: string;
+    timeframe?: string;
+    market?: "futures" | "spot";
+  }) {
+    const q = new URLSearchParams({
+      kind: opts.kind || "ohlc",
+      symbol: opts.symbol,
+    });
+    if (opts.timeframe) q.set("timeframe", opts.timeframe);
+    if (opts.market) q.set("market", opts.market);
+    return json<{
+      ok?: boolean;
+      active?: {
+        jobId?: string;
+        kind?: string;
+        status?: string;
+        progressPct?: number;
+        phase?: string | null;
+        mode?: string | null;
+        remainingMs?: number | null;
+        remainingDays?: number | null;
+        error?: string | null;
+      } | null;
+    }>(await apiFetch(`${HTTP}/api/backtest/data/sync-active?${q.toString()}`));
   },
 
   async getBacktestCandles(opts: {
@@ -1419,16 +1496,63 @@ export const api = {
     }>(await apiFetch(`${HTTP}/api/backtest/data/candles?${q.toString()}`));
   },
 
-  async getDataCoverage(opts: { symbol: string; timeframe: string; from?: string; to?: string }) {
+  async getDataCoverage(opts: {
+    symbol: string;
+    timeframe: string;
+    from?: string;
+    to?: string;
+    market?: "futures" | "spot";
+  }) {
     const q = new URLSearchParams({ symbol: opts.symbol, timeframe: opts.timeframe });
     if (opts.from) q.set("from", opts.from);
     if (opts.to) q.set("to", opts.to);
+    if (opts.market) q.set("market", opts.market);
     return json<{
       ok?: boolean;
-      coverage?: { have: number; expected: number | null; coveragePct: number | null; minTs: number | null; maxTs: number | null };
+      coverage?: {
+        have: number;
+        expected: number | null;
+        coveragePct: number | null;
+        minTs: number | null;
+        maxTs: number | null;
+        remainingMs?: number | null;
+        remainingDays?: number | null;
+        remainingBars?: number | null;
+        patchFrom?: number | null;
+        patchTo?: number | null;
+      };
       monthly?: Array<{ month: string; have: number; expected: number; coveragePct: number }>;
-      markCoverage?: { have: number; expected: number | null; coveragePct: number | null; minTs: number | null; maxTs: number | null };
+      markCoverage?: {
+        have: number;
+        expected: number | null;
+        coveragePct: number | null;
+        minTs: number | null;
+        maxTs: number | null;
+        remainingMs?: number | null;
+        remainingDays?: number | null;
+      };
       markMonthly?: Array<{ month: string; have: number; expected: number; coveragePct: number }>;
+      patch?: {
+        remainingMs?: number;
+        remainingDays?: number;
+        remainingBars?: number;
+        patchFrom?: number | null;
+        patchTo?: number | null;
+      } | null;
+      activeSync?: {
+        jobId?: string;
+        status?: string;
+        progressPct?: number;
+        phase?: string | null;
+        mode?: string | null;
+        remainingDays?: number | null;
+      } | null;
+      activeMarkSync?: {
+        jobId?: string;
+        status?: string;
+        progressPct?: number;
+        phase?: string | null;
+      } | null;
     }>(await apiFetch(`${HTTP}/api/backtest/data/coverage?${q.toString()}`));
   },
 

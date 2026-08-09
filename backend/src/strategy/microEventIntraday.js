@@ -32,6 +32,9 @@ const MICRO_EVENT_USER_KEYS = [
   "microEventLiqMinUsd",
   "microEventLiqDomRatio",
   "microEventLiqRequired",
+  "microEventCascadeFreshEnabled",
+  "microEventCascadeQuietSec",
+  "microEventCascadeQuietMaxUsd",
   "microEventOiGateEnabled",
   "microEventOiMinDropPct1m",
   "microEventOiMinDropPct5m",
@@ -53,11 +56,16 @@ const MICRO_EVENT_USER_KEYS = [
   "microEventCooldownSec",
   "microEventLiveTickEnabled",
   "microEventTradeSides",
+  "microEventRequireDisplacement",
+  "microEventMinDisplacementPct",
   "intradayLiqPartialTp",
   "intradayLiqTp1Enabled",
   "intradayLiqTp2Enabled",
   "intradayLiqBreakevenAfterPartial",
   "intradayLiqEntryAtSignalClose",
+  "intradayLiqDeadTradeExitBars",
+  "intradayLiqDeadTradeMinMfeR",
+  "intradayLiqDeadTradeMaxLossR",
 ];
 
 export function resolveMicroEventCfg(cfg = {}) {
@@ -67,6 +75,8 @@ export function resolveMicroEventCfg(cfg = {}) {
   }
   out.manualStrategy = "MICRO_EVENT";
   out.strategyMode = cfg.strategyMode ?? "MANUAL";
+  // Runner max-hold reads intradayLiqMaxHoldBars — keep in sync with microEventMaxHoldSec.
+  out.intradayLiqMaxHoldBars = microEventMaxHoldBarsFromSec(out);
   return out;
 }
 
@@ -97,7 +107,9 @@ export function buildMicroEventBacktestAdapter(candles, cfg = {}, _tf = "1m", ma
 
   return function microEventAdapter(bar, idx, ctx) {
     if (idx < MICRO_EVENT_WARMUP) return null;
-    const ts = Number(bar.ts);
+    const tsOpen = Number(bar.ts);
+    /** Bar-close availability: liq/CVD in the minute are only known after the bar completes. */
+    const ts = tsOpen + intervalMs;
     const hour = Math.floor(ts / 3_600_000);
     const dHour = ctx?.persisted ? dayLocal : { hourBucket, tradesHour, lastSignalIdx, lastFireMs };
     if (dHour.hourBucket !== hour) {
@@ -108,8 +120,12 @@ export function buildMicroEventBacktestAdapter(candles, cfg = {}, _tf = "1m", ma
     if (ts - (dHour.lastFireMs ?? 0) < cooldownMs) return null;
     if (idx - (ctx?.persisted ? dHour.lastSignalIdx : lastSignalIdx) < 1) return null;
 
-    const liqBar = liqSeries.find((b) => b.ts <= ts && b.ts > ts - intervalMs);
+    const liqBar = liqSeries.find((b) => b.ts <= tsOpen && b.ts > tsOpen - intervalMs);
     if (!liqBar) return null;
+    const longUsd = Number(liqBar.liqLongUsd ?? 0);
+    const shortUsd = Number(liqBar.liqShortUsd ?? 0);
+    const totalUsd = longUsd + shortUsd;
+    if (!(totalUsd > 0)) return null;
 
     const snapFields = btCtx
       ? buildBacktestSnapshotFields(ts, {
@@ -117,16 +133,13 @@ export function buildMicroEventBacktestAdapter(candles, cfg = {}, _tf = "1m", ma
           liqTicks: btCtx.liqTicks ?? [],
           liqWindowSec: opts.liqWindowSec,
           domRatio: opts.liqDomRatio,
+          cascadeQuietSec: opts.cascadeQuietSec,
           aggTrades: btCtx.aggTrades ?? [],
           fundingRates: btCtx.fundingRates ?? [],
           oiSeries: btCtx.oiSeries ?? [],
           oiAvailableFromMs: btCtx.oiAvailableFromMs ?? null,
         })
       : null;
-
-    const longUsd = Number(liqBar.liqLongUsd ?? 0);
-    const shortUsd = Number(liqBar.liqShortUsd ?? 0);
-    const totalUsd = longUsd + shortUsd;
 
     const snapshot = {
       symbol: cfg.symbol ?? "BTCUSDT",
@@ -137,6 +150,9 @@ export function buildMicroEventBacktestAdapter(candles, cfg = {}, _tf = "1m", ma
       liqRateUsdPerMin: snapFields?.liqRateUsdPerMin ?? totalUsd,
       liqDom: snapFields?.liqDom ?? "neutral",
       liqZLike: snapFields?.liqZLike ?? totalUsd / Math.max(opts.liqMinUsd, 1),
+      liqExtremePrice: snapFields?.liqExtremePrice ?? null,
+      liqQuietPriorUsd: snapFields?.liqQuietPriorUsd ?? null,
+      liqQuietPriorMaxBarUsd: snapFields?.liqQuietPriorMaxBarUsd ?? null,
       lastLiqTickMs: ts,
       oi: snapFields?.oi ?? null,
       oiDeltaPct1m: snapFields?.oiDeltaPct1m ?? null,
@@ -153,6 +169,8 @@ export function buildMicroEventBacktestAdapter(candles, cfg = {}, _tf = "1m", ma
       calendarActive: snapFields?.calendarActive ?? false,
       calendarEvents: snapFields?.calendarEvents ?? [],
       lastPrice: Number(bar.close),
+      barOpen: Number(bar.open),
+      barClose: Number(bar.close),
     };
 
     if (!snapFields) {
@@ -196,9 +214,15 @@ export async function hydrateMicroEventBacktestData(symbol, fromMs, toMs, cfg = 
 }
 
 export async function hydrateMicroEventCfg(cfg, symbol, fromMs, toMs) {
-  const { liqSeries, tickCount, backtestCtx } = await hydrateMicroEventBacktestData(symbol, fromMs, toMs, cfg);
+  const resolved = resolveMicroEventCfg(cfg);
+  const { liqSeries, tickCount, backtestCtx } = await hydrateMicroEventBacktestData(
+    symbol,
+    fromMs,
+    toMs,
+    resolved,
+  );
   return {
-    ...cfg,
+    ...resolved,
     _microEventLiqSeries: liqSeries,
     _microEventTickCount: tickCount,
     _microEventBacktestCtx: backtestCtx,

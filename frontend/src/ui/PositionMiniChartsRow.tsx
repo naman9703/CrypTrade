@@ -1,5 +1,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import { useThemeStore } from "../themeStore";
+import { tradingModeToApiModeSlug } from "../lib/tradingModeSlug";
+import { filterPositionsForInstance } from "../lib/instancePortfolioScope";
 import { useAppStore } from "../ws/store";
 import { RestCandleTile } from "./MultiChartGrid";
 
@@ -115,7 +117,20 @@ export const PositionMiniChartsRowLive = memo(function PositionMiniChartsRowLive
   mainSymbol: string;
   onPickSymbol: (sym: string) => void;
 }) {
-  const positions = useAppStore((s) => s.positions);
+  const positionsRaw = useAppStore((s) => s.positions);
+  const trades = useAppStore((s) => s.trades);
+  const mainView = useAppStore((s) => s.mainView);
+  const selectedInstanceId = useAppStore((s) => s.selectedInstanceId);
+  const mode = useAppStore((s) => s.mode);
+  const activeInstanceByMode = useAppStore((s) => s.activeInstanceByMode);
+  const positions = useMemo(() => {
+    const instanceScopeId =
+      mainView === "instance" && selectedInstanceId ? String(selectedInstanceId) : "";
+    if (!instanceScopeId) return Array.isArray(positionsRaw) ? positionsRaw : [];
+    const modeSlug = tradingModeToApiModeSlug(mode);
+    const isActive = String(activeInstanceByMode?.[modeSlug] ?? "") === instanceScopeId;
+    return filterPositionsForInstance(positionsRaw || [], trades || [], instanceScopeId, isActive);
+  }, [positionsRaw, trades, mainView, selectedInstanceId, mode, activeInstanceByMode]);
   if (!enabled || !Array.isArray(positions) || positions.length === 0) return null;
   return (
     <PositionMiniChartsRow positions={positions} mainSymbol={mainSymbol} onPickSymbol={onPickSymbol} />

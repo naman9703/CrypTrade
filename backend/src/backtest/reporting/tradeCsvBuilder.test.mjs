@@ -7,6 +7,9 @@ import {
   csvEscape,
   formatTradeRr,
   marginForTrade,
+  dedupeTradesByNumber,
+  rangeHighestForCsv,
+  rangeLowestForCsv,
   resolveCsvColumns,
   tradeHasLiqData,
 } from "./tradeCsvBuilder.js";
@@ -64,4 +67,23 @@ test("resolveCsvColumns includes Liq columns when any trade has liq context", ()
 test("tradeHasLiqData detects liqContext on trade row", () => {
   assert.equal(tradeHasLiqData({ liqContext: { features: { marketState: { regime: "trend" } } } }, {}), true);
   assert.equal(tradeHasLiqData({}, {}), false);
+});
+
+test("dedupeTradesByNumber keeps first occurrence", () => {
+  const out = dedupeTradesByNumber([
+    { tradeNumber: 1, direction: "BUY" },
+    { tradeNumber: 1, direction: "BUY" },
+    { tradeNumber: 2, direction: "SELL" },
+  ]);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].tradeNumber, 1);
+  assert.equal(out[1].tradeNumber, 2);
+});
+
+test("range columns are direction-aware (SELL blanks highest, BUY blanks lowest)", () => {
+  const f = { rangeLowestPrice: 90, rangeHighestPrice: 110 };
+  assert.equal(rangeLowestForCsv({ direction: "SELL" }, f), "90.0000");
+  assert.equal(rangeHighestForCsv({ direction: "SELL" }, f), "");
+  assert.equal(rangeLowestForCsv({ direction: "BUY" }, f), "");
+  assert.equal(rangeHighestForCsv({ direction: "BUY" }, f), "110.0000");
 });

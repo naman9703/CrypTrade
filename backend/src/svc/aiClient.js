@@ -82,6 +82,22 @@ export function createAiClient({ baseUrl }) {
       const { data } = await http.post("/train/bootstrap", body, { timeout: 300_000 });
       return data;
     },
+    /** Supertrend XGB: entry-feature win probability. */
+    async predictSupertrend({ features }) {
+      const { data } = await http.post(
+        "/predict/supertrend",
+        { features },
+        { timeout: predictTimeout },
+      );
+      return data;
+    },
+    /** Train Supertrend XGB from labeled backtest trade feature rows. */
+    async trainSupertrendFromTrades(payload) {
+      const { data } = await http.post("/train/supertrend-from-trades", payload, {
+        timeout: 600_000,
+      });
+      return data;
+    },
   };
 }
 

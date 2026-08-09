@@ -114,6 +114,10 @@ function resolveInitialSl(trade) {
 /**
  * Walk bars from entry until SL touch or exit.
  * BUY → max high before SL (Range highest price); SELL → min low before SL (Range lowest price).
+ *
+ * SL-touch detection skips the entry bar unless `entrySameBar` is true — entry-bar wicks often
+ * pierce the eventual stop before the position is live in next-bar fills, which falsely zeros
+ * `barsToSlTouch` on winners and multi-bar losers.
  */
 export function computeRangeBeforeSl(candles, entryIdx, exitIdx, trade) {
   if (!candles.length || entryIdx < 0 || exitIdx < entryIdx) {
@@ -122,6 +126,7 @@ export function computeRangeBeforeSl(candles, entryIdx, exitIdx, trade) {
   const sl = resolveInitialSl(trade);
   const isLong = String(trade.direction ?? "BUY").toUpperCase() === "BUY";
   const end = Math.min(exitIdx, candles.length - 1);
+  const slCheckFrom = trade.entrySameBar === true ? entryIdx : entryIdx + 1;
   let rangeLow = Infinity;
   let rangeHigh = -Infinity;
   let barsToSl = null;
@@ -132,7 +137,7 @@ export function computeRangeBeforeSl(candles, entryIdx, exitIdx, trade) {
     rangeLow = Math.min(rangeLow, c.low);
     rangeHigh = Math.max(rangeHigh, c.high);
 
-    if (sl != null && barsToSl == null) {
+    if (sl != null && barsToSl == null && i >= slCheckFrom) {
       const touched = isLong ? c.low <= sl : c.high >= sl;
       if (touched) {
         barsToSl = i - entryIdx;
@@ -165,7 +170,7 @@ function flattenLiqContext(trade) {
   };
 }
 
-function featuresAtBar(candles, series, idx) {
+export function featuresAtBar(candles, series, idx) {
   const c = candles[idx];
   const close = c?.close ?? 0;
   const atr14 = series.atr14[idx] ?? null;
@@ -203,7 +208,7 @@ function featuresAtBar(candles, series, idx) {
   };
 }
 
-function buildIndicatorSeries(candles) {
+export function buildIndicatorSeries(candles) {
   const closes = candles.map((c) => c.close);
   const volumes = candles.map((c) => c.volume ?? 0);
   const atr14 = atr(candles, 14);

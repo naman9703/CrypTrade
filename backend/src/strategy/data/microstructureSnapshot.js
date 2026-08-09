@@ -27,8 +27,11 @@ function num(v, d = 0) {
  * @param {string} symbol
  * @param {number} windowMs
  * @param {number} [domRatio]
+ * @param {{ quietMs?: number, nowMs?: number }} [extra]
  */
-export function computeLiqMetricsFromTicks(symbol, windowMs, domRatio = 1.2) {
+export function computeLiqMetricsFromTicks(symbol, windowMs, domRatio = 1.2, extra = {}) {
+  const nowMs = extra.nowMs ?? Date.now();
+  const quietMs = Math.max(60_000, Number(extra.quietMs) || 900_000);
   const ticks = getRecentLiquidations(symbol, windowMs);
   let longUsd = 0;
   let shortUsd = 0;
@@ -43,7 +46,7 @@ export function computeLiqMetricsFromTicks(symbol, windowMs, domRatio = 1.2) {
   else if (shortUsd > longUsd * domRatio) dom = "shorts";
 
   const priorTicks = getRecentLiquidations(symbol, windowMs * 2).filter(
-    (t) => t.time < Date.now() - windowMs,
+    (t) => t.time < nowMs - windowMs,
   );
   let pLong = 0;
   let pShort = 0;
@@ -55,6 +58,33 @@ export function computeLiqMetricsFromTicks(symbol, windowMs, domRatio = 1.2) {
   const zLike = priorTotal > 0 ? totalUsd / priorTotal : totalUsd > 0 ? 2 : 0;
   const lastTickMs = ticks.length ? ticks[ticks.length - 1].time : null;
 
+  /** Cascade extreme for SL: long-liq → max price; short-liq → min price. */
+  let liqExtremePrice = null;
+  if (dom === "longs" || dom === "shorts") {
+    const relevant = ticks.filter((t) => (dom === "longs" ? t.side === "SELL" : t.side === "BUY"));
+    const prices = relevant.map((t) => Number(t.price)).filter((p) => p > 0);
+    if (prices.length) {
+      liqExtremePrice = dom === "longs" ? Math.max(...prices) : Math.min(...prices);
+    }
+  }
+
+  const quietSpan = windowMs + quietMs;
+  const quietTicks = getRecentLiquidations(symbol, quietSpan).filter(
+    (t) => t.time >= nowMs - windowMs - quietMs && t.time < nowMs - windowMs,
+  );
+  let liqQuietPriorUsd = 0;
+  const quietBuckets = new Map();
+  for (const t of quietTicks) {
+    const usd = Number(t.notionalUsd) || 0;
+    liqQuietPriorUsd += usd;
+    const bucket = Math.floor(Number(t.time) / 60_000) * 60_000;
+    quietBuckets.set(bucket, (quietBuckets.get(bucket) || 0) + usd);
+  }
+  let liqQuietPriorMaxBarUsd = 0;
+  for (const v of quietBuckets.values()) {
+    if (v > liqQuietPriorMaxBarUsd) liqQuietPriorMaxBarUsd = v;
+  }
+
   return {
     liqLongUsd: longUsd,
     liqShortUsd: shortUsd,
@@ -64,6 +94,9 @@ export function computeLiqMetricsFromTicks(symbol, windowMs, domRatio = 1.2) {
     liqZLike: zLike,
     lastLiqTickMs: lastTickMs,
     liqTickCount: ticks.length,
+    liqExtremePrice,
+    liqQuietPriorUsd,
+    liqQuietPriorMaxBarUsd,
   };
 }
 
@@ -77,8 +110,9 @@ export function buildMicrostructureSnapshot(symbol, opts = {}) {
   const nowMs = opts.nowMs ?? Date.now();
   const liqWindowMs = Math.max(10_000, num(opts.liqWindowSec, 90) * 1000);
   const domRatio = num(opts.domRatio, 1.2);
+  const quietMs = Math.max(60_000, num(opts.cascadeQuietSec, 900) * 1000);
 
-  const liq = computeLiqMetricsFromTicks(sym, liqWindowMs, domRatio);
+  const liq = computeLiqMetricsFromTicks(sym, liqWindowMs, domRatio, { quietMs, nowMs });
 
   const oiRow = intelligenceCache.openInterest?.[sym];
   // openInterestCollector stores `.usdt`; legacy keys kept for back-compat.

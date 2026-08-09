@@ -254,6 +254,12 @@ export type BacktestCoverage = {
   coveragePct: number | null;
   minTs: number | null;
   maxTs: number | null;
+  /** Remaining ms to patch-fill (exact gaps / tip from maxTs). */
+  remainingMs?: number | null;
+  remainingDays?: number | null;
+  remainingBars?: number | null;
+  patchFrom?: number | null;
+  patchTo?: number | null;
   /** Estimated Postgres heap bytes for rows in the selected window. */
   diskBytes?: number | null;
   /** Estimated in-memory bytes when bars are loaded for a backtest run. */

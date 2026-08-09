@@ -1,0 +1,1272 @@
+{
+  "generatedAt": "2026-08-02T07:47:44.867Z",
+  "symbol": "BTCUSDT",
+  "direction": "continuation",
+  "windows": {
+    "IS": [
+      "2026-07-29T02:20:03.699Z",
+      "2026-07-31T14:13:55.676Z"
+    ],
+    "OOS": [
+      "2026-07-31T14:13:55.676Z",
+      "2026-08-02T06:09:50.327Z"
+    ],
+    "FULL": [
+      "2026-07-29T02:20:03.699Z",
+      "2026-08-02T06:09:50.327Z"
+    ]
+  },
+  "dataQuality": {
+    "source": "force_orders",
+    "tickCount": 891,
+    "spanDays": 4.16,
+    "verdict": "partial",
+    "note": "Edge confirmation pending on coverage — keep force_orders WS; ≥8 weeks before promote language."
+  },
+  "results": {
+    "LIQ_ONLY": {
+      "IS": {
+        "n": 23,
+        "tw": 64.51,
+        "retPct": -10.89,
+        "ddPct": 11.56,
+        "meanR": -0.499,
+        "pfR": 0.134,
+        "wr": 17.4,
+        "byExit": {
+          "time_stop": 18,
+          "tp": 1,
+          "flip": 2,
+          "sl": 1,
+          "session_end": 1
+        },
+        "hydration": {
+          "liqWindowSec": 90,
+          "domRatio": 1.2,
+          "symbol": "BTCUSDT",
+          "cvdSource": "futures_agg_trades",
+          "fundingSource": "historical_funding_rates",
+          "oiSource": "openInterestHist_5m",
+          "bookSource": "live_only_no_l2_history"
+        },
+        "trades": [
+          {
+            "entryTs": 1785295140000,
+            "exitTs": 1785295740000,
+            "netPnl": -1.2170659473993957,
+            "r": -1.2170659473993957,
+            "exitReason": "time_stop",
+            "entryPrice": 63923.945999999996,
+            "sl": 63732.174161999996
+          },
+          {
+            "entryTs": 1785297960000,
+            "exitTs": 1785298560000,
+            "netPnl": -0.6038808045098494,
+            "r": -0.6113209840358566,
+            "exitReason": "time_stop",
+            "entryPrice": 63601.68325,
+            "sl": 63852.7384596
+          },
+          {
+            "entryTs": 1785306420000,
+            "exitTs": 1785307020000,
+            "netPnl": 0.24477904532097136,
+            "r": 0.24931901176764656,
+            "exitReason": "time_stop",
+            "entryPrice": 64261.41465,
+            "sl": 63953.31957945
+          },
+          {
+            "entryTs": 1785309660000,
+            "exitTs": 1785310260000,
+            "netPnl": -0.5899691849062458,
+            "r": -0.5994170021214842,
+            "exitReason": "time_stop",
+            "entryPrice": 64508.13795,
+            "sl": 64272.51909944999
+          },
+          {
+            "entryTs": 1785372300000,
+            "exitTs": 1785372900000,
+            "netPnl": -0.12080096846680163,
+            "r": -0.12347561941086169,
+            "exitReason": "time_stop",
+            "entryPrice": 63637.7652,
+            "sl": 63941.76014879302
+          },
+          {
+            "entryTs": 1785418800000,
+            "exitTs": 1785419040000,
+            "netPnl": 0.7481435518886548,
+            "r": 0.7656535733333621,
+            "exitReason": "tp",
+            "entryPrice": 64749.7587,
+            "sl": 64555.509423899995
+          },
+          {
+            "entryTs": 1785419460000,
+            "exitTs": 1785420060000,
+            "netPnl": -0.8776757779438972,
+            "r": -0.891392474605718,
+            "exitReason": "time_stop",
+            "entryPrice": 65122.3449,
+            "sl": 64828.27569200501
+          },
+          {
+            "entryTs": 1785435480000,
+            "exitTs": 1785436080000,
+            "netPnl": -0.7347745098927458,
+            "r": -0.7529697998631784,
+            "exitReason": "time_stop",
+            "entryPrice": 64686.140750000006,
+            "sl": 64922.2038594
+          },
+          {
+            "entryTs": 1785441780000,
+            "exitTs": 1785442080000,
+            "netPnl": -0.8152218602851629,
+            "r": -0.8417473790796175,
+            "exitReason": "flip",
+            "entryPrice": 64921.144349999995,
+            "sl": 64677.1045669898
+          },
+          {
+            "entryTs": 1785442140000,
+            "exitTs": 1785442740000,
+            "netPnl": -0.44446586425142726,
+            "r": -0.46282360738989664,
+            "exitReason": "time_stop",
+            "entryPrice": 64767.600000000006,
+            "sl": 65013.13047334999
+          },
+          {
+            "entryTs": 1785449280000,
+            "exitTs": 1785449880000,
+            "netPnl": -0.39168040135268367,
+            "r": -0.40975439018374443,
+            "exitReason": "time_stop",
+            "entryPrice": 64896.93225,
+            "sl": 64652.46620136272
+          },
+          {
+            "entryTs": 1785454560000,
+            "exitTs": 1785455040000,
+            "netPnl": -1.2388045039377766,
+            "r": -1.3013009488564418,
+            "exitReason": "sl",
+            "entryPrice": 65088.528,
+            "sl": 64808.574793349995
+          },
+          {
+            "entryTs": 1785463440000,
+            "exitTs": 1785464040000,
+            "netPnl": -0.431153720491475,
+            "r": -0.45887635568889507,
+            "exitReason": "time_stop",
+            "entryPrice": 64415.9759,
+            "sl": 64698.44633264063
+          },
+          {
+            "entryTs": 1785464220000,
+            "exitTs": 1785464820000,
+            "netPnl": -0.32621461874185514,
+            "r": -0.34879031963372265,
+            "exitReason": "time_stop",
+            "entryPrice": 64366.90045,
+            "sl": 64678.29615804046
+          },
+          {
+            "entryTs": 1785467220000,
+            "exitTs": 1785467820000,
+            "netPnl": -0.8604982487410975,
+            "r": -0.9232693521831121,
+            "exitReason": "time_stop",
+            "entryPrice": 64172.397750000004,
+            "sl": 64389.175406949995
+          },
+          {
+            "entryTs": 1785471180000,
+            "exitTs": 1785471780000,
+            "netPnl": -1.243395744295501,
+            "r": -1.3465303234025825,
+            "exitReason": "time_stop",
+            "entryPrice": 64392.17999999999,
+            "sl": 64199.00345999999
+          },
+          {
+            "entryTs": 1785471960000,
+            "exitTs": 1785472080000,
+            "netPnl": -0.2800975637391942,
+            "r": -0.3074706943960514,
+            "exitReason": "flip",
+            "entryPrice": 64275.121499999994,
+            "sl": 64082.29613549999
+          },
+          {
+            "entryTs": 1785472140000,
+            "exitTs": 1785472740000,
+            "netPnl": -0.5626200724785135,
+            "r": -0.6195081226308105,
+            "exitReason": "time_stop",
+            "entryPrice": 64267.25030000001,
+            "sl": 64460.0520509
+          },
+          {
+            "entryTs": 1785472800000,
+            "exitTs": 1785473400000,
+            "netPnl": -0.4059287445908546,
+            "r": -0.4497596044651547,
+            "exitReason": "time_stop",
+            "entryPrice": 64270.8485,
+            "sl": 64463.66104549999
+          },
+          {
+            "entryTs": 1785499920000,
+            "exitTs": 1785500520000,
+            "netPnl": -0.45086424276151393,
+            "r": -0.501804002643917,
+            "exitReason": "time_stop",
+            "entryPrice": 63680.7437,
+            "sl": 63871.78593109999
+          },
+          {
+            "entryTs": 1785504720000,
+            "exitTs": 1785505320000,
+            "netPnl": -0.9621218603893646,
+            "r": -1.0762253150759904,
+            "exitReason": "time_stop",
+            "entryPrice": 63597.98309999999,
+            "sl": 63407.18915069999
+          },
+          {
+            "entryTs": 1785506100000,
+            "exitTs": 1785506700000,
+            "netPnl": 0.42476073009245174,
+            "r": 0.4803046596912493,
+            "exitReason": "time_stop",
+            "entryPrice": 63237.265550000004,
+            "sl": 63790.7840523
+          },
+          {
+            "entryTs": 1785506760000,
+            "exitTs": 1785507180000,
+            "netPnl": 0.2460736911484667,
+            "r": 0.2769215042027424,
+            "exitReason": "session_end",
+            "entryPrice": 62858.055250000005,
+            "sl": 63424.070101
+          }
+        ]
+      },
+      "OOS": {
+        "n": 24,
+        "tw": 100.97,
+        "retPct": -12.95,
+        "ddPct": 13.64,
+        "meanR": -0.609,
+        "pfR": 0,
+        "wr": 0,
+        "byExit": {
+          "time_stop": 22,
+          "flip": 2
+        },
+        "hydration": {
+          "liqWindowSec": 90,
+          "domRatio": 1.2,
+          "symbol": "BTCUSDT",
+          "cvdSource": "futures_agg_trades",
+          "fundingSource": "historical_funding_rates",
+          "oiSource": "openInterestHist_5m",
+          "bookSource": "live_only_no_l2_history"
+        },
+        "trades": [
+          {
+            "entryTs": 1785507420000,
+            "exitTs": 1785508020000,
+            "netPnl": -0.30619147713806094,
+            "r": -0.3037727628983972,
+            "exitReason": "time_stop",
+            "entryPrice": 62567.3007,
+            "sl": 62997.2062397
+          },
+          {
+            "entryTs": 1785508680000,
+            "exitTs": 1785509280000,
+            "netPnl": -0.6331800587568314,
+            "r": -0.630092395709087,
+            "exitReason": "time_stop",
+            "entryPrice": 62712.52805000001,
+            "sl": 62900.66563415
+          },
+          {
+            "entryTs": 1785520140000,
+            "exitTs": 1785520320000,
+            "netPnl": -0.11188086209374441,
+            "r": -0.11204124541825629,
+            "exitReason": "flip",
+            "entryPrice": 63142.05525,
+            "sl": 62919.11313465
+          },
+          {
+            "entryTs": 1785520380000,
+            "exitTs": 1785520920000,
+            "netPnl": -0.646183445431248,
+            "r": -0.647835604659089,
+            "exitReason": "flip",
+            "entryPrice": 63167.6004,
+            "sl": 63357.1032012
+          },
+          {
+            "entryTs": 1785520980000,
+            "exitTs": 1785521580000,
+            "netPnl": -1.072854002445892,
+            "r": -1.0826106082133777,
+            "exitReason": "time_stop",
+            "entryPrice": 63239.804099999994,
+            "sl": 63050.08468769999
+          },
+          {
+            "entryTs": 1785523260000,
+            "exitTs": 1785523860000,
+            "netPnl": -0.7273952261773713,
+            "r": -0.7420436500938792,
+            "exitReason": "time_stop",
+            "entryPrice": 62909.729400000004,
+            "sl": 63272.69255067978
+          },
+          {
+            "entryTs": 1785523980000,
+            "exitTs": 1785524580000,
+            "netPnl": -0.6734392521559711,
+            "r": -0.6921370594677612,
+            "exitReason": "time_stop",
+            "entryPrice": 63141.55499999999,
+            "sl": 62938.16533387196
+          },
+          {
+            "entryTs": 1785538680000,
+            "exitTs": 1785539280000,
+            "netPnl": -0.9005040236661301,
+            "r": -0.9319566227855309,
+            "exitReason": "time_stop",
+            "entryPrice": 62872.548,
+            "sl": 63061.16564399999
+          },
+          {
+            "entryTs": 1785544320000,
+            "exitTs": 1785544920000,
+            "netPnl": -0.6864013403728577,
+            "r": -0.7170584838397897,
+            "exitReason": "time_stop",
+            "entryPrice": 62907.830350000004,
+            "sl": 63107.28057499999
+          },
+          {
+            "entryTs": 1785609840000,
+            "exitTs": 1785610440000,
+            "netPnl": -0.7084370111038145,
+            "r": -0.745423468810417,
+            "exitReason": "time_stop",
+            "entryPrice": 62327.920450000005,
+            "sl": 62577.46011774999
+          },
+          {
+            "entryTs": 1785620220000,
+            "exitTs": 1785620820000,
+            "netPnl": -0.6252463822520689,
+            "r": -0.6628304730974235,
+            "exitReason": "time_stop",
+            "entryPrice": 62724.52205000001,
+            "sl": 62944.925942925
+          },
+          {
+            "entryTs": 1785620880000,
+            "exitTs": 1785621480000,
+            "netPnl": -0.5540396925956088,
+            "r": -0.5912625572798609,
+            "exitReason": "time_stop",
+            "entryPrice": 62757.50555,
+            "sl": 62945.77806665
+          },
+          {
+            "entryTs": 1785621540000,
+            "exitTs": 1785622140000,
+            "netPnl": -0.691937780627961,
+            "r": -0.7428172559670472,
+            "exitReason": "time_stop",
+            "entryPrice": 62755.8064,
+            "sl": 62945.2768174
+          },
+          {
+            "entryTs": 1785623040000,
+            "exitTs": 1785623640000,
+            "netPnl": -0.6344986274720054,
+            "r": -0.6862520937383985,
+            "exitReason": "time_stop",
+            "entryPrice": 62769.49955000001,
+            "sl": 62972.1437772
+          },
+          {
+            "entryTs": 1785624180000,
+            "exitTs": 1785624780000,
+            "netPnl": -0.4765766185527278,
+            "r": -0.5190107525370999,
+            "exitReason": "time_stop",
+            "entryPrice": 62795.28665,
+            "sl": 62983.672509949996
+          },
+          {
+            "entryTs": 1785624840000,
+            "exitTs": 1785625440000,
+            "netPnl": -0.5614660902888269,
+            "r": -0.6146488321678258,
+            "exitReason": "time_stop",
+            "entryPrice": 62779.994300000006,
+            "sl": 62968.334282899996
+          },
+          {
+            "entryTs": 1785625500000,
+            "exitTs": 1785626100000,
+            "netPnl": -0.36568774522423964,
+            "r": -0.402801944757534,
+            "exitReason": "time_stop",
+            "entryPrice": 62782.7929,
+            "sl": 62980.74522961945
+          },
+          {
+            "entryTs": 1785628500000,
+            "exitTs": 1785629100000,
+            "netPnl": -0.9367621797082883,
+            "r": -1.036008645898049,
+            "exitReason": "time_stop",
+            "entryPrice": 62758.605,
+            "sl": 62946.880815
+          },
+          {
+            "entryTs": 1785629160000,
+            "exitTs": 1785629760000,
+            "netPnl": -0.6568864803412671,
+            "r": -0.7340863560336115,
+            "exitReason": "time_stop",
+            "entryPrice": 62843.26265,
+            "sl": 63031.79243794999
+          },
+          {
+            "entryTs": 1785630000000,
+            "exitTs": 1785630600000,
+            "netPnl": -0.34796274486516965,
+            "r": -0.39173234516290756,
+            "exitReason": "time_stop",
+            "entryPrice": 62865.851350000004,
+            "sl": 63054.44890405
+          },
+          {
+            "entryTs": 1785630660000,
+            "exitTs": 1785631260000,
+            "netPnl": -0.4056859542392499,
+            "r": -0.4585125941113165,
+            "exitReason": "time_stop",
+            "entryPrice": 62826.47105000001,
+            "sl": 63014.95046315
+          },
+          {
+            "entryTs": 1785633660000,
+            "exitTs": 1785634260000,
+            "netPnl": -0.3864028612365059,
+            "r": -0.43873017469185693,
+            "exitReason": "time_stop",
+            "entryPrice": 62945.1117,
+            "sl": 63157.4055
+          },
+          {
+            "entryTs": 1785636480000,
+            "exitTs": 1785637080000,
+            "netPnl": -0.10673268438345633,
+            "r": -0.12172062584254877,
+            "exitReason": "time_stop",
+            "entryPrice": 63451.209749999995,
+            "sl": 62835.123760949995
+          },
+          {
+            "entryTs": 1785644040000,
+            "exitTs": 1785644640000,
+            "netPnl": -0.5299511524056393,
+            "r": -0.6051061030425866,
+            "exitReason": "time_stop",
+            "entryPrice": 63560.26424999999,
+            "sl": 63353.12470609233
+          }
+        ]
+      },
+      "FULL": {
+        "n": 47,
+        "tw": 79.09,
+        "retPct": -23.02,
+        "ddPct": 23.02,
+        "meanR": -0.554,
+        "pfR": 0.065,
+        "wr": 8.5,
+        "byExit": {
+          "time_stop": 41,
+          "tp": 1,
+          "flip": 4,
+          "sl": 1
+        },
+        "hydration": {
+          "liqWindowSec": 90,
+          "domRatio": 1.2,
+          "symbol": "BTCUSDT",
+          "cvdSource": "futures_agg_trades",
+          "fundingSource": "historical_funding_rates",
+          "oiSource": "openInterestHist_5m",
+          "bookSource": "live_only_no_l2_history"
+        },
+        "trades": [
+          {
+            "entryTs": 1785295140000,
+            "exitTs": 1785295740000,
+            "netPnl": -1.2170659473993957,
+            "r": -1.2170659473993957,
+            "exitReason": "time_stop",
+            "entryPrice": 63923.945999999996,
+            "sl": 63732.174161999996
+          },
+          {
+            "entryTs": 1785297960000,
+            "exitTs": 1785298560000,
+            "netPnl": -0.6038808045098494,
+            "r": -0.6113209840358566,
+            "exitReason": "time_stop",
+            "entryPrice": 63601.68325,
+            "sl": 63852.7384596
+          },
+          {
+            "entryTs": 1785306420000,
+            "exitTs": 1785307020000,
+            "netPnl": 0.24477904532097136,
+            "r": 0.24931901176764656,
+            "exitReason": "time_stop",
+            "entryPrice": 64261.41465,
+            "sl": 63953.31957945
+          },
+          {
+            "entryTs": 1785309660000,
+            "exitTs": 1785310260000,
+            "netPnl": -0.5899691849062458,
+            "r": -0.5994170021214842,
+            "exitReason": "time_stop",
+            "entryPrice": 64508.13795,
+            "sl": 64272.51909944999
+          },
+          {
+            "entryTs": 1785372300000,
+            "exitTs": 1785372900000,
+            "netPnl": -0.12080096846680163,
+            "r": -0.12347561941086169,
+            "exitReason": "time_stop",
+            "entryPrice": 63637.7652,
+            "sl": 63941.76014879302
+          },
+          {
+            "entryTs": 1785418800000,
+            "exitTs": 1785419040000,
+            "netPnl": 0.7481435518886548,
+            "r": 0.7656535733333621,
+            "exitReason": "tp",
+            "entryPrice": 64749.7587,
+            "sl": 64555.509423899995
+          },
+          {
+            "entryTs": 1785419460000,
+            "exitTs": 1785420060000,
+            "netPnl": -0.8776757779438972,
+            "r": -0.891392474605718,
+            "exitReason": "time_stop",
+            "entryPrice": 65122.3449,
+            "sl": 64828.27569200501
+          },
+          {
+            "entryTs": 1785435480000,
+            "exitTs": 1785436080000,
+            "netPnl": -0.7347745098927458,
+            "r": -0.7529697998631784,
+            "exitReason": "time_stop",
+            "entryPrice": 64686.140750000006,
+            "sl": 64922.2038594
+          },
+          {
+            "entryTs": 1785441780000,
+            "exitTs": 1785442080000,
+            "netPnl": -0.8152218602851629,
+            "r": -0.8417473790796175,
+            "exitReason": "flip",
+            "entryPrice": 64921.144349999995,
+            "sl": 64677.1045669898
+          },
+          {
+            "entryTs": 1785442140000,
+            "exitTs": 1785442740000,
+            "netPnl": -0.44446586425142726,
+            "r": -0.46282360738989664,
+            "exitReason": "time_stop",
+            "entryPrice": 64767.600000000006,
+            "sl": 65013.13047334999
+          },
+          {
+            "entryTs": 1785449280000,
+            "exitTs": 1785449880000,
+            "netPnl": -0.39168040135268367,
+            "r": -0.40975439018374443,
+            "exitReason": "time_stop",
+            "entryPrice": 64896.93225,
+            "sl": 64652.46620136272
+          },
+          {
+            "entryTs": 1785454560000,
+            "exitTs": 1785455040000,
+            "netPnl": -1.2388045039377766,
+            "r": -1.3013009488564418,
+            "exitReason": "sl",
+            "entryPrice": 65088.528,
+            "sl": 64808.574793349995
+          },
+          {
+            "entryTs": 1785463440000,
+            "exitTs": 1785464040000,
+            "netPnl": -0.431153720491475,
+            "r": -0.45887635568889507,
+            "exitReason": "time_stop",
+            "entryPrice": 64415.9759,
+            "sl": 64698.44633264063
+          },
+          {
+            "entryTs": 1785464220000,
+            "exitTs": 1785464820000,
+            "netPnl": -0.32621461874185514,
+            "r": -0.34879031963372265,
+            "exitReason": "time_stop",
+            "entryPrice": 64366.90045,
+            "sl": 64678.29615804046
+          },
+          {
+            "entryTs": 1785467220000,
+            "exitTs": 1785467820000,
+            "netPnl": -0.8604982487410975,
+            "r": -0.9232693521831121,
+            "exitReason": "time_stop",
+            "entryPrice": 64172.397750000004,
+            "sl": 64389.175406949995
+          },
+          {
+            "entryTs": 1785471180000,
+            "exitTs": 1785471780000,
+            "netPnl": -1.243395744295501,
+            "r": -1.3465303234025825,
+            "exitReason": "time_stop",
+            "entryPrice": 64392.17999999999,
+            "sl": 64199.00345999999
+          },
+          {
+            "entryTs": 1785471960000,
+            "exitTs": 1785472080000,
+            "netPnl": -0.2800975637391942,
+            "r": -0.3074706943960514,
+            "exitReason": "flip",
+            "entryPrice": 64275.121499999994,
+            "sl": 64082.29613549999
+          },
+          {
+            "entryTs": 1785472140000,
+            "exitTs": 1785472740000,
+            "netPnl": -0.5626200724785135,
+            "r": -0.6195081226308105,
+            "exitReason": "time_stop",
+            "entryPrice": 64267.25030000001,
+            "sl": 64460.0520509
+          },
+          {
+            "entryTs": 1785472800000,
+            "exitTs": 1785473400000,
+            "netPnl": -0.4059287445908546,
+            "r": -0.4497596044651547,
+            "exitReason": "time_stop",
+            "entryPrice": 64270.8485,
+            "sl": 64463.66104549999
+          },
+          {
+            "entryTs": 1785499920000,
+            "exitTs": 1785500520000,
+            "netPnl": -0.45086424276151393,
+            "r": -0.501804002643917,
+            "exitReason": "time_stop",
+            "entryPrice": 63680.7437,
+            "sl": 63871.78593109999
+          },
+          {
+            "entryTs": 1785504720000,
+            "exitTs": 1785505320000,
+            "netPnl": -0.9621218603893646,
+            "r": -1.0762253150759904,
+            "exitReason": "time_stop",
+            "entryPrice": 63597.98309999999,
+            "sl": 63407.18915069999
+          },
+          {
+            "entryTs": 1785506100000,
+            "exitTs": 1785506700000,
+            "netPnl": 0.42476073009245174,
+            "r": 0.4803046596912493,
+            "exitReason": "time_stop",
+            "entryPrice": 63237.265550000004,
+            "sl": 63790.7840523
+          },
+          {
+            "entryTs": 1785506760000,
+            "exitTs": 1785507360000,
+            "netPnl": 0.2793861977547192,
+            "r": 0.31441006868565347,
+            "exitReason": "time_stop",
+            "entryPrice": 62858.055250000005,
+            "sl": 63424.070101
+          },
+          {
+            "entryTs": 1785507420000,
+            "exitTs": 1785508020000,
+            "netPnl": -0.27078253927591145,
+            "r": -0.3037727628983972,
+            "exitReason": "time_stop",
+            "entryPrice": 62567.3007,
+            "sl": 62997.2062397
+          },
+          {
+            "entryTs": 1785508680000,
+            "exitTs": 1785509280000,
+            "netPnl": -0.5599571409746895,
+            "r": -0.6300923957090869,
+            "exitReason": "time_stop",
+            "entryPrice": 62712.52805000001,
+            "sl": 62900.66563415
+          },
+          {
+            "entryTs": 1785520140000,
+            "exitTs": 1785520320000,
+            "netPnl": -0.09894261008598246,
+            "r": -0.11204124541825626,
+            "exitReason": "flip",
+            "entryPrice": 63142.05525,
+            "sl": 62919.11313465
+          },
+          {
+            "entryTs": 1785520380000,
+            "exitTs": 1785520920000,
+            "netPnl": -0.5714567754380533,
+            "r": -0.647835604659089,
+            "exitReason": "flip",
+            "entryPrice": 63167.6004,
+            "sl": 63357.1032012
+          },
+          {
+            "entryTs": 1785520980000,
+            "exitTs": 1785521580000,
+            "netPnl": -0.9487858178483308,
+            "r": -1.082610608213378,
+            "exitReason": "time_stop",
+            "entryPrice": 63239.804099999994,
+            "sl": 63050.08468769999
+          },
+          {
+            "entryTs": 1785523260000,
+            "exitTs": 1785523860000,
+            "netPnl": -0.6432769724438577,
+            "r": -0.7420436500938791,
+            "exitReason": "time_stop",
+            "entryPrice": 62909.729400000004,
+            "sl": 63272.69255067978
+          },
+          {
+            "entryTs": 1785523980000,
+            "exitTs": 1785524580000,
+            "netPnl": -0.5955606356235743,
+            "r": -0.6921370594677609,
+            "exitReason": "time_stop",
+            "entryPrice": 63141.55499999999,
+            "sl": 62938.16533387196
+          },
+          {
+            "entryTs": 1785538680000,
+            "exitTs": 1785539280000,
+            "netPnl": -0.7963669284189222,
+            "r": -0.9319566227855308,
+            "exitReason": "time_stop",
+            "entryPrice": 62872.548,
+            "sl": 63061.16564399999
+          },
+          {
+            "entryTs": 1785544320000,
+            "exitTs": 1785544920000,
+            "netPnl": -0.6070237475119054,
+            "r": -0.7170584838397897,
+            "exitReason": "time_stop",
+            "entryPrice": 62907.830350000004,
+            "sl": 63107.28057499999
+          },
+          {
+            "entryTs": 1785609840000,
+            "exitTs": 1785610440000,
+            "netPnl": -0.6265111445189944,
+            "r": -0.7454234688104172,
+            "exitReason": "time_stop",
+            "entryPrice": 62327.920450000005,
+            "sl": 62577.46011774999
+          },
+          {
+            "entryTs": 1785620220000,
+            "exitTs": 1785620820000,
+            "netPnl": -0.5529409395773377,
+            "r": -0.6628304730974234,
+            "exitReason": "time_stop",
+            "entryPrice": 62724.52205000001,
+            "sl": 62944.925942925
+          },
+          {
+            "entryTs": 1785620880000,
+            "exitTs": 1785621480000,
+            "netPnl": -0.48996881370750506,
+            "r": -0.591262557279861,
+            "exitReason": "time_stop",
+            "entryPrice": 62757.50555,
+            "sl": 62945.77806665
+          },
+          {
+            "entryTs": 1785621540000,
+            "exitTs": 1785622140000,
+            "netPnl": -0.6119199365398913,
+            "r": -0.7428172559670471,
+            "exitReason": "time_stop",
+            "entryPrice": 62755.8064,
+            "sl": 62945.2768174
+          },
+          {
+            "entryTs": 1785623040000,
+            "exitTs": 1785623640000,
+            "netPnl": -0.5611232262891531,
+            "r": -0.6862520937383985,
+            "exitReason": "time_stop",
+            "entryPrice": 62769.49955000001,
+            "sl": 62972.1437772
+          },
+          {
+            "entryTs": 1785624180000,
+            "exitTs": 1785624780000,
+            "netPnl": -0.4214638112642416,
+            "r": -0.5190107525370998,
+            "exitReason": "time_stop",
+            "entryPrice": 62795.28665,
+            "sl": 62983.672509949996
+          },
+          {
+            "entryTs": 1785624840000,
+            "exitTs": 1785625440000,
+            "netPnl": -0.49653639959800194,
+            "r": -0.6146488321678258,
+            "exitReason": "time_stop",
+            "entryPrice": 62779.994300000006,
+            "sl": 62968.334282899996
+          },
+          {
+            "entryTs": 1785625500000,
+            "exitTs": 1785626100000,
+            "netPnl": -0.32339847326728,
+            "r": -0.40280194475753406,
+            "exitReason": "time_stop",
+            "entryPrice": 62782.7929,
+            "sl": 62980.74522961945
+          },
+          {
+            "entryTs": 1785628500000,
+            "exitTs": 1785629100000,
+            "netPnl": -0.828432078155702,
+            "r": -1.0360086458980489,
+            "exitReason": "time_stop",
+            "entryPrice": 62758.605,
+            "sl": 62946.880815
+          },
+          {
+            "entryTs": 1785629160000,
+            "exitTs": 1785629760000,
+            "netPnl": -0.5809220779931173,
+            "r": -0.7340863560336116,
+            "exitReason": "time_stop",
+            "entryPrice": 62843.26265,
+            "sl": 63031.79243794999
+          },
+          {
+            "entryTs": 1785630000000,
+            "exitTs": 1785630600000,
+            "netPnl": -0.3077232472591724,
+            "r": -0.39173234516290756,
+            "exitReason": "time_stop",
+            "entryPrice": 62865.851350000004,
+            "sl": 63054.44890405
+          },
+          {
+            "entryTs": 1785630660000,
+            "exitTs": 1785631260000,
+            "netPnl": -0.3587711645805969,
+            "r": -0.45851259411131656,
+            "exitReason": "time_stop",
+            "entryPrice": 62826.47105000001,
+            "sl": 63014.95046315
+          },
+          {
+            "entryTs": 1785633660000,
+            "exitTs": 1785634260000,
+            "netPnl": -0.3417180286240325,
+            "r": -0.43873017469185693,
+            "exitReason": "time_stop",
+            "entryPrice": 62945.1117,
+            "sl": 63157.4055
+          },
+          {
+            "entryTs": 1785636480000,
+            "exitTs": 1785637080000,
+            "netPnl": -0.09438978371058702,
+            "r": -0.12172062584254877,
+            "exitReason": "time_stop",
+            "entryPrice": 63451.209749999995,
+            "sl": 62835.123760949995
+          },
+          {
+            "entryTs": 1785644040000,
+            "exitTs": 1785644640000,
+            "netPnl": -0.46866594747145784,
+            "r": -0.6051061030425866,
+            "exitReason": "time_stop",
+            "entryPrice": 63560.26424999999,
+            "sl": 63353.12470609233
+          }
+        ]
+      }
+    },
+    "LIQ_CVD": {
+      "IS": {
+        "n": 3,
+        "tw": 8.41,
+        "retPct": -2.67,
+        "ddPct": 2.67,
+        "meanR": -0.896,
+        "pfR": 0,
+        "wr": 0,
+        "byExit": {
+          "time_stop": 3
+        },
+        "hydration": {
+          "liqWindowSec": 90,
+          "domRatio": 1.2,
+          "symbol": "BTCUSDT",
+          "cvdSource": "futures_agg_trades",
+          "fundingSource": "historical_funding_rates",
+          "oiSource": "openInterestHist_5m",
+          "bookSource": "live_only_no_l2_history"
+        },
+        "trades": [
+          {
+            "entryTs": 1785419460000,
+            "exitTs": 1785420060000,
+            "netPnl": -0.8913924746057181,
+            "r": -0.8913924746057181,
+            "exitReason": "time_stop",
+            "entryPrice": 65122.3449,
+            "sl": 64828.27569200501
+          },
+          {
+            "entryTs": 1785471180000,
+            "exitTs": 1785471780000,
+            "netPnl": -1.3345274534314877,
+            "r": -1.3465303234025825,
+            "exitReason": "time_stop",
+            "entryPrice": 64392.17999999999,
+            "sl": 64199.00345999999
+          },
+          {
+            "entryTs": 1785472800000,
+            "exitTs": 1785473400000,
+            "netPnl": -0.4397483158011034,
+            "r": -0.4497596044651546,
+            "exitReason": "time_stop",
+            "entryPrice": 64270.8485,
+            "sl": 64463.66104549999
+          }
+        ]
+      },
+      "OOS": {
+        "n": 1,
+        "tw": 4.21,
+        "retPct": -0.31,
+        "ddPct": 0.31,
+        "meanR": -0.309,
+        "pfR": 0,
+        "wr": 0,
+        "byExit": {
+          "time_stop": 1
+        },
+        "hydration": {
+          "liqWindowSec": 90,
+          "domRatio": 1.2,
+          "symbol": "BTCUSDT",
+          "cvdSource": "futures_agg_trades",
+          "fundingSource": "historical_funding_rates",
+          "oiSource": "openInterestHist_5m",
+          "bookSource": "live_only_no_l2_history"
+        },
+        "trades": [
+          {
+            "entryTs": 1785625320000,
+            "exitTs": 1785625920000,
+            "netPnl": -0.30916033348757965,
+            "r": -0.30916033348757965,
+            "exitReason": "time_stop",
+            "entryPrice": 62798.38510000001,
+            "sl": 62986.7802553
+          }
+        ]
+      },
+      "FULL": {
+        "n": 4,
+        "tw": 6.73,
+        "retPct": -2.97,
+        "ddPct": 2.97,
+        "meanR": -0.749,
+        "pfR": 0,
+        "wr": 0,
+        "byExit": {
+          "time_stop": 4
+        },
+        "hydration": {
+          "liqWindowSec": 90,
+          "domRatio": 1.2,
+          "symbol": "BTCUSDT",
+          "cvdSource": "futures_agg_trades",
+          "fundingSource": "historical_funding_rates",
+          "oiSource": "openInterestHist_5m",
+          "bookSource": "live_only_no_l2_history"
+        },
+        "trades": [
+          {
+            "entryTs": 1785419460000,
+            "exitTs": 1785420060000,
+            "netPnl": -0.8913924746057181,
+            "r": -0.8913924746057181,
+            "exitReason": "time_stop",
+            "entryPrice": 65122.3449,
+            "sl": 64828.27569200501
+          },
+          {
+            "entryTs": 1785471180000,
+            "exitTs": 1785471780000,
+            "netPnl": -1.3345274534314877,
+            "r": -1.3465303234025825,
+            "exitReason": "time_stop",
+            "entryPrice": 64392.17999999999,
+            "sl": 64199.00345999999
+          },
+          {
+            "entryTs": 1785472800000,
+            "exitTs": 1785473400000,
+            "netPnl": -0.4397483158011034,
+            "r": -0.4497596044651546,
+            "exitReason": "time_stop",
+            "entryPrice": 64270.8485,
+            "sl": 64463.66104549999
+          },
+          {
+            "entryTs": 1785625320000,
+            "exitTs": 1785625920000,
+            "netPnl": -0.3009191446552567,
+            "r": -0.3091603334875797,
+            "exitReason": "time_stop",
+            "entryPrice": 62798.38510000001,
+            "sl": 62986.7802553
+          }
+        ]
+      }
+    },
+    "LIQ_CVD_OI": {
+      "IS": {
+        "n": 3,
+        "tw": 8.41,
+        "retPct": -2.67,
+        "ddPct": 2.67,
+        "meanR": -0.896,
+        "pfR": 0,
+        "wr": 0,
+        "byExit": {
+          "time_stop": 3
+        },
+        "hydration": {
+          "liqWindowSec": 90,
+          "domRatio": 1.2,
+          "symbol": "BTCUSDT",
+          "cvdSource": "futures_agg_trades",
+          "fundingSource": "historical_funding_rates",
+          "oiSource": "missing",
+          "bookSource": "live_only_no_l2_history"
+        },
+        "trades": [
+          {
+            "entryTs": 1785419460000,
+            "exitTs": 1785420060000,
+            "netPnl": -0.8913924746057181,
+            "r": -0.8913924746057181,
+            "exitReason": "time_stop",
+            "entryPrice": 65122.3449,
+            "sl": 64828.27569200501
+          },
+          {
+            "entryTs": 1785471180000,
+            "exitTs": 1785471780000,
+            "netPnl": -1.3345274534314877,
+            "r": -1.3465303234025825,
+            "exitReason": "time_stop",
+            "entryPrice": 64392.17999999999,
+            "sl": 64199.00345999999
+          },
+          {
+            "entryTs": 1785472800000,
+            "exitTs": 1785473400000,
+            "netPnl": -0.4397483158011034,
+            "r": -0.4497596044651546,
+            "exitReason": "time_stop",
+            "entryPrice": 64270.8485,
+            "sl": 64463.66104549999
+          }
+        ]
+      },
+      "OOS": {
+        "n": 1,
+        "tw": 4.21,
+        "retPct": -0.31,
+        "ddPct": 0.31,
+        "meanR": -0.309,
+        "pfR": 0,
+        "wr": 0,
+        "byExit": {
+          "time_stop": 1
+        },
+        "hydration": {
+          "liqWindowSec": 90,
+          "domRatio": 1.2,
+          "symbol": "BTCUSDT",
+          "cvdSource": "futures_agg_trades",
+          "fundingSource": "historical_funding_rates",
+          "oiSource": "missing",
+          "bookSource": "live_only_no_l2_history"
+        },
+        "trades": [
+          {
+            "entryTs": 1785625320000,
+            "exitTs": 1785625920000,
+            "netPnl": -0.30916033348757965,
+            "r": -0.30916033348757965,
+            "exitReason": "time_stop",
+            "entryPrice": 62798.38510000001,
+            "sl": 62986.7802553
+          }
+        ]
+      },
+      "FULL": {
+        "n": 4,
+        "tw": 6.73,
+        "retPct": -2.97,
+        "ddPct": 2.97,
+        "meanR": -0.749,
+        "pfR": 0,
+        "wr": 0,
+        "byExit": {
+          "time_stop": 4
+        },
+        "hydration": {
+          "liqWindowSec": 90,
+          "domRatio": 1.2,
+          "symbol": "BTCUSDT",
+          "cvdSource": "futures_agg_trades",
+          "fundingSource": "historical_funding_rates",
+          "oiSource": "missing",
+          "bookSource": "live_only_no_l2_history"
+        },
+        "trades": [
+          {
+            "entryTs": 1785419460000,
+            "exitTs": 1785420060000,
+            "netPnl": -0.8913924746057181,
+            "r": -0.8913924746057181,
+            "exitReason": "time_stop",
+            "entryPrice": 65122.3449,
+            "sl": 64828.27569200501
+          },
+          {
+            "entryTs": 1785471180000,
+            "exitTs": 1785471780000,
+            "netPnl": -1.3345274534314877,
+            "r": -1.3465303234025825,
+            "exitReason": "time_stop",
+            "entryPrice": 64392.17999999999,
+            "sl": 64199.00345999999
+          },
+          {
+            "entryTs": 1785472800000,
+            "exitTs": 1785473400000,
+            "netPnl": -0.4397483158011034,
+            "r": -0.4497596044651546,
+            "exitReason": "time_stop",
+            "entryPrice": 64270.8485,
+            "sl": 64463.66104549999
+          },
+          {
+            "entryTs": 1785625320000,
+            "exitTs": 1785625920000,
+            "netPnl": -0.3009191446552567,
+            "r": -0.3091603334875797,
+            "exitReason": "time_stop",
+            "entryPrice": 62798.38510000001,
+            "sl": 62986.7802553
+          }
+        ]
+      }
+    }
+  },
+  "ranked": [
+    {
+      "key": "LIQ_ONLY",
+      "score": 35.05,
+      "oos": {
+        "n": 24,
+        "ret": -12.95,
+        "pfR": 0
+      }
+    },
+    {
+      "key": "LIQ_CVD",
+      "score": 1.69,
+      "oos": {
+        "n": 1,
+        "ret": -0.31,
+        "pfR": 0
+      }
+    },
+    {
+      "key": "LIQ_CVD_OI",
+      "score": 1.69,
+      "oos": {
+        "n": 1,
+        "ret": -0.31,
+        "pfR": 0
+      }
+    }
+  ],
+  "best": "LIQ_ONLY",
+  "oosOk": false,
+  "promoteReady": false,
+  "nextHypothesis": "Negative expectancy — autopsy losers by side/session; try fade as single change if continuation red."
+}

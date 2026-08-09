@@ -15,6 +15,7 @@ import {
   tradingUiPersistPortfolioPnlRange,
 } from "../lib/tradingUiPersistence";
 import { tradingModeToApiModeSlug } from "../lib/tradingModeSlug";
+import { tradeBelongsToInstance, filterPositionsForInstance } from "../lib/instancePortfolioScope";
 import { useAppStore } from "../ws/store";
 import { api } from "../api/client";
 import { isIncomeLedgerClose } from "../lib/tradeClassification";
@@ -2241,12 +2242,13 @@ export function PortfolioPanel() {
   const botRaw = useAppStore((s) => s.bot);
   const bot = useDeferredValue(botRaw);
   const trailingStopLossAuto = bot?.trailingStopLossAuto === true;
-  const positions = useAppStore((s) => s.positions) || [];
+  const positionsRaw = useAppStore((s) => s.positions) || [];
   const pushLog = useAppStore((s) => s.pushLog);
   const mode = useAppStore((s) => s.mode);
   const mainView = useAppStore((s) => s.mainView);
   const selectedInstanceId = useAppStore((s) => s.selectedInstanceId);
   const modeSlug = tradingModeToApiModeSlug(mode);
+  const activeInstanceByMode = useAppStore((s) => s.activeInstanceByMode);
   const instances = useAppStore((s) => s.instancesByMode[modeSlug] ?? []);
   const fetchInstancesForMode = useAppStore((s) => s.fetchInstancesForMode);
   const runningByMode = useAppStore((s) => s.runningByMode ?? {});
@@ -2260,13 +2262,31 @@ export function PortfolioPanel() {
   const effectiveInstanceOn = mainEngineOn && instanceRunning;
   const [instanceToggleBusy, setInstanceToggleBusy] = useState(false);
 
+  const instanceScopeId =
+    mainView === "instance" && selectedInstanceId ? String(selectedInstanceId) : "";
+  const isActiveInstanceForMode =
+    Boolean(instanceScopeId) && String(activeInstanceByMode?.[modeSlug] ?? "") === instanceScopeId;
+
   const strictAccountMissing =
     (mode === "BINANCE_LIVE" || mode === "BINANCE_TESTNET") && account === null;
   /** Server merges persisted audit + exchange; show rows even while account snapshot is loading. */
   const portfolioTrades = useMemo(() => {
     const raw = trades || [];
-    return mergeTradesByOrderIdAndType(raw);
-  }, [trades]);
+    const merged = mergeTradesByOrderIdAndType(raw);
+    if (!instanceScopeId) return merged;
+    return merged.filter((t: any) => tradeBelongsToInstance(t, instanceScopeId, isActiveInstanceForMode));
+  }, [trades, instanceScopeId, isActiveInstanceForMode]);
+
+  /** Instance view: only positions for this instance; overview keeps full mode book. */
+  const positions = useMemo(() => {
+    if (!instanceScopeId) return positionsRaw || [];
+    return filterPositionsForInstance(
+      positionsRaw || [],
+      trades || [],
+      instanceScopeId,
+      isActiveInstanceForMode,
+    );
+  }, [positionsRaw, trades, instanceScopeId, isActiveInstanceForMode]);
 
   const [tradeHistoryView, setTradeHistoryView] = useState<"ALL" | "OPEN_ONLY" | "CLOSED_ONLY">("ALL");
   /** One row per completed round-trip (OPEN+CLOSE), sorted by close time; not used in Open-only. */

@@ -103,6 +103,7 @@ async function evaluateAndMaybeFire(sym, triggerPrice, triggerSource, triggerEve
   const snapshot = getMicrostructureSnapshot(sym, {
     liqWindowSec: cfg.microEventLiqWindowSec,
     domRatio: cfg.microEventLiqDomRatio,
+    cascadeQuietSec: cfg.microEventCascadeQuietSec,
   });
   snapshot.lastPrice = triggerPrice > 0 ? triggerPrice : snapshot.lastPrice;
 
@@ -151,6 +152,10 @@ async function evaluateAndMaybeFire(sym, triggerPrice, triggerSource, triggerEve
     snapshot,
   };
 
+  // Reserve frequency slot before await onSignal — prevents stacked fires while placeOrder is in flight.
+  lastFireBySymbol.set(sym, Date.now());
+  recordTrade(sym);
+
   microEventLiveEvents.emit("signal", payload);
   hooks.log?.info?.("micro_event_tick_signal", {
     symbol: sym,
@@ -165,14 +170,19 @@ async function evaluateAndMaybeFire(sym, triggerPrice, triggerSource, triggerEve
     const res = await hooks.onSignal(payload);
     if (res?.action === "placed") {
       const tickToOrderLagMs = Date.now() - triggerTs;
-      lastFireBySymbol.set(sym, Date.now());
-      recordTrade(sym);
       hooks.log?.info?.("micro_event_order_placed", {
         symbol: sym,
         action: ev.action,
         tickToOrderLagMs,
         evalMs,
         source: triggerSource,
+      });
+    } else {
+      // Roll back reservation if exchange skipped (cooldown still applies lightly via lastFire).
+      hooks.log?.info?.("micro_event_tick_order_skipped", {
+        symbol: sym,
+        reason: res?.reason,
+        action: ev.action,
       });
     }
   } catch (err) {

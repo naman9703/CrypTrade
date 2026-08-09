@@ -8,6 +8,7 @@ import {
 } from "../lib/instanceConfigView";
 import { effectiveInstanceSymbol } from "../lib/backtestInstanceConfig";
 import { useAppStore, type LogPayload } from "../ws/store";
+import { logInstanceId, logSharedAcrossInstances } from "./instances/InstanceSessionSummary";
 
 /** Activity timestamps match chart crosshair preference: IST (UTC+5:30). */
 const LOG_TZ = "Asia/Kolkata";
@@ -41,18 +42,9 @@ function logTouchesSymbol(l: LogPayload, symU: string): boolean {
   return false;
 }
 
-function logStrategyKey(l: LogPayload): string {
-  const d = l.detail;
-  if (d && typeof d === "object" && !Array.isArray(d)) {
-    const sk = (d as Record<string, unknown>).strategyKey;
-    if (typeof sk === "string" && sk.trim()) return sk.trim().toUpperCase();
-  }
-  return "";
-}
-
-function logIsGlobalBotLine(l: LogPayload): boolean {
+function logIsModeLifecycle(l: LogPayload): boolean {
   const cat = String(l.category ?? "").toLowerCase();
-  if (cat === "backtest" || cat === "system") return true;
+  if (cat === "bot_lifecycle" || cat === "session") return true;
   const msg = String(l.msg ?? "").toLowerCase();
   return msg.includes("bot ") && (msg.includes("start") || msg.includes("stop"));
 }
@@ -91,9 +83,8 @@ export function LogsPanel() {
       instance,
     );
     const symbol = normalizeSym(effectiveInstanceSymbol(instance, version) || String(instance.operational?.symbol ?? ""));
-    const cfgRaw = version?.cfgRaw as { bot?: { manualStrategy?: string }; manualStrategy?: string } | undefined;
-    const manualStrategy = String(cfgRaw?.bot?.manualStrategy ?? cfgRaw?.manualStrategy ?? "").toUpperCase();
-    return { instanceId, symbol, manualStrategy, label: instance.label || instanceId.slice(0, 8) };
+    const isActiveForMode = String(activeInstanceByMode?.[modeSlug] ?? "") === instanceId;
+    return { instanceId, symbol, label: instance.label || instanceId.slice(0, 8), isActiveForMode };
   }, [
     mainView,
     modeSlug,
@@ -106,15 +97,17 @@ export function LogsPanel() {
   ]);
 
   const sortedLogs = useMemo(() => {
-    if (instanceFilter?.symbol) {
-      const { symbol, manualStrategy } = instanceFilter;
+    if (instanceFilter?.instanceId) {
+      const { instanceId, isActiveForMode } = instanceFilter;
       return logs.filter((row) => {
-        if (logIsGlobalBotLine(row)) return true;
-        if (logTouchesSymbol(row, symbol)) {
-          if (!manualStrategy) return true;
-          const sk = logStrategyKey(row);
-          return !sk || sk === manualStrategy || sk === "SUPERTREND";
-        }
+        // Main bot on/off is mode-wide — show on every instance.
+        if (logSharedAcrossInstances(row)) return true;
+        const iid = logInstanceId(row);
+        if (iid) return iid === instanceId;
+        // Untagged legacy rows: never show other instances' signal/execution noise.
+        // Only allow mode lifecycle lines while this instance is the active binding
+        // (those events historically applied to the active instance).
+        if (logIsModeLifecycle(row)) return isActiveForMode;
         return false;
       });
     }
@@ -137,7 +130,7 @@ export function LogsPanel() {
           <div className="text-sm font-semibold">Activity</div>
           <div className="text-xs text-slate-600 dark:text-slate-400">
             {instanceFilter
-              ? `Filtered to instance · ${instanceFilter.label} · ${instanceFilter.symbol || "—"}`
+              ? `Instance-only · ${instanceFilter.label} · ${instanceFilter.symbol || "—"}`
               : "Realtime decisions + execution logs"}
           </div>
         </div>

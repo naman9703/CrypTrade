@@ -8,6 +8,23 @@
 import { query, withTransaction } from "../../db/query.js";
 
 const MAX_EQUITY_INSERT_ROWS = 5000;
+/** Max rows per UNNEST batch (bind param count = column count, not rows × cols). */
+const UNNEST_INSERT_CHUNK = 2000;
+
+/** Drop duplicate trade_number rows before persist (keeps first). */
+function dedupeTradesForPersist(trades) {
+  if (!Array.isArray(trades) || trades.length === 0) return [];
+  const seen = new Set();
+  const out = [];
+  for (const t of trades) {
+    const n = Number(t?.tradeNumber);
+    const key = Number.isFinite(n) ? n : String(t?.tradeNumber ?? "");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+}
 
 /** Postgres NUMERIC(p,s) max representable value (signed). */
 function clampNumeric(value, precision, scale) {
@@ -28,6 +45,151 @@ function tradeSizingContext(t) {
     allowedPoolUsdt:
       t.allowedPoolUsdt != null && Number.isFinite(Number(t.allowedPoolUsdt)) ? Number(t.allowedPoolUsdt) : null,
   };
+}
+
+function tradeSignalContextObject(t) {
+  return {
+    intelScoreAtEntry: t.intelScoreAtEntry ?? null,
+    gateAction: t.gateAction ?? null,
+    trailStep: t.trailStep ?? 0,
+    trailTierLabel: t.trailTierLabel ?? null,
+    trailEvents:
+      Array.isArray(t.trailEvents) && t.trailEvents.length
+        ? t.trailEvents.map((ev) => ({
+            ts: ev.ts != null ? Number(ev.ts) : null,
+            step: ev.step != null ? Number(ev.step) : 0,
+            tierLabel: ev.tierLabel != null ? String(ev.tierLabel) : null,
+            slPrice: ev.slPrice != null && Number.isFinite(Number(ev.slPrice)) ? Number(ev.slPrice) : null,
+            favorablePx:
+              ev.favorablePx != null && Number.isFinite(Number(ev.favorablePx)) ? Number(ev.favorablePx) : null,
+            nextActivationPx:
+              ev.nextActivationPx != null && Number.isFinite(Number(ev.nextActivationPx))
+                ? Number(ev.nextActivationPx)
+                : null,
+          }))
+        : null,
+    equityAtEntry: t.equityAtEntry ?? null,
+    marginUsdt: t.marginUsdt ?? null,
+    initialSlPrice: t.initialSlPrice != null && Number.isFinite(Number(t.initialSlPrice)) ? Number(t.initialSlPrice) : null,
+    initialRiskUsd: t.initialRiskUsd != null && Number.isFinite(Number(t.initialRiskUsd)) ? Number(t.initialRiskUsd) : null,
+    entryQuality: t.entryQuality ?? null,
+    lossPattern: t.lossPattern ?? null,
+    entryReason: t.entryReason ?? null,
+    entryBarTs: t.entryBarTs != null ? Number(t.entryBarTs) : null,
+    entryFillTs: t.entryFillTs != null ? Number(t.entryFillTs) : null,
+    entrySameBar: t.entrySameBar === true ? true : t.entrySameBar === false ? false : null,
+    entryMarkPx: t.entryMarkPx != null && Number.isFinite(Number(t.entryMarkPx)) ? Number(t.entryMarkPx) : null,
+    exitFillTs: t.exitFillTs != null ? Number(t.exitFillTs) : null,
+    liq: t.liqContext && typeof t.liqContext === "object" ? t.liqContext : null,
+    ...tradeSizingContext(t),
+  };
+}
+
+function tradeRowParams(runId, symbol, t, { includeMaeMfe = false } = {}) {
+  const row = [
+    runId,
+    Number(t.tradeNumber),
+    String(t.symbol ?? symbol),
+    String(t.direction),
+    new Date(Number(t.entryTs)),
+    new Date(Number(t.exitTs)),
+    Number(t.entryPrice),
+    Number(t.exitPrice),
+    Number(t.qty),
+    t.slPrice != null ? Number(t.slPrice) : null,
+    t.tpPrice != null ? Number(t.tpPrice) : null,
+    String(t.exitReason ?? ""),
+    Number(t.grossPnl ?? 0),
+    Number(t.fees ?? 0),
+    Number(t.netPnl ?? 0),
+    clampNumeric(tradeRoiPct(t), 10, 4),
+  ];
+  if (includeMaeMfe) row.push(null, null);
+  row.push(
+    tradeSignalContextObject(t),
+    Number(t.fundingPaid ?? 0),
+    Number(t.slippageCost ?? 0),
+    Number(t.barsHeld ?? 0),
+    t.maePct != null ? clampNumeric(Number(t.maePct) * 100, 10, 4) : null,
+    t.mfePct != null ? clampNumeric(Number(t.mfePct) * 100, 10, 4) : null,
+    t.intelScoreAtEntry != null ? clampNumeric(t.intelScoreAtEntry, 6, 2) : null,
+    String(t.gateAction ?? "pass"),
+  );
+  return row;
+}
+
+function buildTradesBulkInsert(runId, symbol, trades, { includeMaeMfe = false } = {}) {
+  if (!trades.length) return null;
+  const cols = [
+    "backtest_run_id",
+    "trade_number",
+    "symbol",
+    "direction",
+    "entry_time",
+    "exit_time",
+    "entry_price",
+    "exit_price",
+    "quantity",
+    "sl_price",
+    "tp_price",
+    "exit_reason",
+    "gross_pnl",
+    "fees_usdt",
+    "net_pnl",
+    "roi_pct",
+  ];
+  if (includeMaeMfe) cols.push("mae", "mfe");
+  cols.push(
+    "signal_context",
+    "funding_paid",
+    "slippage_cost",
+    "bars_held",
+    "mae_pct",
+    "mfe_pct",
+    "intel_score_at_entry",
+    "gate_action",
+  );
+
+  /** @type {unknown[][]} */
+  const arrays = cols.map(() => []);
+  for (const t of trades) {
+    const row = tradeRowParams(runId, symbol, t, { includeMaeMfe });
+    for (let i = 0; i < row.length; i++) arrays[i].push(row[i]);
+  }
+
+  const casts = [
+    "uuid[]",
+    "int[]",
+    "text[]",
+    "text[]",
+    "timestamptz[]",
+    "timestamptz[]",
+    "numeric[]",
+    "numeric[]",
+    "numeric[]",
+    "numeric[]",
+    "numeric[]",
+    "text[]",
+    "numeric[]",
+    "numeric[]",
+    "numeric[]",
+    "numeric[]",
+  ];
+  if (includeMaeMfe) casts.push("numeric[]", "numeric[]");
+  casts.push(
+    "jsonb[]",
+    "numeric[]",
+    "numeric[]",
+    "int[]",
+    "numeric[]",
+    "numeric[]",
+    "numeric[]",
+    "text[]",
+  );
+
+  const unnest = casts.map((cast, i) => `$${i + 1}::${cast}`).join(", ");
+  const sql = `INSERT INTO backtest_trades (${cols.join(", ")}) SELECT * FROM UNNEST(${unnest})`;
+  return { sql, params: arrays };
 }
 
 /** ROI % for backtest_trades.roi_pct — margin-based, not dollar PnL. */
@@ -67,25 +229,35 @@ function sampleEquityPointsForInsert(curve) {
 
 function buildEquityBulkInsert(runId, points) {
   if (!points.length) return null;
-  const rows = [];
-  const params = [];
+  const runIds = [];
+  const tss = [];
+  const equities = [];
+  const drawdowns = [];
   for (const p of points) {
-    const base = params.length;
-    params.push(
-      runId,
-      new Date(Number(p.ts)),
-      Number(p.equity),
-      clampNumeric(p.drawdownPct ?? 0, 8, 4) ?? 0,
-    );
-    rows.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`);
+    runIds.push(runId);
+    tss.push(new Date(Number(p.ts)));
+    equities.push(Number(p.equity));
+    drawdowns.push(clampNumeric(p.drawdownPct ?? 0, 8, 4) ?? 0);
   }
   const sql = `
     INSERT INTO backtest_equity_points (run_id, ts, equity, drawdown_pct)
-    VALUES ${rows.join(", ")}
+    SELECT * FROM UNNEST($1::uuid[], $2::timestamptz[], $3::numeric[], $4::numeric[])
     ON CONFLICT (run_id, ts) DO UPDATE
       SET equity = EXCLUDED.equity, drawdown_pct = EXCLUDED.drawdown_pct
   `;
-  return { sql, params };
+  return { sql, params: [runIds, tss, equities, drawdowns] };
+}
+
+async function execBulkChunks(client, buildFn, items, buildArgs, chunkSize = UNNEST_INSERT_CHUNK) {
+  let inserted = 0;
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const slice = items.slice(i, i + chunkSize);
+    const bulk = buildFn(...buildArgs, slice);
+    if (!bulk) continue;
+    const r = await client.query(bulk.sql, bulk.params);
+    inserted += r.rowCount ?? 0;
+  }
+  return inserted;
 }
 
 /**
@@ -96,112 +268,15 @@ function buildEquityBulkInsert(runId, points) {
  */
 export async function insertTrades(runId, symbol, trades) {
   if (!trades?.length) return 0;
-  const cols = [
-    "backtest_run_id",
-    "trade_number",
-    "symbol",
-    "direction",
-    "entry_time",
-    "exit_time",
-    "entry_price",
-    "exit_price",
-    "quantity",
-    "sl_price",
-    "tp_price",
-    "exit_reason",
-    "gross_pnl",
-    "fees_usdt",
-    "net_pnl",
-    "roi_pct",
-    "mae",
-    "mfe",
-    "signal_context",
-    "funding_paid",
-    "slippage_cost",
-    "bars_held",
-    "mae_pct",
-    "mfe_pct",
-    "intel_score_at_entry",
-    "gate_action",
-  ];
-  const params = [];
-  const rows = [];
-  for (const t of trades) {
-    const base = params.length;
-    params.push(
-      runId,
-      Number(t.tradeNumber),
-      String(t.symbol ?? symbol),
-      String(t.direction),
-      new Date(Number(t.entryTs)),
-      new Date(Number(t.exitTs)),
-      Number(t.entryPrice),
-      Number(t.exitPrice),
-      Number(t.qty),
-      t.slPrice != null ? Number(t.slPrice) : null,
-      t.tpPrice != null ? Number(t.tpPrice) : null,
-      String(t.exitReason ?? ""),
-      Number(t.grossPnl ?? 0),
-      Number(t.fees ?? 0),
-      Number(t.netPnl ?? 0),
-      clampNumeric(tradeRoiPct(t), 10, 4),
-      null,
-      null,
-      JSON.stringify({
-        intelScoreAtEntry: t.intelScoreAtEntry ?? null,
-        gateAction: t.gateAction ?? null,
-        trailStep: t.trailStep ?? 0,
-        trailTierLabel: t.trailTierLabel ?? null,
-        trailEvents:
-          Array.isArray(t.trailEvents) && t.trailEvents.length
-            ? t.trailEvents.map((ev) => ({
-                ts: ev.ts != null ? Number(ev.ts) : null,
-                step: ev.step != null ? Number(ev.step) : 0,
-                tierLabel: ev.tierLabel != null ? String(ev.tierLabel) : null,
-                slPrice: ev.slPrice != null && Number.isFinite(Number(ev.slPrice)) ? Number(ev.slPrice) : null,
-                favorablePx:
-                  ev.favorablePx != null && Number.isFinite(Number(ev.favorablePx)) ? Number(ev.favorablePx) : null,
-                nextActivationPx:
-                  ev.nextActivationPx != null && Number.isFinite(Number(ev.nextActivationPx))
-                    ? Number(ev.nextActivationPx)
-                    : null,
-              }))
-            : null,
-        equityAtEntry: t.equityAtEntry ?? null,
-        marginUsdt: t.marginUsdt ?? null,
-        initialSlPrice: t.initialSlPrice != null && Number.isFinite(Number(t.initialSlPrice)) ? Number(t.initialSlPrice) : null,
-        initialRiskUsd: t.initialRiskUsd != null && Number.isFinite(Number(t.initialRiskUsd)) ? Number(t.initialRiskUsd) : null,
-        entryQuality: t.entryQuality ?? null,
-        lossPattern: t.lossPattern ?? null,
-        entryReason: t.entryReason ?? null,
-        entryBarTs: t.entryBarTs != null ? Number(t.entryBarTs) : null,
-        entryFillTs: t.entryFillTs != null ? Number(t.entryFillTs) : null,
-        entrySameBar: t.entrySameBar === true ? true : t.entrySameBar === false ? false : null,
-        entryMarkPx: t.entryMarkPx != null && Number.isFinite(Number(t.entryMarkPx)) ? Number(t.entryMarkPx) : null,
-        exitFillTs: t.exitFillTs != null ? Number(t.exitFillTs) : null,
-        liq:
-          t.liqContext && typeof t.liqContext === "object"
-            ? t.liqContext
-            : null,
-        ...tradeSizingContext(t),
-      }),
-      Number(t.fundingPaid ?? 0),
-      Number(t.slippageCost ?? 0),
-      Number(t.barsHeld ?? 0),
-      t.maePct != null ? clampNumeric(Number(t.maePct) * 100, 10, 4) : null,
-      t.mfePct != null ? clampNumeric(Number(t.mfePct) * 100, 10, 4) : null,
-      t.intelScoreAtEntry != null ? clampNumeric(t.intelScoreAtEntry, 6, 2) : null,
-      String(t.gateAction ?? "pass"),
-    );
-    const ph = cols.map((_, j) => `$${base + j + 1}`).join(",");
-    rows.push(`(${ph})`);
+  let inserted = 0;
+  for (let i = 0; i < trades.length; i += UNNEST_INSERT_CHUNK) {
+    const slice = trades.slice(i, i + UNNEST_INSERT_CHUNK);
+    const bulk = buildTradesBulkInsert(runId, symbol, slice, { includeMaeMfe: true });
+    if (!bulk) continue;
+    const r = await query(bulk.sql, bulk.params);
+    inserted += r.rowCount ?? 0;
   }
-  const sql = `
-    INSERT INTO backtest_trades (${cols.join(", ")})
-    VALUES ${rows.join(", ")}
-  `;
-  const r = await query(sql, params);
-  return r.rowCount ?? 0;
+  return inserted;
 }
 
 /**
@@ -212,10 +287,16 @@ export async function insertTrades(runId, symbol, trades) {
  */
 export async function insertEquityCurve(runId, curve) {
   const points = sampleEquityPointsForInsert(curve);
-  const bulk = buildEquityBulkInsert(runId, points);
-  if (!bulk) return 0;
-  const r = await query(bulk.sql, bulk.params);
-  return r.rowCount ?? 0;
+  if (!points.length) return 0;
+  let inserted = 0;
+  for (let i = 0; i < points.length; i += UNNEST_INSERT_CHUNK) {
+    const slice = points.slice(i, i + UNNEST_INSERT_CHUNK);
+    const bulk = buildEquityBulkInsert(runId, slice);
+    if (!bulk) continue;
+    const r = await query(bulk.sql, bulk.params);
+    inserted += r.rowCount ?? 0;
+  }
+  return inserted;
 }
 
 /**
@@ -234,8 +315,14 @@ export async function finalizeRun(args) {
     coveragePct,
   } = args;
   await withTransaction(async (client) => {
-    if (trades.length) {
-      await insertTradesInTx(client, runId, symbol, trades);
+    // Serialize finalize for this run (prevents concurrent double-insert races).
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1::text))`, [String(runId)]);
+    // Idempotent: dual workers / recover-requeue can finalize the same run twice.
+    await client.query(`DELETE FROM backtest_trades WHERE backtest_run_id = $1`, [runId]);
+    await client.query(`DELETE FROM backtest_equity_points WHERE run_id = $1`, [runId]);
+    const uniqueTrades = dedupeTradesForPersist(trades);
+    if (uniqueTrades.length) {
+      await insertTradesInTx(client, runId, symbol, uniqueTrades);
     }
     if (equityCurve.length) {
       await insertEquityInTx(client, runId, equityCurve);
@@ -273,112 +360,17 @@ export async function finalizeRun(args) {
 }
 
 async function insertTradesInTx(client, runId, symbol, trades) {
-  const sql = (await import("util")).format;
-  void sql;
-  const cols = [
-    "backtest_run_id",
-    "trade_number",
-    "symbol",
-    "direction",
-    "entry_time",
-    "exit_time",
-    "entry_price",
-    "exit_price",
-    "quantity",
-    "sl_price",
-    "tp_price",
-    "exit_reason",
-    "gross_pnl",
-    "fees_usdt",
-    "net_pnl",
-    "roi_pct",
-    "signal_context",
-    "funding_paid",
-    "slippage_cost",
-    "bars_held",
-    "mae_pct",
-    "mfe_pct",
-    "intel_score_at_entry",
-    "gate_action",
-  ];
-  const rows = [];
-  const params = [];
-  for (const t of trades) {
-    const base = params.length;
-    params.push(
-      runId,
-      Number(t.tradeNumber),
-      String(t.symbol ?? symbol),
-      String(t.direction),
-      new Date(Number(t.entryTs)),
-      new Date(Number(t.exitTs)),
-      Number(t.entryPrice),
-      Number(t.exitPrice),
-      Number(t.qty),
-      t.slPrice != null ? Number(t.slPrice) : null,
-      t.tpPrice != null ? Number(t.tpPrice) : null,
-      String(t.exitReason ?? ""),
-      Number(t.grossPnl ?? 0),
-      Number(t.fees ?? 0),
-      Number(t.netPnl ?? 0),
-      clampNumeric(tradeRoiPct(t), 10, 4),
-      JSON.stringify({
-        intelScoreAtEntry: t.intelScoreAtEntry ?? null,
-        gateAction: t.gateAction ?? null,
-        trailStep: t.trailStep ?? 0,
-        trailTierLabel: t.trailTierLabel ?? null,
-        trailEvents:
-          Array.isArray(t.trailEvents) && t.trailEvents.length
-            ? t.trailEvents.map((ev) => ({
-                ts: ev.ts != null ? Number(ev.ts) : null,
-                step: ev.step != null ? Number(ev.step) : 0,
-                tierLabel: ev.tierLabel != null ? String(ev.tierLabel) : null,
-                slPrice: ev.slPrice != null && Number.isFinite(Number(ev.slPrice)) ? Number(ev.slPrice) : null,
-                favorablePx:
-                  ev.favorablePx != null && Number.isFinite(Number(ev.favorablePx)) ? Number(ev.favorablePx) : null,
-                nextActivationPx:
-                  ev.nextActivationPx != null && Number.isFinite(Number(ev.nextActivationPx))
-                    ? Number(ev.nextActivationPx)
-                    : null,
-              }))
-            : null,
-        equityAtEntry: t.equityAtEntry ?? null,
-        marginUsdt: t.marginUsdt ?? null,
-        initialSlPrice: t.initialSlPrice != null && Number.isFinite(Number(t.initialSlPrice)) ? Number(t.initialSlPrice) : null,
-        initialRiskUsd: t.initialRiskUsd != null && Number.isFinite(Number(t.initialRiskUsd)) ? Number(t.initialRiskUsd) : null,
-        entryQuality: t.entryQuality ?? null,
-        lossPattern: t.lossPattern ?? null,
-        entryReason: t.entryReason ?? null,
-        entryBarTs: t.entryBarTs != null ? Number(t.entryBarTs) : null,
-        entryFillTs: t.entryFillTs != null ? Number(t.entryFillTs) : null,
-        entrySameBar: t.entrySameBar === true ? true : t.entrySameBar === false ? false : null,
-        entryMarkPx: t.entryMarkPx != null && Number.isFinite(Number(t.entryMarkPx)) ? Number(t.entryMarkPx) : null,
-        exitFillTs: t.exitFillTs != null ? Number(t.exitFillTs) : null,
-        liq:
-          t.liqContext && typeof t.liqContext === "object"
-            ? t.liqContext
-            : null,
-        ...tradeSizingContext(t),
-      }),
-      Number(t.fundingPaid ?? 0),
-      Number(t.slippageCost ?? 0),
-      Number(t.barsHeld ?? 0),
-      t.maePct != null ? clampNumeric(Number(t.maePct) * 100, 10, 4) : null,
-      t.mfePct != null ? clampNumeric(Number(t.mfePct) * 100, 10, 4) : null,
-      t.intelScoreAtEntry != null ? clampNumeric(t.intelScoreAtEntry, 6, 2) : null,
-      String(t.gateAction ?? "pass"),
-    );
-    rows.push(`(${cols.map((_, j) => `$${base + j + 1}`).join(",")})`);
-  }
-  const insSql = `INSERT INTO backtest_trades (${cols.join(", ")}) VALUES ${rows.join(", ")}`;
-  await client.query(insSql, params);
+  await execBulkChunks(
+    client,
+    (rid, sym, slice) => buildTradesBulkInsert(rid, sym, slice),
+    trades,
+    [runId, symbol],
+  );
 }
 
 async function insertEquityInTx(client, runId, curve) {
   const points = sampleEquityPointsForInsert(curve);
-  const bulk = buildEquityBulkInsert(runId, points);
-  if (!bulk) return;
-  await client.query(bulk.sql, bulk.params);
+  await execBulkChunks(client, (rid, slice) => buildEquityBulkInsert(rid, slice), points, [runId]);
 }
 
 /** Mark a run failed with the error string visible in the UI. */

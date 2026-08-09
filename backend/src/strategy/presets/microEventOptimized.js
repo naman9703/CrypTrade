@@ -106,14 +106,46 @@ export const MICRO_EVENT_PORTFOLIO_1M = {
   capitalSplitAcrossCoins: true,
 };
 
-/** Liq-only smoke — confluence gates off for ablation baseline. */
+/**
+ * Liq-only research baseline — mega cascades only.
+ * Phase0 + full sim (costs): ≥$2M + fresh-onset + signal-bar displacement.
+ * Dead-trade exit: if MFE < 0.2R after 2 bars, compress SL to 0.3R (cut bleed).
+ */
 export const MICRO_EVENT_BTC_1M_LIQ_ONLY = {
   ...MICRO_EVENT_BTC_1M,
   microEventMinConfirmLayers: 0,
-  microEventMinConfluenceScore: 20,
+  microEventMinConfluenceScore: 10,
+  microEventLiqMinUsd: 2_000_000,
+  microEventMaxHoldSec: 600,
+  microEventCooldownSec: 900,
+  microEventCascadeFreshEnabled: true,
+  microEventCascadeQuietSec: 900,
+  microEventRequireDisplacement: true,
+  microEventMinDisplacementPct: 0.05,
+  intradayLiqDeadTradeExitBars: 2,
+  intradayLiqDeadTradeMinMfeR: 0.2,
+  intradayLiqDeadTradeMaxLossR: 0.3,
   microEventOiGateEnabled: false,
   microEventBookGateEnabled: false,
   microEventCvdGateEnabled: false,
   microEventFundingGateEnabled: false,
   microEventMacroGateEnabled: false,
+};
+
+/** Liq + CVD confirm (book/OI/funding/macro off). */
+export const MICRO_EVENT_BTC_1M_LIQ_CVD = {
+  ...MICRO_EVENT_BTC_1M_LIQ_ONLY,
+  microEventMinConfirmLayers: 1,
+  microEventMinConfluenceScore: 35,
+  microEventCvdGateEnabled: true,
+  microEventTypesEnabled: ["liq", "cvd"],
+};
+
+/** Liq + CVD + OI confirm. */
+export const MICRO_EVENT_BTC_1M_LIQ_CVD_OI = {
+  ...MICRO_EVENT_BTC_1M_LIQ_CVD,
+  microEventMinConfirmLayers: 1,
+  microEventMinConfluenceScore: 40,
+  microEventOiGateEnabled: true,
+  microEventTypesEnabled: ["liq", "cvd", "oi"],
 };

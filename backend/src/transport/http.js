@@ -452,9 +452,28 @@ export function createRouter({ appState }) {
         detail: body.detail,
       });
       const iid = appState.getActiveInstance?.(slug);
+      const reason = body.reason ?? "User started";
+      try {
+        // Main switch is mode-wide — every instance Activity panel must see it.
+        broadcastActivity(
+          appState.wsHub,
+          {
+            level: "info",
+            msg: `Main bot switch ON · ${reason}`,
+            category: "session",
+            reason: "main_switch_on",
+            sharedAcrossInstances: true,
+            scope: "mode",
+            tradingMode: targetM,
+            detail: { mainSwitch: true, sharedAcrossInstances: true },
+          },
+          { persistenceSlug: slug },
+        );
+      } catch {
+        /* ignore */
+      }
       if (iid && getPool()) {
         try {
-          const reason = body.reason ?? "User started";
           await instanceService.updateInstanceStatus(String(iid), "running", reason, "user", null);
           const uid = await resolveDbActingUserId(req);
           if (uid) {
@@ -467,6 +486,23 @@ export function createRouter({ appState }) {
               triggeredBy: "user",
               updatedAt: new Date().toISOString(),
             });
+          }
+          try {
+            broadcastActivity(
+              appState.wsHub,
+              {
+                level: "info",
+                msg: `Session armed · main + instance ON · ${reason}`,
+                category: "session",
+                reason: "session_armed",
+                instanceId: String(iid),
+                tradingMode: targetM,
+                detail: { instanceId: String(iid), mainSwitch: true, instanceSwitch: true },
+              },
+              { persistenceSlug: slug },
+            );
+          } catch {
+            /* ignore */
           }
         } catch (e) {
           appState.log?.warn?.("instance_status_on_start_failed", { error: String(e?.message || e) });
@@ -498,9 +534,27 @@ export function createRouter({ appState }) {
         detail: body.detail,
       });
       const iid = appState.getActiveInstance?.(slug);
+      const reason = body.reason ?? "User stopped";
+      try {
+        broadcastActivity(
+          appState.wsHub,
+          {
+            level: "info",
+            msg: `Main bot switch OFF · ${reason}`,
+            category: "session",
+            reason: "session_disarmed_main",
+            sharedAcrossInstances: true,
+            scope: "mode",
+            tradingMode: targetM,
+            detail: { mainSwitch: false, sharedAcrossInstances: true },
+          },
+          { persistenceSlug: slug },
+        );
+      } catch {
+        /* ignore */
+      }
       if (iid && getPool()) {
         try {
-          const reason = body.reason ?? "User stopped";
           await instanceService.updateInstanceStatus(String(iid), "stopped", reason, "user", null);
           const uid = await resolveDbActingUserId(req);
           if (uid) {
@@ -1129,6 +1183,20 @@ export function createRouter({ appState }) {
       surfPulseMlGateEnabled: z.boolean().optional(),
       /** Min SurfPulse XGBoost win probability (0–1) when strategy SURF_PULSE_ML is active. */
       surfPulseMlThreshold: z.number().min(0).max(1).optional(),
+      /** Supertrend entry-quality XGBoost gate (backtest / research; live only after OOS gates). */
+      supertrendXgbGateEnabled: z.boolean().optional(),
+      /** Min P(RR>0) from /predict/supertrend when Supertrend XGB gate is on. */
+      supertrendXgbThreshold: z.number().min(0).max(1).optional(),
+      /** Allow gated re-sim across full window even when model train_end is inside the range. */
+      supertrendXgbIgnoreTrainingCutoff: z.boolean().optional(),
+      /** When true, AI down / predict failure vetoes the entry (apply re-sim). */
+      supertrendXgbFailClosed: z.boolean().optional(),
+      /** Skip ST flips stretched vs EMA20 / RSI extreme in trade direction (no-chase). */
+      supertrendStretchSkipEnabled: z.boolean().optional(),
+      /** Max |dist to EMA20| in percent points before skip (e.g. 0.4 = 0.4%). */
+      supertrendStretchEma20Pct: z.number().min(0).max(20).optional(),
+      supertrendStretchRsiHigh: z.number().min(50).max(100).optional(),
+      supertrendStretchRsiLow: z.number().min(0).max(50).optional(),
       /** When true, high-confidence opposing composite intelligence score can skip Supertrend opens. */
       intelligenceGateEnabled: z.boolean().optional(),
       intelligenceGateManualStrategies: z.boolean().optional(),
@@ -2792,6 +2860,23 @@ export function createRouter({ appState }) {
       row.bot.setPaused?.(true);
       await instanceService.updateInstanceStatus(instanceId, "paused", "User paused", "user", null);
       await broadcastInstanceStatusFromDetail(instanceId, uid, { reason: "User paused", triggeredBy: "user" });
+      try {
+        broadcastActivity(
+          appState.wsHub,
+          {
+            level: "info",
+            msg: "Session paused · instance switch OFF (main still ON) — new entries blocked",
+            category: "session",
+            reason: "session_paused_instance",
+            instanceId: String(instanceId),
+            tradingMode: tm,
+            detail: { instanceId: String(instanceId), mainSwitch: true, instanceSwitch: false },
+          },
+          { persistenceSlug: slug },
+        );
+      } catch {
+        /* ignore */
+      }
       const inst = await instanceService.getInstanceDetail(instanceId, uid);
       res.json({ ok: true, instance: inst, bot: row.bot.getPublicState?.() });
     } catch (e) {
@@ -2829,6 +2914,23 @@ export function createRouter({ appState }) {
       row.bot.setPaused?.(false);
       await instanceService.updateInstanceStatus(instanceId, "running", "User resumed", "user", null);
       await broadcastInstanceStatusFromDetail(instanceId, uid, { reason: "User resumed", triggeredBy: "user" });
+      try {
+        broadcastActivity(
+          appState.wsHub,
+          {
+            level: "info",
+            msg: "Session armed · instance switch ON (main already ON)",
+            category: "session",
+            reason: "session_resumed_instance",
+            instanceId: String(instanceId),
+            tradingMode: tm,
+            detail: { instanceId: String(instanceId), mainSwitch: true, instanceSwitch: true },
+          },
+          { persistenceSlug: slug },
+        );
+      } catch {
+        /* ignore */
+      }
       const inst = await instanceService.getInstanceDetail(instanceId, uid);
       res.json({ ok: true, instance: inst, bot: row.bot.getPublicState?.() });
     } catch (e) {

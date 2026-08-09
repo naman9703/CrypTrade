@@ -1,5 +1,9 @@
 import { getPool } from "../../db/pool.js";
 import { tfToMs } from "./timeframe.js";
+import {
+  planPatchRangesFromCoverage,
+  preferredOhlcSources,
+} from "./coverageGaps.js";
 
 function normalizeSymbol(symbol) {
   return String(symbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
@@ -61,9 +65,12 @@ export async function estimateCandleFootprint(pool, where, params, have, expecte
 }
 
 /**
- * @returns {Promise<{ have: number, expected: number | null, coveragePct: number | null, minTs: number | null, maxTs: number | null, diskBytes: number, memBytesEst: number, diskBytesFull: number | null, memBytesFull: number | null }>}
+ * @param {object} [opts]
+ * @param {number} [opts.from]
+ * @param {number} [opts.to]
+ * @param {"futures"|"spot"} [opts.market] when set, count only preferred venue sources (accurate fill)
  */
-export async function getCoverage(symbol, tf, { from, to } = {}) {
+export async function getCoverage(symbol, tf, { from, to, market } = {}) {
   const pool = getPool();
   if (!pool) throw new Error("db_not_configured");
   const sym = normalizeSymbol(symbol);
@@ -72,6 +79,11 @@ export async function getCoverage(symbol, tf, { from, to } = {}) {
 
   const params = [sym, timeframe];
   let where = "symbol = $1 AND timeframe = $2";
+  // Prefer venue sources so wrong-source rows cannot mark the window "filled".
+  if (market === "spot" || market === "futures") {
+    params.push(preferredOhlcSources(market));
+    where += ` AND source = ANY($${params.length}::text[])`;
+  }
   if (from != null) {
     params.push(Number(from));
     where += ` AND open_time >= to_timestamp($${params.length} / 1000.0)`;
@@ -95,23 +107,57 @@ export async function getCoverage(symbol, tf, { from, to } = {}) {
 
   let expected = null;
   let coveragePct = null;
+  let remainingMs = null;
+  let remainingDays = null;
+  let remainingBars = null;
+  let patchFrom = null;
+  let patchTo = null;
   if (from != null && to != null) {
     const fromMs = Number(from);
     const toMs = Number(to);
     if (Number.isFinite(fromMs) && Number.isFinite(toMs) && toMs > fromMs) {
-      expected = Math.max(1, Math.floor((toMs - fromMs) / step));
+      // Count only closed bars so an in-progress candle does not keep the window "unfilled".
+      const closedTo = Math.min(toMs, Math.floor(toMs / step) * step);
+      expected = closedTo > fromMs ? Math.max(1, Math.floor((closedTo - fromMs) / step)) : 1;
       coveragePct = Math.min(100, (have / expected) * 100);
+      const patch = planPatchRangesFromCoverage({
+        from: fromMs,
+        to: toMs,
+        stepMs: step,
+        minTs,
+        maxTs,
+        monthly: [],
+      });
+      remainingMs = patch.remainingMs;
+      remainingDays = patch.remainingDays;
+      remainingBars = patch.remainingBars;
+      patchFrom = patch.patchFrom;
+      patchTo = patch.patchTo;
     }
   }
 
   const footprint = await estimateCandleFootprint(pool, where, params, have, expected);
-  return { have, expected, coveragePct, minTs, maxTs, ...footprint };
+  return {
+    have,
+    expected,
+    coveragePct,
+    minTs,
+    maxTs,
+    remainingMs,
+    remainingDays,
+    remainingBars,
+    patchFrom,
+    patchTo,
+    ...footprint,
+  };
 }
 
 /**
+ * @param {object} [opts]
+ * @param {"futures"|"spot"} [opts.market]
  * @returns {Promise<Array<{ month: string, have: number, expected: number, coveragePct: number }>>}
  */
-export async function getMonthlyCoverage(symbol, tf, fromMs, toMs) {
+export async function getMonthlyCoverage(symbol, tf, fromMs, toMs, opts = {}) {
   const pool = getPool();
   if (!pool) throw new Error("db_not_configured");
   const sym = normalizeSymbol(symbol);
@@ -121,16 +167,27 @@ export async function getMonthlyCoverage(symbol, tf, fromMs, toMs) {
   const to = Number(toMs);
   if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return [];
 
+  const market = opts.market === "spot" || opts.market === "futures" ? opts.market : null;
+  const params = [sym, timeframe];
+  let sourceClause = "";
+  if (market) {
+    params.push(preferredOhlcSources(market));
+    sourceClause = ` AND source = ANY($${params.length}::text[])`;
+  }
+  const fromIdx = params.length + 1;
+  const toIdx = params.length + 2;
+  params.push(from, to);
+
   const r = await pool.query(
     `SELECT to_char(date_trunc('month', open_time AT TIME ZONE 'UTC'), 'YYYY-MM') AS month,
             COUNT(*)::int AS have
        FROM ohlcv_candles
-      WHERE symbol = $1 AND timeframe = $2
-        AND open_time >= to_timestamp($3 / 1000.0)
-        AND open_time < to_timestamp($4 / 1000.0)
+      WHERE symbol = $1 AND timeframe = $2${sourceClause}
+        AND open_time >= to_timestamp($${fromIdx} / 1000.0)
+        AND open_time < to_timestamp($${toIdx} / 1000.0)
       GROUP BY 1
       ORDER BY 1`,
-    [sym, timeframe, from, to],
+    params,
   );
 
   const out = [];
@@ -147,7 +204,9 @@ export async function getMonthlyCoverage(symbol, tf, fromMs, toMs) {
     const monthEnd = Date.UTC(y, m + 1, 1);
     const sliceFrom = Math.max(from, monthStart);
     const sliceTo = Math.min(end, monthEnd);
-    const expected = sliceTo > sliceFrom ? Math.max(1, Math.floor((sliceTo - sliceFrom) / step)) : 0;
+    const closedSliceTo = Math.min(sliceTo, Math.floor(sliceTo / step) * step);
+    const expected =
+      closedSliceTo > sliceFrom ? Math.max(1, Math.floor((closedSliceTo - sliceFrom) / step)) : 0;
     const month = `${y}-${String(m + 1).padStart(2, "0")}`;
     const row = r.rows.find((x) => x.month === month);
     const have = Number(row?.have ?? 0);

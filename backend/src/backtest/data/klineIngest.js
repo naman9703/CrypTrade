@@ -83,10 +83,16 @@ async function upsertCandles(symbol, tf, rows, source = "binance") {
  * @param {number} [opts.from]
  * @param {number} [opts.to]
  * @param {"futures"|"spot"} [opts.market]
+ * @param {"full"|"patch"} [opts.mode="full"] patch only fetches remaining gap ranges
+ * @param {Array<{ from: number, to: number }>} [opts.ranges] explicit ranges (overrides planner when mode=patch)
  * @param {(p: { pct: number, phase?: string }) => void} [opts.onProgress]
- * @returns {Promise<{ inserted: number, gaps: number }>}
+ * @returns {Promise<{ inserted: number, gaps: number, mode: string, ranges: Array<{from:number,to:number}>, remainingMs: number }>}
  */
-export async function ensureKlines(symbol, tf, { from, to, market = "futures", onProgress } = {}) {
+export async function ensureKlines(
+  symbol,
+  tf,
+  { from, to, market = "futures", mode = "full", ranges: explicitRanges, onProgress } = {},
+) {
   const pool = getPool();
   if (!pool) throw new Error("db_not_configured");
   const sym = normalizeSymbol(symbol);
@@ -98,10 +104,8 @@ export async function ensureKlines(symbol, tf, { from, to, market = "futures", o
   }
 
   const step = tfToMs(timeframe);
-  const expected = Math.max(0, Math.floor((toMs - fromMs) / step));
   const feedKind = market === "spot" ? "BINANCE" : "BINANCE_FUTURES";
   const interval = binanceInterval(timeframe);
-  const span = Math.max(1, toMs - fromMs);
   const report =
     typeof onProgress === "function"
       ? (pct, phase) => {
@@ -113,35 +117,78 @@ export async function ensureKlines(symbol, tf, { from, to, market = "futures", o
         }
       : null;
 
-  let inserted = 0;
-  let fetchedTotal = 0;
+  const syncMode = String(mode || "full").toLowerCase() === "patch" ? "patch" : "full";
+  /** @type {Array<{ from: number, to: number }>} */
+  let workRanges;
+  if (syncMode === "patch") {
+    if (Array.isArray(explicitRanges) && explicitRanges.length) {
+      const { mergeTimeRanges } = await import("./coverageGaps.js");
+      workRanges = mergeTimeRanges(explicitRanges);
+    } else {
+      const { planOhlcPatchRanges } = await import("./coverageGaps.js");
+      const plan = await planOhlcPatchRanges(sym, timeframe, fromMs, toMs, { market });
+      workRanges = plan.ranges;
+    }
+  } else {
+    workRanges = [{ from: fromMs, to: toMs }];
+  }
+
+  if (!workRanges.length) {
+    report?.(100, "klines");
+    return { inserted: 0, gaps: 0, mode: syncMode, ranges: [], remainingMs: 0 };
+  }
+
+  const totalSpan = Math.max(
+    1,
+    workRanges.reduce((acc, r) => acc + (r.to - r.from), 0),
+  );
+  const expected = Math.max(0, Math.floor(totalSpan / step));
   const source = market === "spot" ? "binance_spot" : "binance_futures";
 
-  for (let cursor = fromMs; cursor < toMs; cursor += READ_CANDLES_SLICE_MS) {
-    const sliceTo = Math.min(toMs, cursor + READ_CANDLES_SLICE_MS);
-    const sliceSpan = Math.max(1, sliceTo - cursor);
-    const fetched = await fetchBinanceKlinesRange({
-      symbol: sym,
-      interval,
-      startTime: cursor,
-      endTime: sliceTo,
-      feedKind,
-      onProgress: ({ pct }) => {
-        const local = Math.max(0, Math.min(100, Number(pct) || 0));
-        const globalPct = (((cursor - fromMs) + (local / 100) * sliceSpan) / span) * 100;
-        report?.(globalPct, "klines");
-      },
-    });
-    fetchedTotal += fetched.length;
-    if (fetched.length) {
-      inserted += await upsertCandles(sym, timeframe, fetched, source);
+  let inserted = 0;
+  let fetchedTotal = 0;
+  let completedSpan = 0;
+
+  for (const range of workRanges) {
+    const rangeFrom = range.from;
+    const rangeTo = range.to;
+    const rangeSpan = Math.max(1, rangeTo - rangeFrom);
+    for (let cursor = rangeFrom; cursor < rangeTo; cursor += READ_CANDLES_SLICE_MS) {
+      const sliceTo = Math.min(rangeTo, cursor + READ_CANDLES_SLICE_MS);
+      const sliceSpan = Math.max(1, sliceTo - cursor);
+      const fetched = await fetchBinanceKlinesRange({
+        symbol: sym,
+        interval,
+        startTime: cursor,
+        endTime: sliceTo,
+        feedKind,
+        onProgress: ({ pct }) => {
+          const local = Math.max(0, Math.min(100, Number(pct) || 0));
+          const doneInRange = cursor - rangeFrom + (local / 100) * sliceSpan;
+          const globalPct = ((completedSpan + doneInRange) / totalSpan) * 100;
+          report?.(globalPct, "klines");
+        },
+      });
+      fetchedTotal += fetched.length;
+      if (fetched.length) {
+        inserted += await upsertCandles(sym, timeframe, fetched, source);
+      }
+      const sliceDone = sliceTo - cursor;
+      report?.(((completedSpan + (cursor - rangeFrom) + sliceDone) / totalSpan) * 100, "klines");
     }
-    report?.(((sliceTo - fromMs) / span) * 100, "klines");
+    completedSpan += rangeSpan;
+    report?.((completedSpan / totalSpan) * 100, "klines");
   }
 
   report?.(100, "klines");
   const gaps = Math.max(0, expected - fetchedTotal);
-  return { inserted, gaps };
+  return {
+    inserted,
+    gaps,
+    mode: syncMode,
+    ranges: workRanges,
+    remainingMs: totalSpan,
+  };
 }
 
 function preferredSources(market = "futures") {

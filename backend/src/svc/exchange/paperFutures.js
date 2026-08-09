@@ -227,6 +227,9 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
       grossPnl: roundTo(gross, 4),
       strategy: p.strategy,
       reason: reasonNorm,
+      ...(p.instanceId || p?.meta?.instanceId
+        ? { instanceId: String(p.instanceId || p.meta.instanceId) }
+        : {}),
       meta: {
         ...(p.meta || {}),
         closeSide: exitSide,
@@ -818,6 +821,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         leverage,
         openedAt: new Date().toISOString(),
         strategy,
+        ...(meta?.instanceId ? { instanceId: String(meta.instanceId) } : {}),
         meta: {
           ...(meta || {}),
           leverage,
@@ -847,6 +851,7 @@ export function createPaperFuturesExchange({ log, name = "paper_futures", baseDi
         takeProfit: pos.takeProfit,
         strategy,
         fee: roundTo(fee, 6),
+        ...(meta?.instanceId ? { instanceId: String(meta.instanceId) } : {}),
         meta: { ...(meta || {}), leverage, openFee: fee, fee },
       });
 

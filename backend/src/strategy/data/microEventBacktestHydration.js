@@ -14,13 +14,26 @@ function normSym(symbol) {
 }
 
 /** @param {{ ts: number, price: number, qty?: number|null, isBuyerMaker?: boolean }[]} trades */
+function lowerBoundTs(trades, ts) {
+  let lo = 0;
+  let hi = trades.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (Number(trades[mid].ts) < ts) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 function sumAggWindow(trades, windowMs, endMs) {
   const cutoff = endMs - windowMs;
+  const start = lowerBoundTs(trades, cutoff);
   let buyUsd = 0;
   let sellUsd = 0;
-  for (const t of trades) {
+  for (let i = start; i < trades.length; i++) {
+    const t = trades[i];
     const ts = Number(t.ts);
-    if (ts < cutoff || ts > endMs) continue;
+    if (ts > endMs) break;
     const px = Number(t.price);
     const qty = Number(t.qty ?? 0);
     if (!(px > 0) || !(qty > 0)) continue;
@@ -110,6 +123,7 @@ export function buildBacktestSnapshotFields(tsMs, ctx) {
     liqTicks = [],
     liqWindowSec = 90,
     domRatio = 1.2,
+    cascadeQuietSec = 900,
     aggTrades = [],
     fundingRates = [],
     oiSeries = [],
@@ -117,19 +131,34 @@ export function buildBacktestSnapshotFields(tsMs, ctx) {
   } = ctx;
 
   const windowMs = liqWindowSec * 1000;
+  const quietMs = Math.max(60_000, Number(cascadeQuietSec) * 1000 || 900_000);
   const cutoff = tsMs - windowMs;
   let longUsd = 0;
   let shortUsd = 0;
+  let extremeLong = -Infinity;
+  let extremeShort = Infinity;
   for (const t of liqTicks) {
     const time = Number(t.time ?? t.ts);
     if (time < cutoff || time > tsMs) continue;
-    if (t.side === "SELL") longUsd += Number(t.notionalUsd) || 0;
-    else shortUsd += Number(t.notionalUsd) || 0;
+    const px = Number(t.price);
+    if (t.side === "SELL") {
+      longUsd += Number(t.notionalUsd) || 0;
+      if (px > 0) extremeLong = Math.max(extremeLong, px);
+    } else {
+      shortUsd += Number(t.notionalUsd) || 0;
+      if (px > 0) extremeShort = Math.min(extremeShort, px);
+    }
   }
   const totalUsd = longUsd + shortUsd;
   let dom = "neutral";
   if (longUsd > shortUsd * domRatio) dom = "longs";
   else if (shortUsd > longUsd * domRatio) dom = "shorts";
+  const liqExtremePrice =
+    dom === "longs" && Number.isFinite(extremeLong)
+      ? extremeLong
+      : dom === "shorts" && Number.isFinite(extremeShort)
+        ? extremeShort
+        : null;
 
   const priorTicks = liqTicks.filter((t) => {
     const time = Number(t.time ?? t.ts);
@@ -143,6 +172,24 @@ export function buildBacktestSnapshotFields(tsMs, ctx) {
   }
   const priorTotal = pLong + pShort;
   const liqZLike = priorTotal > 0 ? totalUsd / priorTotal : totalUsd > 0 ? 2 : 0;
+
+  /** Prior lookback: max 1m bucket USD — blocks re-entry after a large minute already fired. */
+  let liqQuietPriorUsd = 0;
+  let liqQuietPriorMaxBarUsd = 0;
+  const quietFrom = tsMs - windowMs - quietMs;
+  const quietTo = tsMs - windowMs;
+  const quietBuckets = new Map();
+  for (const t of liqTicks) {
+    const time = Number(t.time ?? t.ts);
+    if (time < quietFrom || time >= quietTo) continue;
+    const usd = Number(t.notionalUsd) || 0;
+    liqQuietPriorUsd += usd;
+    const bucket = Math.floor(time / 60_000) * 60_000;
+    quietBuckets.set(bucket, (quietBuckets.get(bucket) || 0) + usd);
+  }
+  for (const v of quietBuckets.values()) {
+    if (v > liqQuietPriorMaxBarUsd) liqQuietPriorMaxBarUsd = v;
+  }
 
   const w60 = sumAggWindow(aggTrades, 60_000, tsMs);
   const funding = fundingMetricsAtTs(fundingRates, tsMs);
@@ -158,6 +205,9 @@ export function buildBacktestSnapshotFields(tsMs, ctx) {
     liqRateUsdPerMin: windowMs > 0 ? (totalUsd / windowMs) * 60_000 : 0,
     liqDom: dom,
     liqZLike,
+    liqExtremePrice,
+    liqQuietPriorUsd,
+    liqQuietPriorMaxBarUsd,
     lastLiqTickMs: tsMs,
     oi: oiRow?.oi ?? null,
     oiDeltaPct1m: oiGateExcluded ? null : oiDeltaPct(oiSeries, tsMs, 60_000),
@@ -189,12 +239,14 @@ export async function hydrateMicroEventBacktestContext(symbol, fromMs, toMs, cfg
   const sym = normSym(symbol);
   const liqWindowSec = Number(cfg.microEventLiqWindowSec ?? 90);
   const domRatio = Number(cfg.microEventLiqDomRatio ?? 1.2);
+  const cascadeQuietSec = Number(cfg.microEventCascadeQuietSec ?? 900);
 
   const { readRecentForceOrders } = await import("../../intelligence/collectors/forceOrderPersist.js");
   const { aggregateTicksToLiqSeries } = await import("../liqCascadeIntraday.js");
 
   const liqTicks = await readRecentForceOrders(sym, fromMs, toMs);
-  const liqSeries = aggregateTicksToLiqSeries(liqTicks, 60_000, fromMs, toMs);
+  // Sparse 1m buckets (no zero-pad) — empty minutes must not trigger O(aggTrades) snapshot work.
+  const liqSeries = aggregateTicksToLiqSeries(liqTicks, 60_000);
 
   let aggTrades = [];
   let aggTradeCount = 0;
@@ -237,6 +289,7 @@ export async function hydrateMicroEventBacktestContext(symbol, fromMs, toMs, cfg
     hydrationMeta: {
       liqWindowSec,
       domRatio,
+      cascadeQuietSec,
       symbol: sym,
       cvdSource: aggTradeCount > 0 ? "futures_agg_trades" : "missing",
       fundingSource: fundingRates.length ? "historical_funding_rates" : "missing",

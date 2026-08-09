@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { BacktestRunSummary } from "../../types/backtest";
 import { api } from "../../api/client";
 import { approxBarCount, computeEtaParts, formatDurationSeconds, MIN_PCT_FOR_EXTRAP } from "./backtestEta";
+import { rerunBacktestWithSamePanelConfig } from "./rerunBacktestFromRun";
 
 type Props = {
   runs: BacktestRunSummary[];
@@ -16,6 +17,8 @@ type Props = {
   liveActivity: boolean;
   onAfterCancel?: () => void | Promise<void>;
   onAfterDelete?: (id: string) => void | Promise<void>;
+  /** Called after a successful re-run enqueue (new run id). */
+  onAfterRerun?: (runId: string) => void | Promise<void>;
 };
 
 export function BacktestRunsHistory({
@@ -26,8 +29,11 @@ export function BacktestRunsHistory({
   liveActivity,
   onAfterCancel,
   onAfterDelete,
+  onAfterRerun,
 }: Props) {
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [rerunningId, setRerunningId] = useState<string | null>(null);
+  const [rerunErrById, setRerunErrById] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!liveActivity) return;
@@ -49,6 +55,7 @@ export function BacktestRunsHistory({
           const failMsg = status === "failed" ? (live?.error ?? r.error ?? "").trim() : "";
           const isSelected = r.id === selectedId;
           const active = !isTerminalRest && (status === "running" || status === "queued");
+          const rerunErr = rerunErrById[r.id];
 
           return (
             <button
@@ -62,23 +69,35 @@ export function BacktestRunsHistory({
               }`}
             >
               <div className="flex items-center justify-between gap-2">
-                <div className="truncate font-mono text-[11px] text-slate-500">{r.symbol} · {r.timeframe}</div>
+                <div className="truncate font-mono text-[11px] text-slate-500">
+                  {r.symbol} · {r.timeframe}
+                </div>
                 <StatusPill status={status} />
               </div>
-              <div className="truncate pt-0.5">
-                {r.label || (r.engineType ?? "—")}
-              </div>
+              <div className="truncate pt-0.5">{r.label || (r.engineType ?? "—")}</div>
               <div className="grid grid-cols-3 gap-1 pt-0.5 text-[10px] text-slate-500">
                 <Stat label="Trades" value={r.totalTrades != null ? String(r.totalTrades) : "—"} />
-                <Stat label="Ret %" value={r.metrics?.totalReturnPct != null ? `${r.metrics.totalReturnPct.toFixed(1)}` : "—"} />
+                <Stat
+                  label="Ret %"
+                  value={r.metrics?.totalReturnPct != null ? `${r.metrics.totalReturnPct.toFixed(1)}` : "—"}
+                />
                 <Stat label="DD %" value={r.maxDrawdownPct != null ? `${r.maxDrawdownPct.toFixed(1)}` : "—"} />
               </div>
-              {active ? (
-                <RunProgressRow status={status} pct={pct} run={r} nowMs={nowMs} />
-              ) : null}
+              {active ? <RunProgressRow status={status} pct={pct} run={r} nowMs={nowMs} /> : null}
               {failMsg ? (
-                <div className="mt-1 line-clamp-3 rounded bg-rose-50 px-1.5 py-1 text-left text-[10px] text-rose-800 dark:bg-rose-950/40 dark:text-rose-200" title={failMsg}>
+                <div
+                  className="mt-1 line-clamp-3 rounded bg-rose-50 px-1.5 py-1 text-left text-[10px] text-rose-800 dark:bg-rose-950/40 dark:text-rose-200"
+                  title={failMsg}
+                >
                   {failMsg}
+                </div>
+              ) : null}
+              {rerunErr ? (
+                <div
+                  className="mt-1 line-clamp-2 rounded bg-rose-50 px-1.5 py-1 text-left text-[10px] text-rose-800 dark:bg-rose-950/40 dark:text-rose-200"
+                  title={rerunErr}
+                >
+                  Re-run failed: {rerunErr}
                 </div>
               ) : null}
               {active && (
@@ -119,7 +138,34 @@ export function BacktestRunsHistory({
                 </div>
               )}
               {(status === "done" || status === "failed" || status === "cancelled") && (
-                <div className="flex justify-end pt-1">
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={rerunningId === r.id}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      setRerunErrById((prev) => {
+                        const next = { ...prev };
+                        delete next[r.id];
+                        return next;
+                      });
+                      setRerunningId(r.id);
+                      try {
+                        const newId = await rerunBacktestWithSamePanelConfig(r);
+                        await onAfterRerun?.(newId);
+                      } catch (err: unknown) {
+                        const m = err instanceof Error ? err.message : String(err ?? "error");
+                        setRerunErrById((prev) => ({ ...prev, [r.id]: m }));
+                      } finally {
+                        setRerunningId((cur) => (cur === r.id ? null : cur));
+                      }
+                    }}
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                    title="Re-run with the same backtest panel config (picks up latest strategy/instance settings)"
+                    aria-label="Re-run backtest with same config"
+                  >
+                    <RerunIcon className={`h-3 w-3 ${rerunningId === r.id ? "animate-spin" : ""}`} />
+                  </button>
                   <button
                     type="button"
                     onClick={async (e) => {
@@ -143,6 +189,27 @@ export function BacktestRunsHistory({
         })}
       </div>
     </div>
+  );
+}
+
+/** Circular arrow (refresh / re-run). */
+function RerunIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M20 12a8 8 0 1 1-2.34-5.66"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M20 4v5h-5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -201,9 +268,7 @@ function RunProgressRow({
           <Spinner className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400" />
           <span className="truncate">{phaseLabel}</span>
         </span>
-        <span className="shrink-0 font-mono tabular-nums text-slate-700 dark:text-slate-200">
-          {pctLabel}
-        </span>
+        <span className="shrink-0 font-mono tabular-nums text-slate-700 dark:text-slate-200">{pctLabel}</span>
       </div>
       <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
         {indeterminate ? (
@@ -215,7 +280,10 @@ function RunProgressRow({
           />
         )}
       </div>
-      <div className="pt-0.5 text-[9px] leading-snug text-slate-500 dark:text-slate-400" title="Rough guess uses bar count and engine type; refined ETA uses elapsed time and progress %.">
+      <div
+        className="pt-0.5 text-[9px] leading-snug text-slate-500 dark:text-slate-400"
+        title="Rough guess uses bar count and engine type; refined ETA uses elapsed time and progress %."
+      >
         {etaLine}
       </div>
     </div>

@@ -43,6 +43,11 @@ import {
   readBigMoveGateCfg,
 } from "../../strategy/supertrendBigMoveGate.js";
 import {
+  evaluateStretchSkip,
+  readStretchSkipCfg,
+  buildStretchSkipSeries,
+} from "../../strategy/supertrendStretchSkip.js";
+import {
   buildHtf4hContext,
   evaluateHtf4hFilter,
   readHtf4hFilterCfg,
@@ -82,6 +87,14 @@ const ELITE_HTF_KEY = "ELITE_HTF";
 export function resolveMaxHoldBars(cfg = {}) {
   const manual = String(cfg.manualStrategy ?? "").toUpperCase();
   if (!profileUsesIntradayMaxHold(manual)) return 0;
+  // MICRO_EVENT: wall-clock hold from microEventMaxHoldSec (1m bars).
+  if (manual === "MICRO_EVENT") {
+    const sec = Number(cfg.microEventMaxHoldSec);
+    if (Number.isFinite(sec) && sec > 0) return Math.max(1, Math.ceil(sec / 60));
+    const liqHold = Number(cfg.intradayLiqMaxHoldBars);
+    if (Number.isFinite(liqHold) && liqHold > 0) return Math.floor(liqHold);
+    return 0;
+  }
   const liqOn =
     cfg.intradayGateLiquidity !== false ||
     cfg.intradayGateInstitutionalSr === true ||
@@ -393,10 +406,57 @@ export async function runSimulation(args) {
   const bigMoveCfg = readBigMoveGateCfg(cfg);
   const bigMoveReplay = { enabled: bigMoveCfg != null, pass: 0, veto: 0, reasons: {} };
 
+  /** No-chase RSI/EMA20 stretch skip (ST family). */
+  const stretchSkipCfg = readStretchSkipCfg(cfg);
+  const stretchSkipSeries = stretchSkipCfg ? buildStretchSkipSeries(candles) : null;
+  const stretchSkipReplay = {
+    enabled: stretchSkipCfg != null,
+    pass: 0,
+    veto: 0,
+    reasons: {},
+  };
+
   /** 4H Supertrend direction confirmation filter (built once, reused per bar). */
   const htf4hFilterCfg = readHtf4hFilterCfg(cfg);
   const htf4hCtx = htf4hFilterCfg ? buildHtf4hContext(candles, htf4hFilterCfg) : null;
   const htf4hReplay = { enabled: htf4hCtx != null, pass: 0, veto: 0, reasons: {} };
+
+  /** Supertrend XGBoost quality gate (Layer 3 on ST flips; prepared once after ST series). */
+  let stXgbGate = null;
+  const stXgbReplay = { enabled: false, pass: 0, veto: 0, failOpen: 0, cutoffBypass: 0 };
+  if (cfg?.supertrendXgbGateEnabled === true) {
+    try {
+      const { prepareSupertrendXgbGate } = await import("./signals/supertrendXgbGate.js");
+      stXgbGate = await prepareSupertrendXgbGate({
+        candles,
+        cfg,
+        fromMs: Number(cfg?.backtestSignalStartMs ?? args?.fromMs ?? 0) || undefined,
+        stSeries:
+          stSeries ||
+          (strategyKey === SUPERTREND_KEY || strategyKey === "SUPERTREND_ELITE" || strategyKey === "UNIFIED_ELITE"
+            ? buildSupertrendSeries(candles, {
+                period: Number(cfg?.supertrendPeriod ?? 10),
+                multiplier: Number(cfg?.supertrendMultiplier ?? 3),
+                wilderAtr: cfg?.supertrendWilderAtr !== false,
+              })
+            : null),
+      });
+      stXgbReplay.enabled = Boolean(stXgbGate?.enabled);
+      if (stXgbGate?.prepError) stXgbReplay.prepError = stXgbGate.prepError;
+    } catch (err) {
+      console.warn("[backtest] supertrend XGB gate prepare failed:", err?.message || err);
+      if (cfg?.supertrendXgbFailClosed === true) {
+        stXgbReplay.enabled = true;
+        stXgbReplay.prepError = "prepare_threw";
+        stXgbGate = {
+          enabled: true,
+          async filterSignal() {
+            return null;
+          },
+        };
+      }
+    }
+  }
 
   /**
    * Pre-compute per-bar `computeIndicators` snapshots for move-quality and signal-strength gates.
@@ -520,6 +580,27 @@ export async function runSimulation(args) {
     const signalStartMs = Number(cfg?.backtestSignalStartMs ?? 0);
     if (barSignal && signalStartMs > 0 && Number(bar.ts) < signalStartMs) {
       barSignal = null;
+    }
+
+    if (barSignal && stXgbGate?.enabled && typeof stXgbGate.filterSignal === "function") {
+      try {
+        const gated = await stXgbGate.filterSignal(barSignal, i, bar);
+        if (!gated) {
+          stXgbReplay.veto += 1;
+          barSignal = null;
+        } else if (gated.supertrendXgbBypass === "fail_open") {
+          stXgbReplay.failOpen += 1;
+          barSignal = gated;
+        } else if (gated.supertrendXgbBypass === "cutoff") {
+          stXgbReplay.cutoffBypass += 1;
+          barSignal = gated;
+        } else {
+          stXgbReplay.pass += 1;
+          barSignal = gated;
+        }
+      } catch {
+        stXgbReplay.failOpen += 1;
+      }
     }
 
     // ── Position management ────────────────────────────────────────────────────
@@ -982,7 +1063,7 @@ export async function runSimulation(args) {
         0,
         Number(cfg?.intradayLiqDeadTradeMaxLossR ?? cfg?.liqMapDeadTradeMaxLossR ?? 0.55),
       );
-      const deadTradeStrategies = new Set(["LIQUIDITY_MAP", "SR_INTRADAY", "INTRADAY_PRO"]);
+      const deadTradeStrategies = new Set(["LIQUIDITY_MAP", "SR_INTRADAY", "INTRADAY_PRO", "MICRO_EVENT"]);
       if (
         !exitReason &&
         deadTradeStrategies.has(strategyKey) &&
@@ -1519,6 +1600,25 @@ export async function runSimulation(args) {
         confirmationReplay.pass++;
       }
 
+      if (stretchSkipCfg && (strategyKey === SUPERTREND_KEY || String(strategyKey).includes("SUPERTREND"))) {
+        const stretch = evaluateStretchSkip({
+          candles,
+          idx: i,
+          action: barSignal.action,
+          opts: stretchSkipCfg,
+          series: stretchSkipSeries,
+        });
+        if (!stretch.pass) {
+          stretchSkipReplay.veto++;
+          stretchSkipReplay.reasons[stretch.reason] =
+            (stretchSkipReplay.reasons[stretch.reason] || 0) + 1;
+          equityCurve.push({ ts: bar.ts, equity, drawdownPct: drawdownAt(equityCurve, equity) });
+          if (onProgress && candles.length) reportProgress(i, candles.length, equity, bar.ts, onProgress);
+          continue;
+        }
+        stretchSkipReplay.pass++;
+      }
+
       const entryQuality =
         strategyKey === TREND_HTF_ST_KEY || strategyKey === ELITE_HTF_KEY
           ? evaluateTrendHtfStRegime(candles, i, barSignal.action, cfg)
@@ -1925,6 +2025,8 @@ export async function runSimulation(args) {
     confirmationReplay,
     bigMoveReplay,
     htf4hReplay,
+    stretchSkipReplay,
+    stXgbReplay,
     riskOverlayReplay,
   };
 }

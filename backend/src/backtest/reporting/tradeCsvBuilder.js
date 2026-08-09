@@ -145,12 +145,12 @@ function isLongTrade(trade) {
 }
 
 /** BUY → highest before SL; SELL → lowest before SL (other column left blank). */
-function rangeLowestForCsv(trade, f) {
+export function rangeLowestForCsv(trade, f) {
   if (isLongTrade(trade)) return "";
   return fmtPrice(f.rangeLowestPrice);
 }
 
-function rangeHighestForCsv(trade, f) {
+export function rangeHighestForCsv(trade, f) {
   if (!isLongTrade(trade)) return "";
   return fmtPrice(f.rangeHighestPrice);
 }
@@ -303,7 +303,23 @@ function resolveFuturesLeverage(run) {
  * @param {Record<string, unknown>} run — mapped run row (needs symbol, timeframe, configSnapshot, engineType)
  * @param {Array<Record<string, unknown>>} trades — mapped trade rows
  */
+/** Keep first row per trade_number (guards against accidental double-persist). */
+export function dedupeTradesByNumber(trades) {
+  if (!Array.isArray(trades) || trades.length === 0) return [];
+  const seen = new Set();
+  const out = [];
+  for (const t of trades) {
+    const n = Number(t?.tradeNumber);
+    const key = Number.isFinite(n) ? n : String(t?.tradeNumber ?? "");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+}
+
 export async function buildTradesCsv(run, trades) {
+  const uniqueTrades = dedupeTradesByNumber(trades);
   const runCtx = {
     timeframe: String(run.timeframe || "1h"),
     symbol: String(run.symbol || "BTCUSDT"),
@@ -311,15 +327,15 @@ export async function buildTradesCsv(run, trades) {
     futuresLeverage: resolveFuturesLeverage(run),
   };
 
-  const featuresByTrade = await computeFeaturesForTrades(trades, {
+  const featuresByTrade = await computeFeaturesForTrades(uniqueTrades, {
     timeframe: runCtx.timeframe,
     market: resolveMarketFromRun(run),
     symbol: runCtx.symbol,
   });
 
-  const columns = resolveCsvColumns(trades, featuresByTrade);
+  const columns = resolveCsvColumns(uniqueTrades, featuresByTrade);
   const header = columns.map(csvEscape).join(",");
-  const lines = trades.map((t) => {
+  const lines = uniqueTrades.map((t) => {
     const values = rowValuesByColumn(t, featuresByTrade[t.tradeNumber] ?? {}, runCtx);
     return columns.map((col) => csvEscape(values[col] ?? "")).join(",");
   });

@@ -574,6 +574,23 @@ export function createBot({
     })();
   }
 
+  function resolveActiveInstanceId() {
+    try {
+      const fromGetter = typeof getActiveInstanceId === "function" ? getActiveInstanceId() : null;
+      return fromGetter ? String(fromGetter).trim() : "";
+    } catch {
+      return "";
+    }
+  }
+
+  /** Stamp active instance onto order meta so paper/audit rows survive reconnect (not only WS). */
+  function withInstanceMeta(meta) {
+    const base = meta && typeof meta === "object" && !Array.isArray(meta) ? { ...meta } : {};
+    const iid = resolveActiveInstanceId();
+    if (iid && !base.instanceId) base.instanceId = iid;
+    return base;
+  }
+
   async function placeOrderWithWalletTelemetry(venueEx, runPlaceOrder) {
     if (!walletTelemetryAccountId || !getPool()) {
       try {
@@ -614,15 +631,46 @@ export function createBot({
 
   function emitActivity(hub, payload) {
     const tm = runtimeTradingMode();
+    const shared =
+      payload?.sharedAcrossInstances === true ||
+      String(payload?.scope ?? "").toLowerCase() === "mode";
+    let iid = payload?.instanceId != null ? String(payload.instanceId).trim() : "";
+    // Mode-wide events (main bot on/off) must not be pinned to the active instance only.
+    if (!shared && !iid) {
+      try {
+        const fromGetter = typeof getActiveInstanceId === "function" ? getActiveInstanceId() : null;
+        if (fromGetter) iid = String(fromGetter).trim();
+      } catch {
+        iid = "";
+      }
+    }
     broadcastActivity(
       hub,
-      { ...payload, tradingMode: payload?.tradingMode ?? tm },
+      {
+        ...payload,
+        tradingMode: payload?.tradingMode ?? tm,
+        ...(shared ? { sharedAcrossInstances: true, scope: "mode" } : {}),
+        ...(shared ? {} : iid ? { instanceId: iid } : {}),
+      },
       { persistenceSlug: cfgPersistenceSlug },
     );
   }
 
   function broadcastTrade(hub, payload) {
-    hub?.broadcast?.("trade", { ...payload, originTradingMode: runtimeTradingMode() });
+    let iid = payload?.instanceId != null ? String(payload.instanceId).trim() : "";
+    if (!iid) {
+      try {
+        const fromGetter = typeof getActiveInstanceId === "function" ? getActiveInstanceId() : null;
+        if (fromGetter) iid = String(fromGetter).trim();
+      } catch {
+        iid = "";
+      }
+    }
+    hub?.broadcast?.("trade", {
+      ...payload,
+      originTradingMode: runtimeTradingMode(),
+      ...(iid ? { instanceId: iid } : {}),
+    });
   }
   function requiresStrictBinanceAccount() {
     return isStrictBinanceAccountMode(runtimeTradingMode());
@@ -3938,7 +3986,7 @@ export function createBot({
           stopLoss,
           takeProfit,
           strategy: strategyKey,
-          meta: {
+          meta: withInstanceMeta({
             supertrend: true,
             aiProbability: prob,
             marketMode: "SPOT",
@@ -3952,7 +4000,7 @@ export function createBot({
                 ? Number(last.ts) + binanceIntervalMs(state.timeframe)
                 : undefined,
             ...(mqAtEntrySpot ? { mqAtEntry: mqAtEntrySpot } : {}),
-          },
+          }),
         }),
       );
       wsHub?.broadcast?.("log", {
@@ -5341,7 +5389,7 @@ export function createBot({
             stopLoss,
             takeProfit,
             strategy: strategyKey,
-            meta: openMetaBase,
+            meta: withInstanceMeta(openMetaBase),
           }),
         );
       } catch (e) {
@@ -5391,13 +5439,13 @@ export function createBot({
               stopLoss,
               takeProfit,
               strategy: strategyKey,
-              meta: {
+              meta: withInstanceMeta({
                 ...openMetaBase,
                 entryOrderStyle: "MARKET",
                 entryLimitPrice: undefined,
                 entryIocFallback: true,
                 priorIocNoFillError: errMsg,
-              },
+              }),
             }),
           );
         } else throw e;
@@ -11457,7 +11505,7 @@ export function createBot({
           stopLoss: plan.stopLoss,
           takeProfit: plan.takeProfit,
           strategy: strategyKey,
-          meta: {
+          meta: withInstanceMeta({
             aiProbability: prob,
             aiFeatures: aiResp?.features || {},
             modelKind: aiResp?.model_kind || aiResp?.modelKind || null,
@@ -11477,7 +11525,7 @@ export function createBot({
             liqBreakevenAfterPartial: state.intradayLiqBreakevenAfterPartial !== false,
             liqBeAt1R: liqLegs?.beAt1R === true,
             liqBeTriggerPx: liqLegs?.beTriggerPx > 0 ? liqLegs.beTriggerPx : undefined,
-          },
+          }),
         }),
       );
     } catch (e) {
@@ -11784,10 +11832,13 @@ export function createBot({
       category: "bot_lifecycle",
       reason: String(reason),
       source: String(source),
+      sharedAcrossInstances: true,
+      scope: "mode",
       detail: {
         ...(detail && typeof detail === "object" && !Array.isArray(detail) ? detail : {}),
         symbol: state.symbol,
         timeframe: state.timeframe,
+        mainSwitch: true,
       },
     });
     if (state.pendingSupertrendAction) {
@@ -11866,7 +11917,9 @@ export function createBot({
       category: "bot_lifecycle",
       reason: r,
       source: String(source),
-      detail: det,
+      sharedAcrossInstances: true,
+      scope: "mode",
+      detail: { ...det, mainSwitch: false },
     });
     try {
       const candlesStop = feed.getCandles();
@@ -11895,6 +11948,8 @@ export function createBot({
       category: "bot_lifecycle",
       reason: "daily_loss_baseline_reset",
       source: String(source),
+      sharedAcrossInstances: true,
+      scope: "mode",
       detail: { symbol: state.symbol },
     });
     start({ wsHub, reason: "daily_loss_reset_resume", source });
@@ -13130,14 +13185,14 @@ export function createBot({
         stopLoss,
         takeProfit,
         strategy: strategyKey,
-        meta: {
+        meta: withInstanceMeta({
           manual: true,
           marketMode: state.marketMode,
           futuresLeverage: manualLev ?? state.futuresLeverage,
           futuresLeverageMode: state.futuresLeverageMode,
           skipStopLoss: !useSl,
           skipTakeProfit: !useTp,
-        },
+        }),
       }),
     );
 

@@ -271,6 +271,25 @@ function handleLiquidation(order) {
   if (!symbol || !Number.isFinite(notionalUsd) || notionalUsd < 1) return;
   if (side !== 'SELL' && side !== 'BUY') return;
 
+  ingestForceOrderTick({ symbol, time, side, price, qty, notionalUsd, orderId, persist: true });
+}
+
+/**
+ * Ingest a force-order tick into live buffers + emit (tests / paper harness).
+ * @param {{ symbol: string, time?: number, side: string, price: number, qty?: number, notionalUsd?: number, orderId?: number, persist?: boolean }} row
+ */
+export function ingestForceOrderTick(row) {
+  const symbol = String(row?.symbol ?? '').trim().toUpperCase();
+  const side = String(row?.side ?? '').toUpperCase();
+  const price = Number(row?.price ?? 0);
+  const qty = Number(row?.qty ?? 0);
+  const time = Number(row?.time ?? Date.now());
+  const notionalUsd = Number(row?.notionalUsd ?? (qty > 0 && price > 0 ? qty * price : 0));
+  const orderId = row?.orderId != null ? Number(row.orderId) || undefined : undefined;
+
+  if (!symbol || !Number.isFinite(notionalUsd) || notionalUsd < 1) return null;
+  if (side !== 'SELL' && side !== 'BUY') return null;
+
   const entry = { time, side, notionalUsd, price, qty };
 
   if (!buffer.has(symbol)) buffer.set(symbol, []);
@@ -281,26 +300,23 @@ function handleLiquidation(order) {
   ticks.push(entry);
   if (ticks.length > RECENT_TICK_CAP) ticks.splice(0, ticks.length - RECENT_TICK_CAP);
 
-  enqueueForceOrder({
-    symbol,
-    ts: time,
-    side,
-    price,
-    qty,
-    notionalUsd,
-    orderId,
-  });
+  if (row?.persist !== false) {
+    enqueueForceOrder({
+      symbol,
+      ts: time,
+      side,
+      price,
+      qty,
+      notionalUsd,
+      orderId,
+    });
+  }
 
   recomputeStats(symbol);
 
-  liquidationEvents.emit('forceOrder', {
-    symbol,
-    time,
-    side,
-    price,
-    qty,
-    notionalUsd,
-  });
+  const event = { symbol, time, side, price, qty, notionalUsd };
+  liquidationEvents.emit('forceOrder', event);
+  return event;
 }
 
 /** @param {string} symbol */
